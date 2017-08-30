@@ -1,9 +1,8 @@
 package db
 
 import (
-	"fmt"
-
 	"encoding/json"
+	"fmt"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
@@ -110,9 +109,9 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 					base.LogTo("CRUD", "Updated doc after repair: %s", updatedDoc)
 				}
 				if r.DryRun {
-					base.LogTo("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 1 hour)", backupOrDryRunDocId)
+					base.LogTo("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
 				} else {
-					base.LogTo("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 1 hour)", backupOrDryRunDocId)
+					base.LogTo("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
 				}
 
 				results = append(results, RepairBucketResult{DocId: key, RepairJobTypes: repairJobs})
@@ -138,10 +137,10 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 	var contentToSave []byte
 
 	if r.DryRun {
-		backupOrDryRunDocId = fmt.Sprintf("sync:repair:dryrun:%v", docId)
+		backupOrDryRunDocId = fmt.Sprintf("_sync:repair:dryrun:%v", docId)
 		contentToSave = updatedDoc
 	} else {
-		backupOrDryRunDocId = fmt.Sprintf("sync:repair:backup:%v", docId)
+		backupOrDryRunDocId = fmt.Sprintf("_sync:repair:backup:%v", docId)
 		contentToSave = originalDoc
 	}
 
@@ -150,7 +149,7 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 		return backupOrDryRunDocId, fmt.Errorf("Error unmarshalling updated/original doc.  Err: %v", err)
 	}
 
-	expirySeconds := 60 * 60 // 1 hour
+	expirySeconds := 60 * 60 * 24 // 24 hours
 
 	if err := r.Bucket.Set(backupOrDryRunDocId, expirySeconds, doc); err != nil {
 		return backupOrDryRunDocId, err
@@ -160,6 +159,7 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 
 }
 
+// Loops over all repair jobs and applies them
 func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, repairJobs []RepairJobType, err error) {
 
 	transformed = false
@@ -196,7 +196,6 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 
 // Repairs rev tree cycles (see SG issue #2847)
 func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
-
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {
