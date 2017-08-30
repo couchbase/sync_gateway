@@ -1,14 +1,13 @@
 package db
 
 import (
-	"encoding/json"
-
 	"io/ioutil"
 
 	"fmt"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
+	"encoding/json"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -32,7 +31,7 @@ type RepairJobParams struct {
 
 // Given a Couchbase Bucket doc, transform the doc in some way to produce a new doc.
 // Also return a boolean to indicate whether a transformation took place, or any errors occurred.
-type DocTransformer func(doc *document) (transformedDoc *document, transformed bool, err error)
+type DocTransformer func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error)
 
 // A RepairBucket struct is the main API entrypoint to call for repairing documents in buckets
 type RepairBucket struct {
@@ -72,14 +71,14 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 	return r
 }
 
-func (r RepairBucket) RepairBucket() (repairedDocs []*document, err error) {
+func (r RepairBucket) RepairBucket() (repairedDocIds []string, err error) {
 
 	options := Body{"stale": false, "reduce": false}
 	options["startkey"] = []interface{}{true}
 
 	vres, err := r.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
 	if err != nil {
-		return repairedDocs, err
+		return repairedDocIds, err
 	}
 
 	for _, row := range vres.Rows {
@@ -92,11 +91,8 @@ func (r RepairBucket) RepairBucket() (repairedDocs []*document, err error) {
 			if currentValue == nil {
 				return nil, couchbase.UpdateCancel // someone deleted it?!
 			}
-			doc, err := unmarshalDocument(docid, currentValue)
-			if err != nil {
-				return nil, err
-			}
-			updatedDoc, shouldUpdate, err := r.TransformBucketDoc(doc)
+
+			updatedDoc, shouldUpdate, err := r.TransformBucketDoc(key, currentValue)
 			if err != nil {
 				return nil, err
 			}
@@ -105,14 +101,14 @@ func (r RepairBucket) RepairBucket() (repairedDocs []*document, err error) {
 			case true:
 
 				if r.WriteRepairedDocsToDisk {
-					origDocTempFile, writeTempFileErr := writeDocToTempFile(doc)
+					origDocTempFile, writeTempFileErr := writeDocToTempFile(key, currentValue)
 					if writeTempFileErr != nil {
-						base.Warn("Error writing orig doc to tmp file.  Doc: %v.  Error: %v", doc, writeTempFileErr)
+						base.Warn("Error writing orig doc to tmp file.  Doc: %v.  Error: %v", string(currentValue), writeTempFileErr)
 					}
 
-					updatedDocTempFile, writeTempFileErr := writeDocToTempFile(updatedDoc)
+					updatedDocTempFile, writeTempFileErr := writeDocToTempFile(key, updatedDoc)
 					if writeTempFileErr != nil {
-						base.Warn("Error writing update doc to tmp file.  UpdatedDoc: %v.  Error: %v", updatedDoc, writeTempFileErr)
+						base.Warn("Error writing update doc to tmp file.  UpdatedDoc: %v.  Error: %v", string(updatedDoc), writeTempFileErr)
 					}
 
 					base.LogTo("CRUD", "Repair Doc (dry_run=%v).  Original doc written to: %+v, Post-repair doc written to: %+v", r.DryRun, origDocTempFile, updatedDocTempFile)
@@ -121,23 +117,16 @@ func (r RepairBucket) RepairBucket() (repairedDocs []*document, err error) {
 
 					base.LogTo("CRUD", "Repair Doc (dry_run=%v)  Dumping doc contents directly into logs since WriteRepairedDocsToDisk disabled.", r.DryRun)
 
-					contentOrig, err := json.MarshalIndent(doc, "", "    ")
-					if err == nil {
-						base.LogTo("CRUD", "Original Doc before repair (dry_run=%v) %s", r.DryRun, contentOrig)
-					}
-
-					contentUpdated, err := json.MarshalIndent(doc, "", "    ")
-					if err == nil {
-						base.LogTo("CRUD", "Updated doc after repair (dry_run=%v) %s", r.DryRun, contentUpdated)
-					}
+					base.LogTo("CRUD", "Original Doc before repair (dry_run=%v) %s", r.DryRun, currentValue)
+					base.LogTo("CRUD", "Updated doc after repair (dry_run=%v) %s", r.DryRun, updatedDoc)
 
 				}
 
-				repairedDocs = append(repairedDocs, updatedDoc)
+				repairedDocIds = append(repairedDocIds, key)
 				if r.DryRun {
 					return nil, couchbase.UpdateCancel
 				} else {
-					return json.Marshal(updatedDoc)
+					return updatedDoc, nil
 				}
 			default:
 				return nil, couchbase.UpdateCancel
@@ -147,26 +136,21 @@ func (r RepairBucket) RepairBucket() (repairedDocs []*document, err error) {
 
 	}
 
-	return repairedDocs, nil
+	return repairedDocIds, nil
 }
 
-func writeDocToTempFile(doc *document) (tmpFileName string, err error) {
+func writeDocToTempFile(docId string, doc []byte) (tmpFileName string, err error) {
 
 	if doc == nil {
 		return "", fmt.Errorf("Cannot write nil doc to temp file")
 	}
 
-	tmpfile, err := ioutil.TempFile("", doc.ID)
+	tmpfile, err := ioutil.TempFile("", docId)
 	if err != nil {
 		return "", err
 	}
 
-	content, err := json.MarshalIndent(doc, "", "    ")
-	if err != nil {
-		return "", err
-	}
-
-	if _, err := tmpfile.Write(content); err != nil {
+	if _, err := tmpfile.Write(doc); err != nil {
 		return "", err
 	}
 
@@ -177,12 +161,12 @@ func writeDocToTempFile(doc *document) (tmpFileName string, err error) {
 	return tmpfile.Name(), nil
 }
 
-func (r RepairBucket) TransformBucketDoc(doc *document) (transformedDoc *document, transformed bool, err error) {
+func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
 	transformed = false
 	for _, repairJob := range r.RepairJobs {
 
-		repairedDoc, repairedDocTxformed, repairDocErr := repairJob(doc)
+		repairedDoc, repairedDocTxformed, repairDocErr := repairJob(docId, originalCBDoc)
 		if repairDocErr != nil {
 			return nil, false, repairDocErr
 		}
@@ -195,19 +179,24 @@ func (r RepairBucket) TransformBucketDoc(doc *document) (transformedDoc *documen
 		transformed = true
 
 		// Update output value with latest result from repair job, which may be overwritten by later loop iterations
-		transformedDoc = repairedDoc
+		transformedCBDoc = repairedDoc
 
 		// Update doc that is being transformed to be the output of the last repair job, in order
 		// that the next iteration of the loop use this as input
-		doc = repairedDoc
+		originalCBDoc = repairedDoc
 
 	}
 
-	return transformedDoc, transformed, nil
+	return transformedCBDoc, transformed, nil
 }
 
 // Repairs rev tree cycles (see SG issue #2847)
-func RepairJobRevTreeCycles(doc *document) (transformedDoc *document, transformed bool, err error) {
+func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
+
+	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
+	if errUnmarshal != nil {
+		return nil, false, errUnmarshal
+	}
 
 	// Check if rev history has cycles
 	containsCycles := doc.History.ContainsCycles()
@@ -222,7 +211,12 @@ func RepairJobRevTreeCycles(doc *document) (transformedDoc *document, transforme
 		return nil, false, err
 	}
 
+	transformedCBDoc, errMarshal := json.Marshal(doc)
+	if errMarshal != nil {
+		return nil, false, errMarshal
+	}
+
 	// Return original doc pointer since it was repaired in place
-	return doc, true, nil
+	return transformedCBDoc, true, nil
 
 }

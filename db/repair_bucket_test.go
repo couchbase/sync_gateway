@@ -45,7 +45,7 @@ func TestRepairBucket(t *testing.T) {
 
 	bucket, _ := testBucketWithViewsAndBrokenDoc()
 
-	repairJob := func(doc *document) (transformedDoc *document, transformed bool, err error) {
+	repairJob := func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 		log.Printf("repairJob called back")
 		return nil, true, nil
 	}
