@@ -133,13 +133,18 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 		})
 
 		if err != nil {
-			return results, err
+			// Ignore couchbase.UpdateCancel (Cas.QUIT) errors.  Any other errors should be returned to caller
+			if err != couchbase.UpdateCancel {
+				return results, err
+			}
 		}
 
-		if r.DryRun {
-			base.LogTo("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
-		} else {
-			base.LogTo("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+		if backupOrDryRunDocId != "" {
+			if r.DryRun {
+				base.LogTo("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+			} else {
+				base.LogTo("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+			}
 		}
 
 	}
@@ -235,7 +240,6 @@ func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDo
 		return nil, false, errMarshal
 	}
 
-	// Return original doc pointer since it was repaired in place
 	return transformedCBDoc, true, nil
 
 }
