@@ -25,7 +25,7 @@ func NewRepairBucket(bucket base.Bucket) *RepairBucket {
 }
 
 func (r *RepairBucket) SetDryRun(dryRun bool) *RepairBucket {
-	r.DryRun = false
+	r.DryRun = dryRun
 	return r
 }
 
@@ -61,10 +61,15 @@ func (r RepairBucket) RepairBucket() (err error) {
 				return nil, err
 			}
 			updatedDoc, shouldUpdate, err := r.TransformBucketDoc(doc)
+			log.Printf("TransformBucketDoc returned updatedDoc: %v, shouldUpdate: %v, err: %v.  dryRun: %v", updatedDoc, shouldUpdate, err, r.DryRun)
 			if err != nil {
 				return nil, err
 			}
-			if shouldUpdate {
+			if shouldUpdate && r.DryRun {
+				// TODO: write marshalled val to temp files?
+				base.LogTo("RepairBucket", "Update disabled for dry run.  Original doc: %+v, Post-repair doc: %+v", doc, updatedDoc)
+			}
+			if shouldUpdate && !r.DryRun {
 				return json.Marshal(updatedDoc)
 			} else {
 				return nil, couchbase.UpdateCancel

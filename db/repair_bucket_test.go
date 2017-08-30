@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"sync"
 	"log"
+	"github.com/couchbase/sync_gateway/base"
 )
 
 
 
 func TestRepairBucket(t *testing.T) {
+
+	base.EnableLogKey("RepairBucket")
 
 	bucket := testBucket()
 	log.Printf("installing views")
@@ -23,7 +26,7 @@ func TestRepairBucket(t *testing.T) {
 	repairJob := func(doc *document) (transformedDoc *document, transformed bool, err error) {
 		defer repairJobWaitGroup.Done()
 		log.Printf("repairJob called back")
-		return nil, false, nil
+		return nil, true, nil
 	}
 	repairBucket := NewRepairBucket(bucket).
 		SetDryRun(true).
