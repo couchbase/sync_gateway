@@ -78,7 +78,6 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 			},
 		},
 	})
-	repairBucket.WriteRepairedDocsToDisk = false
 
 	repairedDocs, err := repairBucket.RepairBucket()
 
@@ -89,8 +88,11 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 	var value interface{}
 	_, errGetDoc := bucket.Get(docIdProblematicRevTree, &value)
 	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting doc: %v", errGetDoc))
+	log.Printf("Got doc with docIdProblematicRevTree: %+v", value)
+
 
 	marshalled, errMarshal := json.Marshal(value)
+	log.Printf("marshalled docIdProblematicRevTree: %s", marshalled)
 	assertNoError(t, errMarshal, fmt.Sprintf("Error marshalling doc: %v", errMarshal))
 
 	repairedDoc, errUnmarshal := unmarshalDocument(docIdProblematicRevTree, marshalled)

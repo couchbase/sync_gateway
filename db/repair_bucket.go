@@ -1,8 +1,6 @@
 package db
 
 import (
-	"io/ioutil"
-
 	"fmt"
 
 	"encoding/json"
@@ -42,10 +40,9 @@ type DocTransformer func(docId string, originalCBDoc []byte) (transformedCBDoc [
 
 // A RepairBucket struct is the main API entrypoint to call for repairing documents in buckets
 type RepairBucket struct {
-	DryRun                  bool // If true, will only output what changes it *would* have made, but not make any changes
-	WriteRepairedDocsToDisk bool // If true, write the before and after doc to temp files
-	Bucket                  base.Bucket
-	RepairJobs              []DocTransformer
+	DryRun     bool // If true, will only output what changes it *would* have made, but not make any changes
+	Bucket     base.Bucket
+	RepairJobs []DocTransformer
 }
 
 func NewRepairBucket(bucket base.Bucket) *RepairBucket {
@@ -67,7 +64,6 @@ func (r *RepairBucket) AddRepairJob(repairJob DocTransformer) *RepairBucket {
 func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 
 	r.SetDryRun(params.DryRun)
-	r.WriteRepairedDocsToDisk = true
 	for _, repairJobParams := range params.RepairJobs {
 		switch repairJobParams.RepairJobType {
 		case RepairRevTreeCycles:
@@ -107,26 +103,16 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			switch shouldUpdate {
 			case true:
 
-				if r.WriteRepairedDocsToDisk {
-					origDocTempFile, writeTempFileErr := writeDocToTempFile(key, currentValue)
-					if writeTempFileErr != nil {
-						base.Warn("Error writing orig doc to tmp file.  Doc: %v.  Error: %v", string(currentValue), writeTempFileErr)
-					}
-
-					updatedDocTempFile, writeTempFileErr := writeDocToTempFile(key, updatedDoc)
-					if writeTempFileErr != nil {
-						base.Warn("Error writing update doc to tmp file.  UpdatedDoc: %v.  Error: %v", string(updatedDoc), writeTempFileErr)
-					}
-
-					base.LogTo("CRUD", "Repair Doc (dry_run=%v).  Original doc written to: %+v, Post-repair doc written to: %+v", r.DryRun, origDocTempFile, updatedDocTempFile)
-
+				backupOrDryRunDocId, err := r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
+				if err != nil {
+					base.LogTo("CRUD", "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
+					base.LogTo("CRUD", "Original Doc before repair: %s", currentValue)
+					base.LogTo("CRUD", "Updated doc after repair: %s", updatedDoc)
+				}
+				if r.DryRun {
+					base.LogTo("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 1 hour)", backupOrDryRunDocId)
 				} else {
-
-					base.LogTo("CRUD", "Repair Doc (dry_run=%v)  Dumping doc contents directly into logs since WriteRepairedDocsToDisk disabled.", r.DryRun)
-
-					base.LogTo("CRUD", "Original Doc before repair (dry_run=%v) %s", r.DryRun, currentValue)
-					base.LogTo("CRUD", "Updated doc after repair (dry_run=%v) %s", r.DryRun, updatedDoc)
-
+					base.LogTo("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 1 hour)", backupOrDryRunDocId)
 				}
 
 				results = append(results, RepairBucketResult{DocId: key, RepairJobTypes: repairJobs})
@@ -134,6 +120,8 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 				if r.DryRun {
 					return nil, couchbase.UpdateCancel
 				} else {
+					base.LogTo("CRUD", "Original Doc before repair: %s", currentValue)
+					base.LogTo("CRUD", "Updated doc after repair: %s", updatedDoc)
 					return updatedDoc, nil
 				}
 			default:
@@ -147,26 +135,26 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 	return results, nil
 }
 
-func writeDocToTempFile(docId string, doc []byte) (tmpFileName string, err error) {
+func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updatedDoc []byte) (backupOrDryRunDocId string, err error) {
 
-	if doc == nil {
-		return "", fmt.Errorf("Cannot write nil doc to temp file")
+	var contentToSave []byte
+
+	if r.DryRun {
+		backupOrDryRunDocId = fmt.Sprintf("sync:repair:dryrun:%v", docId)
+		contentToSave = updatedDoc
+	} else {
+		backupOrDryRunDocId = fmt.Sprintf("sync:repair:backup:%v", docId)
+		contentToSave = originalDoc
 	}
 
-	tmpfile, err := ioutil.TempFile("", docId)
-	if err != nil {
-		return "", err
+	expirySeconds := 60 * 60 // 1 hour
+
+	if err := r.Bucket.Set(backupOrDryRunDocId, expirySeconds, contentToSave); err != nil {
+		return backupOrDryRunDocId, err
 	}
 
-	if _, err := tmpfile.Write(doc); err != nil {
-		return "", err
-	}
+	return backupOrDryRunDocId, nil
 
-	if err := tmpfile.Close(); err != nil {
-		return "", err
-	}
-
-	return tmpfile.Name(), nil
 }
 
 func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, repairJobs []RepairJobType, err error) {
@@ -206,6 +194,7 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 // Repairs rev tree cycles (see SG issue #2847)
 func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
+
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {
 		return nil, false, errUnmarshal
@@ -228,6 +217,8 @@ func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDo
 	if errMarshal != nil {
 		return nil, false, errMarshal
 	}
+
+	base.LogTo("CRUD", "RepairJobRevTreeCycles transformed original doc: %s to updated doc: %s", originalCBDoc, transformedCBDoc)
 
 	// Return original doc pointer since it was repaired in place
 	return transformedCBDoc, true, nil
