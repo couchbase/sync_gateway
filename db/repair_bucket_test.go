@@ -88,11 +88,8 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 	var value interface{}
 	_, errGetDoc := bucket.Get(docIdProblematicRevTree, &value)
 	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting doc: %v", errGetDoc))
-	log.Printf("Got doc with docIdProblematicRevTree: %+v", value)
-
 
 	marshalled, errMarshal := json.Marshal(value)
-	log.Printf("marshalled docIdProblematicRevTree: %s", marshalled)
 	assertNoError(t, errMarshal, fmt.Sprintf("Error marshalling doc: %v", errMarshal))
 
 	repairedDoc, errUnmarshal := unmarshalDocument(docIdProblematicRevTree, marshalled)
@@ -100,5 +97,18 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	// Since doc was repaired, should contain no cycles
 	assert.False(t, repairedDoc.History.ContainsCycles())
+
+	// There should be a backup doc in the bucket with ID sync:repair:backup:docIdProblematicRevTree
+	var backupDocRaw interface{}
+	_, errGetDoc = bucket.Get("sync:repair:backup:docIdProblematicRevTree", &backupDocRaw)
+	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting backup doc: %v", errGetDoc))
+
+	marshalledBackup, _ := json.MarshalIndent(backupDocRaw, "", "")
+
+	backupDoc, errUnmarshalBackup := unmarshalDocument(docIdProblematicRevTree, marshalledBackup)
+	assertNoError(t, errUnmarshalBackup, fmt.Sprintf("Error umarshalling backup doc: %v", errUnmarshalBackup))
+
+	// The backup doc should contain revtree cycles
+	assert.True(t, backupDoc.History.ContainsCycles())
 
 }

@@ -120,8 +120,6 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 				if r.DryRun {
 					return nil, couchbase.UpdateCancel
 				} else {
-					base.LogTo("CRUD", "Original Doc before repair: %s", currentValue)
-					base.LogTo("CRUD", "Updated doc after repair: %s", updatedDoc)
 					return updatedDoc, nil
 				}
 			default:
@@ -147,9 +145,14 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 		contentToSave = originalDoc
 	}
 
+	doc, err := unmarshalDocument(docId, contentToSave)
+	if err != nil {
+		return backupOrDryRunDocId, fmt.Errorf("Error unmarshalling updated/original doc.  Err: %v", err)
+	}
+
 	expirySeconds := 60 * 60 // 1 hour
 
-	if err := r.Bucket.Set(backupOrDryRunDocId, expirySeconds, contentToSave); err != nil {
+	if err := r.Bucket.Set(backupOrDryRunDocId, expirySeconds, doc); err != nil {
 		return backupOrDryRunDocId, err
 	}
 
@@ -217,8 +220,6 @@ func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDo
 	if errMarshal != nil {
 		return nil, false, errMarshal
 	}
-
-	base.LogTo("CRUD", "RepairJobRevTreeCycles transformed original doc: %s to updated doc: %s", originalCBDoc, transformedCBDoc)
 
 	// Return original doc pointer since it was repaired in place
 	return transformedCBDoc, true, nil
