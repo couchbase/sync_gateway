@@ -267,12 +267,20 @@ func (h *handler) handleRepair() error {
 
 	repairBucket.InitFrom(repairBucketParams)
 
-	_, repairDocsErr := repairBucket.RepairBucket()
+	repairBucketResult, repairDocsErr := repairBucket.RepairBucket()
 	if repairDocsErr != nil {
 		return fmt.Errorf("Error repairing bucket: %v", err)
 	}
 
-	return nil
+	resultMarshalled, err := json.Marshal(repairBucketResult)
+	if err != nil {
+		return fmt.Errorf("Error marshalling repairBucketResult: %+v", repairBucketResult)
+	}
+
+	h.setHeader("Content-Type", "application/json")
+	_, err = h.response.Write(resultMarshalled)
+
+	return err
 }
 
 // HTTP handler for _dumpchannel
