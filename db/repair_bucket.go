@@ -26,8 +26,8 @@ type RepairBucketParams struct {
 
 // Params suitable for external (eg, HTTP) invocations to describe a specific RepairJob operation
 type RepairJobParams struct {
-	RepairJobType   RepairJobType          `json:"repair_job_type"`
-	RepairJobParams map[string]interface{} `json:"repair_job_params"`
+	RepairJobType   RepairJobType          `json:"type"`
+	RepairJobParams map[string]interface{} `json:"params"`
 }
 
 // Given a Couchbase Bucket doc, transform the doc in some way to produce a new doc.
