@@ -709,7 +709,6 @@ func TestRepairRevsHistoryWithCycles(t *testing.T) {
 
 }
 
-
 // TODO: add test for two tombstone branches getting pruned at once
 
 // Repro case for https://github.com/couchbase/sync_gateway/issues/2847

@@ -112,11 +112,11 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 					base.LogTo("CRUD", "Updated doc after repair: %s", updatedDoc)
 				}
 
-				result :=  RepairBucketResult{
-					DryRun: r.DryRun,
+				result := RepairBucketResult{
+					DryRun:              r.DryRun,
 					BackupOrDryRunDocId: backupOrDryRunDocId,
-					DocId: key,
-					RepairJobTypes: repairJobs,
+					DocId:               key,
+					RepairJobTypes:      repairJobs,
 				}
 
 				results = append(results, result)
