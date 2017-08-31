@@ -181,7 +181,10 @@ func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history 
 	if body, err = context.getRevision(doc, id.RevID); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
-		removalBody, removalHistory, removalChannels, isRemoval := doc.IsChannelRemoval(id.RevID)
+		removalBody, removalHistory, removalChannels, isRemoval, isRemovalErr := doc.IsChannelRemoval(id.RevID)
+		if isRemovalErr != nil {
+			return body, history, channels, isRemovalErr
+		}
 		if isRemoval {
 			return removalBody, removalHistory, removalChannels, nil
 		} else {
@@ -192,7 +195,12 @@ func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history 
 	if doc.History[id.RevID].Deleted {
 		body["_deleted"] = true
 	}
-	history = encodeRevisions(doc.History.getHistory(id.RevID))
+
+	validatedHistory, getHistoryErr := doc.History.getHistory(id.RevID)
+	if getHistoryErr != nil {
+		return body, history, channels, getHistoryErr
+	}
+	history = encodeRevisions(validatedHistory)
 	channels = doc.History[id.RevID].Channels
 	return body, history, channels, err
 }
@@ -252,7 +260,11 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 			body["_deleted"] = true
 		}
 		if maxHistory != 0 {
-			revisions = encodeRevisions(doc.History.getHistory(revid))
+			validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+			if getHistoryErr != nil {
+				return nil, getHistoryErr
+			}
+			revisions = encodeRevisions(validatedHistory)
 		}
 		inChannels = doc.History[revid].Channels
 	}
@@ -470,8 +482,11 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		body["_deleted"] = true
 	}
 	if listRevisions {
-		history := doc.History.getHistory(revid)
-		body["_revisions"] = encodeRevisions(history)
+		validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+		if getHistoryErr != nil {
+			return nil, getHistoryErr
+		}
+		body["_revisions"] = encodeRevisions(validatedHistory)
 	}
 	return body, nil
 }
@@ -1049,7 +1064,10 @@ func (db *Database) updateAndReturnDoc(
 
 	if doc.History[newRevID] != nil {
 		// Store the new revision in the cache
-		history := doc.History.getHistory(newRevID)
+		history, getHistoryErr := doc.History.getHistory(newRevID)
+		if getHistoryErr != nil {
+			return nil, "", getHistoryErr
+		}
 
 		if doc.History[newRevID].Deleted {
 			body["_deleted"] = true
@@ -1255,7 +1273,7 @@ func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.P
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayAccess, ViewAccess, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
 	channelSet := channels.TimedSet{}
@@ -1280,7 +1298,7 @@ func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayAccessVbSeq, ViewAccessVbSeq, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccessVbSeq, opts, &vres); verr != nil {
 		return nil, verr
 	}
 
@@ -1311,7 +1329,7 @@ func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (cha
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayAccess, ViewRoleAccess, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewRoleAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
 	// Merge the TimedSets from the view result:
@@ -1336,7 +1354,7 @@ func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (c
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayAccessVbSeq, ViewRoleAccessVbSeq, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewRoleAccessVbSeq, opts, &vres); verr != nil {
 		return nil, verr
 	}
 

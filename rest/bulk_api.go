@@ -233,11 +233,7 @@ func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
 	base.LogTo("HTTP", "Dump view %q", viewName)
 	opts := db.Body{"stale": false, "reduce": false}
-	designDocName := db.GetDesignDocForView(viewName)
-	if designDocName == "" {
-		return fmt.Errorf("Unknown view name: %s", viewName)
-	}
-	result, err := h.db.Bucket.View(designDocName, viewName, opts)
+	result, err := h.db.Bucket.View(db.DesignDocSyncGateway, viewName, opts)
 	if err != nil {
 		return err
 	}
