@@ -44,6 +44,16 @@ func testBucket() base.Bucket {
 	return bucket
 }
 
+func testBucketWithName(bucketName string) base.Bucket {
+	bucket, err := ConnectToBucket(base.BucketSpec{
+		Server:     kTestURL,
+		BucketName: bucketName}, nil)
+	if err != nil {
+		log.Fatalf("Couldn't connect to bucket: %v", err)
+	}
+	return bucket
+}
+
 func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
 	testBucket := testBucket()
 	leakyBucket := base.NewLeakyBucket(testBucket, config)
