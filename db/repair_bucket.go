@@ -77,6 +77,7 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 
 func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
+	results = []RepairBucketResult{}
 	options := Body{"stale": false, "reduce": false}
 	options["startkey"] = []interface{}{true}
 
