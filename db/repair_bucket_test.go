@@ -14,11 +14,11 @@ const (
 	docIdProblematicRevTree2 = "docIdProblematicRevTree2"
 )
 
-func testBucketWithViewsAndBrokenDoc(bucketName string) (bucket base.Bucket, numDocs int) {
+func testBucketWithViewsAndBrokenDoc() (bucket base.Bucket, numDocs int) {
 
 	numDocsAdded := 0
-	bucket = testBucketWithName(bucketName)
-	installViews(bucket)
+	bucket = testBucket()
+	installViews(bucket, false)
 
 	// Add a harmless doc
 	testSyncData := syncData{}
@@ -49,7 +49,7 @@ func TestRepairBucket(t *testing.T) {
 
 	base.EnableLogKey("CRUD")
 
-	bucket, _ := testBucketWithViewsAndBrokenDoc("TestRepairBucket")
+	bucket, _ := testBucketWithViewsAndBrokenDoc()
 
 	repairJob := func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 		log.Printf("repairJob called back")
@@ -72,7 +72,7 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	base.EnableLogKey("CRUD")
 
-	bucket, _ := testBucketWithViewsAndBrokenDoc("TestRepairBucketRevTreeCycles")
+	bucket, _ := testBucketWithViewsAndBrokenDoc()
 
 	repairBucket := NewRepairBucket(bucket)
 
@@ -117,7 +117,7 @@ func TestRepairBucketDryRun(t *testing.T) {
 
 	base.EnableLogKey("CRUD")
 
-	bucket, _ := testBucketWithViewsAndBrokenDoc("TestRepairBucketDryRun")
+	bucket, _ := testBucketWithViewsAndBrokenDoc()
 
 	repairBucket := NewRepairBucket(bucket)
 
