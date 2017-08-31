@@ -14,7 +14,7 @@ const (
 	docIdProblematicRevTree2 = "docIdProblematicRevTree2"
 )
 
-func testBucketWithViewsAndBrokenDoc() (bucketName string, bucket base.Bucket, numDocs int) {
+func testBucketWithViewsAndBrokenDoc(bucketName string) (bucket base.Bucket, numDocs int) {
 
 	numDocsAdded := 0
 	bucket = testBucketWithName(bucketName)
