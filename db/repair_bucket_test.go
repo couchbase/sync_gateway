@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"testing"
@@ -11,7 +10,7 @@ import (
 )
 
 const (
-	docIdProblematicRevTree = "docIdProblematicRevTree"
+	docIdProblematicRevTree  = "docIdProblematicRevTree"
 	docIdProblematicRevTree2 = "docIdProblematicRevTree2"
 )
 
@@ -92,27 +91,20 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 	assert.True(t, len(repairedDocs) == 2)
 
 	// Now get the doc from the bucket
-	var value interface{}
-	_, errGetDoc := bucket.Get(docIdProblematicRevTree, &value)
+	rawVal, _, errGetDoc := bucket.GetRaw(docIdProblematicRevTree)
 	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting doc: %v", errGetDoc))
 
-	marshalled, errMarshal := json.Marshal(value)
-	assertNoError(t, errMarshal, fmt.Sprintf("Error marshalling doc: %v", errMarshal))
-
-	repairedDoc, errUnmarshal := unmarshalDocument(docIdProblematicRevTree, marshalled)
+	repairedDoc, errUnmarshal := unmarshalDocument(docIdProblematicRevTree, rawVal)
 	assertNoError(t, errUnmarshal, fmt.Sprintf("Error unmarshalling doc: %v", errUnmarshal))
 
 	// Since doc was repaired, should contain no cycles
 	assert.False(t, repairedDoc.History.ContainsCycles())
 
 	// There should be a backup doc in the bucket with ID _sync:repair:backup:docIdProblematicRevTree
-	var backupDocRaw interface{}
-	_, errGetDoc = bucket.Get("_sync:repair:backup:docIdProblematicRevTree", &backupDocRaw)
+	rawVal, _, errGetDoc = bucket.GetRaw("_sync:repair:backup:docIdProblematicRevTree")
 	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting backup doc: %v", errGetDoc))
 
-	marshalledBackup, _ := json.MarshalIndent(backupDocRaw, "", "")
-
-	backupDoc, errUnmarshalBackup := unmarshalDocument(docIdProblematicRevTree, marshalledBackup)
+	backupDoc, errUnmarshalBackup := unmarshalDocument(docIdProblematicRevTree, rawVal)
 	assertNoError(t, errUnmarshalBackup, fmt.Sprintf("Error umarshalling backup doc: %v", errUnmarshalBackup))
 
 	// The backup doc should contain revtree cycles
@@ -144,30 +136,22 @@ func TestRepairBucketDryRun(t *testing.T) {
 	assert.True(t, len(repairedDocs) == 2)
 
 	// Now get the doc from the bucket
-	var value interface{}
-	_, errGetDoc := bucket.Get(docIdProblematicRevTree2, &value)
+	rawVal, _, errGetDoc := bucket.GetRaw(docIdProblematicRevTree2)
 	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting doc: %v", errGetDoc))
 
-	marshalled, errMarshal := json.Marshal(value)
-	assertNoError(t, errMarshal, fmt.Sprintf("Error marshalling doc: %v", errMarshal))
-
-	repairedDoc, errUnmarshal := unmarshalDocument(docIdProblematicRevTree2, marshalled)
+	repairedDoc, errUnmarshal := unmarshalDocument(docIdProblematicRevTree2, rawVal)
 	assertNoError(t, errUnmarshal, fmt.Sprintf("Error unmarshalling doc: %v", errUnmarshal))
 
-	// Since doc was not repaired, should still contain cycles
+	// Since doc was not repaired due to dry, should still contain cycles
 	assert.True(t, repairedDoc.History.ContainsCycles())
 
-	// There should be a backup doc in the bucket with ID _sync:repair:dryrun:docIdProblematicRevTree
-	var backupDocRaw interface{}
-	_, errGetDoc = bucket.Get("_sync:repair:dryrun:docIdProblematicRevTree2", &backupDocRaw)
+	rawVal, _, errGetDoc = bucket.GetRaw("_sync:repair:dryrun:docIdProblematicRevTree2")
 	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting backup doc: %v", errGetDoc))
 
-	marshalledBackup, _ := json.MarshalIndent(backupDocRaw, "", "")
-
-	backupDoc, errUnmarshalBackup := unmarshalDocument(docIdProblematicRevTree2, marshalledBackup)
+	backupDoc, errUnmarshalBackup := unmarshalDocument(docIdProblematicRevTree2, rawVal)
 	assertNoError(t, errUnmarshalBackup, fmt.Sprintf("Error umarshalling backup doc: %v", errUnmarshalBackup))
 
-	// The dry fun fixed doc should NOT contain revtree cycles
+	// The dry run fixed doc should not contain revtree cycles
 	assert.False(t, backupDoc.History.ContainsCycles())
 
 }
