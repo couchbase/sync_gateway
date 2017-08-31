@@ -263,6 +263,8 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, (*handler).handleIndexChannel)).Methods("GET")
 	dbr.Handle("/_index/channels",
 		makeHandler(sc, adminPrivs, (*handler).handleIndexAllChannels)).Methods("GET")
+	dbr.Handle("/_repair",
+		makeHandler(sc, adminPrivs, (*handler).handleRepair)).Methods("POST")
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.

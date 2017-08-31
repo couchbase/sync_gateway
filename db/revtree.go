@@ -159,6 +159,63 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 	return
 }
 
+func (tree RevTree) ContainsCycles() bool {
+	containsCycles := false
+	for _, leafRevision := range tree.GetLeaves() {
+		_, revHistoryErr := tree.getHistory(leafRevision)
+		if revHistoryErr != nil {
+			containsCycles = true
+		}
+	}
+	return containsCycles
+}
+
+// Repair rev trees that have cycles introduced by SG Issue #2847
+func (tree RevTree) RepairCycles() (err error) {
+
+	// This function will be called back for every leaf node in tree
+	leafProcessor := func(leaf *RevInfo) {
+
+		// Walk up the tree until we find a root, and append each node
+		node := leaf
+		if node.IsRoot() {
+			return
+		}
+
+		for {
+
+			if node.ParentGenLargerNodeGen() {
+				base.Warn("Node %+v detected to have invalid parent rev.  Repairing by designating as a root node.", node)
+				node.Parent = ""
+				break
+			}
+
+			node = tree[node.Parent]
+
+			// Reached a root, we're done -- there's no need
+			// to call appendNodeToResult() on the root, since
+			// the child of the root will have already added a node
+			// pointing to the root.
+			if node.IsRoot() {
+				break
+			}
+
+		}
+	}
+
+	// Iterate over leaves
+	tree.forEachLeaf(leafProcessor)
+
+	return nil
+}
+
+// Detect situations like:
+//     node: &{ID:10-684759c169c75629d02b90fe10b56925 Parent:184-a6b3f72a2bc1f988bfb720fec8db3a1d Deleted:fa...
+// where the parent generation is *higher* than the node generation, which is never a valid scenario.
+func (node RevInfo) ParentGenLargerNodeGen() bool {
+	return genOfRevID(node.Parent) > genOfRevID(node.ID)
+}
+
 // Returns true if the RevTree has an entry for this revid.
 func (tree RevTree) contains(revid string) bool {
 	_, exists := tree[revid]

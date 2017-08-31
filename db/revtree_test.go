@@ -782,6 +782,35 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 
 }
 
+// Repair tool for https://github.com/couchbase/sync_gateway/issues/2847
+func TestRepairRevsHistoryWithCycles(t *testing.T) {
+
+	docId := "testdocProblematicRevTree"
+
+	rawDoc, err := unmarshalDocument(docId, []byte(testdocProblematicRevTree))
+	if err != nil {
+		t.Fatalf("Error unmarshalling doc: %v", err)
+	}
+
+	if err := rawDoc.History.RepairCycles(); err != nil {
+		t.Fatalf("Unable to repair doc.  Err: %v", err)
+	}
+
+	// This function will be called back for every leaf node in tree
+	leafProcessor := func(leaf *RevInfo) {
+
+		_, err := rawDoc.History.getHistory(leaf.ID)
+		if err != nil {
+			t.Fatalf("GetHistory() returned error: %v", err)
+		}
+
+	}
+
+	// Iterate over leaves and make sure none of them have a history with cycles
+	rawDoc.History.forEachLeaf(leafProcessor)
+
+}
+
 // TODO: add test for two tombstone branches getting pruned at once
 
 // Repro case for https://github.com/couchbase/sync_gateway/issues/2847
