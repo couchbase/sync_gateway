@@ -793,7 +793,7 @@ func TestRevisionPruningLoop(t *testing.T) {
 		_, err = addPruneAndGet(revTree, keepAliveRevID, parentRevID, revBody, revsLimit, tombstone)
 		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
 
-		log.Printf("Tree pre-marshal: [[%s]]", revTree.RenderGraphvizDot())
+		log.Printf("Tree pre-marshal after %v and %v: [[%s]]", revID, keepAliveRevID, revTree.RenderGraphvizDot())
 		treeBytes, marshalErr := revTree.MarshalJSON()
 		assertNoError(t, marshalErr, fmt.Sprintf("Error marshalling tree: %v", marshalErr))
 		revTree = RevTree{}
