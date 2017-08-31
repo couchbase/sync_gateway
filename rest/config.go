@@ -131,6 +131,7 @@ type DbConfig struct {
 	OIDCConfig           *auth.OIDCOptions              `json:"oidc,omitempty"`                        // Config properties for OpenID Connect authentication
 	ViewQueryTimeoutSecs *uint32                        `json:"view_query_timeout_secs,omitempty"`     // The view query timeout in seconds
 	EnableXattrs         *bool                          `json:"enable_shared_bucket_access,omitempty"` // Whether to use extended attributes to store _sync metadata
+	NumSDKClients        int                            `json:"num_sdk_clients"`                       // Number of SDK bucket instances to use
 }
 
 type DbConfigMap map[string]*DbConfig

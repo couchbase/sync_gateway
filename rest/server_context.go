@@ -331,6 +331,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		CouchbaseDriver:      couchbaseDriver,
 		UseXattrs:            config.UseXattrs(),
 		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
+		NumSDKClients:        config.NumSDKClients,
 	}
 
 	// Set cache properties, if present

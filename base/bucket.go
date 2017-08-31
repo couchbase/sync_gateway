@@ -99,7 +99,7 @@ type BucketSpec struct {
 	InitialRetrySleepTimeMS                int     // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
 	UseXattrs                              bool    // Whether to use xattrs to store _sync metadata.  Used during view initialization
 	ViewQueryTimeoutSecs                   *uint32 // the view query timeout in seconds (default: 75 seconds)
-
+	NumSDKClients                          int     // The number of SDK clients to be used
 }
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
@@ -442,7 +442,11 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 				Warn("Cannot use TAP feed in conjunction with GoCB driver, reverting to go-couchbase")
 				bucket, err = GetCouchbaseBucket(spec, callback)
 			} else {
-				bucket, err = GetCouchbaseBucketGoCB(spec)
+				if spec.NumSDKClients > 1 {
+					bucket, err = GetCouchbaseBucketGoCBMulti(spec)
+				} else {
+					bucket, err = GetCouchbaseBucketGoCB(spec)
+				}
 			}
 
 		case GoCouchbase:
