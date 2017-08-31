@@ -260,6 +260,10 @@ func (h *handler) handleDump() error {
 // HTTP handler for _repair
 func (h *handler) handleRepair() error {
 
+	if true == true {
+		return fmt.Errorf("_repair endpoint disabled")
+	}
+
 	base.LogTo("HTTP", "Repair bucket")
 
 	// Todo: is this actually needed or does something else in the handler do it?  I can't find that..
