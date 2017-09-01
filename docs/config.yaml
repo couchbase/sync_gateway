@@ -1,0 +1,363 @@
+type: object
+properties:
+  adminInterface:
+    description: Port or TCP network address (IP address and the port) that the Admin REST API listens on.
+    type: string
+    default: ':4985'
+  adminUI:
+    description: URL of the Sync Gateway Admin Console HTML page.
+    type: string
+    default: ':4985/_admin/'
+  compressResponses:
+    description: Whether to compress HTTP responses. Set to false to disable compression of HTTP responses.
+    type: boolean
+    default: 'true'
+  configServer:
+    description: URL of a Couchbase database-configuration server (for dynamic database discovery). A database-configuration server allows Sync Gateway to load a database configuration dynamically from a remote endpoint. If a database configuration server is defined, when Sync Gateway gets a request for a database that it doesn't know about, then Sync Gateway will attempt to retrieve the database configuration properties from the URL ConfigServer/DBname, where DBname is the database name.
+    type: string
+  CORS:
+    description: Configuration object for allowing CORS (cross-origin resource sharing). This is a useful to interact directly with Sync Gateway from HTML 5 applications via XHR.
+    type: object
+    properties:
+      Origin:
+        type: array
+        description: Comma-separated list of allowed origins; use an asterisk (*) to allow access from everywhere.
+        items:
+          type: string
+      LoginOrigin:
+        type: array
+        description: Comma-separated list of allowed login origins.
+        items:
+          type: string
+      Headers:
+        type: array
+        description: Comma-separated list of allowed HTTP headers.
+        items:
+          type: string
+      MaxAge:
+        type: integer
+        description: Value for the Access-Control-Max-Age header. This is the the number of seconds that the response to a CORS preflight request can be cached before sending another preflight request.
+  couchbaseKeepaliveInterval:
+    description: TCP keep-alive interval in seconds between Sync Gateway and Couchbase Server.
+    type: integer
+  databases:
+    description: Database settings.
+    type: object
+    properties:
+      foo_db:
+        type: object
+        description: The database name is stored as a key.
+        properties:
+          allow_empty_password:
+            type: boolean
+            description: Whether to allow empty passwords for Couchbase Server authentication.
+            default: 'false'
+          bucket:
+            type: string
+            description: Bucket name on Couchbase Server or a Walrus bucket. The default is the database name.
+          cache:
+            type: object
+            description: Database cache configuration.
+            properties:
+              max_wait_pending:
+                type: integer
+                description: Maximum wait time in milliseconds for a pending sequence before skipping sequences.
+                default: 5000
+              max_num_pending:
+                type: integer
+                description: Maximum number of pending sequences before skipping the sequence.
+                default: 10000
+              max_wait_skipped:
+                type: integer
+                description: Maximum wait time in milliseconds for a skipped sequence before abandoning the sequence.
+                default: 3600000
+              enable_star_channel:
+                type: boolean
+                description: Enable the star (*) channel.
+                default: 'true'
+              channel_cache_max_length:
+                type: integer
+                description: Maximum number of entries maintained in cache per channel.
+                default: 500
+              channel_cache_min_length:
+                type: integer
+                description: Minimum number of entries maintained in cache per channel.
+                default: 50
+              channel_cache_expiry:
+                type: integer
+                description: Time (seconds) to keep entries in cache beyond the minimum retained.
+                default: 60
+          event_handlers:
+            type: object
+            properties:
+              document_changed:
+                description: The configuraton for the action to perform when a document change is detected.
+                type: array
+                items:
+                  type: object
+                  properties:
+                    filter:
+                      description: Filter function to determine which documents to post (for a webhook event handler).
+                      type: string
+                    handler:
+                      description: Handler type. The must be webhook.
+                      type: string
+                    timeout:
+                      description: Timeout in seconds (for a webhook event handler).
+                      type: integer
+                      default: 60
+                    url:
+                      description: URL to which to post documents (for a webhook event handler).
+                      type: string
+              max_processes:
+                type: integer
+                description: Maximum concurrent event handling goroutines. The default is 500.
+              wait_for_process:
+                type: integer
+                description: Maximum wait time in milliseconds when the event queue is full. The default is 5.
+          feed_type:
+            type: string
+            description: Feed type DCP or TAP.
+            default: TAP
+          oidc:
+            type: object
+            description: OIDC providers.
+            properties:
+              default_provider:
+                type: string
+                description: Provider to use for OIDC requests that don't specify a provider. If only one provider is specified in the providers map, it is used as the default provider. If multiple providers are defined and default_provider is not specified, requests to /db/_oidc must specify the provider parameter.
+              providers:
+                type: object
+                properties:
+                  foo_provider:
+                    type: object
+                    properties:
+                      issuer:
+                        type: string
+                        description: The OpenID Connect Provider issuer.
+                      client_id:
+                        type: string
+                        description: The client ID defined in the provider for Sync Gateway.
+                      validation_key:
+                        type: string
+                        description: Client secret associated with the client. Required for auth code flow.
+                      signing_method:
+                        type: string
+                        description: Optional. Signing method used for validation key (provides additional security).
+                      callback_url:
+                        type: string
+                        description: Optional. The callback URL to be invoked after the end-user obtains a client token. When not provided, Sync Gateway will generate it based on the incoming request.
+                      register:
+                        type: string
+                        description: Optional. Whether Sync Gateway should automatically create users for successfully authenticated users that don't have an already existing user in Sync Gateway.
+                      disable_session:
+                        type: string
+                        description: Optional. By default, Sync Gateway will create a new session for the user upon successful OIDC authentication, and set that session in the usual way on the _oidc_callback and _oidc_refresh responses. If disable_session is set to true, the session is not created (clients must use the ID token for subsequent authentications).
+                      scope:
+                        type: string
+                        description: Optional. By default, Sync Gateway uses the scope "openid email" when calling the OP's authorize endpoint. If the scope property is defined in the config (as a map of string values), it will override this scope.
+                      include_access:
+                        type: string
+                        description: Optional. When true, the oidccallback response will include the access_token, expires_at and token_type properties returned by the OP.
+                      user_prefix:
+                        type: string
+                        description: Optional. Specifies the prefix for Sync Gateway usernames for the provider. When not specified, defaults to issuer.
+                      discovery_url:
+                        type: string
+                        description: Optional. Discovery URL used to obtain the OpenID Connect provider configuration. If not specified, the default discovery endpoint of [issuer]/.well-known/openid-configuration will be used.
+                      disable_cfg_validation:
+                        type: string
+                        description: Optional. Disables strict validation of the OpenID Connect configuration.
+          offline:
+            type: string
+            description: Whether the database if kept offline when Sync Gateway starts. Specifying the value true results in the database being kept offline. The default (if the property is omitted) is to bring the database online when Sync Gateway starts. For more information, see Taking databases offline and bringing them online.
+            default: 'false'
+          password:
+            type: string
+            description: Bucket password for authenticating to Couchbase Server. There is no default.
+          pool:
+            type: string
+            description: Couchbase pool name. The default is the string default.
+          rev_cache_size:
+            type: integer
+            description: Size of the revision cache, specified as the total number of document revisions to cache in memory for all recently accessed documents. When the revision cache is full, Sync Gateway removes less recent document revisions to make room for new document revisions. Adjust this property to tune memory consumption by Sync Gateway, for example on servers with less memory and in cases when Sync Gateway creates many new documents and/or updates many documents relative to the number of read operations.
+            default: 5000
+          revs_limit:
+            type: integer
+            description: |
+              Maximum depth to which a document's revision tree can grow. The process to remove obsolete revisions is called pruning and runs automatically every time a revision is added. Although fundamentally the same, the pruning algorithm works slightly differently between Sync Gateway and Couchbase Lite. On Sync Gateway, the pruning algorithm is applied to the shortest, non-tombstoned branch in the revision tree.
+            
+              If there are conflicting revisions, the document may end up with **disconnected branches** after the pruning process. In the animation below, the document has a conflicting branch (revisions `4'` - `1001'`). When the shortest branch (in this case the conflicting branch) reaches the 1003rd update, it gets is cut off. The revision tree is not in a corrupted state and the logic that chooses the winning revision still applies. But it may make it impossible to do certain merges (n-way merge) to resolve conflicts and will occupy disk space that could have been free-ed if the conflict was resolved early on.<br><br>
+            
+              ![](https://cl.ly/3C1G3t3R1v19/pruning-sg.gif)
+              
+              If the revision tree gets into this state then the only option to resolve the conflict is to pick a winning branch and tombstone all the non-winning conflicting branches. It should be noted that tuning the `revs_limit` to a lower value increases the likelyhood of this scenario happening.
+              
+              See also:
+              - Couchbase Lite [pruning](../../couchbase-lite/native-api/revision/index.html#pruning).
+              - Sync Gateway purge endpoint [/{db}/_purge](references/sync-gateway/admin-rest-api/index.html#!/document/post_db_purge).
+              - Sync Gateway [document TTLs](references/sync-gateway/admin-rest-api/index.html#!/document/put_db_doc).
+            default: 1000
+          roles:
+            type: object
+            description: Initial roles.
+            properties:
+              foo_role:
+                type: object
+                description: The role name.
+                properties:
+                  admin_channels:
+                    type: array
+                    description: The list of channels this role is automatically granted access to when Sync Gateway starts.
+                    items:
+                      type: string
+          server:
+            type: string
+            description: Couchbase Server (or Walrus) URL. The default is walrus.
+          sync:
+            type: string
+            description: Sync function, which defines which users can read, update, or delete which documents. The default is a default sync function. For more information, see the section Sync function API.
+            default: function(doc, oldDoc) {channel(doc.username, doc.channels)};
+          username:
+            type: string
+            description: Bucket username for authenticating to Couchbase Server. There is no default.
+          users:
+            type: object
+            description: Initial user accounts.
+            properties:
+              foo_user:
+                type: object
+                description: The user's name.
+                properties:
+                  password:
+                    type: string
+                    description: The user's password.
+                  admin_channels:
+                    type: array
+                    description: The list of channels this user is automatically granted access to when Sync Gateway starts.
+                    items:
+                      type: string
+                  admin_roles:
+                    type: array
+                    description: The list of roles this user is automatically assigned to when Sync Gateway starts.
+                    items:
+                      type: string
+                  disabled:
+                    type: boolean
+                    description: Whether this user account is disabled.
+  facebook:
+    description: Configuration for Facebook Login authentication.
+    type: object
+    properties:
+      register:
+        description: Whether the Facebook Login server will register new user accounts.
+        type: boolean
+        default: 'false'
+  interface:
+    description: Public REST API port.
+    type: string
+    default: ':4984'
+  log:
+    description: Comma-separated list of log keys to enable for diagnostic logging. Use ["*"] to enable logging for all log keys.
+    type: array
+    items:
+      type: string
+      enum:
+        - Access:
+            description: Anytime an access() call is made in the sync function.
+        - Attach:
+            description: Attachment processing.
+        - Auth:
+            description: Authentication.
+        - Bucket:
+            description: Sync Gateway interactions with the bucket (verbose logging).
+        - Cache:
+            description: Interactions with Sync Gateway's in-memory channel cache.
+        - Changes:
+            description: Processing of _changes requests.
+        - CRUD:
+            description: Updates made by Sync Gateway to documents.
+        - DCP:
+            description: DCP-feed processing (verbose logging).
+        - Events:
+            description: Event processing (webhooks).
+        - Feed:
+            description: Server-feed processing.
+        - HTTP:
+            description: All requests made to the Sync Gateway REST APIs (Sync and Admin). Note that the log keyword HTTP is always enabled, which means that HTTP requests and error responses are always logged (in a non-verbose manner). HTTP+ provides more verbose HTTP logging.
+        - Replicate:
+            description: Log messages related to replications between Sync Gateways (using sg-replicate). This tag cannot be used for replications initiated by Couchbase Lite.
+    default: '["HTTP"]'
+  logFilePath:
+    description: Absolute or relative path on the filesystem to the log file. A relative path is from the directory that contains the Sync Gateway executable file.
+    type: string
+    default: 'stderr'
+  maxCouchbaseConnections:
+    description: Maximum number of sockets to open to a Couchbase Server node.
+    type: integer
+    default: 16
+  maxCouchbaseOverflow:
+    description: Maximum number of overflow sockets to open.
+    type: integer
+    default: 0
+  maxFileDescriptors:
+    description: Maximum number of open file descriptors.
+    type: integer
+    default: 5000
+  maxHeartbeat:
+    description: Maximum heartbeat value for _changes feed requests (in seconds).
+    type: integer
+  maxIncomingConnections:
+    description: Maximum number of incoming HTTP connections to accept.
+    type: integer
+    default: 0
+  pretty:
+    description: Whether to pretty-print JSON responses.
+    type: boolean
+    default: 'false'
+  profileInterface:
+    description: TCP network address (IP address and the port) that the Go profile API listens on. You can obtain go profiling information from the interface. You can omit the IP address.
+    type: string
+  replications:
+    type: array
+    items:
+      type: object
+      properties:
+        replication_id:
+          type: string
+          description: ID to assign this replication with. If no replication_id is given for a new replication it will be assigned a random UUID.
+        source:
+          type: string
+          description: Identifies the database to copy revisions from. Can be a string containing a local database name or a remote database URL, or an object whose url property contains the database name or URL. Also an object can contain headers property that contains custom header values such as a cookie.
+        target:
+          type: string
+          description: Identifies the database to copy revisions to. Same format and interpretation as source.
+        continuous:
+          type: boolean
+          description: Specifies whether the replication should be in continuous mode.
+        changes_feed_limit:
+          type: string
+        filter:
+          type: string
+          description: Indicates that the documents should be filtered using the specified filter function name. A common value used when replicating from Sync Gateway is sync_gateway/bychannel to limit the pull replication to a set of channels.
+        query_params:
+          type: array
+          description: A set of key/value pairs to use in the querystring of the replication. For example, the channels field can be used to pull from a set of channels (in this particular case, the filter key must be set for the channels field to work as expected).
+          items:
+            type: string
+  serverReadTimeout:
+    description: Maximum duration in seconds before timing out the read of an HTTP(S) request.
+    type: integer
+  serverWriteTimeout:
+    description: Maximum duration in seconds before timing out the write of an HTTP(S) response.
+    type: integer
+  slowServerCallWarningThreshold:
+    description: Log warnings if database calls made by Sync Gateway take this many milliseconds or longer.
+    type: integer
+    default: 200
+  SSLCert:
+    description: Absolute or relative path on the filesystem to the TLS certificate file, if TLS is used to secure Sync Gateway connections, or "nil" for plaintext. A relative path is from the directory that contains the Sync Gateway executable file.
+    type: string
+  SSLKey:
+    description: Absolute or relative path on the filesystem to the TLS private key file, if TLS is used to secure Sync Gateway connections, or "nil" for plaintext. A relative path is from the directory that contains the Sync Gateway executable file.
+    type: string
