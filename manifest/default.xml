@@ -16,6 +16,7 @@
   <remote fetch="https://github.com/coreos/" name="coreos"/>
   <remote fetch="https://github.com/jonboulle/" name="jonboulle"/>
   <remote fetch="https://github.com/satori/" name="satori"/>
+  <remote fetch="https://github.com/go-sourcemap/" name="go-sourcemap"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
@@ -120,6 +121,8 @@
   <project name="go-blip" path="godeps/src/github.com/snej/go-blip" remote="snej" revision="d91ad03dfa1649aab06b0ce04577a744f97749b0"/>
 
   <project name="go.uuid" path="godeps/src/github.com/satori/go.uuid" remote="satori" revision="5bf94b69c6b68ee1b541973bb8e1144db23a194b"/>
+
+  <project name="go.uuid" path="godeps/src/github.com/go-sourcemap/sourcemap" remote="go-sourcemap" revision="6e83acea0053641eff084973fee085f0c193c61a"/>
 
 </manifest>
 
