@@ -244,7 +244,7 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFil
 			value, ok := row.Value.([]interface{})
 			if ok {
 				// value[0] is the array of channels; value[1] is the actual value
-				if !hasStarChannel || channelsIntersect(visibleChannels, value[0].([]string)) {
+				if !hasStarChannel || channelsIntersect(visibleChannels, value[0].([]interface{})) {
 					// Add this row:
 					stripSyncProperty(row)
 					result.Rows = append(result.Rows, &sgbucket.ViewRow{
@@ -272,9 +272,9 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFil
 }
 
 // Is any item of channels found in visibleChannels?
-func channelsIntersect(visibleChannels ch.TimedSet, channels []string) bool {
+func channelsIntersect(visibleChannels ch.TimedSet, channels []interface{}) bool {
 	for _, channel := range channels {
-		if visibleChannels.Contains(channel) || channel == "*" {
+		if visibleChannels.Contains(channel.(string)) || channel == "*" {
 			return true
 		}
 	}
