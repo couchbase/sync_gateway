@@ -89,7 +89,7 @@
 
   <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="084795c8f01f195a88c0ca4af0d7228a5ef40c83"/>
 
-  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="c980adc4a823548817b9c47d38c6ca6b7d7d8b6a"/>
+  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="bd91bbf73e9a4a801adbfb97133c992678533126"/>
 
   <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="8968c61983e8f51a91b8c0ef25bf739278c89634"/>
 
