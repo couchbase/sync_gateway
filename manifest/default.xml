@@ -122,7 +122,7 @@
 
   <project name="go.uuid" path="godeps/src/github.com/satori/go.uuid" remote="satori" revision="5bf94b69c6b68ee1b541973bb8e1144db23a194b"/>
 
-  <project name="go.uuid" path="godeps/src/github.com/go-sourcemap/sourcemap" remote="go-sourcemap" revision="6e83acea0053641eff084973fee085f0c193c61a"/>
+  <project name="sourcemap" path="godeps/src/github.com/go-sourcemap/sourcemap" remote="go-sourcemap" revision="6e83acea0053641eff084973fee085f0c193c61a"/>
 
 </manifest>
 
