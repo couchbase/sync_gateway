@@ -83,7 +83,7 @@
 
   <project name="lumberjack" path="godeps/src/github.com/natefinch/lumberjack" remote="natefinch" revision="dd45e6a67c53f673bb49ca8a001fd3a63ceb640e"/>
 
-  <project name="otto" path="godeps/src/github.com/robertkrimen/otto" remote="couchbasedeps" revision="c21072f61b64b51ea58138ccacf0a85d54b9f07c"/>
+  <project name="otto" path="godeps/src/github.com/robertkrimen/otto" remote="couchbasedeps" revision="a813c59b1b4471ff7ecd3b533bac2f7e7d178784"/>
 
   <project name="go-metrics" path="godeps/src/github.com/samuel/go-metrics" remote="samuel" revision="52e6232924c9e785c3c4117b63a3e58b1f724544"/>
 
