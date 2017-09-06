@@ -21,8 +21,8 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
-	memcached "github.com/couchbase/gomemcached/client"
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/gomemcached/client"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 )
 
@@ -390,14 +390,14 @@ func ParseCouchbaseServerVersion(versionString string) (major uint64, minor uint
 
 }
 
-func (bucket *CouchbaseBucket) LaterThanCouchbaseServerMajorVersion(majorVersionCheck uint64) error {
+func (bucket *CouchbaseBucket) ErrorIfPostCBServerMajorVersion(lastMajorVersionAllowed uint64) error {
 	major, _, _, err := bucket.CouchbaseServerVersion()
 	if err != nil {
 		return err
 	}
 
-	if major > majorVersionCheck {
-		Warn("Couchbase Server major version is %v, which is later than %v", major, majorVersionCheck)
+	if major > lastMajorVersionAllowed {
+		Warn("Couchbase Server major version is %v, which is later than %v", major, lastMajorVersionAllowed)
 		return ErrFatalBucketConnection
 	}
 
@@ -431,8 +431,8 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 	bucket = &CouchbaseBucket{cbbucket, spec}
 
 	if spec.FeedType == TapFeedType {
-		// TAP was removed in Couchbase Server 5.x and later, so make sure it's connecting to Couchbase Server 4.x or return error
-		if errVersionCheck := bucket.LaterThanCouchbaseServerMajorVersion(4); errVersionCheck != nil {
+		// TAP was removed in Couchbase Server 5.x, so ensure connecting to 4.x, else error.  See SG Issue #2523
+		if errVersionCheck := bucket.ErrorIfPostCBServerMajorVersion(4); errVersionCheck != nil {
 			return nil, errVersionCheck
 		}
 	}
@@ -474,11 +474,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		case GoCB, GoCBCustomSGTranscoder:
 			if strings.ToLower(spec.FeedType) == TapFeedType {
 				Warn("Cannot use TAP feed in conjunction with GoCB driver, reverting to go-couchbase")
-				cbBucket, errGetCouchbaseBucket := GetCouchbaseBucket(spec, callback)
-				if errGetCouchbaseBucket != nil {
-					return nil, errGetCouchbaseBucket
-				}
-				bucket = cbBucket
+				bucket, err = GetCouchbaseBucket(spec, callback)
 			} else {
 				bucket, err = GetCouchbaseBucketGoCB(spec)
 			}
