@@ -360,6 +360,12 @@ func (bucket CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint
 		}
 	}
 
+	return ParseCouchbaseServerVersion(versionString)
+
+}
+
+func ParseCouchbaseServerVersion(versionString string) (major uint64, minor uint64, micro string, err error) {
+
 	if versionString == "" {
 		return 0, 0, "", errors.New("version not defined in GetStats map")
 	}
@@ -380,7 +386,10 @@ func (bucket CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint
 	micro = arr[2]
 
 	return
+
 }
+
+
 
 func (bucket CouchbaseBucket) UUID() (string, error) {
 	return bucket.Bucket.UUID, nil
