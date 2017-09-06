@@ -400,9 +400,7 @@ func (bucket *CouchbaseBucket) ErrorIfPostCBServerMajorVersion(lastMajorVersionA
 		Warn("Couchbase Server major version is %v, which is later than %v", major, lastMajorVersionAllowed)
 		return ErrFatalBucketConnection
 	}
-
 	return nil
-
 }
 
 func (bucket CouchbaseBucket) UUID() (string, error) {
