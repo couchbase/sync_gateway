@@ -483,6 +483,19 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 			panic(fmt.Sprintf("Unexpected CouchbaseDriver: %v", spec.CouchbaseDriver))
 		}
 
+		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
+		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
+		if spec.UseXattrs {
+			majorVersion, _, _, errServerVersion := bucket.CouchbaseServerVersion()
+			if errServerVersion != nil {
+				return nil, errServerVersion
+			}
+			if majorVersion < 5 {
+				Warn("If using XATTRS, Couchbase Server version must be >= 5.0.  Major Version: %v", majorVersion)
+				return nil, ErrFatalBucketConnection
+			}
+		}
+
 	}
 
 	if LogEnabledExcludingLogStar("Bucket") {
