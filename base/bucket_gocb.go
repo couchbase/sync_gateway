@@ -26,7 +26,6 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
-	"log"
 )
 
 var gocbExpvars *expvar.Map
@@ -1958,7 +1957,6 @@ func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor 
 	}
 
 	return ParseCouchbaseServerVersion(versionString)
-
 
 }
 

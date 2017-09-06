@@ -16,13 +16,14 @@ import (
 	"strconv"
 	"strings"
 
+	"time"
+
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
-	"time"
 )
 
 const (
@@ -389,7 +390,20 @@ func ParseCouchbaseServerVersion(versionString string) (major uint64, minor uint
 
 }
 
+func (bucket *CouchbaseBucket) LaterThanCouchbaseServerMajorVersion(majorVersionCheck uint64) error {
+	major, _, _, err := bucket.CouchbaseServerVersion()
+	if err != nil {
+		return err
+	}
 
+	if major > majorVersionCheck {
+		Warn("Couchbase Server major version is %v, which is later than %v", major, majorVersionCheck)
+		return ErrFatalBucketConnection
+	}
+
+	return nil
+
+}
 
 func (bucket CouchbaseBucket) UUID() (string, error) {
 	return bucket.Bucket.UUID, nil
@@ -410,19 +424,30 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 		return
 	}
 	cbbucket, err := pool.GetBucket(spec.BucketName)
+	if err != nil {
+		return nil, err
+	}
+
+	bucket = &CouchbaseBucket{cbbucket, spec}
+
+	if spec.FeedType == TapFeedType {
+		// TAP was removed in Couchbase Server 5.x and later, so make sure it's connecting to Couchbase Server 4.x or return error
+		if errVersionCheck := bucket.LaterThanCouchbaseServerMajorVersion(4); errVersionCheck != nil {
+			return nil, errVersionCheck
+		}
+	}
+
 	spec.MaxNumRetries = 10
 	spec.InitialRetrySleepTimeMS = 5
-	if err == nil {
-		// Start bucket updater - see SG issue 1011
-		cbbucket.RunBucketUpdater(func(bucket string, err error) {
-			Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
 
-			if callback != nil {
-				callback(bucket, err)
-			}
-		})
-		bucket = &CouchbaseBucket{cbbucket, spec}
-	}
+	// Start bucket updater - see SG issue 1011
+	cbbucket.RunBucketUpdater(func(bucket string, err error) {
+		Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
+
+		if callback != nil {
+			callback(bucket, err)
+		}
+	})
 
 	return
 }
@@ -449,7 +474,11 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		case GoCB, GoCBCustomSGTranscoder:
 			if strings.ToLower(spec.FeedType) == TapFeedType {
 				Warn("Cannot use TAP feed in conjunction with GoCB driver, reverting to go-couchbase")
-				bucket, err = GetCouchbaseBucket(spec, callback)
+				cbBucket, errGetCouchbaseBucket := GetCouchbaseBucket(spec, callback)
+				if errGetCouchbaseBucket != nil {
+					return nil, errGetCouchbaseBucket
+				}
+				bucket = cbBucket
 			} else {
 				bucket, err = GetCouchbaseBucketGoCB(spec)
 			}
