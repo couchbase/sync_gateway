@@ -367,6 +367,10 @@ func TestChannelCacheBackfill(t *testing.T) {
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs.  Skipping.")
+	}
+
 	var logKeys = map[string]bool{
 		"Sequences": true,
 		"Cache":     true,
@@ -466,6 +470,11 @@ func TestContinuousChangesBackfill(t *testing.T) {
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs.  Skipping.")
+	}
+
+
 	var logKeys = map[string]bool{
 		"Cache":    true,
 		"Changes":  true,
@@ -553,6 +562,11 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 		base.UpdateLogKeys(logKeys, true)
 	*/
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs.  Skipping.")
+	}
+
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
