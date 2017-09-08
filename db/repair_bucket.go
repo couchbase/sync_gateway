@@ -75,6 +75,42 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 	return r
 }
 
+/*
+
+This is how the view is iterated:
+
+┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+                ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ─
+│                               ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ┐
+                │      │                ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
+│┌────┐  ┌────┐  ┌────┐  ┌────┐ │┌────┐│ ┌────┐       │
+ │doc1│  │doc2│ ││doc3││ │doc4│  │doc5│ ││doc6│               │
+│└────┘  └────┘  └────┘  └────┘ │└────┘│ └────┘       │
+                │      │                │                     │
+└ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─         │      │              │
+            │   └ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─ │                     │
+            │               │   └ ─ ─ ─ ─ ─▲─ ─ ─ ─ ─ ┘
+      StartKey: ""          │           └ ─│─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
+        Limit: 3            │              │       ▲
+    NumProcessed: 3         │              │       │
+                    StartKey: "doc3"       │       │
+                        Limit: 3           │       │
+                    NumProcessed: 2        │       └────────┐
+                                           │                │
+                                   StartKey: "doc5"         │
+                                       Limit: 3             │
+                                   NumProcessed: 1          │
+                                                            │
+                                                    StartKey: "doc6"
+                                                        Limit: 3
+                                                    NumProcessed: 0
+
+* It starts with an empty start key
+* For the next page, it uses the last key processed as the new start key
+* Since the start key is inclusive, it will see the start key twice (on first page, and on next page)
+* If it's iterating a result page and sees a doc with the start key (eg, doc3 in above), it will ignore it so it doesn't process it twice
+* Stop condition: if NumProcessed is 0, because the only doc in result set had already been processed.
+ */
 func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 	base.LogTo("CRUD", "RepairBucket() invoked")
@@ -108,7 +144,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 		// Keep a counter of how many results were processed, since if none were processed it indicates that
 		// we hit the last (empty) page of data.  This is needed because the start key is inclusive, and
-		// so even on the last page of results will get a single result with the start key doc.
+		// so even on the last page of results, the view query will return a single result with the start key doc.
 		numResultsProcessed := 0
 
 		for _, row := range vres.Rows {
