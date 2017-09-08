@@ -162,8 +162,8 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 				continue
 			}
 
-			// The next page for viewquery should start at the last result in this page
-			// NOTE: this means that there is overlap and docs will be processed twice
+			// The next page for viewquery should start at the last result in this page.  There is a de-duping mechanism
+			// to avoid processing this doc twice.
 			startKey = docid
 
 			// Increment counter of how many results were processed for detecting stop condition
