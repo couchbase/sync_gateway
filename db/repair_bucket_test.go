@@ -21,7 +21,7 @@ func testBucketWithViewsAndBrokenDoc(bucketName string) (bucket base.Bucket, num
 	installViews(bucket)
 
 	// Add harmless docs
-	for i := 0; i < base.DefaultViewQueryPageSize + 1; i++ {
+	for i := 0; i < base.DefaultViewQueryPageSize+1; i++ {
 		testSyncData := syncData{}
 		bucket.Add(fmt.Sprintf("foo-%d", i), 0, map[string]interface{}{"foo": "bar", "_sync": testSyncData})
 		numDocsAdded++
