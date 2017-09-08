@@ -6,6 +6,7 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
+	"time"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -83,37 +84,41 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 
 This is how the view is iterated:
 
-┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-                ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ─
-│                               ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ┐
-                │      │                ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
-│┌────┐  ┌────┐  ┌────┐  ┌────┐ │┌────┐│ ┌────┐       │
- │doc1│  │doc2│ ││doc3││ │doc4│  │doc5│ ││doc6│               │
-│└────┘  └────┘  └────┘  └────┘ │└────┘│ └────┘       │
-                │      │                │                     │
-└ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─         │      │              │
-            │   └ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─ │                     │
-            │               │   └ ─ ─ ─ ─ ─▲─ ─ ─ ─ ─ ┘
-      StartKey: ""          │           └ ─│─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
-        Limit: 3            │              │       ▲
-    NumProcessed: 3         │              │       │
-                    StartKey: "doc3"       │       │
-                        Limit: 3           │       │
-                    NumProcessed: 2        │       └────────┐
-                                           │                │
-                                   StartKey: "doc5"         │
-                                       Limit: 3             │
-                                   NumProcessed: 1          │
-                                                            │
-                                                    StartKey: "doc6"
-                                                        Limit: 3
-                                                    NumProcessed: 0
+    ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+                    ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ─
+    │                               ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ┐
+                    │      │                ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
+    │┌────┐  ┌────┐  ┌────┐  ┌────┐ │┌────┐│ ┌────┐       │
+     │doc1│  │doc2│ ││doc3││ │doc4│  │doc5│ ││doc6│               │
+    │└────┘  └────┘  └────┘  └────┘ │└────┘│ └────┘       │
+                    │      │                │                     │
+    └ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─         │      │              │
+           ┌────┘   └ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─ │                     │
+           │                    │   └ ─ ─ ─ ─ ─▲─ ─ ─ ─ ─ ┘
+     StartKey: ""            ┌──┘           └ ─│─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
+       Limit: 3              │                 │       ▲
+       Skip: 0               │                 │       │
+    NumResults: 3    StartKey: "doc3"          │       │
+                         Limit: 3              │       │
+                         Skip: 1               │       └────────┐
+                      NumResults: 2            │                │
+                                       StartKey: "doc5"         │
+                                           Limit: 3             │
+                                           Skip: 1              │
+                                        NumResults: 1           │
+                                                        StartKey: "doc6"
+                                                            Limit: 3
+                                                            Skip: 1
+                                                         NumResults: 0
+
 
 * It starts with an empty start key
 * For the next page, it uses the last key processed as the new start key
-* Since the start key is inclusive, it will see the start key twice (on first page, and on next page)
-* If it's iterating a result page and sees a doc with the start key (eg, doc3 in above), it will ignore it so it doesn't process it twice
-* Stop condition: if NumProcessed is 0, because the only doc in result set had already been processed.
+* Since the start key is inclusive, it will see the start key twice (on first page, and on next page), but it skips it in these cases
+* Stop condition: if number if results is 0
+*
+* The ImportView emits compound keys in the format [true,'doc1'], where the first field is whether the doc has sync metadata,
+* and the second field is the doc id
 *
 */
 func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
@@ -121,16 +126,29 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 	base.LogTo("CRUD", "RepairBucket() invoked")
 	defer base.LogTo("CRUD", "RepairBucket() finished")
 
+	pageNumber := 0
 	startKey := ""
 	results = []RepairBucketResult{}
 
 	for {
 
 		options := Body{"stale": false, "reduce": false}
-		options["startkey"] = []interface{}{
-			true,
-			startKey,
+
+		if pageNumber == 0 {
+			// If it's the first page of view results, leave off the second part of the compound key for doc id
+			options["startkey"] = []interface{}{
+				true,
+			}
+		} else {
+			// If it's the 2nd or later page of view results, use the last key seen in previous page results as the start key
+			options["startkey"] = []interface{}{
+				true,
+				startKey,
+			}
+			// Also, skip the first result to avoid duplicate processing since the start key is inclusive.  See method comments.
+			options["skip"] = 1
 		}
+
 		options["limit"] = r.ViewQueryPageSize
 
 		base.LogTo("CRUD", "RepairBucket() querying view with options: %+v", options)
@@ -140,16 +158,13 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			return results, err
 		}
 
+		pageNumber++
+
 		// Check
 		if len(vres.Rows) == 0 {
 			// No more results.  Return
 			return results, nil
 		}
-
-		// Keep a counter of how many results were processed, since if none were processed it indicates that
-		// we hit the last (empty) page of data.  This is needed because the start key is inclusive, and
-		// so even on the last page of results, the view query will return a single result with the start key doc.
-		numResultsProcessed := 0
 
 		for _, row := range vres.Rows {
 
@@ -159,15 +174,13 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			if docid == startKey {
 				// Skip this, already processed in previous iteration.  Important to do this before numResultsProcessed
 				// is incremented.
+				base.Warn("docid == startKey, which should never happen due to skip=1 parameter.  Skipping doc: %v", docid)
 				continue
 			}
 
 			// The next page for viewquery should start at the last result in this page.  There is a de-duping mechanism
 			// to avoid processing this doc twice.
 			startKey = docid
-
-			// Increment counter of how many results were processed for detecting stop condition
-			numResultsProcessed += 1
 
 			key := realDocID(docid)
 			var backupOrDryRunDocId string
@@ -228,11 +241,6 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 				}
 			}
 
-		}
-
-		if numResultsProcessed == 0 {
-			// No point in going to the next page, since this page had 0 results.  See method comments.
-			return results, nil
 		}
 
 	}
