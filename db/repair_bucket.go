@@ -6,7 +6,6 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
-	"log"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -18,8 +17,9 @@ const (
 
 // Params suitable for external (eg, HTTP) invocations to describe a RepairBucket operation
 type RepairBucketParams struct {
-	DryRun     bool              `json:"dry_run"`
-	RepairJobs []RepairJobParams `json:"repair_jobs"`
+	DryRun            bool              `json:"dry_run"`
+	ViewQueryPageSize int               `json:"view_query_page_size"`
+	RepairJobs        []RepairJobParams `json:"repair_jobs"`
 }
 
 // Params suitable for external (eg, HTTP) invocations to describe a specific RepairJob operation
@@ -42,14 +42,16 @@ type DocTransformer func(docId string, originalCBDoc []byte) (transformedCBDoc [
 
 // A RepairBucket struct is the main API entrypoint to call for repairing documents in buckets
 type RepairBucket struct {
-	DryRun     bool // If true, will only output what changes it *would* have made, but not make any changes
-	Bucket     base.Bucket
-	RepairJobs []DocTransformer
+	DryRun            bool // If true, will only output what changes it *would* have made, but not make any changes
+	ViewQueryPageSize int
+	Bucket            base.Bucket
+	RepairJobs        []DocTransformer
 }
 
 func NewRepairBucket(bucket base.Bucket) *RepairBucket {
 	return &RepairBucket{
-		Bucket: bucket,
+		Bucket:            bucket,
+		ViewQueryPageSize: base.ViewQueryPageSize,
 	}
 }
 
@@ -66,6 +68,7 @@ func (r *RepairBucket) AddRepairJob(repairJob DocTransformer) *RepairBucket {
 func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 
 	r.SetDryRun(params.DryRun)
+	r.ViewQueryPageSize = params.ViewQueryPageSize
 	for _, repairJobParams := range params.RepairJobs {
 		switch repairJobParams.RepairJobType {
 		case RepairRevTreeCycles:
@@ -128,7 +131,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			true,
 			startKey,
 		}
-		options["limit"] = base.ViewQueryPageSize
+		options["limit"] = r.ViewQueryPageSize
 
 		base.LogTo("CRUD", "RepairBucket() querying view with options: %+v", options)
 		vres, err := r.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
@@ -158,8 +161,6 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 				// is incremented.
 				continue
 			}
-
-			log.Printf("process doc id: %v", docid)
 
 			// The next page for viewquery should start at the last result in this page
 			// NOTE: this means that there is overlap and docs will be processed twice
@@ -228,7 +229,6 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			}
 
 		}
-
 
 		if numResultsProcessed == 0 {
 			// No point in going to the next page, since this page had 0 results.  See method comments.
