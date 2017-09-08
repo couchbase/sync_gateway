@@ -117,7 +117,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 	base.LogTo("CRUD", "RepairBucket() invoked")
 	defer base.LogTo("CRUD", "RepairBucket() finished")
 
-	pageSizeViewResult := 5000
+	pageSizeViewResult := 5000  // This must be greater than 1, or the code won't work due to windowing method
 	startKey := ""
 	results = []RepairBucketResult{}
 
