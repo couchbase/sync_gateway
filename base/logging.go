@@ -297,7 +297,7 @@ func ParseLogFlags(flags []string) {
 	for _, key := range flags {
 		keyMap [key] = true
 	}
-	
+
 	ParseLogFlagsMap(keyMap)
 	logLock.Unlock()
 	Logf("Enabling logging: %s", flags)
@@ -382,7 +382,7 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 		LogKeys = map[string]bool{}
 	}
 
-	//ParseLogFlagsMap(keys)
+	ParseLogFlagsMap(keys)
 }
 
 // Returns a string identifying a function on the call stack.
