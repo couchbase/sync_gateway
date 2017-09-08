@@ -6,6 +6,7 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
+	"log"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -117,7 +118,6 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 	base.LogTo("CRUD", "RepairBucket() invoked")
 	defer base.LogTo("CRUD", "RepairBucket() finished")
 
-	pageSizeViewResult := 5000  // This must be greater than 1, or the code won't work due to windowing method
 	startKey := ""
 	results = []RepairBucketResult{}
 
@@ -128,7 +128,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			true,
 			startKey,
 		}
-		options["limit"] = pageSizeViewResult
+		options["limit"] = base.ViewQueryPageSize
 
 		base.LogTo("CRUD", "RepairBucket() querying view with options: %+v", options)
 		vres, err := r.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
@@ -158,6 +158,8 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 				// is incremented.
 				continue
 			}
+
+			log.Printf("process doc id: %v", docid)
 
 			// The next page for viewquery should start at the last result in this page
 			// NOTE: this means that there is overlap and docs will be processed twice
