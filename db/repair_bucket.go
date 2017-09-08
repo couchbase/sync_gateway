@@ -77,80 +77,127 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 
 func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
+	base.LogTo("CRUD", "RepairBucket() invoked")
+	defer base.LogTo("CRUD", "RepairBucket() finished")
+
+	pageSizeViewResult := 5000
+	startKey := ""
 	results = []RepairBucketResult{}
-	options := Body{"stale": false, "reduce": false}
-	options["startkey"] = []interface{}{true}
 
-	vres, err := r.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
-	if err != nil {
-		return results, err
-	}
+	for {
 
-	for _, row := range vres.Rows {
-		rowKey := row.Key.([]interface{})
-		docid := rowKey[1].(string)
-		key := realDocID(docid)
-		var backupOrDryRunDocId string
+		options := Body{"stale": false, "reduce": false}
+		options["startkey"] = []interface{}{
+			true,
+			startKey,
+		}
+		options["limit"] = pageSizeViewResult
 
-		err = r.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
-			// Be careful: this block can be invoked multiple times if there are races!
-			if currentValue == nil {
-				return nil, couchbase.UpdateCancel // someone deleted it?!
-			}
-
-			updatedDoc, shouldUpdate, repairJobs, err := r.TransformBucketDoc(key, currentValue)
-			if err != nil {
-				return nil, err
-			}
-
-			switch shouldUpdate {
-			case true:
-
-				backupOrDryRunDocId, err = r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
-				if err != nil {
-					base.LogTo("CRUD", "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
-					base.LogTo("CRUD", "Original Doc before repair: %s", currentValue)
-					base.LogTo("CRUD", "Updated doc after repair: %s", updatedDoc)
-				}
-
-				result := RepairBucketResult{
-					DryRun:              r.DryRun,
-					BackupOrDryRunDocId: backupOrDryRunDocId,
-					DocId:               key,
-					RepairJobTypes:      repairJobs,
-				}
-
-				results = append(results, result)
-
-				if r.DryRun {
-					return nil, couchbase.UpdateCancel
-				} else {
-					return updatedDoc, nil
-				}
-			default:
-				return nil, couchbase.UpdateCancel
-			}
-
-		})
-
+		base.LogTo("CRUD", "RepairBucket() querying view with options: %+v", options)
+		vres, err := r.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
+		base.LogTo("CRUD", "RepairBucket() queried view and got %d results / total rows: %d", len(vres.Rows), vres.TotalRows)
 		if err != nil {
-			// Ignore couchbase.UpdateCancel (Cas.QUIT) errors.  Any other errors should be returned to caller
-			if err != couchbase.UpdateCancel {
-				return results, err
-			}
+			return results, err
 		}
 
-		if backupOrDryRunDocId != "" {
-			if r.DryRun {
-				base.LogTo("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
-			} else {
-				base.LogTo("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+		// Check
+		if len(vres.Rows) == 0 {
+			// No more results.  Return
+			return results, nil
+		}
+
+		// Keep a counter of how many results were processed, since if none were processed it indicates that
+		// we hit the last (empty) page of data.  This is needed because the start key is inclusive, and
+		// so even on the last page of results will get a single result with the start key doc.
+		numResultsProcessed := 0
+
+		for _, row := range vres.Rows {
+
+			rowKey := row.Key.([]interface{})
+			docid := rowKey[1].(string)
+
+			if docid == startKey {
+				// Skip this, already processed in previous iteration
+				continue
 			}
+
+			// The next page for viewquery should start at the last result in this page
+			// NOTE: this means that there is overlap and docs will be processed twice
+			startKey = docid
+
+			numResultsProcessed += 1
+
+			key := realDocID(docid)
+			var backupOrDryRunDocId string
+
+			err = r.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+				// Be careful: this block can be invoked multiple times if there are races!
+				if currentValue == nil {
+					return nil, couchbase.UpdateCancel // someone deleted it?!
+				}
+
+				updatedDoc, shouldUpdate, repairJobs, err := r.TransformBucketDoc(key, currentValue)
+				if err != nil {
+					return nil, err
+				}
+
+				switch shouldUpdate {
+				case true:
+
+					backupOrDryRunDocId, err = r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
+					if err != nil {
+						base.LogTo("CRUD", "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
+						base.LogTo("CRUD", "Original Doc before repair: %s", currentValue)
+						base.LogTo("CRUD", "Updated doc after repair: %s", updatedDoc)
+					}
+
+					result := RepairBucketResult{
+						DryRun:              r.DryRun,
+						BackupOrDryRunDocId: backupOrDryRunDocId,
+						DocId:               key,
+						RepairJobTypes:      repairJobs,
+					}
+
+					results = append(results, result)
+
+					if r.DryRun {
+						return nil, couchbase.UpdateCancel
+					} else {
+						return updatedDoc, nil
+					}
+				default:
+					return nil, couchbase.UpdateCancel
+				}
+
+			})
+
+			if err != nil {
+				// Ignore couchbase.UpdateCancel (Cas.QUIT) errors.  Any other errors should be returned to caller
+				if err != couchbase.UpdateCancel {
+					return results, err
+				}
+			}
+
+			if backupOrDryRunDocId != "" {
+				if r.DryRun {
+					base.LogTo("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+				} else {
+					base.LogTo("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+				}
+			}
+
+		}
+
+
+		if numResultsProcessed == 0 {
+			// No point in going to the next page, since this page had 0 results
+			return results, nil
 		}
 
 	}
 
 	return results, nil
+
 }
 
 func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updatedDoc []byte) (backupOrDryRunDocId string, err error) {
