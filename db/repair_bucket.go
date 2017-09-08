@@ -51,7 +51,7 @@ type RepairBucket struct {
 func NewRepairBucket(bucket base.Bucket) *RepairBucket {
 	return &RepairBucket{
 		Bucket:            bucket,
-		ViewQueryPageSize: base.ViewQueryPageSize,
+		ViewQueryPageSize: base.DefaultViewQueryPageSize,
 	}
 }
 
