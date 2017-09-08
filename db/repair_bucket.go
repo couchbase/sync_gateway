@@ -110,7 +110,8 @@ This is how the view is iterated:
 * Since the start key is inclusive, it will see the start key twice (on first page, and on next page)
 * If it's iterating a result page and sees a doc with the start key (eg, doc3 in above), it will ignore it so it doesn't process it twice
 * Stop condition: if NumProcessed is 0, because the only doc in result set had already been processed.
- */
+*
+*/
 func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 	base.LogTo("CRUD", "RepairBucket() invoked")
@@ -153,7 +154,8 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			docid := rowKey[1].(string)
 
 			if docid == startKey {
-				// Skip this, already processed in previous iteration
+				// Skip this, already processed in previous iteration.  Important to do this before numResultsProcessed
+				// is incremented.
 				continue
 			}
 
@@ -161,6 +163,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			// NOTE: this means that there is overlap and docs will be processed twice
 			startKey = docid
 
+			// Increment counter of how many results were processed for detecting stop condition
 			numResultsProcessed += 1
 
 			key := realDocID(docid)
@@ -226,12 +229,13 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 
 		if numResultsProcessed == 0 {
-			// No point in going to the next page, since this page had 0 results
+			// No point in going to the next page, since this page had 0 results.  See method comments.
 			return results, nil
 		}
 
 	}
 
+	// Should never get here, due to early returns above
 	return results, nil
 
 }
