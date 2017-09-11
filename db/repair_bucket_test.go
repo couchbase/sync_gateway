@@ -20,10 +20,12 @@ func testBucketWithViewsAndBrokenDoc() (bucket base.Bucket, numDocs int) {
 	bucket = testBucket()
 	installViews(bucket, false)
 
-	// Add a harmless doc
-	testSyncData := syncData{}
-	bucket.Add("foo", 0, map[string]interface{}{"foo": "bar", "_sync": testSyncData})
-	numDocsAdded++
+	// Add harmless docs
+	for i := 0; i < base.DefaultViewQueryPageSize+1; i++ {
+		testSyncData := syncData{}
+		bucket.Add(fmt.Sprintf("foo-%d", i), 0, map[string]interface{}{"foo": "bar", "_sync": testSyncData})
+		numDocsAdded++
+	}
 
 	// Add doc that should be repaired
 	rawDoc, err := unmarshalDocument(docIdProblematicRevTree, []byte(testdocProblematicRevTree))
@@ -49,7 +51,7 @@ func TestRepairBucket(t *testing.T) {
 
 	base.EnableLogKey("CRUD")
 
-	bucket, _ := testBucketWithViewsAndBrokenDoc()
+	bucket, numDocs := testBucketWithViewsAndBrokenDoc()
 
 	repairJob := func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 		log.Printf("repairJob called back")
@@ -64,7 +66,7 @@ func TestRepairBucket(t *testing.T) {
 	assertNoError(t, err, fmt.Sprintf("Unexpected error: %v", err))
 
 	// All docs will be repaired due to the repairJob function that indiscriminately repairs all docs
-	assert.True(t, len(repairedDocs) == 3)
+	assert.True(t, len(repairedDocs) == numDocs)
 
 }
 
