@@ -186,7 +186,6 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
 func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *document, requiresImport bool, err error) {
 
-	// TODO: Add unit test for standalone migrateMetadata execution
 	for {
 		// Reload existing doc, if not present
 		if len(existingDoc.Body) == 0 {
@@ -220,6 +219,9 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 			base.LogTo("Migrate", "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", docid, doc.Cas)
 			return doc, true, nil
 		}
+
+		// Move any large revision bodies to external storage
+		doc.migrateRevisionBodies(db.Bucket)
 
 		// Persist the document in xattr format
 		value, xattrValue, marshalErr := doc.MarshalWithXattr()

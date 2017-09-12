@@ -1194,9 +1194,23 @@ func (context *DatabaseContext) UseXattrs() bool {
 	return context.Options.EnableXattr
 }
 
+func (context *DatabaseContext) AllowExternalRevBodyStorage() bool {
+
+	// Support unit testing w/out xattrs enabled
+	if base.TestExternalRevStorage {
+		return false
+	}
+	return !context.UseXattrs()
+}
+
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 
 	context.Options.UnsupportedOptions.UserViews.Enabled = &value
+}
+
+// For test usage
+func (context *DatabaseContext) FlushRevisionCache() {
+	context.revisionCache = NewRevisionCache(context.Options.RevisionCacheCapacity, context.revCacheLoader)
 }
 
 //////// SEQUENCE ALLOCATION:

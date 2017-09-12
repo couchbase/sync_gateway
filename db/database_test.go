@@ -674,8 +674,8 @@ func TestConflicts(t *testing.T) {
 
 	time.Sleep(time.Second) // Wait for tap feed to catch up
 
-	log := db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log), 1)
+	changeLog := db.GetChangeLog("all", 0)
+	assert.Equals(t, len(changeLog), 1)
 
 	// Create two conflicting changes:
 	body["n"] = 2
@@ -686,6 +686,10 @@ func TestConflicts(t *testing.T) {
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}), "add 2-a")
 
 	time.Sleep(time.Second) // Wait for tap feed to catch up
+
+	rawBody, _, _ := db.Bucket.GetRaw("doc")
+
+	log.Printf("got raw body: %s", rawBody)
 
 	// Verify the change with the higher revid won:
 	gotBody, err := db.Get("doc")
@@ -702,12 +706,12 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	db.changeCache.waitForSequence(3)
-	log = db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log), 1)
-	assert.Equals(t, log[0].Sequence, uint64(3))
-	assert.Equals(t, log[0].DocID, "doc")
-	assert.Equals(t, log[0].RevID, "2-b")
-	assert.Equals(t, log[0].Flags, uint8(channels.Hidden|channels.Branched|channels.Conflict))
+	changeLog = db.GetChangeLog("all", 0)
+	assert.Equals(t, len(changeLog), 1)
+	assert.Equals(t, changeLog[0].Sequence, uint64(3))
+	assert.Equals(t, changeLog[0].DocID, "doc")
+	assert.Equals(t, changeLog[0].RevID, "2-b")
+	assert.Equals(t, changeLog[0].Flags, uint8(channels.Hidden|channels.Branched|channels.Conflict))
 
 	// Verify the _changes feed:
 	options := ChangesOptions{
@@ -725,6 +729,10 @@ func TestConflicts(t *testing.T) {
 	// Delete 2-b; verify this makes 2-a current:
 	rev3, err := db.DeleteDoc("doc", "2-b")
 	assertNoError(t, err, "delete 2-b")
+
+	rawBody, _, _ = db.Bucket.GetRaw("doc")
+	log.Printf("post-delete, got raw body: %s", rawBody)
+
 	gotBody, err = db.Get("doc")
 	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
 		"channels": []interface{}{"all", "2a"}})
