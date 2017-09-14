@@ -22,7 +22,7 @@ const (
 type RepairBucketParams struct {
 	DryRun            bool              `json:"dry_run"`
 	ViewQueryPageSize *int              `json:"view_query_page_size"`
-	RepairedFileTTL   *int              `json:"repaired_file_ttl_seconds"`
+	RepairedFileTTL   *int              `json:"repair_output_ttl_seconds"`
 	RepairJobs        []RepairJobParams `json:"repair_jobs"`
 }
 
