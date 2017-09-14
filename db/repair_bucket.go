@@ -6,10 +6,13 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
+	"time"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
 type RepairJobType string
+
+const kDefaultRepairedFileTTL = 60 * 60 * 24 * time.Second // 24 hours
 
 const (
 	RepairRevTreeCycles = RepairJobType("RepairRevTreeCycles")
@@ -18,7 +21,8 @@ const (
 // Params suitable for external (eg, HTTP) invocations to describe a RepairBucket operation
 type RepairBucketParams struct {
 	DryRun            bool              `json:"dry_run"`
-	ViewQueryPageSize int               `json:"view_query_page_size"`
+	ViewQueryPageSize *int              `json:"view_query_page_size"`
+	RepairedFileTTL   *int              `json:"repair_output_ttl_seconds"`
 	RepairJobs        []RepairJobParams `json:"repair_jobs"`
 }
 
@@ -43,6 +47,7 @@ type DocTransformer func(docId string, originalCBDoc []byte) (transformedCBDoc [
 // A RepairBucket struct is the main API entrypoint to call for repairing documents in buckets
 type RepairBucket struct {
 	DryRun            bool // If true, will only output what changes it *would* have made, but not make any changes
+	RepairedFileTTL   time.Duration
 	ViewQueryPageSize int
 	Bucket            base.Bucket
 	RepairJobs        []DocTransformer
@@ -52,6 +57,7 @@ func NewRepairBucket(bucket base.Bucket) *RepairBucket {
 	return &RepairBucket{
 		Bucket:            bucket,
 		ViewQueryPageSize: base.DefaultViewQueryPageSize,
+		RepairedFileTTL:   kDefaultRepairedFileTTL,
 	}
 }
 
@@ -68,7 +74,14 @@ func (r *RepairBucket) AddRepairJob(repairJob DocTransformer) *RepairBucket {
 func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 
 	r.SetDryRun(params.DryRun)
-	r.ViewQueryPageSize = params.ViewQueryPageSize
+	if params.ViewQueryPageSize != nil && *params.ViewQueryPageSize > 0 {
+		r.ViewQueryPageSize = *params.ViewQueryPageSize
+	}
+
+	if params.RepairedFileTTL != nil && *params.RepairedFileTTL >= 0 {
+		r.RepairedFileTTL = time.Duration(*params.ViewQueryPageSize) * time.Second
+	}
+
 	for _, repairJobParams := range params.RepairJobs {
 		switch repairJobParams.RepairJobType {
 		case RepairRevTreeCycles:
@@ -259,9 +272,13 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 		return backupOrDryRunDocId, fmt.Errorf("Error unmarshalling updated/original doc.  Err: %v", err)
 	}
 
-	expirySeconds := 60 * 60 * 24 // 24 hours
+	//If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all
+	if int(r.RepairedFileTTL.Seconds()) == 0 {
+		base.LogTo("CRUD", "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", backupOrDryRunDocId)
+		return backupOrDryRunDocId, nil
+	}
 
-	if err := r.Bucket.Set(backupOrDryRunDocId, expirySeconds, doc); err != nil {
+	if err := r.Bucket.Set(backupOrDryRunDocId, base.DurationToCbsExpiry(r.RepairedFileTTL), doc); err != nil {
 		return backupOrDryRunDocId, err
 	}
 
