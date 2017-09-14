@@ -22,6 +22,7 @@ const (
 type RepairBucketParams struct {
 	DryRun            bool              `json:"dry_run"`
 	ViewQueryPageSize *int              `json:"view_query_page_size"`
+	RepairedFileTTL   *int              `json:"repaired_file_ttl_seconds"`
 	RepairJobs        []RepairJobParams `json:"repair_jobs"`
 }
 
@@ -46,7 +47,7 @@ type DocTransformer func(docId string, originalCBDoc []byte) (transformedCBDoc [
 // A RepairBucket struct is the main API entrypoint to call for repairing documents in buckets
 type RepairBucket struct {
 	DryRun            bool // If true, will only output what changes it *would* have made, but not make any changes
-	RepairedFileTTL   *int
+	RepairedFileTTL   time.Duration
 	ViewQueryPageSize int
 	Bucket            base.Bucket
 	RepairJobs        []DocTransformer
@@ -56,6 +57,7 @@ func NewRepairBucket(bucket base.Bucket) *RepairBucket {
 	return &RepairBucket{
 		Bucket:            bucket,
 		ViewQueryPageSize: base.DefaultViewQueryPageSize,
+		RepairedFileTTL:   kDefaultRepairedFileTTL,
 	}
 }
 
@@ -74,6 +76,10 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 	r.SetDryRun(params.DryRun)
 	if params.ViewQueryPageSize != nil && *params.ViewQueryPageSize > 0 {
 		r.ViewQueryPageSize = *params.ViewQueryPageSize
+	}
+
+	if params.RepairedFileTTL != nil && *params.RepairedFileTTL >= 0 {
+		r.RepairedFileTTL = time.Duration(*params.ViewQueryPageSize) * time.Second
 	}
 
 	for _, repairJobParams := range params.RepairJobs {
@@ -266,19 +272,13 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 		return backupOrDryRunDocId, fmt.Errorf("Error unmarshalling updated/original doc.  Err: %v", err)
 	}
 
-	expirySeconds := kDefaultRepairedFileTTL
-
 	//If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all
-	if r.RepairedFileTTL != nil {
-		if *r.RepairedFileTTL == 0 {
-			base.LogTo("CRUD", "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", backupOrDryRunDocId)
-			return backupOrDryRunDocId, nil
-		} else {
-			expirySeconds = time.Duration(*r.RepairedFileTTL) * time.Second
-		}
+	if int(r.RepairedFileTTL.Seconds()) == 0 {
+		base.LogTo("CRUD", "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", backupOrDryRunDocId)
+		return backupOrDryRunDocId, nil
 	}
 
-	if err := r.Bucket.Set(backupOrDryRunDocId, base.DurationToCbsExpiry(time.Duration(expirySeconds)), doc); err != nil {
+	if err := r.Bucket.Set(backupOrDryRunDocId, base.DurationToCbsExpiry(r.RepairedFileTTL), doc); err != nil {
 		return backupOrDryRunDocId, err
 	}
 
