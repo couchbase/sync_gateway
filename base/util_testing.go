@@ -29,6 +29,7 @@ const (
 )
 
 var FlushOrRecreateTestBucket = FlushBetweenTests
+var TestExternalRevStorage = false
 
 func init() {
 	// Prevent https://issues.couchbase.com/browse/MB-24237
@@ -405,4 +406,15 @@ func (tbm *TestBucketManager) CreateTestBucket() error {
 	}
 
 	return nil
+}
+
+// Generates a string of size int
+const alphaNumeric = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+func CreateProperty(size int) (result string) {
+	resultBytes := make([]byte, size)
+	for i := 0; i < size; i++ {
+		resultBytes[i] = alphaNumeric[i%len(alphaNumeric)]
+	}
+	return string(resultBytes)
 }

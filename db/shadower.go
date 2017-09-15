@@ -118,7 +118,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		// Compare this body to the current revision body to see if it's an echo:
 		parentRev := doc.UpstreamRev
 		newRev := doc.CurrentRev
-		if !reflect.DeepEqual(body, doc.getRevision(newRev)) {
+		if !reflect.DeepEqual(body, doc.getRevisionBody(newRev, s.context.RevisionBodyLoader)) {
 			// Nope, it's not. Assign it a new rev ID
 			generation, _ := ParseRevID(parentRev)
 			newRev = createRevID(generation+1, parentRev, body)
@@ -167,7 +167,7 @@ func (s *Shadower) PushRevision(doc *document) {
 		err = s.bucket.Delete(doc.ID)
 	} else {
 		base.LogTo("Shadow", "Pushing %q, rev %q", doc.ID, doc.CurrentRev)
-		body := doc.getRevision(doc.CurrentRev)
+		body := doc.getRevisionBody(doc.CurrentRev, s.context.RevisionBodyLoader)
 		if body == nil {
 			base.Warn("Can't get rev %q.%q to push to external bucket", doc.ID, doc.CurrentRev)
 			return

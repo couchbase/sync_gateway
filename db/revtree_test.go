@@ -353,21 +353,24 @@ func TestPruneRevisions(t *testing.T) {
 	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
 
 	// Prune:
-	assert.Equals(t, tempmap.pruneRevisions(1000, ""), 0)
-	assert.Equals(t, tempmap.pruneRevisions(3, ""), 0)
-	assert.Equals(t, tempmap.pruneRevisions(2, ""), 1)
+	pruned, _ := tempmap.pruneRevisions(1000, "")
+	assert.Equals(t, pruned, 0)
+	pruned, _ = tempmap.pruneRevisions(3, "")
+	assert.Equals(t, pruned, 0)
+	pruned, _ = tempmap.pruneRevisions(2, "")
+	assert.Equals(t, pruned, 1)
 	assert.Equals(t, len(tempmap), 4)
 	assert.Equals(t, tempmap["1-one"], (*RevInfo)(nil))
 	assert.Equals(t, tempmap["2-two"].Parent, "")
 
 	// Make sure leaves are never pruned:
-	assert.Equals(t, tempmap.pruneRevisions(1, ""), 2)
+	pruned, _ = tempmap.pruneRevisions(1, "")
+	assert.Equals(t, pruned, 2)
 	assert.Equals(t, len(tempmap), 2)
 	assert.True(t, tempmap["3-three"] != nil)
 	assert.Equals(t, tempmap["3-three"].Parent, "")
 	assert.True(t, tempmap["4-vier"] != nil)
 	assert.Equals(t, tempmap["4-vier"].Parent, "")
-
 
 }
 
@@ -380,7 +383,7 @@ func TestPruneRevsSingleBranch(t *testing.T) {
 	maxDepth := uint32(20)
 	expectedNumPruned := numRevs - int(maxDepth)
 
-	numPruned := revTree.pruneRevisions(maxDepth, "")
+	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
 	assert.Equals(t, numPruned, expectedNumPruned)
 
 }
@@ -405,7 +408,6 @@ func TestPruneRevsOneWinningOneNonwinningBranch(t *testing.T) {
 	revTree.pruneRevisions(maxDepth, "")
 
 	assert.Equals(t, revTree.LongestBranch(), int(maxDepth))
-
 
 }
 
@@ -433,7 +435,6 @@ func TestPruneRevsOneWinningOneOldTombstonedBranch(t *testing.T) {
 	// we shouldn't have any tombstoned branches, since the tombstoned branch was so old
 	// it should have been pruned away
 	assert.Equals(t, revTree.FindLongestTombstonedBranch(), 0)
-
 
 }
 
@@ -483,8 +484,6 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 
 }
 
-
-
 func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{
@@ -516,7 +515,6 @@ func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
 }
 
-
 func TestGenerationLongestTombstonedBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{
@@ -546,13 +544,11 @@ func TestGenerationLongestTombstonedBranch(t *testing.T) {
 	// 100 revs in branchspec
 	// +
 	// 1 extra rev in branchspec since LastRevisionIsTombstone (that variable name is misleading)
-	expectedGenerationLongestTombstonedBranch :=  3 + 100 + 1
+	expectedGenerationLongestTombstonedBranch := 3 + 100 + 1
 
 	assert.Equals(t, generationLongestTombstonedBranch, expectedGenerationLongestTombstonedBranch)
 
-
 }
-
 
 // Tests for updated pruning algorithm, post https://github.com/couchbase/sync_gateway/issues/2651
 func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
@@ -573,7 +569,7 @@ func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 
 	maxDepth := uint32(50)
-	numPruned := revTree.pruneRevisions(maxDepth, "")
+	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
 	fmt.Printf("numPruned: %v", numPruned)
 	fmt.Printf("LongestBranch: %v", revTree.LongestBranch())
 
@@ -602,7 +598,7 @@ func TestPruneRevsSingleTombstonedBranch(t *testing.T) {
 
 	expectedNumPruned += 1 // To account for the tombstone revision in the branchspec, which is spearate from NumRevs
 
-	numPruned := revTree.pruneRevisions(maxDepth, "")
+	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
 
 	log.Printf("RevTreeAfter pruning: %v", revTree.RenderGraphvizDot())
 
@@ -822,7 +818,7 @@ func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody [
 		Body:    revBody,
 		Deleted: tombstone,
 	})
-	numPruned = revTree.pruneRevisions(revsLimit, revID)
+	numPruned, _ = revTree.pruneRevisions(revsLimit, revID)
 
 	// Get history for new rev (checks for loops)
 	history, err := revTree.getHistory(revID)
@@ -1006,7 +1002,6 @@ func (tree RevTree) LongestBranch() int {
 	return longestBranch
 
 }
-
 
 // Create body content as map of 100 byte entries.  Rounds up to the nearest 100 bytes
 func createBodyContentAsMapWithSize(docSizeBytes int) map[string]string {
