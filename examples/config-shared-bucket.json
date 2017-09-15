@@ -1,0 +1,12 @@
+{
+  "databases": {
+    "db": {
+      "server": "http://localhost:8091",
+      "bucket": "default",
+      "password": "password",
+      "import_docs": "continuous",
+      "enable_shared_bucket_access":true,  
+    }
+  }
+}
+
