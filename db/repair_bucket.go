@@ -79,7 +79,7 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 	}
 
 	if params.RepairedFileTTL != nil && *params.RepairedFileTTL >= 0 {
-		r.RepairedFileTTL = time.Duration(*params.ViewQueryPageSize) * time.Second
+		r.RepairedFileTTL = time.Duration(*params.RepairedFileTTL) * time.Second
 	}
 
 	for _, repairJobParams := range params.RepairJobs {
