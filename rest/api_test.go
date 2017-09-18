@@ -1054,10 +1054,11 @@ func TestBulkDocsMalformedDocs(t *testing.T) {
 	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 400)
 
+	// For non-string id, ensure it reverts to id generation and doesn't panic
 	input = `{"docs": [{"_id": 3, "n": 1}]}`
 	response = rt.SendRequest("POST", "/db/_bulk_docs", input)
 	log.Printf("response:%s", response.Body.Bytes())
-	assertStatus(t, response, 400)
+	assertStatus(t, response, 201)
 }
 
 func TestBulkGetEmptyDocs(t *testing.T) {
