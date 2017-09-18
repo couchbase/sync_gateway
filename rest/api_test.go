@@ -730,6 +730,22 @@ func TestBulkDocs(t *testing.T) {
 	assertStatus(t, response, 200)
 }
 
+func TestBulkDocsIDGeneration(t *testing.T) {
+	var rt RestTester
+	input := `{"docs": [{"n": 1}, {"_id": 123, "n": 2}]}`
+	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
+	assertStatus(t, response, 201)
+	var docs []map[string]string
+	json.Unmarshal(response.Body.Bytes(), &docs)
+	log.Printf("response: %s", response.Body.Bytes())
+	assertStatus(t, response, 201)
+	assert.Equals(t, len(docs), 2)
+	assert.Equals(t, docs[0]["rev"], "1-50133ddd8e49efad34ad9ecae4cb9907")
+	assert.True(t, docs[0]["id"] != "")
+	assert.Equals(t, docs[1]["rev"], "1-035168c88bd4b80fb098a8da72f881ce")
+	assert.True(t, docs[1]["id"] != "")
+}
+
 func TestBulkDocsUnusedSequences(t *testing.T) {
 
 	//We want a sync function that will reject some docs
