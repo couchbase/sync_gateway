@@ -23,8 +23,8 @@
             "start_build": 1
         },
         "manifest/1.3.1.xml": {
-            "release": "1.3.1.3",
-            "release_name": "Couchbase Sync Gateway 1.3.1.3",
+            "release": "1.3.1.5",
+            "release_name": "Couchbase Sync Gateway 1.3.1.5",
             "production": true,
             "interval": 60,
             "start_build": 1
