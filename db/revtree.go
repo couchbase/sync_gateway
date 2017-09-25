@@ -184,8 +184,8 @@ func (tree RevTree) RepairCycles() (err error) {
 
 		for {
 
-			if node.ParentGenLargerNodeGen() {
-				base.LogTo("CRUD","Node %+v detected to have invalid parent rev.  Repairing by designating as a root node.", node)
+			if node.ParentGenGTENodeGen() {
+				base.LogTo("CRUD","Node %+v detected to have invalid parent rev (parent generation larger than node generation).  Repairing by designating as a root node.", node)
 				node.Parent = ""
 				break
 			}
@@ -212,8 +212,9 @@ func (tree RevTree) RepairCycles() (err error) {
 // Detect situations like:
 //     node: &{ID:10-684759c169c75629d02b90fe10b56925 Parent:184-a6b3f72a2bc1f988bfb720fec8db3a1d Deleted:fa...
 // where the parent generation is *higher* than the node generation, which is never a valid scenario.
-func (node RevInfo) ParentGenLargerNodeGen() bool {
-	return genOfRevID(node.Parent) > genOfRevID(node.ID)
+// Likewise, detect situations where the parent generation is equal to the node generation, which is also invalid.
+func (node RevInfo) ParentGenGTENodeGen() bool {
+	return genOfRevID(node.Parent) >= genOfRevID(node.ID)
 }
 
 // Returns true if the RevTree has an entry for this revid.
