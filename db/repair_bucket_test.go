@@ -28,7 +28,7 @@ func testBucketWithViewsAndBrokenDoc(bucketName string) (bucket base.Bucket, num
 	}
 
 	// Add doc that should be repaired
-	rawDoc, err := unmarshalDocument(docIdProblematicRevTree, []byte(testdocProblematicRevTree))
+	rawDoc, err := unmarshalDocument(docIdProblematicRevTree, []byte(testdocProblematicRevTree1))
 	if err != nil {
 		panic(fmt.Sprintf("Error unmarshalling doc: %v", err))
 	}
@@ -36,7 +36,7 @@ func testBucketWithViewsAndBrokenDoc(bucketName string) (bucket base.Bucket, num
 	numDocsAdded++
 
 	// Add 2nd doc that should be repaired
-	rawDoc, err = unmarshalDocument(docIdProblematicRevTree2, []byte(testdocProblematicRevTree))
+	rawDoc, err = unmarshalDocument(docIdProblematicRevTree2, []byte(testdocProblematicRevTree1))
 	if err != nil {
 		panic(fmt.Sprintf("Error unmarshalling doc: %v", err))
 	}

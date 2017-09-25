@@ -190,7 +190,6 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 				if currentValue == nil {
 					return nil, couchbase.UpdateCancel // someone deleted it?!
 				}
-
 				updatedDoc, shouldUpdate, repairJobs, err := r.TransformBucketDoc(key, currentValue)
 				if err != nil {
 					return nil, err
@@ -323,6 +322,9 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 
 // Repairs rev tree cycles (see SG issue #2847)
 func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
+
+	base.LogTo("CRUD","RepairJobRevTreeCycles() called with doc id: %v", docId)
+	defer base.LogTo("CRUD","RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", docId, transformed, err)
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {
