@@ -136,6 +136,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 	startKey := ""
 	results = []RepairBucketResult{}
+	numDocsProcessed := 0
 
 	for {
 
@@ -148,7 +149,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 		base.LogTo("CRUD", "RepairBucket() querying view with options: %+v", options)
 		vres, err := r.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
-		base.LogTo("CRUD", "RepairBucket() queried view and got %d results / total rows: %d", len(vres.Rows), vres.TotalRows)
+		base.LogTo("CRUD", "RepairBucket() queried view and got %d results", len(vres.Rows))
 		if err != nil {
 			return results, err
 		}
@@ -242,6 +243,10 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 		}
 
+		numDocsProcessed += numResultsProcessed
+
+		base.LogTo("CRUD", "RepairBucket() processed %d / %d", numDocsProcessed, vres.TotalRows)
+
 		if numResultsProcessed == 0 {
 			// No point in going to the next page, since this page had 0 results.  See method comments.
 			return results, nil
@@ -323,8 +328,8 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 // Repairs rev tree cycles (see SG issue #2847)
 func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
-	base.LogTo("CRUD","RepairJobRevTreeCycles() called with doc id: %v", docId)
-	defer base.LogTo("CRUD","RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", docId, transformed, err)
+	base.LogTo("CRUD+","RepairJobRevTreeCycles() called with doc id: %v", docId)
+	defer base.LogTo("CRUD+","RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", docId, transformed, err)
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {
