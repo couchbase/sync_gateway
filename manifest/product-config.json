@@ -28,6 +28,13 @@
             "production": true,
             "interval": 60,
             "start_build": 1
+        },
+        "manifest/1.5.0.xml": {
+            "release": "1.5.0.0",
+            "release_name": "Couchbase Sync Gateway 1.5.0.0",
+            "production": true,
+            "interval": 120,
+            "start_build": 1
         }
     }
 }
