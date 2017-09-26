@@ -273,9 +273,23 @@ func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
 
 func (tbm *TestBucketManager) EmptyTestBucket() error {
 
-	if err := tbm.BucketManager.Flush(); err != nil {
+	// Try to Flush the bucket in a retry loop
+	// Ignore sporadic errors like:
+	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		err = tbm.BucketManager.Flush()
+		Warn("Error flushing bucket: %v  Will retry.", err)
+		shouldRetry = (err != nil)  // retry (until max attempts) if there was an error
+		return shouldRetry, err, nil
+	}
+	sleeper := CreateDoublingSleeperFunc(20, 100)
+
+	err, _ := RetryLoop("EmptyTestBucket", worker, sleeper)
+	if err != nil {
 		return err
 	}
+
 
 	for {
 
