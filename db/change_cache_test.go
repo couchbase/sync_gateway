@@ -266,6 +266,10 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 // Test notification when buffered entries are processed after a user doc arrives.
 func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	base.EnableLogKey("Cache")
 	base.EnableLogKey("Cache+")
 	base.EnableLogKey("Changes")
@@ -301,6 +305,10 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
 // Test backfill of late arriving sequences to the channel caches
 func TestChannelCacheBackfill(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only working against Walrus currently.  Needs more investigation.  Failure logs: https://gist.github.com/tleyden/7011c68aa85dd739babf90a1a556469d")
@@ -366,6 +374,10 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
 
 	var logKeys = map[string]bool{
 		"Sequences": true,
@@ -466,6 +478,11 @@ func TestContinuousChangesBackfill(t *testing.T) {
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
+
 	var logKeys = map[string]bool{
 		"Cache":    true,
 		"Changes":  true,
@@ -554,6 +571,11 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 		base.UpdateLogKeys(logKeys, true)
 	*/
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
+
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -611,6 +633,10 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only working against Walrus currently.  Needs more investigation. " +
@@ -707,6 +733,10 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 // Test current fails intermittently on concurrent access to var changes.  Disabling for now - should be refactored.
 func FailingTestChannelRace(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	var logKeys = map[string]bool{
 		"Sequences": true,
 	}
@@ -799,6 +829,10 @@ func FailingTestChannelRace(t *testing.T) {
 // been seen on the TAP feed yet).  Longer term could consider enhancing leaky bucket to 'miss' the entry on the tap feed.
 func TestSkippedViewRetrieval(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only working against Walrus currently.  Needs more investigation.  Logs: https://gist.github.com/tleyden/d2e1af32dd6979fae7cf06957aeceef3")
 	}
@@ -844,6 +878,11 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 // Test that housekeeping goroutines get terminated when change cache is stopped
 func TestStopChangeCache(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	// Setup short-wait cache to ensure cleanup goroutines fire often
 	cacheOptions := CacheOptions{
 		CachePendingSeqMaxWait: 10 * time.Millisecond,
@@ -877,6 +916,10 @@ func TestStopChangeCache(t *testing.T) {
 
 // Test size config
 func TestChannelCacheSize(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
 
 	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://github.com/couchbase/sync_gateway/issues/2561#issuecomment-305353813")

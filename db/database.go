@@ -141,7 +141,16 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 	//start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		bucket, err = base.GetBucket(spec, callback)
-		return err != nil, err, bucket
+
+		// By default, if there was an error, retry
+		shouldRetry = err != nil
+
+		if err == base.ErrFatalBucketConnection {
+			base.Warn("Fatal error connecting to bucket: %v.  Not retrying", err)
+			shouldRetry = false
+		}
+
+		return shouldRetry, err, bucket
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(

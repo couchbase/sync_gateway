@@ -15,14 +15,14 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
-	memcached "github.com/couchbase/gomemcached/client"
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/gomemcached/client"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
-	"time"
 )
 
 const (
@@ -360,6 +360,12 @@ func (bucket CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint
 		}
 	}
 
+	return ParseCouchbaseServerVersion(versionString)
+
+}
+
+func ParseCouchbaseServerVersion(versionString string) (major uint64, minor uint64, micro string, err error) {
+
 	if versionString == "" {
 		return 0, 0, "", errors.New("version not defined in GetStats map")
 	}
@@ -380,6 +386,20 @@ func (bucket CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint
 	micro = arr[2]
 
 	return
+
+}
+
+func (bucket *CouchbaseBucket) ErrorIfPostCBServerMajorVersion(lastMajorVersionAllowed uint64) error {
+	major, _, _, err := bucket.CouchbaseServerVersion()
+	if err != nil {
+		return err
+	}
+
+	if major > lastMajorVersionAllowed {
+		Warn("Couchbase Server major version is %v, which is later than %v", major, lastMajorVersionAllowed)
+		return ErrFatalBucketConnection
+	}
+	return nil
 }
 
 func (bucket CouchbaseBucket) UUID() (string, error) {
@@ -401,19 +421,30 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 		return
 	}
 	cbbucket, err := pool.GetBucket(spec.BucketName)
+	if err != nil {
+		return nil, err
+	}
+
+	bucket = &CouchbaseBucket{cbbucket, spec}
+
+	if spec.FeedType == TapFeedType {
+		// TAP was removed in Couchbase Server 5.x, so ensure connecting to 4.x, else error.  See SG Issue #2523
+		if errVersionCheck := bucket.ErrorIfPostCBServerMajorVersion(4); errVersionCheck != nil {
+			return nil, errVersionCheck
+		}
+	}
+
 	spec.MaxNumRetries = 10
 	spec.InitialRetrySleepTimeMS = 5
-	if err == nil {
-		// Start bucket updater - see SG issue 1011
-		cbbucket.RunBucketUpdater(func(bucket string, err error) {
-			Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
 
-			if callback != nil {
-				callback(bucket, err)
-			}
-		})
-		bucket = &CouchbaseBucket{cbbucket, spec}
-	}
+	// Start bucket updater - see SG issue 1011
+	cbbucket.RunBucketUpdater(func(bucket string, err error) {
+		Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
+
+		if callback != nil {
+			callback(bucket, err)
+		}
+	})
 
 	return
 }
@@ -449,6 +480,19 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 			bucket, err = GetCouchbaseBucket(spec, callback)
 		default:
 			panic(fmt.Sprintf("Unexpected CouchbaseDriver: %v", spec.CouchbaseDriver))
+		}
+
+		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
+		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
+		if spec.UseXattrs {
+			majorVersion, _, _, errServerVersion := bucket.CouchbaseServerVersion()
+			if errServerVersion != nil {
+				return nil, errServerVersion
+			}
+			if majorVersion < 5 {
+				Warn("If using XATTRS, Couchbase Server version must be >= 5.0.  Major Version: %v", majorVersion)
+				return nil, ErrFatalBucketConnection
+			}
 		}
 
 	}

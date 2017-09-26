@@ -235,11 +235,8 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 	if returnVal == nil {
 		return nil, cas, err
 	}
-	// Take a copy of the returned value until gocb issue is fixed http://review.couchbase.org/#/c/72059/
-	rv = make([]byte, len(returnVal))
-	copy(rv, returnVal)
 
-	return rv, cas, err
+	return returnVal, cas, err
 
 }
 
@@ -1946,9 +1943,21 @@ func (bucket CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 
 func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
 
-	// TODO: implement this using the ServerStats map + add unit test
-	// https://github.com/couchbase/gocb/blob/master/bucket_crud.go#L90
-	return 0, 0, "error", fmt.Errorf("GoCB bucket does not implement CouchbaseServerVersion yet")
+	if versionString == "" {
+		stats, err := bucket.Bucket.Stats("")
+		if err != nil {
+			return 0, 0, "error", fmt.Errorf("Error calling Stats() on GoCB bucket: %v", stats)
+		}
+
+		for _, serverMap := range stats {
+			versionString = serverMap["version"]
+			// We only check the version of the first server, hopefully same for whole cluster
+			break
+		}
+	}
+
+	return ParseCouchbaseServerVersion(versionString)
+
 }
 
 func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
