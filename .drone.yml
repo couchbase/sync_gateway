@@ -1,5 +1,5 @@
 build:
-  image: golang
+  image: golang:1.9
   commands:
     - cd $GOPATH
     - rm -rf *
