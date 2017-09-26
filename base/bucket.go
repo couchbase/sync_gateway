@@ -15,7 +15,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
 	"time"
 
 	"github.com/couchbase/go-couchbase"
