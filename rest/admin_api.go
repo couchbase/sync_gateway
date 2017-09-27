@@ -442,8 +442,8 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 
 // Handles PUT or POST to /_user/*
 func (h *handler) putUser() error {
-	username := mux.Vars(h.rq)["name"]
-	return h.updatePrincipal(username, true)
+	eName := url.QueryEscape(mux.Vars(h.rq)["name"])
+	return h.updatePrincipal(eName, true)
 }
 
 // Handles PUT or POST to /_role/*
@@ -454,7 +454,8 @@ func (h *handler) putRole() error {
 
 func (h *handler) deleteUser() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator().GetUser(mux.Vars(h.rq)["name"])
+	eName := url.QueryEscape(mux.Vars(h.rq)["name"])
+	user, err := h.db.Authenticator().GetUser(eName)
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -478,7 +479,8 @@ func (h *handler) deleteRole() error {
 
 func (h *handler) getUserInfo() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator().GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	eName := url.QueryEscape(mux.Vars(h.rq)["name"])
+	user, err := h.db.Authenticator().GetUser(internalUserName(eName))
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
