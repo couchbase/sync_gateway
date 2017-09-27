@@ -631,8 +631,11 @@ func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []strin
 
 		translatedScheme := "http"
 		switch connSpec.Scheme {
+
+		case "couchbase":
+			fallthrough
 		case "couchbases":
-			translatedScheme = "https"
+			return nil, fmt.Errorf("couchbase:// and couchbases:// URI schemes can only be used with GoCB buckets.  Bucket: %+v", bucket)
 		case "https":
 			translatedScheme = "https"
 		}
