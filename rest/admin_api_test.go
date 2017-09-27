@@ -102,12 +102,14 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 
 	// POST a user with URL encoded '|' in name see #2870
-	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"0%7C59", "password":"letmein", "admin_channels":["foo", "bar"]}`)
-	assertStatus(t, response, 201)
+	assertStatus(t, rt.SendAdminRequest("POST", "/db/_user/", `{"name":"0%7C59", "password":"letmein", "admin_channels":["foo", "bar"]}`), 201)
 
-	response = rt.SendAdminRequest("GET", "/db/_user/0%7C59", "")
-	assertStatus(t, response, 200)
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C59", ""), 200)
+
+	// DELETE the user
+	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%7C59", ""), 200)
 }
+
 func TestUserPasswordValidation(t *testing.T) {
 	// PUT a user
 	var rt RestTester
