@@ -285,7 +285,9 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		err = tbm.BucketManager.Flush()
-		Warn("Error flushing bucket: %v  Will retry.", err)
+		if err != nil {
+			Warn("Error flushing bucket: %v  Will retry.", err)
+		}
 		shouldRetry = (err != nil)  // retry (until max attempts) if there was an error
 		return shouldRetry, err, nil
 	}
