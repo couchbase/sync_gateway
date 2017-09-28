@@ -287,7 +287,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
-	if config.localDocExpirySecs != nil && *config.localDocExpirySecs > 0 {
+	if config.localDocExpirySecs != nil && *config.localDocExpirySecs >= 0 {
 		localDocExpirySecs = *config.localDocExpirySecs
 	}
 
