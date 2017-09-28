@@ -1571,6 +1571,10 @@ func testAccessControl(t *testing.T, rt indexTester) {
 
 }
 
+type changesResults struct {
+	Results []db.ChangeEntry
+}
+
 func TestChannelAccessChanges(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
 
@@ -1607,18 +1611,38 @@ func TestChannelAccessChanges(t *testing.T) {
 	assertStatus(t, rt.Send(request("PUT", "/db/d1", `{"channel":"delta"}`)), 201) // seq=7
 	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201) // seq=8
 
-	// Artificial delay to let updates show up on changes feed
-	time.Sleep(time.Second)
+
 
 	// Check the _changes feed:
-	var changes struct {
-		Results []db.ChangeEntry
+	numChangesExpected := 1
+	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
+
+		var changes changesResults
+
+		response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
+		log.Printf("_changes looks like: %s", response.Body.Bytes())
+		err = json.Unmarshal(response.Body.Bytes(), &changes)
+		if err != nil {
+			return false, err, nil
+		}
+		if len(changes.Results) < numChangesExpected {
+			// not enough results, retry
+			return true, nil, nil
+		}
+		// If it made it this far, there is no errors and it got enough changes
+		return false, nil, changes
 	}
-	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	err = json.Unmarshal(response.Body.Bytes(), &changes)
+
+	sleeper :=  base.CreateDoublingSleeperFunc(20, 10)
+
+	err, changesVal := base.RetryLoop("Wait for changes", waitForChangesWorker, sleeper)
+	var changes changesResults
+	if changesVal != nil {
+		changes = changesVal.(changesResults)
+	}
+
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, len(changes.Results), numChangesExpected)
 	since := changes.Results[0].Seq
 	assert.Equals(t, changes.Results[0].ID, "g1")
 	assert.Equals(t, since.Seq, uint64(8))
