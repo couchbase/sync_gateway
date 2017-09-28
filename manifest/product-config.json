@@ -41,7 +41,8 @@
             "release_name": "Couchbase Sync Gateway Dev",
             "production": true,
             "interval": 30,
-            "start_build": 1
+            "start_build": 1,
+            "do_build": false
         }
     }
 }
