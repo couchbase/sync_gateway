@@ -283,7 +283,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	// Ignore sporadic errors like:
 	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = tbm.BucketManager.Flush()
 		if err != nil {
 			Warn("Error flushing bucket: %v  Will retry.", err)
@@ -293,7 +293,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	}
 	sleeper := CreateDoublingSleeperFunc(20, 100)
 
-	err, _ := RetryLoop("EmptyTestBucket", worker, sleeper)
+	err, _ := RetryLoop("EmptyTestBucket", workerFlush, sleeper)
 	if err != nil {
 		return err
 	}
@@ -308,7 +308,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 
 		if itemCount == 0 {
 			// Bucket flushed, we're done
-			return nil
+			break
 		}
 
 		// Still items left, wait a little bit and try again
@@ -316,6 +316,48 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		time.Sleep(time.Millisecond * 500)
 
 	}
+
+	// Make sure we can read our own writes.  Workaround attempt for errors:
+	// WARNING: RetryLoop for Get _sync:user: giving up after 11 attempts -- base.RetryLoop() at util.go:298
+	workerReadOwnWrites := func() (shouldRetry bool, err error, value interface{}) {
+
+		key := "foo"
+		val := map[string]interface{}{}
+		val["val"] = "val"
+		_, errInsert := tbm.Bucket.Insert(key, val, 0)
+		if errInsert != nil {
+			// If we got an error inserting, retry
+			Warn("Error inserting key to recently flushed bucket: %v  Retrying.", errInsert)
+			return true, errInsert, nil
+		}
+
+		_, errGet := tbm.Bucket.Get(key, &val)
+		if errGet != nil {
+			// If we got an error getting the key, retry
+			Warn("Error getting key from recently flushed bucket: %v  Retrying.", errGet)
+			return true, errGet, nil
+		}
+
+		_, errRemove := tbm.Bucket.Remove(key, 0)
+		if errRemove != nil {
+			// If we got an error removing the key, retry
+			Warn("Error removing key from recently flushed bucket: %v  Retrying.", errRemove)
+			return true, errRemove, nil
+		}
+
+		// Made it past all checks
+		log.Printf("workerReadOwnWrites completed without errors")
+		return false, nil, nil
+	}
+
+	err, _ = RetryLoop("EmptyTestBucket", workerReadOwnWrites, sleeper)
+	if err != nil {
+		return err
+	}
+
+	return nil
+
+
 }
 
 func (tbm *TestBucketManager) RecreateOrEmptyBucket() error {
