@@ -16,6 +16,7 @@
     <remote fetch="https://github.com/coreos/" name="coreos"/>
     <remote fetch="https://github.com/jonboulle/" name="jonboulle"/>
     <remote fetch="https://github.com/satori/" name="satori"/>
+    <remote fetch="https://github.com/brett19/" name="brett19"/>
 
     <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
 
@@ -61,7 +62,7 @@
 
     <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="6382451e5ef472cd19e4eba6e82e3c1957e4cc09"/>
 
-    <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="87479d3ac646baac2385314bfb743bb04928f280"/>
+    <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="brett19" revision="09f6c000be1a6ec15600d6fc317dfbb8f7763653"/>
 
     <project name="gocbconnstr" path="godeps/src/github.com/couchbaselabs/gocbconnstr" remote="couchbaselabs" revision="f601f521a1ab1c99260c63441e1bbdbbc48b1bd9"/>
 
