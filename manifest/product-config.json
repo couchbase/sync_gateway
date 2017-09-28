@@ -35,6 +35,13 @@
             "production": true,
             "interval": 120,
             "start_build": 1
+        },
+        "manifest/dev.xml": {
+            "release": "dev",
+            "release_name": "Couchbase Sync Gateway Dev",
+            "production": true,
+            "interval": 30,
+            "start_build": 1
         }
     }
 }
