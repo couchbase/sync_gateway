@@ -302,7 +302,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		dbName, bucketName, pool, server)
 
 	if err := db.ValidateDatabaseName(dbName); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error validating database name: %v", err)
 	}
 
 	var importDocs, autoImport bool
@@ -412,7 +412,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error connecting to bucket: %v", err)
 	}
 
 	// Channel index definition, if present
@@ -523,7 +523,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error creating NewDatabaseContext: %v", err)
 	}
 	dbcontext.BucketSpec = spec
 
@@ -532,14 +532,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		syncFn = *config.Sync
 	}
 	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error creating applySyncFunction: %v", err)
 	}
 
 	// Support for legacy importDocs handling - if xattrs aren't enabled, support a backfill-style import on startup
 	if importDocs && !config.UseXattrs() {
 		db, _ := db.GetDatabase(dbcontext, nil)
 		if _, err := db.UpdateAllDocChannels(false, true); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("Error calling UpdateAllDocChannels: %v", err)
 		}
 	}
 
@@ -563,9 +563,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Create default users & roles:
 	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error calling installPrincipals with config.Roles: %v", err)
 	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error calling installPrincipals with config.Users: %v", err)
 	}
 
 	// Note: disabling access-related warnings, because they potentially block startup during view reindexing trying to query the principals view, which outweighs the usability benefit
@@ -581,7 +581,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Initialize event handlers
 	if err := sc.initEventHandlers(dbcontext, config); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error calling initEventHandlers: %v", err)
 	}
 
 	dbcontext.ExitChanges = make(chan struct{})
