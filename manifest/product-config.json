@@ -42,7 +42,7 @@
             "production": true,
             "interval": 30,
             "start_build": 1,
-            "do_build": false
+            "do-build": false
         }
     }
 }
