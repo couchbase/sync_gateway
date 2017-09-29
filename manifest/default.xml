@@ -118,7 +118,7 @@
 
   <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="e6fc23e55f6a0907378f93a5d610f4f56c179879"/>
 
-  <project name="go-blip-sync" path="godeps/src/github.com/couchbaselabs/go-blip-sync" remote="couchbaselabs" revision="1dd28347df4b451b23467b362c462bbf101f1fc5"/>
+  <project name="go-blip-sync" path="godeps/src/github.com/couchbaselabs/go-blip-sync" remote="couchbaselabs" revision="2601dcf6ccf40d3b73b5efd0cdeedb6e2d127eb0"/>
 
   <project name="go.uuid" path="godeps/src/github.com/satori/go.uuid" remote="satori" revision="5bf94b69c6b68ee1b541973bb8e1144db23a194b"/>
 
