@@ -367,7 +367,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	// WARNING: RetryLoop for Get _sync:user: giving up after 11 attempts -- base.RetryLoop() at util.go:298
 	workerReadOwnWrites := func() (shouldRetry bool, err error, value interface{}) {
 
-		key := "foo"
+		key := "_sync:testWorkerReadOwnWrites"
 		val := map[string]interface{}{}
 		val["val"] = "val"
 		_, errInsert := tbm.Bucket.Insert(key, val, 0)
