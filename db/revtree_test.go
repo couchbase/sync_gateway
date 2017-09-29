@@ -11,18 +11,19 @@ package db
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"runtime"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
-	"errors"
-	"log"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+
 )
 
 // 1-one -- 2-two -- 3-three
@@ -631,6 +632,62 @@ func TestLongestBranch2(t *testing.T) {
 	assert.True(t, multiroot.LongestBranch() == 3)
 
 }
+
+
+// Create a disconnected rev tree
+// Add lots of revisions to winning branch
+// Prune rev tree
+// Make sure the winning branch is pruned as expected
+func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
+
+	dumpRevTreeDotFiles := false
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 10,
+			Digest:                  "non-winning",
+			LastRevisionIsTombstone: false,
+		},
+	}
+	revTree := getMultiBranchTestRevtree1(1, 15, branchSpecs)
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	maxDepth := uint32(7)
+
+	revTree.pruneRevisions(maxDepth, "")
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	winningBranchStartRev := fmt.Sprintf("%d-%s", 16, "winning")
+
+	// Add revs to winning branch
+	addRevs(
+		revTree,
+		winningBranchStartRev,
+		10,
+		"winning",
+	)
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	revTree.pruneRevisions(maxDepth, "")
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	// Make sure the winning branch is pruned down to maxDepth, even with the disconnected rev tree
+	assert.True(t, revTree.LongestBranch() == 7)
+
+}
+
 
 func TestParseRevisions(t *testing.T) {
 	type testCase struct {
