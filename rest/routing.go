@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/couchbaselabs/sync_gateway_admin_ui"
+	"github.com/couchbaselabs/go-blip-sync"
 	"github.com/gorilla/mux"
 )
 
