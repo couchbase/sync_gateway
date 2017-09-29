@@ -34,7 +34,6 @@ type channelIndexTest struct {
 	channelName   string      // Channel name
 }
 
-
 func NewChannelIndex(vbNum int, sequenceGap int, name string) *channelIndexTest {
 	lastSeqs := make([]uint64, vbNum)
 
@@ -210,7 +209,7 @@ func (c *channelIndexTest) readIndexBulk() error {
 		log.Printf("Unable to convert to couchbase bucket")
 		return errors.New("Unable to convert to couchbase bucket")
 	}
-	responses, _, err := couchbaseBucket.GetBulk(keys)
+	responses, _, err := couchbaseBucket.GetBulk(keys, time.Time{})
 	if err != nil {
 		return err
 	}
@@ -468,7 +467,7 @@ func TestChannelIndexSimpleReadSingle(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only working against Walrus currently, since GoCB.Append() not impl'd. " +
-			"Fails with logs: https://gist.github.com/tleyden/8bf960cac555feff66425a3ffdaabed9" )
+			"Fails with logs: https://gist.github.com/tleyden/8bf960cac555feff66425a3ffdaabed9")
 	}
 
 	log.Printf("Test single...")
@@ -500,9 +499,8 @@ func TestChannelIndexPartitionReadSingle(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only working against Walrus currently, since GoCB.Append() not impl'd. " +
-			"Fails with logs: https://gist.github.com/tleyden/8bf960cac555feff66425a3ffdaabed9" )
+			"Fails with logs: https://gist.github.com/tleyden/8bf960cac555feff66425a3ffdaabed9")
 	}
-
 
 	log.Printf("Test single...")
 	// num vbuckets
@@ -523,9 +521,8 @@ func TestChannelIndexPartitionReadBulk(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only working against Walrus currently, since GoCB.Append() not impl'd. " +
-			"Fails with logs: https://gist.github.com/tleyden/8bf960cac555feff66425a3ffdaabed9" )
+			"Fails with logs: https://gist.github.com/tleyden/8bf960cac555feff66425a3ffdaabed9")
 	}
-
 
 	log.Printf("Test single...")
 	// num vbuckets

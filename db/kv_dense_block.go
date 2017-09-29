@@ -14,6 +14,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"errors"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -368,6 +369,10 @@ func (d *DenseBlock) rollbackEntries(vbNo uint16, seq uint64) (numRemoved int, r
 
 	for {
 		indexEntry := d.GetIndexEntry(int64(indexPos))
+		if indexEntry == nil {
+			rollbackComplete = true
+			break
+		}
 		entryPos -= uint32(indexEntry.getEntryLen())
 		if indexEntry.getVbNo() == vbNo {
 			if indexEntry.getSequence() > seq {
@@ -594,12 +599,19 @@ func (d *DenseBlock) MakeLogEntry(indexEntry DenseBlockIndexEntry, entry DenseBl
 }
 
 func (d *DenseBlock) GetIndexEntry(position int64) (indexEntry DenseBlockIndexEntry) {
-	indexEntry = d.value[position : position+INDEX_ENTRY_LEN]
+	indexEntry, err := base.SafeSlice(d.value, int(position), int(position+INDEX_ENTRY_LEN))
+	if err != nil {
+		base.LogError(errors.New(fmt.Sprintf("Unable to GetIndexEntry from DensBlock, key: %v, cas: %v, error: %v", d.Key, d.cas, err)))
+	}
 	return indexEntry
 }
 
 func (d *DenseBlock) GetEntry(position int64, length uint16) (entry DenseBlockDataEntry) {
-	entry = d.value[position : position+int64(length)]
+	entry, err := base.SafeSlice(d.value, int(position), int(position+int64(length)))
+	if err != nil {
+		base.LogError(errors.New(fmt.Sprintf("Unable to GetEntry from DensBlock, key: %v, cas: %v, error: %v", d.Key, d.cas, err)))
+	}
+
 	return entry
 }
 

@@ -103,12 +103,12 @@ func (b *LoggingBucket) WriteCasWithXattr(k string, xattr string, exp int, cas u
 	defer func() { LogTo("Bucket", "WriteCasWithXattr(%q, ...) [%v]", k, time.Since(start)) }()
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
 }
-func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	start := time.Now()
 	defer func() {
 		LogTo("Bucket", "WriteUpdateWithXattr(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start))
 	}()
-	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, callback)
+	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, callback)
 }
 func (b *LoggingBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
 	start := time.Now()
@@ -159,11 +159,18 @@ func (b *LoggingBucket) Refresh() error {
 	return b.bucket.Refresh()
 }
 
-func (b *LoggingBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+func (b *LoggingBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "StartTapFeed(...) [%v]", time.Since(start)) }()
 	return b.bucket.StartTapFeed(args)
 }
+
+func (b *LoggingBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "StartDcpFeed(...) [%v]", time.Since(start)) }()
+	return b.bucket.StartDCPFeed(args, callback)
+}
+
 func (b *LoggingBucket) Close() {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Close() [%v]", time.Since(start)) }()

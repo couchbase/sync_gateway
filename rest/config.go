@@ -112,22 +112,25 @@ func (c ClusterConfig) CBGTEnabled() bool {
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
 	BucketConfig
-	Name               string                         `json:"name,omitempty"`                 // Database name in REST API (stored as key in JSON)
-	Sync               *string                        `json:"sync,omitempty"`                 // Sync function defines which users can see which data
-	Users              map[string]*db.PrincipalConfig `json:"users,omitempty"`                // Initial user accounts
-	Roles              map[string]*db.PrincipalConfig `json:"roles,omitempty"`                // Initial roles
-	RevsLimit          *uint32                        `json:"revs_limit,omitempty"`           // Max depth a document's revision tree can grow to
-	ImportDocs         interface{}                    `json:"import_docs,omitempty"`          // false, true, or "continuous"
-	Shadow             *ShadowConfig                  `json:"shadow,omitempty"`               // External bucket to shadow
-	EventHandlers      interface{}                    `json:"event_handlers,omitempty"`       // Event handlers (webhook)
-	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
-	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
-	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
-	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitempty"`        // Channel index settings
-	RevCacheSize       *uint32                        `json:"rev_cache_size,omitempty"`       // Maximum number of revisions to store in the revision cache
-	StartOffline       bool                           `json:"offline,omitempty"`              // start the DB in the offline state, defaults to false
-	Unsupported        db.UnsupportedOptions          `json:"unsupported,omitempty"`          // Config for unsupported features
-	OIDCConfig         *auth.OIDCOptions              `json:"oidc,omitempty"`                 // Config properties for OpenID Connect authentication
+	Name                 string                         `json:"name,omitempty"`                        // Database name in REST API (stored as key in JSON)
+	Sync                 *string                        `json:"sync,omitempty"`                        // Sync function defines which users can see which data
+	Users                map[string]*db.PrincipalConfig `json:"users,omitempty"`                       // Initial user accounts
+	Roles                map[string]*db.PrincipalConfig `json:"roles,omitempty"`                       // Initial roles
+	RevsLimit            *uint32                        `json:"revs_limit,omitempty"`                  // Max depth a document's revision tree can grow to
+	ImportDocs           interface{}                    `json:"import_docs,omitempty"`                 // false, true, or "continuous"
+	ImportFilter         *string                        `json:"import_filter,omitempty"`               // Filter function (import)
+	Shadow               *ShadowConfig                  `json:"shadow,omitempty"`                      // External bucket to shadow
+	EventHandlers        interface{}                    `json:"event_handlers,omitempty"`              // Event handlers (webhook)
+	FeedType             string                         `json:"feed_type,omitempty"`                   // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	AllowEmptyPassword   bool                           `json:"allow_empty_password,omitempty"`        // Allow empty passwords?  Defaults to false
+	CacheConfig          *CacheConfig                   `json:"cache,omitempty"`                       // Cache settings
+	ChannelIndex         *ChannelIndexConfig            `json:"channel_index,omitempty"`               // Channel index settings
+	RevCacheSize         *uint32                        `json:"rev_cache_size,omitempty"`              // Maximum number of revisions to store in the revision cache
+	StartOffline         bool                           `json:"offline,omitempty"`                     // start the DB in the offline state, defaults to false
+	Unsupported          db.UnsupportedOptions          `json:"unsupported,omitempty"`                 // Config for unsupported features
+	OIDCConfig           *auth.OIDCOptions              `json:"oidc,omitempty"`                        // Config properties for OpenID Connect authentication
+	ViewQueryTimeoutSecs *uint32                        `json:"view_query_timeout_secs,omitempty"`     // The view query timeout in seconds
+	EnableXattrs         *bool                          `json:"enable_shared_bucket_access,omitempty"` // Whether to use extended attributes to store _sync metadata
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -367,8 +370,8 @@ func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
 }
 
 func (dbConfig *DbConfig) UseXattrs() bool {
-	if dbConfig.Unsupported.EnableXattr != nil {
-		return *dbConfig.Unsupported.EnableXattr
+	if dbConfig.EnableXattrs != nil {
+		return *dbConfig.EnableXattrs
 	}
 	return base.DefaultUseXattrs
 }
@@ -381,6 +384,11 @@ func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
 // Implementation of AuthHandler interface for ChannelIndexConfig
 func (channelIndexConfig *ChannelIndexConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(channelIndexConfig.Username, channelIndexConfig.Password, *channelIndexConfig.Bucket)
+}
+
+// Implementation of AuthHandler interface for ClusterConfig
+func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
+	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
 }
 
 // Reads a ServerConfig from raw data
@@ -743,7 +751,7 @@ func (config *ServerConfig) NumIndexWriters() int {
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
 
-	base.Logf("==== %s ====", LongVersionString)
+	base.Logf("==== %s ====", base.LongVersionString)
 
 	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
 		cpus := runtime.NumCPU()

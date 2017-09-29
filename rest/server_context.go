@@ -260,6 +260,8 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 // existing DatabaseContext or an error based on the useExisting flag.
 func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
 
+	var viewQueryTimeoutSecs *uint32
+
 	server := "http://localhost:8091"
 	pool := "default"
 	bucketName := config.Name
@@ -276,6 +278,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	dbName := config.Name
 	if dbName == "" {
 		dbName = bucketName
+	}
+
+	if config.ViewQueryTimeoutSecs != nil {
+		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
 	if sc.databases_[dbName] != nil {
@@ -306,19 +312,25 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, fmt.Errorf("Unrecognized value for ImportDocs: %#v", config.ImportDocs)
 	}
 
+	importOptions := db.ImportOptions{}
+	if config.ImportFilter != nil {
+		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter)
+	}
+
 	feedType := strings.ToLower(config.FeedType)
 
 	couchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket)
 
 	// Connect to the bucket and add the database:
 	spec := base.BucketSpec{
-		Server:          server,
-		PoolName:        pool,
-		BucketName:      bucketName,
-		FeedType:        feedType,
-		Auth:            config,
-		CouchbaseDriver: couchbaseDriver,
-		UseXattrs:       config.UseXattrs(),
+		Server:               server,
+		PoolName:             pool,
+		BucketName:           bucketName,
+		FeedType:             feedType,
+		Auth:                 config,
+		CouchbaseDriver:      couchbaseDriver,
+		UseXattrs:            config.UseXattrs(),
+		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
 	}
 
 	// Set cache properties, if present
@@ -425,9 +437,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			BucketName:      indexBucketName,
 			CouchbaseDriver: couchbaseDriverIndexBucket,
 		}
-		if config.ChannelIndex.Username != "" || config.ChannelIndex.Password != "" {
-			indexSpec.Auth = config.ChannelIndex
-		}
+
+		indexSpec.Auth = config.ChannelIndex
 
 		if config.ChannelIndex.NumShards != 0 {
 			channelIndexOptions.NumShards = config.ChannelIndex.NumShards
@@ -499,6 +510,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		TrackDocs:             trackDocs,
 		OIDCOptions:           config.OIDCConfig,
 		DBOnlineCallback:      dbOnlineCallback,
+		ImportOptions:         importOptions,
+		EnableXattr:           config.UseXattrs(),
 	}
 
 	// Create the DB Context
@@ -526,6 +539,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	if config.RevsLimit != nil && *config.RevsLimit > 0 {
 		dbcontext.RevsLimit = *config.RevsLimit
+		if dbcontext.RevsLimit < 20 {
+			return nil, fmt.Errorf("The revs_limit (%v) configuration cannot be set lower than 20.", dbcontext.RevsLimit)
+		}
+
+		if dbcontext.RevsLimit < 100 {
+			base.Warn("Setting the revs_limit (%v) to less than 100 may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
+		}
+
 	}
 
 	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
@@ -541,7 +562,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
-	emitAccessRelatedWarnings(config, dbcontext)
+	// Note: disabling access-related warnings, because they potentially block startup during view reindexing trying to query the principals view, which outweighs the usability benefit
+	//emitAccessRelatedWarnings(config, dbcontext)
 
 	// Install bucket-shadower if any:
 	if shadow := config.Shadow; shadow != nil {
@@ -937,7 +959,7 @@ func collectAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext)
 		viewOptions := db.Body{
 			"limit": 1,
 		}
-		vres, err := currentDb.Bucket.View(db.DesignDocSyncHousekeeping, db.ViewPrincipals, viewOptions)
+		vres, err := currentDb.Bucket.View(db.DesignDocSyncGateway, db.ViewPrincipals, viewOptions)
 		if err != nil {
 			base.Warn("Error trying to query ViewPrincipals: %v", err)
 			return []string{}

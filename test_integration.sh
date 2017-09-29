@@ -46,7 +46,7 @@ declare -a arr=(
     "TestWithNullPropertyKey"
     "TestPostWithUserSpecialProperty"
     "TestIncrRetrySuccess"
-    "TestIncrRetryFail"
+    "TestIncrRetryUnsuccessful"
     "TestRecentSequenceHistory"
     "TestChannelView"
     "TestQueryAllDocs"
@@ -184,7 +184,7 @@ declare -a arr=(
     "TestCreateTarget"
     "TestBasicAuthWithSessionCookie"
     "TestEventConfigValidationSuccess"
-    "TestEventConfigValidationFailure"
+    "TestEventConfigValidationInvalid"
     "TestBulkGetRevPruning"
     "TestDocExpiry"
     "TestUnsupportedConfig"
@@ -205,7 +205,12 @@ declare -a arr=(
     "TestGetRestrictedIntQuery"
     "TestParseHTTPRangeHeader"
     "TestSanitizeURL"
-    "TestVerifyHTTPSSupport")
+    "TestVerifyHTTPSSupport",
+    "TestChangesIncludeConflicts",
+    "TestGetRemoved",
+    "TestGetRemovedAndDeleted",
+    "TestGetRemovedAsUser",
+    "TestXattrSGTombstone")
 
 
 # --------------------------------- SG Accel tests -----------------------------------------

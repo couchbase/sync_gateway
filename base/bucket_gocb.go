@@ -18,6 +18,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
@@ -140,6 +141,8 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		make(chan struct{}, MaxConcurrentViewOps),
 	}
 
+	bucket.Bucket.SetViewTimeout(bucket.spec.GetViewQueryTimeout())
+
 	return bucket, err
 
 }
@@ -232,11 +235,8 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 	if returnVal == nil {
 		return nil, cas, err
 	}
-	// Take a copy of the returned value until gocb issue is fixed http://review.couchbase.org/#/c/72059/
-	rv = make([]byte, len(returnVal))
-	copy(rv, returnVal)
 
-	return rv, cas, err
+	return returnVal, cas, err
 
 }
 
@@ -705,6 +705,27 @@ func isRecoverableGoCBError(err error) bool {
 	return ok
 }
 
+// If the error is a net/url.Error and the error message is:
+// 		net/http: request canceled while waiting for connection
+// Then it means that the view request timed out, most likely due to the fact that it's a stale=false query and
+// it's rebuilding the index.  In that case, it's desirable to return a more informative error than the
+// underlying net/url.Error. See https://github.com/couchbase/sync_gateway/issues/2639
+func isGoCBViewTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// If it's not a *url.Error, then it's not a viewtimeout error
+	netUrlError, ok := err.(*url.Error)
+	if !ok {
+		return false
+	}
+
+	// If it's a *url.Error and contains the "request canceled" substring, then it's a viewtimeout error.
+	return strings.Contains(netUrlError.Error(), "request canceled")
+
+}
+
 func containsElement(items []string, itemToCheck string) bool {
 	for _, item := range items {
 		if item == itemToCheck {
@@ -978,6 +999,55 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 	return cas, err
 }
 
+// CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
+func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp int, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
+
+	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
+	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
+	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		// If the body doesn't exist, we need to set the AccessDelete flag to mutate the xattr.  If the body exists (and we're trying to delete it), revert
+		// to SubdocDocFlagNone
+		mutateFlag := gocb.SubdocDocFlagAccessDeleted
+		if deleteBody {
+			mutateFlag = gocb.SubdocDocFlagNone
+		}
+		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), uint32(exp)).
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
+			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
+		if deleteBody {
+			builder.RemoveEx("", gocb.SubdocFlagNone) // Delete the document body
+		}
+		docFragment, removeErr := builder.Execute()
+
+		if removeErr != nil {
+			shouldRetry = isRecoverableGoCBError(removeErr)
+			if !shouldRetry {
+				Warn("Unrecoverable error attempting to update xattr for key:%s cas:%d deleteBody:%v error:%v", k, cas, deleteBody, removeErr)
+			}
+			return shouldRetry, removeErr, uint64(0)
+		}
+		return false, nil, uint64(docFragment.Cas())
+	}
+
+	// Kick off retry loop
+	description := fmt.Sprintf("UpdateXattr with key %v", k)
+	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint64(0)
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		return 0, fmt.Errorf("UpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+	}
+
+	return cas, err
+}
+
 // Retrieve a document and it's associated named xattr
 func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv interface{}, xv interface{}) (cas uint64, err error) {
 
@@ -1008,12 +1078,12 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 			// Attempt to retrieve the document body, if present
 			docContentErr := res.Content("", rv)
 			if docContentErr != nil {
-				LogTo("CRUD+", "Unable to retrieve document content for key=%s, xattrKey=%s: %v", k, xattrKey, docContentErr)
+				LogTo("CRUD+", "No document body found for key=%s, xattrKey=%s: %v", k, xattrKey, docContentErr)
 			}
 			// Attempt to retrieve the xattr, if present
 			xattrContentErr := res.Content(xattrKey, xv)
 			if xattrContentErr != nil {
-				LogTo("CRUD+", "Unable to retrieve xattr content for key=%s, xattrKey=%s: %v", k, xattrKey, xattrContentErr)
+				LogTo("CRUD+", "No xattr content found for key=%s, xattrKey=%s: %v", k, xattrKey, xattrContentErr)
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
@@ -1053,29 +1123,150 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 
 }
 
-// Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS) tombstone when a document is deleted.
-// To remove the system xattr as well, an explicit subdoc delete operation is required.
+// Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)
+// tombstone when a document is deleted.  To remove the system xattr as well, an explicit subdoc delete operation is required.
+// This is currently called only for Purge operations.
+//
+// The doc existing doc is expected to be in one of the following states:
+//   - DocExists and XattrExists
+//   - DocExists but NoXattr
+//   - XattrExists but NoDoc
+//   - NoDoc and NoXattr
+// In all cases, the end state will be NoDoc and NoXattr.
+// Expected errors:
+//    - Temporary server overloaded errors, in which case the caller should retry
+//    - If the doc is in the the NoDoc and NoXattr state, it will return a KeyNotFound error
 func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
+
+	// Delegate to internal method that can take a testing-related callback
+	return bucket.deleteWithXattrInternal(k, xattrKey, nil)
+
+}
+
+// A function that will be called back after the first delete attempt but before second delete attempt
+// to simulate the doc having changed state (artifiically injected race condition)
+type deleteWithXattrRaceInjection func(bucket CouchbaseBucketGoCB, k string, xattrKey string)
+
+func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("Delete", 1)
-	removeCas, err := bucket.Bucket.Remove(k, 0)
-	if err != nil && err != gocb.ErrKeyNotFound {
+
+	LogTo("CRUD+", "DeleteWithXattr called with key: %v xattrKey: %v", k, xattrKey)
+
+	// Try to delete body and xattrs in single op
+	// NOTE: ongoing discussion w/ KV Engine team on whether this should handle cases where the body
+	// doesn't exist (eg, a tombstoned xattr doc) by just ignoring the "delete body" mutation, rather
+	// than current behavior of returning gocb.ErrKeyNotFound
+	_, mutateErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(0), uint32(0)).
+		RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+		RemoveEx("", gocb.SubdocFlagNone).        // Delete the document body
+		Execute()
+
+	// If no error, or it was just a ErrSubDocSuccessDeleted error, we're done.
+	// ErrSubDocSuccessDeleted is a "success error" that means "operation was on a tombstoned document"
+	if mutateErr == nil || mutateErr == gocbcore.ErrSubDocSuccessDeleted {
+		LogTo("CRUD+", "No error or ErrSubDocSuccessDeleted.  We're done.")
+		return nil
+	}
+
+	switch {
+	case bucket.IsKeyNotFoundError(mutateErr):
+
+		// Invoke the testing related callback.  This is a no-op in non-test contexts.
+		if callback != nil {
+			callback(bucket, k, xattrKey)
+		}
+
+		// KeyNotFound indicates there is no doc body.  Try to delete only the xattr.
+		return bucket.deleteDocXattrOnly(k, xattrKey, callback)
+
+	case bucket.IsSubDocPathNotFound(mutateErr):
+
+		// Invoke the testing related callback.  This is a no-op in non-test contexts.
+		if callback != nil {
+			callback(bucket, k, xattrKey)
+		}
+
+		// KeyNotFound indicates there is no XATTR.  Try to delete only the body.
+		return bucket.deleteDocBodyOnly(k, xattrKey, callback)
+
+	default:
+
+		// return error
+		return mutateErr
+
+	}
+
+}
+
+func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
+
+	//  Do get w/ xattr in order to get cas
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	getCas, err := bucket.GetWithXattr(k, xattrKey, &retrievedVal, &retrievedXattr)
+	if err != nil {
 		return err
 	}
 
-	_, deleteXattrErr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, removeCas, 0).
-		RemoveEx(xattrKey, gocb.SubdocFlagXattr).
-		Execute()
-
-	if deleteXattrErr != nil && deleteXattrErr != gocbcore.ErrSubDocSuccessDeleted {
-		return deleteXattrErr
+	// If the doc body is non-empty at this point, then give up because it seems that a doc update has been
+	// interleaved with the purge.  Return error to the caller and cancel the purge.
+	if len(retrievedVal) != 0 {
+		return fmt.Errorf("DeleteWithXattr was unable to delete the doc. Another update " +
+			"was received which resurrected the doc by adding a new revision, in which case this delete operation is " +
+			"considered as cancelled.")
 	}
 
-	return nil
+	// Cas-safe delete of just the XATTR.  Use SubdocDocFlagAccessDeleted since presumably the document body
+	// has been deleted.
+	_, mutateErrDeleteXattr := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, gocb.Cas(getCas), uint32(0)).
+		RemoveEx(xattrKey, gocb.SubdocFlagXattr). // Remove the xattr
+		Execute()
+
+	// If no error, or it was just a ErrSubDocSuccessDeleted error, we're done.
+	// ErrSubDocSuccessDeleted is a "success error" that means "operation was on a tombstoned document"
+	if mutateErrDeleteXattr == nil || mutateErrDeleteXattr == gocbcore.ErrSubDocSuccessDeleted {
+		return nil
+	}
+
+	// If the cas-safe delete of XATTR fails, return an error to the caller.
+	// This might happen if there was a concurrent update interleaved with the purge (someone resurrected doc)
+	return fmt.Errorf("DeleteWithXattr was unable to delete the doc.  Another update "+
+		"was received which resurrected the doc by adding a new revision, in which case this delete operation is "+
+		"considered as cancelled.  Underlying gocb bucket operation error: %v", mutateErrDeleteXattr)
+
+}
+
+func (bucket CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
+
+	//  Do get in order to get cas
+	var retrievedVal map[string]interface{}
+	getCas, err := bucket.Get(k, &retrievedVal)
+	if err != nil {
+		return err
+	}
+
+	// Cas-safe delete of just the doc body
+	_, mutateErrDeleteBody := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(getCas), uint32(0)).
+		RemoveEx("", gocb.SubdocFlagNone). // Delete the document body
+		Execute()
+
+	// If no error, or it was just a ErrSubDocSuccessDeleted error, we're done.
+	// ErrSubDocSuccessDeleted is a "success error" that means "operation was on a tombstoned document"
+	if mutateErrDeleteBody == nil || mutateErrDeleteBody == gocbcore.ErrSubDocSuccessDeleted {
+		return nil
+	}
+
+	// If the cas-safe delete of doc body fails, return an error to the caller.
+	// This might happen if there was a concurrent update interleaved with the purge (someone resurrected doc)
+	return fmt.Errorf("DeleteWithXattr was unable to delete the doc.  It might be the case that another update "+
+		"was received which resurrected the doc by adding a new revision, in which case this delete operation is "+
+		"considred as cancelled.  Underlying gocb bucket operation error: %v", mutateErrDeleteBody)
+
 }
 
 func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
@@ -1204,83 +1395,81 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 	}
 }
 
-func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+// WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
+// failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
+func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+
+	var value []byte
+	var xattrValue []byte
+	var cas uint64
+	emptyCas := uint64(0)
+
+	// If an existing value has been provided, use that as the initial value
+	if previous != nil && previous.Cas > 0 {
+		value = previous.Body
+		xattrValue = previous.Xattr
+		cas = previous.Cas
+	}
 
 	for {
-		var value []byte
-		var xattrValue []byte
 		var err error
-		var cas uint64
-		emptyCas := uint64(0)
+		// If no existing value has been provided, retrieve the current value from the bucket
+		if cas == 0 {
+			// Load the existing value.
+			gocbExpvars.Add("Update_GetWithXattr", 1)
+			cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
 
-		// Load the existing value.
-		gocbExpvars.Add("Update_GetWithXattr", 1)
-		cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
-		if err != nil {
-			if !bucket.IsKeyNotFoundError(err) {
-				// Unexpected error, cancel writeupdate
-				LogTo("CRUD", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
-				return emptyCas, err
+			if err != nil {
+				if !bucket.IsKeyNotFoundError(err) {
+					// Unexpected error, cancel writeupdate
+					LogTo("CRUD+", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+					return emptyCas, err
+				}
+				// Key not found - initialize cas and values
+				cas = 0
+				value = nil
+				xattrValue = nil
 			}
-			// Key not found - initialize cas and values
-			cas = 0
-			value = nil
-			xattrValue = nil
 		}
 
 		// Invoke callback to get updated value
-		updatedValue, updatedXattrValue, deleteDoc, err := callback(value, xattrValue, cas)
+		updatedValue, updatedXattrValue, isDelete, err := callback(value, xattrValue, cas)
+
 		if err != nil {
 			return emptyCas, err
 		}
 
-		var writeErr error
-		// If this is a tombstone, we want to delete the document and update the xattr
-		if deleteDoc {
-			// TODO: replace with a single op when https://issues.couchbase.com/browse/MB-24098 is ready
-			removeCas, removeErr := bucket.Remove(k, cas)
-			if removeErr == nil {
-				// Successful removal - update the cas for the xattr operation
-				cas = removeCas
-			} else if removeErr == gocb.ErrKeyNotFound {
-				// Document body has already been removed - continue to xattr processing w/ same cas
-			} else if isRecoverableGoCBError(removeErr) {
-				// Recoverable error - retry WriteUpdateWithXattr
-				continue
-			} else {
-				// Non-recoverable error - return
-				return emptyCas, removeErr
-			}
-
-			// update xattr only
-			casOut, writeErr := bucket.WriteCasWithXattr(k, xattrKey, exp, cas, nil, updatedXattrValue)
-			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
-				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-				return emptyCas, writeErr
-			}
-
-			// If there was no error, we're done
-			if writeErr == nil {
-				return casOut, nil
-			}
-		} else {
-			// Not a delete - update the body and xattr
-			casOut, writeErr = bucket.WriteCasWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue)
-
-			// ErrKeyExists is CAS failure, which we want to retry.  Other non-recoverable errors should cancel the
-			// WriteUpdate.
-			if writeErr != nil && writeErr != gocb.ErrKeyExists && !isRecoverableGoCBError(writeErr) {
-				LogTo("CRUD", "Update of new value during WriteUpdateWithXattr failed for key %s: %v", k, writeErr)
-				return emptyCas, writeErr
-			}
-
-			// If there was no error, we're done
-			if writeErr == nil {
-				return casOut, nil
-			}
+		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
+		deleteBody := len(value) > 0
+		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
+		switch writeErr {
+		case nil:
+			return casOut, nil
+		case gocb.ErrKeyExists:
+			// Retry on cas failure
+		default:
+			// WriteWithXattr already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
+			return emptyCas, writeErr
 		}
-	}
 
+		// Reset value, xattr, cas for cas retry
+		value = nil
+		xattrValue = nil
+		cas = 0
+
+	}
+}
+
+// Single attempt to update a document and xattr.  Setting isDelete=true and value=nil will delete the document body.  Both
+// update types (UpdateXattr, WriteCasWithXattr) include recoverable error retry.
+func (bucket CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp int, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
+	// If this is a tombstone, we want to delete the document and update the xattr
+	if isDelete {
+		return bucket.UpdateXattr(k, xattrKey, exp, cas, xattrValue, deleteBody)
+	} else {
+		// Not a delete - update the body and xattr
+		return bucket.WriteCasWithXattr(k, xattrKey, exp, cas, value, xattrValue)
+	}
 }
 
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
@@ -1375,7 +1564,9 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 
 // Get bucket manager.  Relies on existing auth settings for bucket.
 func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
+
 	username, password := bucket.GetBucketCredentials()
+
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
 		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
@@ -1465,6 +1656,9 @@ func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument
 
 	// Use the bucket's HTTP client to make the request
 	resp, err := goCBClient.HttpClient().Do(req)
+	if err != nil {
+		return err
+	}
 
 	if resp.StatusCode != 201 {
 		data, err := ioutil.ReadAll(resp.Body)
@@ -1484,6 +1678,16 @@ func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument
 
 func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
 	return err == gocb.ErrKeyNotFound
+}
+
+// Check if this is a SubDocPathNotFound error
+// Pending question to see if there is an easier way: https://forums.couchbase.com/t/checking-for-errsubdocpathnotfound-errors/13492
+func (bucket CouchbaseBucketGoCB) IsSubDocPathNotFound(err error) bool {
+	subdocMutateErr, ok := err.(gocbcore.SubDocMutateError)
+	if ok {
+		return subdocMutateErr.Err == gocb.ErrSubDocPathNotFound
+	}
+	return false
 }
 
 func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
@@ -1514,6 +1718,13 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 	}
 
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
+
+	// If it's a view timeout error, return an error message specific to that.
+	if isGoCBViewTimeoutError(err) {
+		return viewResult, ErrViewTimeoutError
+	}
+
+	// If it's any other error, return it as-is
 	if err != nil {
 		return viewResult, err
 	}
@@ -1533,11 +1744,28 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 
 		}
 
-		// Any error processing view results is returned on Close
+		// Any error processing view results is returned on Close.  If Close() returns errors, it most likely means
+		// that there were "partial errors" (see SG issue #2702).  If there were multiple partial errors, Close()
+		// returns a gocb.MultiError, but if there was only a single partial error, it will be a gocb.viewErr
 		err := goCbViewResult.Close()
 		if err != nil {
-			return viewResult, err
+			switch v := err.(type) {
+			case *gocb.MultiError:
+				for _, multiErr := range v.Errors {
+					viewErr := sgbucket.ViewError{
+						// Since we only have the error interface, just add the Error() string to the Reason field
+						Reason: multiErr.Error(),
+					}
+					viewResult.Errors = append(viewResult.Errors, viewErr)
+				}
+			default:
+				viewErr := sgbucket.ViewError{
+					Reason: v.Error(),
+				}
+				viewResult.Errors = append(viewResult.Errors, viewErr)
+			}
 		}
+
 	}
 
 	return viewResult, nil
@@ -1557,17 +1785,26 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 	}
 
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
+
+	// If it's a view timeout error, return an error message specific to that.
+	if isGoCBViewTimeoutError(err) {
+		return ErrViewTimeoutError
+	}
+
+	// If it's any other error, return it as-is
 	if err != nil {
 		return err
 	}
 
 	// Define a struct to store the rows as raw bytes
 	viewResponse := struct {
-		TotalRows int               `json:"total_rows,omitempty"`
-		Rows      []json.RawMessage `json:"rows,omitempty"`
+		TotalRows int                  `json:"total_rows,omitempty"`
+		Rows      []json.RawMessage    `json:"rows,omitempty"`
+		Errors    []sgbucket.ViewError `json:"errors,omitempty"`
 	}{
 		TotalRows: 0,
 		Rows:      []json.RawMessage{},
+		Errors:    []sgbucket.ViewError{},
 	}
 
 	if goCbViewResult != nil {
@@ -1584,6 +1821,28 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 
 		}
 
+	}
+
+	// Any error processing view results is returned on Close.  If Close() returns errors, it most likely means
+	// that there were "partial errors" (see SG issue #2702).  If there were multiple partial errors, Close()
+	// returns a gocb.MultiError, but if there was only a single partial error, it will be a gocb.viewErr
+	errClose := goCbViewResult.Close()
+	if errClose != nil {
+		switch v := errClose.(type) {
+		case *gocb.MultiError:
+			for _, multiErr := range v.Errors {
+				viewErr := sgbucket.ViewError{
+					// Since we only have the error interface, just add the Error() string to the Reason field
+					Reason: multiErr.Error(),
+				}
+				viewResponse.Errors = append(viewResponse.Errors, viewErr)
+			}
+		default:
+			viewErr := sgbucket.ViewError{
+				Reason: v.Error(),
+			}
+			viewResponse.Errors = append(viewResponse.Errors, viewErr)
+		}
 	}
 
 	// serialize the whole thing to a []byte
@@ -1626,33 +1885,32 @@ func (bucket CouchbaseBucketGoCB) Refresh() error {
 
 }
 
-// TODO: Change to StartMutationFeed
-func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
-	switch strings.ToLower(bucket.spec.FeedType) {
-	case DcpFeedType:
-		return StartDCPFeed(args, bucket.spec, bucket)
+// GoCB (and Server 5.0.0) don't support the TapFeed. For legacy support (bucket shadowing), start a DCP feed and stream over a single channel
+func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 
-	case DcpShardFeedType:
+	LogTo("DCP", "Using DCP to generate TAP-like stream")
+	// Create the feed channel that will be passed back to the caller
+	eventFeed := make(chan sgbucket.FeedEvent, 10)
+	terminator := make(chan bool)
 
-		// TODO: refactor to share this common code or remove if not need
+	//  Create a new SimpleFeed for Close() support
+	feed := &SimpleFeed{
+		eventFeed:  eventFeed,
+		terminator: terminator,
+	}
+	args.Terminator = terminator
 
-		// CBGT initialization
-		LogTo("Feed", "Starting CBGT feed?%v", bucket.GetName())
-
-		// Create the TapEvent feed channel that will be passed back to the caller
-		eventFeed := make(chan sgbucket.TapEvent, 10)
-
-		//  - create a new SimpleFeed and pass in the eventFeed channel
-		feed := &SimpleFeed{
-			eventFeed: eventFeed,
-		}
-		return feed, nil
-
-	default:
-		return StartDCPFeed(args, bucket.spec, bucket) // TEMP Hack to default to DCP feed
-
+	callback := func(dcpFeedEvent sgbucket.FeedEvent) bool {
+		eventFeed <- dcpFeedEvent
+		return true
 	}
 
+	err := bucket.StartDCPFeed(args, callback)
+	return feed, err
+}
+
+func (bucket CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+	return StartDCPFeed(bucket, bucket.spec, args, callback)
 }
 
 func (bucket CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
@@ -1685,28 +1943,25 @@ func (bucket CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 
 func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
 
-	// TODO: implement this using the ServerStats map + add unit test
-	// https://github.com/couchbase/gocb/blob/master/bucket_crud.go#L90
-	return 0, 0, "error", fmt.Errorf("GoCB bucket does not implement CouchbaseServerVersion yet")
+	if versionString == "" {
+		stats, err := bucket.Bucket.Stats("")
+		if err != nil {
+			return 0, 0, "error", fmt.Errorf("Error calling Stats() on GoCB bucket: %v", stats)
+		}
+
+		for _, serverMap := range stats {
+			versionString = serverMap["version"]
+			// We only check the version of the first server, hopefully same for whole cluster
+			break
+		}
+	}
+
+	return ParseCouchbaseServerVersion(versionString)
+
 }
 
 func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
-
-	// Temp workaround -- create a go-couchbase bucket just to get the UUID
-	// See https://github.com/couchbase/sync_gateway/issues/2418#issuecomment-289941131
-	goCouchbaseBucket, err := GetCouchbaseBucket(bucket.spec, nil)
-	if err != nil {
-		return "", err
-	}
-	if goCouchbaseBucket == nil {
-		return "", fmt.Errorf("GetCouchbaseBucket() returned nil.  Cannot get bucket UUID")
-	}
-
-	uuid, err := goCouchbaseBucket.UUID()
-	goCouchbaseBucket.Close()
-
-	return uuid, err
-
+	return bucket.Bucket.IoRouter().BucketUUID(), nil
 }
 
 func (bucket CouchbaseBucketGoCB) Close() {

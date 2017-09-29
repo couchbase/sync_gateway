@@ -93,6 +93,8 @@ type DatabaseContextOptions struct {
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
 	OIDCOptions           *auth.OIDCOptions
 	DBOnlineCallback      DBOnlineCallback // Callback function to take the DB back online
+	ImportOptions         ImportOptions
+	EnableXattr           bool // Use xattr for _sync
 }
 
 type OidcTestProviderOptions struct {
@@ -103,11 +105,16 @@ type OidcTestProviderOptions struct {
 type UserViewsOptions struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether pass-through view query is supported through public API
 }
+
 type UnsupportedOptions struct {
 	UserViews        UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
 	Replicator2      bool                    `json:"replicator_2,omitempty"`       // Enable new replicator (_blipsync)
 	OidcTestProvider OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
-	EnableXattr      *bool                   `json:"enable_extended_attributes"`   // Use xattr for _sync
+}
+
+// Options associated with the import of documents not written by Sync Gateway
+type ImportOptions struct {
+	ImportFilter *ImportFilterFunction // Opt-in filter for document import
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -134,7 +141,16 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 	//start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		bucket, err = base.GetBucket(spec, callback)
-		return err != nil, err, bucket
+
+		// By default, if there was an error, retry
+		shouldRetry = err != nil
+
+		if err == base.ErrFatalBucketConnection {
+			base.Warn("Fatal error connecting to bucket: %v.  Not retrying", err)
+			shouldRetry = false
+		}
+
+		return shouldRetry, err, bucket
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
@@ -173,7 +189,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		autoImport: autoImport,
 		Options:    options,
 	}
-	context.revisionCache = NewRevisionCache(int(options.RevisionCacheCapacity), context.revCacheLoader)
+	context.revisionCache = NewRevisionCache(options.RevisionCacheCapacity, context.revCacheLoader)
 
 	context.EventMgr = NewEventManager()
 
@@ -209,18 +225,16 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize the tap Listener for notify handling
 	context.tapListener.Init(bucket.GetName())
 
-	// TODO: Currently we're forcing the DCP feed to restart from zero if the node is importing xattrs, based on this flag.
-	//       Will be removed when https://github.com/couchbase/sync_gateway/issues/2484 is complete.  Requires DCP processing
-	//       to be synchronous per vbucket
-	xattrImportNode := false
+	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
+	feedMode := uint64(sgbucket.FeedNoBackfill)
 	if context.UseXattrs() && context.autoImport {
-		xattrImportNode = true
+		feedMode = sgbucket.FeedResume
 	}
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.LogTo("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
-		if err = context.tapListener.Start(bucket, options.TrackDocs, xattrImportNode, func(bucket string, err error) {
+		if err = context.tapListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
 			msg := fmt.Sprintf("%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
 			base.Warn(msg)
@@ -402,11 +416,11 @@ func (context *DatabaseContext) RestartListener() error {
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
 	context.tapListener.Init(context.Bucket.GetName())
-	xattrImportNode := false
+	feedMode := uint64(sgbucket.FeedNoBackfill)
 	if context.UseXattrs() && context.autoImport {
-		xattrImportNode = true
+		feedMode = sgbucket.FeedResume
 	}
-	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, xattrImportNode, nil); err != nil {
+	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil); err != nil {
 		return err
 	}
 	return nil
@@ -506,12 +520,14 @@ func (db *Database) DocCount() int {
 func installViews(bucket base.Bucket, useXattrs bool) error {
 
 	// syncData specifies the path to Sync Gateway sync metadata used in the map function -
-	// in the document body when xattrs disabled, in the mobile xattr when xattrs enabled.
-	syncData := "var sync = doc._sync;"
-	if useXattrs {
-		syncData = fmt.Sprintf(`var sync = meta.xattrs.%s; 
-							var mb_24037 = doc.id;`, KSyncXattrName) // Workaround for https://issues.couchbase.com/browse/MB-24037
-	}
+	// in the document body when xattrs available, in the mobile xattr when xattrs enabled.
+	syncData := fmt.Sprintf(`var sync
+							if (meta.xattrs === undefined || meta.xattrs.%s === undefined) {
+		                        sync = doc._sync
+		                  	} else {
+		                       	sync = meta.xattrs.%s
+		                    }
+		                     `, KSyncXattrName, KSyncXattrName)
 
 	// View for finding every Couchbase doc (used when deleting a database)
 	// Key is docid; value is null
@@ -691,37 +707,17 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	roleAccess_vbSeq_map = fmt.Sprintf(roleAccess_vbSeq_map, syncData)
 
 	designDocMap := map[string]sgbucket.DesignDoc{}
-
-	designDocMap[DesignDocSyncGatewayChannels] = sgbucket.DesignDoc{
+	designDocMap[DesignDocSyncGateway] = sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewChannels: sgbucket.ViewDef{Map: channels_map},
+			ViewChannels:        sgbucket.ViewDef{Map: channels_map},
+			ViewAccess:          sgbucket.ViewDef{Map: access_map},
+			ViewRoleAccess:      sgbucket.ViewDef{Map: roleAccess_map},
+			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
+			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
+			ViewPrincipals:      sgbucket.ViewDef{Map: principals_map},
 		},
 		Options: &sgbucket.DesignDocOptions{
 			IndexXattrOnTombstones: true,
-		},
-	}
-
-	designDocMap[DesignDocSyncGatewayAccess] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewAccess: sgbucket.ViewDef{Map: access_map},
-		},
-	}
-
-	designDocMap[DesignDocSyncGatewayAccessVbSeq] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewAccessVbSeq: sgbucket.ViewDef{Map: access_vbSeq_map},
-		},
-	}
-
-	designDocMap[DesignDocSyncGatewayRoleAccess] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewRoleAccess: sgbucket.ViewDef{Map: roleAccess_map},
-		},
-	}
-
-	designDocMap[DesignDocSyncGatewayRoleAccessVbSeq] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
 		},
 	}
 
@@ -733,7 +729,6 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 			ViewOldRevs:    sgbucket.ViewDef{Map: oldrevs_map, Reduce: "_count"},
 			ViewSessions:   sgbucket.ViewDef{Map: sessions_map},
 			ViewTombstones: sgbucket.ViewDef{Map: tombstones_map},
-			ViewPrincipals: sgbucket.ViewDef{Map: principals_map},
 		},
 		Options: &sgbucket.DesignDocOptions{
 			IndexXattrOnTombstones: true, // For ViewTombstones
@@ -744,9 +739,6 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 		11, //MaxNumRetries approx 10 seconds total retry duration
 		5,  //InitialRetrySleepTimeMS
 	)
-
-	// Remove legacy sync gateway design doc, if present
-	bucket.DeleteDDoc(DesignDocSyncGateway)
 
 	// add all design docs from map into bucket
 	for designDocName, designDoc := range designDocMap {
@@ -832,7 +824,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewPrincipals, Body{"stale": false})
+	vres, err := db.Bucket.View(DesignDocSyncGateway, ViewPrincipals, Body{"stale": false})
 	if err != nil {
 		return
 	}
@@ -1025,7 +1017,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	options := Body{"stale": false, "reduce": false}
 	if !doCurrentDocs {
 		options["endkey"] = []interface{}{true}
-		options["endkey_inclusive"] = false // TODO: is this valid?  See https://forums.couchbase.com/t/is-the-endkey-inclusive-view-option-still-valid/12784
+		options["inclusive_end"] = false
 	} else if !doImportDocs {
 		options["startkey"] = []interface{}{true}
 	}
@@ -1090,7 +1082,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		}
 		var err error
 		if db.UseXattrs() {
-			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
+			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, nil, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
 				// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing, so deleteDoc is always returned as false.
 				if currentValue == nil || len(currentValue) == 0 {
 					return nil, nil, deleteDoc, errors.New("Cancel update")
@@ -1208,15 +1200,26 @@ func (context *DatabaseContext) GetUserViewsEnabled() bool {
 }
 
 func (context *DatabaseContext) UseXattrs() bool {
-	if context.Options.UnsupportedOptions.EnableXattr != nil {
-		return *context.Options.UnsupportedOptions.EnableXattr
+	return context.Options.EnableXattr
+}
+
+func (context *DatabaseContext) AllowExternalRevBodyStorage() bool {
+
+	// Support unit testing w/out xattrs enabled
+	if base.TestExternalRevStorage {
+		return false
 	}
-	return base.DefaultUseXattrs
+	return !context.UseXattrs()
 }
 
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 
 	context.Options.UnsupportedOptions.UserViews.Enabled = &value
+}
+
+// For test usage
+func (context *DatabaseContext) FlushRevisionCache() {
+	context.revisionCache = NewRevisionCache(context.Options.RevisionCacheCapacity, context.revCacheLoader)
 }
 
 //////// SEQUENCE ALLOCATION:

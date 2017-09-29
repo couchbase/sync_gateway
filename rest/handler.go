@@ -149,7 +149,7 @@ func (h *handler) invoke(method handlerMethod) error {
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 
-	h.setHeader("Server", VersionString)
+	h.setHeader("Server", base.VersionString)
 
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
@@ -599,8 +599,6 @@ func (h *handler) writeTextStatus(status int, value []byte) {
 	h.response.Write(value)
 
 }
-
-
 
 func (h *handler) addJSON(value interface{}) {
 	encoder := json.NewEncoder(h.response)

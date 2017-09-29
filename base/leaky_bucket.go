@@ -128,8 +128,8 @@ func (b *LeakyBucket) WriteCasWithXattr(k string, xattr string, exp int, cas uin
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
 }
 
-func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
-	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, callback)
+func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, callback)
 }
 
 func (b *LeakyBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
@@ -140,12 +140,12 @@ func (b *LeakyBucket) DeleteWithXattr(k string, xattr string) error {
 	return b.bucket.DeleteWithXattr(k, xattr)
 }
 
-func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 
 	if b.config.TapFeedDeDuplication {
 		return b.wrapFeedForDeduplication(args)
 	} else if len(b.config.TapFeedMissingDocs) > 0 {
-		callback := func(event *sgbucket.TapEvent) bool {
+		callback := func(event *sgbucket.FeedEvent) bool {
 			for _, key := range b.config.TapFeedMissingDocs {
 				if string(event.Key) == key {
 					return false
@@ -160,9 +160,9 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed
 		if err != nil {
 			return walrusTapFeed, err
 		}
-		// this is the sgbucket.TapFeed impl we'll return to callers, which
+		// this is the sgbucket.MutationFeed impl we'll return to callers, which
 		// will add vbucket information
-		channel := make(chan sgbucket.TapEvent, 10)
+		channel := make(chan sgbucket.FeedEvent, 10)
 		vbTapFeed := &wrappedTapFeedImpl{
 			channel:        channel,
 			wrappedTapFeed: walrusTapFeed,
@@ -182,9 +182,13 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed
 
 }
 
-type EventUpdateFunc func(event *sgbucket.TapEvent) bool
+func (b *LeakyBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+	return b.bucket.StartDCPFeed(args, callback)
+}
 
-func (b *LeakyBucket) wrapFeed(args sgbucket.TapArguments, callback EventUpdateFunc) (sgbucket.TapFeed, error) {
+type EventUpdateFunc func(event *sgbucket.FeedEvent) bool
+
+func (b *LeakyBucket) wrapFeed(args sgbucket.FeedArguments, callback EventUpdateFunc) (sgbucket.MutationFeed, error) {
 
 	// kick off the wrapped sgbucket tap feed
 	walrusTapFeed, err := b.bucket.StartTapFeed(args)
@@ -193,9 +197,9 @@ func (b *LeakyBucket) wrapFeed(args sgbucket.TapArguments, callback EventUpdateF
 	}
 
 	// create an output channel
-	channel := make(chan sgbucket.TapEvent, 10)
+	channel := make(chan sgbucket.FeedEvent, 10)
 
-	// this is the sgbucket.TapFeed impl we'll return to callers, which
+	// this is the sgbucket.MutationFeed impl we'll return to callers, which
 	// will have missing entries
 	wrapperFeed := &wrappedTapFeedImpl{
 		channel:        channel,
@@ -213,7 +217,7 @@ func (b *LeakyBucket) wrapFeed(args sgbucket.TapArguments, callback EventUpdateF
 	return wrapperFeed, nil
 }
 
-func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 	// create an output channel
 	// start a goroutine which reads off the sgbucket tap feed
 	//   - de-duplicate certain events
@@ -233,9 +237,9 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbu
 	}
 
 	// create an output channel for de-duplicated events
-	channel := make(chan sgbucket.TapEvent, 10)
+	channel := make(chan sgbucket.FeedEvent, 10)
 
-	// this is the sgbucket.TapFeed impl we'll return to callers, which
+	// this is the sgbucket.MutationFeed impl we'll return to callers, which
 	// will reead from the de-duplicated events channel
 	dupeTapFeed := &wrappedTapFeedImpl{
 		channel:        channel,
@@ -245,7 +249,7 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbu
 	go func() {
 
 		// the buffer to hold tap events that are candidates for de-duplication
-		deDupeBuffer := []sgbucket.TapEvent{}
+		deDupeBuffer := []sgbucket.FeedEvent{}
 
 		for {
 			select {
@@ -254,7 +258,7 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbu
 					// channel closed, goroutine is done
 					// dedupe and send what we currently have
 					dedupeAndForward(deDupeBuffer, channel)
-					deDupeBuffer = []sgbucket.TapEvent{}
+					deDupeBuffer = []sgbucket.FeedEvent{}
 					return
 				}
 				deDupeBuffer = append(deDupeBuffer, tapEvent)
@@ -263,7 +267,7 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbu
 				// and reset buffer.
 				if len(deDupeBuffer) >= deDuplicationWindowSize {
 					dedupeAndForward(deDupeBuffer, channel)
-					deDupeBuffer = []sgbucket.TapEvent{}
+					deDupeBuffer = []sgbucket.FeedEvent{}
 				}
 
 			case <-time.After(deDuplicationTimeoutMs):
@@ -271,7 +275,7 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.TapArguments) (sgbu
 				// give up on waiting for the buffer to fill up,
 				// de-dupe and send what we currently have
 				dedupeAndForward(deDupeBuffer, channel)
-				deDupeBuffer = []sgbucket.TapEvent{}
+				deDupeBuffer = []sgbucket.FeedEvent{}
 
 			}
 		}
@@ -317,23 +321,23 @@ func (b *LeakyBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uui
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.
 type wrappedTapFeedImpl struct {
-	channel        chan sgbucket.TapEvent
-	wrappedTapFeed sgbucket.TapFeed
+	channel        chan sgbucket.FeedEvent
+	wrappedTapFeed sgbucket.MutationFeed
 }
 
 func (feed *wrappedTapFeedImpl) Close() error {
 	return feed.wrappedTapFeed.Close()
 }
 
-func (feed *wrappedTapFeedImpl) Events() <-chan sgbucket.TapEvent {
+func (feed *wrappedTapFeedImpl) Events() <-chan sgbucket.FeedEvent {
 	return feed.channel
 }
 
-func (feed *wrappedTapFeedImpl) WriteEvents() chan<- sgbucket.TapEvent {
+func (feed *wrappedTapFeedImpl) WriteEvents() chan<- sgbucket.FeedEvent {
 	return feed.channel
 }
 
-func dedupeAndForward(tapEvents []sgbucket.TapEvent, destChannel chan<- sgbucket.TapEvent) {
+func dedupeAndForward(tapEvents []sgbucket.FeedEvent, destChannel chan<- sgbucket.FeedEvent) {
 
 	deduped := dedupeTapEvents(tapEvents)
 
@@ -343,13 +347,13 @@ func dedupeAndForward(tapEvents []sgbucket.TapEvent, destChannel chan<- sgbucket
 
 }
 
-func dedupeTapEvents(tapEvents []sgbucket.TapEvent) []sgbucket.TapEvent {
+func dedupeTapEvents(tapEvents []sgbucket.FeedEvent) []sgbucket.FeedEvent {
 
 	// For each document key, keep track of the latest seen tapEvent
 	// doc1 -> tapEvent with Seq=1
 	// doc2 -> tapEvent with Seq=5
 	// (if tapEvent with Seq=7 comes in for doc1, it will clobber existing)
-	latestTapEventPerKey := map[string]sgbucket.TapEvent{}
+	latestTapEventPerKey := map[string]sgbucket.FeedEvent{}
 
 	for _, tapEvent := range tapEvents {
 		key := string(tapEvent.Key)
@@ -360,7 +364,7 @@ func dedupeTapEvents(tapEvents []sgbucket.TapEvent) []sgbucket.TapEvent {
 	// is in latestTapEventPerKey, and discard all previous mutations
 	// of that doc.  This will preserve the original
 	// sequence order as read off the feed.
-	deduped := []sgbucket.TapEvent{}
+	deduped := []sgbucket.FeedEvent{}
 	for _, tapEvent := range tapEvents {
 		key := string(tapEvent.Key)
 		latestTapEventForKey := latestTapEventPerKey[key]

@@ -15,13 +15,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
-	memcached "github.com/couchbase/gomemcached/client"
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/gomemcached/client"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 )
 
@@ -83,8 +83,8 @@ func init() {
 
 // TODO: unalias these and just pass around sgbucket.X everywhere
 type Bucket sgbucket.Bucket
-type TapArguments sgbucket.TapArguments
-type TapFeed sgbucket.TapFeed
+type FeedArguments sgbucket.FeedArguments
+type TapFeed sgbucket.MutationFeed
 
 type AuthHandler couchbase.AuthHandler
 type CouchbaseDriver int
@@ -95,9 +95,11 @@ type BucketSpec struct {
 	Server, PoolName, BucketName, FeedType string
 	Auth                                   AuthHandler
 	CouchbaseDriver                        CouchbaseDriver
-	MaxNumRetries                          int  // max number of retries before giving up
-	InitialRetrySleepTimeMS                int  // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
-	UseXattrs                              bool // Whether to use xattrs to store _sync metadata.  Used during view initialization
+	MaxNumRetries                          int     // max number of retries before giving up
+	InitialRetrySleepTimeMS                int     // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
+	UseXattrs                              bool    // Whether to use xattrs to store _sync metadata.  Used during view initialization
+	ViewQueryTimeoutSecs                   *uint32 // the view query timeout in seconds (default: 75 seconds)
+
 }
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
@@ -109,6 +111,22 @@ func (spec BucketSpec) IsWalrusBucket() bool {
 	return strings.Contains(spec.Server, "walrus:")
 }
 
+func (b BucketSpec) GetViewQueryTimeout() time.Duration {
+
+	// If the user doesn't specify any timeout, default to 75s
+	if b.ViewQueryTimeoutSecs == nil {
+		return time.Second * 75
+	}
+
+	// If the user specifies 0, then translate that to "No timeout"
+	if *b.ViewQueryTimeoutSecs == 0 {
+		return time.Hour * 24 * 7 * 365 * 10 // 10 years
+	}
+
+	return time.Duration(*b.ViewQueryTimeoutSecs) * time.Second
+
+}
+
 // Implementation of sgbucket.Bucket that talks to a Couchbase server
 type CouchbaseBucket struct {
 	*couchbase.Bucket            // the underlying go-couchbase bucket
@@ -117,18 +135,18 @@ type CouchbaseBucket struct {
 
 type couchbaseFeedImpl struct {
 	*couchbase.TapFeed
-	events chan sgbucket.TapEvent
+	events chan sgbucket.FeedEvent
 }
 
 var (
 	versionString string
 )
 
-func (feed *couchbaseFeedImpl) Events() <-chan sgbucket.TapEvent {
+func (feed *couchbaseFeedImpl) Events() <-chan sgbucket.FeedEvent {
 	return feed.events
 }
 
-func (feed *couchbaseFeedImpl) WriteEvents() chan<- sgbucket.TapEvent {
+func (feed *couchbaseFeedImpl) WriteEvents() chan<- sgbucket.FeedEvent {
 	return feed.events
 }
 
@@ -191,7 +209,7 @@ func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.W
 	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
 }
 
-func (bucket CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (bucket CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	Warn("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 	return 0, errors.New("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 }
@@ -226,40 +244,8 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 	return vres, err
 }
 
-// TODO: change to StartMutationFeed
-func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 
-	LogTo("Feed", "StartTapFeed called with feed type: %v for bucket: %v", bucket.spec.FeedType, bucket.spec.BucketName)
-
-	// Uses DCP by default, unless TAP is explicitly specified
-	switch strings.ToLower(bucket.spec.FeedType) {
-
-	case TapFeedType:
-		return bucket.StartCouchbaseTapFeed(args)
-
-	case DcpShardFeedType:
-
-		// CBGT initialization
-		LogTo("Feed", "Starting CBGT feed?%v", bucket.GetName())
-
-		// Create the TapEvent feed channel that will be passed back to the caller
-		eventFeed := make(chan sgbucket.TapEvent, 10)
-
-		//  - create a new SimpleFeed and pass in the eventFeed channel
-		feed := &SimpleFeed{
-			eventFeed: eventFeed,
-		}
-		return feed, nil
-
-	default:
-		LogTo("Feed", "Using DCP (cbdatasource) feed for bucket: %q based on feed_type specified in config file", bucket.GetName())
-		return StartDCPFeed(args, bucket.spec, bucket)
-
-	}
-
-}
-
-func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
 	cbArgs := memcached.TapArguments{
 		Backfill: args.Backfill,
 		Dump:     args.Dump,
@@ -271,12 +257,12 @@ func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) 
 	}
 
 	// Create a bridge from the Couchbase tap feed to a Sgbucket tap feed:
-	events := make(chan sgbucket.TapEvent)
+	events := make(chan sgbucket.FeedEvent)
 	tapFeed := couchbaseFeedImpl{cbFeed, events}
 	go func() {
 		for cbEvent := range cbFeed.C {
-			events <- sgbucket.TapEvent{
-				Opcode:   sgbucket.TapOpcode(cbEvent.Opcode),
+			events <- sgbucket.FeedEvent{
+				Opcode:   sgbucket.FeedOpcode(cbEvent.Opcode),
 				Expiry:   cbEvent.Expiry,
 				Flags:    cbEvent.Flags,
 				Key:      cbEvent.Key,
@@ -289,85 +275,8 @@ func (bucket CouchbaseBucket) StartCouchbaseTapFeed(args sgbucket.TapArguments) 
 	return &tapFeed, nil
 }
 
-// This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
-// bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
-func StartDCPFeed(args sgbucket.TapArguments, spec BucketSpec, bucket Bucket) (sgbucket.TapFeed, error) {
-
-	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
-	// reusing the bucket connection we've already established.
-	urls := []string{spec.Server}
-	poolName := spec.PoolName
-	if poolName == "" {
-		poolName = "default"
-	}
-	bucketName := spec.BucketName
-
-	vbucketIdsArr := []uint16(nil) // nil means get all the vbuckets.
-
-	dcpReceiver := NewDCPReceiver()
-
-	dcpReceiver.SetBucketNotifyFn(args.Notify)
-
-	maxVbno, err := bucket.GetMaxVbno()
-	if err != nil {
-		return nil, err
-	}
-
-	startSeqnos := make(map[uint16]uint64, maxVbno)
-	vbuuids := make(map[uint16]uint64, maxVbno)
-
-	// GetStatsVbSeqno retrieves high sequence number for each vbucket, to enable starting
-	// DCP stream from that position.  Also being used as a check on whether the server supports
-	// DCP.
-	statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno, false)
-	if err != nil {
-		return nil, errors.New("Error retrieving stats-vbseqno - DCP not supported")
-	}
-
-	if args.Backfill == sgbucket.TapNoBackfill {
-		// For non-backfill, use vbucket uuids, high sequence numbers
-		LogTo("Feed+", "Seeding seqnos: %v", highSeqnos)
-		vbuuids = statsUuids
-		startSeqnos = highSeqnos
-	}
-	dcpReceiver.SeedSeqnos(vbuuids, startSeqnos)
-
-	var dataSourceOptions *cbdatasource.BucketDataSourceOptions
-	if spec.UseXattrs {
-		dataSourceOptions = cbdatasource.DefaultBucketDataSourceOptions
-		dataSourceOptions.IncludeXAttrs = true
-	}
-
-	LogTo("Feed+", "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", urls, poolName, bucketName)
-	bds, err := cbdatasource.NewBucketDataSource(
-		urls,
-		poolName,
-		bucketName,
-		"",
-		vbucketIdsArr,
-		spec.Auth,
-		dcpReceiver,
-		dataSourceOptions,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	events := make(chan sgbucket.TapEvent)
-	dcpFeed := couchbaseDCPFeedImpl{bds, events}
-
-	if err = bds.Start(); err != nil {
-		return nil, err
-	}
-
-	go func() {
-		for dcpEvent := range dcpReceiver.GetEventFeed() {
-			events <- dcpEvent
-		}
-	}()
-
-	return &dcpFeed, nil
-
+func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+	return StartDCPFeed(bucket, bucket.spec, args, callback)
 }
 
 // Goes out to the bucket and gets the high sequence number for all vbuckets and returns
@@ -451,6 +360,12 @@ func (bucket CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint
 		}
 	}
 
+	return ParseCouchbaseServerVersion(versionString)
+
+}
+
+func ParseCouchbaseServerVersion(versionString string) (major uint64, minor uint64, micro string, err error) {
+
 	if versionString == "" {
 		return 0, 0, "", errors.New("version not defined in GetStats map")
 	}
@@ -471,6 +386,20 @@ func (bucket CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint
 	micro = arr[2]
 
 	return
+
+}
+
+func (bucket *CouchbaseBucket) ErrorIfPostCBServerMajorVersion(lastMajorVersionAllowed uint64) error {
+	major, _, _, err := bucket.CouchbaseServerVersion()
+	if err != nil {
+		return err
+	}
+
+	if major > lastMajorVersionAllowed {
+		Warn("Couchbase Server major version is %v, which is later than %v", major, lastMajorVersionAllowed)
+		return ErrFatalBucketConnection
+	}
+	return nil
 }
 
 func (bucket CouchbaseBucket) UUID() (string, error) {
@@ -492,19 +421,30 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 		return
 	}
 	cbbucket, err := pool.GetBucket(spec.BucketName)
+	if err != nil {
+		return nil, err
+	}
+
+	bucket = &CouchbaseBucket{cbbucket, spec}
+
+	if spec.FeedType == TapFeedType {
+		// TAP was removed in Couchbase Server 5.x, so ensure connecting to 4.x, else error.  See SG Issue #2523
+		if errVersionCheck := bucket.ErrorIfPostCBServerMajorVersion(4); errVersionCheck != nil {
+			return nil, errVersionCheck
+		}
+	}
+
 	spec.MaxNumRetries = 10
 	spec.InitialRetrySleepTimeMS = 5
-	if err == nil {
-		// Start bucket updater - see SG issue 1011
-		cbbucket.RunBucketUpdater(func(bucket string, err error) {
-			Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
 
-			if callback != nil {
-				callback(bucket, err)
-			}
-		})
-		bucket = &CouchbaseBucket{cbbucket, spec}
-	}
+	// Start bucket updater - see SG issue 1011
+	cbbucket.RunBucketUpdater(func(bucket string, err error) {
+		Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
+
+		if callback != nil {
+			callback(bucket, err)
+		}
+	})
 
 	return
 }
@@ -540,6 +480,19 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 			bucket, err = GetCouchbaseBucket(spec, callback)
 		default:
 			panic(fmt.Sprintf("Unexpected CouchbaseDriver: %v", spec.CouchbaseDriver))
+		}
+
+		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
+		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
+		if spec.UseXattrs {
+			majorVersion, _, _, errServerVersion := bucket.CouchbaseServerVersion()
+			if errServerVersion != nil {
+				return nil, errServerVersion
+			}
+			if majorVersion < 5 {
+				Warn("If using XATTRS, Couchbase Server version must be >= 5.0.  Major Version: %v", majorVersion)
+				return nil, ErrFatalBucketConnection
+			}
 		}
 
 	}
@@ -660,4 +613,25 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 	}
 
 	return false
+}
+
+// Returns mutation feed type for bucket.  Will first return the feed type from the spec, when present.  If not found, returns default feed type for bucket
+// (DCP for any couchbase bucket, TAP otherwise)
+func GetFeedType(bucket Bucket) (feedType string) {
+	switch typedBucket := bucket.(type) {
+	case *CouchbaseBucket:
+		if typedBucket.spec.FeedType != "" {
+			return strings.ToLower(typedBucket.spec.FeedType)
+		} else {
+			return DcpFeedType
+		}
+	case *CouchbaseBucketGoCB:
+		if typedBucket.spec.FeedType != "" {
+			return strings.ToLower(typedBucket.spec.FeedType)
+		} else {
+			return DcpFeedType
+		}
+	default:
+		return TapFeedType
+	}
 }

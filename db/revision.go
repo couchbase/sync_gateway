@@ -150,6 +150,12 @@ func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) 
 	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), 300, base.BinaryDocument(body))
 }
 
+// Currently only used by unit tests - deletes an archived old revision from the database
+func (db *Database) purgeOldRevisionJSON(docid string, revid string) error {
+	base.LogTo("CRUD+", "Purging old revision backup %q / %q ", docid, revid)
+	return db.Bucket.Delete(oldRevisionKey(docid, revid))
+}
+
 //////// UTILITY FUNCTIONS:
 
 func oldRevisionKey(docid string, revid string) string {
@@ -180,7 +186,7 @@ func genOfRevID(revid string) int {
 	var generation int
 	n, _ := fmt.Sscanf(revid, "%d-", &generation)
 	if n < 1 || generation < 1 {
-		base.Warn("genOfRevID failed on %q", revid)
+		base.Warn("genOfRevID unsuccessful for %q", revid)
 		return -1
 	}
 	return generation
@@ -195,7 +201,7 @@ func ParseRevID(revid string) (int, string) {
 	var id string
 	n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
 	if n < 1 || generation < 1 {
-		base.Warn("parseRevID failed on %q", revid)
+		base.Warn("parseRevID unsuccessful for %q", revid)
 		return -1, ""
 	}
 	return generation, id

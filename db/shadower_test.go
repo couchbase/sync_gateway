@@ -1,19 +1,16 @@
 package db
 
 import (
+	"encoding/json"
+	"fmt"
 	"regexp"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/go.assert"
-
-	"encoding/json"
-
-	"fmt"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbaselabs/go.assert"
 )
 
 func makeExternalBucket() base.Bucket {
@@ -56,7 +53,7 @@ func TestShadowerPull(t *testing.T) {
 	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
 	assertNoError(t, err, "NewShadower")
 	defer shadower.Stop()
-	
+
 	base.Log("Waiting for shadower to catch up...")
 	var doc1, doc2 *document
 	waitFor(t, func() bool {
@@ -80,6 +77,10 @@ func TestShadowerPull(t *testing.T) {
 	assert.True(t, doc1.hasFlag(channels.Deleted))
 	_, err = db.Get("key1")
 	assert.DeepEquals(t, err, &base.HTTPError{Status: 404, Message: "deleted"})
+
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&shadower.pullCount) >= 4
+	})
 }
 
 func TestShadowerPullWithNotifications(t *testing.T) {
@@ -144,6 +145,9 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 
 	assert.True(t, channelSize == 3)
 
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&shadower.pullCount) >= 4
+	})
 }
 
 func TestShadowerPush(t *testing.T) {
@@ -191,6 +195,10 @@ func TestShadowerPush(t *testing.T) {
 		return err != nil
 	})
 	assert.True(t, base.IsDocNotFoundError(err))
+
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&db.Shadower.pullCount) >= 3
+	})
 }
 
 // Make sure a rev inserted into the db by a client replicator doesn't get echoed from the
@@ -235,7 +243,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is currently failing against Couchbase server.  Needs investigation. " +
+		t.Skip("This test is currently not passing against Couchbase server.  Needs investigation. " +
 			"Logs: https://gist.github.com/tleyden/795df447314a521aba5bd1aa6d0ed42e")
 	}
 
@@ -331,4 +339,8 @@ func TestShadowerPattern(t *testing.T) {
 	assert.DeepEquals(t, doc1.body, Body{"foo": float64(1)})
 	assert.True(t, docI == nil)
 	assert.DeepEquals(t, doc2.body, Body{"bar": float64(-1)})
+
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&shadower.pullCount) >= 2
+	})
 }

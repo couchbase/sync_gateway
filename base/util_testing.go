@@ -29,6 +29,7 @@ const (
 )
 
 var FlushOrRecreateTestBucket = FlushBetweenTests
+var TestExternalRevStorage = false
 
 func init() {
 	// Prevent https://issues.couchbase.com/browse/MB-24237
@@ -272,9 +273,23 @@ func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
 
 func (tbm *TestBucketManager) EmptyTestBucket() error {
 
-	if err := tbm.BucketManager.Flush(); err != nil {
+	// Try to Flush the bucket in a retry loop
+	// Ignore sporadic errors like:
+	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		err = tbm.BucketManager.Flush()
+		Warn("Error flushing bucket: %v  Will retry.", err)
+		shouldRetry = (err != nil)  // retry (until max attempts) if there was an error
+		return shouldRetry, err, nil
+	}
+	sleeper := CreateDoublingSleeperFunc(20, 100)
+
+	err, _ := RetryLoop("EmptyTestBucket", worker, sleeper)
+	if err != nil {
 		return err
 	}
+
 
 	for {
 
@@ -405,4 +420,15 @@ func (tbm *TestBucketManager) CreateTestBucket() error {
 	}
 
 	return nil
+}
+
+// Generates a string of size int
+const alphaNumeric = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+func CreateProperty(size int) (result string) {
+	resultBytes := make([]byte, size)
+	for i := 0; i < size; i++ {
+		resultBytes[i] = alphaNumeric[i%len(alphaNumeric)]
+	}
+	return string(resultBytes)
 }

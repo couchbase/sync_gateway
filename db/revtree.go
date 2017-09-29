@@ -10,14 +10,12 @@
 package db
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
-
-	"errors"
-
-	"bytes"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -29,7 +27,8 @@ type RevInfo struct {
 	ID       string
 	Parent   string
 	Deleted  bool
-	Body     []byte
+	Body     []byte // Used when revision body stored inline (stores bodies)
+	BodyKey  string // Used when revision body stored externally (doc key used for external storage)
 	Channels base.Set
 	depth    uint32
 }
@@ -45,11 +44,12 @@ type RevTree map[string]*RevInfo
 // rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
 // So the parent of Revs[i] is Revs[Parents[i]] (unless Parents[i] == -1, which denotes a root.)
 type revTreeList struct {
-	Revs       []string          `json:"revs"`              // The revision IDs
-	Parents    []int             `json:"parents"`           // Index of parent of each revision (-1 if root)
-	Deleted    []int             `json:"deleted,omitempty"` // Indexes of revisions that are deletions
-	Bodies_Old []string          `json:"bodies,omitempty"`  // JSON of each revision (legacy)
-	BodyMap    map[string]string `json:"bodymap,omitempty"` // JSON of each revision
+	Revs       []string          `json:"revs"`                 // The revision IDs
+	Parents    []int             `json:"parents"`              // Index of parent of each revision (-1 if root)
+	Deleted    []int             `json:"deleted,omitempty"`    // Indexes of revisions that are deletions
+	Bodies_Old []string          `json:"bodies,omitempty"`     // JSON of each revision (legacy)
+	BodyMap    map[string]string `json:"bodymap,omitempty"`    // JSON of each revision
+	BodyKeyMap map[string]string `json:"bodyKeyMap,omitempty"` // Keys of revision bodies stored in external documents
 	Channels   []base.Set        `json:"channels"`
 }
 
@@ -66,11 +66,19 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	for _, info := range tree {
 		revIndexes[info.ID] = i
 		rep.Revs[i] = info.ID
-		if info.Body != nil {
-			if rep.BodyMap == nil {
-				rep.BodyMap = make(map[string]string, 1)
+		if info.Body != nil || info.BodyKey != "" {
+			// Marshal either the BodyKey or the Body, depending on whether a BodyKey is specified
+			if info.BodyKey == "" {
+				if rep.BodyMap == nil {
+					rep.BodyMap = make(map[string]string, 1)
+				}
+				rep.BodyMap[strconv.FormatInt(int64(i), 10)] = string(info.Body)
+			} else {
+				if rep.BodyKeyMap == nil {
+					rep.BodyKeyMap = make(map[string]string)
+				}
+				rep.BodyKeyMap[strconv.FormatInt(int64(i), 10)] = info.BodyKey
 			}
-			rep.BodyMap[strconv.FormatInt(int64(i), 10)] = string(info.Body)
 		}
 		rep.Channels[i] = info.Channels
 		if info.Deleted {
@@ -83,13 +91,24 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 
 	for i, revid := range rep.Revs {
-		rep.Parents[i] = revIndexes[tree[revid].Parent]
+		parentRevId := tree[revid].Parent
+		parentRevIndex, ok := revIndexes[parentRevId]
+		if ok {
+			rep.Parents[i] = parentRevIndex
+		} else {
+			// If the parent revision does not exist in the revtree due to being a dangling parent, then
+			// consider this a root node and set the parent index to -1
+			// See SG Issue #2847 for more details.
+			rep.Parents[i] = -1
+		}
+
 	}
 
 	return json.Marshal(rep)
 }
 
 func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
+
 	if tree == nil {
 		//base.Warn("No RevTree for input %q", inputjson)
 		return nil
@@ -100,14 +119,26 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		return
 	}
 
+	//validate revTreeList revs, parents and channels lists are of equal length
+	if !(len(rep.Revs) == len(rep.Parents) && len(rep.Revs) == len(rep.Channels)) {
+		return errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent")
+	}
+
 	for i, revid := range rep.Revs {
 		info := RevInfo{ID: revid}
+		stringIndex := strconv.FormatInt(int64(i), 10)
 		if rep.BodyMap != nil {
-			if body := rep.BodyMap[strconv.FormatInt(int64(i), 10)]; body != "" {
+			if body := rep.BodyMap[stringIndex]; body != "" {
 				info.Body = []byte(body)
 			}
 		} else if rep.Bodies_Old != nil && len(rep.Bodies_Old[i]) > 0 {
 			info.Body = []byte(rep.Bodies_Old[i])
+		}
+		if rep.BodyKeyMap != nil {
+			bodyKey, ok := rep.BodyKeyMap[stringIndex]
+			if ok {
+				info.BodyKey = bodyKey
+			}
 		}
 		if rep.Channels != nil {
 			info.Channels = rep.Channels[i]
@@ -153,20 +184,6 @@ func (tree RevTree) getParent(revid string) string {
 	return info.Parent
 }
 
-// Returns the history of a revid as an array of revids in reverse chronological order.
-func (tree RevTree) getHistory(revid string) []string {
-	history := make([]string, 0, 5)
-	for revid != "" {
-		info, err := tree.getInfo(revid)
-		if err != nil {
-			break
-		}
-		history = append(history, revid)
-		revid = info.Parent
-	}
-	return history
-}
-
 // Returns the leaf revision IDs (those that have no children.)
 func (tree RevTree) GetLeaves() []string {
 	acceptAllLeavesFilter := func(revId string) bool {
@@ -201,6 +218,7 @@ func (tree RevTree) forEachLeaf(callback func(*RevInfo)) {
 	for revid, info := range tree {
 		if !isParent[revid] {
 			callback(info)
+
 		}
 	}
 }
@@ -260,22 +278,26 @@ func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string
 }
 
 // Records a revision in a RevTree.
-func (tree RevTree) addRevision(info RevInfo) {
+func (tree RevTree) addRevision(docid string, info RevInfo) (err error) {
 	revid := info.ID
 	if revid == "" {
-		panic("empty revid is illegal")
+		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", docid))
+		return
 	}
 	if tree.contains(revid) {
-		panic(fmt.Sprintf("already contains rev %q", revid))
+		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", docid, revid))
+		return
 	}
 	parent := info.Parent
 	if parent != "" && !tree.contains(parent) {
-		panic(fmt.Sprintf("parent id %q is missing", parent))
+		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", docid, parent))
+		return
 	}
 	tree[revid] = &info
+	return nil
 }
 
-func (tree RevTree) getRevisionBody(revid string) ([]byte, bool) {
+func (tree RevTree) getRevisionBody(revid string, loader RevLoaderFunc) ([]byte, bool) {
 	if revid == "" {
 		panic("Illegal empty revision ID")
 	}
@@ -283,10 +305,21 @@ func (tree RevTree) getRevisionBody(revid string) ([]byte, bool) {
 	if !found {
 		return nil, false
 	}
+
+	// If we don't have a Body in memory and there's a BodyKey present, attempt to retrieve using the loader
+	if info.Body == nil && info.BodyKey != "" {
+		if info.BodyKey != "" {
+			var err error
+			info.Body, err = loader(info.BodyKey)
+			if err != nil {
+				return nil, false
+			}
+		}
+	}
 	return info.Body, true
 }
 
-func (tree RevTree) setRevisionBody(revid string, body []byte) {
+func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string) {
 	if revid == "" {
 		panic("Illegal empty revision ID")
 	}
@@ -294,19 +327,21 @@ func (tree RevTree) setRevisionBody(revid string, body []byte) {
 	if !found {
 		panic(fmt.Sprintf("rev id %q not found", revid))
 	}
+
+	info.BodyKey = bodyKey
 	info.Body = body
 }
 
-func (tree RevTree) getParsedRevisionBody(revid string) Body {
-	bodyJSON, found := tree.getRevisionBody(revid)
-	if !found || len(bodyJSON) == 0 {
-		return nil
+func (tree RevTree) removeRevisionBody(revid string) (deletedBodyKey string) {
+	info, found := tree[revid]
+	if !found {
+		base.LogError(fmt.Errorf("RemoveRevisionBody called for revid not in tree: %v", revid))
+		return ""
 	}
-	var body Body
-	if err := json.Unmarshal(bodyJSON, &body); err != nil {
-		panic(fmt.Sprintf("Unexpected error parsing body of rev %q", revid))
-	}
-	return body
+	deletedBodyKey = info.BodyKey
+	info.BodyKey = ""
+	info.Body = nil
+	return deletedBodyKey
 }
 
 // Deep-copies a RevTree.
@@ -329,7 +364,10 @@ func (tree RevTree) copy() RevTree {
 //      Ex: if maxDepth is 20, and tombstoneGenerationThreshold is 100, then tombstoneGenerationThreshold will be 80
 // - Check each tombstoned branch, and if the leaf node on that branch has a generation older (less) than
 //   tombstoneGenerationThreshold, then remove all nodes on that branch up to the root of the branch.
-func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int) {
+// Returns:
+//  pruned: number of revisions pruned
+//  prunedTombstoneBodyKeys: set of tombstones with external body storage that were pruned, as map[revid]bodyKey
+func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int, prunedTombstoneBodyKeys map[string]string) {
 
 	if len(tree) <= int(maxDepth) {
 		return
@@ -356,6 +394,26 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 		}
 	}
 
+	// If we have a valid tombstoneGenerationThreshold, delete any tombstoned branches that are too old
+	if tombstoneGenerationThreshold != -1 {
+		for _, leafRevId := range leaves {
+			leaf := tree[leafRevId]
+			if !leaf.Deleted { // Ignore non-tombstoned leaves
+				continue
+			}
+			leafGeneration, _ := ParseRevID(leaf.ID)
+			if leafGeneration < tombstoneGenerationThreshold {
+				pruned += tree.DeleteBranch(leaf)
+				if leaf.BodyKey != "" {
+					if prunedTombstoneBodyKeys == nil {
+						prunedTombstoneBodyKeys = make(map[string]string)
+					}
+					prunedTombstoneBodyKeys[leafRevId] = leaf.BodyKey
+				}
+			}
+		}
+	}
+
 	// Snip dangling Parent links:
 	if pruned > 0 {
 		for _, node := range tree {
@@ -367,21 +425,7 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int)
 		}
 	}
 
-	// If we have a valid tombstoneGenerationThreshold, delete any tombstoned branches that are too old
-	if tombstoneGenerationThreshold != -1 {
-		for _, leafRevId := range leaves {
-			leaf := tree[leafRevId]
-			if !leaf.Deleted { // Ignore non-tombstoned leaves
-				continue
-			}
-			leafGeneration, _ := ParseRevID(leaf.ID)
-			if leafGeneration < tombstoneGenerationThreshold {
-				pruned += tree.DeleteBranch(leaf)
-			}
-		}
-	}
-
-	return
+	return pruned, prunedTombstoneBodyKeys
 
 }
 
@@ -539,14 +583,23 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 		// Walk up the tree until we find a root, and append each node
 		node := leaf
+		if node.IsRoot() {
+			return
+		}
+
 		for {
-
-			node = tree[node.Parent]
-
-			// Not sure how this can happen, but in any case .. probably nothing left to do for this branch
-			if node == nil {
+			// Mark nodes with dangling parent references
+			if tree[node.Parent] == nil {
+				missingParentNode := &RevInfo{
+					ID:      node.ID,
+					Parent:  fmt.Sprintf("%s - MISSING", node.Parent),
+					Deleted: node.Deleted,
+				}
+				appendNodeToResult(missingParentNode)
 				break
 			}
+
+			node = tree[node.Parent]
 
 			// Reached a root, we're done -- there's no need
 			// to call appendNodeToResult() on the root, since
@@ -568,6 +621,26 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 	return resultBuffer.String()
 
+}
+
+// Returns the history of a revid as an array of revids in reverse chronological order.
+// Returns error if detects cycle(s) in rev tree
+func (tree RevTree) getHistory(revid string) ([]string, error) {
+	maxHistory := len(tree)
+
+	history := make([]string, 0, 5)
+	for revid != "" {
+		info, err := tree.getInfo(revid)
+		if err != nil {
+			break
+		}
+		history = append(history, revid)
+		if len(history) > maxHistory {
+			return history, fmt.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
+		}
+		revid = info.Parent
+	}
+	return history, nil
 }
 
 //////// ENCODED REVISION LISTS (_revisions):

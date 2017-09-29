@@ -4,7 +4,7 @@
 # git version to the Sync Gateway binary
 
 ## Update the version
-BUILD_INFO="./rest/git_info.go"
+BUILD_INFO="./base/git_info.go"
 
 #tell git to ignore any local changes to git_info.go, we don't want to commit them to the repo
 git update-index --assume-unchanged ${BUILD_INFO}

@@ -86,12 +86,9 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 	if entry.pseudoDoc {
 		return
 	}
-	doc, err := db.GetDoc(entry.ID)
-	if err != nil {
-		base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
-		return
-	}
 
+	var doc *document
+	var err error
 	// The document, which may include just the syncMeta or may include syncMeta + Body, depending on circumstances
 	if options.IncludeDocs {
 		// load whole doc
@@ -112,7 +109,6 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 
 	}
 	db.AddDocInstanceToChangeEntry(entry, doc, options)
-
 
 }
 
@@ -350,15 +346,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		var userChanged bool       // Whether the user document has changed in a given iteration loop
 		var deferredBackfill bool  // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
 
-		// lowSequence is used to send composite keys to clients, so that they can obtain any currently
-		// skipped sequences in a future iteration or request.
-		oldestSkipped := db.changeCache.getOldestSkippedSequence()
-		if oldestSkipped > 0 {
-			lowSequence = oldestSkipped - 1
-		} else {
-			lowSequence = 0
-		}
-
 		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
 		currentCachedSequence = db.changeCache.GetStableSequence("").Seq
 		if options.Wait {
@@ -388,14 +375,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			channelsSince = channels.AtSequence(chans, 0)
 		}
 
-		// If a request has a low sequence that matches the current lowSequence,
-		// ignore the low sequence.  This avoids infinite looping of the records between
-		// low::high.  It also means any additional skipped sequences between low::high won't
-		// be sent until low arrives or is abandoned.
-		if options.Since.LowSeq != 0 && options.Since.LowSeq == lowSequence {
-			options.Since.LowSeq = 0
-		}
-
 		// For a continuous feed, initialise the lateSequenceFeeds that track late-arriving sequences
 		// to the channel caches.
 		if options.Continuous {
@@ -414,11 +393,19 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 			// skipped sequences in a future iteration or request.
-			oldestSkipped = db.changeCache.getOldestSkippedSequence()
+			oldestSkipped := db.changeCache.getOldestSkippedSequence()
 			if oldestSkipped > 0 {
 				lowSequence = oldestSkipped - 1
 			} else {
 				lowSequence = 0
+			}
+
+			// If a request has a low sequence that matches the current lowSequence,
+			// ignore the low sequence.  This avoids infinite looping of the records between
+			// low::high.  It also means any additional skipped sequences between low::high won't
+			// be sent until low arrives or is abandoned.
+			if options.Since.LowSeq != 0 && options.Since.LowSeq == lowSequence {
+				options.Since.LowSeq = 0
 			}
 
 			// Populate the parallel arrays of channels and names:
@@ -594,6 +581,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 
 				// Update the low sequence on the entry we're going to send
+				// NOTE: if 0, the low seq part of compound sequence gets removed
 				minEntry.Seq.LowSeq = lowSequence
 
 				// Send the entry, and repeat the loop:

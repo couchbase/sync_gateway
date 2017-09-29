@@ -19,7 +19,7 @@ type EventManager struct {
 }
 
 const kMaxActiveEvents = 500 // number of events that are processed concurrently
-const kEventWaitTime = 5     // time (ms) to wait before dropping event, when at max events
+const kEventWaitTime = 100   // time (ms) to wait before dropping event, when event queue is full
 
 // Creates a new event manager.  Sets up the event channel for async events, and the goroutine to
 // monitor and process that channel.

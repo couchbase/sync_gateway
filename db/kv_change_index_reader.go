@@ -289,10 +289,10 @@ func (k *kvChangeIndexReader) GetChanges(channelName string, options ChangesOpti
 		sinceClock = options.Since.Clock
 	}
 
-	return k.GetChangesForRange(channelName, sinceClock, nil, options.Limit)
+	return k.GetChangesForRange(channelName, sinceClock, nil, options.Limit, options.ActiveOnly)
 }
 
-func (k *kvChangeIndexReader) GetChangesForRange(channelName string, sinceClock base.SequenceClock, toClock base.SequenceClock, limit int) ([]*LogEntry, error) {
+func (k *kvChangeIndexReader) GetChangesForRange(channelName string, sinceClock base.SequenceClock, toClock base.SequenceClock, limit int, activeOnly bool) ([]*LogEntry, error) {
 
 	defer indexReaderGetChangesTime.AddSince(time.Now())
 	defer indexReaderGetChangesCount.Add(1)
@@ -302,7 +302,7 @@ func (k *kvChangeIndexReader) GetChangesForRange(channelName string, sinceClock 
 		base.Warn("Error obtaining channel reader (need partition index?) for channel %s", channelName)
 		return nil, err
 	}
-	changes, err := reader.GetChanges(sinceClock, toClock, limit)
+	changes, err := reader.GetChanges(sinceClock, toClock, limit, activeOnly)
 	if err != nil {
 		base.LogTo("DIndex+", "No clock found for channel %s, assuming no entries in index", channelName)
 		return nil, nil

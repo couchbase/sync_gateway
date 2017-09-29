@@ -25,6 +25,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/couchbase/go-couchbase"
+	"github.com/couchbaselabs/gocbconnstr"
 )
 
 const (
@@ -273,6 +276,8 @@ type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
 // even if it returns shouldRetry = true.
 type RetryWorker func() (shouldRetry bool, err error, value interface{})
 
+type TimeoutWorker func()
+
 func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
 
 	numAttempts := 1
@@ -298,6 +303,83 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 		<-time.After(time.Millisecond * time.Duration(sleepMs))
 
 		numAttempts += 1
+
+	}
+}
+
+type WorkerResult struct {
+	ShouldRetry bool
+	Error       error
+	Value       interface{}
+}
+
+func (w WorkerResult) Unwrap() (ShouldRetry bool, Error error, Value interface{}) {
+	return w.ShouldRetry, w.Error, w.Value
+}
+
+func WrapRetryWorkerTimeout(worker RetryWorker) (timeoutWorker TimeoutWorker, resultChan chan WorkerResult) {
+
+	resultChan = make(chan WorkerResult)
+
+	timeoutWorker = func() {
+
+		shouldRetry, err, value := worker()
+
+		result := WorkerResult{
+			ShouldRetry: shouldRetry,
+			Error:       err,
+			Value:       value,
+		}
+		resultChan <- result
+
+	}
+
+	return timeoutWorker, resultChan
+
+}
+
+func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleeper, timeoutPerInvocation time.Duration) (error, interface{}) {
+
+	numAttempts := 1
+
+	for {
+
+		// Wrap the retry worker into a "timeout worker" function that can be run async and will write it's
+		// result to a channel
+		timeoutWorker, chWorkerResult := WrapRetryWorkerTimeout(worker)
+
+		// Kick off the timeout worker in it's own goroutine
+		go timeoutWorker()
+
+		// Wait for either the timeout worker to send it's result on the channel, or for the timeout to expire
+		select {
+
+		case workerResult := <-chWorkerResult:
+			shouldRetry, err, value := workerResult.Unwrap()
+
+			if !shouldRetry {
+				if err != nil {
+					return err, nil
+				}
+				return nil, value
+			}
+			shouldContinue, sleepMs := sleeper(numAttempts)
+			if !shouldContinue {
+				if err == nil {
+					err = fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+				}
+				Warn("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+				return err, value
+			}
+			LogTo("Debug", "RetryLoop retrying %v after %v ms.", description, sleepMs)
+
+			<-time.After(time.Millisecond * time.Duration(sleepMs))
+
+			numAttempts += 1
+
+		case <-time.After(timeoutPerInvocation):
+			return fmt.Errorf("Invocation timeout after waiting %v for worker to complete", timeoutPerInvocation), nil
+		}
 
 	}
 }
@@ -339,7 +421,7 @@ func WriteHistogram(expvarMap *expvar.Map, since time.Time, prefix string) {
 
 func WriteHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, prefix string) {
 
-	if LogEnabled("PerfStats") {
+	if LogEnabledExcludingLogStar("PerfStats") {
 		var durationMs int
 		if duration < 1*time.Second {
 			durationMs = int(duration/(100*time.Millisecond)) * 100
@@ -505,4 +587,115 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 
 func BooleanPointer(booleanValue bool) *bool {
 	return &booleanValue
+}
+
+// Convert a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
+// Primary use case is for backwards compatibility with go-couchbase, cbdatasource, and CBGT. Supports secure URI's as well (couchbases://).
+// Related CBGT ticket: https://issues.couchbase.com/browse/MB-25522
+func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []string, err error) {
+
+	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints.  Note that incoming bucket may be CouchbaseBucketGoCB or *CouchbaseBucketGoCB.
+	switch typedBucket := bucket.(type) {
+	case CouchbaseBucketGoCB:
+		if typedBucket.IoRouter() != nil {
+			mgmtEps := typedBucket.IoRouter().MgmtEps()
+			return mgmtEps, nil
+		}
+	case *CouchbaseBucketGoCB:
+		if typedBucket.IoRouter() != nil {
+			mgmtEps := typedBucket.IoRouter().MgmtEps()
+			return mgmtEps, nil
+		}
+	default:
+		// No bucket-based handling, fall back to URI parsing
+
+	}
+
+	// First try to do a simple URL parse, which will only work for http:// and https:// urls where there
+	// is a single host.  If that works, return the result
+	singleHttpUrl := SingleHostCouchbaseURIToHttpURL(couchbaseUri)
+	if len(singleHttpUrl) > 0 {
+		return []string{singleHttpUrl}, nil
+	}
+
+	// Unable to do simple URL parse, try to parse into components w/ gocbconnstr
+	connSpec, errParse := gocbconnstr.Parse(couchbaseUri)
+	if errParse != nil {
+		return httpUrls, errParse
+	}
+
+	for _, address := range connSpec.Addresses {
+
+		// Determine port to use for management API
+		port := gocbconnstr.DefaultHttpPort
+
+		translatedScheme := "http"
+		switch connSpec.Scheme {
+		case "couchbases":
+			translatedScheme = "https"
+		case "https":
+			translatedScheme = "https"
+		}
+
+		if address.Port > 0 {
+			port = address.Port
+		} else {
+			// If gocbconnstr didn't return a port, and it was detected to be an HTTPS connection,
+			// change the port to the secure port 18091
+			if translatedScheme == "https" {
+				port = 18091
+			}
+		}
+
+		httpUrl := fmt.Sprintf("%s://%s:%d", translatedScheme, address.Host, port)
+		httpUrls = append(httpUrls, httpUrl)
+
+	}
+
+	return httpUrls, nil
+
+}
+
+// Special case for couchbaseUri strings that contain a single host with http:// or https:// schemes,
+// possibly containing embedded basic auth.  Needed since gocbconnstr.Parse() will remove embedded
+// basic auth from URLS.
+func SingleHostCouchbaseURIToHttpURL(couchbaseUri string) (httpUrl string) {
+	result, parseUrlErr := couchbase.ParseURL(couchbaseUri)
+
+	// If there was an error parsing, return an empty string
+	if parseUrlErr != nil {
+		return ""
+	}
+
+	// If the host contains a "," then it parsed http://host1,host2 into a url with "host1,host2" as the host, which
+	// is not going to work.  Return an empty string
+	if strings.Contains(result.Host, ",") {
+		return ""
+	}
+
+	// The scheme was couchbase://, but this method only deals with non-couchbase schemes, so return empty slice
+	if strings.Contains(result.Scheme, "couchbase") {
+		return ""
+	}
+
+	// It made it past all checks.  Return a slice with a single string
+	return result.String()
+
+}
+
+// Slice a string to be less than or equal to desiredSze
+func StringPrefix(s string, desiredSize int) string {
+	if len(s) <= desiredSize {
+		return s
+	}
+
+	return s[:desiredSize]
+}
+
+// Retrieves a slice from a byte, but returns error (instead of panic) if range isn't contained by the slice
+func SafeSlice(data []byte, from int, to int) ([]byte, error) {
+	if from > len(data) || to > len(data) || from > to {
+		return nil, fmt.Errorf("Invalid slice [%d:%d] of []byte with len %d", from, to, len(data))
+	}
+	return data[from:to], nil
 }

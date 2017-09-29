@@ -320,155 +320,169 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 
 // Given a newly changed document (received from the tap feed), adds change entries to channels.
 // The JSON must be the raw document from the bucket, with the metadata and all.
-func (c *changeCache) DocChanged(event sgbucket.TapEvent) {
+func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
+	if event.Synchronous {
+		c.DocChangedSynchronous(event)
+	} else {
+		go c.DocChangedSynchronous(event)
+	}
+}
+
+// Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
+// originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
+// concurrent processing.
+func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	entryTime := time.Now()
 	docID := string(event.Key)
 	docJSON := event.Value
 	changedChannelsCombined := base.Set{}
 
-	processDocChanged := func() {
-		// ** This method does not directly access any state of c, so it doesn't lock.
-		// Is this a user/role doc?
-		if strings.HasPrefix(docID, auth.UserKeyPrefix) {
-			c.processPrincipalDoc(docID, docJSON, true)
-			return
-		} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
-			c.processPrincipalDoc(docID, docJSON, false)
-			return
+	// ** This method does not directly access any state of c, so it doesn't lock.
+	// Is this a user/role doc?
+	if strings.HasPrefix(docID, auth.UserKeyPrefix) {
+		c.processPrincipalDoc(docID, docJSON, true)
+		return
+	} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
+		c.processPrincipalDoc(docID, docJSON, false)
+		return
+	}
+
+	// Is this an unused sequence notification?
+	if strings.HasPrefix(docID, UnusedSequenceKeyPrefix) {
+		c.processUnusedSequence(docID)
+		return
+	}
+
+	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
+	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
+		base.LogTo("Import+", "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", docID)
+		return
+	}
+
+	// If this is a binary document (and not one of the above types), we can ignore.  Currently only performing this check when xattrs
+	// are enabled, because walrus doesn't support DataType on feed.
+	if c.context.UseXattrs() && event.DataType == base.MemcachedDataTypeRaw {
+		return
+	}
+
+	// First unmarshal the doc (just its metadata, to save time/memory):
+	syncData, rawBody, rawXattr, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
+	if err != nil {
+		// Avoid log noise related to failed unmarshaling of binary documents.
+		if event.DataType != base.MemcachedDataTypeRaw {
+			base.LogTo("Cache+", "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", docID, err)
 		}
+		return
+	}
 
-		// Is this an unused sequence notification?
-		if strings.HasPrefix(docID, UnusedSequenceKeyPrefix) {
-			c.processUnusedSequence(docID)
-			return
-		}
-
-		// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
-		if event.Opcode == sgbucket.TapDeletion && len(docJSON) == 0 {
-			base.LogTo("Import+", "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", docID)
-			return
-		}
-
-		// First unmarshal the doc (just its metadata, to save time/memory):
-		syncData, rawBody, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
-
-		if err != nil {
-			base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
-			return
-		}
-
-		// Import handling.
-		if c.context.UseXattrs() {
-			// If this isn't an SG write, we shouldn't attempt to cache.  Import if this node is configured for import, otherwise ignore.
-			if syncData == nil || !syncData.IsSGWrite(event.Cas) {
-				if c.context.autoImport {
-					// If syncData is nil, or if this was not an SG write, attempt to import
-					isDelete := event.Opcode == sgbucket.TapDeletion
-					if isDelete {
-						rawBody = nil
-					}
-					db := Database{DatabaseContext: c.context, user: nil}
-					_, err := db.ImportDocRaw(docID, rawBody, isDelete, event.Cas, ImportFromFeed)
-					if err != nil {
-						if err == base.ErrImportCasFailure {
-							base.LogTo("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", docID)
-						} else {
-							base.Warn("Unable to import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
-						}
+	// Import handling.
+	if c.context.UseXattrs() {
+		// If this isn't an SG write, we shouldn't attempt to cache.  Import if this node is configured for import, otherwise ignore.
+		if syncData == nil || !syncData.IsSGWrite(event.Cas) {
+			if c.context.autoImport {
+				// If syncData is nil, or if this was not an SG write, attempt to import
+				isDelete := event.Opcode == sgbucket.FeedOpDeletion
+				if isDelete {
+					rawBody = nil
+				}
+				db := Database{DatabaseContext: c.context, user: nil}
+				_, err := db.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, ImportFromFeed)
+				if err != nil {
+					if err == base.ErrImportCasFailure {
+						base.LogTo("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", docID)
+					} else {
+						base.Warn("Unable to import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
 					}
 				}
-				return
 			}
+			return
 		}
+	}
 
-		if !syncData.HasValidSyncData(c.context.writeSequences()) {
+	if !syncData.HasValidSyncData(c.context.writeSequences()) {
+		// No sync metadata found - check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
+		migratedDoc, _ := c.context.checkForUpgrade(docID)
+		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
+			base.LogTo("Cache", "Found mobile xattr on document without _sync property - caching, assuming upgrade in progress.")
+			syncData = &migratedDoc.syncData
+		} else {
 			base.Warn("changeCache: Doc %q does not have valid sync data.", docID)
 			return
 		}
+	}
 
-		if syncData.Sequence <= c.initialSequence {
-			return // Tap is sending us an old value from before I started up; ignore it
-		}
+	if syncData.Sequence <= c.initialSequence {
+		return // Tap is sending us an old value from before I started up; ignore it
+	}
 
-		// Record a histogram of the Tap feed's lag:
-		tapLag := time.Since(syncData.TimeSaved) - time.Since(entryTime)
-		lagMs := int(tapLag/(100*time.Millisecond)) * 100
-		changeCacheExpvars.Add(fmt.Sprintf("lag-tap-%04dms", lagMs), 1)
+	// Record a histogram of the Tap feed's lag:
+	tapLag := time.Since(syncData.TimeSaved) - time.Since(entryTime)
+	lagMs := int(tapLag/(100*time.Millisecond)) * 100
+	changeCacheExpvars.Add(fmt.Sprintf("lag-tap-%04dms", lagMs), 1)
 
-		// If the doc update wasted any sequences due to conflicts, add empty entries for them:
-		for _, seq := range syncData.UnusedSequences {
-			base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
-			change := &LogEntry{
-				Sequence:     seq,
-				TimeReceived: time.Now(),
-			}
-			changedChannels := c.processEntry(change)
-			changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
-		}
-
-		// If the recent sequence history includes any sequences earlier than the current sequence, and
-		// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries
-		// so that they are included in sequence buffering.
-		// If one of these sequences represents a removal from a channel then set the LogEntry removed flag
-		// and the set of channels it was removed from
-		currentSequence := syncData.Sequence
-		if len(syncData.UnusedSequences) > 0 {
-			currentSequence = syncData.UnusedSequences[0]
-		}
-
-		if len(syncData.RecentSequences) > 0 {
-			nextSeq := c.getNextSequence()
-			for _, seq := range syncData.RecentSequences {
-				if seq >= nextSeq && seq < currentSequence {
-					base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
-					change := &LogEntry{
-						Sequence:     seq,
-						TimeReceived: time.Now(),
-					}
-
-					//if the doc was removed from one or more channels at this sequence
-					// Set the removed flag and removed channel set on the LogEntry
-					if channelRemovals, atRevId := syncData.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
-						change.DocID = docID
-						change.RevID = atRevId
-						change.Channels = channelRemovals
-					}
-
-					changedChannels := c.processEntry(change)
-					changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
-				}
-			}
-		}
-
-		// Now add the entry for the new doc revision:
+	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
+	for _, seq := range syncData.UnusedSequences {
+		base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
 		change := &LogEntry{
-			Sequence:     syncData.Sequence,
-			DocID:        docID,
-			RevID:        syncData.CurrentRev,
-			Flags:        syncData.Flags,
+			Sequence:     seq,
 			TimeReceived: time.Now(),
-			TimeSaved:    syncData.TimeSaved,
-			Channels:     syncData.Channels,
 		}
-		base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
-
 		changedChannels := c.processEntry(change)
 		changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
+	}
 
-		// Notify change listeners for all of the changed channels
-		if c.onChange != nil && len(changedChannelsCombined) > 0 {
-			c.onChange(changedChannelsCombined)
+	// If the recent sequence history includes any sequences earlier than the current sequence, and
+	// not already seen by the gateway (more recent than c.nextSequence), add them as empty entries
+	// so that they are included in sequence buffering.
+	// If one of these sequences represents a removal from a channel then set the LogEntry removed flag
+	// and the set of channels it was removed from
+	currentSequence := syncData.Sequence
+	if len(syncData.UnusedSequences) > 0 {
+		currentSequence = syncData.UnusedSequences[0]
+	}
+
+	if len(syncData.RecentSequences) > 0 {
+		nextSeq := c.getNextSequence()
+		for _, seq := range syncData.RecentSequences {
+			if seq >= nextSeq && seq < currentSequence {
+				base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
+				change := &LogEntry{
+					Sequence:     seq,
+					TimeReceived: time.Now(),
+				}
+
+				//if the doc was removed from one or more channels at this sequence
+				// Set the removed flag and removed channel set on the LogEntry
+				if channelRemovals, atRevId := syncData.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
+					change.DocID = docID
+					change.RevID = atRevId
+					change.Channels = channelRemovals
+				}
+
+				changedChannels := c.processEntry(change)
+				changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
+			}
 		}
 	}
-	// TODO: Workaround to make import of SDK inserts blocking, until DCP processing is refactored.  Avoids initial
-	//       processing spike when initially importing an existing bucket.
-	//       If xattrs are enabled, and this node is doing import, and the incoming doc has no xattr (it's an SDK insert), run DocChanged as a
-	//       synchronous operation
-	hasXattr := event.DataType&base.MemcachedDataTypeXattr != 0
-	if c.context.UseXattrs() && c.context.autoImport && !hasXattr {
-		processDocChanged()
-	} else {
-		go processDocChanged()
+
+	// Now add the entry for the new doc revision:
+	change := &LogEntry{
+		Sequence:     syncData.Sequence,
+		DocID:        docID,
+		RevID:        syncData.CurrentRev,
+		Flags:        syncData.Flags,
+		TimeReceived: time.Now(),
+		TimeSaved:    syncData.TimeSaved,
+		Channels:     syncData.Channels,
+	}
+	base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
+
+	changedChannels := c.processEntry(change)
+	changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
+
+	// Notify change listeners for all of the changed channels
+	if c.onChange != nil && len(changedChannelsCombined) > 0 {
+		c.onChange(changedChannelsCombined)
 	}
 
 }

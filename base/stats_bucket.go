@@ -181,9 +181,9 @@ func (b *StatsBucket) WriteCasWithXattr(k string, xattr string, exp int, cas uin
 	}
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
 }
-func (b *StatsBucket) WriteUpdateWithXattr(k string, xattr string, exp int, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (b *StatsBucket) WriteUpdateWithXattr(k string, xattr string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	defer b.docWrite(1, -1)
-	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, callback)
+	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, callback)
 }
 func (b *StatsBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
 	cas, err = b.bucket.GetWithXattr(k, xattr, rv, xv)
@@ -225,9 +225,14 @@ func (b *StatsBucket) Refresh() error {
 	return b.bucket.Refresh()
 }
 
-func (b *StatsBucket) StartTapFeed(args sgbucket.TapArguments) (sgbucket.TapFeed, error) {
+func (b *StatsBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 	return b.bucket.StartTapFeed(args)
 }
+
+func (b *StatsBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+	return b.bucket.StartDCPFeed(args, callback)
+}
+
 func (b *StatsBucket) Close() {
 	b.bucket.Close()
 }

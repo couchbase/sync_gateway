@@ -22,9 +22,14 @@ import (
 type sgErrorCode uint16
 
 const (
-	alreadyImported  = sgErrorCode(0x00)
-	importCancelled  = sgErrorCode(0x01)
-	importCasFailure = sgErrorCode(0x02)
+	alreadyImported       = sgErrorCode(0x00)
+	importCancelled       = sgErrorCode(0x01)
+	importCasFailure      = sgErrorCode(0x02)
+	viewTimeoutError      = sgErrorCode(0x03)
+	revTreeAddRevFailure  = sgErrorCode(0x04)
+	importCancelledFilter = sgErrorCode(0x05)
+	documentMigrated      = sgErrorCode(0x06)
+	fatalBucketConnection = sgErrorCode(0x07)
 )
 
 type SGError struct {
@@ -32,9 +37,14 @@ type SGError struct {
 }
 
 var (
-	ErrImportCancelled  = &SGError{importCancelled}
-	ErrAlreadyImported  = &SGError{alreadyImported}
-	ErrImportCasFailure = &SGError{importCasFailure}
+	ErrRevTreeAddRevFailure  = &SGError{revTreeAddRevFailure}
+	ErrImportCancelled       = &SGError{importCancelled}
+	ErrAlreadyImported       = &SGError{alreadyImported}
+	ErrImportCasFailure      = &SGError{importCasFailure}
+	ErrViewTimeoutError      = &SGError{viewTimeoutError}
+	ErrImportCancelledFilter = &SGError{importCancelledFilter}
+	ErrDocumentMigrated      = &SGError{documentMigrated}
+	ErrFatalBucketConnection = &SGError{fatalBucketConnection}
 )
 
 func (e SGError) Error() string {
@@ -43,8 +53,18 @@ func (e SGError) Error() string {
 		return "Document already imported"
 	case importCancelled:
 		return "Import cancelled"
+	case documentMigrated:
+		return "Document migrated"
+	case importCancelledFilter:
+		return "Import cancelled based on import filter"
 	case importCasFailure:
 		return "CAS failure during import"
+	case revTreeAddRevFailure:
+		return "Failure adding Rev to RevTree"
+	case viewTimeoutError:
+		return "Timeout performing ViewQuery - could indicate that views are still reindexing"
+	case fatalBucketConnection:
+		return "Fatal error connecting to bucket"
 	default:
 		return "Unknown error"
 	}
@@ -69,6 +89,12 @@ func HTTPErrorf(status int, format string, args ...interface{}) *HTTPError {
 func ErrorAsHTTPStatus(err error) (int, string) {
 	if err == nil {
 		return 200, "OK"
+	}
+
+	// Check for SGErrors
+	switch err {
+	case ErrViewTimeoutError:
+		return http.StatusServiceUnavailable, err.Error()
 	}
 
 	switch err {

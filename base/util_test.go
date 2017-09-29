@@ -16,6 +16,8 @@ import (
 
 	"github.com/couchbaselabs/go.assert"
 	"net/url"
+	"strings"
+	"time"
 )
 
 func TestFixJSONNumbers(t *testing.T) {
@@ -138,6 +140,59 @@ func TestRetryLoop(t *testing.T) {
 
 }
 
+// Make sure that the RetryLoopTimeout doesn't break existing RetryLoop functionality
+func TestRetryLoopTimeoutSafe(t *testing.T) {
+
+	numTimesInvoked := 0
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		log.Printf("Worker invoked")
+		numTimesInvoked += 1
+		if numTimesInvoked <= 3 {
+			log.Printf("Worker returning shouldRetry true, fake error")
+			return true, fmt.Errorf("Fake error"), nil
+		}
+		return false, nil, "result"
+	}
+
+	sleeper := func(numAttempts int) (bool, int) {
+		if numAttempts > 10 {
+			return false, -1
+		}
+		return true, 0
+	}
+
+	// Kick off retry loop
+	description := fmt.Sprintf("TestRetryLoop")
+	err, result := RetryLoopTimeout(description, worker, sleeper, time.Hour)
+
+	// We shouldn't get an error, because it will retry a few times and then succeed
+	assert.True(t, err == nil)
+	assert.Equals(t, result, "result")
+	assert.True(t, numTimesInvoked == 4)
+
+}
+
+// Make sure that the RetryLoopTimeout enforces timeout on worker functions that block for too long
+func TestRetryLoopTimeoutEffective(t *testing.T) {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		// The laziest worker ever .. sleeps for a week before returning a value
+		time.Sleep(time.Hour * 24 * 7)
+		return false, nil, "result"
+	}
+
+	sleeper := CreateDoublingSleeperFunc(10, 100)
+
+	// Kick off timeout loop that expects lazy worker to return in 100 ms, even though it takes a week
+	description := fmt.Sprintf("TestRetryLoop")
+	err, _ := RetryLoopTimeout(description, worker, sleeper, time.Millisecond*100)
+
+	// We should get a timeout error
+	assert.True(t, err != nil)
+	assert.True(t, strings.Contains(err.Error(), "timeout"))
+
+}
+
 func TestSyncSourceFromURL(t *testing.T) {
 	u, err := url.Parse("http://www.test.com:4985/mydb")
 	assert.True(t, err == nil)
@@ -176,7 +231,6 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 	// leave a gap and don't specify a high seq for vbno 4
 	highSeqs[5] = 250
 
-
 	var seqClock SequenceClock
 	var err error
 
@@ -192,5 +246,73 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 
 }
 
+func TestCouchbaseURIToHttpURL(t *testing.T) {
 
+	inputsAndExpected := []struct {
+		input    string
+		expected []string
+	}{
+		{
+			input:    "couchbase://host1",
+			expected: []string{"http://host1:8091"},
+		},
+		{
+			input:    "couchbases://host1",
+			expected: []string{"https://host1:18091"},
+		},
+		{
+			input: "couchbase://host1,host2",
+			expected: []string{
+				"http://host1:8091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "couchbase://host1:8091,host2",
+			expected: []string{
+				"http://host1:8091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "couchbase://host1:8091,host2,", // trailing comma
+			expected: []string{
+				"http://host1:8091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "couchbase://host1:18091,host2:8091",
+			expected: []string{
+				"http://host1:18091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "http://host1:8091",
+			expected: []string{
+				"http://host1:8091",
+			},
+		},
+		{
+			input: "http://host1,host2:8091",
+			expected: []string{
+				"http://host1:8091",
+				"http://host2:8091",
+			},
+		},
+		{
+			input: "http://foo:bar@host1:8091",
+			expected: []string{
+				"http://foo:bar@host1:8091",
+			},
+		},
+	}
 
+	for _, inputAndExpected := range inputsAndExpected {
+		actual, err := CouchbaseURIToHttpURL(nil, inputAndExpected.input)
+		assertNoError(t, err, "Unexpected error")
+		assert.DeepEquals(t, actual, inputAndExpected.expected)
+	}
+
+}
