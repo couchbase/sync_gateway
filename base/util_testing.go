@@ -120,6 +120,8 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) Bucket {
 			}
 		case false:
 			// Create a brand new bucket
+			// TODO: in this case, we should still wait until it's empty, just in case there was somehow residue
+			// TODO: in between deleting and recreating it, if it happened in rapid succession
 			createBucketErr := tbm.CreateTestBucket()
 			if createBucketErr != nil {
 				panic(fmt.Sprintf("Could not create bucket.  Spec: %+v Err: %v", spec, createBucketErr))
@@ -279,6 +281,8 @@ func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
 
 func (tbm *TestBucketManager) EmptyTestBucket() error {
 
+	log.Printf("Flushing test bucket: %v", tbm.BucketSpec.BucketName)
+
 	// Try to Flush the bucket in a retry loop
 	// Ignore sporadic errors like:
 	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
@@ -315,6 +319,48 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		Warn("TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
 		time.Sleep(time.Millisecond * 500)
 
+	}
+
+
+	// Wait until high seq nos are all 0
+	// statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno, false)
+
+	if tbm.Bucket.IoRouter() == nil {
+		return fmt.Errorf("Cannot determine number of vbuckets")
+	}
+	maxVbno := uint16(tbm.Bucket.IoRouter().NumVbuckets())
+
+
+	workerHighSeqNosZero := func() (shouldRetry bool, err error, value interface{}) {
+
+		stats, seqErr := tbm.Bucket.Stats("vbucket-seqno")
+		if seqErr != nil {
+			return false, seqErr, nil
+		}
+
+		_, highSeqnos, err := GetStatsVbSeqno(stats, maxVbno, false)
+
+		if err != nil {
+			return false, err, nil
+		}
+
+		for vbNo := uint16(0); vbNo < maxVbno; vbNo++ {
+			maxSeqForVb := highSeqnos[vbNo]
+			if maxSeqForVb > 0 {
+				log.Printf("max seq for vb %d > 0 (%d).  Retrying", vbNo, maxSeqForVb)
+				return true, nil, nil
+			}
+		}
+
+		// made it this far, then it succeeded
+		return false, nil, nil
+
+
+	}
+
+	err, _ = RetryLoop("Wait for vb sequence numbers to be 0", workerHighSeqNosZero, sleeper)
+	if err != nil {
+		return err
 	}
 
 	// Make sure we can read our own writes.  Workaround attempt for errors:
@@ -354,6 +400,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	if err != nil {
 		return err
 	}
+
 
 	return nil
 
