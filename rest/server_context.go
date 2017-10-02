@@ -266,9 +266,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	pool := "default"
 	bucketName := config.Name
 
-	// Default value of _local document expiry
-	localDocExpirySecs := uint32(60 * 60 * 24 * 90) //90 days in seconds
-
 	if config.Server != nil {
 		server = *config.Server
 	}
@@ -287,6 +284,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
+	localDocExpirySecs := base.DefaultLocalDocExpirySecs
 	if config.LocalDocExpirySecs != nil && *config.LocalDocExpirySecs >= 0 {
 		localDocExpirySecs = *config.LocalDocExpirySecs
 	}
@@ -512,7 +510,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		IndexOptions:          channelIndexOptions,
 		SequenceHashOptions:   sequenceHashOptions,
 		RevisionCacheCapacity: revCacheSize,
-		LocalDocExpirySecs:	   localDocExpirySecs,
+		LocalDocExpirySecs:    localDocExpirySecs,
 		AdminInterface:        sc.config.AdminInterface,
 		UnsupportedOptions:    config.Unsupported,
 		TrackDocs:             trackDocs,
