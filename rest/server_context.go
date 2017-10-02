@@ -287,8 +287,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
-	if config.localDocExpirySecs != nil && *config.localDocExpirySecs >= 0 {
-		localDocExpirySecs = *config.localDocExpirySecs
+	if config.LocalDocExpirySecs != nil && *config.LocalDocExpirySecs >= 0 {
+		localDocExpirySecs = *config.LocalDocExpirySecs
 	}
 
 	if sc.databases_[dbName] != nil {
