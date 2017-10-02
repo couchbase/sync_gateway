@@ -284,6 +284,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
+	localDocExpirySecs := base.DefaultLocalDocExpirySecs
+	if config.LocalDocExpirySecs != nil && *config.LocalDocExpirySecs >= 0 {
+		localDocExpirySecs = *config.LocalDocExpirySecs
+	}
+
 	if sc.databases_[dbName] != nil {
 		if useExisting {
 			return sc.databases_[dbName], nil
@@ -505,6 +510,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		IndexOptions:          channelIndexOptions,
 		SequenceHashOptions:   sequenceHashOptions,
 		RevisionCacheCapacity: revCacheSize,
+		LocalDocExpirySecs:    localDocExpirySecs,
 		AdminInterface:        sc.config.AdminInterface,
 		UnsupportedOptions:    config.Unsupported,
 		TrackDocs:             trackDocs,
