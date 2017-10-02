@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"time"
+
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
-	"time"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -15,7 +16,8 @@ type RepairJobType string
 const kDefaultRepairedFileTTL = 60 * 60 * 24 * time.Second // 24 hours
 
 const (
-	RepairRevTreeCycles = RepairJobType("RepairRevTreeCycles")
+	RepairRevTreeCycles     = RepairJobType("RepairRevTreeCycles")
+	RepairHistoryNilPointer = RepairJobType("RepairHistoryNilPointer") // SG issue #2945
 )
 
 // Params suitable for external (eg, HTTP) invocations to describe a RepairBucket operation
@@ -86,6 +88,8 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 		switch repairJobParams.RepairJobType {
 		case RepairRevTreeCycles:
 			r.AddRepairJob(RepairJobRevTreeCycles)
+		case RepairHistoryNilPointer:
+			r.AddRepairJob(RepairJobHistoryNilPointer)
 		}
 	}
 
@@ -328,8 +332,8 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 // Repairs rev tree cycles (see SG issue #2847)
 func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
-	base.LogTo("CRUD+","RepairJobRevTreeCycles() called with doc id: %v", docId)
-	defer base.LogTo("CRUD+","RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", docId, transformed, err)
+	base.LogTo("CRUD+", "RepairJobRevTreeCycles() called with doc id: %v", docId)
+	defer base.LogTo("CRUD+", "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", docId, transformed, err)
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {
@@ -355,5 +359,26 @@ func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDo
 	}
 
 	return transformedCBDoc, true, nil
+
+}
+
+// Repair invalid docs that cause nil pointer panics when trying to process.  See SG Issue #2945
+func RepairJobHistoryNilPointer(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
+
+	base.LogTo("CRUD+", "RepairHistoryNilPointer() called with doc id: %v", docId)
+	defer base.LogTo("CRUD+", "RepairHistoryNilPointer() finished.  Doc id: %v.  transformed: %v.  err: %v", docId, transformed, err)
+
+	doc := newDocument(docId)
+	if err := json.Unmarshal([]byte(originalCBDoc), &doc); err != nil {
+		return nil, false, err
+	}
+
+	_, ok := doc.History[doc.CurrentRev]
+	if !ok {
+		// TODO: how can this get repaired?
+		base.Warn("RepairHistoryNilPointer() detected invalid doc: %v", string(originalCBDoc))
+	}
+
+	return originalCBDoc, true, nil
 
 }
