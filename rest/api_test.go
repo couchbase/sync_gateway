@@ -1571,9 +1571,8 @@ func testAccessControl(t *testing.T, rt indexTester) {
 
 }
 
-type changesResults struct {
-	Results []db.ChangeEntry
-}
+
+
 
 func TestChannelAccessChanges(t *testing.T) {
 	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
@@ -1612,34 +1611,8 @@ func TestChannelAccessChanges(t *testing.T) {
 	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201) // seq=8
 
 
-
-	// Check the _changes feed:
 	numChangesExpected := 1
-	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
-
-		var changes changesResults
-
-		response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
-		log.Printf("_changes looks like: %s", response.Body.Bytes())
-		err = json.Unmarshal(response.Body.Bytes(), &changes)
-		if err != nil {
-			return false, err, nil
-		}
-		if len(changes.Results) < numChangesExpected {
-			// not enough results, retry
-			return true, nil, nil
-		}
-		// If it made it this far, there is no errors and it got enough changes
-		return false, nil, changes
-	}
-
-	sleeper :=  base.CreateDoublingSleeperFunc(20, 10)
-
-	err, changesVal := base.RetryLoop("Wait for changes", waitForChangesWorker, sleeper)
-	var changes changesResults
-	if changesVal != nil {
-		changes = changesVal.(changesResults)
-	}
+	changes, err := rt.WaitForChanges(numChangesExpected, "/db/_changes", "zegpold")
 
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), numChangesExpected)
@@ -1667,19 +1640,17 @@ func TestChannelAccessChanges(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// Look at alice's _changes feed:
-	changes.Results = nil
-	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
-	log.Printf("//////// _changes for alice looks like: %s", response.Body.Bytes())
-	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 1)
+	numChangesExpected = 1
+	changes, err = rt.WaitForChanges(numChangesExpected, "/db/_changes", "alice")
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), numChangesExpected)
 	assert.Equals(t, changes.Results[0].ID, "d1")
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
-	changes.Results = nil
-	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
-	log.Printf("//////// _changes for zegpold looks like: %s", response.Body.Bytes())
-	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 2)
+	numChangesExpected = 2
+	changes, err = rt.WaitForChanges(numChangesExpected, "/db/_changes", "zegpold")
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(changes.Results), numChangesExpected)
 	assert.Equals(t, changes.Results[0].ID, "g1")
 	assert.Equals(t, changes.Results[0].Seq.Seq, uint64(8))
 	assert.Equals(t, changes.Results[1].ID, "a1")
@@ -1714,21 +1685,22 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, changeCount, 9)
 
-	// Artificial delay to let updates show up on changes feed
-	time.Sleep(time.Second)
+
+	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
+	numChangesExpected = len(expectedIDs)
+	changes, err = rt.WaitForChanges(numChangesExpected, "/db/_changes", "alice")
 
 	changes.Results = nil
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
-	assert.Equals(t, len(changes.Results), len(expectedIDs))
+	assert.Equals(t, len(changes.Results), numChangesExpected)
 	for i, expectedID := range expectedIDs {
 		assert.Equals(t, changes.Results[i].ID, expectedID)
 	}
 
 	// Check accumulated statistics:
-	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(5))
+	assert.True(t, db.ChangesClientStats.TotalCount() >= uint32(5))  // there might be retries, but there should be at least 5 changes requests
 	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(1))
 	db.ChangesClientStats.Reset()
 	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(0))
