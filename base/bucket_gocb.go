@@ -939,7 +939,6 @@ func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, e
 
 	return casOut, nil
 
-
 }
 
 func (bucket CouchbaseBucketGoCB) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
