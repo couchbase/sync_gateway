@@ -251,7 +251,7 @@ func LogNoTime() {
 func LogTime() {
 	logLock.RLock()
 	defer logLock.RUnlock()
-	//Disable timestamp for default logger, this may be used by other packages
+	//Enable timestamp for default logger, this may be used by other packages
 	log.SetFlags(log.Flags() | (log.Ldate | log.Ltime | log.Lmicroseconds))
 	logNoTime = false
 }
@@ -306,52 +306,56 @@ func ParseLogFlags(flags []string) {
 // Parses a map of log keys and enabled bool, probably coming from a argv flags.
 // The key "bw" is interpreted as a call to LogNoColor, not a key.
 func ParseLogFlagsMap(flags map[string]bool) {
-	for key, val := range flags {
+	for key, enabled := range flags {
 		switch key {
 		case "bw":
-			if val {
+			if enabled {
 				LogNoColor()
 			} else {
 				LogColor()
 			}
 		case "color":
-			if val {
+			if enabled {
 				LogColor()
 			} else {
 				LogNoColor()
 			}
 		case "notime":
-			if val {
+			if enabled {
 				LogNoTime()
 			} else {
 				LogTime()
 			}
 		default:
-			LogKeys[key] = val
+			if enabled {
+				LogKeys[key] = enabled
+				for strings.HasSuffix(key, "+") {
+					key = key[0: len(key) - 1]
+					LogKeys[key] = enabled // "foo+" also enables "foo"
+				}
+			} else {
+				delete(LogKeys, key)
+			}
 			if key == "*" {
-				logStar = val
-				if val {
+				logStar = enabled
+				if enabled {
 					EnableSgReplicateLogging()
 				}
 			}
 			// gocb requires a call into the gocb library to enable logging
 			if key == "gocb" {
-				if val {
+				if enabled {
 					EnableGoCBLogging()
 				} else {
 					DisableGoCBLogging()
 				}
 			}
 			if key == "Replicate" {
-				if val {
+				if enabled {
 					EnableSgReplicateLogging()
 				} else {
 					DisableSgReplicateLogging()
 				}
-			}
-			for strings.HasSuffix(key, "+") {
-				key = key[0: len(key) - 1]
-				LogKeys[key] = val // "foo+" also enables "foo"
 			}
 		}
 	}
