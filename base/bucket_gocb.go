@@ -922,18 +922,18 @@ func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, e
 
 		newCas, errRemove := bucket.Bucket.Remove(k, gocb.Cas(cas))
 		if isRecoverableGoCBError(errRemove) {
-			return true, errRemove, nil
+			return true, errRemove, newCas
 		}
 
 		return false, errRemove, newCas
 
 	}
 	err, newCasVal := RetryLoop("CouchbaseBucketGoCB Remove()", worker, bucket.spec.RetrySleeper())
-	if err != nil {
-		return -1, err
-	}
-
 	newCas := newCasVal.(uint64)
+	
+	if err != nil {
+		return newCas, err
+	}
 
 	return newCas, nil
 
