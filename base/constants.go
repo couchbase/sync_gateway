@@ -54,6 +54,9 @@ const (
 
 	// Default value of _local document expiry
 	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) //90 days in seconds
+
+	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
+
 )
 
 func UnitTestUrl() string {

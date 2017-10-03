@@ -375,6 +375,7 @@ func TestPruneRevisions(t *testing.T) {
 
 }
 
+
 func TestPruneRevsSingleBranch(t *testing.T) {
 
 	numRevs := 100
@@ -761,7 +762,7 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 
 	docId := "testdocProblematicRevTree"
 
-	rawDoc, err := unmarshalDocument(docId, []byte(testdocProblematicRevTree))
+	rawDoc, err := unmarshalDocument(docId, []byte(testdocProblematicRevTree1))
 	if err != nil {
 		t.Fatalf("Error unmarshalling doc: %v", err)
 	}
@@ -778,6 +779,42 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 
 	// The error should *not* be a timeout error
 	assert.False(t, strings.Contains(err.Error(), "Timeout"))
+
+}
+
+// Repair tool for https://github.com/couchbase/sync_gateway/issues/2847
+func TestRepairRevsHistoryWithCycles(t *testing.T) {
+
+	base.EnableLogKey("CRUD")
+
+	for i, testdocProblematicRevTree := range testdocProblematicRevTrees {
+
+		docId := "testdocProblematicRevTree"
+
+		rawDoc, err := unmarshalDocument(docId, []byte(testdocProblematicRevTree))
+		if err != nil {
+			t.Fatalf("Error unmarshalling doc %d: %v", i, err)
+		}
+
+		if err := rawDoc.History.RepairCycles(); err != nil {
+			t.Fatalf("Unable to repair doc.  Err: %v", err)
+		}
+
+		// This function will be called back for every leaf node in tree
+		leafProcessor := func(leaf *RevInfo) {
+
+			_, err := rawDoc.History.getHistory(leaf.ID)
+			if err != nil {
+				t.Fatalf("GetHistory() returned error: %v", err)
+			}
+
+		}
+
+		// Iterate over leaves and make sure none of them have a history with cycles
+		rawDoc.History.forEachLeaf(leafProcessor)
+
+	}
+
 
 }
 
