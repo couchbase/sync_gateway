@@ -206,7 +206,11 @@ declare -a arr=(
     "TestParseHTTPRangeHeader"
     "TestSanitizeURL"
     "TestVerifyHTTPSSupport",
-    "TestChangesIncludeConflicts")
+    "TestChangesIncludeConflicts",
+    "TestGetRemoved",
+    "TestGetRemovedAndDeleted",
+    "TestGetRemovedAsUser",
+    "TestXattrSGTombstone")
 
 
 # --------------------------------- SG Accel tests -----------------------------------------

@@ -287,6 +287,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	if config.OldRevExpirySeconds != nil && *config.OldRevExpirySeconds >= 0 {
 		oldRevExpirySeconds = int(*config.OldRevExpirySeconds)
+  }
+  
+	localDocExpirySecs := base.DefaultLocalDocExpirySecs
+	if config.LocalDocExpirySecs != nil && *config.LocalDocExpirySecs >= 0 {
+		localDocExpirySecs = *config.LocalDocExpirySecs
 	}
 
 	if sc.databases_[dbName] != nil {
@@ -511,6 +516,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		SequenceHashOptions:   sequenceHashOptions,
 		RevisionCacheCapacity: revCacheSize,
 		OldRevExpirySeconds:   oldRevExpirySeconds,
+		LocalDocExpirySecs:    localDocExpirySecs,
 		AdminInterface:        sc.config.AdminInterface,
 		UnsupportedOptions:    config.Unsupported,
 		TrackDocs:             trackDocs,
@@ -965,7 +971,7 @@ func collectAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext)
 		viewOptions := db.Body{
 			"limit": 1,
 		}
-		vres, err := currentDb.Bucket.View(db.DesignDocSyncHousekeeping, db.ViewPrincipals, viewOptions)
+		vres, err := currentDb.Bucket.View(db.DesignDocSyncGateway, db.ViewPrincipals, viewOptions)
 		if err != nil {
 			base.Warn("Error trying to query ViewPrincipals: %v", err)
 			return []string{}

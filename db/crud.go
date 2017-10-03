@@ -175,18 +175,34 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
 	var doc *document
 	if doc, err = context.GetDoc(id.DocID); doc == nil {
-		return
+		return body, history, channels, err
 	}
 
 	if body, err = context.getRevision(doc, id.RevID); err != nil {
-		return
+		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
+		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
+		removalBody, removalHistory, removalChannels, isRemoval, isRemovalErr := doc.IsChannelRemoval(id.RevID)
+		if isRemovalErr != nil {
+			return body, history, channels, isRemovalErr
+		}
+		if isRemoval {
+			return removalBody, removalHistory, removalChannels, nil
+		} else {
+			// If this wasn't a removal, return the original error from getRevision
+			return body, history, channels, err
+		}
 	}
 	if doc.History[id.RevID].Deleted {
 		body["_deleted"] = true
 	}
-	history = encodeRevisions(doc.History.getHistory(id.RevID))
+
+	validatedHistory, getHistoryErr := doc.History.getHistory(id.RevID)
+	if getHistoryErr != nil {
+		return body, history, channels, getHistoryErr
+	}
+	history = encodeRevisions(validatedHistory)
 	channels = doc.History[id.RevID].Channels
-	return
+	return body, history, channels, err
 }
 
 // Returns the body of the current revision of a document
@@ -244,7 +260,11 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 			body["_deleted"] = true
 		}
 		if maxHistory != 0 {
-			revisions = encodeRevisions(doc.History.getHistory(revid))
+			validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+			if getHistoryErr != nil {
+				return nil, getHistoryErr
+			}
+			revisions = encodeRevisions(validatedHistory)
 		}
 		inChannels = doc.History[revid].Channels
 	}
@@ -386,7 +406,7 @@ func (db *Database) authorizeDoc(doc *document, revid string) error {
 // This method adds the magic _id and _rev properties.
 func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error) {
 	var body Body
-	if body = doc.getRevision(revid); body == nil {
+	if body = doc.getRevisionBody(revid, db.RevisionBodyLoader); body == nil {
 		// No inline body, so look for separate doc:
 		if !doc.History.contains(revid) {
 			return nil, base.HTTPErrorf(404, "missing")
@@ -405,8 +425,8 @@ func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error
 // Gets a revision of a document as raw JSON.
 // If it's obsolete it will be loaded from the database if possible.
 // Does not add _id or _rev properties.
-func (db *Database) getRevisionJSON(doc *document, revid string) ([]byte, error) {
-	if body := doc.getRevisionJSON(revid); body != nil {
+func (db *Database) getRevisionBodyJSON(doc *document, revid string) ([]byte, error) {
+	if body := doc.getRevisionBodyJSON(revid, db.RevisionBodyLoader); body != nil {
 		return body, nil
 	} else if !doc.History.contains(revid) {
 		return nil, base.HTTPErrorf(404, "missing")
@@ -421,7 +441,7 @@ func (db *Database) getAncestorJSON(doc *document, revid string) ([]byte, error)
 	for {
 		if revid = doc.History.getParent(revid); revid == "" {
 			return nil, nil
-		} else if body, err := db.getRevisionJSON(doc, revid); body != nil {
+		} else if body, err := db.getRevisionBodyJSON(doc, revid); body != nil {
 			return body, nil
 		} else if !base.IsDocNotFoundError(err) {
 			return nil, err
@@ -438,7 +458,7 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		// usually aren't on any channels at all!) But don't show the full body. (See #59)
 		// Update: this applies to non-deletions too, since the client may have lost access to
 		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
-		// incorporate that tombsone and for that it needs to see the _revisions property.
+		// incorporate that tombstone and for that it needs to see the _revisions property.
 		if revid == "" || doc.History[revid] == nil /*|| !doc.History[revid].Deleted*/ {
 			return nil, err
 		}
@@ -462,8 +482,11 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		body["_deleted"] = true
 	}
 	if listRevisions {
-		history := doc.History.getHistory(revid)
-		body["_revisions"] = encodeRevisions(history)
+		validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+		if getHistoryErr != nil {
+			return nil, getHistoryErr
+		}
+		body["_revisions"] = encodeRevisions(validatedHistory)
 	}
 	return body, nil
 }
@@ -486,7 +509,7 @@ func (db *Database) backupAncestorRevs(doc *document, revid string) error {
 	for {
 		if revid = doc.History.getParent(revid); revid == "" {
 			return nil // No ancestors with JSON found
-		} else if json = doc.getRevisionJSON(revid); json != nil {
+		} else if json = doc.getRevisionBodyJSON(revid, db.RevisionBodyLoader); json != nil {
 			break
 		}
 	}
@@ -502,7 +525,7 @@ func (db *Database) backupAncestorRevs(doc *document, revid string) error {
 	if revid == doc.CurrentRev {
 		doc.body = nil
 	} else {
-		doc.History.setRevisionBody(revid, nil)
+		doc.removeRevisionBody(revid)
 	}
 	base.LogTo("CRUD+", "Backed up obsolete rev %q/%q", doc.ID, revid)
 	return nil
@@ -770,11 +793,11 @@ func (db *Database) updateAndReturnDoc(
 		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.body != nil {
 			// Store the doc's previous body into the revision tree:
 			bodyJSON, _ := json.Marshal(doc.body)
-			doc.History.setRevisionBody(prevCurrentRev, bodyJSON)
+			doc.setNonWinningRevisionBody(prevCurrentRev, bodyJSON, db.AllowExternalRevBodyStorage())
 		}
 
 		// Store the new revision body into the doc:
-		doc.setRevision(newRevID, body)
+		doc.setRevisionBody(newRevID, body, db.AllowExternalRevBodyStorage())
 
 		if doc.CurrentRev == newRevID {
 			doc.NewestRev = ""
@@ -783,10 +806,7 @@ func (db *Database) updateAndReturnDoc(
 			doc.NewestRev = newRevID
 			doc.setFlag(channels.Hidden, true)
 			if doc.CurrentRev != prevCurrentRev {
-				// If the new revision is not current, transfer the current revision's
-				// body to the top level doc.body:
-				doc.body = doc.History.getParsedRevisionBody(doc.CurrentRev)
-				doc.History.setRevisionBody(doc.CurrentRev, nil)
+				doc.promoteNonWinningRevisionBody(doc.CurrentRev, db.RevisionBodyLoader)
 			}
 		}
 
@@ -927,7 +947,7 @@ func (db *Database) updateAndReturnDoc(
 		}
 
 		// Prune old revision history to limit the number of revisions:
-		if pruned := doc.History.pruneRevisions(db.RevsLimit, doc.CurrentRev); pruned > 0 {
+		if pruned := doc.pruneRevisions(db.RevsLimit, doc.CurrentRev); pruned > 0 {
 			base.LogTo("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
 		}
 
@@ -936,6 +956,13 @@ func (db *Database) updateAndReturnDoc(
 
 		// Now that the document has been successfully validated, we can store any new attachments
 		db.setAttachments(newAttachments)
+
+		// Now that the document has been successfully validated, we can update externally stored revision bodies
+		revisionBodyError := doc.persistModifiedRevisionBodies(db.Bucket)
+		if revisionBodyError != nil {
+			return doc, writeOpts, shadowerEcho, revisionBodyError
+		}
+
 		return doc, writeOpts, shadowerEcho, err
 	}
 
@@ -1008,8 +1035,6 @@ func (db *Database) updateAndReturnDoc(
 		} else if docOut != nil {
 			docOut.Cas = casOut
 		}
-	} else {
-
 	}
 
 	// If the WriteUpdate didn't succeed, check whether there are unused, allocated sequences that need to be accounted for
@@ -1041,7 +1066,10 @@ func (db *Database) updateAndReturnDoc(
 
 	if doc.History[newRevID] != nil {
 		// Store the new revision in the cache
-		history := doc.History.getHistory(newRevID)
+		history, getHistoryErr := doc.History.getHistory(newRevID)
+		if getHistoryErr != nil {
+			return nil, "", getHistoryErr
+		}
 
 		if doc.History[newRevID].Deleted {
 			body["_deleted"] = true
@@ -1062,6 +1090,9 @@ func (db *Database) updateAndReturnDoc(
 
 	// Now that the document has successfully been stored, we can make other db changes:
 	base.LogTo("CRUD", "Stored doc %q / %q", docid, newRevID)
+
+	// Remove any obsolete non-winning revision bodies
+	doc.deleteRemovedRevisionBodies(db.Bucket)
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	if len(changedPrincipals) > 0 {
@@ -1247,7 +1278,7 @@ func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.P
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayAccess, ViewAccess, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
 	channelSet := channels.TimedSet{}
@@ -1272,7 +1303,7 @@ func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayAccessVbSeq, ViewAccessVbSeq, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccessVbSeq, opts, &vres); verr != nil {
 		return nil, verr
 	}
 
@@ -1303,7 +1334,7 @@ func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (cha
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayAccess, ViewRoleAccess, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewRoleAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
 	// Merge the TimedSets from the view result:
@@ -1328,7 +1359,7 @@ func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (c
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGatewayAccessVbSeq, ViewRoleAccessVbSeq, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewRoleAccessVbSeq, opts, &vres); verr != nil {
 		return nil, verr
 	}
 

@@ -11,6 +11,8 @@ package db
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -22,6 +24,10 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
+
+// When external revision storage is used, maximum body size (in bytes) to store inline.
+// Non-winning bodies smaller than this size are more efficient to store inline.
+const MaximumInlineBodySize = 250
 
 // Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
@@ -51,6 +57,9 @@ type syncData struct {
 
 	// Backward compatibility (the "deleted" field was, um, deleted in commit 4194f81, 2/17/14)
 	Deleted_OLD bool `json:"deleted,omitempty"`
+
+	addedRevisionBodies     []string          // revIDs of non-winning revision bodies that have been added (and so require persistence)
+	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
@@ -269,33 +278,82 @@ func (doc *document) newestRevID() string {
 	return doc.CurrentRev
 }
 
+// RevLoaderFunc and RevWriterFunc manage persistence of non-winning revision bodies that are stored outside the document.
+type RevLoaderFunc func(key string) ([]byte, error)
+
+func (db *DatabaseContext) RevisionBodyLoader(key string) ([]byte, error) {
+	body, _, err := db.Bucket.GetRaw(key)
+	return body, err
+}
+
 // Fetches the body of a revision as a map, or nil if it's not available.
-func (doc *document) getRevision(revid string) Body {
+func (doc *document) getRevisionBody(revid string, loader RevLoaderFunc) Body {
 	var body Body
 	if revid == doc.CurrentRev {
 		body = doc.body
 	} else {
-		body = doc.History.getParsedRevisionBody(revid)
-		if body == nil {
-			return nil
-		}
+		body = doc.getNonWinningRevisionBody(revid, loader)
+	}
+	return body
+}
+
+// Retrieves a non-winning revision body.  If not already loaded in the document (either because inline,
+// or was previously requested), loader function is used to retrieve from the bucket.
+func (doc *document) getNonWinningRevisionBody(revid string, loader RevLoaderFunc) Body {
+	var body Body
+	bodyBytes, found := doc.History.getRevisionBody(revid, loader)
+	if !found {
+		return nil
+	}
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		base.Warn("Unexpected error parsing body of rev %q", revid)
+		return nil
 	}
 	return body
 }
 
 // Fetches the body of a revision as JSON, or nil if it's not available.
-func (doc *document) getRevisionJSON(revid string) []byte {
+func (doc *document) getRevisionBodyJSON(revid string, loader RevLoaderFunc) []byte {
 	var bodyJSON []byte
 	if revid == doc.CurrentRev {
 		bodyJSON, _ = json.Marshal(doc.body)
 	} else {
-		bodyJSON, _ = doc.History.getRevisionBody(revid)
+		bodyJSON, _ = doc.History.getRevisionBody(revid, loader)
 	}
 	return bodyJSON
 }
 
-// Adds a revision body to a document.
-func (doc *document) setRevision(revid string, body Body) {
+func (doc *document) removeRevisionBody(revID string) {
+	removedBodyKey := doc.History.removeRevisionBody(revID)
+	if removedBodyKey != "" {
+		if doc.removedRevisionBodyKeys == nil {
+			doc.removedRevisionBodyKeys = make(map[string]string)
+		}
+		doc.removedRevisionBodyKeys[revID] = removedBodyKey
+	}
+}
+
+// makeBodyActive moves a previously non-winning revision body from the rev tree to the document body
+func (doc *document) promoteNonWinningRevisionBody(revid string, loader RevLoaderFunc) {
+	// If the new revision is not current, transfer the current revision's
+	// body to the top level doc.body:
+	doc.body = doc.getNonWinningRevisionBody(revid, loader)
+	doc.removeRevisionBody(revid)
+}
+
+func (doc *document) pruneRevisions(maxDepth uint32, keepRev string) int {
+	numPruned, prunedTombstoneBodyKeys := doc.History.pruneRevisions(maxDepth, keepRev)
+	for revID, bodyKey := range prunedTombstoneBodyKeys {
+		if doc.removedRevisionBodyKeys == nil {
+			doc.removedRevisionBodyKeys = make(map[string]string)
+		}
+		doc.removedRevisionBodyKeys[revID] = bodyKey
+	}
+	return numPruned
+}
+
+// Adds a revision body (as Body) to a document.  Removes special properties first.
+func (doc *document) setRevisionBody(revid string, body Body, storeInline bool) {
 	strippedBody := stripSpecialProperties(body)
 	if revid == doc.CurrentRev {
 		doc.body = strippedBody
@@ -304,8 +362,99 @@ func (doc *document) setRevision(revid string, body Body) {
 		if len(body) > 0 {
 			asJson, _ = json.Marshal(stripSpecialProperties(body))
 		}
-		doc.History.setRevisionBody(revid, asJson)
+		doc.setNonWinningRevisionBody(revid, asJson, storeInline)
 	}
+}
+
+// Adds a revision body (as []byte) to a document.  Flags for external storage when appropriate
+func (doc *document) setNonWinningRevisionBody(revid string, body []byte, storeInline bool) {
+	revBodyKey := ""
+	if !storeInline && len(body) > MaximumInlineBodySize {
+		revBodyKey = generateRevBodyKey(doc.ID, revid)
+		doc.addedRevisionBodies = append(doc.addedRevisionBodies, revid)
+	}
+	doc.History.setRevisionBody(revid, body, revBodyKey)
+}
+
+// persistModifiedRevisionBodies writes new non-inline revisions to the bucket.
+// Should be invoked BEFORE the document is successfully committed.
+func (doc *document) persistModifiedRevisionBodies(bucket base.Bucket) error {
+
+	for _, revID := range doc.addedRevisionBodies {
+		// if this rev is also in the delete set, skip add/delete
+		_, ok := doc.removedRevisionBodyKeys[revID]
+		if ok {
+			delete(doc.removedRevisionBodyKeys, revID)
+			continue
+		}
+
+		revInfo, err := doc.History.getInfo(revID)
+		if revInfo == nil || err != nil {
+			return err
+		}
+		if revInfo.BodyKey == "" || len(revInfo.Body) == 0 {
+			return fmt.Errorf("Missing key or body for revision during external persistence.  doc: %s rev:%s key: %s  len(body): %d", doc.ID, revID, revInfo.BodyKey, len(revInfo.Body))
+		}
+
+		// If addRaw indicates that the doc already exists, can ignore.  Another writer already persisted this rev backup.
+		addErr := doc.persistRevisionBody(bucket, revInfo.BodyKey, revInfo.Body)
+		if addErr != nil {
+			return err
+		}
+	}
+
+	doc.addedRevisionBodies = []string{}
+	return nil
+}
+
+// deleteRemovedRevisionBodies deletes obsolete non-inline revisions from the bucket.
+// Should be invoked AFTER the document is successfully committed.
+func (doc *document) deleteRemovedRevisionBodies(bucket base.Bucket) {
+
+	for _, revBodyKey := range doc.removedRevisionBodyKeys {
+		deleteErr := bucket.Delete(revBodyKey)
+		if deleteErr != nil {
+			base.Warn("Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
+		}
+	}
+	doc.removedRevisionBodyKeys = map[string]string{}
+}
+
+func (doc *document) persistRevisionBody(bucket base.Bucket, key string, body []byte) error {
+	_, err := bucket.AddRaw(key, 0, body)
+	return err
+}
+
+// Move any large revision bodies to external document storage
+func (doc *document) migrateRevisionBodies(bucket base.Bucket) error {
+
+	for _, revID := range doc.History.GetLeaves() {
+		revInfo, err := doc.History.getInfo(revID)
+		if err != nil {
+			continue
+		}
+		if len(revInfo.Body) > MaximumInlineBodySize {
+			bodyKey := generateRevBodyKey(doc.ID, revID)
+			persistErr := doc.persistRevisionBody(bucket, bodyKey, revInfo.Body)
+			if persistErr != nil {
+				base.Warn("Unable to store revision body for doc %s, rev %s externally: %v", doc.ID, revID, persistErr)
+				continue
+			}
+			revInfo.BodyKey = bodyKey
+		}
+	}
+	return nil
+}
+
+func generateRevBodyKey(docid, revid string) (revBodyKey string) {
+	return fmt.Sprintf("_sync:rb:%s", generateRevDigest(docid, revid))
+}
+
+func generateRevDigest(docid, revid string) string {
+	digester := sha256.New()
+	digester.Write([]byte(docid))
+	digester.Write([]byte(revid))
+	return base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }
 
 // Updates the expiry for a document
@@ -355,6 +504,52 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 		changedChannels = channels.SetOf(changed...)
 	}
 	return
+}
+
+// Determine whether the specified revision was a channel removal, based on doc.Channels.  If so, construct the standard document body for a
+// removal notification (_removed=true)
+func (doc *document) IsChannelRemoval(revID string) (body Body, history Body, channels base.Set, isRemoval bool, err error) {
+
+	channels = make(base.Set)
+
+	// Iterate over the document's channel history, looking for channels that were removed at revID.  If found, also identify whether the removal was a tombstone.
+	isDelete := false
+	for channel, removal := range doc.Channels {
+		if removal != nil && removal.RevID == revID {
+			channels[channel] = struct{}{}
+			if removal.Deleted == true {
+				isDelete = true
+			}
+		}
+	}
+	// If no matches found, return isRemoval=false
+	if len(channels) == 0 {
+		return nil, nil, nil, false, nil
+	}
+
+	// Construct removal body
+	body = Body{
+		"_id":      doc.ID,
+		"_rev":     revID,
+		"_removed": true,
+	}
+	if isDelete {
+		body["_deleted"] = true
+	}
+
+	// Build revision history for revID
+	revHistory, err := doc.History.getHistory(revID)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+
+	// If there's no history (because the revision has been pruned from the rev tree), treat revision history as only the specified rev id.
+	if len(revHistory) == 0 {
+		revHistory = []string{revID}
+	}
+	history = encodeRevisions(revHistory)
+
+	return body, history, channels, true, nil
 }
 
 // Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.

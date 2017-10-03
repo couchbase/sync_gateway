@@ -95,7 +95,8 @@ type DatabaseContextOptions struct {
 	OIDCOptions           *auth.OIDCOptions
 	DBOnlineCallback      DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions         ImportOptions
-	EnableXattr           bool // Use xattr for _sync
+	EnableXattr           bool   // Use xattr for _sync
+	LocalDocExpirySecs    uint32 //The _local doc expiry time in seconds
 }
 
 type OidcTestProviderOptions struct {
@@ -142,7 +143,16 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 	//start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		bucket, err = base.GetBucket(spec, callback)
-		return err != nil, err, bucket
+
+		// By default, if there was an error, retry
+		shouldRetry = err != nil
+
+		if err == base.ErrFatalBucketConnection {
+			base.Warn("Fatal error connecting to bucket: %v.  Not retrying", err)
+			shouldRetry = false
+		}
+
+		return shouldRetry, err, bucket
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
@@ -699,27 +709,17 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 	roleAccess_vbSeq_map = fmt.Sprintf(roleAccess_vbSeq_map, syncData)
 
 	designDocMap := map[string]sgbucket.DesignDoc{}
-
-	designDocMap[DesignDocSyncGatewayChannels] = sgbucket.DesignDoc{
+	designDocMap[DesignDocSyncGateway] = sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewChannels: sgbucket.ViewDef{Map: channels_map},
+			ViewChannels:        sgbucket.ViewDef{Map: channels_map},
+			ViewAccess:          sgbucket.ViewDef{Map: access_map},
+			ViewRoleAccess:      sgbucket.ViewDef{Map: roleAccess_map},
+			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
+			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
+			ViewPrincipals:      sgbucket.ViewDef{Map: principals_map},
 		},
 		Options: &sgbucket.DesignDocOptions{
 			IndexXattrOnTombstones: true,
-		},
-	}
-
-	designDocMap[DesignDocSyncGatewayAccess] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewAccess:     sgbucket.ViewDef{Map: access_map},
-			ViewRoleAccess: sgbucket.ViewDef{Map: roleAccess_map},
-		},
-	}
-
-	designDocMap[DesignDocSyncGatewayAccessVbSeq] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
-			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
 		},
 	}
 
@@ -731,7 +731,6 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 			ViewOldRevs:    sgbucket.ViewDef{Map: oldrevs_map, Reduce: "_count"},
 			ViewSessions:   sgbucket.ViewDef{Map: sessions_map},
 			ViewTombstones: sgbucket.ViewDef{Map: tombstones_map},
-			ViewPrincipals: sgbucket.ViewDef{Map: principals_map},
 		},
 		Options: &sgbucket.DesignDocOptions{
 			IndexXattrOnTombstones: true, // For ViewTombstones
@@ -742,9 +741,6 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 		11, //MaxNumRetries approx 10 seconds total retry duration
 		5,  //InitialRetrySleepTimeMS
 	)
-
-	// Remove legacy sync gateway design doc, if present
-	bucket.DeleteDDoc(DesignDocSyncGateway)
 
 	// add all design docs from map into bucket
 	for designDocName, designDoc := range designDocMap {
@@ -830,7 +826,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewPrincipals, Body{"stale": false})
+	vres, err := db.Bucket.View(DesignDocSyncGateway, ViewPrincipals, Body{"stale": false})
 	if err != nil {
 		return
 	}
@@ -1209,9 +1205,23 @@ func (context *DatabaseContext) UseXattrs() bool {
 	return context.Options.EnableXattr
 }
 
+func (context *DatabaseContext) AllowExternalRevBodyStorage() bool {
+
+	// Support unit testing w/out xattrs enabled
+	if base.TestExternalRevStorage {
+		return false
+	}
+	return !context.UseXattrs()
+}
+
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 
 	context.Options.UnsupportedOptions.UserViews.Enabled = &value
+}
+
+// For test usage
+func (context *DatabaseContext) FlushRevisionCache() {
+	context.revisionCache = NewRevisionCache(context.Options.RevisionCacheCapacity, context.revCacheLoader)
 }
 
 //////// SEQUENCE ALLOCATION:

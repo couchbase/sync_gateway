@@ -131,6 +131,7 @@ type DbConfig struct {
 	OIDCConfig           *auth.OIDCOptions              `json:"oidc,omitempty"`                        // Config properties for OpenID Connect authentication
 	OldRevExpirySeconds  *uint32                        `json:"old_rev_expiry_seconds,omitempty"`      // The number of seconds before old revs are removed from CBS bucket
 	ViewQueryTimeoutSecs *uint32                        `json:"view_query_timeout_secs,omitempty"`     // The view query timeout in seconds
+	LocalDocExpirySecs   *uint32                        `json:"local_doc_expiry_secs,omitempty"`       // The _local doc expiry time in seconds
 	EnableXattrs         *bool                          `json:"enable_shared_bucket_access,omitempty"` // Whether to use extended attributes to store _sync metadata
 }
 
@@ -385,6 +386,11 @@ func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
 // Implementation of AuthHandler interface for ChannelIndexConfig
 func (channelIndexConfig *ChannelIndexConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(channelIndexConfig.Username, channelIndexConfig.Password, *channelIndexConfig.Bucket)
+}
+
+// Implementation of AuthHandler interface for ClusterConfig
+func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
+	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
 }
 
 // Reads a ServerConfig from raw data

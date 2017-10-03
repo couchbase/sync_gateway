@@ -233,11 +233,7 @@ func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
 	base.LogTo("HTTP", "Dump view %q", viewName)
 	opts := db.Body{"stale": false, "reduce": false}
-	designDocName := db.GetDesignDocForView(viewName)
-	if designDocName == "" {
-		return fmt.Errorf("Unknown view name: %s", viewName)
-	}
-	result, err := h.db.Bucket.View(designDocName, viewName, opts)
+	result, err := h.db.Bucket.View(db.DesignDocSyncGateway, viewName, opts)
 	if err != nil {
 		return err
 	}
@@ -425,11 +421,11 @@ func (h *handler) handleBulkDocs() error {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Document body must be JSON")
 			return err
 		}
-		docid, ok := doc["_id"].(string)
-		if !ok {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Document id must be string")
-			return err
-		}
+
+		// If ID is present, check whether local doc. (note: if _id is absent or non-string, docid will be
+		// empty string and handled during normal doc processing)
+		docid, _ := doc["_id"].(string)
+
 		if strings.HasPrefix(docid, "_local/") {
 			localDocs = append(localDocs, doc)
 		} else {

@@ -11,16 +11,19 @@ package db
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"runtime"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-	"log"
-	"errors"
+
 )
 
 // 1-one -- 2-two -- 3-three
@@ -239,7 +242,8 @@ func TestRevTreeParentAccess(t *testing.T) {
 }
 
 func TestRevTreeGetHistory(t *testing.T) {
-	history := testmap.getHistory("3-three")
+	history, err := testmap.getHistory("3-three")
+	assert.True(t, err == nil)
 	assert.DeepEquals(t, history, []string{"3-three", "2-two", "1-one"})
 }
 
@@ -273,7 +277,7 @@ func TestRevTreeAddRevisionWithEmptyID(t *testing.T) {
 	assert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{Parent: "3-three"})
-	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal","testdoc")))
+	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", "testdoc")))
 }
 
 func TestRevTreeAddDuplicateRevID(t *testing.T) {
@@ -350,27 +354,26 @@ func TestPruneRevisions(t *testing.T) {
 	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
 
 	// Prune:
-	assert.Equals(t, tempmap.pruneRevisions(1000, ""), 0)
-	assert.Equals(t, tempmap.pruneRevisions(3, ""), 0)
-	assert.Equals(t, tempmap.pruneRevisions(2, ""), 1)
+	pruned, _ := tempmap.pruneRevisions(1000, "")
+	assert.Equals(t, pruned, 0)
+	pruned, _ = tempmap.pruneRevisions(3, "")
+	assert.Equals(t, pruned, 0)
+	pruned, _ = tempmap.pruneRevisions(2, "")
+	assert.Equals(t, pruned, 1)
 	assert.Equals(t, len(tempmap), 4)
 	assert.Equals(t, tempmap["1-one"], (*RevInfo)(nil))
 	assert.Equals(t, tempmap["2-two"].Parent, "")
 
 	// Make sure leaves are never pruned:
-	assert.Equals(t, tempmap.pruneRevisions(1, ""), 2)
+	pruned, _ = tempmap.pruneRevisions(1, "")
+	assert.Equals(t, pruned, 2)
 	assert.Equals(t, len(tempmap), 2)
 	assert.True(t, tempmap["3-three"] != nil)
 	assert.Equals(t, tempmap["3-three"].Parent, "")
 	assert.True(t, tempmap["4-vier"] != nil)
 	assert.Equals(t, tempmap["4-vier"].Parent, "")
 
-
 }
-
-
-
-
 
 func TestPruneRevsSingleBranch(t *testing.T) {
 
@@ -381,7 +384,7 @@ func TestPruneRevsSingleBranch(t *testing.T) {
 	maxDepth := uint32(20)
 	expectedNumPruned := numRevs - int(maxDepth)
 
-	numPruned := revTree.pruneRevisions(maxDepth, "")
+	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
 	assert.Equals(t, numPruned, expectedNumPruned)
 
 }
@@ -406,7 +409,6 @@ func TestPruneRevsOneWinningOneNonwinningBranch(t *testing.T) {
 	revTree.pruneRevisions(maxDepth, "")
 
 	assert.Equals(t, revTree.LongestBranch(), int(maxDepth))
-
 
 }
 
@@ -434,7 +436,6 @@ func TestPruneRevsOneWinningOneOldTombstonedBranch(t *testing.T) {
 	// we shouldn't have any tombstoned branches, since the tombstoned branch was so old
 	// it should have been pruned away
 	assert.Equals(t, revTree.FindLongestTombstonedBranch(), 0)
-
 
 }
 
@@ -469,7 +470,8 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 	assert.Equals(t, len(tombstonedLeaves), 1)
 	tombstonedLeaf := tombstonedLeaves[0]
 
-	tombstonedBranch := revTree.getHistory(tombstonedLeaf)
+	tombstonedBranch, err := revTree.getHistory(tombstonedLeaf)
+	assert.True(t, err == nil)
 	assert.Equals(t, len(tombstonedBranch), int(maxDepth))
 
 	// The generation of the longest deleted branch is 97:
@@ -482,8 +484,6 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 	assert.Equals(t, revTree.FindLongestTombstonedBranch(), expectedGenLongestTSd)
 
 }
-
-
 
 func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
@@ -516,7 +516,6 @@ func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
 }
 
-
 func TestGenerationLongestTombstonedBranch(t *testing.T) {
 
 	branchSpecs := []BranchSpec{
@@ -546,13 +545,11 @@ func TestGenerationLongestTombstonedBranch(t *testing.T) {
 	// 100 revs in branchspec
 	// +
 	// 1 extra rev in branchspec since LastRevisionIsTombstone (that variable name is misleading)
-	expectedGenerationLongestTombstonedBranch :=  3 + 100 + 1
+	expectedGenerationLongestTombstonedBranch := 3 + 100 + 1
 
 	assert.Equals(t, generationLongestTombstonedBranch, expectedGenerationLongestTombstonedBranch)
 
-
 }
-
 
 // Tests for updated pruning algorithm, post https://github.com/couchbase/sync_gateway/issues/2651
 func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
@@ -573,7 +570,7 @@ func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 
 	maxDepth := uint32(50)
-	numPruned := revTree.pruneRevisions(maxDepth, "")
+	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
 	fmt.Printf("numPruned: %v", numPruned)
 	fmt.Printf("LongestBranch: %v", revTree.LongestBranch())
 
@@ -595,12 +592,14 @@ func TestPruneRevsSingleTombstonedBranch(t *testing.T) {
 
 	revTree := getMultiBranchTestRevtree1(1, 0, branchSpecs)
 
+	log.Printf("RevTreeAfter before: %v", revTree.RenderGraphvizDot())
+
 	maxDepth := uint32(20)
 	expectedNumPruned := numRevsTotal - int(maxDepth)
 
-	expectedNumPruned += 1  // To account for the tombstone revision in the branchspec, which is spearate from NumRevs
+	expectedNumPruned += 1 // To account for the tombstone revision in the branchspec, which is spearate from NumRevs
 
-	numPruned := revTree.pruneRevisions(maxDepth, "")
+	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
 
 	log.Printf("RevTreeAfter pruning: %v", revTree.RenderGraphvizDot())
 
@@ -633,6 +632,62 @@ func TestLongestBranch2(t *testing.T) {
 	assert.True(t, multiroot.LongestBranch() == 3)
 
 }
+
+
+// Create a disconnected rev tree
+// Add lots of revisions to winning branch
+// Prune rev tree
+// Make sure the winning branch is pruned as expected
+func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
+
+	dumpRevTreeDotFiles := false
+
+	branchSpecs := []BranchSpec{
+		{
+			NumRevs:                 10,
+			Digest:                  "non-winning",
+			LastRevisionIsTombstone: false,
+		},
+	}
+	revTree := getMultiBranchTestRevtree1(1, 15, branchSpecs)
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	maxDepth := uint32(7)
+
+	revTree.pruneRevisions(maxDepth, "")
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	winningBranchStartRev := fmt.Sprintf("%d-%s", 16, "winning")
+
+	// Add revs to winning branch
+	addRevs(
+		revTree,
+		winningBranchStartRev,
+		10,
+		"winning",
+	)
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	revTree.pruneRevisions(maxDepth, "")
+
+	if (dumpRevTreeDotFiles) {
+		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+	}
+
+	// Make sure the winning branch is pruned down to maxDepth, even with the disconnected rev tree
+	assert.True(t, revTree.LongestBranch() == 7)
+
+}
+
 
 func TestParseRevisions(t *testing.T) {
 	type testCase struct {
@@ -699,6 +754,159 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, nil, 2)
 	assert.True(t, result)
 	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey", "dewey"}})
+}
+
+// Regression test for https://github.com/couchbase/sync_gateway/issues/2847
+func TestRevsHistoryInfiniteLoop(t *testing.T) {
+
+	docId := "testdocProblematicRevTree"
+
+	rawDoc, err := unmarshalDocument(docId, []byte(testdocProblematicRevTree))
+	if err != nil {
+		t.Fatalf("Error unmarshalling doc: %v", err)
+	}
+
+	revId := "275-6458b32429e335f981fc12b73765833d"
+	_, err = getHistoryWithTimeout(
+		rawDoc,
+		revId,
+		time.Second*1,
+	)
+
+	// This should return an error, since the history has cycles
+	assert.True(t, err != nil)
+
+	// The error should *not* be a timeout error
+	assert.False(t, strings.Contains(err.Error(), "Timeout"))
+
+}
+
+// TODO: add test for two tombstone branches getting pruned at once
+
+// Repro case for https://github.com/couchbase/sync_gateway/issues/2847
+func TestRevisionPruningLoop(t *testing.T) {
+
+	revsLimit := uint32(5)
+	revBody := []byte(`{"foo":"bar"}`)
+	nonTombstone := false
+	tombstone := true
+
+	// create rev tree with a root entry
+	revTree := RevTree{}
+	err := addAndGet(revTree, "1-foo", "", nonTombstone)
+	assertNoError(t, err, "Error adding revision 1-foo to tree")
+
+	// Add several entries (2-foo to 5-foo)
+	for generation := 2; generation <= 5; generation++ {
+		revID := fmt.Sprintf("%d-foo", generation)
+		parentRevID := fmt.Sprintf("%d-foo", generation-1)
+		err := addAndGet(revTree, revID, parentRevID, nonTombstone)
+		assertNoError(t, err, fmt.Sprintf("Error adding revision 1-foo to tree", revID))
+	}
+
+	// Add tombstone children of 3-foo and 4-foo
+
+	err = addAndGet(revTree, "4-bar", "3-foo", nonTombstone)
+	err = addAndGet(revTree, "5-bar", "4-bar", tombstone)
+	assertNoError(t, err, "Error adding tombstone 4-bar to tree")
+
+	/*
+		// Add a second branch as a child of 2-foo.
+		err = addAndGet(revTree, "3-bar", "2-foo", nonTombstone)
+		assertNoError(t, err, "Error adding revision 3-bar to tree")
+
+		// Tombstone the second branch
+		err = addAndGet(revTree, "4-bar", "3-bar", tombstone)
+		assertNoError(t, err, "Error adding tombstone 4-bar to tree")
+	*/
+
+	// Add a another tombstoned branch as a child of 5-foo.  This will ensure that 2-foo doesn't get pruned
+	// until the first tombstone branch is deleted.
+	/*
+		err = addAndGet(revTree, "6-bar2", "5-foo", tombstone)
+		assertNoError(t, err, "Error adding tombstone 6-bar2 to tree")
+	*/
+
+	log.Printf("Tree before adding to main branch: [[%s]]", revTree.RenderGraphvizDot())
+
+	// Keep adding to the main branch without pruning.  Simulates old pruning algorithm,
+	// which maintained rev history due to tombstone branch
+	for generation := 6; generation <= 15; generation++ {
+		revID := fmt.Sprintf("%d-foo", generation)
+		parentRevID := fmt.Sprintf("%d-foo", generation-1)
+		_, err := addPruneAndGet(revTree, revID, parentRevID, revBody, revsLimit, nonTombstone)
+		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
+
+		keepAliveRevID := fmt.Sprintf("%d-keep", generation)
+		_, err = addPruneAndGet(revTree, keepAliveRevID, parentRevID, revBody, revsLimit, tombstone)
+		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
+
+		// The act of marshalling the rev tree and then unmarshalling back into a revtree data structure
+		// causes the issue.
+		log.Printf("Tree pre-marshal: [[%s]]", revTree.RenderGraphvizDot())
+		treeBytes, marshalErr := revTree.MarshalJSON()
+		assertNoError(t, marshalErr, fmt.Sprintf("Error marshalling tree: %v", marshalErr))
+		revTree = RevTree{}
+		unmarshalErr := revTree.UnmarshalJSON(treeBytes)
+		assertNoError(t, unmarshalErr, fmt.Sprintf("Error unmarshalling tree: %v", unmarshalErr))
+	}
+
+}
+
+func addAndGet(revTree RevTree, revID string, parentRevID string, isTombstone bool) error {
+
+	revBody := []byte(`{"foo":"bar"}`)
+	revTree.addRevision("foobar", RevInfo{
+		ID:      revID,
+		Parent:  parentRevID,
+		Body:    revBody,
+		Deleted: isTombstone,
+	})
+	history, err := revTree.getHistory(revID)
+	log.Printf("addAndGet.  Tree length: %d.  History for new rev: %v", len(revTree), history)
+	return err
+
+}
+
+func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
+	revTree.addRevision("doc", RevInfo{
+		ID:      revID,
+		Parent:  parentRevID,
+		Body:    revBody,
+		Deleted: tombstone,
+	})
+	numPruned, _ = revTree.pruneRevisions(revsLimit, revID)
+
+	// Get history for new rev (checks for loops)
+	history, err := revTree.getHistory(revID)
+	log.Printf("addPruneAndGet.  Tree length: %d.  Num pruned: %d.  History for new rev: %v", len(revTree), numPruned, history)
+	return numPruned, err
+
+}
+
+func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration) (history []string, err error) {
+
+	historyChannel := make(chan []string)
+	errChannel := make(chan error)
+
+	go func() {
+		history, err := rawDoc.History.getHistory(revId)
+		if err != nil {
+			errChannel <- err
+		} else {
+			historyChannel <- history
+		}
+	}()
+
+	select {
+	case history := <-historyChannel:
+		return history, nil
+	case err := <-errChannel:
+		return nil, err
+	case _ = <-time.After(timeout):
+		return nil, fmt.Errorf("Timeout waiting for history")
+	}
+
 }
 
 //////// BENCHMARK:
@@ -851,7 +1059,6 @@ func (tree RevTree) LongestBranch() int {
 	return longestBranch
 
 }
-
 
 // Create body content as map of 100 byte entries.  Rounds up to the nearest 100 bytes
 func createBodyContentAsMapWithSize(docSizeBytes int) map[string]string {

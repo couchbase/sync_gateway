@@ -24,10 +24,21 @@ func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
 	}
 
 	body := Body{}
-	_, err := db.Bucket.Get(key, &body)
-	if err != nil {
-		return nil, err
+
+	if doctype == "local" && db.DatabaseContext.Options.LocalDocExpirySecs > 0 {
+		rawDocBytes, _, err := db.Bucket.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs)))
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(rawDocBytes, &body); err != nil {
+			return nil, err
+		}
+	} else {
+		if _, err := db.Bucket.Get(key, &body); err != nil {
+			return nil, err
+		}
 	}
+
 	return body, nil
 }
 
@@ -39,9 +50,13 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 	}
 	var revid string
 
-	expiry, err := body.getExpiry()
+	expiry, expPresent, err := body.getExpiry()
 	if err != nil {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+	}
+
+	if expPresent && expiry == 0 && doctype == "local" {
+		expiry = uint32(base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs)))
 	}
 	err = db.Bucket.Update(key, int(expiry), func(value []byte) ([]byte, error) {
 		if len(value) == 0 {
