@@ -937,6 +937,7 @@ func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, e
 		return casOut, err
 	}
 
+
 	return casOut, nil
 
 }
