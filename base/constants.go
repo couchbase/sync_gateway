@@ -52,6 +52,7 @@ const (
 
 	DefaultUseXattrs = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 
+	DefaultOldRevExpirySeconds = 300
 )
 
 func UnitTestUrl() string {

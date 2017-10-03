@@ -146,7 +146,7 @@ func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) 
 	body = append(body, byte(0))
 	copy(body[1:], body[0:])
 	body[0] = nonJSONPrefix
-	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), db.DatabaseContext.Options.OldRevExpirySecods, base.BinaryDocument(body))
+	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), db.DatabaseContext.Options.OldRevExpirySeconds, base.BinaryDocument(body))
 }
 
 //////// UTILITY FUNCTIONS:
