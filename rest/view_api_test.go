@@ -19,8 +19,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/channels"
 
-	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbaselabs/go.assert"
 )
 
 func TestDesignDocs(t *testing.T) {
@@ -71,31 +71,29 @@ func TestViewQuery(t *testing.T) {
 	response = rt.SendRequest("PUT", "/db/doc2", `{"key":7, "value":"seven"}`)
 	assertStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar", ``)
-	assertStatus(t, response, 200)
-	var result sgbucket.ViewResult
+	result, err := rt.WaitForNViewResults(2, "/db/_design/foo/_view/bar")
+	assertNoError(t, err, "Got unexpected error")
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"})
 
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?limit=1", ``)
-	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
+	result, err = rt.WaitForNViewResults(1, "/db/_design/foo/_view/bar?limit=1")
 	assert.Equals(t, len(result.Rows), 1)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9", ``)
-	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
+	result, err = rt.WaitForNViewResults(1, "/db/_design/foo/_view/bar?endkey=9")
 	assert.Equals(t, len(result.Rows), 1)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?endkey=9&include_docs=true", ``)
-	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 1)
-	assert.DeepEquals(t, *result.Rows[0].Doc, map[string]interface{}{"key": 7.0, "value": "seven"})
+	if base.UnitTestUrlIsWalrus() {
+		// This query and assertion only works with walrus as documented here:
+		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
+		result, err = rt.WaitForNViewResults(1, "/db/_design/foo/_view/bar?include_docs=true&endkey=9")
+		assert.Equals(t, len(result.Rows), 1)
+		assert.DeepEquals(t, *result.Rows[0].Doc, map[string]interface{}{"key": 7.0, "value": "seven"})
+	}
+
 }
 
 //Tests #1109, where design doc contains multiple views

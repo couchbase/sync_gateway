@@ -13,6 +13,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"runtime/debug"
 	"encoding/json"
+	"github.com/couchbase/sg-bucket"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -266,6 +267,42 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response
+}
+
+
+// Wait for a certain number of results to be returned from a view query
+// viewUrlPath: is the path to the view, including the db name.  Eg: "/db/_design/foo/_view/bar"
+func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath string) (viewResult sgbucket.ViewResult, err error) {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		response := rt.SendAdminRequest("GET", viewUrlPath, ``)
+		if response.Code != 200 {
+			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200.", response.Code), sgbucket.ViewResult{}
+		}
+		var result sgbucket.ViewResult
+		json.Unmarshal(response.Body.Bytes(), &result)
+
+		if len(result.Rows) >= numResultsExpected {
+			// Got enough results, break out of retry loop
+			return false, nil, result
+		}
+
+		// Not enough results, retry
+		return true, nil, sgbucket.ViewResult{}
+
+	}
+
+	description := fmt.Sprintf("Wait for %d view results for query to %v", numResultsExpected, viewUrlPath)
+	sleeper := base.CreateDoublingSleeperFunc(20, 10)
+	err, returnVal := base.RetryLoop(description, worker, sleeper)
+
+	if err != nil {
+		return sgbucket.ViewResult{}, err
+	}
+
+	return returnVal.(sgbucket.ViewResult), nil
+
+
 }
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
