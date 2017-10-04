@@ -113,11 +113,11 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 
 func tearDownTestDB(t testing.TB, db *Database) {
 
-	if !base.UnitTestUrlIsWalrus() {
-		// When running against couchbase server buckets, this teardown is not needed, and
-		// enabling it results in errors in the logs such as: https://gist.github.com/tleyden/e00dcf75c873cf83100a2e3f317af15f
-		return
-	}
+	//if !base.UnitTestUrlIsWalrus() {
+	//	// When running against couchbase server buckets, this teardown is not needed, and
+	//	// enabling it results in errors in the logs such as: https://gist.github.com/tleyden/e00dcf75c873cf83100a2e3f317af15f
+	//	return
+	//}
 	db.Close()
 }
 
