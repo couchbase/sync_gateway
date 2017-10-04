@@ -264,6 +264,26 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
 }
 
+// Reproduces issues discovered in https://github.com/couchbase/sync_gateway/issues/2938#issuecomment-334016797
+// Repro logs: https://gist.github.com/tleyden/f01c1098a2b01b19c727dccdfb7238f3
+func TestReproduceTestResidue(t *testing.T) {
+
+	testChannelCacheBufferingWithUserDoc := func(t *testing.T) {
+		TestChannelCacheBufferingWithUserDoc(t)
+	}
+
+	testContinuousChangesBackfill := func(t *testing.T) {
+		TestContinuousChangesBackfill(t)
+	}
+
+	for i := 0; i < 100; i++ {
+		testChannelCacheBufferingWithUserDoc(t)
+		testContinuousChangesBackfill(t)
+	}
+
+
+}
+
 // Test notification when buffered entries are processed after a user doc arrives.
 func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
