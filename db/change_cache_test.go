@@ -276,7 +276,7 @@ func TestReproduceTestResidue(t *testing.T) {
 		TestContinuousChangesBackfill(t)
 	}
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		log.Printf("------------------------------ testChannelCacheBufferingWithUserDoc() ------------------------------")
 		testChannelCacheBufferingWithUserDoc(t)
 		log.Printf("------------------------------ testContinuousChangesBackfill() ------------------------------")
