@@ -929,13 +929,15 @@ func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, e
 
 	}
 	err, newCasVal := RetryLoop("CouchbaseBucketGoCB Remove()", worker, bucket.spec.RetrySleeper())
-	newCas := newCasVal.(gocb.Cas)
-	
-	if err != nil {
-		return uint64(newCas), err
+	if newCasVal != nil {
+		casOut = uint64(newCasVal.(gocb.Cas))
 	}
 
-	return uint64(newCas), nil
+	if err != nil {
+		return casOut, err
+	}
+
+	return casOut, nil
 
 
 }
