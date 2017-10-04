@@ -25,7 +25,7 @@ type changeListener struct {
 	DocChannel            chan sgbucket.FeedEvent // Passthru channel for doc mutations
 	OnDocChanged          DocChangedFunc          // Called when change arrives on feed
 	trackDocs             bool                    // Whether events should be routed to DocChannel passthru
-
+	terminator            chan bool               // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
@@ -39,13 +39,15 @@ func (listener *changeListener) Init(name string) {
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, terminator chan bool, bucketStateNotify sgbucket.BucketNotifyFn) error {
+func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, bucketStateNotify sgbucket.BucketNotifyFn) error {
+
+	listener.terminator = make(chan bool)
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
 	listener.FeedArgs = sgbucket.FeedArguments{
 		Backfill:   backfillMode,
 		Notify:     bucketStateNotify,
-		Terminator: terminator,
+		Terminator: listener.terminator,
 	}
 
 	if trackDocs {
@@ -125,6 +127,11 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 
 // Stops a changeListener. Any pending Wait() calls will immediately return false.
 func (listener *changeListener) Stop() {
+
+	if listener.terminator != nil {
+		close(listener.terminator)
+	}
+
 	if listener.tapFeed != nil {
 		listener.tapFeed.Close()
 	}
