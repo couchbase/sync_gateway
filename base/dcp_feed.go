@@ -381,7 +381,7 @@ func (r *DCPLoggingReceiver) OnError(err error) {
 
 func (r *DCPLoggingReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	LogTo("DCP", "DataUpdate:%d, %s, %d, %v", vbucketId, key, seq, req)
+	LogTo("DCP+", "DataUpdate:%d, %s, %d, %v", vbucketId, key, seq, req)
 	return r.rec.DataUpdate(vbucketId, key, seq, req)
 }
 
@@ -408,24 +408,24 @@ func (r *DCPLoggingReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) erro
 
 func (r *DCPLoggingReceiver) SetMetaData(vbucketId uint16, value []byte) error {
 
-	LogTo("DCP", "SetMetaData:%d, %s", vbucketId, value)
+	LogTo("DCP+", "SetMetaData:%d, %s", vbucketId, value)
 	return r.rec.SetMetaData(vbucketId, value)
 }
 
 func (r *DCPLoggingReceiver) GetMetaData(vbucketId uint16) (
 	value []byte, lastSeq uint64, err error) {
-	LogTo("DCP", "GetMetaData:%d", vbucketId)
+	LogTo("DCP+", "GetMetaData:%d", vbucketId)
 	return r.rec.GetMetaData(vbucketId)
 }
 
 func (r *DCPLoggingReceiver) SnapshotStart(vbucketId uint16,
 	snapStart, snapEnd uint64, snapType uint32) error {
-	LogTo("DCP", "SnapshotStart:%d, %d, %d, %d", vbucketId, snapStart, snapEnd, snapType)
+	LogTo("DCP+", "SnapshotStart:%d, %d, %d, %d", vbucketId, snapStart, snapEnd, snapType)
 	return r.rec.SnapshotStart(vbucketId, snapStart, snapEnd, snapType)
 }
 
 func (r *DCPLoggingReceiver) SeedSeqnos(uuids map[uint16]uint64, seqs map[uint16]uint64) {
-	LogTo("DCP", "SeedSeqnos:%v, %v", uuids, seqs)
+	LogTo("DCP+", "SeedSeqnos:%v, %v", uuids, seqs)
 	r.rec.SeedSeqnos(uuids, seqs)
 }
 
