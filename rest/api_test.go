@@ -750,6 +750,7 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 
 	//We want a sync function that will reject some docs
 	rt := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	defer rt.Close()
 
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
 	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
@@ -789,6 +790,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
 	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	defer rt1.Close()
 
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
 	response := rt1.SendRequest("POST", "/db/_bulk_docs", input)
@@ -805,6 +807,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	assert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
 		Facebook:       &FacebookConfig{},
