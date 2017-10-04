@@ -40,13 +40,15 @@ func (listener *changeListener) Init(name string) {
 
 // Starts a changeListener on a given Bucket.
 
-func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, terminator chan bool, bucketStateNotify sgbucket.BucketNotifyFn) error {
+func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, bucketStateNotify sgbucket.BucketNotifyFn) error {
+
+	listener.terminator = make(chan bool)
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
 	listener.FeedArgs = sgbucket.FeedArguments{
 		Backfill:   backfillMode,
 		Notify:     bucketStateNotify,
-		Terminator: terminator,
+		Terminator: listener.terminator,
 	}
 
 	if trackDocs {
