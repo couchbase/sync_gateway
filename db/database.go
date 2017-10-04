@@ -81,6 +81,7 @@ type DatabaseContext struct {
 	ExitChanges              chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders            auth.OIDCProviderMap    // OIDC clients
 	PurgeInterval            int                     // Metadata purge interval, in hours
+	ChangeListenerTerminator chan bool               // sgbucket.FeedArguments Terminator to enable mutation feed to be closed when the db is closed
 }
 
 type DatabaseContextOptions struct {
@@ -237,7 +238,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		base.LogTo("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
 
 
-		if err = context.tapListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
+		context.ChangeListenerTerminator = make(chan bool)
+
+		if err = context.tapListener.Start(bucket, options.TrackDocs, feedMode, context.ChangeListenerTerminator, func(bucket string, err error) {
 
 			msg := fmt.Sprintf("%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
 			base.Warn(msg)
@@ -402,6 +405,9 @@ func (context *DatabaseContext) Close() {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
+	// Shut down the mutation feed
+	close(context.ChangeListenerTerminator)
+
 	context.tapListener.Stop()
 	context.changeCache.Stop()
 	context.Shadower.Stop()
@@ -424,7 +430,10 @@ func (context *DatabaseContext) RestartListener() error {
 		feedMode = sgbucket.FeedResume
 	}
 
-	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil); err != nil {
+	currentTerminator := context.tapListener.FeedArgs.Terminator
+	currentBucketStateNotify := context.tapListener.FeedArgs.Notify
+
+	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, currentTerminator, currentBucketStateNotify); err != nil {
 		return err
 	}
 	return nil
