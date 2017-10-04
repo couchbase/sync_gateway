@@ -277,7 +277,9 @@ func TestReproduceTestResidue(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
+		log.Printf("------------------------------ testChannelCacheBufferingWithUserDoc() ------------------------------")
 		testChannelCacheBufferingWithUserDoc(t)
+		log.Printf("------------------------------ testContinuousChangesBackfill() ------------------------------")
 		testContinuousChangesBackfill(t)
 	}
 
@@ -295,6 +297,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	base.EnableLogKey("Cache+")
 	base.EnableLogKey("Changes")
 	base.EnableLogKey("Changes+")
+	base.EnableLogKey("DCP")
 	db := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer tearDownTestDB(t, db)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -404,6 +407,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		"Sequences": true,
 		"Cache":     true,
 		"Changes+":  true,
+		"DCP": true,
 	}
 
 	base.UpdateLogKeys(logKeys, true)
