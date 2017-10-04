@@ -406,7 +406,9 @@ func (context *DatabaseContext) Close() {
 	defer context.BucketLock.Unlock()
 
 	// Shut down the mutation feed
-	close(context.ChangeListenerTerminator)
+	if context.ChangeListenerTerminator != nil {
+		close(context.ChangeListenerTerminator)
+	}
 
 	context.tapListener.Stop()
 	context.changeCache.Stop()
