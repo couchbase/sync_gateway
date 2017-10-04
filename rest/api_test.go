@@ -813,11 +813,16 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	server := base.UnitTestUrl()
 	bucketName := rt1.RestTesterBucket.GetName()
+	spec := base.GetTestBucketSpec(base.DataBucket)
+	username, password, _ := spec.Auth.GetCredentials()
 
 	_, err := rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
 			Server: &server,
-			Bucket: &bucketName},
+			Bucket: &bucketName,
+			Username: username,
+			Password: password,
+		},
 		Name: "db",
 	})
 
