@@ -20,10 +20,18 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 
 	"github.com/couchbaselabs/go.assert"
+	"github.com/couchbase/sync_gateway/base"
 )
 
 func TestDesignDocs(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
+	}
+
 	var rt RestTester
+	defer rt.Close()
+
 	response := rt.SendRequest("GET", "/db/_design/foo", "")
 	assertStatus(t, response, 403)
 	response = rt.SendRequest("PUT", "/db/_design/foo", `{"prop":true}`)
@@ -50,7 +58,12 @@ func TestDesignDocs(t *testing.T) {
 }
 
 func TestViewQuery(t *testing.T) {
+
+	// TODO: this test is failing when run against actual couchbase bucket
+
 	var rt RestTester
+	defer rt.Close()
+
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	assertStatus(t, response, 201)
 	response = rt.SendRequest("PUT", "/db/doc1", `{"key":10, "value":"ten"}`)
@@ -88,6 +101,8 @@ func TestViewQuery(t *testing.T) {
 //Tests #1109, where design doc contains multiple views
 func TestViewQueryMultipleViews(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	//Define three views
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, null); }"}}}`)
 	assertStatus(t, response, 201)
@@ -121,6 +136,8 @@ func TestViewQueryMultipleViews(t *testing.T) {
 
 func TestViewQueryUserAccess(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map":"function (doc, meta) { if (doc.type != 'type1') { return; } if (doc.state == 'state1' || doc.state == 'state2' || doc.state == 'state3') { emit(doc.state, meta.id); }}"}}}`)
 	assertStatus(t, response, 201)
@@ -175,6 +192,8 @@ func TestViewQueryUserAccess(t *testing.T) {
 //Currently fails against walrus bucket as '_sync' property will exist in doc object if it is emmitted in the map function
 func failingTestViewQueryMultipleViews(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	//Define three views
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, doc); }"}}}`)
 	assertStatus(t, response, 201)
