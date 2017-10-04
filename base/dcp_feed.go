@@ -47,23 +47,6 @@ const DCPCheckpointPrefix = "_sync:dcp_ck:" // Prefix used for DCP checkpoint pe
 // DCP will already be sending more documents per snapshot.
 const kCheckpointThreshold = 1
 
-type couchbaseDCPFeedImpl struct {
-	bds    cbdatasource.BucketDataSource
-	events chan sgbucket.FeedEvent
-}
-
-func (feed *couchbaseDCPFeedImpl) Events() <-chan sgbucket.FeedEvent {
-	return feed.events
-}
-
-func (feed *couchbaseDCPFeedImpl) WriteEvents() chan<- sgbucket.FeedEvent {
-	return feed.events
-}
-
-func (feed *couchbaseDCPFeedImpl) Close() error {
-	return feed.bds.Close()
-}
-
 type SimpleFeed struct {
 	eventFeed  chan sgbucket.FeedEvent
 	terminator chan bool
