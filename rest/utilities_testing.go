@@ -14,6 +14,7 @@ import (
 	"runtime/debug"
 	"encoding/json"
 	"github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/auth"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -269,13 +270,28 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 	return response
 }
 
+func (rt *RestTester) WaitForNUserViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
+	return rt.WaitForNViewResults(numResultsExpected, viewUrlPath, user, password)
+}
+
+func (rt *RestTester) WaitForNAdminViewResults(numResultsExpected int, viewUrlPath string) (viewResult sgbucket.ViewResult, err error) {
+	return rt.WaitForNViewResults(numResultsExpected, viewUrlPath, nil, "")
+}
+
 
 // Wait for a certain number of results to be returned from a view query
 // viewUrlPath: is the path to the view, including the db name.  Eg: "/db/_design/foo/_view/bar"
-func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath string) (viewResult sgbucket.ViewResult, err error) {
+func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		response := rt.SendAdminRequest("GET", viewUrlPath, ``)
+		var response *TestResponse
+		if user != nil {
+			request, _ := http.NewRequest("GET", viewUrlPath, nil)
+			request.SetBasicAuth(user.Name(), password)
+			response = rt.Send(request)
+		} else {
+			response = rt.SendAdminRequest("GET", viewUrlPath, ``)
+		}
 		if response.Code != 200 {
 			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200.", response.Code), sgbucket.ViewResult{}
 		}

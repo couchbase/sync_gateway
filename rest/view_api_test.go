@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
-	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/channels"
@@ -59,8 +58,6 @@ func TestDesignDocs(t *testing.T) {
 
 func TestViewQuery(t *testing.T) {
 
-	// TODO: this test is failing when run against actual couchbase bucket
-
 	var rt RestTester
 	defer rt.Close()
 
@@ -71,25 +68,25 @@ func TestViewQuery(t *testing.T) {
 	response = rt.SendRequest("PUT", "/db/doc2", `{"key":7, "value":"seven"}`)
 	assertStatus(t, response, 201)
 
-	result, err := rt.WaitForNViewResults(2, "/db/_design/foo/_view/bar")
+	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	assertNoError(t, err, "Got unexpected error")
 	json.Unmarshal(response.Body.Bytes(), &result)
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"})
 
-	result, err = rt.WaitForNViewResults(1, "/db/_design/foo/_view/bar?limit=1")
+	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?limit=1")
 	assert.Equals(t, len(result.Rows), 1)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 
-	result, err = rt.WaitForNViewResults(1, "/db/_design/foo/_view/bar?endkey=9")
+	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?endkey=9")
 	assert.Equals(t, len(result.Rows), 1)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 
 	if base.UnitTestUrlIsWalrus() {
-		// This query and assertion only works with walrus as documented here:
+		// include_docs=true only works with walrus as documented here:
 		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
-		result, err = rt.WaitForNViewResults(1, "/db/_design/foo/_view/bar?include_docs=true&endkey=9")
+		result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?include_docs=true&endkey=9")
 		assert.Equals(t, len(result.Rows), 1)
 		assert.DeepEquals(t, *result.Rows[0].Doc, map[string]interface{}{"key": 7.0, "value": "seven"})
 	}
@@ -109,24 +106,18 @@ func TestViewQueryMultipleViews(t *testing.T) {
 	response = rt.SendRequest("PUT", "/db/doc2", `{"fname": "Bob", "lname":"Seven", "age":7}`)
 	assertStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_age", ``)
-	assertStatus(t, response, 200)
-	var result sgbucket.ViewResult
-	json.Unmarshal(response.Body.Bytes(), &result)
+	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_age")
+	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
 
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_fname", ``)
-	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
+	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_fname")
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)})
 
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_lname", ``)
-	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
+	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_lname")
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
@@ -146,43 +137,34 @@ func TestViewQueryUserAccess(t *testing.T) {
 	response = rt.SendRequest("PUT", "/db/doc3", `{"type":"type2", "state":"state2"}`)
 	assertStatus(t, response, 201)
 
-	time.Sleep(5 * time.Second)
-
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false", ``)
-	assertStatus(t, response, 200)
-	var result sgbucket.ViewResult
-	json.Unmarshal(response.Body.Bytes(), &result)
+	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
+	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?stale=false", ``)
-	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
+	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
 	// Create a user:
 	a := rt.ServerContext().Database("db").Authenticator()
-	testUser, _ := a.NewUser("testUser", "123456", channels.SetOf("*"))
+	password := "123456"
+	testUser, _ := a.NewUser("testUser", password, channels.SetOf("*"))
 	a.Save(testUser)
 
-	var userResult sgbucket.ViewResult
-	request, _ := http.NewRequest("GET", "/db/_design/foo/_view/bar?stale=false", nil)
-	request.SetBasicAuth("testUser", "123456")
-	userResponse := rt.Send(request)
-	assertStatus(t, userResponse, 200)
-	json.Unmarshal(userResponse.Body.Bytes(), &userResult)
+	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
+	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
 	// Disable user view access, retry
 	rt.ServerContext().Database("db").SetUserViewsEnabled(false)
-	request, _ = http.NewRequest("GET", "/db/_design/foo/_view/bar?stale=false", nil)
-	request.SetBasicAuth("testUser", "123456")
-	userResponse = rt.Send(request)
+	request, _ := http.NewRequest("GET", "/db/_design/foo/_view/bar?stale=false", nil)
+	request.SetBasicAuth(testUser.Name(), password)
+	userResponse := rt.Send(request)
 	assertStatus(t, userResponse, 403)
 }
 
@@ -238,46 +220,62 @@ func TestUserViewQuery(t *testing.T) {
 	response = rt.SendRequest("PUT", "/db/doc2", `{"key":7, "value":"seven", "channel":"Q"}`)
 	assertStatus(t, response, 201)
 	// Create a user:
-	quinn, _ := a.NewUser("quinn", "123456", channels.SetOf("Q", "q"))
+	password := "123456"
+	quinn, _ := a.NewUser("quinn", password, channels.SetOf("Q", "q"))
 	a.Save(quinn)
 
 	// Have the user query the view:
-	request, _ := http.NewRequest("GET", "/db/_design/foo/_view/bar?include_docs=true", nil)
-	request.SetBasicAuth("quinn", "123456")
-	response = rt.Send(request)
-	assertStatus(t, response, 200)
-	var result sgbucket.ViewResult
-	json.Unmarshal(response.Body.Bytes(), &result)
+
+	result, err := rt.WaitForNUserViewResults(1, "/db/_design/foo/_view/bar?include_docs=true", quinn, password)
+	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(result.Rows), 1)
 	assert.Equals(t, result.TotalRows, 1)
 	row := result.Rows[0]
 	assert.Equals(t, row.Key, float64(7))
 	assert.Equals(t, row.Value, "seven")
-	assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
+
+	if base.UnitTestUrlIsWalrus() {
+		// include_docs=true only works with walrus as documented here:
+		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
+		assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
+	}
 
 	// Admin should see both rows:
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar", ``)
-	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
+
+	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
+	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(result.Rows), 2)
 	row = result.Rows[0]
 	assert.Equals(t, row.Key, float64(7))
 	assert.Equals(t, row.Value, "seven")
-	assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
+	if base.UnitTestUrlIsWalrus() {
+		// include_docs=true only works with walrus as documented here:
+		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
+		assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
+	}
 	row = result.Rows[1]
 	assert.Equals(t, row.Key, float64(10))
 	assert.Equals(t, row.Value, "ten")
-	assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 10.0, "value": "ten", "channel": "W"})
+
+	if base.UnitTestUrlIsWalrus() {
+		// include_docs=true only works with walrus as documented here:
+		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
+		assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 10.0, "value": "ten", "channel": "W"})
+	}
 
 	// Make sure users are not allowed to query internal views:
-	request, _ = http.NewRequest("GET", "/db/_design/sync_gateway/_view/access", nil)
-	request.SetBasicAuth("quinn", "123456")
+	request, _ := http.NewRequest("GET", "/db/_design/sync_gateway/_view/access", nil)
+	request.SetBasicAuth(quinn.Name(), password)
 	response = rt.Send(request)
 	assertStatus(t, response, 403)
 }
 
 // This includes a fix for #857
 func TestAdminReduceViewQuery(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
+	}
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
@@ -298,10 +296,8 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	var result sgbucket.ViewResult
 
 	// Admin view query:
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true", ``)
-	assertStatus(t, response, 200)
-
-	json.Unmarshal(response.Body.Bytes(), &result)
+	result, err := rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
+	assertNoError(t, err, "Unexpected error")
 
 	// we should get 1 row with the reduce result
 	assert.Equals(t, len(result.Rows), 1)
@@ -326,6 +322,10 @@ func TestAdminReduceViewQuery(t *testing.T) {
 
 func TestAdminReduceSumQuery(t *testing.T) {
 
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
+	}
+
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
@@ -345,9 +345,8 @@ func TestAdminReduceSumQuery(t *testing.T) {
 	var result sgbucket.ViewResult
 
 	// Admin view query:
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true", ``)
-	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
+	result, err := rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
+	assertNoError(t, err, "Unexpected error")
 
 	// we should get 1 row with the reduce result
 	assert.Equals(t, len(result.Rows), 1)
@@ -358,6 +357,10 @@ func TestAdminReduceSumQuery(t *testing.T) {
 
 func TestAdminGroupReduceSumQuery(t *testing.T) {
 
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
+	}
+
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
@@ -377,11 +380,9 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	var result sgbucket.ViewResult
 
 	// Admin view query:
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
-	assertStatus(t, response, 200)
-	// fmt.Println(response.Body)
+	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?reduce=true&group=true")
+	assertNoError(t, err, "Unexpected error")
 
-	json.Unmarshal(response.Body.Bytes(), &result)
 
 	// we should get 2 row with the reduce result
 	assert.Equals(t, len(result.Rows), 2)
@@ -391,6 +392,10 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 }
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
+	}
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
@@ -411,11 +416,8 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 	var result sgbucket.ViewResult
 
 	// Admin view query:
-	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group_level=2", ``)
-	assertStatus(t, response, 200)
-	// fmt.Println(response.Body)
-
-	json.Unmarshal(response.Body.Bytes(), &result)
+	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?reduce=true&group_level=2")
+	assertNoError(t, err, "Unexpected error")
 
 	// we should get 2 row with the reduce result
 	assert.Equals(t, len(result.Rows), 2)
