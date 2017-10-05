@@ -417,6 +417,12 @@ func (context *DatabaseContext) RestartListener() error {
 	return nil
 }
 
+// Cache flush support.  Currently test-only - added for unit test access from rest package
+func (context *DatabaseContext) FlushChannelCache() {
+	base.LogTo("Cache", "Flushing channel cache")
+	context.changeCache.Clear()
+}
+
 func (context *DatabaseContext) NotifyUser(username string) {
 	context.tapListener.NotifyCheckForTermination(base.SetOf(auth.UserKeyPrefix + username))
 }

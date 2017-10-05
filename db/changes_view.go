@@ -38,6 +38,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	optMap := changesViewOptions(channelName, endSeq, options)
 
 	entries := make(LogEntries, 0)
+	activeEntryCount := 0
 
 	//Required for activeOnly handling, loop until we have consumed limit log entries
 	for {
@@ -66,17 +67,15 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			}
 			if options.ActiveOnly {
 				if !entry.IsRemoved() && entry.Flags&channels.Deleted == 0 {
-					// base.LogTo("Cache", "  Got view sequence #%d (%q / %q)", entry.Sequence, entry.DocID, entry.RevID)
-					entries = append(entries, entry)
+					activeEntryCount++
 				}
-			} else {
-				entries = append(entries, entry)
 			}
+			entries = append(entries, entry)
 			optMap["startkey"] = []interface{}{channelName, entry.Sequence + 1}
 		}
 
 		if options.ActiveOnly {
-			if len(entries) >= options.Limit || options.Limit == 0 {
+			if activeEntryCount >= options.Limit || options.Limit == 0 {
 				break
 			}
 		} else {
@@ -84,8 +83,10 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 		}
 	}
 
-	base.LogTo("Cache", "    Got %d rows from view for %q: #%d ... #%d",
-		len(entries), channelName, entries[0].Sequence, entries[len(entries)-1].Sequence)
+	if len(entries) > 0 {
+		base.LogTo("Cache", "    Got %d rows from view for %q: #%d ... #%d",
+			len(entries), channelName, entries[0].Sequence, entries[len(entries)-1].Sequence)
+	}
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
 		base.Logf("changes_view: Query took %v to return %d rows, options = %#v",
 			elapsed, len(entries), optMap)
