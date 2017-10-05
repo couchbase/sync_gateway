@@ -1239,6 +1239,9 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	}
 }
 
+// Test active-only and limit handling during cache backfill from the view.  Flushes the channel cache
+// prior to changes requests in order to force view backfill.  Covers https://github.com/couchbase/sync_gateway/issues/2955 in
+// additional to general view handling.
 func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
@@ -1289,7 +1292,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 		Last_Seq interface{}
 	}
 
-	// Pre-delete changes
+	// Get pre-delete changes
 	changesJSON := `{"style":"all_docs"}`
 	changesResponse := it.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
@@ -1486,7 +1489,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 		Last_Seq interface{}
 	}
 
-	// Pre-delete changes
+	// Get pre-delete changes
 	changesJSON := `{"style":"all_docs"}`
 	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)

@@ -40,7 +40,9 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	entries := make(LogEntries, 0)
 	activeEntryCount := 0
 
-	//Required for activeOnly handling, loop until we have consumed limit log entries
+	// Loop for active-only and limit handling.
+	// The set of changes we get back from the view applies the limit, but includes both active and non-active entries.  When retrieving changes w/ activeOnly=true and a limit,
+	// this means we may need multiple view calls to get a total of [limit] active entries.
 	for {
 		base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)
 		vres := channelsViewResult{}
@@ -65,7 +67,11 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 				Flags:        row.Value.Flags,
 				TimeReceived: time.Now(),
 			}
+
+			// If active-only, track the number of non-removal, non-deleted revisions we've seen in the view results
+			// for limit calculation below.
 			if options.ActiveOnly {
+				// TODO: This would be easier to follow as an 'IsActive' function on entry
 				if !entry.IsRemoved() && entry.Flags&channels.Deleted == 0 {
 					activeEntryCount++
 				}
@@ -74,11 +80,13 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			optMap["startkey"] = []interface{}{channelName, entry.Sequence + 1}
 		}
 
+		// If active-only, loop until we've retrieved at least (Limit) active entries
 		if options.ActiveOnly {
 			if activeEntryCount >= options.Limit || options.Limit == 0 {
 				break
 			}
 		} else {
+			// If not active-only, we only need one iteration of the loop - the limit applied to the view query is sufficient
 			break
 		}
 	}
