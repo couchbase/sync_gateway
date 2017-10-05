@@ -1139,7 +1139,7 @@ func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntr
 				log.Println("returned numEntries - returning")
 				return nil
 			}
-		case <-time.After(time.Millisecond * 100):
+		case <-time.After(time.Second * 10):
 			timeout = true
 		}
 	}
