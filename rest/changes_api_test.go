@@ -1165,6 +1165,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	response = it.SendAdminRequest("PUT", "/db/activeDoc5", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
+	// TODO: Make db.waitForSequence public and use that instead of a sleep here
 	time.Sleep(100 * time.Millisecond)
 
 	// Normal changes
@@ -1319,6 +1320,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	response = it.SendAdminRequest("PUT", "/db/activeDoc5", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
+	// TODO: Make db.waitForSequence public and use that instead of a sleep here
 	time.Sleep(100 * time.Millisecond)
 
 	// Normal changes
