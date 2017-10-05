@@ -252,6 +252,13 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 		gocbExpvars.Add("Get", 1)
 		casGoCB, err := bucket.Bucket.Get(k, rv)
 		shouldRetry = isRecoverableGoCBError(err)
+		
+		if shouldRetry {
+			LogTo("CRUD+", "Got error %v trying to get key %v.  Going to retry.", err, k)
+		} else {
+			LogTo("CRUD+", "Got unrecoverable error %v trying to get key %v.  Not going to retry.", err, k)
+		}
+
 		return shouldRetry, err, uint64(casGoCB)
 	}
 
