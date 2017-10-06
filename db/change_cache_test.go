@@ -277,12 +277,24 @@ func TestReproduceTestResidue(t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
+
 		log.Printf("------------------------------ testChannelCacheBufferingWithUserDoc() ------------------------------")
 		testChannelCacheBufferingWithUserDoc(t)
 		log.Printf("------------------------------ testContinuousChangesBackfill() ------------------------------")
 		testContinuousChangesBackfill(t)
-	}
 
+		if i == 0 || i == 2 || i == 9 {
+			log.Printf("********** dumping stack.  # of goroutines: %v", runtime.NumGoroutine())
+
+			buf := make([]byte, 1<<20)
+			runtime.Stack(buf, true)
+
+			log.Printf("Stack: %s", buf)
+		}
+
+		// log.Printf("Sleeping 10 seconds")
+		// time.Sleep(time.Second * 10)
+	}
 
 }
 
@@ -407,7 +419,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		"Sequences": true,
 		"Cache":     true,
 		"Changes+":  true,
-		"DCP": true,
+		"DCP":       true,
 	}
 
 	base.UpdateLogKeys(logKeys, true)
