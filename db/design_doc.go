@@ -157,6 +157,10 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 			for _, row := range result.Rows {
 				var doc *interface{}
 				_, err := db.Bucket.Get(row.ID, &doc)
+				(*doc).(map[string]interface{})["_id"] = row.ID
+				(*doc).(map[string]interface{})["_rev"] = (*doc).(map[string]interface{})["_sync"].(map[string]interface{})["rev"]
+				delete((*doc).(map[string]interface{}), "_sync")
+
 				if err == nil {
 					resultWithDoc.Rows = append(resultWithDoc.Rows, &sgbucket.ViewRow{
 						Key:   row.Key,
