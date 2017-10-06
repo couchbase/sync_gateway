@@ -561,6 +561,10 @@ func TestLowSequenceHandling(t *testing.T) {
 
 func TestBackgroundTestShutdown(t *testing.T) {
 
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test currently fails when running in integration mode since tearDownTestDB() doesn't close the database in that case")
+	}
+
 	cacheOptions := shortWaitCache()
 	db := setupTestDBWithCacheOptions(t, cacheOptions)
 	tearDownTestDB(t, db)
