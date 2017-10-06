@@ -5,9 +5,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
-
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 )
 
 // Unmarshaled JSON structure for "changes" view results
@@ -71,8 +69,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			// If active-only, track the number of non-removal, non-deleted revisions we've seen in the view results
 			// for limit calculation below.
 			if options.ActiveOnly {
-				// TODO: This would be easier to follow as an 'IsActive' function on entry
-				if !entry.IsRemoved() && entry.Flags&channels.Deleted == 0 {
+				if entry.IsActive() {
 					activeEntryCount++
 				}
 			}
