@@ -150,6 +150,26 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 	} else {
 		applyChannelFiltering := options["reduce"] != true && db.GetUserViewsEnabled()
 		result = filterViewResult(result, db.user, applyChannelFiltering)
+		if (options["include_docs"] == true) && (len(result.Rows) != 0) && (result.Rows[0].Doc == nil) {
+			var resultWithDoc sgbucket.ViewResult
+			resultWithDoc.TotalRows = result.TotalRows
+			resultWithDoc.Rows = make([]*sgbucket.ViewRow, 0, len(result.Rows))
+			for _, row := range result.Rows {
+				var doc *interface{}
+				_, err := db.Bucket.Get(row.ID, &doc)
+				if err == nil {
+					resultWithDoc.Rows = append(resultWithDoc.Rows, &sgbucket.ViewRow{
+						Key:   row.Key,
+						Value: row.Value,
+						ID:    row.ID,
+						Doc:   doc,
+					})
+				} else {
+					resultWithDoc.Rows = append(resultWithDoc.Rows, row)
+				}
+			}
+			return &resultWithDoc, nil
+		}
 	}
 	return &result, nil
 }
