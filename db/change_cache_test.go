@@ -268,20 +268,12 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 // Repro logs: https://gist.github.com/tleyden/f01c1098a2b01b19c727dccdfb7238f3
 func TestReproduceTestResidue(t *testing.T) {
 
-	testChannelCacheBufferingWithUserDoc := func(t *testing.T) {
-		TestChannelCacheBufferingWithUserDoc(t)
-	}
-
-	testContinuousChangesBackfill := func(t *testing.T) {
-		TestContinuousChangesBackfill(t)
-	}
-
 	for i := 0; i < 10; i++ {
 
-		log.Printf("------------------------------ testChannelCacheBufferingWithUserDoc() ------------------------------")
-		testChannelCacheBufferingWithUserDoc(t)
+		//log.Printf("------------------------------ testChannelCacheBufferingWithUserDoc() ------------------------------")
+		//TestChannelCacheBufferingWithUserDoc(t)
 		log.Printf("------------------------------ testContinuousChangesBackfill() ------------------------------")
-		testContinuousChangesBackfill(t)
+		TestContinuousChangesBackfill(t)
 
 		if i == 0 || i == 2 || i == 9 {
 			log.Printf("********** dumping stack.  # of goroutines: %v", runtime.NumGoroutine())
@@ -418,6 +410,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	var logKeys = map[string]bool{
 		"Sequences": true,
 		"Cache":     true,
+		"Changes":  true,
 		"Changes+":  true,
 		"DCP":       true,
 	}
@@ -425,7 +418,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	base.UpdateLogKeys(logKeys, true)
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
-	defer tearDownTestDB(t, db)
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -448,7 +441,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.Continuous = true
 	options.Wait = true
 
-	defer close(options.Terminator)
+
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
@@ -509,6 +502,22 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	if len(expectedDocs) > 0 {
 		log.Printf("Did not receive expected docs: %v")
 	}
+
+	tearDownTestDB(t, db)
+
+	close(options.Terminator)
+
+	time.Sleep(time.Second)
+
+	buf := make([]byte, 1<<20)
+	runtime.Stack(buf, true)
+	log.Printf("stack dump: %s", buf)
+
+	// drain the changes feed in attempt to force it to get closed
+	//for changeEntry := range feed {
+	//	log.Printf("Drained %v from feed", changeEntry)
+	//}
+
 	assert.Equals(t, len(expectedDocs), 0)
 }
 

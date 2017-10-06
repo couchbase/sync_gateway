@@ -589,6 +589,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				select {
 				case <-options.Terminator:
+					base.LogTo("Changes+", "Received <-options.Terminator, returing from goroutine")
 					return
 				case output <- minEntry:
 				}
@@ -611,6 +612,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// First notify the reader that we're waiting by sending a nil.
 			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
 			output <- nil
+			base.LogTo("Changes+", "Sent output <- nil")
+
 		waitForChanges:
 			for {
 				// If we're in a deferred Backfill, the user may not get notification when the cache catches up to the backfill (e.g. when the granting doc isn't
@@ -618,6 +621,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				// Similar handling for when we see sequences later than the stable sequence.
 				if deferredBackfill || postStableSeqsFound {
 					for retry := 0; retry <= 50; retry++ {
+						base.LogTo("Changes+", "Sleep 100 ms")
 						time.Sleep(100 * time.Millisecond)
 						if db.changeCache.GetStableSequence("").Seq != currentCachedSequence {
 							break waitForChanges
@@ -632,6 +636,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				} else if waitResponse == WaiterHasChanges {
 					select {
 					case <-options.Terminator:
+						base.LogTo("Changes+", "Received <-options.Terminator, returing from goroutine")
 						return
 					default:
 						break waitForChanges
@@ -640,6 +645,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					// Check whether I was terminated while waiting for a change.  If not, resume wait.
 					select {
 					case <-options.Terminator:
+						base.LogTo("Changes+", "Received <-options.Terminator, returing from goroutine")
 						return
 					default:
 					}

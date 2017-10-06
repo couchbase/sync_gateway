@@ -129,11 +129,28 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 // Stops a changeListener. Any pending Wait() calls will immediately return false.
 func (listener *changeListener) Stop() {
 
+	base.LogTo("Changes+", "changeListener.Stop() called")
+
 	if listener.terminator != nil {
 		close(listener.terminator)
 	}
 
+	if listener.tapNotifier != nil {
+
+		// Unblock any change listeners blocked on tapNotifier.Wait()
+		base.LogTo("Changes+", "listener.tapNotifier.Broadcast()")
+
+		listener.tapNotifier.Broadcast()
+
+	} else {
+		base.LogTo("Changes+", "listener.tapNotifier == nil")
+
+	}
+
 	if listener.tapFeed != nil {
+
+
+
 		listener.tapFeed.Close()
 	}
 }
@@ -195,13 +212,28 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 	defer listener.tapNotifier.L.Unlock()
 	base.LogTo("Changes+", "No new changes to send to change listener.  Waiting for %q's count to pass %d",
 		listener.bucketName, counter)
+
+
 	for {
 		curCounter := listener._currentCount(keys)
 
 		if curCounter != counter || listener.terminateCheckCounter != terminateCheckCounter {
 			return curCounter, listener.terminateCheckCounter
 		}
+
+		base.LogTo("Changes+", "Calling tapNotifier.Wait()")
 		listener.tapNotifier.Wait()
+		base.LogTo("Changes+", "/finished Calling tapNotifier.Wait()")
+
+		// Don't go back through the for loop if this changeListener was terminated
+		select {
+		case <- listener.terminator:
+			base.LogTo("Changes+", "listener.terminator was closed, getting out of Wait() loop")
+			return 0,0
+		default:
+				// do nothing
+		}
+
 	}
 }
 
