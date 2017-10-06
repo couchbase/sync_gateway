@@ -21,8 +21,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
-	"runtime"
-	"regexp"
 )
 
 func e(seq uint64, docid string, revid string) *LogEntry {
@@ -412,7 +410,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	var logKeys = map[string]bool{
 		"Sequences": true,
 		"Cache":     true,
-		"Changes":  true,
+		"Changes":   true,
 		"Changes+":  true,
 		"DCP":       true,
 	}
@@ -442,7 +440,6 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.Terminator = make(chan bool)
 	options.Continuous = true
 	options.Wait = true
-
 
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
