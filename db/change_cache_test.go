@@ -20,6 +20,8 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 
 	"github.com/couchbaselabs/go.assert"
+	"runtime"
+	"regexp"
 )
 
 func e(seq uint64, docid string, revid string) *LogEntry {
@@ -554,6 +556,37 @@ func TestLowSequenceHandling(t *testing.T) {
 	db.changeCache.waitForSequence(9)
 	appendFromFeed(&changes, feed, 5)
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
+
+}
+
+func TestBackgroundTestShutdown(t *testing.T) {
+
+	cacheOptions := shortWaitCache()
+	db := setupTestDBWithCacheOptions(t, cacheOptions)
+	tearDownTestDB(t, db)
+
+	err, _ := base.RetryLoop("Verify changeCache not in stacktrace", func() (shouldRetry bool, err error, value interface{}) {
+
+		rawStackTrace := make([]byte, 1<<20)
+		runtime.Stack(rawStackTrace, true)
+
+		r, err := regexp.Compile(".*changeCache.*")
+		if err != nil {
+			return false, err, nil
+		}
+
+		if r.Match(rawStackTrace) {
+			// Still found changeCache in stack traces, return true to retry .. in case it goes away soon
+			return true, nil, nil
+		}
+
+		return false, nil, nil
+	}, base.CreateDoublingSleeperFunc(5, 1))
+
+	// If there was an error, it means that "changeCache" was in the stacktrace even after retrying
+	// a few times.  This means it never got cleaned up after tearDownTestDB was called.
+	assertNoError(t, err, "Unexpected error")
+
 
 }
 
