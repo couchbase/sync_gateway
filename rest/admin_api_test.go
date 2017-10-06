@@ -1216,7 +1216,8 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
 }
 
-func TestReplicateErrorConditions(t *testing.T) {
+// Temp disable: https://github.com/couchbase/sync_gateway/issues/2938#issuecomment-334634994
+func DisableTestReplicateErrorConditions(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
@@ -1261,8 +1262,9 @@ func TestReplicateErrorConditions(t *testing.T) {
 
 }
 
+// Temp disable: https://github.com/couchbase/sync_gateway/issues/2938#issuecomment-334634994
 //These tests validate request parameters not actual replication
-func TestDocumentChangeReplicate(t *testing.T) {
+func DisableTestDocumentChangeReplicate(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
