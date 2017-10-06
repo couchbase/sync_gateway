@@ -633,7 +633,7 @@ func TestBackgroundTestShutdown(t *testing.T) {
 	// If there was an error, it means that "changeCache" was in the stacktrace even after retrying
 	// a few times.  This means it never got cleaned up after tearDownTestDB was called.
 	assertNoError(t, err, "Unexpected error")
-	
+
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
