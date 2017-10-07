@@ -26,6 +26,7 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
+	"log"
 )
 
 var gocbExpvars *expvar.Map
@@ -113,6 +114,8 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 			password = pass
 		}
 	}
+
+	log.Printf("Opening GoCB bucket: %s", spec.BucketName)
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
 		Warn("Error opening bucket: %s.  Error: %v", spec.BucketName, err)
@@ -2052,6 +2055,7 @@ func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
 }
 
 func (bucket CouchbaseBucketGoCB) Close() {
+	log.Printf("Closing GoCB bucket: %s", bucket.spec.BucketName)
 	if err := bucket.Bucket.Close(); err != nil {
 		Warn("Error closing GoCB bucket: %v", err)
 	}
