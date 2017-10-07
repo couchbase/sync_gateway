@@ -506,11 +506,11 @@ func TestContinuousChangesBackfill(t *testing.T) {
 
 	close(options.Terminator)
 
-	time.Sleep(time.Second)
-
-	buf := make([]byte, 1<<20)
-	runtime.Stack(buf, true)
-	log.Printf("stack dump: %s", buf)
+	//time.Sleep(time.Second)
+	//
+	//buf := make([]byte, 1<<20)
+	//runtime.Stack(buf, true)
+	//log.Printf("stack dump: %s", buf)
 
 	// drain the changes feed in attempt to force it to get closed
 	//for changeEntry := range feed {
