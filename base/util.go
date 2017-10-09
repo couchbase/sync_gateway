@@ -28,6 +28,7 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbaselabs/gocbconnstr"
+	"strconv"
 )
 
 const (
@@ -698,4 +699,48 @@ func SafeSlice(data []byte, from int, to int) ([]byte, error) {
 		return nil, fmt.Errorf("Invalid slice [%d:%d] of []byte with len %d", from, to, len(data))
 	}
 	return data[from:to], nil
+}
+
+func GetRestrictedIntFromString(rawValue string, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
+	var value *uint64
+	if rawValue != "" {
+		intValue, err := strconv.ParseUint(rawValue, 10, 64)
+		if err != nil {
+			value = nil
+		} else {
+			value = &intValue
+		}
+	}
+
+	return GetRestrictedInt(
+		value,
+		defaultValue,
+		minValue,
+		maxValue,
+		allowZero,
+	)
+}
+
+func GetRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
+
+	var value uint64
+
+	// Only use the defaultValue if rawValue isn't specified.
+	if rawValue == nil {
+		value = defaultValue
+	} else {
+		value = *rawValue
+	}
+
+	// If value is zero and allowZero=true, leave value at zero rather than forcing it to the minimum value
+	validZero := (value == 0 && allowZero)
+	if value < minValue && !validZero {
+		value = minValue
+	}
+
+	if value > maxValue && maxValue > 0 {
+		value = maxValue
+	}
+
+	return value
 }
