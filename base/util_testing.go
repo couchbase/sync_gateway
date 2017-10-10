@@ -127,6 +127,9 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) Bucket {
 			}
 		}
 
+		// Close the bucket and any other temporary resources associated with the TestBucketManager
+		tbm.Close()
+
 	}
 
 	// Now open the bucket _again_ to ensure it's open with the correct driver
@@ -223,6 +226,10 @@ func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 
 	return true, nil
 
+}
+
+func (tbm *TestBucketManager) Close() error {
+	return tbm.Bucket.Close()
 }
 
 // GOCB doesn't currently offer a way to do this, and so this is a workaround to go directly
@@ -403,9 +410,11 @@ func (tbm *TestBucketManager) CreateTestBucket() error {
 	maxTries := 20
 	for {
 
-		_, errOpen := GetBucket(tbm.BucketSpec, nil)
+		bucket, errOpen := GetBucket(tbm.BucketSpec, nil)
+
 		if errOpen == nil {
 			// We were able to open the bucket, so it worked and we're done
+			bucket.Close()
 			return nil
 		}
 
