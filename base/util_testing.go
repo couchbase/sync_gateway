@@ -295,7 +295,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		shouldRetry = (err != nil)  // retry (until max attempts) if there was an error
 		return shouldRetry, err, nil
 	}
-	sleeper := CreateDoublingSleeperFunc(20, 100)
+	sleeper := CreateDoublingSleeperFunc(12, 10)
 
 	err, _ := RetryLoop("EmptyTestBucket", workerFlush, sleeper)
 	if err != nil {
@@ -347,7 +347,12 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		for vbNo := uint16(0); vbNo < maxVbno; vbNo++ {
 			maxSeqForVb := highSeqnos[vbNo]
 			if maxSeqForVb > 0 {
-				log.Printf("max seq for vb %d > 0 (%d).  Retrying", vbNo, maxSeqForVb)
+				log.Printf("max seq for vb %d > 0 (%d).  Flusing and retrying", vbNo, maxSeqForVb)
+				err = tbm.BucketManager.Flush()
+				if err != nil {
+					Warn("Error flushing bucket: %v", err)
+				}
+
 				return true, nil, nil
 			}
 		}
