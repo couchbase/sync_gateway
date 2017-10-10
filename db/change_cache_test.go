@@ -21,7 +21,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
-	"github.com/couchbase/gocb"
 )
 
 func e(seq uint64, docid string, revid string) *LogEntry {
@@ -267,28 +266,27 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 
 // Reproduces issues discovered in https://github.com/couchbase/sync_gateway/issues/2938#issuecomment-334016797
 // Repro logs: https://gist.github.com/tleyden/f01c1098a2b01b19c727dccdfb7238f3
-func TestReproduceTestResidue(t *testing.T) {
-
-	for i := 0; i < 10; i++ {
-
-		//log.Printf("------------------------------ testChannelCacheBufferingWithUserDoc() ------------------------------")
-		//TestChannelCacheBufferingWithUserDoc(t)
-		log.Printf("------------------------------ testContinuousChangesBackfill() ------------------------------")
-		TestContinuousChangesBackfill(t)
-
-	}
-
-	log.Printf("Sleeping 15 seconds")
-	time.Sleep(time.Second * 15)
-	log.Printf("/Sleeping 15 seconds")
-
-
-	buf := make([]byte, 1<<20)
-	runtime.Stack(buf, true)
-
-	log.Printf("Stack: %s", buf)
-
-}
+//func TestReproduceTestResidue(t *testing.T) {
+//
+//	for i := 0; i < 1; i++ {
+//
+//		//log.Printf("------------------------------ testChannelCacheBufferingWithUserDoc() ------------------------------")
+//		//TestChannelCacheBufferingWithUserDoc(t)
+//		log.Printf("------------------------------ testContinuousChangesBackfill() ------------------------------")
+//		TestContinuousChangesBackfill(t)
+//
+//	}
+//
+//	log.Printf("Sleeping 15 seconds")
+//	time.Sleep(time.Second * 15)
+//	log.Printf("/Sleeping 15 seconds")
+//
+//	buf := make([]byte, 1<<20)
+//	runtime.Stack(buf, true)
+//
+//	log.Printf("Stack: %s", buf)
+//
+//}
 
 // Test notification when buffered entries are processed after a user doc arrives.
 func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
