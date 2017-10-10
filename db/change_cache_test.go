@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
+	"github.com/couchbase/gocb"
 )
 
 func e(seq uint64, docid string, revid string) *LogEntry {
@@ -275,18 +276,17 @@ func TestReproduceTestResidue(t *testing.T) {
 		log.Printf("------------------------------ testContinuousChangesBackfill() ------------------------------")
 		TestContinuousChangesBackfill(t)
 
-		if i == 0 || i == 2 || i == 9 {
-			log.Printf("********** dumping stack.  # of goroutines: %v", runtime.NumGoroutine())
-
-			buf := make([]byte, 1<<20)
-			runtime.Stack(buf, true)
-
-			log.Printf("Stack: %s", buf)
-		}
-
-		// log.Printf("Sleeping 10 seconds")
-		// time.Sleep(time.Second * 10)
 	}
+
+	log.Printf("Sleeping 15 seconds")
+	time.Sleep(time.Second * 15)
+	log.Printf("/Sleeping 15 seconds")
+
+
+	buf := make([]byte, 1<<20)
+	runtime.Stack(buf, true)
+
+	log.Printf("Stack: %s", buf)
 
 }
 
