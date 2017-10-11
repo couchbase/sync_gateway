@@ -434,7 +434,7 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 		}
 	}
 
-	spec.MaxNumRetries = 10
+	spec.MaxNumRetries = 13
 	spec.InitialRetrySleepTimeMS = 5
 
 	// Start bucket updater - see SG issue 1011

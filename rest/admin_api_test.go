@@ -1186,6 +1186,11 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 }
 
 func TestReplicateErrorConditions(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip sg-replicate tests during integration tests due to https://github.com/couchbase/sync_gateway/issues/2938#issuecomment-334634994")
+	}
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1232,6 +1237,11 @@ func TestReplicateErrorConditions(t *testing.T) {
 
 //These tests validate request parameters not actual replication
 func TestDocumentChangeReplicate(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip sg-replicate tests during integration tests due to https://github.com/couchbase/sync_gateway/issues/2938#issuecomment-334634994")
+	}
+
 	var rt RestTester
 	defer rt.Close()
 

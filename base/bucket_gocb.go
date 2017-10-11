@@ -23,12 +23,16 @@ import (
 	"strconv"
 	"strings"
 
+	"sync"
+
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 var gocbExpvars *expvar.Map
+var numOpenBucketsByName map[string]int32
+var mutexNumOpenBucketsByName sync.Mutex
 
 const (
 	MaxConcurrentSingleOps = 1000 // Max 1000 concurrent single bucket ops
@@ -55,6 +59,7 @@ var recoverableGoCBErrors = map[string]struct{}{
 
 func init() {
 	gocbExpvars = expvar.NewMap("syncGateway_gocb")
+	numOpenBucketsByName = map[string]int32{}
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb
@@ -82,6 +87,39 @@ func (l GoCBLogger) Log(level gocbcore.LogLevel, offset int, format string, v ..
 
 func EnableGoCBLogging() {
 	gocbcore.SetLogger(GoCBLogger{})
+}
+
+func IncrNumOpenBuckets(bucketName string) {
+	MutateNumOpenBuckets(bucketName, 1)
+
+}
+
+func DecrNumOpenBuckets(bucketName string) {
+	MutateNumOpenBuckets(bucketName, -1)
+}
+
+func MutateNumOpenBuckets(bucketName string, delta int32) {
+	mutexNumOpenBucketsByName.Lock()
+	defer mutexNumOpenBucketsByName.Unlock()
+
+	numOpen, ok := numOpenBucketsByName[bucketName]
+	if !ok {
+		numOpen = 0
+		numOpenBucketsByName[bucketName] = numOpen
+	}
+
+	numOpen += delta
+	numOpenBucketsByName[bucketName] = numOpen
+}
+
+func NumOpenBuckets(bucketName string) int32 {
+	mutexNumOpenBucketsByName.Lock()
+	defer mutexNumOpenBucketsByName.Unlock()
+	numOpen, ok := numOpenBucketsByName[bucketName]
+	if !ok {
+		return 0
+	}
+	return numOpen
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
@@ -113,11 +151,15 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 			password = pass
 		}
 	}
+
+	LogTo("CRUD", "Opening GoCB bucket: %s", spec.BucketName)
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
 		Warn("Error opening bucket: %s.  Error: %v", spec.BucketName, err)
 		return nil, err
 	}
+
+	IncrNumOpenBuckets(spec.BucketName)
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
 		// Set transcoder to SGTranscoder to avoid cases where it tries to write docs as []byte without setting
@@ -252,6 +294,13 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 		gocbExpvars.Add("Get", 1)
 		casGoCB, err := bucket.Bucket.Get(k, rv)
 		shouldRetry = isRecoverableGoCBError(err)
+
+		if shouldRetry {
+			Warn("Got error %v trying to get key %v.  Going to retry.", err, k)
+		} else {
+			Warn("Got unrecoverable error %v trying to get key %v.  Not going to retry.", err, k)
+		}
+
 		return shouldRetry, err, uint64(casGoCB)
 	}
 
@@ -789,11 +838,23 @@ func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added b
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("Add", 1)
-	_, err = bucket.Bucket.Insert(k, v, uint32(exp))
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		_, err = bucket.Bucket.Insert(k, v, uint32(exp))
+		if isRecoverableGoCBError(err) {
+			return true, err, nil
+		}
+
+		return false, err, nil
+
+	}
+	err, _ = RetryLoop("CouchbaseBucketGoCB Add()", worker, bucket.spec.RetrySleeper())
 
 	if err != nil && err == gocb.ErrKeyExists {
 		return false, nil
 	}
+
 	return err == nil, err
 }
 
@@ -806,12 +867,25 @@ func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added boo
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("AddRaw", 1)
-	_, err = bucket.Bucket.Insert(k, bucket.FormatBinaryDocument(v), uint32(exp))
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		_, err = bucket.Bucket.Insert(k, bucket.FormatBinaryDocument(v), uint32(exp))
+		if isRecoverableGoCBError(err) {
+			return true, err, nil
+		}
+
+		return false, err, nil
+
+	}
+	err, _ = RetryLoop("CouchbaseBucketGoCB AddRaw()", worker, bucket.spec.RetrySleeper())
 
 	if err != nil && err == gocb.ErrKeyExists {
 		return false, nil
 	}
+
 	return err == nil, err
+
 }
 
 func (bucket CouchbaseBucketGoCB) Append(k string, data []byte) error {
@@ -827,8 +901,20 @@ func (bucket CouchbaseBucketGoCB) Set(k string, exp int, v interface{}) error {
 	}()
 
 	gocbExpvars.Add("Set", 1)
-	_, err := bucket.Bucket.Upsert(k, v, uint32(exp))
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		_, err = bucket.Bucket.Upsert(k, v, uint32(exp))
+		if isRecoverableGoCBError(err) {
+			return true, err, nil
+		}
+
+		return false, err, nil
+
+	}
+	err, _ := RetryLoop("CouchbaseBucketGoCB Set()", worker, bucket.spec.RetrySleeper())
 	return err
+
 }
 
 func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
@@ -839,15 +925,37 @@ func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
 	}()
 	gocbExpvars.Add("SetRaw", 1)
 
-	var err error
-	_, err = bucket.Bucket.Upsert(k, bucket.FormatBinaryDocument(v), uint32(exp))
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		_, err = bucket.Bucket.Upsert(k, bucket.FormatBinaryDocument(v), uint32(exp))
+		if isRecoverableGoCBError(err) {
+			return true, err, nil
+		}
+
+		return false, err, nil
+
+	}
+	err, _ := RetryLoop("CouchbaseBucketGoCB SetRaw()", worker, bucket.spec.RetrySleeper())
+
 	return err
 }
 
 func (bucket CouchbaseBucketGoCB) Delete(k string) error {
 
-	_, err := bucket.Remove(k, 0)
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		_, err = bucket.Remove(k, 0)
+		if isRecoverableGoCBError(err) {
+			return true, err, nil
+		}
+
+		return false, err, nil
+
+	}
+	err, _ := RetryLoop("CouchbaseBucketGoCB Delete()", worker, bucket.spec.RetrySleeper())
+
 	return err
+
 }
 
 func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, err error) {
@@ -857,8 +965,28 @@ func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, e
 		<-bucket.singleOps
 	}()
 	gocbExpvars.Add("Delete", 1)
-	newCas, err := bucket.Bucket.Remove(k, gocb.Cas(cas))
-	return uint64(newCas), err
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+
+		newCas, errRemove := bucket.Bucket.Remove(k, gocb.Cas(cas))
+		if isRecoverableGoCBError(errRemove) {
+			return true, errRemove, newCas
+		}
+
+		return false, errRemove, newCas
+
+	}
+	err, newCasVal := RetryLoop("CouchbaseBucketGoCB Remove()", worker, bucket.spec.RetrySleeper())
+	if newCasVal != nil {
+		casOut = uint64(newCasVal.(gocb.Cas))
+	}
+
+	if err != nil {
+		return casOut, err
+	}
+
+	return casOut, nil
+
 }
 
 func (bucket CouchbaseBucketGoCB) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
@@ -1965,9 +2093,12 @@ func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
 }
 
 func (bucket CouchbaseBucketGoCB) Close() {
+	LogTo("CRUD", "Closing GoCB bucket: %s", bucket.spec.BucketName)
 	if err := bucket.Bucket.Close(); err != nil {
-		Warn("Error closing GoCB bucket: %v", err)
+		Warn("Error closing GoCB bucket: %v.", err)
+		return
 	}
+	DecrNumOpenBuckets(bucket.Name())
 
 }
 

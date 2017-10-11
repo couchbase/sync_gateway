@@ -121,6 +121,8 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) Bucket {
 			}
 		case false:
 			// Create a brand new bucket
+			// TODO: in this case, we should still wait until it's empty, just in case there was somehow residue
+			// TODO: in between deleting and recreating it, if it happened in rapid succession
 			createBucketErr := tbm.CreateTestBucket()
 			if createBucketErr != nil {
 				panic(fmt.Sprintf("Could not create bucket.  Spec: %+v Err: %v", spec, createBucketErr))
@@ -203,6 +205,11 @@ func NewTestBucketManager(spec BucketSpec) *TestBucketManager {
 
 func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 
+	numOpenBuckets := tbm.BucketSpec.BucketName
+	if NumOpenBuckets(numOpenBuckets) > 0 {
+		return false, fmt.Errorf("There are already %d open buckets for bucket name: %v.  The tests expect all buckets to be closed.", tbm.BucketSpec.BucketName, numOpenBuckets)
+	}
+
 	cluster, err := gocb.Connect(tbm.BucketSpec.Server)
 	if err != nil {
 		return false, err
@@ -280,19 +287,23 @@ func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
 
 func (tbm *TestBucketManager) EmptyTestBucket() error {
 
+	log.Printf("Flushing test bucket: %v", tbm.BucketSpec.BucketName)
+
 	// Try to Flush the bucket in a retry loop
 	// Ignore sporadic errors like:
 	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = tbm.BucketManager.Flush()
-		Warn("Error flushing bucket: %v  Will retry.", err)
+		if err != nil {
+			Warn("Error flushing bucket: %v  Will retry.", err)
+		}
 		shouldRetry = (err != nil)  // retry (until max attempts) if there was an error
 		return shouldRetry, err, nil
 	}
-	sleeper := CreateDoublingSleeperFunc(20, 100)
+	sleeper := CreateDoublingSleeperFunc(12, 10)
 
-	err, _ := RetryLoop("EmptyTestBucket", worker, sleeper)
+	err, _ := RetryLoop("EmptyTestBucket", workerFlush, sleeper)
 	if err != nil {
 		return err
 	}
@@ -307,7 +318,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 
 		if itemCount == 0 {
 			// Bucket flushed, we're done
-			return nil
+			break
 		}
 
 		// Still items left, wait a little bit and try again
@@ -315,6 +326,96 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		time.Sleep(time.Millisecond * 500)
 
 	}
+
+
+	// Wait until high seq nos are all 0
+	// statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno, false)
+
+	if tbm.Bucket.IoRouter() == nil {
+		return fmt.Errorf("Cannot determine number of vbuckets")
+	}
+	maxVbno := uint16(tbm.Bucket.IoRouter().NumVbuckets())
+
+
+	workerHighSeqNosZero := func() (shouldRetry bool, err error, value interface{}) {
+
+		stats, seqErr := tbm.Bucket.Stats("vbucket-seqno")
+		if seqErr != nil {
+			return false, seqErr, nil
+		}
+
+		_, highSeqnos, err := GetStatsVbSeqno(stats, maxVbno, false)
+
+		if err != nil {
+			return false, err, nil
+		}
+
+		for vbNo := uint16(0); vbNo < maxVbno; vbNo++ {
+			maxSeqForVb := highSeqnos[vbNo]
+			if maxSeqForVb > 0 {
+				log.Printf("max seq for vb %d > 0 (%d).  Flusing and retrying", vbNo, maxSeqForVb)
+				err = tbm.BucketManager.Flush()
+				if err != nil {
+					Warn("Error flushing bucket: %v", err)
+				}
+
+				return true, nil, nil
+			}
+		}
+
+		// made it this far, then it succeeded
+		return false, nil, nil
+
+
+	}
+
+	err, _ = RetryLoop("Wait for vb sequence numbers to be 0", workerHighSeqNosZero, sleeper)
+	if err != nil {
+		return err
+	}
+
+	// Make sure we can read our own writes.  Workaround attempt for errors:
+	// WARNING: RetryLoop for Get _sync:user: giving up after 11 attempts -- base.RetryLoop() at util.go:298
+	workerReadOwnWrites := func() (shouldRetry bool, err error, value interface{}) {
+
+		key := "_sync:testWorkerReadOwnWrites"
+		val := map[string]interface{}{}
+		val["val"] = "val"
+		_, errInsert := tbm.Bucket.Insert(key, val, 0)
+		if errInsert != nil {
+			// If we got an error inserting, retry
+			Warn("Error inserting key to recently flushed bucket: %v  Retrying.", errInsert)
+			return true, errInsert, nil
+		}
+
+		_, errGet := tbm.Bucket.Get(key, &val)
+		if errGet != nil {
+			// If we got an error getting the key, retry
+			Warn("Error getting key from recently flushed bucket: %v  Retrying.", errGet)
+			return true, errGet, nil
+		}
+
+		_, errRemove := tbm.Bucket.Remove(key, 0)
+		if errRemove != nil {
+			// If we got an error removing the key, retry
+			Warn("Error removing key from recently flushed bucket: %v  Retrying.", errRemove)
+			return true, errRemove, nil
+		}
+
+		// Made it past all checks
+		log.Printf("workerReadOwnWrites completed without errors")
+		return false, nil, nil
+	}
+
+	err, _ = RetryLoop("EmptyTestBucket", workerReadOwnWrites, sleeper)
+	if err != nil {
+		return err
+	}
+
+
+	return nil
+
+
 }
 
 func (tbm *TestBucketManager) RecreateOrEmptyBucket() error {

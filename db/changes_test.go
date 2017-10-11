@@ -28,31 +28,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
-	_testChangesAfterChannelAdded(t, db)
-}
 
-func printChanges(changes []*ChangeEntry) {
-	for _, change := range changes {
-		log.Printf("Change:%+v", change)
-	}
-}
-
-func getLastSeq(changes []*ChangeEntry) SequenceID {
-	if len(changes) > 0 {
-		return changes[len(changes)-1].Seq
-	}
-	return SequenceID{}
-}
-
-func getZeroSequence(db *Database) ChangesOptions {
-	if db.SequenceType == IntSequenceType {
-		return ChangesOptions{Since: SequenceID{Seq: 0}}
-	} else {
-		return ChangesOptions{Since: SequenceID{Clock: base.NewSequenceClockImpl()}}
-	}
-}
-
-func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 	base.EnableLogKey("IndexChanges")
 	base.EnableLogKey("Hash+")
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -123,6 +99,29 @@ func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 	changes, err = db.GetChanges(base.SetOf("*"), getZeroSequence(db))
 	assertNoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
+
+
+}
+
+func printChanges(changes []*ChangeEntry) {
+	for _, change := range changes {
+		log.Printf("Change:%+v", change)
+	}
+}
+
+func getLastSeq(changes []*ChangeEntry) SequenceID {
+	if len(changes) > 0 {
+		return changes[len(changes)-1].Seq
+	}
+	return SequenceID{}
+}
+
+func getZeroSequence(db *Database) ChangesOptions {
+	if db.SequenceType == IntSequenceType {
+		return ChangesOptions{Since: SequenceID{Seq: 0}}
+	} else {
+		return ChangesOptions{Since: SequenceID{Clock: base.NewSequenceClockImpl()}}
+	}
 }
 
 func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {

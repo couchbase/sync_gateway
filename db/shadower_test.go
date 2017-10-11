@@ -17,7 +17,8 @@ func makeExternalBucket() base.Bucket {
 
 	// Call this for the side effect of emptying out the data bucket, in case it interferes
 	// with bucket shadowing tests by causing unwanted data to get pulled into shadow bucket
-	base.GetBucketOrPanic()
+	tempBucket := base.GetBucketOrPanic()
+	tempBucket.Close()
 
 	return base.GetShadowBucketOrPanic()
 }

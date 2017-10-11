@@ -19,6 +19,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 
+	"regexp"
+	"runtime"
+
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -389,6 +392,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -410,8 +414,8 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.Terminator = make(chan bool)
 	options.Continuous = true
 	options.Wait = true
-
 	defer close(options.Terminator)
+
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
@@ -472,6 +476,8 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	if len(expectedDocs) > 0 {
 		log.Printf("Did not receive expected docs: %v")
 	}
+
+
 	assert.Equals(t, len(expectedDocs), 0)
 }
 
@@ -481,7 +487,6 @@ func TestLowSequenceHandling(t *testing.T) {
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
-
 
 	var logKeys = map[string]bool{
 		"Cache":    true,
@@ -525,7 +530,6 @@ func TestLowSequenceHandling(t *testing.T) {
 	// Array to read changes from feed to support assertions
 	var changes = make([]*ChangeEntry, 0, 50)
 
-	time.Sleep(50 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 4)
 
 	// Validate the initial sequences arrive as expected
@@ -542,7 +546,6 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	db.changeCache.waitForSequenceWithMissing(4)
 
-	time.Sleep(50 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 2)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 6)
@@ -554,6 +557,40 @@ func TestLowSequenceHandling(t *testing.T) {
 	db.changeCache.waitForSequence(9)
 	appendFromFeed(&changes, feed, 5)
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
+
+}
+
+func TestBackgroundTestShutdown(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test currently fails when running in integration mode since tearDownTestDB() doesn't close the database in that case")
+	}
+
+	cacheOptions := shortWaitCache()
+	db := setupTestDBWithCacheOptions(t, cacheOptions)
+	tearDownTestDB(t, db)
+
+	err, _ := base.RetryLoop("Verify changeCache not in stacktrace", func() (shouldRetry bool, err error, value interface{}) {
+
+		rawStackTrace := make([]byte, 1<<20)
+		runtime.Stack(rawStackTrace, true)
+
+		r, err := regexp.Compile(".*changeCache.*")
+		if err != nil {
+			return false, err, nil
+		}
+
+		if r.Match(rawStackTrace) {
+			// Still found changeCache in stack traces, return true to retry .. in case it goes away soon
+			return true, nil, nil
+		}
+
+		return false, nil, nil
+	}, base.CreateDoublingSleeperFunc(5, 1))
+
+	// If there was an error, it means that "changeCache" was in the stacktrace even after retrying
+	// a few times.  This means it never got cleaned up after tearDownTestDB was called.
+	assertNoError(t, err, "Unexpected error")
 
 }
 
@@ -574,7 +611,6 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
-
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -1084,7 +1120,7 @@ func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntr
 				log.Println("returned numEntries - returning")
 				return nil
 			}
-		case <-time.After(time.Millisecond * 100):
+		case <-time.After(time.Second * 10):
 			timeout = true
 		}
 	}

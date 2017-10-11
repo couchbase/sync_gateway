@@ -129,10 +129,14 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 func (listener *changeListener) Stop() {
 
 	if listener.terminator != nil {
-		close(listener.terminator)
+
+		// Unblock any change listeners blocked on tapNotifier.Wait()
+		listener.tapNotifier.Broadcast()
+
 	}
 
 	if listener.tapFeed != nil {
+
 		listener.tapFeed.Close()
 	}
 }
@@ -194,13 +198,25 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 	defer listener.tapNotifier.L.Unlock()
 	base.LogTo("Changes+", "No new changes to send to change listener.  Waiting for %q's count to pass %d",
 		listener.bucketName, counter)
+
+
 	for {
 		curCounter := listener._currentCount(keys)
 
 		if curCounter != counter || listener.terminateCheckCounter != terminateCheckCounter {
 			return curCounter, listener.terminateCheckCounter
 		}
+
 		listener.tapNotifier.Wait()
+
+		// Don't go back through the for loop if this changeListener was terminated
+		select {
+		case <- listener.terminator:
+			return 0,0
+		default:
+				// do nothing
+		}
+
 	}
 }
 
