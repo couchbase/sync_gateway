@@ -27,6 +27,8 @@ type RestTester struct {
 	distributedIndex        bool      // Test with walrus-based index bucket
 	SyncFn                  string    // put the sync() function source in here (optional)
 	DatabaseConfig          *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	AdminHandler            http.Handler
+	PublicHandler           http.Handler
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
@@ -188,8 +190,22 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 func (rt *RestTester) Send(request *http.Request) *TestResponse {
 	response := &TestResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
-	CreatePublicHandler(rt.ServerContext()).ServeHTTP(response, request)
+	rt.TestPublicHandler().ServeHTTP(response, request)
 	return response
+}
+
+func (rt *RestTester) TestAdminHandler() http.Handler {
+	if rt.AdminHandler == nil {
+		rt.AdminHandler = CreateAdminHandler(rt.ServerContext())
+	}
+	return rt.AdminHandler
+}
+
+func (rt *RestTester) TestPublicHandler() http.Handler {
+	if rt.PublicHandler == nil {
+		rt.PublicHandler = CreatePublicHandler(rt.ServerContext())
+	}
+	return rt.PublicHandler
 }
 
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
@@ -198,7 +214,7 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 	response := &TestResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
-	CreateAdminHandler(rt.ServerContext()).ServeHTTP(response, request)
+	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response
 }
 
@@ -211,7 +227,7 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 	response := &TestResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
-	CreateAdminHandler(rt.ServerContext()).ServeHTTP(response, request)
+	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response
 }
 

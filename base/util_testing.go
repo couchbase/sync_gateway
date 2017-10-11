@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
-	"time"
-
 	"math/rand"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/couchbase/gocb"
 )
@@ -158,10 +157,10 @@ func TestUseXattrs() bool {
 	useXattrs := os.Getenv(TestEnvSyncGatewayUseXattrs)
 	switch {
 	case strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue):
-		log.Printf("Using xattrs: strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue).  |%v| == |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue))
+		Log(fmt.Sprintf("Using xattrs: strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue).  |%v| == |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue)))
 		return true
 	default:
-		log.Printf("NOT Using xattrs: strings.ToLower(useXattrs) != strings.ToLower(TestEnvSyncGatewayTrue).  |%v| != |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue))
+		Log(fmt.Sprintf("NOT Using xattrs: strings.ToLower(useXattrs) != strings.ToLower(TestEnvSyncGatewayTrue).  |%v| != |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue)))
 	}
 	// Otherwise fallback to hardcoded default
 	return DefaultUseXattrs
