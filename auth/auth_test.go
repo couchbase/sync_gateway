@@ -33,6 +33,7 @@ func canSeeAllChannels(princ Principal, channels base.Set) bool {
 
 func TestValidateGuestUser(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, err := auth.NewUser("", "", nil)
 	assert.True(t, user != nil)
@@ -41,6 +42,7 @@ func TestValidateGuestUser(t *testing.T) {
 
 func TestValidateUser(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, err := auth.NewUser("invalid:name", "", nil)
 	assert.Equals(t, user, (User)(nil))
@@ -55,6 +57,7 @@ func TestValidateUser(t *testing.T) {
 
 func TestValidateRole(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	role, err := auth.NewRole("invalid:name", nil)
 	assert.Equals(t, role, (User)(nil))
@@ -69,6 +72,7 @@ func TestValidateRole(t *testing.T) {
 
 func TestValidateUserEmail(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	badEmails := []string{"", "foo", "foo@", "@bar", "foo @bar", "foo@.bar"}
 	for _, e := range badEmails {
@@ -85,6 +89,7 @@ func TestValidateUserEmail(t *testing.T) {
 
 func TestUserPasswords(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, _ := auth.NewUser("me", "letmein", nil)
 	assert.True(t, user.Authenticate("letmein"))
@@ -108,6 +113,7 @@ func TestUserPasswords(t *testing.T) {
 // is _extremely_ slow (~100ms!) so we use a cache to speed it up (see password_hash.go).
 func TestAuthenticationSpeed(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, _ := auth.NewUser("me", "goIsKewl", nil)
 	assert.True(t, user.Authenticate("goIsKewl"))
@@ -124,6 +130,7 @@ func TestAuthenticationSpeed(t *testing.T) {
 
 func TestSerializeUser(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, _ := auth.NewUser("me", "letmein", ch.SetOf("me", "public"))
 	user.SetEmail("foo@example.com")
@@ -143,6 +150,7 @@ func TestSerializeUser(t *testing.T) {
 
 func TestSerializeRole(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	role, _ := auth.NewRole("froods", ch.SetOf("hoopy", "public"))
 	encoded, _ := json.Marshal(role)
@@ -159,6 +167,7 @@ func TestSerializeRole(t *testing.T) {
 func TestUserAccess(t *testing.T) {
 	// User with no access:
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, _ := auth.NewUser("foo", "password", nil)
 	assert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf("*")), ch.SetOf("!"))
@@ -228,6 +237,7 @@ func TestUserAccess(t *testing.T) {
 
 func TestGetMissingUser(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, err := auth.GetUser("noSuchUser")
 	assert.Equals(t, err, nil)
@@ -239,6 +249,7 @@ func TestGetMissingUser(t *testing.T) {
 
 func TestGetMissingRole(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	role, err := auth.GetRole("noSuchRole")
 	assert.Equals(t, err, nil)
@@ -247,6 +258,7 @@ func TestGetMissingRole(t *testing.T) {
 
 func TestGetGuestUser(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, err := auth.GetUser("")
 	assert.Equals(t, err, nil)
@@ -256,6 +268,7 @@ func TestGetGuestUser(t *testing.T) {
 
 func TestSaveUsers(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, _ := auth.NewUser("testUser", "password", ch.SetOf("test"))
 	err := auth.Save(user)
@@ -268,6 +281,7 @@ func TestSaveUsers(t *testing.T) {
 
 func TestSaveRoles(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	role, _ := auth.NewRole("testRole", ch.SetOf("test"))
 	err := auth.Save(role)
@@ -306,6 +320,7 @@ func (self *mockComputer) UseGlobalSequence() bool {
 
 func TestRebuildUserChannels(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	computer := mockComputer{channels: ch.AtSequence(ch.SetOf("derived1", "derived2"), 1)}
 	auth := NewAuthenticator(gTestBucket, &computer)
 	user, _ := auth.NewUser("testUser", "password", ch.SetOf("explicit1"))
@@ -320,6 +335,7 @@ func TestRebuildUserChannels(t *testing.T) {
 
 func TestRebuildRoleChannels(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	computer := mockComputer{roleChannels: ch.AtSequence(ch.SetOf("derived1", "derived2"), 1)}
 	auth := NewAuthenticator(gTestBucket, &computer)
 	role, _ := auth.NewRole("testRole", ch.SetOf("explicit1"))
@@ -333,6 +349,7 @@ func TestRebuildRoleChannels(t *testing.T) {
 
 func TestRebuildChannelsError(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	computer := mockComputer{}
 	auth := NewAuthenticator(gTestBucket, &computer)
 	role, err := auth.NewRole("testRole2", ch.SetOf("explicit1"))
@@ -348,6 +365,7 @@ func TestRebuildChannelsError(t *testing.T) {
 
 func TestRebuildUserRoles(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
 	auth := NewAuthenticator(gTestBucket, &computer)
 	user, _ := auth.NewUser("testUser", "letmein", nil)
@@ -365,6 +383,7 @@ func TestRebuildUserRoles(t *testing.T) {
 func TestRoleInheritance(t *testing.T) {
 	// Create some roles:
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
 	role, _ := auth.NewRole("square", ch.SetOf("dull", "duller", "dullest"))
 	assert.Equals(t, auth.Save(role), nil)
@@ -390,6 +409,7 @@ func TestRoleInheritance(t *testing.T) {
 
 func TestRegisterUser(t *testing.T) {
 	gTestBucket := base.GetBucketOrPanic()
+	defer gTestBucket.Close()
 	// Register user based on name, email
 	auth := NewAuthenticator(gTestBucket, nil)
 	user, err := auth.RegisterNewUser("ValidName", "foo@example.com")
@@ -534,6 +554,7 @@ func TestFilterToAvailableSince(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			gTestBucket := base.GetBucketOrPanic()
+			defer gTestBucket.Close()
 
 			sinceClock := NewTestingClockAtSequence(100)
 			computer := mockComputer{channels: tc.syncGrantChannels, roles: tc.syncGrantRoles, roleChannels: tc.syncGrantRoleChannels}
