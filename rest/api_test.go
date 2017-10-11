@@ -2565,6 +2565,10 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 
 func TestEventConfigValidationSuccess(t *testing.T) {
 
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip this test under integration testing")
+	}
+
 	sc := NewServerContext(&ServerConfig{})
 
 	// Valid config
