@@ -23,13 +23,16 @@ import (
 	"strconv"
 	"strings"
 
+	"log"
+	"sync/atomic"
+
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
-	"log"
 )
 
 var gocbExpvars *expvar.Map
+var numOpenBuckets int32
 
 const (
 	MaxConcurrentSingleOps = 1000 // Max 1000 concurrent single bucket ops
@@ -85,6 +88,19 @@ func EnableGoCBLogging() {
 	gocbcore.SetLogger(GoCBLogger{})
 }
 
+func IncrNumOpenBuckets() {
+	atomic.AddInt32(&numOpenBuckets, 1)
+}
+
+func DecrNumOpenBuckets() {
+	atomic.AddInt32(&numOpenBuckets, -1)
+
+}
+
+func NumOpenBuckets() int32 {
+	return numOpenBuckets
+}
+
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
 
@@ -121,6 +137,8 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		Warn("Error opening bucket: %s.  Error: %v", spec.BucketName, err)
 		return nil, err
 	}
+
+	IncrNumOpenBuckets()
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
 		// Set transcoder to SGTranscoder to avoid cases where it tries to write docs as []byte without setting
@@ -259,7 +277,7 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 		if shouldRetry {
 			Warn("Got error %v trying to get key %v.  Going to retry.", err, k)
 		} else {
-			Warn( "Got unrecoverable error %v trying to get key %v.  Not going to retry.", err, k)
+			Warn("Got unrecoverable error %v trying to get key %v.  Not going to retry.", err, k)
 		}
 
 		return shouldRetry, err, uint64(casGoCB)
@@ -888,7 +906,7 @@ func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		_, err =bucket.Bucket.Upsert(k, bucket.FormatBinaryDocument(v), uint32(exp))
+		_, err = bucket.Bucket.Upsert(k, bucket.FormatBinaryDocument(v), uint32(exp))
 		if isRecoverableGoCBError(err) {
 			return true, err, nil
 		}
@@ -916,7 +934,6 @@ func (bucket CouchbaseBucketGoCB) Delete(k string) error {
 	err, _ := RetryLoop("CouchbaseBucketGoCB Delete()", worker, bucket.spec.RetrySleeper())
 
 	return err
-
 
 }
 
@@ -2057,8 +2074,10 @@ func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
 func (bucket CouchbaseBucketGoCB) Close() {
 	log.Printf("Closing GoCB bucket: %s", bucket.spec.BucketName)
 	if err := bucket.Bucket.Close(); err != nil {
-		Warn("Error closing GoCB bucket: %v", err)
+		Warn("Error closing GoCB bucket: %v.", err)
+		return
 	}
+	DecrNumOpenBuckets()
 
 }
 
