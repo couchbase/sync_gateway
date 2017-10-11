@@ -27,8 +27,8 @@ import (
 func TestChangesAfterChannelAdded(t *testing.T) {
 
 	db := setupTestDB(t)
-	defer tearDownTestDB(t, db)
 	_testChangesAfterChannelAdded(t, db)
+	tearDownTestDB(t, db)
 }
 
 func printChanges(changes []*ChangeEntry) {
