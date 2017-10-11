@@ -21,6 +21,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/satori/go.uuid"
 	"sync/atomic"
+	"log"
 )
 
 var dcpExpvars *expvar.Map
@@ -477,19 +478,28 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	// DCP stream from that position.  Also being used as a check on whether the server supports
 	// DCP.
 
+	log.Printf("Starting dcp feed.  args.Backfill: %d", args.Backfill)
+
 	switch args.Backfill {
 	case sgbucket.FeedNoBackfill:
+		log.Printf("For non-backfill, use vbucket uuids, high sequence numbers")
 		// For non-backfill, use vbucket uuids, high sequence numbers
 		statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno, false)
 		if err != nil {
 			return errors.New("Error retrieving stats-vbseqno - DCP not supported")
 		}
 		LogTo("Feed+", "Seeding seqnos: %v", highSeqnos)
+		log.Printf("Seeding seqnos: %v", highSeqnos)
+
 		dcpReceiver.SeedSeqnos(statsUuids, highSeqnos)
 	case sgbucket.FeedResume:
 		// For resume case, load previously persisted checkpoints from bucket
+		log.Printf("load previously persisted checkpoints")
+
 		dcpReceiver.initMetadata(maxVbno)
 	default:
+		log.Printf("Starting dcp feed from zero")
+
 		// Otherwise, start feed from zero
 		startSeqnos := make(map[uint16]uint64, maxVbno)
 		vbuuids := make(map[uint16]uint64, maxVbno)
