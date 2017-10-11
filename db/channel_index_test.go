@@ -360,6 +360,8 @@ func MultiChannelIndexSimpleGet(b *testing.B, numChannels int) {
 	vbCount := 1024
 
 	bucket := base.GetIndexBucketOrPanic()
+	defer bucket.Close()
+
 	indices := seedMultiChannelData(vbCount, bucket, numChannels)
 	b.ResetTimer()
 
@@ -416,6 +418,8 @@ func MultiChannelIndexBulkGet(b *testing.B, numChannels int) {
 	vbCount := 1024
 
 	bucket := base.GetIndexBucketOrPanic()
+	defer bucket.Close()
+
 	indices := seedMultiChannelData(vbCount, bucket, numChannels)
 
 	b.ResetTimer()
