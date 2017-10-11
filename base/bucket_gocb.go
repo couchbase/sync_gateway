@@ -24,7 +24,8 @@ import (
 	"strings"
 
 	"log"
-	"sync/atomic"
+
+	"sync"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -32,7 +33,8 @@ import (
 )
 
 var gocbExpvars *expvar.Map
-var numOpenBuckets int32
+var numOpenBucketsByName map[string]int32
+var mutexNumOpenBucketsByName sync.Mutex
 
 const (
 	MaxConcurrentSingleOps = 1000 // Max 1000 concurrent single bucket ops
@@ -59,6 +61,7 @@ var recoverableGoCBErrors = map[string]struct{}{
 
 func init() {
 	gocbExpvars = expvar.NewMap("syncGateway_gocb")
+	numOpenBucketsByName = map[string]int32{}
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb
@@ -88,17 +91,37 @@ func EnableGoCBLogging() {
 	gocbcore.SetLogger(GoCBLogger{})
 }
 
-func IncrNumOpenBuckets() {
-	atomic.AddInt32(&numOpenBuckets, 1)
-}
-
-func DecrNumOpenBuckets() {
-	atomic.AddInt32(&numOpenBuckets, -1)
+func IncrNumOpenBuckets(bucketName string) {
+	MutateNumOpenBuckets(bucketName, 1)
 
 }
 
-func NumOpenBuckets() int32 {
-	return numOpenBuckets
+func DecrNumOpenBuckets(bucketName string) {
+	MutateNumOpenBuckets(bucketName, -1)
+}
+
+func MutateNumOpenBuckets(bucketName string, delta int32) {
+	mutexNumOpenBucketsByName.Lock()
+	defer mutexNumOpenBucketsByName.Unlock()
+
+	numOpen, ok := numOpenBucketsByName[bucketName]
+	if !ok {
+		numOpen = 0
+		numOpenBucketsByName[bucketName] = numOpen
+	}
+
+	numOpen += delta
+	numOpenBucketsByName[bucketName] = numOpen
+}
+
+func NumOpenBuckets(bucketName string) int32 {
+	mutexNumOpenBucketsByName.Lock()
+	defer mutexNumOpenBucketsByName.Unlock()
+	numOpen, ok := numOpenBucketsByName[bucketName]
+	if !ok {
+		return 0
+	}
+	return numOpen
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
@@ -138,7 +161,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		return nil, err
 	}
 
-	IncrNumOpenBuckets()
+	IncrNumOpenBuckets(spec.BucketName)
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
 		// Set transcoder to SGTranscoder to avoid cases where it tries to write docs as []byte without setting
@@ -2077,7 +2100,7 @@ func (bucket CouchbaseBucketGoCB) Close() {
 		Warn("Error closing GoCB bucket: %v.", err)
 		return
 	}
-	DecrNumOpenBuckets()
+	DecrNumOpenBuckets(bucket.Name())
 
 }
 
