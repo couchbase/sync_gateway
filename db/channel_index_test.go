@@ -443,6 +443,7 @@ func TestChannelIndexBulkGet10(t *testing.T) {
 	vbCount := 1024
 	numChannels := 10
 	bucket := base.GetIndexBucketOrPanic()
+	defer bucket.Close()
 	indices := seedMultiChannelData(vbCount, bucket, numChannels)
 
 	startTime := time.Now()
