@@ -204,6 +204,10 @@ func NewTestBucketManager(spec BucketSpec) *TestBucketManager {
 
 func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 
+	if NumOpenBuckets() > 0 {
+		return false, fmt.Errorf("There are already %d open buckets.  The tests expect all buckets to be closed.", NumOpenBuckets())
+	}
+
 	cluster, err := gocb.Connect(tbm.BucketSpec.Server)
 	if err != nil {
 		return false, err
