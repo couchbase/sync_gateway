@@ -367,6 +367,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		CreateDoublingSleeperFunc(12, 10),
 	)
 	if err != nil {
+		CheckAssertStackTraceDoesntContainPatterns(ProblematicStackPatterns)
 		return err
 	}
 
@@ -587,7 +588,7 @@ func CheckAssertStackTraceDoesntContainPatterns(regexps []string) (matchedPatter
 func StackTraceContainsPatterns(regexps []*regexp.Regexp) (matchedPattern *regexp.Regexp, containsPattern bool) {
 
 	// Dump stacktrace
-	stacktrace := make([]byte, 1>>20)
+	stacktrace := make([]byte, 1<<20)
 	runtime.Stack(stacktrace, true)
 
 	for _, r := range regexps {
