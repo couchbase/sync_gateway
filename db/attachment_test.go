@@ -36,6 +36,8 @@ func tojson(obj interface{}) string {
 
 func TestAttachments(t *testing.T) {
 
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	context, err := NewDatabaseContext("db", base.GetBucketOrPanic(), false, DatabaseContextOptions{})
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
@@ -106,6 +108,9 @@ func TestAttachments(t *testing.T) {
 }
 
 func TestAttachmentForRejectedDocument(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	context, err := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()

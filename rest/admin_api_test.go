@@ -27,7 +27,16 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+func TestUserApiRepeat(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		TestUserAPI(t)
+	}
+}
+
 func TestUserAPI(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	// PUT a user
 	var rt RestTester
 	defer rt.Close()
@@ -134,6 +143,9 @@ func TestUserAPI(t *testing.T) {
 }
 
 func TestUserPasswordValidation(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	// PUT a user
 	var rt RestTester
 	defer rt.Close()
@@ -475,6 +487,9 @@ func TestGuestUser(t *testing.T) {
 //Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly
 // fixes #974
 func TestSessionTtlGreaterThan30Days(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1150,6 +1165,9 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 }
 
 func TestPurgeWithNonStarRevision(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 

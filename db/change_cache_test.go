@@ -39,6 +39,8 @@ func testBucketContext() *DatabaseContext {
 
 func TestSkippedSequenceQueue(t *testing.T) {
 
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var skipQueue SkippedSequenceQueue
 	//Push values
 	skipQueue.Push(&SkippedSequence{4, time.Now()})
@@ -85,6 +87,8 @@ func TestSkippedSequenceQueue(t *testing.T) {
 }
 
 func TestLateSequenceHandling(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
 
 	context := testBucketContext()
 	defer context.Close()
@@ -149,6 +153,8 @@ func TestLateSequenceHandling(t *testing.T) {
 }
 
 func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
 
 	context := testBucketContext()
 	defer context.Close()
@@ -291,6 +297,8 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 // Test notification when buffered entries are processed after a user doc arrives.
 func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
@@ -331,6 +339,8 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
 // Test backfill of late arriving sequences to the channel caches
 func TestChannelCacheBackfill(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -400,6 +410,8 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -523,6 +535,8 @@ func TestContinuousChangesBackfill(t *testing.T) {
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
@@ -601,6 +615,8 @@ func TestLowSequenceHandling(t *testing.T) {
 
 func TestBackgroundTestShutdown(t *testing.T) {
 
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test currently fails when running in integration mode since tearDownTestDB() doesn't close the database in that case")
 	}
@@ -636,6 +652,8 @@ func TestBackgroundTestShutdown(t *testing.T) {
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
 // user doesn't have visibility to some of the late arriving sequences
 func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
 
 	/*
 		var logKeys = map[string]bool {
@@ -708,6 +726,8 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -904,6 +924,8 @@ func FailingTestChannelRace(t *testing.T) {
 // been seen on the TAP feed yet).  Longer term could consider enhancing leaky bucket to 'miss' the entry on the tap feed.
 func TestSkippedViewRetrieval(t *testing.T) {
 
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
@@ -951,8 +973,18 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 }
 
+func TestStopChangeCacheRepeat(t *testing.T) {
+
+	for i := 0; i < 10; i++ {
+		log.Printf("------------ TestStopChangeCacheRepeat-%d", i)
+		TestStopChangeCache(t)
+	}
+}
+
 // Test that housekeeping goroutines get terminated when change cache is stopped
 func TestStopChangeCache(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -991,6 +1023,8 @@ func TestStopChangeCache(t *testing.T) {
 
 // Test size config
 func TestChannelCacheSize(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")

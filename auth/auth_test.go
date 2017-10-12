@@ -364,6 +364,9 @@ func TestRebuildChannelsError(t *testing.T) {
 }
 
 func TestRebuildUserRoles(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
