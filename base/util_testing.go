@@ -11,10 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/gocb"
-	"testing"
 	"regexp"
 	"runtime"
+	"testing"
+
+	"github.com/couchbase/gocb"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -542,11 +543,10 @@ func CreateProperty(size int) (result string) {
 	return string(resultBytes)
 }
 
-
 var ProblematicStackPatterns []string
 
 func init() {
-	ProblematicStackPatterns = []string {
+	ProblematicStackPatterns = []string{
 		"changeListener",
 	}
 }
@@ -561,7 +561,7 @@ func AssertStackTraceDoesntContainPatterns(t *testing.T, regexps []string) {
 
 	if containsPattern {
 		// Dump stacktrace
-		stacktrace := make([]byte, 1>>20)
+		stacktrace := make([]byte, 1<<20)
 		runtime.Stack(stacktrace, true)
 		log.Printf("Stacktrace with unexpected pattern: %s", matchedPattern)
 		t.Fatalf("StackTraceContainsPatterns returned true.  See logs for details")
@@ -584,20 +584,43 @@ func CheckAssertStackTraceDoesntContainPatterns(regexps []string) (matchedPatter
 
 }
 
-
 func StackTraceContainsPatterns(regexps []*regexp.Regexp) (matchedPattern *regexp.Regexp, containsPattern bool) {
 
-	// Dump stacktrace
-	stacktrace := make([]byte, 1<<20)
-	runtime.Stack(stacktrace, true)
+	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-	for _, r := range regexps {
-		if r.Match(stacktrace) {
-			return r, true
+		// Dump stacktrace
+		stacktrace := make([]byte, 1<<20)
+		runtime.Stack(stacktrace, true)
+
+		for _, r := range regexps {
+			if r.Match(stacktrace) {
+				// A pattern matched, but maybe it will disappear.. so wait and try again
+				return true, nil, r
+			}
 		}
+
+		// No matches, we're done
+		return false, nil, nil
+
 	}
+
+	err, _ := RetryLoop("Retry StackTraceContainsPatterns", worker, CreateDoublingSleeperFunc(10, 10))
+	if err != nil {
+		matchedRegexp := regexps[0] // TODO: just pick the first one for now
+		return matchedRegexp, true
+	}
+
 	return nil, false
 
+	// Dump stacktrace
+	//stacktrace := make([]byte, 1<<20)
+	//runtime.Stack(stacktrace, true)
+	//
+	//for _, r := range regexps {
+	//	if r.Match(stacktrace) {
+	//		return r, true
+	//	}
+	//}
+	//return nil, false
+
 }
-
-
