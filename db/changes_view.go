@@ -6,7 +6,6 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 )
 
 // Unmarshaled JSON structure for "changes" view results
@@ -37,8 +36,11 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	optMap := changesViewOptions(channelName, endSeq, options)
 
 	entries := make(LogEntries, 0)
+	activeEntryCount := 0
 
-	//Required for activeOnly handling, loop until we have consumed limit log entries
+	// Loop for active-only and limit handling.
+	// The set of changes we get back from the view applies the limit, but includes both active and non-active entries.  When retrieving changes w/ activeOnly=true and a limit,
+	// this means we may need multiple view calls to get a total of [limit] active entries.
 	for {
 		base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)
 		vres := channelsViewResult{}
@@ -63,28 +65,33 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 				Flags:        row.Value.Flags,
 				TimeReceived: time.Now(),
 			}
+
+			// If active-only, track the number of non-removal, non-deleted revisions we've seen in the view results
+			// for limit calculation below.
 			if options.ActiveOnly {
-				if !entry.IsRemoved() && entry.Flags&channels.Deleted == 0 {
-					// base.LogTo("Cache", "  Got view sequence #%d (%q / %q)", entry.Sequence, entry.DocID, entry.RevID)
-					entries = append(entries, entry)
+				if entry.IsActive() {
+					activeEntryCount++
 				}
-			} else {
-				entries = append(entries, entry)
 			}
+			entries = append(entries, entry)
 			optMap["startkey"] = []interface{}{channelName, entry.Sequence + 1}
 		}
 
+		// If active-only, loop until we've retrieved at least (Limit) active entries
 		if options.ActiveOnly {
-			if len(entries) >= options.Limit || options.Limit == 0 {
+			if activeEntryCount >= options.Limit || options.Limit == 0 {
 				break
 			}
 		} else {
+			// If not active-only, we only need one iteration of the loop - the limit applied to the view query is sufficient
 			break
 		}
 	}
 
-	base.LogTo("Cache", "    Got %d rows from view for %q: #%d ... #%d",
-		len(entries), channelName, entries[0].Sequence, entries[len(entries)-1].Sequence)
+	if len(entries) > 0 {
+		base.LogTo("Cache", "    Got %d rows from view for %q: #%d ... #%d",
+			len(entries), channelName, entries[0].Sequence, entries[len(entries)-1].Sequence)
+	}
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
 		base.Logf("changes_view: Query took %v to return %d rows, options = %#v",
 			elapsed, len(entries), optMap)

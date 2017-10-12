@@ -104,6 +104,15 @@ func (entry *LogEntry) IsRemoved() bool {
 	return entry.Flags&channels.Removed != 0
 }
 
+func (entry *LogEntry) IsDeleted() bool {
+	return entry.Flags&channels.Deleted != 0
+}
+
+// Returns false if the entry is either a removal or a delete
+func (entry *LogEntry) IsActive() bool {
+	return !entry.IsRemoved() && !entry.IsDeleted()
+}
+
 func (entry *LogEntry) SetRemoved() {
 	entry.Flags |= channels.Removed
 }
