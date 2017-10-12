@@ -416,6 +416,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	base.UpdateLogKeys(logKeys, true)
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -438,6 +439,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.Terminator = make(chan bool)
 	options.Continuous = true
 	options.Wait = true
+	defer close(options.Terminator)
 
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
@@ -500,9 +502,9 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		log.Printf("Did not receive expected docs: %v")
 	}
 
-	tearDownTestDB(t, db)
 
-	close(options.Terminator)
+
+
 
 	//time.Sleep(time.Second)
 	//
