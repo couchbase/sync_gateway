@@ -542,30 +542,22 @@ func CreateProperty(size int) (result string) {
 }
 
 
-var ProblematicStackPatters []string
+var ProblematicStackPatterns []string
 
 func init() {
-	ProblematicStackPatters = []string {
+	ProblematicStackPatterns = []string {
 		"changeListener",
 	}
 }
 
 func AssertStackTraceDoesntContainProblematicPatterns(t *testing.T) {
-	AssertStackTraceDoesntContainPatterns(t, ProblematicStackPatters)
+	AssertStackTraceDoesntContainPatterns(t, ProblematicStackPatterns)
 }
 
 func AssertStackTraceDoesntContainPatterns(t *testing.T, regexps []string) {
 
-	compiledRegexps := []*regexp.Regexp{}
-	for _, r := range regexps {
-		compiledRegexp, err := regexp.Compile(r)
-		if err != nil {
-			t.Fatalf("Failed to compile regex: %v", r)
-		}
-		compiledRegexps = append(compiledRegexps, compiledRegexp)
-	}
+	matchedPattern, containsPattern := CheckAssertStackTraceDoesntContainPatterns(regexps)
 
-	matchedPattern, containsPattern := StackTraceContainsPatterns(compiledRegexps)
 	if containsPattern {
 		// Dump stacktrace
 		stacktrace := make([]byte, 1>>20)
@@ -575,6 +567,22 @@ func AssertStackTraceDoesntContainPatterns(t *testing.T, regexps []string) {
 	}
 
 }
+
+func CheckAssertStackTraceDoesntContainPatterns(regexps []string) (matchedPattern *regexp.Regexp, containsPattern bool) {
+
+	compiledRegexps := []*regexp.Regexp{}
+	for _, r := range regexps {
+		compiledRegexp, err := regexp.Compile(r)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to compile regex: %v", err))
+		}
+		compiledRegexps = append(compiledRegexps, compiledRegexp)
+	}
+
+	return StackTraceContainsPatterns(compiledRegexps)
+
+}
+
 
 func StackTraceContainsPatterns(regexps []*regexp.Regexp) (matchedPattern *regexp.Regexp, containsPattern bool) {
 
