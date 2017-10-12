@@ -101,7 +101,38 @@ func TestUserAPI(t *testing.T) {
 	// DELETE the user
 	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 
+	// POST a user with URL encoded '|' in name see #2870
+	assertStatus(t, rt.SendAdminRequest("POST", "/db/_user/", `{"name":"0%7C59", "password":"letmein", "admin_channels":["foo", "bar"]}`), 201)
+
+	// GET the user, will fail
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C59", ""), 404)
+
+	// DELETE the user, will fail
+	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%7C59", ""), 404)
+
+	// GET the user, double escape username, will succeed
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%257C59", ""), 200)
+
+	// DELETE the user, double escae usename, will succeed
+	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%257C59", ""), 200)
+
+	// POST a user with URL encoded '|' and unencoded @ in name see #2870
+	assertStatus(t, rt.SendAdminRequest("POST", "/db/_user/", `{"name":"0%7C@59", "password":"letmein", "admin_channels":["foo", "bar"]}`), 201)
+
+	// GET the user, will fail
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C@59", ""), 404)
+
+	// DELETE the user, will fail
+	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%7C@59", ""), 404)
+
+	// GET the user, double escape username, will succeed
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%257C%4059", ""), 200)
+
+	// DELETE the user, double escae usename, will succeed
+	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%257C%4059", ""), 200)
+
 }
+
 func TestUserPasswordValidation(t *testing.T) {
 	// PUT a user
 	var rt RestTester
