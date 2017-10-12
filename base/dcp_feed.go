@@ -109,7 +109,7 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 	r.callback = callback
 
 	// Temporarily move this to a warning to be able to debug tests
-	Warn("Using DCP Logging Receiver.  Receiver: %d", r.id)
+	Warn("Using DCP Receiver.  Receiver: %d", r.id)
 
 	if LogEnabledExcludingLogStar("DCP") {
 
