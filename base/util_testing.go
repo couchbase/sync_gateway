@@ -297,16 +297,14 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		if err != nil {
 			Warn("Error flushing bucket: %v  Will retry.", err)
 		}
-		shouldRetry = (err != nil)  // retry (until max attempts) if there was an error
+		shouldRetry = (err != nil) // retry (until max attempts) if there was an error
 		return shouldRetry, err, nil
 	}
-	sleeper := CreateDoublingSleeperFunc(12, 10)
 
-	err, _ := RetryLoop("EmptyTestBucket", workerFlush, sleeper)
+	err, _ := RetryLoop("EmptyTestBucket", workerFlush, CreateDoublingSleeperFunc(12, 10))
 	if err != nil {
 		return err
 	}
-
 
 	for {
 
@@ -326,7 +324,6 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 
 	}
 
-
 	// Wait until high seq nos are all 0
 	// statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno, false)
 
@@ -334,7 +331,6 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		return fmt.Errorf("Cannot determine number of vbuckets")
 	}
 	maxVbno := uint16(tbm.Bucket.IoRouter().NumVbuckets())
-
 
 	workerHighSeqNosZero := func() (shouldRetry bool, err error, value interface{}) {
 
@@ -352,12 +348,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		for vbNo := uint16(0); vbNo < maxVbno; vbNo++ {
 			maxSeqForVb := highSeqnos[vbNo]
 			if maxSeqForVb > 0 {
-				log.Printf("max seq for vb %d > 0 (%d).  Flusing and retrying", vbNo, maxSeqForVb)
-				err = tbm.BucketManager.Flush()
-				if err != nil {
-					Warn("Error flushing bucket: %v", err)
-				}
-
+				log.Printf("max seq for vb %d > 0 (%d).  Retrying", vbNo, maxSeqForVb)
 				return true, nil, nil
 			}
 		}
@@ -365,10 +356,13 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		// made it this far, then it succeeded
 		return false, nil, nil
 
-
 	}
 
-	err, _ = RetryLoop("Wait for vb sequence numbers to be 0", workerHighSeqNosZero, sleeper)
+	err, _ = RetryLoop(
+		"Wait for vb sequence numbers to be 0",
+		workerHighSeqNosZero,
+		CreateDoublingSleeperFunc(12, 10),
+	)
 	if err != nil {
 		return err
 	}
@@ -406,14 +400,16 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		return false, nil, nil
 	}
 
-	err, _ = RetryLoop("EmptyTestBucket", workerReadOwnWrites, sleeper)
+	err, _ = RetryLoop(
+		"EmptyTestBucket",
+		workerReadOwnWrites,
+		CreateDoublingSleeperFunc(12, 10),
+	)
 	if err != nil {
 		return err
 	}
 
-
 	return nil
-
 
 }
 
