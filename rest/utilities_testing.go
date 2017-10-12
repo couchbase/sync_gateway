@@ -15,6 +15,8 @@ import (
 	"encoding/json"
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
+	"regexp"
+	"runtime"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -368,4 +370,41 @@ func assertStatus(t *testing.T, response *TestResponse, expectedStatus int) {
 		t.Fatalf("Response status %d (expected %d) for %s <%s> : %s",
 			response.Code, expectedStatus, response.Req.Method, response.Req.URL, response.Body)
 	}
+}
+
+func AssertStackTraceDoesntContainPatterns(t *testing.T, regexps []string) {
+
+	compiledRegexps := []*regexp.Regexp{}
+	for _, r := range regexps {
+		compiledRegexp, err := regexp.Compile(r)
+		if err != nil {
+			t.Fatalf("Failed to compile regex: %v", r)
+		}
+		compiledRegexps = append(compiledRegexps, compiledRegexp)
+	}
+
+	matchedPattern, containsPattern := StackTraceContainsPatterns(compiledRegexps)
+	if containsPattern {
+		// Dump stacktrace
+		stacktrace := make([]byte, 1>>20)
+		runtime.Stack(stacktrace, true)
+		log.Printf("Stacktrace with unexpected pattern: %s", matchedPattern)
+		t.Fatalf("StackTraceContainsPatterns returned true.  See logs for details")
+	}
+
+}
+
+func StackTraceContainsPatterns(regexps []*regexp.Regexp) (matchedPattern *regexp.Regexp, containsPattern bool) {
+
+	// Dump stacktrace
+	stacktrace := make([]byte, 1>>20)
+	runtime.Stack(stacktrace, true)
+
+	for _, r := range regexps {
+		if r.Match(stacktrace) {
+			return r, true
+		}
+	}
+	return nil, false
+
 }
