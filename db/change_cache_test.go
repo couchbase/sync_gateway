@@ -13,8 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"regexp"
-	"runtime"
 	"testing"
 	"time"
 
@@ -269,7 +267,6 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 	}
 	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
 }
-
 
 // Test notification when buffered entries are processed after a user doc arrives.
 func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
