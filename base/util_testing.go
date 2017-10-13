@@ -310,6 +310,8 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		return err
 	}
 
+	maxTries := 20
+	numTries := 0
 	for {
 
 		itemCount, err := tbm.BucketItemCount()
@@ -322,9 +324,16 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 			break
 		}
 
+		if numTries > maxTries {
+			return fmt.Errorf("Timed out waiting for bucket to be empty after flush.  ItemCount: %v", itemCount)
+		}
+
 		// Still items left, wait a little bit and try again
 		Warn("TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
 		time.Sleep(time.Millisecond * 500)
+
+		numTries += 1
+
 
 	}
 
