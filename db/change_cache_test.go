@@ -514,10 +514,6 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		log.Printf("Did not receive expected docs: %v")
 	}
 
-
-
-
-
 	//time.Sleep(time.Second)
 	//
 	//buf := make([]byte, 1<<20)
@@ -612,7 +608,6 @@ func TestLowSequenceHandling(t *testing.T) {
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 
 }
-
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
 // user doesn't have visibility to some of the late arriving sequences
@@ -965,7 +960,6 @@ func TestStopChangeCache(t *testing.T) {
 		CachePendingSeqMaxWait: 10 * time.Millisecond,
 		CachePendingSeqMaxNum:  50,
 		CacheSkippedSeqMaxWait: 1 * time.Second}
-
 
 	// Use leaky bucket to have the tap feed 'lose' document 3
 	leakyConfig := base.LeakyBucketConfig{
