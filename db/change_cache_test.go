@@ -13,15 +13,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-
 	"github.com/couchbaselabs/go.assert"
-	"runtime"
-	"regexp"
 )
 
 func e(seq uint64, docid string, revid string) *LogEntry {
@@ -484,7 +483,6 @@ func TestLowSequenceHandling(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-
 	var logKeys = map[string]bool{
 		"Cache":    true,
 		"Changes":  true,
@@ -591,7 +589,6 @@ func TestBackgroundTestShutdown(t *testing.T) {
 	// a few times.  This means it never got cleaned up after tearDownTestDB was called.
 	assertNoError(t, err, "Unexpected error")
 
-
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
@@ -611,7 +608,6 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
-
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)

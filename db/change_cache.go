@@ -87,7 +87,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 	c.onChange = onChange
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.receivedSeqs = make(map[uint64]struct{})
-	c.terminator = make(chan bool, 1) // give it buffer size of 1 so something trying to send won't block forever
+	c.terminator = make(chan bool)
 
 	// init cache options
 	c.options = CacheOptions{
