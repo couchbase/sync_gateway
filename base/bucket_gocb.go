@@ -23,8 +23,6 @@ import (
 	"strconv"
 	"strings"
 
-	"log"
-
 	"sync"
 
 	"github.com/couchbase/gocb"
@@ -154,7 +152,6 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		}
 	}
 
-	log.Printf("Opening GoCB bucket: %s", spec.BucketName)
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
 		Warn("Error opening bucket: %s.  Error: %v", spec.BucketName, err)
@@ -296,13 +293,6 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 		gocbExpvars.Add("Get", 1)
 		casGoCB, err := bucket.Bucket.Get(k, rv)
 		shouldRetry = isRecoverableGoCBError(err)
-
-		if shouldRetry {
-			Warn("Got error %v trying to get key %v.  Going to retry.", err, k)
-		} else {
-			Warn("Got unrecoverable error %v trying to get key %v.  Not going to retry.", err, k)
-		}
-
 		return shouldRetry, err, uint64(casGoCB)
 	}
 
@@ -2095,7 +2085,6 @@ func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
 }
 
 func (bucket CouchbaseBucketGoCB) Close() {
-	log.Printf("Closing GoCB bucket: %s", bucket.spec.BucketName)
 	if err := bucket.Bucket.Close(); err != nil {
 		Warn("Error closing GoCB bucket: %v.", err)
 		return

@@ -16,12 +16,12 @@ import (
 	"fmt"
 	"sync"
 
+	"sync/atomic"
+
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/satori/go.uuid"
-	"sync/atomic"
-	"log"
 )
 
 var dcpExpvars *expvar.Map
@@ -82,7 +82,7 @@ type Receiver interface {
 // cbdatasource BucketDataSource.  See go-couchbase/cbdatasource for
 // additional details
 type DCPReceiver struct {
-	id int32
+	id                     int32
 	m                      sync.Mutex
 	bucket                 Bucket                         // For metadata persistence/retrieval
 	persistCheckpoints     bool                           // Whether this DCPReceiver should persist metadata to the bucket
@@ -99,7 +99,7 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 
 	// TODO: set using maxvbno
 	r := &DCPReceiver{
-		id: dcpReceiverId,
+		id:                 dcpReceiverId,
 		bucket:             bucket,
 		persistCheckpoints: persistCheckpoints,
 		seqs:               make([]uint64, maxVbNo),
@@ -108,11 +108,8 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 	}
 	r.callback = callback
 
-	// Temporarily move this to a warning to be able to debug tests
-	Warn("Using DCP Receiver.  Receiver: %d", r.id)
-
 	if LogEnabledExcludingLogStar("DCP") {
-
+		LogTo("DCP", "Using DCP Logging Receiver.  ID: %d", r.id)
 		logRec := &DCPLoggingReceiver{rec: r}
 		return logRec
 	}
@@ -478,27 +475,21 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	// DCP stream from that position.  Also being used as a check on whether the server supports
 	// DCP.
 
-	log.Printf("Starting dcp feed.  args.Backfill: %d", args.Backfill)
-
 	switch args.Backfill {
 	case sgbucket.FeedNoBackfill:
-		log.Printf("For non-backfill, use vbucket uuids, high sequence numbers")
 		// For non-backfill, use vbucket uuids, high sequence numbers
 		statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno, false)
 		if err != nil {
 			return errors.New("Error retrieving stats-vbseqno - DCP not supported")
 		}
 		LogTo("Feed+", "Seeding seqnos: %v", highSeqnos)
-		log.Printf("Seeding seqnos: %v", highSeqnos)
 
 		dcpReceiver.SeedSeqnos(statsUuids, highSeqnos)
 	case sgbucket.FeedResume:
 		// For resume case, load previously persisted checkpoints from bucket
-		log.Printf("load previously persisted checkpoints")
 
 		dcpReceiver.initMetadata(maxVbno)
 	default:
-		log.Printf("Starting dcp feed from zero")
 
 		// Otherwise, start feed from zero
 		startSeqnos := make(map[uint16]uint64, maxVbno)

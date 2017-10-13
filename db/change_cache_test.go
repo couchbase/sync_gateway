@@ -270,29 +270,6 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
 }
 
-// Reproduces issues discovered in https://github.com/couchbase/sync_gateway/issues/2938#issuecomment-334016797
-// Repro logs: https://gist.github.com/tleyden/f01c1098a2b01b19c727dccdfb7238f3
-//func TestReproduceTestResidue(t *testing.T) {
-//
-//	for i := 0; i < 1; i++ {
-//
-//		//log.Printf("------------------------------ testChannelCacheBufferingWithUserDoc() ------------------------------")
-//		//TestChannelCacheBufferingWithUserDoc(t)
-//		log.Printf("------------------------------ testContinuousChangesBackfill() ------------------------------")
-//		TestContinuousChangesBackfill(t)
-//
-//	}
-//
-//	log.Printf("Sleeping 15 seconds")
-//	time.Sleep(time.Second * 15)
-//	log.Printf("/Sleeping 15 seconds")
-//
-//	buf := make([]byte, 1<<20)
-//	runtime.Stack(buf, true)
-//
-//	log.Printf("Stack: %s", buf)
-//
-//}
 
 // Test notification when buffered entries are processed after a user doc arrives.
 func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
@@ -513,17 +490,6 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	if len(expectedDocs) > 0 {
 		log.Printf("Did not receive expected docs: %v")
 	}
-
-	//time.Sleep(time.Second)
-	//
-	//buf := make([]byte, 1<<20)
-	//runtime.Stack(buf, true)
-	//log.Printf("stack dump: %s", buf)
-
-	// drain the changes feed in attempt to force it to get closed
-	//for changeEntry := range feed {
-	//	log.Printf("Drained %v from feed", changeEntry)
-	//}
 
 	assert.Equals(t, len(expectedDocs), 0)
 }
@@ -931,14 +897,6 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	assertTrue(t, len(entries) == 1, fmt.Sprintf("Incorrect number of entries returned.  Expected %d, got %d.  Entries: %+v", 1, len(entries), entries))
 	assert.Equals(t, entries[0].DocID, "doc-3")
 
-}
-
-func TestStopChangeCacheRepeat(t *testing.T) {
-
-	for i := 0; i < 2; i++ {
-		log.Printf("------------ TestStopChangeCacheRepeat-%d", i)
-		TestStopChangeCache(t)
-	}
 }
 
 // Test that housekeeping goroutines get terminated when change cache is stopped

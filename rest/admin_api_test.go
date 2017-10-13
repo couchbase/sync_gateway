@@ -27,11 +27,6 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
-func TestUserApiRepeat(t *testing.T) {
-	for i := 0; i < 10; i++ {
-		TestUserAPI(t)
-	}
-}
 
 func TestUserAPI(t *testing.T) {
 
@@ -1301,8 +1296,12 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
 }
 
-// Temp disable: https://github.com/couchbase/sync_gateway/issues/2938#issuecomment-334634994
-func DisableTestReplicateErrorConditions(t *testing.T) {
+func TestReplicateErrorConditions(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
+	}
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1347,9 +1346,13 @@ func DisableTestReplicateErrorConditions(t *testing.T) {
 
 }
 
-// Temp disable: https://github.com/couchbase/sync_gateway/issues/2938#issuecomment-334634994
 //These tests validate request parameters not actual replication
-func DisableTestDocumentChangeReplicate(t *testing.T) {
+func TestDocumentChangeReplicate(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
+	}
+
 	var rt RestTester
 	defer rt.Close()
 

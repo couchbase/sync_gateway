@@ -136,21 +136,11 @@ func (listener *changeListener) Stop() {
 	}
 
 	if listener.tapNotifier != nil {
-
 		// Unblock any change listeners blocked on tapNotifier.Wait()
-		base.LogTo("Changes+", "listener.tapNotifier.Broadcast()")
-
 		listener.tapNotifier.Broadcast()
-
-	} else {
-		base.LogTo("Changes+", "listener.tapNotifier == nil")
-
 	}
 
 	if listener.tapFeed != nil {
-
-
-
 		listener.tapFeed.Close()
 	}
 }
@@ -221,14 +211,11 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 			return curCounter, listener.terminateCheckCounter
 		}
 
-		base.LogTo("Changes+", "Calling tapNotifier.Wait()")
 		listener.tapNotifier.Wait()
-		base.LogTo("Changes+", "/finished Calling tapNotifier.Wait()")
 
 		// Don't go back through the for loop if this changeListener was terminated
 		select {
 		case <- listener.terminator:
-			base.LogTo("Changes+", "listener.terminator was closed, getting out of Wait() loop")
 			return 0,0
 		default:
 				// do nothing
