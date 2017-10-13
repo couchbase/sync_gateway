@@ -563,7 +563,7 @@ func AssertStackTraceDoesntContainPatterns(t *testing.T, regexps []string) {
 		// Dump stacktrace
 		stacktrace := make([]byte, 1<<20)
 		runtime.Stack(stacktrace, true)
-		log.Printf("Stacktrace with unexpected pattern: %s", matchedPattern)
+		log.Printf("Stacktrace with unexpected pattern: %s.  Stacktrace: %s", matchedPattern, stacktrace)
 		t.Fatalf("StackTraceContainsPatterns returned true.  See logs for details")
 	}
 
