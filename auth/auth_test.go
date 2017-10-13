@@ -32,6 +32,9 @@ func canSeeAllChannels(princ Principal, channels base.Set) bool {
 }
 
 func TestValidateGuestUser(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -41,6 +44,9 @@ func TestValidateGuestUser(t *testing.T) {
 }
 
 func TestValidateUser(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -56,6 +62,9 @@ func TestValidateUser(t *testing.T) {
 }
 
 func TestValidateRole(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -71,6 +80,9 @@ func TestValidateRole(t *testing.T) {
 }
 
 func TestValidateUserEmail(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -88,6 +100,9 @@ func TestValidateUserEmail(t *testing.T) {
 }
 
 func TestUserPasswords(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -112,6 +127,9 @@ func TestUserPasswords(t *testing.T) {
 // This is an important check because the underlying bcrypt algorithm used to verify passwords
 // is _extremely_ slow (~100ms!) so we use a cache to speed it up (see password_hash.go).
 func TestAuthenticationSpeed(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -129,6 +147,9 @@ func TestAuthenticationSpeed(t *testing.T) {
 }
 
 func TestSerializeUser(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -149,6 +170,9 @@ func TestSerializeUser(t *testing.T) {
 }
 
 func TestSerializeRole(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -165,6 +189,9 @@ func TestSerializeRole(t *testing.T) {
 }
 
 func TestUserAccess(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	// User with no access:
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
@@ -236,6 +263,9 @@ func TestUserAccess(t *testing.T) {
 }
 
 func TestGetMissingUser(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -248,6 +278,9 @@ func TestGetMissingUser(t *testing.T) {
 }
 
 func TestGetMissingRole(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -257,6 +290,9 @@ func TestGetMissingRole(t *testing.T) {
 }
 
 func TestGetGuestUser(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -267,6 +303,9 @@ func TestGetGuestUser(t *testing.T) {
 }
 
 func TestSaveUsers(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket, nil)
@@ -319,6 +358,9 @@ func (self *mockComputer) UseGlobalSequence() bool {
 }
 
 func TestRebuildUserChannels(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	computer := mockComputer{channels: ch.AtSequence(ch.SetOf("derived1", "derived2"), 1)}
@@ -334,6 +376,9 @@ func TestRebuildUserChannels(t *testing.T) {
 }
 
 func TestRebuildRoleChannels(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	computer := mockComputer{roleChannels: ch.AtSequence(ch.SetOf("derived1", "derived2"), 1)}
@@ -348,6 +393,9 @@ func TestRebuildRoleChannels(t *testing.T) {
 }
 
 func TestRebuildChannelsError(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	gTestBucket := base.GetBucketOrPanic()
 	defer gTestBucket.Close()
 	computer := mockComputer{}

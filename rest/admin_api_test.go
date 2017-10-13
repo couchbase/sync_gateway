@@ -195,6 +195,9 @@ func TestUserPasswordValidation(t *testing.T) {
 }
 
 func TestUserAllowEmptyPassword(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	// PUT a user
 	var rt RestTester
 	defer rt.Close()
@@ -335,6 +338,9 @@ function(doc, oldDoc) {
 // Test user delete while that user has an active changes feed (see issue 809)
 func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
+
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
 	defer rt.Close()
 
@@ -415,6 +421,9 @@ func readContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
 }
 
 func TestRoleAPI(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -454,6 +463,9 @@ func TestRoleAPI(t *testing.T) {
 }
 
 func TestGuestUser(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 
 	guestUserEndpoint := fmt.Sprintf("/db/_user/%s", base.GuestUsername)
 
@@ -541,6 +553,9 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 }
 
 func TestSessionExtension(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -592,6 +607,9 @@ func TestSessionExtension(t *testing.T) {
 }
 
 func TestSessionAPI(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is currently not passing against a Couchbase server bucket.  Needs investigation." +
@@ -686,6 +704,9 @@ func TestSessionAPI(t *testing.T) {
 
 func TestFlush(t *testing.T) {
 
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
 	}
@@ -710,6 +731,9 @@ func TestFlush(t *testing.T) {
 
 //Test a single call to take DB offline
 func TestDBOfflineSingle(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -731,6 +755,9 @@ func TestDBOfflineSingle(t *testing.T) {
 // Ensure both calls succeed and that DB is offline
 // when both calls return
 func TestDBOfflineConcurrent(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -771,6 +798,9 @@ func TestDBOfflineConcurrent(t *testing.T) {
 
 //Test that a DB can be created offline
 func TestStartDBOffline(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 	log.Printf("Taking DB offline")
@@ -790,6 +820,9 @@ func TestStartDBOffline(t *testing.T) {
 //Take DB offline and ensure that normal REST calls
 //fail with status 503
 func TestDBOffline503Response(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -812,6 +845,9 @@ func TestDBOffline503Response(t *testing.T) {
 
 //Take DB offline and ensure can put db config
 func TestDBOfflinePutDbConfig(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -834,6 +870,9 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 
 //Take DB offline and ensure can post _resync
 func TestDBOfflinePostResync(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -899,6 +938,9 @@ func RaceTestDBOfflineSingleResync(t *testing.T) {
 
 // Single threaded bring DB online
 func TestDBOnlineSingle(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -931,6 +973,9 @@ func TestDBOnlineSingle(t *testing.T) {
 //Both should return success and DB should be online
 //once both goroutines return
 func TestDBOnlineConcurrent(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -979,6 +1024,9 @@ func TestDBOnlineConcurrent(t *testing.T) {
 
 // Test bring DB online with delay of 1 second
 func TestSingleDBOnlineWithDelay(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1017,6 +1065,9 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 // BD should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1063,6 +1114,9 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 // BD should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithTwoDelays(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1121,6 +1175,10 @@ func (rt *RestTester) createSession(t *testing.T, username string) string {
 }
 
 func TestPurgeWithBadJsonPayload(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1129,6 +1187,9 @@ func TestPurgeWithBadJsonPayload(t *testing.T) {
 }
 
 func TestPurgeWithNonArrayRevisionList(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1141,6 +1202,9 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 }
 
 func TestPurgeWithEmptyRevisionList(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1153,6 +1217,9 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 }
 
 func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
+
+	base.AssertStackTraceDoesntContainProblematicPatterns(t)
+
 	var rt RestTester
 	defer rt.Close()
 
