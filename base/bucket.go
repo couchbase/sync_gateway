@@ -631,6 +631,8 @@ func GetFeedType(bucket Bucket) (feedType string) {
 		} else {
 			return DcpFeedType
 		}
+	case *LeakyBucket:
+		return GetFeedType(typedBucket.bucket)
 	default:
 		return TapFeedType
 	}
