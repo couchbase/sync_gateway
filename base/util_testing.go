@@ -561,20 +561,31 @@ func init() {
 }
 
 func AssertStackTraceDoesntContainProblematicPatterns(t *testing.T) {
-	AssertStackTraceDoesntContainPatterns(t, ProblematicStackPatterns)
+
+	// This is only (currently) relevant for integration tests
+
+	if !UnitTestUrlIsWalrus() {
+		AssertStackTraceDoesntContainPatterns(t, ProblematicStackPatterns)
+	}
+
 }
 
 func AssertStackTraceDoesntContainPatterns(t *testing.T, regexps []string) {
 
-	matchedPattern, containsPattern := CheckAssertStackTraceDoesntContainPatterns(regexps)
+	// This is only (currently) relevant for integration tests
 
-	if containsPattern {
-		// Dump stacktrace
-		stacktrace := make([]byte, 1<<20)
-		runtime.Stack(stacktrace, true)
-		log.Printf("Stacktrace with unexpected pattern: %s.  Stacktrace: %s", matchedPattern, stacktrace)
-		t.Fatalf("StackTraceContainsPatterns returned true.  See logs for details")
+	if !UnitTestUrlIsWalrus() {
+		matchedPattern, containsPattern := CheckAssertStackTraceDoesntContainPatterns(regexps)
+
+		if containsPattern {
+			// Dump stacktrace
+			stacktrace := make([]byte, 1<<20)
+			runtime.Stack(stacktrace, true)
+			log.Printf("Stacktrace with unexpected pattern: %s.  Stacktrace: %s", matchedPattern, stacktrace)
+			t.Fatalf("StackTraceContainsPatterns returned true.  See logs for details")
+		}
 	}
+
 
 }
 
