@@ -374,7 +374,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	err, _ = RetryLoop(
 		"Wait for vb sequence numbers to be 0",
 		workerHighSeqNosZero,
-		CreateDoublingSleeperFunc(12, 10),
+		CreateDoublingSleeperFunc(14, 10),
 	)
 	if err != nil {
 		CheckAssertStackTraceDoesntContainPatterns(ProblematicStackPatterns)
@@ -417,7 +417,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	err, _ = RetryLoop(
 		"EmptyTestBucket",
 		workerReadOwnWrites,
-		CreateDoublingSleeperFunc(12, 10),
+		CreateDoublingSleeperFunc(14, 10),
 	)
 	if err != nil {
 		return err
