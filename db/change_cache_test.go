@@ -975,7 +975,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 func TestStopChangeCacheRepeat(t *testing.T) {
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 2; i++ {
 		log.Printf("------------ TestStopChangeCacheRepeat-%d", i)
 		TestStopChangeCache(t)
 	}
@@ -986,6 +986,11 @@ func TestStopChangeCache(t *testing.T) {
 
 	base.AssertStackTraceDoesntContainProblematicPatterns(t)
 
+	base.EnableLogKey("Feed")
+	base.EnableLogKey("Feed+")
+	base.EnableLogKey("Changes")
+	base.EnableLogKey("Changes+")
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
@@ -995,6 +1000,8 @@ func TestStopChangeCache(t *testing.T) {
 		CachePendingSeqMaxWait: 10 * time.Millisecond,
 		CachePendingSeqMaxNum:  50,
 		CacheSkippedSeqMaxWait: 1 * time.Second}
+
+
 	// Use leaky bucket to have the tap feed 'lose' document 3
 	leakyConfig := base.LeakyBucketConfig{
 		TapFeedMissingDocs: []string{"doc-3"},
@@ -1019,6 +1026,7 @@ func TestStopChangeCache(t *testing.T) {
 
 	// Hang around a while to see if the housekeeping tasks fire and panic
 	time.Sleep(2 * time.Second)
+
 }
 
 // Test size config
