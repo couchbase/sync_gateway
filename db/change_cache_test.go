@@ -613,41 +613,6 @@ func TestLowSequenceHandling(t *testing.T) {
 
 }
 
-func TestBackgroundTestShutdown(t *testing.T) {
-
-	base.AssertStackTraceDoesntContainProblematicPatterns(t)
-
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test currently fails when running in integration mode since tearDownTestDB() doesn't close the database in that case")
-	}
-
-	cacheOptions := shortWaitCache()
-	db := setupTestDBWithCacheOptions(t, cacheOptions)
-	tearDownTestDB(t, db)
-
-	err, _ := base.RetryLoop("Verify changeCache not in stacktrace", func() (shouldRetry bool, err error, value interface{}) {
-
-		rawStackTrace := make([]byte, 1<<20)
-		runtime.Stack(rawStackTrace, true)
-
-		r, err := regexp.Compile(".*changeCache.*")
-		if err != nil {
-			return false, err, nil
-		}
-
-		if r.Match(rawStackTrace) {
-			// Still found changeCache in stack traces, return true to retry .. in case it goes away soon
-			return true, nil, nil
-		}
-
-		return false, nil, nil
-	}, base.CreateDoublingSleeperFunc(5, 1))
-
-	// If there was an error, it means that "changeCache" was in the stacktrace even after retrying
-	// a few times.  This means it never got cleaned up after tearDownTestDB was called.
-	assertNoError(t, err, "Unexpected error")
-
-}
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
 // user doesn't have visibility to some of the late arriving sequences
