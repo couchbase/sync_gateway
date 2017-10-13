@@ -50,6 +50,7 @@ type changeCache struct {
 	lock            sync.RWMutex             // Coordinates access to struct fields
 	lateSeqLock     sync.RWMutex             // Coordinates access to late sequence caches
 	options         CacheOptions             // Cache config
+	terminator      chan bool                // Signal termination of background goroutines
 }
 
 type LogEntry channels.LogEntry
@@ -86,6 +87,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 	c.onChange = onChange
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.receivedSeqs = make(map[uint64]struct{})
+	c.terminator = make(chan bool)
 
 	// init cache options
 	c.options = CacheOptions{
@@ -115,17 +117,25 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 
 	// Start a background task for periodic housekeeping:
 	go func() {
-		time.Sleep(c.options.CachePendingSeqMaxWait / 2)
-		for !c.IsStopped() && c.CleanUp() {
-			time.Sleep(c.options.CachePendingSeqMaxWait / 2)
+		for {
+			select {
+			case <-time.After(c.options.CachePendingSeqMaxWait / 2):
+				c.CleanUp()
+			case <-c.terminator:
+				return
+			}
 		}
 	}()
 
 	// Start a background task for SkippedSequenceQueue housekeeping:
 	go func() {
-		time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
-		for !c.IsStopped() && c.CleanSkippedSequenceQueue() {
-			time.Sleep(c.options.CacheSkippedSeqMaxWait / 2)
+		for {
+			select {
+			case <-time.After(c.options.CacheSkippedSeqMaxWait / 2):
+				c.CleanSkippedSequenceQueue()
+			case <-c.terminator:
+				return
+			}
 		}
 	}()
 
@@ -134,6 +144,11 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
+
+	// Signal to background goroutines that the changeCache has been stopped, so they can exit
+	// their loop
+	close(c.terminator)
+
 	c.lock.Lock()
 	c.stopped = true
 	c.logsDisabled = true
@@ -724,6 +739,7 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 //////// CHANGE ACCESS:
 
 func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
+
 	if c.IsStopped() {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
