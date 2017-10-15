@@ -4,7 +4,7 @@
 OS=""
 VER=""
 SERVICE_NAME="sync_gateway"
-SRCCFGDIR=../examples
+SRCCFGDIR=/opt/couchbase-sg-accel/examples
 SRCCFG=serviceconfig.json
 RUNAS_TEMPLATE_VAR=sync_gateway
 RUNBASE_TEMPLATE_VAR=/home/sync_gateway
@@ -207,7 +207,7 @@ case $OS in
                     service ${SERVICE_NAME} start
                 fi
                 ;;
-            16)
+            16|17)
                 if [ "$SERVICE_CMD_ONLY" = true ]; then
                     echo "systemctl start ${SERVICE_NAME}"
                 else

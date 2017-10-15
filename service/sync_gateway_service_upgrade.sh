@@ -4,7 +4,7 @@
 OS=""
 VER=""
 SERVICE_NAME="sync_gateway"
-SRCCFGDIR=../examples
+SRCCFGDIR=/opt/couchbase-sg-accel/examples
 SRCCFG=serviceconfig.json
 RUNAS_TEMPLATE_VAR=sync_gateway
 RUNBASE_TEMPLATE_VAR=/home/sync_gateway
@@ -80,7 +80,7 @@ case $OS in
 				service ${SERVICE_NAME} stop
                 service ${SERVICE_NAME} start
                 ;;
-            16)
+            16|17)
                 systemctl stop ${SERVICE_NAME}
                 systemctl start ${SERVICE_NAME}
                 ;;

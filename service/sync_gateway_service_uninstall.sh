@@ -86,7 +86,7 @@ case $OS in
                 	rm /etc/init/${SERVICE_NAME}.conf
                 fi
                 ;;
-            16)
+            16|17)
                 systemctl stop ${SERVICE_NAME}
                 systemctl disable ${SERVICE_NAME}
                 
