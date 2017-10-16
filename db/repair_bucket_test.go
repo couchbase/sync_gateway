@@ -52,6 +52,7 @@ func TestRepairBucket(t *testing.T) {
 	base.EnableLogKey("CRUD")
 
 	bucket, numDocs := testBucketWithViewsAndBrokenDoc()
+	defer bucket.Close()
 
 	repairJob := func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 		log.Printf("repairJob called back")
@@ -75,6 +76,7 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 	base.EnableLogKey("CRUD")
 
 	bucket, _ := testBucketWithViewsAndBrokenDoc()
+	defer bucket.Close()
 
 	repairBucket := NewRepairBucket(bucket)
 
@@ -120,6 +122,7 @@ func TestRepairBucketDryRun(t *testing.T) {
 	base.EnableLogKey("CRUD")
 
 	bucket, _ := testBucketWithViewsAndBrokenDoc()
+	defer bucket.Close()
 
 	repairBucket := NewRepairBucket(bucket)
 
