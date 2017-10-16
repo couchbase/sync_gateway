@@ -554,9 +554,7 @@ func CreateProperty(size int) (result string) {
 var ProblematicStackPatterns []string
 
 func init() {
-	ProblematicStackPatterns = []string{
-		"changeListener",
-	}
+	ProblematicStackPatterns = []string{}  
 }
 
 func AssertStackTraceDoesntContainProblematicPatterns(t *testing.T) {
