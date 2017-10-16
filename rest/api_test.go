@@ -2629,7 +2629,7 @@ func TestEventConfigValidationInvalid(t *testing.T) {
 
 	_, err = sc.AddDatabaseFromConfig(&dbConfig)
 	assert.True(t, err != nil)
-	assert.True(t, fmt.Sprintf("%v", err) == "Unsupported event property 'document_scribbled_on' defined for db invalid")
+	assert.True(t, strings.Contains(err.Error(), "document_scribbled_on"))
 
 }
 
