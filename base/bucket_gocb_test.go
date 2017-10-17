@@ -116,8 +116,6 @@ func TestAddRaw(t *testing.T) {
 
 func TestBulkGetRaw(t *testing.T) {
 
-	AssertStackTraceDoesntContainProblematicPatterns(t)
-
 	bucket := GetBucketOrPanic()
 	defer bucket.Close()
 
@@ -375,8 +373,6 @@ func numNonNilErrors(entries []*sgbucket.BulkSetEntry) int {
 }
 
 func TestUpdate(t *testing.T) {
-
-	AssertStackTraceDoesntContainProblematicPatterns(t)
 
 	bucket := GetBucketOrPanic()
 	defer bucket.Close()

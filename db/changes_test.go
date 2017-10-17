@@ -26,8 +26,6 @@ import (
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
 
-	base.AssertStackTraceDoesntContainProblematicPatterns(t)
-
 	db := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
