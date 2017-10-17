@@ -4,16 +4,18 @@
 OS=""
 VER=""
 SERVICE_NAME="sg_accel"
-SRCCFGDIR=../examples
+SCRIPT_DIR="$( cd "$( dirname "$0" )" > /dev/null && pwd )"
+INSTALL_DIR="$( dirname "${SCRIPT_DIR}" )"
+SRCCFGDIR=${INSTALL_PATH}/examples
 SRCCFG=basic_sg_accel_config.json
 RUNAS_TEMPLATE_VAR=sg_accel
 RUNBASE_TEMPLATE_VAR=/home/sg_accel
 PIDFILE_TEMPLATE_VAR=/var/run/sg-accel.pid
-GATEWAYROOT_TEMPLATE_VAR=/opt/couchbase-sg-accel
-GATEWAY_TEMPLATE_VAR=/opt/couchbase-sg-accel/bin/sg_accel
+GATEWAYROOT_TEMPLATE_VAR=${INSTALL_DIR}
+GATEWAY_TEMPLATE_VAR=${INSTALL_DIR}/bin/sg_accel
 CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sg_accel.json
 LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
-
+SERVICE_CMD_ONLY=false
 
 usage()
 {
@@ -80,7 +82,7 @@ case $OS in
 		service ${SERVICE_NAME} stop
                 service ${SERVICE_NAME} start
                 ;;
-            16)
+            16|17)
                 systemctl stop ${SERVICE_NAME}
                 systemctl start ${SERVICE_NAME}
                 ;;
@@ -91,7 +93,7 @@ case $OS in
                 ;;
         esac
         ;;
-    RedHat*|CentOS)
+    RedHat|CentOS)
         case $OS_MAJOR_VERSION in
             5) 
                 PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin

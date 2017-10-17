@@ -4,17 +4,18 @@
 OS=""
 VER=""
 SERVICE_NAME="sync_gateway"
-SRCCFGDIR=../examples
+SCRIPT_DIR="$( cd "$( dirname "$0" )" > /dev/null && pwd )"
+INSTALL_DIR="$( dirname "${SCRIPT_DIR}" )"
+SRCCFGDIR=${INSTALL_DIR}/examples
 SRCCFG=serviceconfig.json
 RUNAS_TEMPLATE_VAR=sync_gateway
 RUNBASE_TEMPLATE_VAR=/home/sync_gateway
 PIDFILE_TEMPLATE_VAR=/var/run/sync-gateway.pid
-GATEWAYROOT_TEMPLATE_VAR=/opt/couchbase-sync-gateway
-GATEWAY_TEMPLATE_VAR=/opt/couchbase-sync-gateway/bin/sync_gateway
+GATEWAYROOT_TEMPLATE_VAR=${INSTALL_DIR}
+GATEWAY_TEMPLATE_VAR=${INSTALL_DIR}/bin/sync_gateway
 CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json
 LOGS_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/logs
 SERVICE_CMD_ONLY=false
-
 
 usage()
 {
@@ -207,7 +208,7 @@ case $OS in
                     service ${SERVICE_NAME} start
                 fi
                 ;;
-            16)
+            16|17)
                 if [ "$SERVICE_CMD_ONLY" = true ]; then
                     echo "systemctl start ${SERVICE_NAME}"
                 else
@@ -224,7 +225,7 @@ case $OS in
                 ;;
         esac
         ;;
-    RedHat*|CentOS)
+    RedHat|CentOS)
         case $OS_MAJOR_VERSION in
             5) 
                 if [ "$SERVICE_CMD_ONLY" = true ]; then
