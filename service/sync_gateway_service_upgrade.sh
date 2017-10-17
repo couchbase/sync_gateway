@@ -82,7 +82,7 @@ case $OS in
 				service ${SERVICE_NAME} stop
                 service ${SERVICE_NAME} start
                 ;;
-            16)
+            16|17)
                 systemctl stop ${SERVICE_NAME}
                 systemctl start ${SERVICE_NAME}
                 ;;
@@ -93,7 +93,7 @@ case $OS in
                 ;;
         esac
         ;;
-    RedHat|CentOS)
+    RedHat*|CentOS)
         case $OS_MAJOR_VERSION in
             5) 
                 PATH=/usr/kerberos/sbin:/usr/kerberos/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
