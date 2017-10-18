@@ -14,7 +14,11 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"sort"
 	"strconv"
@@ -23,17 +27,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/go.assert"
-	"github.com/robertkrimen/otto/underscore"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"io"
-	"io/ioutil"
-	"mime"
-	"mime/multipart"
+	"github.com/couchbaselabs/go.assert"
+	"github.com/robertkrimen/otto/underscore"
 )
 
 func init() {
@@ -1677,7 +1676,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	assertStatus(t, rt.Send(request("PUT", "/db/d1", `{"channel":"delta"}`)), 201) // seq=7
 	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201) // seq=8
 
-	rt.MustWaitForDoc("g1")
+	rt.MustWaitForDoc("g1", t)
 
 	changes := changesResults{}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
@@ -1705,7 +1704,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	zegpold, _ = a.GetUser("zegpold")
 	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x9), "gamma": channels.NewVbSimpleSequence(0x4)})
 
-	rt.MustWaitForDoc("alpha")
+	rt.MustWaitForDoc("alpha", t)
 
 	// Look at alice's _changes feed:
 	changes = changesResults{}

@@ -15,6 +15,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/go.assert"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -139,11 +140,10 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 	return nil
 }
 
-func (rt *RestTester) MustWaitForDoc(docid string) {
+func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
 	err := rt.WaitForDoc(docid)
-	if err != nil {
-		panic(fmt.Sprintf("Error waiting for doc: %v", docid))
-	}
+	assert.True(t, err == nil)
+
 }
 
 func (rt *RestTester) WaitForDoc(docid string) (err error) {
