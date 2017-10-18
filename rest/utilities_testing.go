@@ -39,7 +39,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterBucket == nil {
 
 		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
-		tempBucket := base.GetBucketOrPanic() // side effect of creating/flushing bucket
+		tempBucket := base.GetTestBucketOrPanic() // side effect of creating/flushing bucket
 		tempBucket.Close()
 
 		spec := base.GetTestBucketSpec(base.DataBucket)

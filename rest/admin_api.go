@@ -246,12 +246,11 @@ func validateReplicationParameters(requestParams ReplicationConfig, paramsFromCo
 	}
 
 	params.Async = requestParams.Async
-	if (requestParams.ChangesFeedLimit != nil) {
+	if requestParams.ChangesFeedLimit != nil {
 		params.ChangesFeedLimit = *requestParams.ChangesFeedLimit
 	} else {
 		params.ChangesFeedLimit = sgreplicate.DefaultChangesFeedLimit
 	}
-
 
 	if requestParams.Filter != "" {
 		if requestParams.Filter == "sync_gateway/bychannel" {
@@ -335,7 +334,6 @@ func (h *handler) handleGetRevTree() error {
 	}
 	return err
 }
-
 
 func (h *handler) handleGetLogging() error {
 	h.writeJSON(base.GetLogKeys())

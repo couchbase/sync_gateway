@@ -15,9 +15,9 @@ import (
 	"log"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
-	"github.com/couchbase/sync_gateway/base"
 )
 
 func unjson(j string) Body {
@@ -36,7 +36,7 @@ func tojson(obj interface{}) string {
 
 func TestAttachments(t *testing.T) {
 
-	context, err := NewDatabaseContext("db", base.GetBucketOrPanic(), false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucketOrPanic().Bucket, false, DatabaseContextOptions{})
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
 	db, err := CreateDatabase(context)

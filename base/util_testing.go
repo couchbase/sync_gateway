@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
+	"sync"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -29,30 +30,40 @@ const (
 
 var FlushOrRecreateTestBucket = FlushBetweenTests
 var TestExternalRevStorage = false
+var numOpenBucketsByName map[string]int32
+var mutexNumOpenBucketsByName sync.Mutex
 
 func init() {
+
 	// Prevent https://issues.couchbase.com/browse/MB-24237
 	rand.Seed(time.Now().UTC().UnixNano())
+
+	numOpenBucketsByName = map[string]int32{}
+
 }
 
-// TODO: rename to GetTestDataBucketOrPanic
-func GetBucketOrPanic() Bucket {
+type TestBucket struct {
+	Bucket Bucket
+}
 
+func (tb TestBucket) Close() {
+
+	tb.Bucket.Close()
+
+	DecrNumOpenBuckets(tb.Bucket.GetName())
+
+}
+
+func GetTestBucketOrPanic() TestBucket {
 	return GetBucketOrPanicCommon(DataBucket)
-
 }
 
-// TODO: rename to GetTestIndexBucketOrPanic
-func GetIndexBucketOrPanic() Bucket {
-
+func GetTestIndexBucketOrPanic() TestBucket {
 	return GetBucketOrPanicCommon(IndexBucket)
-
 }
 
-func GetShadowBucketOrPanic() Bucket {
-
+func GetTestShadowBucketOrPanic() TestBucket {
 	return GetBucketOrPanicCommon(ShadowBucket)
-
 }
 
 func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
@@ -97,7 +108,7 @@ func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 
 }
 
-func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) Bucket {
+func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 
 	spec := GetTestBucketSpec(bucketType)
 
@@ -139,7 +150,7 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) Bucket {
 		panic(fmt.Sprintf("Could not open bucket: %v", err))
 	}
 
-	return bucket
+	return TestBucket{Bucket: bucket}
 
 }
 
@@ -207,6 +218,8 @@ func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 	if NumOpenBuckets(tbm.BucketSpec.BucketName) > 0 {
 		return false, fmt.Errorf("There are already %d open buckets.  The tests expect all buckets to be closed.", NumOpenBuckets(tbm.BucketSpec.BucketName))
 	}
+
+	IncrNumOpenBuckets(tbm.BucketSpec.BucketName)
 
 	cluster, err := gocb.Connect(tbm.BucketSpec.Server)
 	if err != nil {
@@ -543,4 +556,37 @@ func CreateProperty(size int) (result string) {
 		resultBytes[i] = alphaNumeric[i%len(alphaNumeric)]
 	}
 	return string(resultBytes)
+}
+
+func IncrNumOpenBuckets(bucketName string) {
+	MutateNumOpenBuckets(bucketName, 1)
+
+}
+
+func DecrNumOpenBuckets(bucketName string) {
+	MutateNumOpenBuckets(bucketName, -1)
+}
+
+func MutateNumOpenBuckets(bucketName string, delta int32) {
+	mutexNumOpenBucketsByName.Lock()
+	defer mutexNumOpenBucketsByName.Unlock()
+
+	numOpen, ok := numOpenBucketsByName[bucketName]
+	if !ok {
+		numOpen = 0
+		numOpenBucketsByName[bucketName] = numOpen
+	}
+
+	numOpen += delta
+	numOpenBucketsByName[bucketName] = numOpen
+}
+
+func NumOpenBuckets(bucketName string) int32 {
+	mutexNumOpenBucketsByName.Lock()
+	defer mutexNumOpenBucketsByName.Unlock()
+	numOpen, ok := numOpenBucketsByName[bucketName]
+	if !ok {
+		return 0
+	}
+	return numOpen
 }

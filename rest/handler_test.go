@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbaselabs/go.assert"
 )
 
 func TestGetRestrictedIntQuery(t *testing.T) {

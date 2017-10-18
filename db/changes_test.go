@@ -72,9 +72,9 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 		ID:      "doc1",
 		Changes: []ChangeRev{{"rev": revid}}})
 	assert.DeepEquals(t, changes[2], &ChangeEntry{ // Seq 2, from ABC and PBS
-		Seq:     SequenceID{Seq: 2},
-		ID:      "_user/naomi",
-		Changes: []ChangeRev{},
+		Seq:       SequenceID{Seq: 2},
+		ID:        "_user/naomi",
+		Changes:   []ChangeRev{},
 		pseudoDoc: true})
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
@@ -99,7 +99,6 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	changes, err = db.GetChanges(base.SetOf("*"), getZeroSequence(db))
 	assertNoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
-
 
 }
 

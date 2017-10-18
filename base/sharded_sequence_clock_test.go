@@ -35,7 +35,7 @@ func GenerateTestIndexPartitions(maxVbNo uint16, numPartitions uint16) *IndexPar
 
 func TestShardedSequenceClock(t *testing.T) {
 
-	testBucket := GetIndexBucketOrPanic()
+	testBucket := GetTestIndexBucketOrPanic()
 	defer testBucket.Close()
 
 	shardedClock := NewShardedClockWithPartitions("myClock", GenerateTestIndexPartitions(maxVbNo, numShards), testBucket)
@@ -55,7 +55,7 @@ func TestShardedSequenceClock(t *testing.T) {
 
 func TestShardedSequenceClockCasError(t *testing.T) {
 
-	testBucket := GetIndexBucketOrPanic()
+	testBucket := GetTestIndexBucketOrPanic()
 	defer testBucket.Close()
 
 	indexPartitions := GenerateTestIndexPartitions(maxVbNo, numShards)

@@ -383,7 +383,6 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?reduce=true&group=true")
 	assertNoError(t, err, "Unexpected error")
 
-
 	// we should get 2 row with the reduce result
 	assert.Equals(t, len(result.Rows), 2)
 	row := result.Rows[1]

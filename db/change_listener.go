@@ -203,7 +203,6 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 	base.LogTo("Changes+", "No new changes to send to change listener.  Waiting for %q's count to pass %d",
 		listener.bucketName, counter)
 
-
 	for {
 		curCounter := listener._currentCount(keys)
 
@@ -215,10 +214,10 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 
 		// Don't go back through the for loop if this changeListener was terminated
 		select {
-		case <- listener.terminator:
-			return 0,0
+		case <-listener.terminator:
+			return 0, 0
 		default:
-				// do nothing
+			// do nothing
 		}
 
 	}

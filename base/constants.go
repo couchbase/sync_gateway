@@ -33,8 +33,8 @@ const (
 	DefaultTestShadowPassword   = DefaultTestPassword
 
 	DefaultTestIndexBucketname = "test_indexbucket"
-	DefaultTestIndexUsername = DefaultTestIndexBucketname
-	DefaultTestIndexPassword = DefaultTestPassword
+	DefaultTestIndexUsername   = DefaultTestIndexBucketname
+	DefaultTestIndexPassword   = DefaultTestPassword
 
 	// Env variable to enable user to override the Couchbase Server URL used in tests
 	TestEnvCouchbaseServerUrl = "SG_TEST_COUCHBASE_SERVER_URL"

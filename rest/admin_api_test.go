@@ -27,7 +27,6 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
-
 func TestUserAPI(t *testing.T) {
 
 	// PUT a user
@@ -585,7 +584,6 @@ func TestSessionExtension(t *testing.T) {
 
 func TestSessionAPI(t *testing.T) {
 
-
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is currently not passing against a Couchbase server bucket.  Needs investigation." +
 			"Logs: https://gist.github.com/tleyden/a0956455be0130ba22f2aef56a346de2")
@@ -678,7 +676,6 @@ func TestSessionAPI(t *testing.T) {
 }
 
 func TestFlush(t *testing.T) {
-
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
@@ -981,7 +978,6 @@ func TestDBOnlineConcurrent(t *testing.T) {
 
 // Test bring DB online with delay of 1 second
 func TestSingleDBOnlineWithDelay(t *testing.T) {
-
 
 	var rt RestTester
 	defer rt.Close()

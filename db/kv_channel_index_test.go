@@ -38,7 +38,7 @@ func testPartitionMapWithShards(numShards int) *base.IndexPartitions {
 }
 
 func testBitFlagStorage(channelName string) *BitFlagStorage {
-	return NewBitFlagStorage(base.GetIndexBucketOrPanic(), channelName, testPartitionMap())
+	return NewBitFlagStorage(base.GetTestIndexBucketOrPanic(), channelName, testPartitionMap())
 }
 
 func testStableSequence() (uint64, error) {

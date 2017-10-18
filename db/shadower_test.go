@@ -13,14 +13,14 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
-func makeExternalBucket() base.Bucket {
+func makeExternalBucket() base.TestBucket {
 
 	// Call this for the side effect of emptying out the data bucket, in case it interferes
 	// with bucket shadowing tests by causing unwanted data to get pulled into shadow bucket
-	tempBucket := base.GetBucketOrPanic()
+	tempBucket := base.GetTestBucketOrPanic()
 	tempBucket.Close()
 
-	return base.GetShadowBucketOrPanic()
+	return base.GetTestShadowBucketOrPanic()
 }
 
 // Evaluates a condition every 100ms until it becomes true. If 3sec elapse, fails an assertion

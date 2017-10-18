@@ -23,16 +23,12 @@ import (
 	"strconv"
 	"strings"
 
-	"sync"
-
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 var gocbExpvars *expvar.Map
-var numOpenBucketsByName map[string]int32
-var mutexNumOpenBucketsByName sync.Mutex
 
 const (
 	MaxConcurrentSingleOps = 1000 // Max 1000 concurrent single bucket ops
@@ -59,7 +55,6 @@ var recoverableGoCBErrors = map[string]struct{}{
 
 func init() {
 	gocbExpvars = expvar.NewMap("syncGateway_gocb")
-	numOpenBucketsByName = map[string]int32{}
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb
@@ -87,39 +82,6 @@ func (l GoCBLogger) Log(level gocbcore.LogLevel, offset int, format string, v ..
 
 func EnableGoCBLogging() {
 	gocbcore.SetLogger(GoCBLogger{})
-}
-
-func IncrNumOpenBuckets(bucketName string) {
-	MutateNumOpenBuckets(bucketName, 1)
-
-}
-
-func DecrNumOpenBuckets(bucketName string) {
-	MutateNumOpenBuckets(bucketName, -1)
-}
-
-func MutateNumOpenBuckets(bucketName string, delta int32) {
-	mutexNumOpenBucketsByName.Lock()
-	defer mutexNumOpenBucketsByName.Unlock()
-
-	numOpen, ok := numOpenBucketsByName[bucketName]
-	if !ok {
-		numOpen = 0
-		numOpenBucketsByName[bucketName] = numOpen
-	}
-
-	numOpen += delta
-	numOpenBucketsByName[bucketName] = numOpen
-}
-
-func NumOpenBuckets(bucketName string) int32 {
-	mutexNumOpenBucketsByName.Lock()
-	defer mutexNumOpenBucketsByName.Unlock()
-	numOpen, ok := numOpenBucketsByName[bucketName]
-	if !ok {
-		return 0
-	}
-	return numOpen
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
@@ -157,8 +119,6 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		Warn("Error opening bucket: %s.  Error: %v", spec.BucketName, err)
 		return nil, err
 	}
-
-	IncrNumOpenBuckets(spec.BucketName)
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
 		// Set transcoder to SGTranscoder to avoid cases where it tries to write docs as []byte without setting
@@ -2089,8 +2049,6 @@ func (bucket CouchbaseBucketGoCB) Close() {
 		Warn("Error closing GoCB bucket: %v.", err)
 		return
 	}
-	DecrNumOpenBuckets(bucket.Name())
-
 }
 
 // Formats binary document to the style expected by the transcoder.  GoCBCustomSGTranscoder

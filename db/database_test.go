@@ -81,7 +81,8 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
 func testBucket() base.Bucket {
 
 	spec := base.GetTestBucketSpec(base.DataBucket)
-	bucket := base.GetBucketOrPanic()
+	testBucket := base.GetTestBucketOrPanic()
+	bucket := testBucket.Bucket
 	err := installViews(bucket, spec.UseXattrs)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)

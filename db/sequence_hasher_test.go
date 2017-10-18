@@ -13,10 +13,10 @@ import (
 
 func testSequenceHasher(size uint8, expiry uint32) (*sequenceHasher, error) {
 
-	hashBucket := base.GetBucketOrPanic()
+	hashBucket := base.GetTestBucketOrPanic()
 
 	options := &SequenceHashOptions{
-		Bucket: hashBucket,
+		Bucket: hashBucket.Bucket,
 		Size:   size,
 		Expiry: &expiry,
 	}
