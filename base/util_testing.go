@@ -18,17 +18,6 @@ import (
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
 // util_test.go, which is only accessible from the base package.
 
-type FlushOrRecreateStrategy int
-
-const (
-	// Flush the bucket between every unit test when testing against Couchbase buckets
-	FlushBetweenTests = FlushOrRecreateStrategy(iota)
-
-	// Delete and recreate the bucket between every unit test
-	RecreateBetweenTests
-)
-
-var FlushOrRecreateTestBucket = FlushBetweenTests
 var TestExternalRevStorage = false
 var numOpenBucketsByName map[string]int32
 var mutexNumOpenBucketsByName sync.Mutex
@@ -434,33 +423,8 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 }
 
 func (tbm *TestBucketManager) RecreateOrEmptyBucket() error {
-	switch FlushOrRecreateTestBucket {
-	case FlushBetweenTests:
-		if err := tbm.EmptyTestBucket(); err != nil {
-			return err
-		}
-	case RecreateBetweenTests:
-		if err := tbm.DeleteTestBucket(); err != nil {
-			return err
-		}
-
-		// Create a brand new bucket
-		err := tbm.CreateTestBucket()
-		if err != nil {
-			return err
-		}
-
-		// Wait a little bit until the bucket is created
-		// TODO: change this to be event based instead of time based, maybe based on detecting the new bucket UUID
-		time.Sleep(time.Second * 1)
-
-		// Call EmptyTestBucket() in order to block until it's ready (lazy hack, does unnecessary bucket flush)
-		if err := tbm.EmptyTestBucket(); err != nil {
-			return err
-		}
-
-	default:
-		panic(fmt.Sprintf("Unrecognized option: %v", FlushOrRecreateTestBucket))
+	if err := tbm.EmptyTestBucket(); err != nil {
+		return err
 	}
 
 	return nil
