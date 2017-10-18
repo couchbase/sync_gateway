@@ -42,8 +42,9 @@ func assertLogEntriesEqual(t *testing.T, actualEntry *LogEntry, expectedEntry *L
 // -----------------
 func TestDenseBlockSingleDoc(t *testing.T) {
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	block := NewDenseBlock("block1", nil)
 
@@ -91,8 +92,9 @@ func TestDenseBlockSingleDoc(t *testing.T) {
 
 func TestDenseBlockMultipleInserts(t *testing.T) {
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	block := NewDenseBlock("block1", nil)
 
@@ -118,8 +120,9 @@ func TestDenseBlockMultipleInserts(t *testing.T) {
 
 func TestDenseBlockGetIndexEntry(t *testing.T) {
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	block := NewDenseBlock("block1", nil)
 
@@ -144,8 +147,9 @@ func TestDenseBlockGetIndexEntry(t *testing.T) {
 
 func TestDenseBlockGetEntry(t *testing.T) {
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	block := NewDenseBlock("block1", nil)
 
@@ -172,8 +176,9 @@ func TestDenseBlockMultipleUpdates(t *testing.T) {
 	base.EnableLogKey("ChannelStorage")
 	base.EnableLogKey("ChannelStorage+")
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	block := NewDenseBlock("block1", nil)
 
@@ -236,8 +241,9 @@ func TestDenseBlockRemovalByKey(t *testing.T) {
 	base.EnableLogKey("ChannelStorage")
 	base.EnableLogKey("ChannelStorage+")
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	block := NewDenseBlock("block1", nil)
 
@@ -297,8 +303,9 @@ func TestDenseBlockRollbackTo(t *testing.T) {
 	base.EnableLogKey("ChannelStorage")
 	base.EnableLogKey("ChannelStorage+")
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	block := NewDenseBlock("block1", nil)
 
@@ -393,8 +400,9 @@ func TestDenseBlockRollbackTo(t *testing.T) {
 func DisableTestDenseBlockOverflow(t *testing.T) {
 	base.EnableLogKey("ChannelStorage")
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	block := NewDenseBlock("block1", nil)
 
@@ -463,8 +471,9 @@ func DisableTestDenseBlockOverflow(t *testing.T) {
 func TestDenseBlockConcurrentUpdates(t *testing.T) {
 	base.EnableLogKey("ChannelStorage")
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	block := NewDenseBlock("block1", nil)
 
@@ -530,8 +539,9 @@ func TestDenseBlockConcurrentUpdates(t *testing.T) {
 // ------------------------
 func TestDenseBlockIterator(t *testing.T) {
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	block := NewDenseBlock("block1", nil)
 
@@ -595,8 +605,9 @@ func TestDenseBlockList(t *testing.T) {
 
 	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	// Initialize a new block list.  Will initialize with first block
 	list := NewDenseBlockList("ABC", 1, indexBucket)
@@ -635,8 +646,9 @@ func TestDenseBlockListBadCas(t *testing.T) {
 
 	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	// Initialize a new block list manually to set an unexpected cas value.
 	list := &DenseBlockList{
@@ -680,8 +692,9 @@ func TestDenseBlockListConcurrentInit(t *testing.T) {
 
 	base.EnableLogKey("ChannelStorage+")
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	// Concurrent initialization
 	var wg sync.WaitGroup
@@ -715,8 +728,9 @@ func TestDenseBlockListRotate(t *testing.T) {
 
 	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	// Initialize a new block list.  Will initialize with first block
 	list := NewDenseBlockList("ABC", 1, indexBucket)
@@ -748,8 +762,9 @@ func TestDenseBlockListRotate(t *testing.T) {
 func TestCalculateChangedPartitions(t *testing.T) {
 	base.EnableLogKey("ChannelStorage+")
 
-	indexBucket := base.GetTestIndexBucketOrPanic()
-	defer indexBucket.Close()
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
 
 	reader := NewDenseStorageReader(indexBucket, "ABC", testPartitionMap())
 

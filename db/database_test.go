@@ -44,13 +44,19 @@ func (u *UnitTestAuth) GetCredentials() (string, string, string) {
 }
 
 func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
+
 	testBucket := testBucket()
-	leakyBucket := base.NewLeakyBucket(testBucket, config)
+	// Since this doesn't return the testbucket handle, disable the "open bucket counting system" by immediately
+	// decrementing counter
+	base.DecrNumOpenBuckets(testBucket.Bucket.GetName())
+
+	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, config)
 	return leakyBucket
 }
 
 func setupTestDB(t testing.TB) *Database {
-	return setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, _ := setupTestDBWithCacheOptions(t, CacheOptions{})
+	return db
 }
 
 func setupTestDBForShadowing(t *testing.T) *Database {
@@ -58,27 +64,28 @@ func setupTestDBForShadowing(t *testing.T) *Database {
 		TrackDocs: true,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
+	context, err := NewDatabaseContext("db", testBucket().Bucket, false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
 	return db
 }
 
-func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
+func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, base.TestBucket)  {
 
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	context, err := NewDatabaseContext("db", testBucket(), false, dbcOptions)
+	tBucket := testBucket()
+	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
-	return db
+	return db, tBucket
 }
 
-func testBucket() base.Bucket {
+func testBucket() base.TestBucket {
 
 	spec := base.GetTestBucketSpec(base.DataBucket)
 	testBucket := base.GetTestBucketOrPanic()
@@ -87,7 +94,7 @@ func testBucket() base.Bucket {
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
-	return bucket
+	return testBucket
 }
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
@@ -95,7 +102,8 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 		CacheOptions: &options,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	context, err := NewDatabaseContext("db", testLeakyBucket(leakyOptions), false, dbcOptions)
+	leakyBucket := testLeakyBucket(leakyOptions)
+	context, err := NewDatabaseContext("db", leakyBucket, false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")

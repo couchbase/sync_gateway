@@ -42,8 +42,11 @@ func TestShadowerPull(t *testing.T) {
 		t.Skip("BucketShadowing with XATTRS is not a supported configuration")
 	}
 
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+
 	bucket.Set("key1", 0, Body{"foo": 1})
 	bucket.Set("key2", 0, Body{"bar": -1})
 	bucket.SetRaw("key3", 0, []byte("qwertyuiop")) //will be ignored
@@ -91,8 +94,9 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 	}
 
 	//Create shadow bucket
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	//New docs should write notification events
 	bucket.Set("key1", 0, Body{"foo": 1})
@@ -163,8 +167,9 @@ func TestShadowerPush(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
@@ -217,8 +222,9 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
@@ -255,8 +261,9 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
@@ -312,8 +319,10 @@ func TestShadowerPattern(t *testing.T) {
 		t.Skip("BucketShadowing with XATTRS is not a supported configuration")
 	}
 
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
 	bucket.Set("key1", 0, Body{"foo": 1})
 	bucket.Set("ignorekey", 0, Body{"bar": -1})
 	bucket.Set("key2", 0, Body{"bar": -1})

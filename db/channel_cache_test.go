@@ -24,6 +24,8 @@ func TestDuplicateDocID(t *testing.T) {
 	base.EnableLogKey("Cache")
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Test1", 0)
 
 	// Add some entries to cache
@@ -68,6 +70,8 @@ func TestLateArrivingSequence(t *testing.T) {
 	base.EnableLogKey("Cache")
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Test1", 0)
 
 	// Add some entries to cache
@@ -98,6 +102,8 @@ func TestLateSequenceAsFirst(t *testing.T) {
 	base.EnableLogKey("Cache")
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Test1", 0)
 
 	// Add some entries to cache
@@ -128,6 +134,8 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	base.EnableLogKey("Cache")
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Test1", 0)
 
 	// Add some entries to cache
@@ -238,6 +246,8 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 	//base.SetLogLevel(2) // disables logging
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 	docIDs := make([]string, b.N)
@@ -255,6 +265,8 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 	base.SetLogLevel(2) // disables logging
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 
@@ -271,6 +283,8 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 	base.SetLogLevel(2) // disables logging
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 
@@ -286,6 +300,8 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 	base.SetLogLevel(2) // disables logging
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 
@@ -301,6 +317,8 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 	base.SetLogLevel(2) // disables logging
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 
@@ -317,6 +335,8 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 	//base.SetLogLevel(2) // disables logging
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate doc IDs
 
@@ -332,6 +352,8 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 	base.SetLogLevel(2) // disables logging
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Benchmark", 0)
 	// generate docs
 	docs := make([]*LogEntry, b.N)

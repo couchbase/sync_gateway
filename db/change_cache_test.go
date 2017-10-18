@@ -31,7 +31,8 @@ func e(seq uint64, docid string, revid string) *LogEntry {
 }
 
 func testBucketContext() *DatabaseContext {
-	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+
+	context, _ := NewDatabaseContext("db", testBucket().Bucket, false, DatabaseContextOptions{})
 	return context
 }
 
@@ -86,6 +87,8 @@ func TestLateSequenceHandling(t *testing.T) {
 
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
@@ -150,6 +153,8 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
@@ -274,8 +279,9 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	base.EnableLogKey("Changes")
 	base.EnableLogKey("Changes+")
 	base.EnableLogKey("DCP")
-	db := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
@@ -316,8 +322,9 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	base.EnableLogKey("Cache")
 	base.EnableLogKey("Changes+")
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -389,8 +396,9 @@ func TestContinuousChangesBackfill(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -494,8 +502,10 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -576,8 +586,10 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -649,8 +661,10 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -743,8 +757,10 @@ func FailingTestChannelRace(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channels "Odd", "Even"
@@ -944,9 +960,10 @@ func TestChannelCacheSize(t *testing.T) {
 	}
 
 	log.Printf("Options in test:%+v", options)
-	db := setupTestDBWithCacheOptions(t, options)
-
+	db, testBucket := setupTestDBWithCacheOptions(t, options)
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
