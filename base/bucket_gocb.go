@@ -113,6 +113,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 			password = pass
 		}
 	}
+
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
 		Warn("Error opening bucket: %s.  Error: %v", spec.BucketName, err)
@@ -878,7 +879,7 @@ func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		_, err =bucket.Bucket.Upsert(k, bucket.FormatBinaryDocument(v), uint32(exp))
+		_, err = bucket.Bucket.Upsert(k, bucket.FormatBinaryDocument(v), uint32(exp))
 		if isRecoverableGoCBError(err) {
 			return true, err, nil
 		}
@@ -906,7 +907,6 @@ func (bucket CouchbaseBucketGoCB) Delete(k string) error {
 	err, _ := RetryLoop("CouchbaseBucketGoCB Delete()", worker, bucket.spec.RetrySleeper())
 
 	return err
-
 
 }
 
@@ -938,7 +938,6 @@ func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, e
 	}
 
 	return casOut, nil
-
 
 }
 
@@ -2047,9 +2046,9 @@ func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
 
 func (bucket CouchbaseBucketGoCB) Close() {
 	if err := bucket.Bucket.Close(); err != nil {
-		Warn("Error closing GoCB bucket: %v", err)
+		Warn("Error closing GoCB bucket: %v.", err)
+		return
 	}
-
 }
 
 // Formats binary document to the style expected by the transcoder.  GoCBCustomSGTranscoder

@@ -14,7 +14,11 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"sort"
 	"strconv"
@@ -23,17 +27,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/go.assert"
-	"github.com/robertkrimen/otto/underscore"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"io"
-	"io/ioutil"
-	"mime"
-	"mime/multipart"
+	"github.com/couchbaselabs/go.assert"
+	"github.com/robertkrimen/otto/underscore"
 )
 
 func init() {
@@ -47,6 +46,8 @@ func init() {
 
 func TestRoot(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	response := rt.SendRequest("GET", "/", "")
 	assertStatus(t, response, 200)
 	var body db.Body
@@ -78,6 +79,8 @@ func (rt *RestTester) createDoc(t *testing.T, docid string) string {
 
 func TestDocLifecycle(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	revid := rt.createDoc(t, "doc")
 	assert.Equals(t, revid, "1-45ca73d819d5b1c9b8eea95290e79004")
 
@@ -88,6 +91,7 @@ func TestDocLifecycle(t *testing.T) {
 //Validate that Etag header value is surrounded with double quotes, see issue #808
 func TestDocEtag(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"prop":true}`)
 	assertStatus(t, response, 201)
@@ -157,6 +161,7 @@ func TestDocEtag(t *testing.T) {
 // Add and retrieve an attachment, including a subrange
 func TestDocAttachment(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"prop":true}`)
 	assertStatus(t, response, 201)
@@ -196,6 +201,7 @@ func TestDocAttachment(t *testing.T) {
 // Add an attachment to a document that has been removed from the users channels
 func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	user, err := a.GetUser("")
@@ -233,6 +239,7 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 
 func TestDocumentUpdateWithNullBody(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	user, err := a.GetUser("")
@@ -258,6 +265,8 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 
 func TestFunkyDocIDs(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	rt.createDoc(t, "AC%2FDC")
 
 	response := rt.SendRequest("GET", "/db/AC%2FDC", "")
@@ -297,6 +306,7 @@ func TestFunkyDocIDs(t *testing.T) {
 
 func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
 
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "content/type"
@@ -401,6 +411,8 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 
 func TestCORSOrigin(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
@@ -443,6 +455,8 @@ func TestCORSOrigin(t *testing.T) {
 
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
@@ -457,6 +471,8 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 // #issue 991
 func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
@@ -471,6 +487,8 @@ func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
 
 func TestNoCORSOriginOnSessionPost(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	reqHeaders := map[string]string{
 		"Origin": "http://staging.example.com",
 	}
@@ -484,6 +502,8 @@ func TestNoCORSOriginOnSessionPost(t *testing.T) {
 
 func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
@@ -498,6 +518,8 @@ func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
 
 func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
@@ -516,6 +538,8 @@ func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
 
 func TestNoCORSOriginOnSessionDelete(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	reqHeaders := map[string]string{
 		"Origin": "http://staging.example.com",
 	}
@@ -530,6 +554,7 @@ func TestNoCORSOriginOnSessionDelete(t *testing.T) {
 
 func TestManualAttachment(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
 
 	doc1revId := rt.createDoc(t, "doc1")
 
@@ -655,6 +680,7 @@ func TestManualAttachment(t *testing.T) {
 // PUT attachment on non-existant docid should create empty doc
 func TestManualAttachmentNewDoc(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
 
 	// attach to new document using bogus rev (should fail)
 	attachmentBody := "this is the body of attachment"
@@ -699,6 +725,8 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 
 func TestBulkDocs(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}, {"_id": "_local/bulk3", "n": 3}]}`
 	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
@@ -732,6 +760,8 @@ func TestBulkDocs(t *testing.T) {
 
 func TestBulkDocsIDGeneration(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	input := `{"docs": [{"n": 1}, {"_id": 123, "n": 2}]}`
 	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
@@ -750,6 +780,7 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 
 	//We want a sync function that will reject some docs
 	rt := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	defer rt.Close()
 
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
 	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
@@ -789,6 +820,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
 	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	defer rt1.Close()
 
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
 	response := rt1.SendRequest("POST", "/db/_bulk_docs", input)
@@ -805,6 +837,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	assert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
 		Facebook:       &FacebookConfig{},
@@ -813,11 +846,16 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	server := base.UnitTestUrl()
 	bucketName := rt1.RestTesterBucket.GetName()
+	spec := base.GetTestBucketSpec(base.DataBucket)
+	username, password, _ := spec.Auth.GetCredentials()
 
 	_, err := rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
-			Server: &server,
-			Bucket: &bucketName},
+			Server:   &server,
+			Bucket:   &bucketName,
+			Username: username,
+			Password: password,
+		},
 		Name: "db",
 	})
 
@@ -863,6 +901,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
 	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	defer rt1.Close()
 
 	//add new docs, doc2 will be rejected by sync function
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
@@ -883,6 +922,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	assert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
 		Facebook:       &FacebookConfig{},
@@ -891,11 +931,16 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	server := base.UnitTestUrl()
 	bucketName := rt1.RestTesterBucket.GetName()
+	spec := base.GetTestBucketSpec(base.DataBucket)
+	username, password, _ := spec.Auth.GetCredentials()
 
 	_, err := rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
-			Server: &server,
-			Bucket: &bucketName},
+			Server:   &server,
+			Bucket:   &bucketName,
+			Username: username,
+			Password: password,
+		},
 		Name: "db",
 	})
 
@@ -949,6 +994,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
 	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	defer rt1.Close()
 
 	//add new docs, doc2 will be rejected by sync function
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
@@ -969,6 +1015,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	assert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
 		Facebook:       &FacebookConfig{},
@@ -977,11 +1024,16 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	server := base.UnitTestUrl()
 	bucketName := rt1.RestTesterBucket.GetName()
+	spec := base.GetTestBucketSpec(base.DataBucket)
+	username, password, _ := spec.Auth.GetCredentials()
 
 	_, err := rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
-			Server: &server,
-			Bucket: &bucketName},
+			Server:   &server,
+			Bucket:   &bucketName,
+			Username: username,
+			Password: password,
+		},
 		Name: "db",
 	})
 
@@ -1043,6 +1095,8 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 func TestBulkDocsEmptyDocs(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	input := `{}`
 	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 400)
@@ -1050,6 +1104,8 @@ func TestBulkDocsEmptyDocs(t *testing.T) {
 
 func TestBulkDocsMalformedDocs(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	input := `{"docs":["A","B"]}`
 	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 400)
@@ -1063,6 +1119,8 @@ func TestBulkDocsMalformedDocs(t *testing.T) {
 
 func TestBulkGetEmptyDocs(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	input := `{}`
 	response := rt.SendRequest("POST", "/db/_bulk_get", input)
 	assertStatus(t, response, 400)
@@ -1106,6 +1164,8 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 func TestBulkDocsNoEdits(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	input := `{"new_edits":false, "docs": [
                     {"_id": "bdne1", "_rev": "12-abc", "n": 1,
                      "_revisions": {"start": 12, "ids": ["abc", "eleven", "ten", "nine"]}},
@@ -1140,6 +1200,8 @@ type RevsDiffResponse map[string]RevDiffResponse
 
 func TestRevsDiff(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	// Create some docs:
 	input := `{"new_edits":false, "docs": [
                     {"_id": "rd1", "_rev": "12-abc", "n": 1,
@@ -1169,6 +1231,7 @@ func TestRevsDiff(t *testing.T) {
 
 func TestOpenRevs(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
 
 	// Create some docs:
 	input := `{"new_edits":false, "docs": [
@@ -1191,6 +1254,8 @@ func TestOpenRevs(t *testing.T) {
 
 func TestLocalDocs(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	response := rt.SendRequest("GET", "/db/_local/loc1", "")
 	assertStatus(t, response, 404)
 
@@ -1242,6 +1307,8 @@ func TestResponseEncoding(t *testing.T) {
 	docJSON := fmt.Sprintf(`{"long": %q}`, str)
 
 	var rt RestTester
+	defer rt.Close()
+
 	response := rt.SendRequest("PUT", "/db/_local/loc1", docJSON)
 	assertStatus(t, response, 201)
 	response = rt.SendRequestWithHeaders("GET", "/db/_local/loc1", "",
@@ -1258,6 +1325,8 @@ func TestResponseEncoding(t *testing.T) {
 
 func TestLogin(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -1607,16 +1676,12 @@ func TestChannelAccessChanges(t *testing.T) {
 	assertStatus(t, rt.Send(request("PUT", "/db/d1", `{"channel":"delta"}`)), 201) // seq=7
 	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201) // seq=8
 
-	// Artificial delay to let updates show up on changes feed
-	time.Sleep(time.Second)
+	rt.MustWaitForDoc("g1", t)
 
-	// Check the _changes feed:
-	var changes struct {
-		Results []db.ChangeEntry
-	}
+	changes := changesResults{}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
+
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
@@ -1639,22 +1704,21 @@ func TestChannelAccessChanges(t *testing.T) {
 	zegpold, _ = a.GetUser("zegpold")
 	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x9), "gamma": channels.NewVbSimpleSequence(0x4)})
 
-	// Artificial delay to let updates show up on changes feed
-	time.Sleep(time.Second)
+	rt.MustWaitForDoc("alpha", t)
 
 	// Look at alice's _changes feed:
-	changes.Results = nil
+	changes = changesResults{}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
-	log.Printf("//////// _changes for alice looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, err, nil)
 	assert.Equals(t, changes.Results[0].ID, "d1")
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
-	changes.Results = nil
+	changes = changesResults{}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
-	log.Printf("//////// _changes for zegpold looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 2)
 	assert.Equals(t, changes.Results[0].ID, "g1")
 	assert.Equals(t, changes.Results[0].Seq.Seq, uint64(8))
@@ -1691,14 +1755,17 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, changeCount, 9)
 
 	// Artificial delay to let updates show up on changes feed
+	// TODO: not sure how to change this to wait for a sequence
 	time.Sleep(time.Second)
 
-	changes.Results = nil
-	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
-	json.Unmarshal(response.Body.Bytes(), &changes)
+	changes = changesResults{}
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
+	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	assert.Equals(t, len(changes.Results), len(expectedIDs))
+	json.Unmarshal(response.Body.Bytes(), &changes)
+
 	for i, expectedID := range expectedIDs {
 		assert.Equals(t, changes.Results[i].ID, expectedID)
 	}
@@ -2137,6 +2204,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 func TestAttachmentsNoCrossTalk(t *testing.T) {
 
 	var rt RestTester
+	defer rt.Close()
 
 	doc1revId := rt.createDoc(t, "doc1")
 
@@ -2247,6 +2315,7 @@ func TestStarAccess(t *testing.T) {
 
 	// Create some docs:
 	var rt RestTester
+	defer rt.Close()
 
 	var logKeys = map[string]bool{
 		"Changes+": true,
@@ -2441,6 +2510,8 @@ func TestStarAccess(t *testing.T) {
 // Test for issue #562
 func TestCreateTarget(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	//Attempt to create existing target DB on public API
 	response := rt.SendRequest("PUT", "/db/", "")
 	assertStatus(t, response, 412)
@@ -2453,6 +2524,7 @@ func TestCreateTarget(t *testing.T) {
 func TestBasicAuthWithSessionCookie(t *testing.T) {
 
 	var rt RestTester
+	defer rt.Close()
 
 	// Create two users
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["bernard"]}`)
@@ -2494,6 +2566,10 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 
 func TestEventConfigValidationSuccess(t *testing.T) {
 
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip this test under integration testing")
+	}
+
 	sc := NewServerContext(&ServerConfig{})
 
 	// Valid config
@@ -2525,7 +2601,13 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 }
 func TestEventConfigValidationInvalid(t *testing.T) {
 
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works under walrus")
+	}
+
 	sc := NewServerContext(&ServerConfig{})
+	defer sc.Close()
+
 	configJSON := `{"name": "invalid",
         			"server": "walrus:",
         			"bucket": "invalid",
@@ -2548,9 +2630,8 @@ func TestEventConfigValidationInvalid(t *testing.T) {
 
 	_, err = sc.AddDatabaseFromConfig(&dbConfig)
 	assert.True(t, err != nil)
-	assert.True(t, fmt.Sprintf("%v", err) == "Unsupported event property 'document_scribbled_on' defined for db invalid")
+	assert.True(t, strings.Contains(err.Error(), "document_scribbled_on"))
 
-	sc.Close()
 }
 
 // Reproduces https://github.com/couchbase/sync_gateway/issues/2427
@@ -2558,6 +2639,8 @@ func TestEventConfigValidationInvalid(t *testing.T) {
 func TestBulkGetRevPruning(t *testing.T) {
 
 	var rt RestTester
+	defer rt.Close()
+
 	var body db.Body
 
 	// The number of goroutines that are reading the doc via the _bulk_get endpoint
@@ -2616,6 +2699,8 @@ func TestBulkGetRevPruning(t *testing.T) {
 func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	var rt RestTester
+	defer rt.Close()
+
 	var body db.Body
 
 	// Disable rev cache so that the _bulk_get request is forced to go back to the bucket to load the doc
@@ -2802,6 +2887,8 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 // in walrus).
 func TestDocExpiry(t *testing.T) {
 	var rt RestTester
+	defer rt.Close()
+
 	var body db.Body
 	response := rt.SendRequest("PUT", "/db/expNumericTTL", `{"_exp":100}`)
 	assertStatus(t, response, 201)
@@ -3026,9 +3113,10 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 	})
 }
 
-var qrt = RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-
 func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
+
+	qrt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
+	defer qrt.Close()
 
 	b.ResetTimer()
 

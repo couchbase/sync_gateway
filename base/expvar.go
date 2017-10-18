@@ -364,7 +364,6 @@ func (v *IntRollingMeanVar) AddSincePerItem(start time.Time, numItems int) {
 
 }
 
-
 // If we have fewer entries than capacity, regular mean calculation
 func (v *IntRollingMeanVar) addValue(value int64) {
 	v.entries = append(v.entries, value)

@@ -246,7 +246,6 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 
 }
 
-
 func TestCouchbaseURIToHttpURL(t *testing.T) {
 
 	inputsAndExpected := []struct {
@@ -285,6 +284,5 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 	assert.True(t, err != nil)
 	_, err = CouchbaseURIToHttpURL(nil, "couchbase://host1")
 	assert.True(t, err != nil)
-
 
 }

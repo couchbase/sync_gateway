@@ -89,6 +89,7 @@ type DCPReceiver struct {
 }
 
 func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool) Receiver {
+
 	// TODO: set using maxvbno
 	r := &DCPReceiver{
 		bucket:             bucket,
@@ -100,7 +101,7 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 	r.callback = callback
 
 	if LogEnabledExcludingLogStar("DCP") {
-		LogTo("DCP", "Using DCP Logging Receiver")
+		LogTo("DCP", "Using DCP Logging Receiver.")
 		logRec := &DCPLoggingReceiver{rec: r}
 		return logRec
 	}
@@ -116,7 +117,7 @@ func (r *DCPReceiver) GetBucketNotifyFn() sgbucket.BucketNotifyFn {
 }
 
 func (r *DCPReceiver) OnError(err error) {
-	Warn("Error processing DCP stream - will attempt to restart/reconnect: %v", err)
+	Warn("Error processing DCP stream - will attempt to restart/reconnect: %v.", err)
 
 	// From cbdatasource:
 	//  Invoked in advisory fashion by the BucketDataSource when it
@@ -229,7 +230,7 @@ func (r *DCPReceiver) GetMetaData(vbucketId uint16) (
 // RollbackEx should be called by cbdatasource - Rollback required to maintain the interface.  In the event
 // it's called, logs warning and does a hard reset on metadata for the vbucket
 func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
-	Warn("DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0", vbucketId)
+	Warn("DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
 	dcpExpvars.Add("rollback_count", 1)
 	r.updateSeq(vbucketId, 0, false)
 	r.SetMetaData(vbucketId, nil)
@@ -239,7 +240,7 @@ func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 
 // RollbackEx includes the vbucketUUID needed to reset the metadata correctly
 func (r *DCPReceiver) RollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64) error {
-	Warn("DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x", vbucketId, rollbackSeq)
+	Warn("DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 
 	dcpExpvars.Add("rollback_count", 1)
 	r.updateSeq(vbucketId, rollbackSeq, false)
@@ -373,7 +374,7 @@ func (r *DCPLoggingReceiver) OnError(err error) {
 
 func (r *DCPLoggingReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	LogTo("DCP", "DataUpdate:%d, %s, %d, %v", vbucketId, key, seq, req)
+	LogTo("DCP+", "DataUpdate:%d, %s, %d, %v", vbucketId, key, seq, req)
 	return r.rec.DataUpdate(vbucketId, key, seq, req)
 }
 
@@ -400,24 +401,24 @@ func (r *DCPLoggingReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) erro
 
 func (r *DCPLoggingReceiver) SetMetaData(vbucketId uint16, value []byte) error {
 
-	LogTo("DCP", "SetMetaData:%d, %s", vbucketId, value)
+	LogTo("DCP+", "SetMetaData:%d, %s", vbucketId, value)
 	return r.rec.SetMetaData(vbucketId, value)
 }
 
 func (r *DCPLoggingReceiver) GetMetaData(vbucketId uint16) (
 	value []byte, lastSeq uint64, err error) {
-	LogTo("DCP", "GetMetaData:%d", vbucketId)
+	LogTo("DCP+", "GetMetaData:%d", vbucketId)
 	return r.rec.GetMetaData(vbucketId)
 }
 
 func (r *DCPLoggingReceiver) SnapshotStart(vbucketId uint16,
 	snapStart, snapEnd uint64, snapType uint32) error {
-	LogTo("DCP", "SnapshotStart:%d, %d, %d, %d", vbucketId, snapStart, snapEnd, snapType)
+	LogTo("DCP+", "SnapshotStart:%d, %d, %d, %d", vbucketId, snapStart, snapEnd, snapType)
 	return r.rec.SnapshotStart(vbucketId, snapStart, snapEnd, snapType)
 }
 
 func (r *DCPLoggingReceiver) SeedSeqnos(uuids map[uint16]uint64, seqs map[uint16]uint64) {
-	LogTo("DCP", "SeedSeqnos:%v, %v", uuids, seqs)
+	LogTo("DCP+", "SeedSeqnos:%v, %v", uuids, seqs)
 	r.rec.SeedSeqnos(uuids, seqs)
 }
 
@@ -474,11 +475,14 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 			return errors.New("Error retrieving stats-vbseqno - DCP not supported")
 		}
 		LogTo("Feed+", "Seeding seqnos: %v", highSeqnos)
+
 		dcpReceiver.SeedSeqnos(statsUuids, highSeqnos)
 	case sgbucket.FeedResume:
 		// For resume case, load previously persisted checkpoints from bucket
+
 		dcpReceiver.initMetadata(maxVbno)
 	default:
+
 		// Otherwise, start feed from zero
 		startSeqnos := make(map[uint16]uint64, maxVbno)
 		vbuuids := make(map[uint16]uint64, maxVbno)

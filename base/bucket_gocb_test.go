@@ -50,7 +50,9 @@ func TestTranscoder(t *testing.T) {
 
 func TestSetGetRaw(t *testing.T) {
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestSetGetRaw2"
 	val := []byte("bar")
@@ -77,7 +79,9 @@ func TestSetGetRaw(t *testing.T) {
 
 func TestAddRaw(t *testing.T) {
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestAddRaw"
 	val := []byte("bar")
@@ -114,7 +118,9 @@ func TestAddRaw(t *testing.T) {
 
 func TestBulkGetRaw(t *testing.T) {
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	keyPrefix := "TestBulkGetRaw"
 	keySet := make([]string, 1000)
@@ -186,7 +192,9 @@ func TestBulkGetRaw(t *testing.T) {
 
 func TestWriteCasBasic(t *testing.T) {
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestWriteCas"
 	val := []byte("bar2")
@@ -226,7 +234,9 @@ func TestWriteCasBasic(t *testing.T) {
 
 func TestWriteCasAdvanced(t *testing.T) {
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestWriteCas"
 
@@ -268,7 +278,9 @@ func TestSetBulk(t *testing.T) {
 	// However, there's no commented code in isRecoverableGoCBError()
 	t.Skip("TestSetBulk is currently not passing against both walrus and couchbase server.  Error logs: https://gist.github.com/tleyden/22d69ff9e627d7ad37043200614a3cc5")
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestSetBulk1"
 	key2 := "TestSetBulk2"
@@ -368,7 +380,9 @@ func numNonNilErrors(entries []*sgbucket.BulkSetEntry) int {
 
 func TestUpdate(t *testing.T) {
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestUpdate"
 	valInitial := []byte("initial")
@@ -418,7 +432,9 @@ func TestIncrCounter(t *testing.T) {
 
 	t.Skip("Currently not passing: under walrus, go-couchbase and gocb, this test results in: Attempt to retrieve non-existent counter should return error")
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestIncr"
 
@@ -466,7 +482,9 @@ func TestGetAndTouchRaw(t *testing.T) {
 	key := "TestGetAndTouchRaw"
 	val := []byte("bar")
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	defer func() {
 		err := bucket.Delete(key)
@@ -571,7 +589,9 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestWriteCasXATTRSimple"
 	xattrName := "_sync"
@@ -613,8 +633,10 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -683,7 +705,9 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestWriteCasXATTRSimple"
 	xattrName := "_sync"
@@ -749,8 +773,10 @@ func TestXattrWriteCasRaw(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -800,8 +826,10 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Bucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -882,8 +910,10 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -965,8 +995,10 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -1078,8 +1110,10 @@ func TestXattrDeleteDocument(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -1131,8 +1165,10 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -1203,8 +1239,10 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -1258,8 +1296,10 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	LogKeys["CRUD+"] = true
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -1355,8 +1395,10 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	LogKeys["CRUD+"] = true
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -1443,8 +1485,10 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -1490,8 +1534,10 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -1580,8 +1626,10 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	b := GetBucketOrPanic()
-	bucket, ok := b.(*CouchbaseBucketGoCB)
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
 		log.Printf("Can't cast to bucket")
 		return
@@ -1889,7 +1937,9 @@ func TestCouchbaseServerVersion(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	bucket := GetBucketOrPanic()
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	_, _, _, err := bucket.CouchbaseServerVersion()
 	if err != nil {

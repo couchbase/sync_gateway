@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/couchbase/gocb"
@@ -17,42 +18,41 @@ import (
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
 // util_test.go, which is only accessible from the base package.
 
-type FlushOrRecreateStrategy int
-
-const (
-	// Flush the bucket between every unit test when testing against Couchbase buckets
-	FlushBetweenTests = FlushOrRecreateStrategy(iota)
-
-	// Delete and recreate the bucket between every unit test
-	RecreateBetweenTests
-)
-
-var FlushOrRecreateTestBucket = FlushBetweenTests
 var TestExternalRevStorage = false
+var numOpenBucketsByName map[string]int32
+var mutexNumOpenBucketsByName sync.Mutex
 
 func init() {
+
 	// Prevent https://issues.couchbase.com/browse/MB-24237
 	rand.Seed(time.Now().UTC().UnixNano())
+
+	numOpenBucketsByName = map[string]int32{}
+
 }
 
-// TODO: rename to GetTestDataBucketOrPanic
-func GetBucketOrPanic() Bucket {
+type TestBucket struct {
+	Bucket Bucket
+}
 
+func (tb TestBucket) Close() {
+
+	tb.Bucket.Close()
+
+	DecrNumOpenBuckets(tb.Bucket.GetName())
+
+}
+
+func GetTestBucketOrPanic() TestBucket {
 	return GetBucketOrPanicCommon(DataBucket)
-
 }
 
-// TODO: rename to GetTestIndexBucketOrPanic
-func GetIndexBucketOrPanic() Bucket {
-
+func GetTestIndexBucketOrPanic() TestBucket {
 	return GetBucketOrPanicCommon(IndexBucket)
-
 }
 
-func GetShadowBucketOrPanic() Bucket {
-
+func GetTestShadowBucketOrPanic() TestBucket {
 	return GetBucketOrPanicCommon(ShadowBucket)
-
 }
 
 func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
@@ -97,7 +97,7 @@ func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 
 }
 
-func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) Bucket {
+func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 
 	spec := GetTestBucketSpec(bucketType)
 
@@ -120,6 +120,8 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) Bucket {
 			}
 		case false:
 			// Create a brand new bucket
+			// TODO: in this case, we should still wait until it's empty, just in case there was somehow residue
+			// TODO: in between deleting and recreating it, if it happened in rapid succession
 			createBucketErr := tbm.CreateTestBucket()
 			if createBucketErr != nil {
 				panic(fmt.Sprintf("Could not create bucket.  Spec: %+v Err: %v", spec, createBucketErr))
@@ -137,7 +139,7 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) Bucket {
 		panic(fmt.Sprintf("Could not open bucket: %v", err))
 	}
 
-	return bucket
+	return TestBucket{Bucket: bucket}
 
 }
 
@@ -201,6 +203,12 @@ func NewTestBucketManager(spec BucketSpec) *TestBucketManager {
 }
 
 func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
+
+	if NumOpenBuckets(tbm.BucketSpec.BucketName) > 0 {
+		return false, fmt.Errorf("There are already %d open buckets.  The tests expect all buckets to be closed.", NumOpenBuckets(tbm.BucketSpec.BucketName))
+	}
+
+	IncrNumOpenBuckets(tbm.BucketSpec.BucketName)
 
 	cluster, err := gocb.Connect(tbm.BucketSpec.Server)
 	if err != nil {
@@ -283,20 +291,22 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	// Ignore sporadic errors like:
 	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = tbm.BucketManager.Flush()
-		Warn("Error flushing bucket: %v  Will retry.", err)
-		shouldRetry = (err != nil)  // retry (until max attempts) if there was an error
+		if err != nil {
+			Warn("Error flushing bucket: %v  Will retry.", err)
+		}
+		shouldRetry = (err != nil) // retry (until max attempts) if there was an error
 		return shouldRetry, err, nil
 	}
-	sleeper := CreateDoublingSleeperFunc(20, 100)
 
-	err, _ := RetryLoop("EmptyTestBucket", worker, sleeper)
+	err, _ := RetryLoop("EmptyTestBucket", workerFlush, CreateDoublingSleeperFunc(12, 10))
 	if err != nil {
 		return err
 	}
 
-
+	maxTries := 20
+	numTries := 0
 	for {
 
 		itemCount, err := tbm.BucketItemCount()
@@ -306,44 +316,70 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 
 		if itemCount == 0 {
 			// Bucket flushed, we're done
-			return nil
+			break
+		}
+
+		if numTries > maxTries {
+			return fmt.Errorf("Timed out waiting for bucket to be empty after flush.  ItemCount: %v", itemCount)
 		}
 
 		// Still items left, wait a little bit and try again
 		Warn("TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
 		time.Sleep(time.Millisecond * 500)
 
+		numTries += 1
+
 	}
+
+	// Wait until high seq nos are all 0
+
+	if tbm.Bucket.IoRouter() == nil {
+		return fmt.Errorf("Cannot determine number of vbuckets")
+	}
+	maxVbno := uint16(tbm.Bucket.IoRouter().NumVbuckets())
+
+	workerHighSeqNosZero := func() (shouldRetry bool, err error, value interface{}) {
+
+		stats, seqErr := tbm.Bucket.Stats("vbucket-seqno")
+		if seqErr != nil {
+			return false, seqErr, nil
+		}
+
+		_, highSeqnos, err := GetStatsVbSeqno(stats, maxVbno, false)
+
+		if err != nil {
+			return false, err, nil
+		}
+
+		for vbNo := uint16(0); vbNo < maxVbno; vbNo++ {
+			maxSeqForVb := highSeqnos[vbNo]
+			if maxSeqForVb > 0 {
+				log.Printf("max seq for vb %d > 0 (%d).  Retrying", vbNo, maxSeqForVb)
+				return true, nil, nil
+			}
+		}
+
+		// made it this far, then it succeeded
+		return false, nil, nil
+
+	}
+
+	err, _ = RetryLoop(
+		"Wait for vb sequence numbers to be 0",
+		workerHighSeqNosZero,
+		CreateDoublingSleeperFunc(14, 10),
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+
 }
 
 func (tbm *TestBucketManager) RecreateOrEmptyBucket() error {
-	switch FlushOrRecreateTestBucket {
-	case FlushBetweenTests:
-		if err := tbm.EmptyTestBucket(); err != nil {
-			return err
-		}
-	case RecreateBetweenTests:
-		if err := tbm.DeleteTestBucket(); err != nil {
-			return err
-		}
-
-		// Create a brand new bucket
-		err := tbm.CreateTestBucket()
-		if err != nil {
-			return err
-		}
-
-		// Wait a little bit until the bucket is created
-		// TODO: change this to be event based instead of time based, maybe based on detecting the new bucket UUID
-		time.Sleep(time.Second * 1)
-
-		// Call EmptyTestBucket() in order to block until it's ready (lazy hack, does unnecessary bucket flush)
-		if err := tbm.EmptyTestBucket(); err != nil {
-			return err
-		}
-
-	default:
-		panic(fmt.Sprintf("Unrecognized option: %v", FlushOrRecreateTestBucket))
+	if err := tbm.EmptyTestBucket(); err != nil {
+		return err
 	}
 
 	return nil
@@ -439,4 +475,37 @@ func CreateProperty(size int) (result string) {
 		resultBytes[i] = alphaNumeric[i%len(alphaNumeric)]
 	}
 	return string(resultBytes)
+}
+
+func IncrNumOpenBuckets(bucketName string) {
+	MutateNumOpenBuckets(bucketName, 1)
+
+}
+
+func DecrNumOpenBuckets(bucketName string) {
+	MutateNumOpenBuckets(bucketName, -1)
+}
+
+func MutateNumOpenBuckets(bucketName string, delta int32) {
+	mutexNumOpenBucketsByName.Lock()
+	defer mutexNumOpenBucketsByName.Unlock()
+
+	numOpen, ok := numOpenBucketsByName[bucketName]
+	if !ok {
+		numOpen = 0
+		numOpenBucketsByName[bucketName] = numOpen
+	}
+
+	numOpen += delta
+	numOpenBucketsByName[bucketName] = numOpen
+}
+
+func NumOpenBuckets(bucketName string) int32 {
+	mutexNumOpenBucketsByName.Lock()
+	defer mutexNumOpenBucketsByName.Unlock()
+	numOpen, ok := numOpenBucketsByName[bucketName]
+	if !ok {
+		return 0
+	}
+	return numOpen
 }

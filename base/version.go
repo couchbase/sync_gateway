@@ -1,8 +1,8 @@
 package base
 
 import (
-	"strings"
 	"fmt"
+	"strings"
 )
 
 const ServerName = "@PRODUCT_NAME@"                  // DO NOT CHANGE; clients check this

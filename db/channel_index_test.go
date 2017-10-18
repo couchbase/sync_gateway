@@ -37,9 +37,14 @@ type channelIndexTest struct {
 func NewChannelIndex(vbNum int, sequenceGap int, name string) *channelIndexTest {
 	lastSeqs := make([]uint64, vbNum)
 
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+
+	// Since the testIndexBucket reference is lost, immediately decrement and disable bucket counting for this test
+	base.DecrNumOpenBuckets(testIndexBucket.Bucket.GetName())
+
 	index := &channelIndexTest{
 		numVbuckets:   vbNum,
-		indexBucket:   base.GetIndexBucketOrPanic(),
+		indexBucket:   testIndexBucket.Bucket,
 		sequenceGap:   sequenceGap,
 		lastSequences: lastSeqs,
 		r:             rand.New(rand.NewSource(42)),
@@ -259,6 +264,7 @@ func BenchmarkChannelIndexSimpleGet(b *testing.B) {
 	// num vbuckets
 	vbCount := 1024
 	index := NewChannelIndex(vbCount, 0, "basicChannel")
+	defer index.indexBucket.Close()
 
 	index.seedData("default")
 	b.ResetTimer()
@@ -276,6 +282,7 @@ func BenchmarkChannelIndexSimpleParallelGet(b *testing.B) {
 	// num vbuckets
 	vbCount := 1024
 	index := NewChannelIndex(vbCount, 0, "basicChannel")
+	defer index.indexBucket.Close()
 
 	index.seedData("default")
 	b.ResetTimer()
@@ -293,6 +300,7 @@ func BenchmarkChannelIndexBulkGet(b *testing.B) {
 	// num vbuckets
 	vbCount := 1024
 	index := NewChannelIndex(vbCount, 0, "basicChannel")
+	defer index.indexBucket.Close()
 
 	index.seedData("default")
 
@@ -311,6 +319,7 @@ func BenchmarkChannelIndexPartitionReadSimple(b *testing.B) {
 	// num vbuckets
 	vbCount := 16
 	index := NewChannelIndex(vbCount, 0, "basicChannel")
+	defer index.indexBucket.Close()
 
 	// Populate index with 100K sequences
 
@@ -330,6 +339,7 @@ func BenchmarkChannelIndexPartitionReadBulk(b *testing.B) {
 	// num vbuckets
 	vbCount := 16
 	index := NewChannelIndex(vbCount, 0, "basicChannel")
+	defer index.indexBucket.Close()
 
 	index.seedData("default")
 	b.ResetTimer()
@@ -359,8 +369,12 @@ func MultiChannelIndexSimpleGet(b *testing.B, numChannels int) {
 	// num vbuckets
 	vbCount := 1024
 
-	bucket := base.GetIndexBucketOrPanic()
-	indices := seedMultiChannelData(vbCount, bucket, numChannels)
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	defer testIndexBucket.Close()
+	indexBucket := testIndexBucket.Bucket
+
+
+	indices := seedMultiChannelData(vbCount, indexBucket, numChannels)
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
@@ -415,7 +429,10 @@ func MultiChannelIndexBulkGet(b *testing.B, numChannels int) {
 	// num vbuckets
 	vbCount := 1024
 
-	bucket := base.GetIndexBucketOrPanic()
+	testBucket := base.GetTestIndexBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
 	indices := seedMultiChannelData(vbCount, bucket, numChannels)
 
 	b.ResetTimer()
@@ -442,7 +459,11 @@ func TestChannelIndexBulkGet10(t *testing.T) {
 	// num vbuckets
 	vbCount := 1024
 	numChannels := 10
-	bucket := base.GetIndexBucketOrPanic()
+	testBucket := base.GetTestIndexBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket := testBucket.Bucket
+
 	indices := seedMultiChannelData(vbCount, bucket, numChannels)
 
 	startTime := time.Now()
@@ -474,6 +495,7 @@ func TestChannelIndexSimpleReadSingle(t *testing.T) {
 	// num vbuckets
 	vbCount := 1024
 	index := NewChannelIndex(vbCount, 10, "basicChannel")
+	defer index.indexBucket.Close()
 
 	// Populate index
 	for i := 0; i < 5000; i++ {
@@ -491,8 +513,10 @@ func TestChannelIndexSimpleReadBulk(t *testing.T) {
 	// num vbuckets
 	vbCount := 1024
 	index := NewChannelIndex(vbCount, 0, "basicChannel")
+	defer index.indexBucket.Close()
 
 	index.readIndexBulk()
+
 }
 
 func TestChannelIndexPartitionReadSingle(t *testing.T) {
@@ -506,6 +530,7 @@ func TestChannelIndexPartitionReadSingle(t *testing.T) {
 	// num vbuckets
 	vbCount := 16
 	index := NewChannelIndex(vbCount, 0, "basicChannel")
+	defer index.indexBucket.Close()
 
 	// Populate index
 	for i := 0; i < 5000; i++ {
@@ -528,6 +553,7 @@ func TestChannelIndexPartitionReadBulk(t *testing.T) {
 	// num vbuckets
 	vbCount := 16
 	index := NewChannelIndex(vbCount, 0, "basicChannel")
+	defer index.indexBucket.Close()
 
 	// Populate index
 	for i := 0; i < 5000; i++ {
@@ -542,6 +568,8 @@ func TestChannelIndexPartitionReadBulk(t *testing.T) {
 func TestVbucket(t *testing.T) {
 
 	index := NewChannelIndex(1024, 0, "basicChannel")
+	defer index.indexBucket.Close()
+
 	counts := make(map[uint32]int)
 
 	results := ""
@@ -585,6 +613,7 @@ func verifyVBMapping(bucket base.Bucket, channelName string) error {
 func TestChannelVbucketMappings(t *testing.T) {
 
 	index := NewChannelIndex(1024, 0, "basicChannel")
+	defer index.indexBucket.Close()
 
 	err := verifyVBMapping(index.indexBucket, "foo")
 	assertTrue(t, err == nil, "inconsistent hash")

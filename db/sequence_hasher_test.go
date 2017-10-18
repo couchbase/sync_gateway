@@ -13,10 +13,13 @@ import (
 
 func testSequenceHasher(size uint8, expiry uint32) (*sequenceHasher, error) {
 
-	hashBucket := base.GetBucketOrPanic()
+	testHashBucket := base.GetTestBucketOrPanic()
+
+	// Since the handle to test bucket is getting lost, immediately decrement to disable open bucket counting
+	base.DecrNumOpenBuckets(testHashBucket.Bucket.GetName())
 
 	options := &SequenceHashOptions{
-		Bucket: hashBucket,
+		Bucket: testHashBucket.Bucket,
 		Size:   size,
 		Expiry: &expiry,
 	}

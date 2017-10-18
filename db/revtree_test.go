@@ -23,7 +23,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-
 )
 
 // 1-one -- 2-two -- 3-three
@@ -375,7 +374,6 @@ func TestPruneRevisions(t *testing.T) {
 
 }
 
-
 func TestPruneRevsSingleBranch(t *testing.T) {
 
 	numRevs := 100
@@ -634,7 +632,6 @@ func TestLongestBranch2(t *testing.T) {
 
 }
 
-
 // Create a disconnected rev tree
 // Add lots of revisions to winning branch
 // Prune rev tree
@@ -652,7 +649,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	}
 	revTree := getMultiBranchTestRevtree1(1, 15, branchSpecs)
 
-	if (dumpRevTreeDotFiles) {
+	if dumpRevTreeDotFiles {
 		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 	}
 
@@ -660,7 +657,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 
 	revTree.pruneRevisions(maxDepth, "")
 
-	if (dumpRevTreeDotFiles) {
+	if dumpRevTreeDotFiles {
 		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 	}
 
@@ -674,13 +671,13 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 		"winning",
 	)
 
-	if (dumpRevTreeDotFiles) {
+	if dumpRevTreeDotFiles {
 		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 	}
 
 	revTree.pruneRevisions(maxDepth, "")
 
-	if (dumpRevTreeDotFiles) {
+	if dumpRevTreeDotFiles {
 		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 	}
 
@@ -688,7 +685,6 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	assert.True(t, revTree.LongestBranch() == 7)
 
 }
-
 
 func TestParseRevisions(t *testing.T) {
 	type testCase struct {
@@ -814,7 +810,6 @@ func TestRepairRevsHistoryWithCycles(t *testing.T) {
 		rawDoc.History.forEachLeaf(leafProcessor)
 
 	}
-
 
 }
 

@@ -26,33 +26,10 @@ import (
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
-	_testChangesAfterChannelAdded(t, db)
-}
 
-func printChanges(changes []*ChangeEntry) {
-	for _, change := range changes {
-		log.Printf("Change:%+v", change)
-	}
-}
-
-func getLastSeq(changes []*ChangeEntry) SequenceID {
-	if len(changes) > 0 {
-		return changes[len(changes)-1].Seq
-	}
-	return SequenceID{}
-}
-
-func getZeroSequence(db *Database) ChangesOptions {
-	if db.SequenceType == IntSequenceType {
-		return ChangesOptions{Since: SequenceID{Seq: 0}}
-	} else {
-		return ChangesOptions{Since: SequenceID{Clock: base.NewSequenceClockImpl()}}
-	}
-}
-
-func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 	base.EnableLogKey("IndexChanges")
 	base.EnableLogKey("Hash+")
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -96,9 +73,9 @@ func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 		ID:      "doc1",
 		Changes: []ChangeRev{{"rev": revid}}})
 	assert.DeepEquals(t, changes[2], &ChangeEntry{ // Seq 2, from ABC and PBS
-		Seq:     SequenceID{Seq: 2},
-		ID:      "_user/naomi",
-		Changes: []ChangeRev{},
+		Seq:       SequenceID{Seq: 2},
+		ID:        "_user/naomi",
+		Changes:   []ChangeRev{},
 		pseudoDoc: true})
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
@@ -123,6 +100,28 @@ func _testChangesAfterChannelAdded(t *testing.T, db *Database) {
 	changes, err = db.GetChanges(base.SetOf("*"), getZeroSequence(db))
 	assertNoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
+
+}
+
+func printChanges(changes []*ChangeEntry) {
+	for _, change := range changes {
+		log.Printf("Change:%+v", change)
+	}
+}
+
+func getLastSeq(changes []*ChangeEntry) SequenceID {
+	if len(changes) > 0 {
+		return changes[len(changes)-1].Seq
+	}
+	return SequenceID{}
+}
+
+func getZeroSequence(db *Database) ChangesOptions {
+	if db.SequenceType == IntSequenceType {
+		return ChangesOptions{Since: SequenceID{Seq: 0}}
+	} else {
+		return ChangesOptions{Since: SequenceID{Clock: base.NewSequenceClockImpl()}}
+	}
 }
 
 func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
@@ -132,7 +131,9 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	}
 
 	base.EnableLogKey("*")
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -215,7 +216,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
 	}
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -292,7 +294,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 // Benchmark to validate fix for https://github.com/couchbase/sync_gateway/issues/2428
 func BenchmarkChangesFeedDocUnmarashalling(b *testing.B) {
 
-	db := setupTestDB(b)
+	db, testBucket := setupTestDBWithCacheOptions(b, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(b, db)
 
 	fieldVal := func(valSizeBytes int) string {

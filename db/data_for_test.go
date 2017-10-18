@@ -1,6 +1,6 @@
 package db
 
-var testdocProblematicRevTrees = []string {
+var testdocProblematicRevTrees = []string{
 	testdocProblematicRevTree1,
 	testdocProblematicRevTree2,
 	testdocProblematicRevTree3,

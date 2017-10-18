@@ -13,8 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"regexp"
-	"runtime"
 	"testing"
 	"time"
 
@@ -33,7 +31,8 @@ func e(seq uint64, docid string, revid string) *LogEntry {
 }
 
 func testBucketContext() *DatabaseContext {
-	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+
+	context, _ := NewDatabaseContext("db", testBucket().Bucket, false, DatabaseContextOptions{})
 	return context
 }
 
@@ -88,6 +87,8 @@ func TestLateSequenceHandling(t *testing.T) {
 
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
@@ -152,6 +153,8 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
@@ -275,8 +278,10 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	base.EnableLogKey("Cache+")
 	base.EnableLogKey("Changes")
 	base.EnableLogKey("Changes+")
-	db := setupTestDBWithCacheOptions(t, CacheOptions{})
+	base.EnableLogKey("DCP")
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
@@ -317,8 +322,9 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	base.EnableLogKey("Cache")
 	base.EnableLogKey("Changes+")
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -383,13 +389,17 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	var logKeys = map[string]bool{
 		"Sequences": true,
 		"Cache":     true,
+		"Changes":   true,
 		"Changes+":  true,
+		"DCP":       true,
 	}
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -411,8 +421,8 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.Terminator = make(chan bool)
 	options.Continuous = true
 	options.Wait = true
-
 	defer close(options.Terminator)
+
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
@@ -473,6 +483,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	if len(expectedDocs) > 0 {
 		log.Printf("Did not receive expected docs: %v")
 	}
+
 	assert.Equals(t, len(expectedDocs), 0)
 }
 
@@ -491,8 +502,10 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -525,7 +538,6 @@ func TestLowSequenceHandling(t *testing.T) {
 	// Array to read changes from feed to support assertions
 	var changes = make([]*ChangeEntry, 0, 50)
 
-	time.Sleep(50 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 4)
 
 	// Validate the initial sequences arrive as expected
@@ -542,7 +554,6 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	db.changeCache.waitForSequenceWithMissing(4)
 
-	time.Sleep(50 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 2)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 6)
@@ -554,40 +565,6 @@ func TestLowSequenceHandling(t *testing.T) {
 	db.changeCache.waitForSequence(9)
 	appendFromFeed(&changes, feed, 5)
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
-
-}
-
-func TestBackgroundTestShutdown(t *testing.T) {
-
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test currently fails when running in integration mode since tearDownTestDB() doesn't close the database in that case")
-	}
-
-	cacheOptions := shortWaitCache()
-	db := setupTestDBWithCacheOptions(t, cacheOptions)
-	tearDownTestDB(t, db)
-
-	err, _ := base.RetryLoop("Verify changeCache not in stacktrace", func() (shouldRetry bool, err error, value interface{}) {
-
-		rawStackTrace := make([]byte, 1<<20)
-		runtime.Stack(rawStackTrace, true)
-
-		r, err := regexp.Compile(".*changeCache.*")
-		if err != nil {
-			return false, err, nil
-		}
-
-		if r.Match(rawStackTrace) {
-			// Still found changeCache in stack traces, return true to retry .. in case it goes away soon
-			return true, nil, nil
-		}
-
-		return false, nil, nil
-	}, base.CreateDoublingSleeperFunc(5, 1))
-
-	// If there was an error, it means that "changeCache" was in the stacktrace even after retrying
-	// a few times.  This means it never got cleaned up after tearDownTestDB was called.
-	assertNoError(t, err, "Unexpected error")
 
 }
 
@@ -609,8 +586,10 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -682,8 +661,10 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -776,8 +757,10 @@ func FailingTestChannelRace(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channels "Odd", "Even"
@@ -912,6 +895,11 @@ func TestSkippedViewRetrieval(t *testing.T) {
 // Test that housekeeping goroutines get terminated when change cache is stopped
 func TestStopChangeCache(t *testing.T) {
 
+	base.EnableLogKey("Feed")
+	base.EnableLogKey("Feed+")
+	base.EnableLogKey("Changes")
+	base.EnableLogKey("Changes+")
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
@@ -921,6 +909,7 @@ func TestStopChangeCache(t *testing.T) {
 		CachePendingSeqMaxWait: 10 * time.Millisecond,
 		CachePendingSeqMaxNum:  50,
 		CacheSkippedSeqMaxWait: 1 * time.Second}
+
 	// Use leaky bucket to have the tap feed 'lose' document 3
 	leakyConfig := base.LeakyBucketConfig{
 		TapFeedMissingDocs: []string{"doc-3"},
@@ -945,6 +934,7 @@ func TestStopChangeCache(t *testing.T) {
 
 	// Hang around a while to see if the housekeeping tasks fire and panic
 	time.Sleep(2 * time.Second)
+
 }
 
 // Test size config
@@ -970,9 +960,10 @@ func TestChannelCacheSize(t *testing.T) {
 	}
 
 	log.Printf("Options in test:%+v", options)
-	db := setupTestDBWithCacheOptions(t, options)
-
+	db, testBucket := setupTestDBWithCacheOptions(t, options)
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -1117,7 +1108,7 @@ func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntr
 				log.Println("returned numEntries - returning")
 				return nil
 			}
-		case <-time.After(time.Millisecond * 100):
+		case <-time.After(time.Second * 10):
 			timeout = true
 		}
 	}

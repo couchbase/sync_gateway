@@ -38,7 +38,13 @@ func testPartitionMapWithShards(numShards int) *base.IndexPartitions {
 }
 
 func testBitFlagStorage(channelName string) *BitFlagStorage {
-	return NewBitFlagStorage(base.GetIndexBucketOrPanic(), channelName, testPartitionMap())
+
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+
+	// Since the handle to testIndexBucket is getting lost, immediately decrement to disable open bucket counting
+	base.DecrNumOpenBuckets(testIndexBucket.Bucket.GetName())
+
+	return NewBitFlagStorage(testIndexBucket.Bucket, channelName, testPartitionMap())
 }
 
 func testStableSequence() (uint64, error) {

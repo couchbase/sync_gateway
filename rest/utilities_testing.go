@@ -2,16 +2,20 @@ package rest
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"runtime/debug"
 	"testing"
 
+	"github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"runtime/debug"
+	"github.com/couchbaselabs/go.assert"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -33,8 +37,11 @@ type RestTester struct {
 
 func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterBucket == nil {
+
 		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
-		base.GetBucketOrPanic() // side effect of creating/flushing bucket
+		tempBucket := base.GetTestBucketOrPanic() // side effect of creating/flushing bucket
+		tempBucket.Close()
+
 		spec := base.GetTestBucketSpec(base.DataBucket)
 
 		username, password, _ := spec.Auth.GetCredentials()
@@ -133,6 +140,32 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 	return nil
 }
 
+func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
+	err := rt.WaitForDoc(docid)
+	assert.True(t, err == nil)
+
+}
+
+func (rt *RestTester) WaitForDoc(docid string) (err error) {
+	seq, err := rt.SequenceForDoc(docid)
+	if err != nil {
+		return err
+	}
+	return rt.WaitForSequence(seq)
+}
+
+func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
+	database := rt.GetDatabase()
+	if database == nil {
+		return 0, fmt.Errorf("No database found")
+	}
+	doc, err := database.GetDoc(docid)
+	if err != nil {
+		return 0, err
+	}
+	return doc.Sequence, nil
+}
+
 func (rt *RestTester) WaitForSequence(seq uint64) error {
 	database := rt.GetDatabase()
 	if database == nil {
@@ -208,6 +241,55 @@ func (rt *RestTester) TestPublicHandler() http.Handler {
 	return rt.PublicHandler
 }
 
+type changesResults struct {
+	Results []db.ChangeEntry
+}
+
+func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesUrl, username string) (worker base.RetryWorker) {
+
+	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
+
+		var changes changesResults
+
+		response := rt.Send(requestByUser("GET", changesUrl, "", username))
+		err = json.Unmarshal(response.Body.Bytes(), &changes)
+		if err != nil {
+			return false, err, nil
+		}
+		if len(changes.Results) < numChangesExpected {
+			// not enough results, retry
+			return true, nil, nil
+		}
+		// If it made it this far, there is no errors and it got enough changes
+		return false, nil, changes
+	}
+
+	return waitForChangesWorker
+
+}
+
+func (rt *RestTester) WaitForChanges(numChangesExpected int, changesUrl, username string) (changes changesResults, err error) {
+
+	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, changesUrl, username)
+
+	sleeper := base.CreateDoublingSleeperFunc(20, 10)
+
+	err, changesVal := base.RetryLoop("Wait for changes", waitForChangesWorker, sleeper)
+	if err != nil {
+		return changes, err
+	}
+
+	if changesVal == nil {
+		return changes, fmt.Errorf("Got nil value for changes")
+	}
+
+	if changesVal != nil {
+		changes = changesVal.(changesResults)
+	}
+
+	return changes, nil
+}
+
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
@@ -216,6 +298,55 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response
+}
+
+func (rt *RestTester) WaitForNUserViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
+	return rt.WaitForNViewResults(numResultsExpected, viewUrlPath, user, password)
+}
+
+func (rt *RestTester) WaitForNAdminViewResults(numResultsExpected int, viewUrlPath string) (viewResult sgbucket.ViewResult, err error) {
+	return rt.WaitForNViewResults(numResultsExpected, viewUrlPath, nil, "")
+}
+
+// Wait for a certain number of results to be returned from a view query
+// viewUrlPath: is the path to the view, including the db name.  Eg: "/db/_design/foo/_view/bar"
+func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		var response *TestResponse
+		if user != nil {
+			request, _ := http.NewRequest("GET", viewUrlPath, nil)
+			request.SetBasicAuth(user.Name(), password)
+			response = rt.Send(request)
+		} else {
+			response = rt.SendAdminRequest("GET", viewUrlPath, ``)
+		}
+		if response.Code != 200 {
+			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200.", response.Code), sgbucket.ViewResult{}
+		}
+		var result sgbucket.ViewResult
+		json.Unmarshal(response.Body.Bytes(), &result)
+
+		if len(result.Rows) >= numResultsExpected {
+			// Got enough results, break out of retry loop
+			return false, nil, result
+		}
+
+		// Not enough results, retry
+		return true, nil, sgbucket.ViewResult{}
+
+	}
+
+	description := fmt.Sprintf("Wait for %d view results for query to %v", numResultsExpected, viewUrlPath)
+	sleeper := base.CreateDoublingSleeperFunc(20, 10)
+	err, returnVal := base.RetryLoop(description, worker, sleeper)
+
+	if err != nil {
+		return sgbucket.ViewResult{}, err
+	}
+
+	return returnVal.(sgbucket.ViewResult), nil
+
 }
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {

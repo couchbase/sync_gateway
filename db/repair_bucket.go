@@ -328,8 +328,8 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 // Repairs rev tree cycles (see SG issue #2847)
 func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
-	base.LogTo("CRUD+","RepairJobRevTreeCycles() called with doc id: %v", docId)
-	defer base.LogTo("CRUD+","RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", docId, transformed, err)
+	base.LogTo("CRUD+", "RepairJobRevTreeCycles() called with doc id: %v", docId)
+	defer base.LogTo("CRUD+", "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", docId, transformed, err)
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {
