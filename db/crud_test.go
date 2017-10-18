@@ -31,8 +31,11 @@ func getRevTreeList(bucket base.Bucket, key string) (revTreeList, error) {
 // TestRevisionStorageConflictAndTombstones
 // Tests permutations of inline and external storage of conflicts and tombstones
 func TestRevisionStorageConflictAndTombstones(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
+
 	base.TestExternalRevStorage = true
 
 	prop_1000_bytes := base.CreateProperty(1000)
@@ -194,8 +197,11 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 // TestRevisionStoragePruneTombstone - tests cleanup of external tombstone bodies when pruned.
 func TestRevisionStoragePruneTombstone(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
+
 	base.TestExternalRevStorage = true
 
 	prop_1000_bytes := base.CreateProperty(1000)

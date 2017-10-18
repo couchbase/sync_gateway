@@ -54,17 +54,16 @@ func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
 	return leakyBucket
 }
 
-func setupTestDB(t testing.TB) *Database {
-	db, _ := setupTestDBWithCacheOptions(t, CacheOptions{})
-	return db
-}
 
 func setupTestDBForShadowing(t *testing.T) *Database {
 	dbcOptions := DatabaseContextOptions{
 		TrackDocs: true,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	context, err := NewDatabaseContext("db", testBucket().Bucket, false, dbcOptions)
+	tBucket := testBucket()
+	// Since the handle to the test bucket is getting lost, immediately decrement to disable open bucket counting
+	base.DecrNumOpenBuckets(tBucket.Bucket.GetName())
+	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
 	assertNoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assertNoError(t, err, "Couldn't create database 'db'")
@@ -134,7 +133,9 @@ func assertHTTPError(t *testing.T, err error, status int) {
 }
 
 func TestDatabase(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// Test creating & updating a document:
@@ -223,7 +224,9 @@ func TestDatabase(t *testing.T) {
 }
 
 func TestGetDeleted(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	body := Body{"key1": 1234}
@@ -262,7 +265,9 @@ func TestGetDeleted(t *testing.T) {
 
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemovedAsUser(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	rev1body := Body{
@@ -344,7 +349,9 @@ func TestGetRemovedAsUser(t *testing.T) {
 
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemoved(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	rev1body := Body{
@@ -417,7 +424,9 @@ func TestGetRemoved(t *testing.T) {
 
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemovedAndDeleted(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	rev1body := Body{
@@ -515,7 +524,8 @@ func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
 func TestAllDocs(t *testing.T) {
 	// base.LogKeys["Cache"] = true
 	// base.LogKeys["Changes"] = true
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// Lower the log expiration time to zero so no more than 50 items will be kept.
@@ -623,8 +633,10 @@ func TestUpdatePrincipal(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -657,8 +669,10 @@ func TestConflicts(t *testing.T) {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Error: https://gist.github.com/tleyden/3549e4010abff88f2531706887c67271")
 	}
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	/*
@@ -760,7 +774,9 @@ func TestConflicts(t *testing.T) {
 }
 
 func TestSyncFnOnPush(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
@@ -796,7 +812,9 @@ func TestSyncFnOnPush(t *testing.T) {
 }
 
 func TestInvalidChannel(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -807,7 +825,9 @@ func TestInvalidChannel(t *testing.T) {
 }
 
 func TestAccessFunctionValidation(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	var err error
@@ -849,7 +869,8 @@ func TestAccessFunction(t *testing.T) {
 		base.UpdateLogKeys(logKeys, true)
 	*/
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
@@ -887,7 +908,8 @@ func CouchbaseTestAccessFunctionWithVbuckets(t *testing.T) {
 	//base.LogKeys["CRUD"] = true
 	//base.LogKeys["Access"] = true
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	db.SequenceType = ClockSequenceType
@@ -943,7 +965,9 @@ func TestDocIDs(t *testing.T) {
 }
 
 func TestUpdateDesignDoc(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	mapFunction := `function (doc, meta) { emit(); }`
@@ -983,7 +1007,8 @@ func TestImport(t *testing.T) {
 			"Logs: https://gist.github.com/tleyden/77a6aa0cfe6a8395edef616f368e1920")
 	}
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// Add docs to the underlying bucket:
@@ -1009,7 +1034,9 @@ func TestImport(t *testing.T) {
 }
 
 func TestPostWithExistingId(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// Test creating a document with existing id property:
@@ -1043,7 +1070,9 @@ func TestPostWithExistingId(t *testing.T) {
 
 // Unit test for issue #507
 func TestPutWithUserSpecialProperty(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// Test creating a document with existing id property:
@@ -1058,7 +1087,9 @@ func TestPutWithUserSpecialProperty(t *testing.T) {
 
 // Unit test for issue #976
 func TestWithNullPropertyKey(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// Test creating a document with null property key
@@ -1072,7 +1103,9 @@ func TestWithNullPropertyKey(t *testing.T) {
 
 // Unit test for issue #507
 func TestPostWithUserSpecialProperty(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// Test creating a document with existing id property:
@@ -1130,7 +1163,9 @@ func TestIncrRetryUnsuccessful(t *testing.T) {
 }
 
 func TestRecentSequenceHistory(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// Validate recent sequence is written
@@ -1183,7 +1218,8 @@ func TestRecentSequenceHistory(t *testing.T) {
 }
 
 func TestChannelView(t *testing.T) {
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// Create doc
@@ -1216,8 +1252,11 @@ func TestChannelView(t *testing.T) {
 //////// XATTR specific tests.  These tests current require setting DefaultUseXattrs=true, and must be run against a Couchbase bucket
 
 func CouchbaseTestConcurrentImport(t *testing.T) {
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
+
 	base.EnableLogKey("Import+")
 
 	// Add doc to the underlying bucket:
@@ -1240,8 +1279,10 @@ func CouchbaseTestConcurrentImport(t *testing.T) {
 
 func TestQueryAllDocs(t *testing.T) {
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
+
 	viewResult, err := db.queryAllDocs(false)
 	assert.True(t, err == nil)
 	initialTotalRows := viewResult.TotalRows
@@ -1271,7 +1312,8 @@ func TestQueryAllDocs(t *testing.T) {
 
 func TestViewCustom(t *testing.T) {
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// add some docs

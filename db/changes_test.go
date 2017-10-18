@@ -26,7 +26,8 @@ import (
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	base.EnableLogKey("IndexChanges")
@@ -130,7 +131,9 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	}
 
 	base.EnableLogKey("*")
-	db := setupTestDB(t)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -213,7 +216,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
 	}
 
-	db := setupTestDB(t)
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -290,7 +294,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 // Benchmark to validate fix for https://github.com/couchbase/sync_gateway/issues/2428
 func BenchmarkChangesFeedDocUnmarashalling(b *testing.B) {
 
-	db := setupTestDB(b)
+	db, testBucket := setupTestDBWithCacheOptions(b, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(b, db)
 
 	fieldVal := func(valSizeBytes int) string {

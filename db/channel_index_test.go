@@ -37,9 +37,14 @@ type channelIndexTest struct {
 func NewChannelIndex(vbNum int, sequenceGap int, name string) *channelIndexTest {
 	lastSeqs := make([]uint64, vbNum)
 
+	testIndexBucket := base.GetTestIndexBucketOrPanic()
+
+	// Since the testIndexBucket reference is lost, immediately decrement and disable bucket counting for this test
+	base.DecrNumOpenBuckets(testIndexBucket.Bucket.GetName())
+
 	index := &channelIndexTest{
 		numVbuckets:   vbNum,
-		indexBucket:   base.GetTestIndexBucketOrPanic().Bucket,
+		indexBucket:   testIndexBucket.Bucket,
 		sequenceGap:   sequenceGap,
 		lastSequences: lastSeqs,
 		r:             rand.New(rand.NewSource(42)),
