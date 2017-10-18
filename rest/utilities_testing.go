@@ -139,6 +139,33 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 	return nil
 }
 
+func (rt *RestTester) MustWaitForDoc(docid string) {
+	err := rt.WaitForDoc(docid)
+	if err != nil {
+		panic(fmt.Sprintf("Error waiting for doc: %v", docid))
+	}
+}
+
+func (rt *RestTester) WaitForDoc(docid string) (err error) {
+	seq, err := rt.SequenceForDoc(docid)
+	if err != nil {
+		return err
+	}
+	return rt.WaitForSequence(seq)
+}
+
+func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
+	database := rt.GetDatabase()
+	if database == nil {
+		return 0, fmt.Errorf("No database found")
+	}
+	doc, err := database.GetDoc(docid)
+	if err != nil {
+		return 0, err
+	}
+	return doc.Sequence, nil
+}
+
 func (rt *RestTester) WaitForSequence(seq uint64) error {
 	database := rt.GetDatabase()
 	if database == nil {

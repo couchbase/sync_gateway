@@ -1677,11 +1677,14 @@ func TestChannelAccessChanges(t *testing.T) {
 	assertStatus(t, rt.Send(request("PUT", "/db/d1", `{"channel":"delta"}`)), 201) // seq=7
 	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201) // seq=8
 
-	numChangesExpected := 1
-	changes, err := rt.WaitForChanges(numChangesExpected, "/db/_changes", "zegpold")
+	rt.MustWaitForDoc("g1")
+
+	changes := changesResults{}
+	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
+	err = json.Unmarshal(response.Body.Bytes(), &changes)
 
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), numChangesExpected)
+	assert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
 	assert.Equals(t, changes.Results[0].ID, "g1")
 	assert.Equals(t, since.Seq, uint64(8))
@@ -1702,21 +1705,22 @@ func TestChannelAccessChanges(t *testing.T) {
 	zegpold, _ = a.GetUser("zegpold")
 	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x9), "gamma": channels.NewVbSimpleSequence(0x4)})
 
-	// Artificial delay to let updates show up on changes feed
-	time.Sleep(time.Second)
+	rt.MustWaitForDoc("alpha")
 
 	// Look at alice's _changes feed:
-	numChangesExpected = 1
-	changes, err = rt.WaitForChanges(numChangesExpected, "/db/_changes", "alice")
+	changes = changesResults{}
+	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), numChangesExpected)
 	assert.Equals(t, changes.Results[0].ID, "d1")
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
-	numChangesExpected = 2
-	changes, err = rt.WaitForChanges(numChangesExpected, "/db/_changes", "zegpold")
+	changes = changesResults{}
+	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
+	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), numChangesExpected)
+	assert.Equals(t, len(changes.Results), 2)
 	assert.Equals(t, changes.Results[0].ID, "g1")
 	assert.Equals(t, changes.Results[0].Seq.Seq, uint64(8))
 	assert.Equals(t, changes.Results[1].ID, "a1")
@@ -1751,21 +1755,24 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, changeCount, 9)
 
-	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
-	numChangesExpected = len(expectedIDs)
-	changes, err = rt.WaitForChanges(numChangesExpected, "/db/_changes", "alice")
+	// Artificial delay to let updates show up on changes feed
+	// TODO: not sure how to change this to wait for a sequence
+	time.Sleep(time.Second)
 
-	changes.Results = nil
+	changes = changesResults{}
+	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), numChangesExpected)
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	assert.Equals(t, len(changes.Results), len(expectedIDs))
+	json.Unmarshal(response.Body.Bytes(), &changes)
+
 	for i, expectedID := range expectedIDs {
 		assert.Equals(t, changes.Results[i].ID, expectedID)
 	}
 
 	// Check accumulated statistics:
-	assert.True(t, db.ChangesClientStats.TotalCount() >= uint32(5)) // there might be retries, but there should be at least 5 changes requests
+	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(5))
 	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(1))
 	db.ChangesClientStats.Reset()
 	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(0))
