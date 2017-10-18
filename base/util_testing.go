@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/couchbase/gocb"
-	"sync"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
