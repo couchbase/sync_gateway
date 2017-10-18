@@ -68,6 +68,8 @@ func TestViewQuery(t *testing.T) {
 	response = rt.SendRequest("PUT", "/db/doc2", `{"key":7, "value":"seven"}`)
 	assertStatus(t, response, 201)
 
+	// The wait is needed here because the query does not have stale=false.
+	// TODO: update the query to use stale=false and remove the wait
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	assertNoError(t, err, "Got unexpected error")
 	json.Unmarshal(response.Body.Bytes(), &result)
