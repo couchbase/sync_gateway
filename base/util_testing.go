@@ -287,8 +287,6 @@ func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
 
 func (tbm *TestBucketManager) EmptyTestBucket() error {
 
-	log.Printf("Flushing test bucket: %v", tbm.BucketSpec.BucketName)
-
 	// Try to Flush the bucket in a retry loop
 	// Ignore sporadic errors like:
 	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
@@ -334,7 +332,6 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	}
 
 	// Wait until high seq nos are all 0
-	// statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno, false)
 
 	if tbm.Bucket.IoRouter() == nil {
 		return fmt.Errorf("Cannot determine number of vbuckets")
@@ -370,48 +367,6 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	err, _ = RetryLoop(
 		"Wait for vb sequence numbers to be 0",
 		workerHighSeqNosZero,
-		CreateDoublingSleeperFunc(14, 10),
-	)
-	if err != nil {
-		return err
-	}
-
-	// Make sure we can read our own writes.  Workaround attempt for errors:
-	// WARNING: RetryLoop for Get _sync:user: giving up after 11 attempts -- base.RetryLoop() at util.go:298
-	workerReadOwnWrites := func() (shouldRetry bool, err error, value interface{}) {
-
-		key := "_sync:testWorkerReadOwnWrites"
-		val := map[string]interface{}{}
-		val["val"] = "val"
-		_, errInsert := tbm.Bucket.Insert(key, val, 0)
-		if errInsert != nil {
-			// If we got an error inserting, retry
-			Warn("Error inserting key to recently flushed bucket: %v  Retrying.", errInsert)
-			return true, errInsert, nil
-		}
-
-		_, errGet := tbm.Bucket.Get(key, &val)
-		if errGet != nil {
-			// If we got an error getting the key, retry
-			Warn("Error getting key from recently flushed bucket: %v  Retrying.", errGet)
-			return true, errGet, nil
-		}
-
-		_, errRemove := tbm.Bucket.Remove(key, 0)
-		if errRemove != nil {
-			// If we got an error removing the key, retry
-			Warn("Error removing key from recently flushed bucket: %v  Retrying.", errRemove)
-			return true, errRemove, nil
-		}
-
-		// Made it past all checks
-		log.Printf("workerReadOwnWrites completed without errors")
-		return false, nil, nil
-	}
-
-	err, _ = RetryLoop(
-		"EmptyTestBucket",
-		workerReadOwnWrites,
 		CreateDoublingSleeperFunc(14, 10),
 	)
 	if err != nil {

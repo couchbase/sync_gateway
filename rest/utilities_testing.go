@@ -2,14 +2,13 @@ package rest
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"testing"
-
-	"encoding/json"
 	"runtime/debug"
+	"testing"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"

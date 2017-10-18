@@ -1191,7 +1191,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		revid, err = db.Put("doc1", body)
 		// Sleep needed to ensure consistent results when running single-threaded vs. multi-threaded test:
 		// without it we can't predict the relative update times of nextSequence and RecentSequences
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	db.changeCache.waitForSequence(24)
