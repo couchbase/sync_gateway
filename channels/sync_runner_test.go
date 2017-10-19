@@ -3,8 +3,8 @@ package channels
 import (
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbaselabs/go.assert"
 )
 
 func TestRequireUser(t *testing.T) {
@@ -12,11 +12,11 @@ func TestRequireUser(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	assert.Equals(t, err, nil)
 	var result interface{}
-	result,_ = runner.Call(parse(`{}`), parse(`{"_names": "alpha"}`), parse(`{"name": "alpha"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_names": "alpha"}`), parse(`{"name": "alpha"}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["beta", "gamma"]}`), parse(`{"name": "beta"}`))
 	assertNotRejected(t, result)
-	result,_ = runner.Call(parse(`{}`), parse(`{"_names": ["delta"]}`), parse(`{"name": "beta"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["delta"]}`), parse(`{"name": "beta"}`))
 	assertRejected(t, result, base.HTTPErrorf(403, "wrong user"))
 }
 
@@ -25,11 +25,11 @@ func TestRequireRole(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	assert.Equals(t, err, nil)
 	var result interface{}
-	result,_ = runner.Call(parse(`{}`), parse(`{"_roles": ["alpha"]}`), parse(`{"name": "", "roles": {"alpha":""}}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["alpha"]}`), parse(`{"name": "", "roles": {"alpha":""}}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["beta", "gamma"]}`), parse(`{"name": "", "roles": {"beta": ""}}`))
 	assertNotRejected(t, result)
-	result,_ = runner.Call(parse(`{}`), parse(`{"_roles": ["delta"]}`), parse(`{"name": "", "roles": {"beta":""}}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["delta"]}`), parse(`{"name": "", "roles": {"beta":""}}`))
 	assertRejected(t, result, base.HTTPErrorf(403, "missing role"))
 }
 
@@ -38,11 +38,11 @@ func TestRequireAccess(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	assert.Equals(t, err, nil)
 	var result interface{}
-	result,_ = runner.Call(parse(`{}`), parse(`{"_access": ["alpha"]}`), parse(`{"name": "", "channels": ["alpha"]}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["alpha"]}`), parse(`{"name": "", "channels": ["alpha"]}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["beta", "gamma"]}`), parse(`{"name": "", "channels": ["beta"]}`))
 	assertNotRejected(t, result)
-	result,_ = runner.Call(parse(`{}`), parse(`{"_access": ["delta"]}`), parse(`{"name": "", "channels": ["beta"]}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["delta"]}`), parse(`{"name": "", "channels": ["beta"]}`))
 	assertRejected(t, result, base.HTTPErrorf(403, "missing channel access"))
 }
 

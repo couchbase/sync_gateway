@@ -29,6 +29,7 @@ const (
 	revTreeAddRevFailure  = sgErrorCode(0x04)
 	importCancelledFilter = sgErrorCode(0x05)
 	documentMigrated      = sgErrorCode(0x06)
+	fatalBucketConnection = sgErrorCode(0x07)
 )
 
 type SGError struct {
@@ -43,6 +44,7 @@ var (
 	ErrViewTimeoutError      = &SGError{viewTimeoutError}
 	ErrImportCancelledFilter = &SGError{importCancelledFilter}
 	ErrDocumentMigrated      = &SGError{documentMigrated}
+	ErrFatalBucketConnection = &SGError{fatalBucketConnection}
 )
 
 func (e SGError) Error() string {
@@ -61,6 +63,8 @@ func (e SGError) Error() string {
 		return "Failure adding Rev to RevTree"
 	case viewTimeoutError:
 		return "Timeout performing ViewQuery - could indicate that views are still reindexing"
+	case fatalBucketConnection:
+		return "Fatal error connecting to bucket"
 	default:
 		return "Unknown error"
 	}

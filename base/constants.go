@@ -33,8 +33,8 @@ const (
 	DefaultTestShadowPassword   = DefaultTestPassword
 
 	DefaultTestIndexBucketname = "test_indexbucket"
-	DefaultTestIndexUsername = DefaultTestIndexBucketname
-	DefaultTestIndexPassword = DefaultTestPassword
+	DefaultTestIndexUsername   = DefaultTestIndexBucketname
+	DefaultTestIndexPassword   = DefaultTestPassword
 
 	// Env variable to enable user to override the Couchbase Server URL used in tests
 	TestEnvCouchbaseServerUrl = "SG_TEST_COUCHBASE_SERVER_URL"
@@ -51,6 +51,11 @@ const (
 	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"
 
 	DefaultUseXattrs = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
+
+	// Default value of _local document expiry
+	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) //90 days in seconds
+
+	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
 
 )
 

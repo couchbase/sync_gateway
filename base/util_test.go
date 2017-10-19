@@ -253,42 +253,6 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 		expected []string
 	}{
 		{
-			input:    "couchbase://host1",
-			expected: []string{"http://host1:8091"},
-		},
-		{
-			input:    "couchbases://host1",
-			expected: []string{"https://host1:18091"},
-		},
-		{
-			input: "couchbase://host1,host2",
-			expected: []string{
-				"http://host1:8091",
-				"http://host2:8091",
-			},
-		},
-		{
-			input: "couchbase://host1:8091,host2",
-			expected: []string{
-				"http://host1:8091",
-				"http://host2:8091",
-			},
-		},
-		{
-			input: "couchbase://host1:8091,host2,", // trailing comma
-			expected: []string{
-				"http://host1:8091",
-				"http://host2:8091",
-			},
-		},
-		{
-			input: "couchbase://host1:18091,host2:8091",
-			expected: []string{
-				"http://host1:18091",
-				"http://host2:8091",
-			},
-		},
-		{
 			input: "http://host1:8091",
 			expected: []string{
 				"http://host1:8091",
@@ -314,5 +278,11 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 		assertNoError(t, err, "Unexpected error")
 		assert.DeepEquals(t, actual, inputAndExpected.expected)
 	}
+
+	// With a nil (or walrus bucket) and a couchbase or couchbases url, expect errors
+	_, err := CouchbaseURIToHttpURL(nil, "couchbases://host1:18191,host2:18191")
+	assert.True(t, err != nil)
+	_, err = CouchbaseURIToHttpURL(nil, "couchbase://host1")
+	assert.True(t, err != nil)
 
 }

@@ -94,7 +94,8 @@ type DatabaseContextOptions struct {
 	OIDCOptions           *auth.OIDCOptions
 	DBOnlineCallback      DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions         ImportOptions
-	EnableXattr           bool // Use xattr for _sync
+	EnableXattr           bool   // Use xattr for _sync
+	LocalDocExpirySecs    uint32 //The _local doc expiry time in seconds
 }
 
 type OidcTestProviderOptions struct {
@@ -141,7 +142,16 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 	//start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		bucket, err = base.GetBucket(spec, callback)
-		return err != nil, err, bucket
+
+		// By default, if there was an error, retry
+		shouldRetry = err != nil
+
+		if err == base.ErrFatalBucketConnection {
+			base.Warn("Fatal error connecting to bucket: %v.  Not retrying", err)
+			shouldRetry = false
+		}
+
+		return shouldRetry, err, bucket
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
@@ -225,6 +235,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.LogTo("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
+
 		if err = context.tapListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
 			msg := fmt.Sprintf("%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
@@ -411,10 +422,17 @@ func (context *DatabaseContext) RestartListener() error {
 	if context.UseXattrs() && context.autoImport {
 		feedMode = sgbucket.FeedResume
 	}
+
 	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil); err != nil {
 		return err
 	}
 	return nil
+}
+
+// Cache flush support.  Currently test-only - added for unit test access from rest package
+func (context *DatabaseContext) FlushChannelCache() {
+	base.LogTo("Cache", "Flushing channel cache")
+	context.changeCache.Clear()
 }
 
 func (context *DatabaseContext) NotifyUser(username string) {
@@ -1194,9 +1212,23 @@ func (context *DatabaseContext) UseXattrs() bool {
 	return context.Options.EnableXattr
 }
 
+func (context *DatabaseContext) AllowExternalRevBodyStorage() bool {
+
+	// Support unit testing w/out xattrs enabled
+	if base.TestExternalRevStorage {
+		return false
+	}
+	return !context.UseXattrs()
+}
+
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 
 	context.Options.UnsupportedOptions.UserViews.Enabled = &value
+}
+
+// For test usage
+func (context *DatabaseContext) FlushRevisionCache() {
+	context.revisionCache = NewRevisionCache(context.Options.RevisionCacheCapacity, context.revCacheLoader)
 }
 
 //////// SEQUENCE ALLOCATION:

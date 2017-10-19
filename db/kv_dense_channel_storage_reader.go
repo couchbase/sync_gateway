@@ -11,9 +11,9 @@ package db
 
 import (
 	"errors"
-	"sync"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"sync"
 )
 
 // Implementation of ChannelStorage that stores entries as an append-based list of

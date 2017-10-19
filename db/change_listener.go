@@ -25,7 +25,7 @@ type changeListener struct {
 	DocChannel            chan sgbucket.FeedEvent // Passthru channel for doc mutations
 	OnDocChanged          DocChangedFunc          // Called when change arrives on feed
 	trackDocs             bool                    // Whether events should be routed to DocChannel passthru
-
+	terminator            chan bool               // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
@@ -39,12 +39,16 @@ func (listener *changeListener) Init(name string) {
 }
 
 // Starts a changeListener on a given Bucket.
+
 func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, bucketStateNotify sgbucket.BucketNotifyFn) error {
+
+	listener.terminator = make(chan bool)
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
 	listener.FeedArgs = sgbucket.FeedArguments{
-		Backfill: backfillMode,
-		Notify:   bucketStateNotify,
+		Backfill:   backfillMode,
+		Notify:     bucketStateNotify,
+		Terminator: listener.terminator,
 	}
 
 	if trackDocs {
@@ -97,7 +101,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 		key := string(event.Key)
 		if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 			strings.HasPrefix(key, auth.RoleKeyPrefix) { // SG users and roles
-			if listener.OnDocChanged != nil {
+			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
 			listener.Notify(base.SetOf(key))
@@ -124,6 +128,18 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 
 // Stops a changeListener. Any pending Wait() calls will immediately return false.
 func (listener *changeListener) Stop() {
+
+	base.LogTo("Changes+", "changeListener.Stop() called")
+
+	if listener.terminator != nil {
+		close(listener.terminator)
+	}
+
+	if listener.tapNotifier != nil {
+		// Unblock any change listeners blocked on tapNotifier.Wait()
+		listener.tapNotifier.Broadcast()
+	}
+
 	if listener.tapFeed != nil {
 		listener.tapFeed.Close()
 	}
@@ -186,13 +202,24 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 	defer listener.tapNotifier.L.Unlock()
 	base.LogTo("Changes+", "No new changes to send to change listener.  Waiting for %q's count to pass %d",
 		listener.bucketName, counter)
+
 	for {
 		curCounter := listener._currentCount(keys)
 
 		if curCounter != counter || listener.terminateCheckCounter != terminateCheckCounter {
 			return curCounter, listener.terminateCheckCounter
 		}
+
 		listener.tapNotifier.Wait()
+
+		// Don't go back through the for loop if this changeListener was terminated
+		select {
+		case <-listener.terminator:
+			return 0, 0
+		default:
+			// do nothing
+		}
+
 	}
 }
 

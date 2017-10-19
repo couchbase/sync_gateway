@@ -12,17 +12,18 @@ package base
 import (
 	"errors"
 	"fmt"
-	"github.com/couchbase/clog"
-	"github.com/natefinch/lumberjack"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
-	"net/http"
+
+	"github.com/couchbase/clog"
 	"github.com/couchbase/goutils/logging"
+	"github.com/natefinch/lumberjack"
 )
 
 var errMarshalNilLevel = errors.New("can't marshal a nil *Level to text")
@@ -71,7 +72,7 @@ const (
 // and then a division by 2 and return the ceil of the result
 // to round to nearest int sgLevel value
 func (l Level) sgLevel() int {
-	return int(math.Ceil(float64(l + 2) / float64(2)))
+	return int(math.Ceil(float64(l+2) / float64(2)))
 }
 
 // cgLevel returns a compatible go-couchbase/golog Log Level for
@@ -534,9 +535,9 @@ func printf(format string, args ...interface{}) {
 
 func lastComponent(path string) string {
 	if index := strings.LastIndex(path, "/"); index >= 0 {
-		path = path[index + 1:]
+		path = path[index+1:]
 	} else if index = strings.LastIndex(path, "\\"); index >= 0 {
-		path = path[index + 1:]
+		path = path[index+1:]
 	}
 	return path
 }

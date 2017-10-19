@@ -16,7 +16,7 @@ import (
 )
 
 func TestIsValidChannel(t *testing.T) {
-	valid := []string{"*", "**", "a", "a ", "a b", "a*b", "FOO", "123", "-z", "foo_bar", "Éclær", "z7_", "!",  "Z∫•", "*!"}
+	valid := []string{"*", "**", "a", "a ", "a b", "a*b", "FOO", "123", "-z", "foo_bar", "Éclær", "z7_", "!", "Z∫•", "*!"}
 	for _, ch := range valid {
 		if !IsValidChannel(ch) {
 			t.Errorf("IsValidChannel(%q) should be true", ch)

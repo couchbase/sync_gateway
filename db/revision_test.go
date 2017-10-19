@@ -1,8 +1,8 @@
 package db
 
 import (
-	"testing"
 	"log"
+	"testing"
 )
 
 func TestParseRevID(t *testing.T) {

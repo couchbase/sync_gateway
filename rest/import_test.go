@@ -488,6 +488,149 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")
 }
 
+// Structs for manual rev storage validation
+type treeDoc struct {
+	Meta treeMeta `json:"_sync"`
+}
+type treeMeta struct {
+	RevTree treeHistory `json:"history"`
+}
+type treeHistory struct {
+	BodyMap    map[string]string `json:"bodymap"`
+	BodyKeyMap map[string]string `json:"bodyKeyMap"`
+}
+
+// Test migration of a 1.4 doc with large inline revisions.  Validate they get migrated out of the body
+func TestMigrateLargeInlineRevisions(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// Write doc in SG format directly to the bucket
+	key := "TestMigrateLargeInlineRevisions"
+	bodyString := `
+{
+  "_sync": {
+    "rev": "2-d",
+    "flags": 24,
+    "sequence": 8,
+    "recent_sequences": [4,5,6,7,8],
+    "history": {
+      "revs": [
+        "1-089c019bbfaba27047008599143bc66f",
+        "2-b92296d32600ec90dc05ff18ae61a1e8",
+        "2-b",
+        "2-c",
+        "2-d"
+      ],
+      "parents": [-1,0,0,0,0],
+      "bodymap": {
+        "1": "{\"value\":\"%s\"}",
+        "2": "{\"value\":\"%s\"}",
+        "3": "{\"value\":\"%s\"}"
+      },
+      "channels": [null,null,null,null,null]
+    },
+    "cas": "",
+    "time_saved": "2017-09-14T23:54:25.975220906-07:00"
+  },
+  "value": "2-d"
+}`
+	// Inject large property values into the inline bodies
+	largeProperty := base.CreateProperty(1000000)
+	largeBodyString := fmt.Sprintf(bodyString, largeProperty, largeProperty, largeProperty)
+
+	// Create via the SDK with sync metadata intact
+	_, err := bucket.Add(key, 0, []byte(largeBodyString))
+	assertNoError(t, err, "Error writing doc w/ large inline revisions")
+
+	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
+	response := rt.SendAdminRequest("GET", "/db/"+key, "")
+	assert.Equals(t, response.Code, 200)
+
+	// Get raw to retrieve metadata, and validate bodies have been moved to xattr
+	rawResponse := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
+	assert.Equals(t, rawResponse.Code, 200)
+	var doc treeDoc
+	err = json.Unmarshal(rawResponse.Body.Bytes(), &doc)
+	assert.Equals(t, len(doc.Meta.RevTree.BodyKeyMap), 3)
+	assert.Equals(t, len(doc.Meta.RevTree.BodyMap), 0)
+
+}
+
+// Test migration of a 1.5 doc that already includes some external revision storage from docmeta to xattr.
+func TestMigrateWithExternalRevisions(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// Write doc in SG format directly to the bucket
+	key := "TestMigrateWithExternalRevisions"
+	bodyString := `
+{
+  "_sync": {
+    "rev": "2-d",
+    "flags": 24,
+    "sequence": 8,
+    "recent_sequences": [4,5,6,7,8],
+    "history": {
+      "revs": [
+        "1-089c019bbfaba27047008599143bc66f",
+        "2-b92296d32600ec90dc05ff18ae61a1e8",
+        "2-b",
+        "2-c",
+        "2-d"
+      ],
+      "parents": [-1,0,0,0,0],
+      "bodymap": {
+        "2": "{\"value\":\"%s\"}",
+        "3": "{\"value\":\"%s\"}"
+      },
+      "bodyKeyMap": {
+      	"1": "_sync:rb:test"
+      },
+      "channels": [null,null,null,null,null]
+    },
+    "cas": "",
+    "time_saved": "2017-09-14T23:54:25.975220906-07:00"
+  },
+  "value": "2-d"
+}`
+	// Inject large property values into the inline bodies
+	largeProperty := base.CreateProperty(100)
+	largeBodyString := fmt.Sprintf(bodyString, largeProperty, largeProperty)
+
+	// Create via the SDK with sync metadata intact
+	_, err := bucket.Add(key, 0, []byte(largeBodyString))
+	assertNoError(t, err, "Error writing doc w/ large inline revisions")
+
+	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
+	response := rt.SendAdminRequest("GET", "/db/"+key, "")
+	assert.Equals(t, response.Code, 200)
+
+	// Get raw to retrieve metadata, and validate bodies have been moved to xattr
+	rawResponse := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
+	assert.Equals(t, rawResponse.Code, 200)
+	var doc treeDoc
+	err = json.Unmarshal(rawResponse.Body.Bytes(), &doc)
+	assert.Equals(t, len(doc.Meta.RevTree.BodyKeyMap), 1)
+	assert.Equals(t, len(doc.Meta.RevTree.BodyMap), 2)
+}
+
 // Write through SG, non-imported SDK write, subsequent SG write
 func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 

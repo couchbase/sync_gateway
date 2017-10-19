@@ -18,7 +18,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -32,7 +31,8 @@ func e(seq uint64, docid string, revid string) *LogEntry {
 }
 
 func testBucketContext() *DatabaseContext {
-	context, _ := NewDatabaseContext("db", testBucket(), false, DatabaseContextOptions{})
+
+	context, _ := NewDatabaseContext("db", testBucket().Bucket, false, DatabaseContextOptions{})
 	return context
 }
 
@@ -87,6 +87,8 @@ func TestLateSequenceHandling(t *testing.T) {
 
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
@@ -151,6 +153,8 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
 	context := testBucketContext()
 	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
 	cache := newChannelCache(context, "Test1", 0)
 	assert.True(t, cache != nil)
 
@@ -266,12 +270,18 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 // Test notification when buffered entries are processed after a user doc arrives.
 func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	base.EnableLogKey("Cache")
 	base.EnableLogKey("Cache+")
 	base.EnableLogKey("Changes")
 	base.EnableLogKey("Changes+")
-	db := setupTestDBWithCacheOptions(t, CacheOptions{})
+	base.EnableLogKey("DCP")
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
@@ -302,14 +312,19 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 // Test backfill of late arriving sequences to the channel caches
 func TestChannelCacheBackfill(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only working against Walrus currently.  Needs more investigation.  Failure logs: https://gist.github.com/tleyden/7011c68aa85dd739babf90a1a556469d")
 	}
 
 	base.EnableLogKey("Cache")
 	base.EnableLogKey("Changes+")
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -367,16 +382,24 @@ func TestChannelCacheBackfill(t *testing.T) {
 // Test backfill of late arriving sequences to a continuous changes feed
 func TestContinuousChangesBackfill(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	var logKeys = map[string]bool{
 		"Sequences": true,
 		"Cache":     true,
+		"Changes":   true,
 		"Changes+":  true,
+		"DCP":       true,
 	}
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -398,8 +421,8 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.Terminator = make(chan bool)
 	options.Continuous = true
 	options.Wait = true
-
 	defer close(options.Terminator)
+
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
@@ -460,11 +483,16 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	if len(expectedDocs) > 0 {
 		log.Printf("Did not receive expected docs: %v")
 	}
+
 	assert.Equals(t, len(expectedDocs), 0)
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
 
 	var logKeys = map[string]bool{
 		"Cache":    true,
@@ -474,8 +502,10 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -508,7 +538,6 @@ func TestLowSequenceHandling(t *testing.T) {
 	// Array to read changes from feed to support assertions
 	var changes = make([]*ChangeEntry, 0, 50)
 
-	time.Sleep(50 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 4)
 
 	// Validate the initial sequences arrive as expected
@@ -525,7 +554,6 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	db.changeCache.waitForSequenceWithMissing(4)
 
-	time.Sleep(50 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 2)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 6)
@@ -554,8 +582,14 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 		base.UpdateLogKeys(logKeys, true)
 	*/
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -612,6 +646,10 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only working against Walrus currently.  Needs more investigation. " +
 			"Fails with logs: https://gist.github.com/tleyden/98f0415a454256d86b87d6477c1aa5fa")
@@ -623,8 +661,10 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -707,14 +747,20 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 // Test current fails intermittently on concurrent access to var changes.  Disabling for now - should be refactored.
 func FailingTestChannelRace(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	var logKeys = map[string]bool{
 		"Sequences": true,
 	}
 
 	base.UpdateLogKeys(logKeys, true)
 
-	db := setupTestDBWithCacheOptions(t, shortWaitCache())
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channels "Odd", "Even"
@@ -799,6 +845,10 @@ func FailingTestChannelRace(t *testing.T) {
 // been seen on the TAP feed yet).  Longer term could consider enhancing leaky bucket to 'miss' the entry on the tap feed.
 func TestSkippedViewRetrieval(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only working against Walrus currently.  Needs more investigation.  Logs: https://gist.github.com/tleyden/d2e1af32dd6979fae7cf06957aeceef3")
 	}
@@ -844,11 +894,22 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 // Test that housekeeping goroutines get terminated when change cache is stopped
 func TestStopChangeCache(t *testing.T) {
+
+	base.EnableLogKey("Feed")
+	base.EnableLogKey("Feed+")
+	base.EnableLogKey("Changes")
+	base.EnableLogKey("Changes+")
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
 	// Setup short-wait cache to ensure cleanup goroutines fire often
 	cacheOptions := CacheOptions{
 		CachePendingSeqMaxWait: 10 * time.Millisecond,
 		CachePendingSeqMaxNum:  50,
 		CacheSkippedSeqMaxWait: 1 * time.Second}
+
 	// Use leaky bucket to have the tap feed 'lose' document 3
 	leakyConfig := base.LeakyBucketConfig{
 		TapFeedMissingDocs: []string{"doc-3"},
@@ -873,10 +934,15 @@ func TestStopChangeCache(t *testing.T) {
 
 	// Hang around a while to see if the housekeeping tasks fire and panic
 	time.Sleep(2 * time.Second)
+
 }
 
 // Test size config
 func TestChannelCacheSize(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
 
 	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://github.com/couchbase/sync_gateway/issues/2561#issuecomment-305353813")
@@ -894,9 +960,10 @@ func TestChannelCacheSize(t *testing.T) {
 	}
 
 	log.Printf("Options in test:%+v", options)
-	db := setupTestDBWithCacheOptions(t, options)
-
+	db, testBucket := setupTestDBWithCacheOptions(t, options)
 	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -1041,7 +1108,7 @@ func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntr
 				log.Println("returned numEntries - returning")
 				return nil
 			}
-		case <-time.After(time.Millisecond * 100):
+		case <-time.After(time.Second * 10):
 			timeout = true
 		}
 	}

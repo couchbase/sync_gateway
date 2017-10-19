@@ -28,6 +28,7 @@ import (
 )
 
 func TestUserAPI(t *testing.T) {
+
 	// PUT a user
 	var rt RestTester
 	defer rt.Close()
@@ -101,8 +102,40 @@ func TestUserAPI(t *testing.T) {
 	// DELETE the user
 	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 
+	// POST a user with URL encoded '|' in name see #2870
+	assertStatus(t, rt.SendAdminRequest("POST", "/db/_user/", `{"name":"0%7C59", "password":"letmein", "admin_channels":["foo", "bar"]}`), 201)
+
+	// GET the user, will fail
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C59", ""), 404)
+
+	// DELETE the user, will fail
+	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%7C59", ""), 404)
+
+	// GET the user, double escape username, will succeed
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%257C59", ""), 200)
+
+	// DELETE the user, double escae usename, will succeed
+	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%257C59", ""), 200)
+
+	// POST a user with URL encoded '|' and unencoded @ in name see #2870
+	assertStatus(t, rt.SendAdminRequest("POST", "/db/_user/", `{"name":"0%7C@59", "password":"letmein", "admin_channels":["foo", "bar"]}`), 201)
+
+	// GET the user, will fail
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C@59", ""), 404)
+
+	// DELETE the user, will fail
+	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%7C@59", ""), 404)
+
+	// GET the user, double escape username, will succeed
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%257C%4059", ""), 200)
+
+	// DELETE the user, double escae usename, will succeed
+	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%257C%4059", ""), 200)
+
 }
+
 func TestUserPasswordValidation(t *testing.T) {
+
 	// PUT a user
 	var rt RestTester
 	defer rt.Close()
@@ -152,6 +185,7 @@ func TestUserPasswordValidation(t *testing.T) {
 }
 
 func TestUserAllowEmptyPassword(t *testing.T) {
+
 	// PUT a user
 	var rt RestTester
 	defer rt.Close()
@@ -372,6 +406,7 @@ func readContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
 }
 
 func TestRoleAPI(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -444,6 +479,7 @@ func TestGuestUser(t *testing.T) {
 //Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly
 // fixes #974
 func TestSessionTtlGreaterThan30Days(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -495,6 +531,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 }
 
 func TestSessionExtension(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -664,6 +701,7 @@ func TestFlush(t *testing.T) {
 
 //Test a single call to take DB offline
 func TestDBOfflineSingle(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -685,6 +723,7 @@ func TestDBOfflineSingle(t *testing.T) {
 // Ensure both calls succeed and that DB is offline
 // when both calls return
 func TestDBOfflineConcurrent(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -725,6 +764,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 
 //Test that a DB can be created offline
 func TestStartDBOffline(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 	log.Printf("Taking DB offline")
@@ -744,6 +784,7 @@ func TestStartDBOffline(t *testing.T) {
 //Take DB offline and ensure that normal REST calls
 //fail with status 503
 func TestDBOffline503Response(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -766,6 +807,7 @@ func TestDBOffline503Response(t *testing.T) {
 
 //Take DB offline and ensure can put db config
 func TestDBOfflinePutDbConfig(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -788,6 +830,7 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 
 //Take DB offline and ensure can post _resync
 func TestDBOfflinePostResync(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -853,6 +896,7 @@ func RaceTestDBOfflineSingleResync(t *testing.T) {
 
 // Single threaded bring DB online
 func TestDBOnlineSingle(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -885,6 +929,7 @@ func TestDBOnlineSingle(t *testing.T) {
 //Both should return success and DB should be online
 //once both goroutines return
 func TestDBOnlineConcurrent(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -933,6 +978,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 
 // Test bring DB online with delay of 1 second
 func TestSingleDBOnlineWithDelay(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -971,6 +1017,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 // BD should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1017,6 +1064,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 // BD should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithTwoDelays(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1075,6 +1123,7 @@ func (rt *RestTester) createSession(t *testing.T, username string) string {
 }
 
 func TestPurgeWithBadJsonPayload(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1083,6 +1132,7 @@ func TestPurgeWithBadJsonPayload(t *testing.T) {
 }
 
 func TestPurgeWithNonArrayRevisionList(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1095,6 +1145,7 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 }
 
 func TestPurgeWithEmptyRevisionList(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1107,6 +1158,7 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 }
 
 func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1119,6 +1171,7 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 }
 
 func TestPurgeWithNonStarRevision(t *testing.T) {
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1186,6 +1239,11 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 }
 
 func TestReplicateErrorConditions(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
+	}
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1232,6 +1290,11 @@ func TestReplicateErrorConditions(t *testing.T) {
 
 //These tests validate request parameters not actual replication
 func TestDocumentChangeReplicate(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
+	}
+
 	var rt RestTester
 	defer rt.Close()
 

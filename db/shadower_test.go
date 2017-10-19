@@ -1,28 +1,26 @@
 package db
 
 import (
+	"encoding/json"
+	"fmt"
 	"regexp"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/go.assert"
-
-	"encoding/json"
-
-	"fmt"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbaselabs/go.assert"
 )
 
-func makeExternalBucket() base.Bucket {
+func makeExternalBucket() base.TestBucket {
 
 	// Call this for the side effect of emptying out the data bucket, in case it interferes
 	// with bucket shadowing tests by causing unwanted data to get pulled into shadow bucket
-	base.GetBucketOrPanic()
+	tempBucket := base.GetTestBucketOrPanic()
+	tempBucket.Close()
 
-	return base.GetShadowBucketOrPanic()
+	return base.GetTestShadowBucketOrPanic()
 }
 
 // Evaluates a condition every 100ms until it becomes true. If 3sec elapse, fails an assertion
@@ -44,8 +42,11 @@ func TestShadowerPull(t *testing.T) {
 		t.Skip("BucketShadowing with XATTRS is not a supported configuration")
 	}
 
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+
 	bucket.Set("key1", 0, Body{"foo": 1})
 	bucket.Set("key2", 0, Body{"bar": -1})
 	bucket.SetRaw("key3", 0, []byte("qwertyuiop")) //will be ignored
@@ -80,6 +81,10 @@ func TestShadowerPull(t *testing.T) {
 	assert.True(t, doc1.hasFlag(channels.Deleted))
 	_, err = db.Get("key1")
 	assert.DeepEquals(t, err, &base.HTTPError{Status: 404, Message: "deleted"})
+
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&shadower.pullCount) >= 4
+	})
 }
 
 func TestShadowerPullWithNotifications(t *testing.T) {
@@ -89,8 +94,9 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 	}
 
 	//Create shadow bucket
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	//New docs should write notification events
 	bucket.Set("key1", 0, Body{"foo": 1})
@@ -144,6 +150,9 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 
 	assert.True(t, channelSize == 3)
 
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&shadower.pullCount) >= 4
+	})
 }
 
 func TestShadowerPush(t *testing.T) {
@@ -158,8 +167,9 @@ func TestShadowerPush(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
@@ -191,6 +201,10 @@ func TestShadowerPush(t *testing.T) {
 		return err != nil
 	})
 	assert.True(t, base.IsDocNotFoundError(err))
+
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&db.Shadower.pullCount) >= 3
+	})
 }
 
 // Make sure a rev inserted into the db by a client replicator doesn't get echoed from the
@@ -208,8 +222,9 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
@@ -246,8 +261,9 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
@@ -303,8 +319,10 @@ func TestShadowerPattern(t *testing.T) {
 		t.Skip("BucketShadowing with XATTRS is not a supported configuration")
 	}
 
-	bucket := makeExternalBucket()
-	defer bucket.Close()
+	testBucket := makeExternalBucket()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
 	bucket.Set("key1", 0, Body{"foo": 1})
 	bucket.Set("ignorekey", 0, Body{"bar": -1})
 	bucket.Set("key2", 0, Body{"bar": -1})
@@ -331,4 +349,8 @@ func TestShadowerPattern(t *testing.T) {
 	assert.DeepEquals(t, doc1.body, Body{"foo": float64(1)})
 	assert.True(t, docI == nil)
 	assert.DeepEquals(t, doc2.body, Body{"bar": float64(-1)})
+
+	waitFor(t, func() bool {
+		return atomic.LoadUint64(&shadower.pullCount) >= 2
+	})
 }

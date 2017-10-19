@@ -70,8 +70,8 @@ func (body Body) ImmutableAttachmentsCopy() Body {
 // Returns the expiry as uint32 (using getExpiry), and removes the _exp property from the body
 func (body Body) extractExpiry() (uint32, error) {
 
-	exp, err := body.getExpiry()
-	if err != nil {
+	exp, present, err := body.getExpiry()
+	if !present || err != nil {
 		return exp, err
 	}
 	delete(body, "_exp")
@@ -84,33 +84,33 @@ func (body Body) extractExpiry() (uint32, error) {
 //   2. String JSON values that are numbers are converted to int32 and returned as-is
 //   3. String JSON values that are ISO-8601 dates are converted to UNIX time and returned
 //   4. Null JSON values return 0
-func (body Body) getExpiry() (uint32, error) {
+func (body Body) getExpiry() (uint32, bool, error) {
 	rawExpiry, ok := body["_exp"]
 	if !ok {
-		return 0, nil
+		return 0, false, nil //_exp not present
 	}
 	switch expiry := rawExpiry.(type) {
 	case float64:
-		return uint32(expiry), nil
+		return uint32(expiry), true, nil
 	case string:
 		// First check if it's a numeric string
 		expInt, err := strconv.ParseInt(expiry, 10, 32)
 		if err == nil {
-			return uint32(expInt), nil
+			return uint32(expInt), true, nil
 		}
 		// Check if it's an ISO-8601 date
 		expRFC3339, err := time.Parse(time.RFC3339, expiry)
 		if err == nil {
-			return uint32(expRFC3339.Unix()), nil
+			return uint32(expRFC3339.Unix()), true, nil
 		} else {
-			return 0, fmt.Errorf("Unable to parse expiry %s as either numeric or date expiry:%v", err)
+			return 0, true, fmt.Errorf("Unable to parse expiry %s as either numeric or date expiry:%v", err)
 		}
 	case nil:
 		// Leave as zero/empty expiry
-		return 0, nil
+		return 0, true, nil
 	}
 
-	return 0, nil
+	return 0, true, nil
 }
 
 // nonJSONPrefix is used to ensure old revision bodies aren't hidden from N1QL/Views.

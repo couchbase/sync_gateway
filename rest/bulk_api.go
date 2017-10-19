@@ -257,6 +257,48 @@ func (h *handler) handleDump() error {
 	return nil
 }
 
+// HTTP handler for _repair
+func (h *handler) handleRepair() error {
+
+	if true == true {
+		return fmt.Errorf("_repair endpoint disabled")
+	}
+
+	base.LogTo("HTTP", "Repair bucket")
+
+	// Todo: is this actually needed or does something else in the handler do it?  I can't find that..
+	defer h.requestBody.Close()
+
+	body, err := h.readBody()
+	if err != nil {
+		return err
+	}
+
+	repairBucketParams := db.RepairBucketParams{}
+	if err := json.Unmarshal(body, &repairBucketParams); err != nil {
+		return fmt.Errorf("Error unmarsalling %v into RepairJobParams.  Err: %v", string(body), err)
+	}
+
+	repairBucket := db.NewRepairBucket(h.db.Bucket)
+
+	repairBucket.InitFrom(repairBucketParams)
+
+	repairBucketResult, repairDocsErr := repairBucket.RepairBucket()
+	if repairDocsErr != nil {
+		return fmt.Errorf("Error repairing bucket: %v", err)
+	}
+
+	resultMarshalled, err := json.Marshal(repairBucketResult)
+	if err != nil {
+		return fmt.Errorf("Error marshalling repairBucketResult: %+v", repairBucketResult)
+	}
+
+	h.setHeader("Content-Type", "application/json")
+	_, err = h.response.Write(resultMarshalled)
+
+	return err
+}
+
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
@@ -421,11 +463,11 @@ func (h *handler) handleBulkDocs() error {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Document body must be JSON")
 			return err
 		}
-		docid, ok := doc["_id"].(string)
-		if !ok {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Document id must be string")
-			return err
-		}
+
+		// If ID is present, check whether local doc. (note: if _id is absent or non-string, docid will be
+		// empty string and handled during normal doc processing)
+		docid, _ := doc["_id"].(string)
+
 		if strings.HasPrefix(docid, "_local/") {
 			localDocs = append(localDocs, doc)
 		} else {
