@@ -1679,7 +1679,8 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 
 	for viewName, view := range sgDesignDoc.Views {
 		gocbView := gocb.View{
-			Map: view.Map,
+			Map:    view.Map,
+			Reduce: view.Reduce,
 		}
 		gocbDesignDoc.Views[viewName] = gocbView
 	}
