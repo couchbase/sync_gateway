@@ -380,6 +380,13 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		return
 	}
 
+	if len(docJSON) == 0 {
+		if event.DataType&base.MemcachedDataTypeXattr != 0 {
+			// Try to diagnose https://github.com/couchbase/sync_gateway/issues/2982
+			panic(fmt.Sprintf("MemcachedDataTypeXattr flag set, but len(docJSON) == 0 for event: %+v", event))
+		}
+	}
+
 	// First unmarshal the doc (just its metadata, to save time/memory):
 	syncData, rawBody, rawXattr, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
 	if err != nil {
