@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/couchbaselabs/sync_gateway_admin_ui"
+	"github.com/couchbaselabs/go-blip-sync"
 	"github.com/gorilla/mux"
 )
 
@@ -108,7 +109,7 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	oidcr.Handle("/authenticate", makeHandler(sc, publicPrivs,
 		(*handler).handleOidcTestProviderAuthenticate)).Methods("GET", "POST")
 
-	dbr.Handle("/_blipsync", makeHandler(sc, privs, (*handler).handleBLIPSync)).Methods("GET")
+	dbr.Handle("/_blipsync", makeHandler(sc, privs, b(*handler).handleBLIPSync)).Methods("GET")
 
 	return r, dbr
 }
