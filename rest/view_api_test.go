@@ -275,10 +275,6 @@ func TestUserViewQuery(t *testing.T) {
 // This includes a fix for #857
 func TestAdminReduceViewQuery(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
-	}
-
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
@@ -324,10 +320,6 @@ func TestAdminReduceViewQuery(t *testing.T) {
 
 func TestAdminReduceSumQuery(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
-	}
-
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
@@ -359,10 +351,6 @@ func TestAdminReduceSumQuery(t *testing.T) {
 
 func TestAdminGroupReduceSumQuery(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
-	}
-
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
@@ -393,10 +381,6 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 }
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
-
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
-	}
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
