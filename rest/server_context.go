@@ -265,6 +265,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	server := "http://localhost:8091"
 	pool := "default"
 	bucketName := config.Name
+	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds
 
 	if config.Server != nil {
 		server = *config.Server
@@ -284,6 +285,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
+	if config.OldRevExpirySeconds != nil && *config.OldRevExpirySeconds >= 0 {
+		oldRevExpirySeconds = int(*config.OldRevExpirySeconds)
+  }
+  
 	localDocExpirySecs := base.DefaultLocalDocExpirySecs
 	if config.LocalDocExpirySecs != nil && *config.LocalDocExpirySecs >= 0 {
 		localDocExpirySecs = *config.LocalDocExpirySecs
@@ -510,6 +515,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		IndexOptions:          channelIndexOptions,
 		SequenceHashOptions:   sequenceHashOptions,
 		RevisionCacheCapacity: revCacheSize,
+		OldRevExpirySeconds:   oldRevExpirySeconds,
 		LocalDocExpirySecs:    localDocExpirySecs,
 		AdminInterface:        sc.config.AdminInterface,
 		UnsupportedOptions:    config.Unsupported,
