@@ -899,6 +899,10 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
+	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
+		t.Skip("Disabled until issue is fixed: https://github.com/couchbase/sync_gateway/issues/2983")
+	}
+
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
 	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt1.Close()
