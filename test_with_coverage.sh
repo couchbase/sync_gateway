@@ -18,15 +18,13 @@ else
     echo "Please install gocoverutil by running 'go get -u github.com/AlekSi/gocoverutil'"
 fi
 
-echo "Running Sync Gateway unit tests"
-export SG_TEST_BACKING_STORE=Walrus
-gocoverutil -coverprofile=cover_sg.out test -v "$@" -covermode=count github.com/couchbase/sync_gateway/...
+echo "Running Sync Gateway unit tests against Walrus"
+SG_TEST_USE_XATTRS="false" SG_TEST_BACKING_STORE=Walrus gocoverutil -coverprofile=cover_sg.out test -v "$@" -covermode=count github.com/couchbase/sync_gateway/...
 go tool cover -html=cover_sg.out -o cover_sg.html
 
 echo "Running Sync Gateway integraton unit tests"
-export SG_TEST_BACKING_STORE=Couchbase 
-echo "Integration mode: forcing tests to run in serial across packages via -p 1 flag"
-gocoverutil -coverprofile=cover_sg_integration.out test -v "$@" -covermode=count github.com/couchbase/sync_gateway/...
+echo "Integration mode: tests to run in serial across packages by default using gocoverutil"
+SG_TEST_BACKING_STORE=Couchbase gocoverutil -coverprofile=cover_sg_integration.out test -v "$@" -covermode=count github.com/couchbase/sync_gateway/...
 go tool cover -html=cover_sg_integration.out -o cover_sg_integration.html
 
 echo "Merging coverage reports"
