@@ -131,7 +131,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 		})
 	}
 	if options.IncludeDocs {
-		if doc.body == nil {
+		if doc.Body() == nil {
 			base.Warn("AddDocInstanceToChangeEntry called with options.IncludeDocs, but doc is missing Body")
 			return
 		}

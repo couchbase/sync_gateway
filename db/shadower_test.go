@@ -46,7 +46,6 @@ func TestShadowerPull(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-
 	bucket.Set("key1", 0, Body{"foo": 1})
 	bucket.Set("key2", 0, Body{"bar": -1})
 	bucket.SetRaw("key3", 0, []byte("qwertyuiop")) //will be ignored
@@ -66,8 +65,8 @@ func TestShadowerPull(t *testing.T) {
 	})
 	doc1, _ = db.GetDoc("key1")
 	doc2, _ = db.GetDoc("key2")
-	assert.DeepEquals(t, doc1.body, Body{"foo": float64(1)})
-	assert.DeepEquals(t, doc2.body, Body{"bar": float64(-1)})
+	assert.DeepEquals(t, doc1.Body(), Body{"foo": float64(1)})
+	assert.DeepEquals(t, doc2.Body(), Body{"bar": float64(-1)})
 
 	base.Log("Deleting remote doc")
 	bucket.Delete("key1")
@@ -346,9 +345,9 @@ func TestShadowerPattern(t *testing.T) {
 	doc2, err := db.GetDoc("key2")
 	assertNoError(t, err, fmt.Sprintf("Error getting key2: %v", err))
 
-	assert.DeepEquals(t, doc1.body, Body{"foo": float64(1)})
+	assert.DeepEquals(t, doc1.Body(), Body{"foo": float64(1)})
 	assert.True(t, docI == nil)
-	assert.DeepEquals(t, doc2.body, Body{"bar": float64(-1)})
+	assert.DeepEquals(t, doc2.Body(), Body{"bar": float64(-1)})
 
 	waitFor(t, func() bool {
 		return atomic.LoadUint64(&shadower.pullCount) >= 2

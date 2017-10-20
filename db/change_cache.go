@@ -254,7 +254,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 		entry.Skipped = true
 		// Need to populate the actual channels for this entry - the entry returned from the * channel
 		// view will only have the * channel
-		doc, err := c.context.GetDoc(entry.DocID)
+		doc, err := c.context.GetDocument(entry.DocID, DocUnmarshalNoHistory)
 		if err != nil {
 			base.Warn("Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", entry.DocID, entry.Sequence)
 			continue

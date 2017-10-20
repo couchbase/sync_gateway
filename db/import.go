@@ -57,7 +57,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool
 		Cas:   existingDoc.Cas,
 	}
 
-	return db.importDoc(docid, existingDoc.body, isDelete, existingBucketDoc, mode)
+	return db.importDoc(docid, existingDoc.Body(), isDelete, existingBucketDoc, mode)
 }
 
 func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *document, err error) {
@@ -81,7 +81,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			}
 			// If this is an on-demand import, we want to continue to import the current version of the doc.  Re-initialize existing doc based on the latest doc
 			if mode == ImportOnDemand {
-				body = doc.body
+				body = doc.Body()
 				existingDoc = &sgbucket.BucketDocument{
 					Cas: doc.Cas,
 				}
@@ -102,7 +102,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			}
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
 			doc = migratedDoc
-			body = migratedDoc.body
+			body = migratedDoc.Body()
 			base.LogTo("Migrate", "Falling back to import with cas: %v", doc.Cas)
 		}
 
@@ -152,7 +152,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 
 		// During import, oldDoc (doc.Body) is nil (since it's no longer available)
-		doc.body = nil
+		doc.RemoveBody()
 
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 
@@ -197,7 +197,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 
 			// If an xattr exists on the doc, someone has already migrated.  Cancel and return for potential import checking.
 			if len(existingDoc.Xattr) > 0 {
-				updatedDoc, unmarshalErr := unmarshalDocumentWithXattr(docid, existingDoc.Body, existingDoc.Xattr, cas)
+				updatedDoc, unmarshalErr := unmarshalDocumentWithXattr(docid, existingDoc.Body, existingDoc.Xattr, cas, DocUnmarshalAll)
 				if unmarshalErr != nil {
 					return nil, false, unmarshalErr
 				}

@@ -709,8 +709,8 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change with the higher revid won:
 	gotBody, err := db.Get("doc")
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-b", "n": int64(2),
-		"channels": []interface{}{"all", "2b"}})
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-b", "n": 2,
+		"channels": []string{"all", "2b"}})
 
 	// Verify we can still get the other two revisions:
 	gotBody, err = db.GetRev("doc", "1-a", false, nil)
@@ -750,8 +750,8 @@ func TestConflicts(t *testing.T) {
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
 	gotBody, err = db.Get("doc")
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
-		"channels": []interface{}{"all", "2a"}})
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": 3,
+		"channels": []string{"all", "2a"}})
 
 	// Verify channel assignments are correct for channels defined by 2-a:
 	doc, _ := db.GetDoc("doc")
