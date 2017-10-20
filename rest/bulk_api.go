@@ -210,7 +210,19 @@ func (h *handler) handleAllDocs() error {
 	if explicitDocIDs != nil {
 		count := uint64(0)
 		for _, docID := range explicitDocIDs {
-			writeDoc(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0}, nil)
+			if strings.HasPrefix(docID, "_design") {
+				h.assertAdminOnly() // "_" prefix is for special docs
+				offset := len("_design/")
+				idslug := docID[offset:]
+				var result interface{}
+				if err := h.db.GetDesignDoc(idslug, &result); err != nil {
+					base.Logf("GetDesignDoc error %s %s ", docID, err)
+				} else {
+					h.addJSON(result)
+				}
+			} else {
+				writeDoc(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0}, nil)
+			}
 			count++
 			if options.Limit > 0 && count == options.Limit {
 				break
