@@ -342,10 +342,14 @@ func ParseLogFlagsMap(flags map[string]bool) {
 				if !strings.HasSuffix(key, "++") {
 					//If key does not have a "+" suffix then remove "+" suffix
 					if !strings.HasSuffix(key, "+") {
+						// remove the "+" suffix as well
+						delete(LogKeys, key+"+")
+						// remove the "++" suffix as well
+						delete(LogKeys, key+"++")
+					} else {
+						// remove the "++" suffix as well
 						delete(LogKeys, key+"+")
 					}
-					// remove the "++" suffix as well
-					delete(LogKeys, key+"++")
 				}
 			}
 			if key == "*" {

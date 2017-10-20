@@ -348,6 +348,52 @@ func TestLogging (t *testing.T) {
 	var deletedLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &deletedLogKeys)
 	assert.DeepEquals(t, deletedLogKeys, map[string]interface{}{"Cache":true, "HTTP":true})
+
+	//Enable Changes++, which should enable Changes+ and Changes (POST append logKeys)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
+
+	response = rt.SendAdminRequest("GET", "/_logging","")
+	var appendedLogKeys map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &appendedLogKeys)
+	assert.DeepEquals(t, appendedLogKeys, map[string]interface{}{"Changes++":true, "Changes+":true, "Changes":true, "Cache":true, "HTTP":true})
+
+	//Disable Changes++ (POST modifies logKeys)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
+
+	response = rt.SendAdminRequest("GET", "/_logging","")
+	var disabledLogKeys map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &disabledLogKeys)
+	assert.DeepEquals(t, disabledLogKeys, map[string]interface{}{"Changes":true, "Changes+":true, "Cache":true, "HTTP":true})
+
+	//Re-Enable Changes++, which should enable Changes+ and Changes (POST append logKeys)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
+
+	//Disable Changes+ which should also disable Changes++ (POST modifies logKeys)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes+":false}`), 200)
+
+	response = rt.SendAdminRequest("GET", "/_logging","")
+	var disabled2LogKeys map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &disabled2LogKeys)
+	assert.DeepEquals(t, disabled2LogKeys, map[string]interface{}{"Changes":true, "Cache":true, "HTTP":true})
+
+	//Re-Enable Changes++, which should enable Changes+ and Changes (POST append logKeys)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
+	
+	//Disable Changes which should also disable Changes+ and Changes++ (POST modifies logKeys)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
+
+	response = rt.SendAdminRequest("GET", "/_logging","")
+	var disabled3LogKeys map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &disabled3LogKeys)
+	assert.DeepEquals(t, disabled3LogKeys, map[string]interface{}{"Cache":true, "HTTP":true})
+
+	//Disable all logKeys by using PUT with an empty channel list
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{}`), 200)
+
+	response = rt.SendAdminRequest("GET", "/_logging","")
+	var noLogKeys map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &noLogKeys)
+	assert.DeepEquals(t, noLogKeys, map[string]interface{}{})
 }
 
 // Test user delete while that user has an active changes feed (see issue 809)
