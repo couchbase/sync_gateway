@@ -112,6 +112,7 @@ type UnsupportedOptions struct {
 	UserViews        UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
 	Replicator2      bool                    `json:"replicator_2,omitempty"`       // Enable new replicator (_blipsync)
 	OidcTestProvider OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
+	AllowConflicts   *bool                   `json:"allow_conflicts"`              // False forbids creating conflicts
 }
 
 // Options associated with the import of documents not written by Sync Gateway
@@ -1230,6 +1231,13 @@ func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 // For test usage
 func (context *DatabaseContext) FlushRevisionCache() {
 	context.revisionCache = NewRevisionCache(context.Options.RevisionCacheCapacity, context.revCacheLoader)
+}
+
+func (context *DatabaseContext) AllowConflicts() bool {
+	if context.Options.UnsupportedOptions.AllowConflicts != nil {
+		return *context.Options.UnsupportedOptions.AllowConflicts
+	}
+	return base.DefaultAllowConflicts
 }
 
 //////// SEQUENCE ALLOCATION:
