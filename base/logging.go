@@ -336,6 +336,17 @@ func ParseLogFlagsMap(flags map[string]bool) {
 				}
 			} else {
 				delete(LogKeys, key)
+				//if key already has "++" suffix there is no further processing
+				// else if it has "+" suffix disable "++" suffix as well
+				// else disable "+" suffix and "++" suffix
+				if !strings.HasSuffix(key, "++") {
+					//If key does not have a "+" suffix then remove "+" suffix
+					if !strings.HasSuffix(key, "+") {
+						delete(LogKeys, key+"+")
+					}
+					// remove the "++" suffix as well
+					delete(LogKeys, key+"++")
+				}
 			}
 			if key == "*" {
 				logStar = enabled
