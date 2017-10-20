@@ -818,8 +818,13 @@ func TestNoConflictsMode(t *testing.T) {
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"4-a", "3-a", "2-a", "1-a"}), "add 4-a")
 	delete(body, "_deleted")
 
-	// Create a non-conflict with no history (re-creating the document):
-	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-f"}), "add 1-f")
+	// Create a non-conflict with no history (re-creating the document, but with an invalid rev):
+	err = db.PutExistingRev("doc", body, []string{"1-f"})
+	assertHTTPError(t, err, 409)
+
+	// Resurrect the tombstoned document with a valid history
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"5-f", "4-a"}), "add 5-f")
+	delete(body, "_deleted")
 
 	// Create a new document with a longer history:
 	assertNoError(t, db.PutExistingRev("COD", body, []string{"4-a", "3-a", "2-a", "1-a"}), "add COD")
@@ -828,7 +833,7 @@ func TestNoConflictsMode(t *testing.T) {
 	// Now use Put instead of PutExistingRev:
 
 	// Successfully add a new revision:
-	_, err = db.Put("doc", Body{"_rev": "1-f", "foo": -1})
+	_, err = db.Put("doc", Body{"_rev": "5-f", "foo": -1})
 	assertNoError(t, err, "Put rev after 1-f")
 
 	// Try to create a conflict:

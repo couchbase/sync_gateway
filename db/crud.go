@@ -686,14 +686,9 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 
 		if !db.AllowConflicts() {
-			// Conflict-free mode: If doc exists, its current rev must be the new rev's parent...
+			// Conflict-free mode: If doc exists, its current rev must be the new rev's parent.
 			if parent != doc.CurrentRev && doc.CurrentRev != "" {
-				if len(docHistory) == 1 && doc.History[doc.CurrentRev].Deleted {
-					// ...unless the doc is currently deleted and the new rev has no parent.
-					parent = doc.CurrentRev
-				} else {
-					return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
-				}
+				return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
 		}
 
