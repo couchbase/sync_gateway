@@ -249,6 +249,14 @@ func LogNoTime() {
 	logNoTime = true
 }
 
+func LogTime() {
+	logLock.RLock()
+	defer logLock.RUnlock()
+	//Enable timestamp for default logger, this may be used by other packages
+	log.SetFlags(log.Flags() | (log.Ldate | log.Ltime | log.Lmicroseconds))
+	logNoTime = false
+}
+
 // Parses a comma-separated list of log keys, probably coming from an argv flag.
 // The key "bw" is interpreted as a call to LogNoColor, not a key.
 func ParseLogFlag(flag string) {
@@ -285,39 +293,96 @@ func (config *LogAppenderConfig) ValidateLogAppender() error {
 // The key "bw" is interpreted as a call to LogNoColor, not a key.
 func ParseLogFlags(flags []string) {
 	logLock.Lock()
+	keyMap := make(map[string]bool)
+
 	for _, key := range flags {
-		switch key {
-		case "bw":
-			LogNoColor()
-		case "color":
-			LogColor()
-		case "notime":
-			LogNoTime()
-		default:
-			LogKeys[key] = true
-			if key == "*" {
-				logStar = true
-				EnableSgReplicateLogging()
-			}
-			// gocb requires a call into the gocb library to enable logging
-			if key == "gocb" {
-				EnableGoCBLogging()
-			}
-			if key == "Replicate" {
-				EnableSgReplicateLogging()
-			}
-			for strings.HasSuffix(key, "+") {
-				key = key[0 : len(key)-1]
-				LogKeys[key] = true // "foo+" also enables "foo"
-			}
-		}
+		keyMap [key] = true
 	}
+
+	ParseLogFlagsMap(keyMap)
 	logLock.Unlock()
 	Logf("Enabling logging: %s", flags)
 }
 
+// Parses a map of log keys and enabled bool, probably coming from a argv flags.
+// The key "bw" is interpreted as a call to LogNoColor, not a key.
+func ParseLogFlagsMap(flags map[string]bool) {
+	for key, enabled := range flags {
+		switch key {
+		case "bw":
+			if enabled {
+				LogNoColor()
+			} else {
+				LogColor()
+			}
+		case "color":
+			if enabled {
+				LogColor()
+			} else {
+				LogNoColor()
+			}
+		case "notime":
+			if enabled {
+				LogNoTime()
+			} else {
+				LogTime()
+			}
+		default:
+			if enabled {
+				LogKeys[key] = enabled
+				for strings.HasSuffix(key, "+") {
+					key = key[0: len(key) - 1]
+					LogKeys[key] = enabled // "foo+" also enables "foo"
+				}
+			} else {
+				delete(LogKeys, key)
+				//if key already has "++" suffix there is no further processing
+				// else if it has "+" suffix disable "++" suffix as well
+				// else disable "+" suffix and "++" suffix
+				if !strings.HasSuffix(key, "++") {
+					//If key does not have a "+" suffix then remove "+" suffix
+					if !strings.HasSuffix(key, "+") {
+						// remove the "+" suffix as well
+						delete(LogKeys, key+"+")
+						// remove the "++" suffix as well
+						delete(LogKeys, key+"++")
+					} else {
+						// remove the "++" suffix as well
+						delete(LogKeys, key+"+")
+					}
+				}
+			}
+			if key == "*" {
+				logStar = enabled
+				if enabled {
+					EnableSgReplicateLogging()
+				}
+			}
+			// gocb requires a call into the gocb library to enable logging
+			if key == "gocb" {
+				if enabled {
+					EnableGoCBLogging()
+				} else {
+					DisableGoCBLogging()
+				}
+			}
+			if key == "Replicate" {
+				if enabled {
+					EnableSgReplicateLogging()
+				} else {
+					DisableSgReplicateLogging()
+				}
+			}
+		}
+	}
+}
+
 func EnableSgReplicateLogging() {
 	clog.EnableKey("Replicate")
+}
+
+func DisableSgReplicateLogging() {
+	clog.DisableKey("Replicate")
 }
 
 func GetLogKeys() map[string]bool {
@@ -336,12 +401,8 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 	if replace {
 		LogKeys = map[string]bool{}
 	}
-	for k, v := range keys {
-		LogKeys[k] = v
-		if k == "*" {
-			logStar = v
-		}
-	}
+
+	ParseLogFlagsMap(keys)
 }
 
 // Returns a string identifying a function on the call stack.

@@ -84,6 +84,10 @@ func EnableGoCBLogging() {
 	gocbcore.SetLogger(GoCBLogger{})
 }
 
+func DisableGoCBLogging() {
+	gocbcore.SetLogger(nil)
+}
+
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
 
