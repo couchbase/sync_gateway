@@ -827,7 +827,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
 	testBucket := GetTestBucketOrPanic()
-	defer testBucket.Bucket.Close()
+	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
