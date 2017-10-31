@@ -47,22 +47,22 @@ func (b *LeakyBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 func (b *LeakyBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
 	return b.bucket.GetBulkRaw(keys)
 }
-func (b *LeakyBucket) GetAndTouchRaw(k string, exp int) (v []byte, cas uint64, err error) {
+func (b *LeakyBucket) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {
 	return b.bucket.GetAndTouchRaw(k, exp)
 }
-func (b *LeakyBucket) Add(k string, exp int, v interface{}) (added bool, err error) {
+func (b *LeakyBucket) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	return b.bucket.Add(k, exp, v)
 }
-func (b *LeakyBucket) AddRaw(k string, exp int, v []byte) (added bool, err error) {
+func (b *LeakyBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	return b.bucket.AddRaw(k, exp, v)
 }
 func (b *LeakyBucket) Append(k string, data []byte) error {
 	return b.bucket.Append(k, data)
 }
-func (b *LeakyBucket) Set(k string, exp int, v interface{}) error {
+func (b *LeakyBucket) Set(k string, exp uint32, v interface{}) error {
 	return b.bucket.Set(k, exp, v)
 }
-func (b *LeakyBucket) SetRaw(k string, exp int, v []byte) error {
+func (b *LeakyBucket) SetRaw(k string, exp uint32, v []byte) error {
 	return b.bucket.SetRaw(k, exp, v)
 }
 func (b *LeakyBucket) Delete(k string) error {
@@ -71,23 +71,23 @@ func (b *LeakyBucket) Delete(k string) error {
 func (b *LeakyBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
 	return b.bucket.Remove(k, cas)
 }
-func (b *LeakyBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
+func (b *LeakyBucket) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
 	return b.bucket.Write(k, flags, exp, v, opt)
 }
-func (b *LeakyBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
+func (b *LeakyBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
 	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
-func (b *LeakyBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) (err error) {
+func (b *LeakyBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (err error) {
 	return b.bucket.Update(k, exp, callback)
 }
-func (b *LeakyBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) (err error) {
+func (b *LeakyBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
 func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 	return b.bucket.SetBulk(entries)
 }
 
-func (b *LeakyBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
+func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 
 	if b.config.IncrTemporaryFailCount > 0 {
 		if b.incrCount < b.config.IncrTemporaryFailCount {
@@ -124,11 +124,11 @@ func (b *LeakyBucket) Refresh() error {
 	return b.bucket.Refresh()
 }
 
-func (b *LeakyBucket) WriteCasWithXattr(k string, xattr string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (b *LeakyBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
 }
 
-func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, callback)
 }
 

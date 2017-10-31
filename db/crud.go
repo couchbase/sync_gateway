@@ -749,7 +749,7 @@ func (db *Database) updateAndReturnDoc(
 	var oldBodyJSON string                           // Could be returned by documentUpdateFunc.  Stores previous revision body for use by DocumentChangeEvent
 
 	// documentUpdateFunc applies the changes to the document.  Called by either WriteUpdate or WriteUpdateWithXATTR below.
-	documentUpdateFunc := func(doc *document, docExists bool, importAllowed bool) (updatedDoc *document, writeOpts sgbucket.WriteOptions, shadowerEcho bool, err error) {
+	documentUpdateFunc := func(doc *document, docExists bool, importAllowed bool) (updatedDoc *document, writeOpts sgbucket.WriteOptions, shadowerEcho bool, updatedExpiry *uint32, err error) {
 
 		var newAttachments AttachmentData
 		// Be careful: this block can be invoked multiple times if there are races!
@@ -819,7 +819,7 @@ func (db *Database) updateAndReturnDoc(
 
 		// Run the sync function, to validate the update and compute its channels/access:
 		body["_id"] = doc.ID
-		channelSet, access, roles, oldBody, err := db.getChannelsAndAccess(doc, body, newRevID)
+		channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(doc, body, newRevID)
 		if err != nil {
 			return
 		}
@@ -913,7 +913,7 @@ func (db *Database) updateAndReturnDoc(
 				if curBody, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
 					base.LogTo("CRUD+", "updateDoc(%q): Rev %q causes %q to become current again",
 						docid, newRevID, doc.CurrentRev)
-					channelSet, access, roles, oldBody, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
+					channelSet, access, roles, syncExpiry, oldBody, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
 
 					//Assign old revision body to variable in method scope
 					oldBodyJSON = oldBody
@@ -959,7 +959,12 @@ func (db *Database) updateAndReturnDoc(
 		}
 
 		doc.TimeSaved = time.Now()
-		doc.UpdateExpiry(expiry)
+		if syncExpiry != nil {
+			updatedExpiry = syncExpiry
+			doc.UpdateExpiry(*updatedExpiry)
+		} else {
+			doc.UpdateExpiry(expiry)
+		}
 
 		// Now that the document has been successfully validated, we can store any new attachments
 		db.setAttachments(newAttachments)
@@ -967,10 +972,10 @@ func (db *Database) updateAndReturnDoc(
 		// Now that the document has been successfully validated, we can update externally stored revision bodies
 		revisionBodyError := doc.persistModifiedRevisionBodies(db.Bucket)
 		if revisionBodyError != nil {
-			return doc, writeOpts, shadowerEcho, revisionBodyError
+			return doc, writeOpts, shadowerEcho, updatedExpiry, revisionBodyError
 		}
 
-		return doc, writeOpts, shadowerEcho, err
+		return doc, writeOpts, shadowerEcho, updatedExpiry, err
 	}
 
 	var shadowerEcho bool
@@ -979,12 +984,12 @@ func (db *Database) updateAndReturnDoc(
 	upgradeInProgress := false
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
-		err = db.Bucket.WriteUpdate(key, int(expiry), func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, err error) {
+		err = db.Bucket.WriteUpdate(key, expiry, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
 			}
-			docOut, writeOpts, shadowerEcho, err = documentUpdateFunc(doc, currentValue != nil, allowImport)
+			docOut, writeOpts, shadowerEcho, syncFuncExpiry, err = documentUpdateFunc(doc, currentValue != nil, allowImport)
 			if err != nil {
 				return
 			}
@@ -993,7 +998,7 @@ func (db *Database) updateAndReturnDoc(
 			raw, err = json.Marshal(docOut)
 			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, doc.ID, doc.CurrentRev)
 
-			return raw, writeOpts, err
+			return raw, writeOpts, syncFuncExpiry, err
 		})
 
 		// If we can't find sync metadata in the document body, check for upgrade.  If upgrade, retry write using WriteUpdateWithXattr
@@ -1009,13 +1014,13 @@ func (db *Database) updateAndReturnDoc(
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
-		casOut, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, int(expiry), existingDoc, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
+		casOut, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, expiry, existingDoc, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas); err != nil {
 				return
 			}
 
-			docOut, _, _, err = documentUpdateFunc(doc, currentValue != nil, true)
+			docOut, _, _, syncFuncExpiry, err = documentUpdateFunc(doc, currentValue != nil, true)
 			if err != nil {
 				return
 			}
@@ -1031,7 +1036,7 @@ func (db *Database) updateAndReturnDoc(
 			// Return the new raw document value for the bucket to store.
 			raw, rawXattr, err = docOut.MarshalWithXattr()
 			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", docOut.Sequence, docOut.ID, docOut.CurrentRev)
-			return raw, rawXattr, deleteDoc, err
+			return raw, rawXattr, deleteDoc, syncFuncExpiry, err
 		})
 		if err != nil {
 			if err == base.ErrDocumentMigrated {
@@ -1176,7 +1181,13 @@ func (db *Database) Purge(key string) error {
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string) (result base.Set, access channels.AccessMap, roles channels.AccessMap, oldJson string, err error) {
+func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string) (
+	result base.Set,
+	access channels.AccessMap,
+	roles channels.AccessMap,
+	expiry *uint32,
+	oldJson string,
+	err error) {
 	base.LogTo("CRUD+", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
 
 	// Get the parent revision, to pass to the sync function:
@@ -1195,6 +1206,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 			result = output.Channels
 			access = output.Access
 			roles = output.Roles
+			expiry = output.Expiry
 			err = output.Rejection
 			if err != nil {
 				base.Logf("Sync fn rejected: new=%+v  old=%s --> %s", body, oldJson, err)
@@ -1215,7 +1227,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 			result, err = channels.SetFromArray(array, channels.KeepStar)
 		}
 	}
-	return
+	return result, access, roles, expiry, oldJson, err
 }
 
 // Creates a userCtx object to be passed to the sync function

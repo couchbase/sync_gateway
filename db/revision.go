@@ -15,8 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -80,37 +78,16 @@ func (body Body) extractExpiry() (uint32, error) {
 }
 
 // Looks up the _exp property in the document, and turns it into a Couchbase Server expiry value, as:
-//   1. Numeric JSON values are converted to uint32 and returned as-is
-//   2. String JSON values that are numbers are converted to int32 and returned as-is
-//   3. String JSON values that are ISO-8601 dates are converted to UNIX time and returned
-//   4. Null JSON values return 0
 func (body Body) getExpiry() (uint32, bool, error) {
 	rawExpiry, ok := body["_exp"]
 	if !ok {
 		return 0, false, nil //_exp not present
 	}
-	switch expiry := rawExpiry.(type) {
-	case float64:
-		return uint32(expiry), true, nil
-	case string:
-		// First check if it's a numeric string
-		expInt, err := strconv.ParseInt(expiry, 10, 32)
-		if err == nil {
-			return uint32(expInt), true, nil
-		}
-		// Check if it's an ISO-8601 date
-		expRFC3339, err := time.Parse(time.RFC3339, expiry)
-		if err == nil {
-			return uint32(expRFC3339.Unix()), true, nil
-		} else {
-			return 0, true, fmt.Errorf("Unable to parse expiry %s as either numeric or date expiry:%v", err)
-		}
-	case nil:
-		// Leave as zero/empty expiry
-		return 0, true, nil
+	expiry, err := base.ReflectExpiry(rawExpiry)
+	if err != nil || expiry == nil {
+		return 0, false, err
 	}
-
-	return 0, true, nil
+	return *expiry, true, err
 }
 
 // nonJSONPrefix is used to ensure old revision bodies aren't hidden from N1QL/Views.

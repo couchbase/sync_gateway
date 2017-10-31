@@ -19,6 +19,9 @@
 	} else {
 	    // all other documents just go into all channels listed in the doc["channels"] field
 	    channel(doc.channels)
+
+      // Expire documents based on document "expiry" property
+      expiry(doc.expiry)    
 	}
       }
     `

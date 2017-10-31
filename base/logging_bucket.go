@@ -25,7 +25,7 @@ func (b *LoggingBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 	defer func() { LogTo("Bucket", "GetRaw(%q) [%v]", k, time.Since(start)) }()
 	return b.bucket.GetRaw(k)
 }
-func (b *LoggingBucket) GetAndTouchRaw(k string, exp int) (v []byte, cas uint64, err error) {
+func (b *LoggingBucket) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "GetAndTouchRaw(%q) [%v]", k, time.Since(start)) }()
 	return b.bucket.GetAndTouchRaw(k, exp)
@@ -35,12 +35,12 @@ func (b *LoggingBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
 	defer func() { LogTo("Bucket", "GetBulkRaw(%q) [%v]", keys, time.Since(start)) }()
 	return b.bucket.GetBulkRaw(keys)
 }
-func (b *LoggingBucket) Add(k string, exp int, v interface{}) (added bool, err error) {
+func (b *LoggingBucket) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Add(%q, %d, ...) [%v]", k, exp, time.Since(start)) }()
 	return b.bucket.Add(k, exp, v)
 }
-func (b *LoggingBucket) AddRaw(k string, exp int, v []byte) (added bool, err error) {
+func (b *LoggingBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "AddRaw(%q, %d, ...) [%v]", k, exp, time.Since(start)) }()
 	return b.bucket.AddRaw(k, exp, v)
@@ -50,12 +50,12 @@ func (b *LoggingBucket) Append(k string, data []byte) error {
 	defer func() { LogTo("Bucket", "Append(%q, ...) [%v]", k, time.Since(start)) }()
 	return b.bucket.Append(k, data)
 }
-func (b *LoggingBucket) Set(k string, exp int, v interface{}) error {
+func (b *LoggingBucket) Set(k string, exp uint32, v interface{}) error {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Set(%q, %d, ...) [%v]", k, exp, time.Since(start)) }()
 	return b.bucket.Set(k, exp, v)
 }
-func (b *LoggingBucket) SetRaw(k string, exp int, v []byte) error {
+func (b *LoggingBucket) SetRaw(k string, exp uint32, v []byte) error {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "SetRaw(%q, %d, ...) [%v]", k, exp, time.Since(start)) }()
 	return b.bucket.SetRaw(k, exp, v)
@@ -70,40 +70,40 @@ func (b *LoggingBucket) Remove(k string, cas uint64) (casOut uint64, err error) 
 	defer func() { LogTo("Bucket", "Remove(%q) [%v]", k, time.Since(start)) }()
 	return b.bucket.Remove(k, cas)
 }
-func (b *LoggingBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
+func (b *LoggingBucket) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Write(%q, 0x%x, %d, ..., 0x%x) [%v]", k, flags, exp, opt, time.Since(start)) }()
 	return b.bucket.Write(k, flags, exp, v, opt)
 }
-func (b *LoggingBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
+func (b *LoggingBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
 	start := time.Now()
 	defer func() {
 		LogTo("Bucket", "WriteCas(%q, 0x%x, %d, %d, ..., 0x%x) [%v]", k, flags, exp, cas, opt, time.Since(start))
 	}()
 	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
-func (b *LoggingBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) (err error) {
+func (b *LoggingBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Update(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
 	return b.bucket.Update(k, exp, callback)
 }
-func (b *LoggingBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) (err error) {
+func (b *LoggingBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "WriteUpdate(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
 
-func (b *LoggingBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
+func (b *LoggingBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "Incr(%q, %d, %d, %d) [%v]", k, amt, def, exp, time.Since(start)) }()
 	return b.bucket.Incr(k, amt, def, exp)
 }
-func (b *LoggingBucket) WriteCasWithXattr(k string, xattr string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (b *LoggingBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "WriteCasWithXattr(%q, ...) [%v]", k, time.Since(start)) }()
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
 }
-func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	start := time.Now()
 	defer func() {
 		LogTo("Bucket", "WriteUpdateWithXattr(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start))

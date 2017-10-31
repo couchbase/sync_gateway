@@ -22,6 +22,7 @@ type ChannelMapperOutput struct {
 	Roles     AccessMap // roles granted to users via role() callback
 	Access    AccessMap
 	Rejection error
+	Expiry    *uint32
 }
 
 type ChannelMapper struct {
