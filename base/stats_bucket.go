@@ -100,7 +100,7 @@ func (b *StatsBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 	b.docRead(1, len(v))
 	return v, cas, err
 }
-func (b *StatsBucket) GetAndTouchRaw(k string, exp int) (v []byte, cas uint64, err error) {
+func (b *StatsBucket) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {
 	v, cas, err = b.bucket.GetAndTouchRaw(k, exp)
 	b.docRead(1, len(v))
 	return v, cas, err
@@ -112,7 +112,7 @@ func (b *StatsBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
 	}
 	return results, err
 }
-func (b *StatsBucket) Add(k string, exp int, v interface{}) (added bool, err error) {
+func (b *StatsBucket) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	if vBytes, ok := v.([]byte); ok {
 		defer b.docWrite(1, len(vBytes))
 	} else {
@@ -120,7 +120,7 @@ func (b *StatsBucket) Add(k string, exp int, v interface{}) (added bool, err err
 	}
 	return b.bucket.Add(k, exp, v)
 }
-func (b *StatsBucket) AddRaw(k string, exp int, v []byte) (added bool, err error) {
+func (b *StatsBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	defer b.docWrite(1, len(v))
 	return b.bucket.AddRaw(k, exp, v)
 }
@@ -128,7 +128,7 @@ func (b *StatsBucket) Append(k string, data []byte) error {
 	defer b.docWrite(1, len(data))
 	return b.bucket.Append(k, data)
 }
-func (b *StatsBucket) Set(k string, exp int, v interface{}) error {
+func (b *StatsBucket) Set(k string, exp uint32, v interface{}) error {
 	if vBytes, ok := v.([]byte); ok {
 		defer b.docWrite(1, len(vBytes))
 	} else {
@@ -136,7 +136,7 @@ func (b *StatsBucket) Set(k string, exp int, v interface{}) error {
 	}
 	return b.bucket.Set(k, exp, v)
 }
-func (b *StatsBucket) SetRaw(k string, exp int, v []byte) error {
+func (b *StatsBucket) SetRaw(k string, exp uint32, v []byte) error {
 	defer b.docWrite(1, len(v))
 	return b.bucket.SetRaw(k, exp, v)
 }
@@ -146,7 +146,7 @@ func (b *StatsBucket) Delete(k string) error {
 func (b *StatsBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
 	return b.bucket.Remove(k, cas)
 }
-func (b *StatsBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
+func (b *StatsBucket) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
 	if vBytes, ok := v.([]byte); ok {
 		defer b.docWrite(1, len(vBytes))
 	} else {
@@ -154,7 +154,7 @@ func (b *StatsBucket) Write(k string, flags int, exp int, v interface{}, opt sgb
 	}
 	return b.bucket.Write(k, flags, exp, v, opt)
 }
-func (b *StatsBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
+func (b *StatsBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
 	if vBytes, ok := v.([]byte); ok {
 		defer b.docWrite(1, len(vBytes))
 	} else {
@@ -162,18 +162,18 @@ func (b *StatsBucket) WriteCas(k string, flags int, exp int, cas uint64, v inter
 	}
 	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
-func (b *StatsBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) (err error) {
+func (b *StatsBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (err error) {
 	defer b.docWrite(1, -1)
 	return b.bucket.Update(k, exp, callback)
 }
-func (b *StatsBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) (err error) {
+func (b *StatsBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
 	defer b.docWrite(1, -1)
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
-func (b *StatsBucket) Incr(k string, amt, def uint64, exp int) (uint64, error) {
+func (b *StatsBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 	return b.bucket.Incr(k, amt, def, exp)
 }
-func (b *StatsBucket) WriteCasWithXattr(k string, xattr string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (b *StatsBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 	if vBytes, ok := v.([]byte); ok {
 		defer b.docWrite(1, len(vBytes))
 	} else {
@@ -181,7 +181,7 @@ func (b *StatsBucket) WriteCasWithXattr(k string, xattr string, exp int, cas uin
 	}
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
 }
-func (b *StatsBucket) WriteUpdateWithXattr(k string, xattr string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (b *StatsBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	defer b.docWrite(1, -1)
 	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, callback)
 }

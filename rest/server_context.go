@@ -286,9 +286,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	if config.OldRevExpirySeconds != nil && *config.OldRevExpirySeconds >= 0 {
-		oldRevExpirySeconds = int(*config.OldRevExpirySeconds)
-  }
-  
+		oldRevExpirySeconds = *config.OldRevExpirySeconds
+	}
+
 	localDocExpirySecs := base.DefaultLocalDocExpirySecs
 	if config.LocalDocExpirySecs != nil && *config.LocalDocExpirySecs >= 0 {
 		localDocExpirySecs = *config.LocalDocExpirySecs

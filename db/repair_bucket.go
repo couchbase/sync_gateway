@@ -186,14 +186,14 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			key := realDocID(docid)
 			var backupOrDryRunDocId string
 
-			err = r.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+			err = r.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 				// Be careful: this block can be invoked multiple times if there are races!
 				if currentValue == nil {
-					return nil, couchbase.UpdateCancel // someone deleted it?!
+					return nil, nil, couchbase.UpdateCancel // someone deleted it?!
 				}
 				updatedDoc, shouldUpdate, repairJobs, err := r.TransformBucketDoc(key, currentValue)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 
 				switch shouldUpdate {
@@ -216,12 +216,12 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 					results = append(results, result)
 
 					if r.DryRun {
-						return nil, couchbase.UpdateCancel
+						return nil, nil, couchbase.UpdateCancel
 					} else {
-						return updatedDoc, nil
+						return updatedDoc, nil, nil
 					}
 				default:
-					return nil, couchbase.UpdateCancel
+					return nil, nil, couchbase.UpdateCancel
 				}
 
 			})

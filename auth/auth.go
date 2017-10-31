@@ -94,28 +94,28 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
-	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, error) {
+	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
-			return nil, couchbase.UpdateCancel
+			return nil, nil, couchbase.UpdateCancel
 		}
 		princ = factory()
 		if err := json.Unmarshal(currentValue, princ); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		changed := false
 		if princ.Channels() == nil {
 			// Channel list has been invalidated by a doc update -- rebuild it:
 			if err := auth.rebuildChannels(princ); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			changed = true
 		}
 		if user, ok := princ.(User); ok {
 			if user.RoleNames() == nil {
 				if err := auth.rebuildRoles(user); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				changed = true
 			}
@@ -123,10 +123,11 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 
 		if changed {
 			// Save the updated doc:
-			return json.Marshal(princ)
+			updatedBytes, marshalErr := json.Marshal(princ)
+			return updatedBytes, nil, marshalErr
 		} else {
 			// Principal is valid, so stop the update
-			return nil, couchbase.UpdateCancel
+			return nil, nil, couchbase.UpdateCancel
 		}
 	})
 
@@ -419,14 +420,14 @@ func (auth *Authenticator) UpdateUserVbucketSequences(docID string, sequence uin
 func (auth *Authenticator) updateVbucketSequences(docID string, factory func() Principal, seq uint64) error {
 
 	sequence := ch.NewVbSimpleSequence(seq)
-	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, error) {
+	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
-			return nil, couchbase.UpdateCancel
+			return nil, nil, couchbase.UpdateCancel
 		}
 		princ := factory()
 		if err := json.Unmarshal(currentValue, princ); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		channelsChanged := false
 		for channel, vbSeq := range princ.ExplicitChannels() {
@@ -466,10 +467,11 @@ func (auth *Authenticator) updateVbucketSequences(docID string, factory func() P
 
 		if channelsChanged || rolesChanged {
 			// Save the updated principal doc.
-			return json.Marshal(princ)
+			updatedBytes, marshalErr := json.Marshal(princ)
+			return updatedBytes, nil, marshalErr
 		} else {
 			// No entries found requiring update, so cancel update.
-			return nil, couchbase.UpdateCancel
+			return nil, nil, couchbase.UpdateCancel
 		}
 	})
 

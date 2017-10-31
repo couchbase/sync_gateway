@@ -393,11 +393,11 @@ func TestUpdate(t *testing.T) {
 		t.Errorf("Key should not exist yet, expected error but got nil")
 	}
 
-	updateFunc := func(current []byte) (updated []byte, err error) {
+	updateFunc := func(current []byte) (updated []byte, expiry *uint32, err error) {
 		if len(current) == 0 {
-			return valInitial, nil
+			return valInitial, nil, nil
 		} else {
-			return valUpdated, nil
+			return valUpdated, nil, nil
 		}
 	}
 
@@ -1026,7 +1026,8 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	}
 
 	// Dummy write update function that increments 'counter' in the doc and 'seq' in the xattr
-	writeUpdateFunc := func(doc []byte, xattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, isDelete bool, err error) {
+	writeUpdateFunc := func(doc []byte, xattr []byte, cas uint64) (
+		updatedDoc []byte, updatedXattr []byte, isDelete bool, updatedExpiry *uint32, err error) {
 
 		var docMap map[string]interface{}
 		var xattrMap map[string]interface{}
@@ -1034,7 +1035,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		if len(doc) > 0 {
 			err = json.Unmarshal(doc, &docMap)
 			if err != nil {
-				return nil, nil, false, fmt.Errorf("Unable to unmarshal incoming doc: %v", err)
+				return nil, nil, false, nil, fmt.Errorf("Unable to unmarshal incoming doc: %v", err)
 			}
 		} else {
 			// No incoming doc, treat as insert.
@@ -1045,7 +1046,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		if len(xattr) > 0 {
 			err = json.Unmarshal(xattr, &xattrMap)
 			if err != nil {
-				return nil, nil, false, fmt.Errorf("Unable to unmarshal incoming xattr: %v", err)
+				return nil, nil, false, nil, fmt.Errorf("Unable to unmarshal incoming xattr: %v", err)
 			}
 		} else {
 			// No incoming xattr, treat as insert.
@@ -1070,7 +1071,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 		updatedDoc, _ = json.Marshal(docMap)
 		updatedXattr, _ = json.Marshal(xattrMap)
-		return updatedDoc, updatedXattr, false, nil
+		return updatedDoc, updatedXattr, false, nil, nil
 	}
 
 	// Insert
@@ -1695,7 +1696,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	updatedXattrVal["rev"] = "2-1234"
 
 	// Attempt to mutate all 4 docs
-	exp := 0
+	exp := uint32(0)
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key1)
 	_, key1err := bucket.WriteCasWithXattr(key1, xattrName, exp, cas1, &updatedVal, &updatedXattrVal)
 	assertNoError(t, key1err, fmt.Sprintf("Unexpected error mutating %s", key1))

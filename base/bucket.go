@@ -154,6 +154,14 @@ func (bucket CouchbaseBucket) GetName() string {
 	return bucket.Name
 }
 
+func (bucket CouchbaseBucket) Add(k string, exp uint32, v interface{}) (added bool, err error) {
+	return bucket.Bucket.Add(k, int(exp), v)
+}
+
+func (bucket CouchbaseBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
+	return bucket.Bucket.Add(k, int(exp), v)
+}
+
 func (bucket CouchbaseBucket) Get(k string, v interface{}) (cas uint64, err error) {
 	err = bucket.Bucket.Gets(k, v, &cas)
 	return cas, err
@@ -164,16 +172,36 @@ func (bucket CouchbaseBucket) GetRaw(k string) (v []byte, cas uint64, err error)
 	return v, cas, err
 }
 
-func (bucket CouchbaseBucket) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) (err error) {
-	return bucket.Bucket.Write(k, flags, exp, v, couchbase.WriteOptions(opt))
+func (bucket CouchbaseBucket) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
+	return bucket.Bucket.GetAndTouchRaw(k, int(exp))
 }
 
-func (bucket CouchbaseBucket) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
-	return bucket.Bucket.WriteCas(k, flags, exp, cas, v, couchbase.WriteOptions(opt))
+func (bucket CouchbaseBucket) Set(k string, exp uint32, v interface{}) error {
+	return bucket.Bucket.Set(k, int(exp), v)
 }
 
-func (bucket CouchbaseBucket) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
-	return bucket.Bucket.Update(k, exp, couchbase.UpdateFunc(callback))
+func (bucket CouchbaseBucket) SetRaw(k string, exp uint32, v []byte) error {
+	return bucket.Bucket.SetRaw(k, int(exp), v)
+}
+
+func (bucket CouchbaseBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
+	return bucket.Bucket.Incr(k, amt, def, int(exp))
+}
+
+func (bucket CouchbaseBucket) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) (err error) {
+	return bucket.Bucket.Write(k, flags, int(exp), v, couchbase.WriteOptions(opt))
+}
+
+func (bucket CouchbaseBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+	return bucket.Bucket.WriteCas(k, flags, int(exp), cas, v, couchbase.WriteOptions(opt))
+}
+
+func (bucket CouchbaseBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
+	cbCallback := func(current []byte) (updated []byte, err error) {
+		updated, _, err = callback(current)
+		return updated, err
+	}
+	return bucket.Bucket.Update(k, int(exp), cbCallback)
 }
 
 func (bucket CouchbaseBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
@@ -185,7 +213,7 @@ func (bucket CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err err
 	panic("SetBulk not implemented")
 }
 
-func (bucket CouchbaseBucket) WriteCasWithXattr(k string, xattr string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (bucket CouchbaseBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 	Warn("WriteCasWithXattr not implemented by CouchbaseBucket")
 	return 0, errors.New("WriteCasWithXattr not implemented by CouchbaseBucket")
 }
@@ -200,16 +228,16 @@ func (bucket CouchbaseBucket) DeleteWithXattr(k string, xattr string) error {
 	return errors.New("DeleteWithXattr not implemented by CouchbaseBucket")
 }
 
-func (bucket CouchbaseBucket) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
+func (bucket CouchbaseBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
 	cbCallback := func(current []byte) (updated []byte, opt couchbase.WriteOptions, err error) {
-		updated, walrusOpt, err := callback(current)
+		updated, walrusOpt, _, err := callback(current)
 		opt = couchbase.WriteOptions(walrusOpt)
 		return
 	}
-	return bucket.Bucket.WriteUpdate(k, exp, cbCallback)
+	return bucket.Bucket.WriteUpdate(k, int(exp), cbCallback)
 }
 
-func (bucket CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (bucket CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	Warn("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 	return 0, errors.New("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 }
@@ -503,7 +531,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 	return
 }
 
-func WriteCasJSON(bucket Bucket, key string, value interface{}, cas uint64, exp int, callback func(v interface{}) (interface{}, error)) (casOut uint64, err error) {
+func WriteCasJSON(bucket Bucket, key string, value interface{}, cas uint64, exp uint32, callback func(v interface{}) (interface{}, error)) (casOut uint64, err error) {
 
 	// If there's an incoming value, attempt to write with that first
 	if value != nil {
@@ -538,7 +566,7 @@ func WriteCasJSON(bucket Bucket, key string, value interface{}, cas uint64, exp 
 	}
 }
 
-func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp int, callback func([]byte) ([]byte, error)) (casOut uint64, err error) {
+func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp uint32, callback func([]byte) ([]byte, error)) (casOut uint64, err error) {
 
 	// If there's an incoming value, attempt to write with that first
 	if len(value) > 0 {
