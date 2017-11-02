@@ -15,6 +15,7 @@
   <remote fetch="https://github.com/coreos/" name="coreos"/>
   <remote fetch="https://github.com/jonboulle/" name="jonboulle"/>
   <remote fetch="https://github.com/satori/" name="satori"/>
+  <remote fetch="https://github.com/go-sourcemap/" name="go-sourcemap"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
@@ -82,7 +83,7 @@
 
   <project name="lumberjack" path="godeps/src/github.com/natefinch/lumberjack" remote="natefinch" revision="dd45e6a67c53f673bb49ca8a001fd3a63ceb640e"/>
 
-  <project name="otto" path="godeps/src/github.com/robertkrimen/otto" remote="couchbasedeps" revision="5282a5a45ba989692b3ae22f730fa6b9dd67662f"/>
+  <project name="otto" path="godeps/src/github.com/robertkrimen/otto" remote="couchbasedeps" revision="a813c59b1b4471ff7ecd3b533bac2f7e7d178784"/>
 
   <project name="go-metrics" path="godeps/src/github.com/samuel/go-metrics" remote="samuel" revision="52e6232924c9e785c3c4117b63a3e58b1f724544"/>
 
@@ -119,6 +120,8 @@
   <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="e6fc23e55f6a0907378f93a5d610f4f56c179879"/>
 
   <project name="go.uuid" path="godeps/src/github.com/satori/go.uuid" remote="satori" revision="5bf94b69c6b68ee1b541973bb8e1144db23a194b"/>
+
+  <project name="sourcemap" path="godeps/src/gopkg.in/sourcemap.v1" remote="go-sourcemap" revision="6e83acea0053641eff084973fee085f0c193c61a"/>
 
 </manifest>
 
