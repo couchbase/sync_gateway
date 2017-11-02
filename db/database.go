@@ -1099,38 +1099,34 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		}
 		var err error
 		if db.UseXattrs() {
-			_, err = db.Bucket.WriteUpdateWithXattr(
-				key,
-				KSyncXattrName,
-				0,
-				nil,
-				func(currentValue []byte, currentXattr []byte, cas uint64) (
-					raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
-					// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
-					// so deleteDoc is always returned as false.
-					if currentValue == nil || len(currentValue) == 0 {
-						return nil, nil, deleteDoc, nil, errors.New("Cancel update")
-					}
-					doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas)
-					if err != nil {
-						return nil, nil, deleteDoc, nil, err
-					}
+			writeUpdateFunc := func(currentValue []byte, currentXattr []byte, cas uint64) (
+				raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
+				// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
+				// so deleteDoc is always returned as false.
+				if currentValue == nil || len(currentValue) == 0 {
+					return nil, nil, deleteDoc, nil, errors.New("Cancel update")
+				}
+				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas)
+				if err != nil {
+					return nil, nil, deleteDoc, nil, err
+				}
 
-					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
-					if err != nil {
-						return nil, nil, deleteDoc, nil, err
+				updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
+				if err != nil {
+					return nil, nil, deleteDoc, nil, err
+				}
+				if shouldUpdate {
+					base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
+					if updatedExpiry != nil {
+						updatedDoc.UpdateExpiry(*updatedExpiry)
 					}
-					if shouldUpdate {
-						base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
-						if updatedExpiry != nil {
-							updatedDoc.UpdateExpiry(*updatedExpiry)
-						}
-						raw, rawXattr, err = updatedDoc.MarshalWithXattr()
-						return raw, rawXattr, deleteDoc, updatedExpiry, err
-					} else {
-						return nil, nil, deleteDoc, nil, errors.New("Cancel update")
-					}
-				})
+					raw, rawXattr, err = updatedDoc.MarshalWithXattr()
+					return raw, rawXattr, deleteDoc, updatedExpiry, err
+				} else {
+					return nil, nil, deleteDoc, nil, errors.New("Cancel update")
+				}
+			}
+			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, nil, writeUpdateFunc)
 		} else {
 			err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 				// Be careful: this block can be invoked multiple times if there are races!
