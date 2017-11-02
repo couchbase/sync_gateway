@@ -745,7 +745,7 @@ func mapContains(mapInstance map[string]interface{}, key string) bool {
 	return ok
 }
 
-func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, cas uint64, err error) {
+func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
 
 	bucket.singleOps <- struct{}{}
 	gocbExpvars.Add("SingleOps", 1)
@@ -758,7 +758,7 @@ func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		gocbExpvars.Add("GetAndTouchRaw", 1)
-		casGoCB, err := bucket.Bucket.GetAndTouch(k, uint32(exp), &returnVal)
+		casGoCB, err := bucket.Bucket.GetAndTouch(k, exp, &returnVal)
 		shouldRetry = isRecoverableGoCBError(err)
 		return shouldRetry, err, uint64(casGoCB)
 
@@ -788,7 +788,7 @@ func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp int) (rv []byte, 
 
 }
 
-func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added bool, err error) {
+func (bucket CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
@@ -797,7 +797,7 @@ func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added b
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		_, err = bucket.Bucket.Insert(k, v, uint32(exp))
+		_, err = bucket.Bucket.Insert(k, v, exp)
 		if isRecoverableGoCBError(err) {
 			return true, err, nil
 		}
@@ -817,7 +817,7 @@ func (bucket CouchbaseBucketGoCB) Add(k string, exp int, v interface{}) (added b
 // GoCB AddRaw writes as BinaryDocument, which results in the document having the
 // binary doc common flag set.  Callers that want to write JSON documents as raw bytes should
 // pass v as []byte to the stanard bucket.Add
-func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added bool, err error) {
+func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
@@ -826,7 +826,7 @@ func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp int, v []byte) (added boo
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		_, err = bucket.Bucket.Insert(k, bucket.FormatBinaryDocument(v), uint32(exp))
+		_, err = bucket.Bucket.Insert(k, bucket.FormatBinaryDocument(v), exp)
 		if isRecoverableGoCBError(err) {
 			return true, err, nil
 		}
@@ -849,7 +849,7 @@ func (bucket CouchbaseBucketGoCB) Append(k string, data []byte) error {
 	return err
 }
 
-func (bucket CouchbaseBucketGoCB) Set(k string, exp int, v interface{}) error {
+func (bucket CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -860,7 +860,7 @@ func (bucket CouchbaseBucketGoCB) Set(k string, exp int, v interface{}) error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		_, err = bucket.Bucket.Upsert(k, v, uint32(exp))
+		_, err = bucket.Bucket.Upsert(k, v, exp)
 		if isRecoverableGoCBError(err) {
 			return true, err, nil
 		}
@@ -873,7 +873,7 @@ func (bucket CouchbaseBucketGoCB) Set(k string, exp int, v interface{}) error {
 
 }
 
-func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
+func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp uint32, v []byte) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -883,7 +883,7 @@ func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp int, v []byte) error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		_, err = bucket.Bucket.Upsert(k, bucket.FormatBinaryDocument(v), uint32(exp))
+		_, err = bucket.Bucket.Upsert(k, bucket.FormatBinaryDocument(v), exp)
 		if isRecoverableGoCBError(err) {
 			return true, err, nil
 		}
@@ -945,12 +945,12 @@ func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, e
 
 }
 
-func (bucket CouchbaseBucketGoCB) Write(k string, flags int, exp int, v interface{}, opt sgbucket.WriteOptions) error {
+func (bucket CouchbaseBucketGoCB) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
 	LogPanic("Unimplemented method: Write()")
 	return nil
 }
 
-func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -972,14 +972,14 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 		if cas == 0 {
 			// Try to insert the value into the bucket
 			gocbExpvars.Add("WriteCas_Insert", 1)
-			newCas, err := bucket.Bucket.Insert(k, v, uint32(exp))
+			newCas, err := bucket.Bucket.Insert(k, v, exp)
 			shouldRetry = isRecoverableGoCBError(err)
 			return shouldRetry, err, uint64(newCas)
 		}
 
 		// Otherwise, replace existing value
 		gocbExpvars.Add("WriteCas_Replace", 1)
-		newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), uint32(exp))
+		newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), exp)
 		shouldRetry = isRecoverableGoCBError(err)
 		return shouldRetry, err, uint64(newCas)
 
@@ -1005,7 +1005,7 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp int, cas uin
 }
 
 // CAS-safe write of a document and it's associated named xattr
-func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp int, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
@@ -1022,7 +1022,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 		if cas == 0 {
 			// TODO: Once that's fixed, need to wrap w/ retry handling
 			gocbExpvars.Add("WriteCasWithXattr_Insert", 1)
-			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc, 0, uint32(exp)).
+			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc, 0, exp).
 				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
 				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 				UpsertEx("", v, gocb.SubdocFlagNone).                                                         // Update the document body
@@ -1039,7 +1039,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 		gocbExpvars.Add("WriteCas_Replace", 1)
 		if v != nil {
 			// Have value and xattr value - update both
-			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, gocb.Cas(cas), uint32(exp)).
+			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, gocb.Cas(cas), exp).
 				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
 				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 				UpsertEx("", v, gocb.SubdocFlagNone).                                                         // Update the document body
@@ -1051,7 +1051,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 			casOut = uint64(docFragment.Cas())
 		} else {
 			// Update xattr only
-			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), uint32(exp)).
+			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), exp).
 				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
 				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
 				Execute()
@@ -1084,7 +1084,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 }
 
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
-func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp int, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
+func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
@@ -1096,7 +1096,7 @@ func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp int
 		if deleteBody {
 			mutateFlag = gocb.SubdocDocFlagNone
 		}
-		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), uint32(exp)).
+		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), exp).
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
 		if deleteBody {
@@ -1353,12 +1353,13 @@ func (bucket CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, c
 
 }
 
-func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.UpdateFunc) error {
+func (bucket CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
 
 	for {
 
 		var value []byte
 		var err error
+		var callbackExpiry *uint32
 
 		// Load the existing value.
 		// NOTE: ignore error and assume it's a "key not found" error.  If it's a more
@@ -1375,9 +1376,12 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 		}
 
 		// Invoke callback to get updated value
-		value, err = callback(value)
+		value, callbackExpiry, err = callback(value)
 		if err != nil {
 			return err
+		}
+		if callbackExpiry != nil {
+			exp = *callbackExpiry
 		}
 
 		if cas == 0 {
@@ -1386,7 +1390,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 			// go back through the cas loop
 
 			gocbExpvars.Add("Update_Insert", 1)
-			_, err = bucket.Bucket.Insert(k, value, uint32(exp))
+			_, err = bucket.Bucket.Insert(k, value, exp)
 		} else {
 			if value == nil {
 				// In order to match the go-couchbase bucket behavior, if the
@@ -1397,7 +1401,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
 				gocbExpvars.Add("Update_Replace", 1)
-				_, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), uint32(exp))
+				_, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), exp)
 			}
 		}
 
@@ -1410,7 +1414,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp int, callback sgbucket.Up
 
 }
 
-func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbucket.WriteUpdateFunc) error {
+func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
 
 	for {
 		var value []byte
@@ -1430,9 +1434,13 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 		}
 
 		// Invoke callback to get updated value
-		value, writeOpts, err = callback(value)
+		var callbackExpiry *uint32
+		value, writeOpts, callbackExpiry, err = callback(value)
 		if err != nil {
 			return err
+		}
+		if callbackExpiry != nil {
+			exp = *callbackExpiry
 		}
 
 		if cas == 0 {
@@ -1442,9 +1450,9 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 			gocbExpvars.Add("Update_Insert", 1)
 			if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
-				_, err = bucket.Bucket.InsertDura(k, value, uint32(exp), numNodesReplicateTo, numNodesPersistTo)
+				_, err = bucket.Bucket.InsertDura(k, value, exp, numNodesReplicateTo, numNodesPersistTo)
 			} else {
-				_, err = bucket.Bucket.Insert(k, value, uint32(exp))
+				_, err = bucket.Bucket.Insert(k, value, exp)
 			}
 
 		} else {
@@ -1465,9 +1473,9 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 				// updated underneath us
 				gocbExpvars.Add("Update_Replace", 1)
 				if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
-					_, err = bucket.Bucket.ReplaceDura(k, value, gocb.Cas(cas), uint32(exp), numNodesReplicateTo, numNodesPersistTo)
+					_, err = bucket.Bucket.ReplaceDura(k, value, gocb.Cas(cas), exp, numNodesReplicateTo, numNodesPersistTo)
 				} else {
-					_, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), uint32(exp))
+					_, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), exp)
 				}
 
 			}
@@ -1481,7 +1489,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp int, callback sgbuck
 
 // WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
 // failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
-func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp int, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	var value []byte
 	var xattrValue []byte
@@ -1517,10 +1525,13 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		}
 
 		// Invoke callback to get updated value
-		updatedValue, updatedXattrValue, isDelete, err := callback(value, xattrValue, cas)
+		updatedValue, updatedXattrValue, isDelete, callbackExpiry, err := callback(value, xattrValue, cas)
 
 		if err != nil {
 			return emptyCas, err
+		}
+		if callbackExpiry != nil {
+			exp = *callbackExpiry
 		}
 
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
@@ -1546,7 +1557,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 // Single attempt to update a document and xattr.  Setting isDelete=true and value=nil will delete the document body.  Both
 // update types (UpdateXattr, WriteCasWithXattr) include recoverable error retry.
-func (bucket CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp int, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
+func (bucket CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
 	// If this is a tombstone, we want to delete the document and update the xattr
 	if isDelete {
 		return bucket.UpdateXattr(k, xattrKey, exp, cas, xattrValue, deleteBody)
@@ -1556,7 +1567,7 @@ func (bucket CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp 
 	}
 }
 
-func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint64, error) {
+func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 
 	// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first
 	// attempt a simple get, which gocb will transcode to uint64.  The call to Get includes its own
@@ -1578,7 +1589,7 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp int) (uint
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		result, _, err := bucket.Counter(k, int64(amt), int64(def), uint32(exp))
+		result, _, err := bucket.Counter(k, int64(amt), int64(def), exp)
 		shouldRetry = isRecoverableGoCBError(err)
 		return shouldRetry, err, result
 

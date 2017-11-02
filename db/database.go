@@ -88,7 +88,7 @@ type DatabaseContextOptions struct {
 	IndexOptions          *ChannelIndexOptions
 	SequenceHashOptions   *SequenceHashOptions
 	RevisionCacheCapacity uint32
-	OldRevExpirySeconds   int
+	OldRevExpirySeconds   uint32
 	AdminInterface        *string
 	UnsupportedOptions    UnsupportedOptions
 	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
@@ -991,7 +991,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		Sync string
 	}
 
-	err = context.Bucket.Update(kSyncDataKey, 0, func(currentValue []byte) ([]byte, error) {
+	err = context.Bucket.Update(kSyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := json.Unmarshal(currentValue, &syncData)
@@ -1001,9 +1001,10 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		}
 		if changed || currentValue == nil {
 			syncData.Sync = syncFun
-			return json.Marshal(syncData)
+			bytes, err := json.Marshal(syncData)
+			return bytes, nil, err
 		} else {
-			return nil, couchbase.UpdateCancel // value unchanged, no need to save
+			return nil, nil, couchbase.UpdateCancel // value unchanged, no need to save
 		}
 	})
 
@@ -1050,21 +1051,21 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		docid := rowKey[1].(string)
 		key := realDocID(docid)
 
-		documentUpdateFunc := func(doc *document) (updatedDoc *document, shouldUpdate bool, err error) {
+		documentUpdateFunc := func(doc *document) (updatedDoc *document, shouldUpdate bool, updatedExpiry *uint32, err error) {
 			imported := false
 			if !doc.HasValidSyncData(db.writeSequences()) {
 				// This is a document not known to the sync gateway. Ignore or import it:
 				if !doImportDocs {
-					return nil, false, couchbase.UpdateCancel
+					return nil, false, nil, couchbase.UpdateCancel
 				}
 				imported = true
 				if err = db.initializeSyncData(doc); err != nil {
-					return nil, false, err
+					return nil, false, nil, err
 				}
 				base.LogTo("CRUD", "\tImporting document %q --> rev %q", docid, doc.CurrentRev)
 			} else {
 				if !doCurrentDocs {
-					return nil, false, couchbase.UpdateCancel
+					return nil, false, nil, couchbase.UpdateCancel
 				}
 				base.LogTo("CRUD", "\tRe-syncing document %q", docid)
 			}
@@ -1073,7 +1074,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 			changed := 0
 			doc.History.forEachLeaf(func(rev *RevInfo) {
 				body, _ := db.getRevFromDoc(doc, rev.ID, false)
-				channels, access, roles, _, err := db.getChannelsAndAccess(doc, body, rev.ID)
+				channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, rev.ID)
 				if err != nil {
 					// Probably the validator rejected the doc
 					base.Warn("Error calling sync() on doc %q: %v", docid, err)
@@ -1086,54 +1087,69 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 					changed = len(doc.Access.updateAccess(doc, access)) +
 						len(doc.RoleAccess.updateAccess(doc, roles)) +
 						len(doc.updateChannels(channels))
+					// Only update document expiry based on the current (active) rev
+					if syncExpiry != nil {
+						doc.UpdateExpiry(*syncExpiry)
+						updatedExpiry = syncExpiry
+					}
 				}
 			})
 			shouldUpdate = changed > 0 || imported
-			return doc, shouldUpdate, nil
+			return doc, shouldUpdate, updatedExpiry, nil
 		}
 		var err error
 		if db.UseXattrs() {
-			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, nil, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, err error) {
-				// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing, so deleteDoc is always returned as false.
+			writeUpdateFunc := func(currentValue []byte, currentXattr []byte, cas uint64) (
+				raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
+				// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
+				// so deleteDoc is always returned as false.
 				if currentValue == nil || len(currentValue) == 0 {
-					return nil, nil, deleteDoc, errors.New("Cancel update")
+					return nil, nil, deleteDoc, nil, errors.New("Cancel update")
 				}
 				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas)
 				if err != nil {
-					return nil, nil, deleteDoc, err
+					return nil, nil, deleteDoc, nil, err
 				}
 
-				updatedDoc, shouldUpdate, err := documentUpdateFunc(doc)
+				updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
 				if err != nil {
-					return nil, nil, deleteDoc, err
+					return nil, nil, deleteDoc, nil, err
 				}
 				if shouldUpdate {
 					base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
+					if updatedExpiry != nil {
+						updatedDoc.UpdateExpiry(*updatedExpiry)
+					}
 					raw, rawXattr, err = updatedDoc.MarshalWithXattr()
-					return raw, rawXattr, deleteDoc, err
+					return raw, rawXattr, deleteDoc, updatedExpiry, err
 				} else {
-					return nil, nil, deleteDoc, errors.New("Cancel update")
+					return nil, nil, deleteDoc, nil, errors.New("Cancel update")
 				}
-			})
+			}
+			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, nil, writeUpdateFunc)
 		} else {
-			err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, error) {
+			err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 				// Be careful: this block can be invoked multiple times if there are races!
 				if currentValue == nil {
-					return nil, couchbase.UpdateCancel // someone deleted it?!
+					return nil, nil, couchbase.UpdateCancel // someone deleted it?!
 				}
 				doc, err := unmarshalDocument(docid, currentValue)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-				updatedDoc, shouldUpdate, err := documentUpdateFunc(doc)
+				updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if shouldUpdate {
 					base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
-					return json.Marshal(updatedDoc)
+					if updatedExpiry != nil {
+						updatedDoc.UpdateExpiry(*updatedExpiry)
+					}
+					updatedBytes, marshalErr := json.Marshal(updatedDoc)
+					return updatedBytes, updatedExpiry, marshalErr
 				} else {
-					return nil, couchbase.UpdateCancel
+					return nil, nil, couchbase.UpdateCancel
 				}
 			})
 		}

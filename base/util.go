@@ -17,12 +17,14 @@ import (
 	"expvar"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -227,17 +229,17 @@ func IsPowerOfTwo(n uint16) bool {
 //
 //This function takes a ttl as a Duration and returns an int
 //formatted as required by CBS expiry processing
-func DurationToCbsExpiry(ttl time.Duration) int {
+func DurationToCbsExpiry(ttl time.Duration) uint32 {
 	if ttl <= kMaxDeltaTtlDuration {
-		return int(ttl.Seconds())
+		return uint32(ttl.Seconds())
 	} else {
-		return int(time.Now().Add(ttl).Unix())
+		return uint32(time.Now().Add(ttl).Unix())
 	}
 }
 
 //This function takes a ttl in seconds and returns an int
 //formatted as required by CBS expiry processing
-func SecondsToCbsExpiry(ttl int) int {
+func SecondsToCbsExpiry(ttl int) uint32 {
 	return DurationToCbsExpiry(time.Duration(ttl) * time.Second)
 }
 
@@ -248,6 +250,44 @@ func CbsExpiryToTime(expiry uint32) time.Time {
 	} else {
 		return time.Unix(int64(expiry), 0)
 	}
+}
+
+// ReflectExpiry attempts to convert expiry from one of the following formats to a Couchbase Server expiry value:
+//   1. Numeric JSON values are converted to uint32 and returned as-is
+//   2. String JSON values that are numbers are converted to int32 and returned as-is
+//   3. String JSON values that are ISO-8601 dates are converted to UNIX time and returned
+//   4. Null JSON values return 0
+func ReflectExpiry(rawExpiry interface{}) (*uint32, error) {
+	switch expiry := rawExpiry.(type) {
+	case float64:
+		return ValidateUint32Expiry(int64(expiry))
+	case string:
+		// First check if it's a numeric string
+		expInt, err := strconv.ParseInt(expiry, 10, 32)
+		if err == nil {
+			return ValidateUint32Expiry(expInt)
+		}
+		// Check if it's an ISO-8601 date
+		expRFC3339, err := time.Parse(time.RFC3339, expiry)
+		if err == nil {
+			return ValidateUint32Expiry(expRFC3339.Unix())
+		} else {
+			return nil, fmt.Errorf("Unable to parse expiry %s as either numeric or date expiry:%v", err)
+		}
+	case nil:
+		// Leave as zero/empty expiry
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("Unrecognized expiry format")
+	}
+}
+
+func ValidateUint32Expiry(expiry int64) (*uint32, error) {
+	if expiry < 0 || expiry > math.MaxUint32 {
+		return nil, fmt.Errorf("Expiry value is not within valid range: %d", expiry)
+	}
+	uint32Expiry := uint32(expiry)
+	return &uint32Expiry, nil
 }
 
 // Needed due to https://github.com/couchbase/sync_gateway/issues/1345

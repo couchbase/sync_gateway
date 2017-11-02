@@ -53,8 +53,8 @@ const (
 	DefaultUseXattrs      = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	DefaultAllowConflicts = true  // Whether Sync Gateway allows revision conflicts, if not specified in the config
 
-	DefaultOldRevExpirySeconds = 300
-  
+	DefaultOldRevExpirySeconds = uint32(300)
+
 	// Default value of _local document expiry
 	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) //90 days in seconds
 

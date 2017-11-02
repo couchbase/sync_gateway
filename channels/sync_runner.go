@@ -105,6 +105,7 @@ type SyncRunner struct {
 	channels          []string
 	access            map[string][]string // channels granted to users via access() callback
 	roles             map[string][]string // roles granted to users via role() callback
+	expiry            *uint32             // document expiry (in seconds) specified via expiry() callback
 }
 
 func NewSyncRunner(funcSource string) (*SyncRunner, error) {
@@ -149,11 +150,37 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 		return otto.UndefinedValue()
 	})
 
+	// Implementation of the 'expiry()' callback:
+	runner.DefineNativeFunction("expiry", func(call otto.FunctionCall) otto.Value {
+		if len(call.ArgumentList) > 0 {
+			rawExpiry, exportErr := call.Argument(0).Export()
+			if exportErr != nil {
+				base.Warn("SyncRunner: Unable to export expiry parameter: %v Error: %s", call.Argument(0), exportErr)
+				return otto.UndefinedValue()
+			}
+
+			// Called expiry with null/undefined value - ignore
+			if rawExpiry == nil || call.Argument(0).IsUndefined() {
+				return otto.UndefinedValue()
+			}
+
+			expiry, reflectErr := base.ReflectExpiry(rawExpiry)
+			if reflectErr != nil {
+				base.Warn("SyncRunner: Invalid value passed to expiry().  Value:%+v ", call.Argument(0))
+				return otto.UndefinedValue()
+			}
+
+			runner.expiry = expiry
+		}
+		return otto.UndefinedValue()
+	})
+
 	runner.Before = func() {
 		runner.output = &ChannelMapperOutput{}
 		runner.channels = []string{}
 		runner.access = map[string][]string{}
 		runner.roles = map[string][]string{}
+		runner.expiry = nil
 	}
 	runner.After = func(result otto.Value, err error) (interface{}, error) {
 		output := runner.output
@@ -165,6 +192,9 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 				if err == nil {
 					output.Roles, err = compileAccessMap(runner.roles, "role:")
 				}
+			}
+			if runner.expiry != nil {
+				output.Expiry = runner.expiry
 			}
 		}
 		return output, err
