@@ -34,15 +34,6 @@ func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList
 		}
 		return treeMeta.RevTree, nil
 
-
-		//// Unmarshal xattr only
-		//doc, unmarshalErr := unmarshalDocumentWithXattr(key, nil, rawXattr, cas)
-		//if unmarshalErr != nil {
-		//	return revTreeList{}, unmarshalErr
-		//}
-		//
-		//return doc.History, nil
-
 	default:
 		rawDoc, _, err := bucket.GetRaw(key)
 		if err != nil {
