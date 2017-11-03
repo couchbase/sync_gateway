@@ -18,14 +18,41 @@ type treeMeta struct {
 }
 
 // Retrieve the raw doc from the bucket, and unmarshal sync history as revTreeList, to validate low-level  storage
-func getRevTreeList(bucket base.Bucket, key string) (revTreeList, error) {
-	rawDoc, _, err := bucket.GetRaw(key)
-	if err != nil {
-		return revTreeList{}, err
+func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList, error) {
+	switch useXattrs {
+	case true:
+		var rawDoc, rawXattr []byte
+		_, getErr := bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
+		if getErr != nil {
+			return revTreeList{}, getErr
+		}
+
+		var treeMeta treeMeta
+		err := json.Unmarshal(rawXattr, &treeMeta)
+		if err != nil {
+			return revTreeList{}, err
+		}
+		return treeMeta.RevTree, nil
+
+
+		//// Unmarshal xattr only
+		//doc, unmarshalErr := unmarshalDocumentWithXattr(key, nil, rawXattr, cas)
+		//if unmarshalErr != nil {
+		//	return revTreeList{}, unmarshalErr
+		//}
+		//
+		//return doc.History, nil
+
+	default:
+		rawDoc, _, err := bucket.GetRaw(key)
+		if err != nil {
+			return revTreeList{}, err
+		}
+		var doc treeDoc
+		err = json.Unmarshal(rawDoc, &doc)
+		return doc.Meta.RevTree, err
 	}
-	var doc treeDoc
-	err = json.Unmarshal(rawDoc, &doc)
-	return doc.Meta.RevTree, err
+
 }
 
 // TestRevisionStorageConflictAndTombstones
@@ -79,7 +106,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
-	revTree, err := getRevTreeList(db.Bucket, "doc1")
+	revTree, err := getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assertNoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equals(t, len(revTree.BodyMap), 0)
 	assert.Equals(t, len(revTree.BodyKeyMap), 1)
@@ -128,7 +155,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	assertTrue(t, base.IsKeyNotFoundError(db.Bucket, err), "Revision should be not found")
 
 	// Validate the tombstone is stored inline (due to small size)
-	revTree, err = getRevTreeList(db.Bucket, "doc1")
+	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assertNoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equals(t, len(revTree.BodyMap), 1)
 	assert.Equals(t, len(revTree.BodyKeyMap), 0)
@@ -166,7 +193,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Validate the tombstone is not stored inline (due to small size)
 	log.Printf("Verify raw revtree w/ tombstone 3-c in key map")
-	newRevTree, err := getRevTreeList(db.Bucket, "doc1")
+	newRevTree, err := getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assertNoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equals(t, len(newRevTree.BodyMap), 1)    // tombstone 3-b
 	assert.Equals(t, len(newRevTree.BodyKeyMap), 1) // tombstone 3-c
@@ -189,7 +216,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev3a_body["version"] = "3a"
 	assertNoError(t, db.PutExistingRev("doc1", rev2c_body, []string{"3-a", "2-a"}), "add 3-a")
 
-	revTree, err = getRevTreeList(db.Bucket, "doc1")
+	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assertNoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equals(t, len(revTree.BodyMap), 1)    // tombstone 3-b
 	assert.Equals(t, len(revTree.BodyKeyMap), 1) // tombstone 3-c
@@ -245,7 +272,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
-	revTree, err := getRevTreeList(db.Bucket, "doc1")
+	revTree, err := getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assertNoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equals(t, len(revTree.BodyMap), 0)
 	assert.Equals(t, len(revTree.BodyKeyMap), 1)
@@ -293,13 +320,13 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
-	revTree, err = getRevTreeList(db.Bucket, "doc1")
+	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	assertNoError(t, err, "Couldn't get revtree for raw document")
 	assert.Equals(t, len(revTree.BodyMap), 0)
 	assert.Equals(t, len(revTree.BodyKeyMap), 1)
 	log.Printf("revTree.BodyKeyMap:%v", revTree.BodyKeyMap)
 
-	revTree, err = getRevTreeList(db.Bucket, "doc1")
+	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
 	log.Printf("revtree before additional revisions: %v", revTree.BodyKeyMap)
 
 	// Add revisions until 3-b is pruned
