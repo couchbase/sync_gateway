@@ -934,6 +934,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	spec := base.GetTestBucketSpec(base.DataBucket)
 	username, password, _ := spec.Auth.GetCredentials()
 
+	rt1UseXattrs := rt1.GetDatabase().UseXattrs()
 	_, err := rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
 			Server:   &server,
@@ -942,6 +943,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 			Password: password,
 		},
 		Name: "db",
+		EnableXattrs: &rt1UseXattrs,
 	})
 
 	assertNoError(t, err, "Failed to add database to rest tester")
@@ -1027,6 +1029,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	spec := base.GetTestBucketSpec(base.DataBucket)
 	username, password, _ := spec.Auth.GetCredentials()
 
+	rt1UseXattrs := rt1.GetDatabase().UseXattrs()
 	_, err := rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
 			Server:   &server,
@@ -1035,6 +1038,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 			Password: password,
 		},
 		Name: "db",
+		EnableXattrs: &rt1UseXattrs,
 	})
 
 	assertNoError(t, err, "Failed to add database to rest tester")
