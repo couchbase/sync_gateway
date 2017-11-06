@@ -124,7 +124,7 @@ func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string,
 		if commonAncestor != "" {
 			parentAttachments = make(map[string]interface{})
 			commonAncestorGen, _ := base.ToInt64(genOfRevID(commonAncestor))
-			for name, activeAttachment := range BodyAttachments(doc.body) {
+			for name, activeAttachment := range BodyAttachments(doc.Body()) {
 				attachmentMeta, ok := activeAttachment.(map[string]interface{})
 				if ok {
 					activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
@@ -145,7 +145,7 @@ func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string,
 // generation or later are loaded.
 func (db *Database) loadBodyAttachments(body Body, minRevpos int, docid string) (Body, error) {
 
-	body = body.ImmutableAttachmentsCopy()
+	body = body.MutableAttachmentsCopy()
 	for attachmentName, value := range BodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		revpos, ok := base.ToInt64(meta["revpos"])

@@ -62,6 +62,33 @@ func (rc *RevisionCache) Get(docid, revid string) (Body, Body, base.Set, error) 
 	return body, history, channels, err
 }
 
+// Attempts to retrieve the active revision for a document from the cache.  Requires retrieval
+// of the document from the bucket to guarantee the current active revision, but does minimal unmarshalling
+// of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
+// rev cache, will use it.  Otherwise will add to the rev cache using the raw document obtained in the
+// initial retrieval.
+func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (body Body, history Body, channels base.Set, currentRev string, err error) {
+
+	// Look up active rev for doc
+	bucketDoc, getErr := context.GetDocument(docid, DocUnmarshalSync)
+	if getErr != nil {
+		return nil, nil, nil, "", getErr
+	}
+	if bucketDoc == nil {
+		return nil, nil, nil, "", nil
+	}
+
+	currentRev = bucketDoc.CurrentRev
+
+	// Retrieve from or add to rev cache
+	value := rc.getValue(docid, currentRev, true)
+	body, history, channels, err = value.loadForDoc(bucketDoc, context)
+	if err != nil {
+		rc.removeValue(value) // don't keep failed loads in the cache
+	}
+	return body, history, channels, currentRev, err
+}
+
 // Adds a revision to the cache.
 func (rc *RevisionCache) Put(body Body, history Body, channels base.Set) {
 	if history == nil {
@@ -116,6 +143,24 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (Body, Body
 		if loaderFunc != nil {
 			value.body, value.history, value.channels, value.err = loaderFunc(value.key)
 		}
+	} else {
+		base.StatsExpvars.Add("revisionCache_hits", 1)
+	}
+	body := value.body
+	if body != nil {
+		body = body.ShallowCopy() // Never let the caller mutate the stored body
+	}
+	return body, value.history, value.channels, value.err
+}
+
+// Retrieves the body etc. out of a revCacheValue.  If they aren't already present, loads into the cache value using
+// the provided document.
+func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) (Body, Body, base.Set, error) {
+	value.lock.Lock()
+	defer value.lock.Unlock()
+	if value.body == nil && value.err == nil {
+		base.StatsExpvars.Add("revisionCache_misses", 1)
+		value.body, value.history, value.channels, value.err = context.revCacheLoaderForDocument(doc, value.key.RevID)
 	} else {
 		base.StatsExpvars.Add("revisionCache_hits", 1)
 	}

@@ -29,6 +29,17 @@ import (
 // Non-winning bodies smaller than this size are more efficient to store inline.
 const MaximumInlineBodySize = 250
 
+type DocumentUnmarshalLevel uint8
+
+const (
+	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // Unmarshals sync metadata and body
+	DocUnmarshalSync                                     // Unmarshals all sync metadata
+	DocUnmarshalNoHistory                                // Unmarshals sync metadata excluding history
+	DocUnmarshalRev                                      // Unmarshals rev + CAS only
+	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
+	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
+)
+
 // Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
 
@@ -38,7 +49,7 @@ type syncData struct {
 	NewestRev       string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
 	Flags           uint8               `json:"flags,omitempty"`
 	Sequence        uint64              `json:"sequence,omitempty"`
-	UnusedSequences []uint64            `json:"unused_sequences,omitempty"` // unused due to update conflicts
+	UnusedSequences []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
 	RecentSequences []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
 	History         RevTree             `json:"history"`
 	Channels        channels.ChannelMap `json:"channels,omitempty"`
@@ -65,11 +76,22 @@ type syncData struct {
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 // In its JSON form, the body's properties are at top-level while the syncData is in a special
 // "_sync" property.
+// Document doesn't do any locking - document instances aren't intended to be shared across multiple goroutines.
 type document struct {
-	syncData
-	body Body
-	ID   string `json:"-"`
-	Cas  uint64
+	syncData        // Sync metadata
+	_body    Body   // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
+	rawBody  []byte // Raw document body, as retrieved from the bucket
+	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
+	Cas      uint64 // Document cas
+}
+
+type revOnlySyncData struct {
+	casOnlySyncData
+	CurrentRev string `json:"rev"`
+}
+
+type casOnlySyncData struct {
+	Cas string `json:"cas"`
 }
 
 // Returns a new empty document.
@@ -77,7 +99,31 @@ func newDocument(docid string) *document {
 	return &document{ID: docid, syncData: syncData{History: make(RevTree)}}
 }
 
-// Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.
+// Accessors for document properties.  To support lazy unmarshalling of document contents, all access should be done through accessors
+func (doc *document) Body() Body {
+	if doc._body == nil && doc.rawBody != nil {
+		err := json.Unmarshal(doc.rawBody, &doc._body)
+		if err != nil {
+			base.Warn("Unable to unmarshal document body from raw body : %s", err)
+			return nil
+		}
+		doc.rawBody = nil
+	}
+	return doc._body
+}
+
+func (doc *document) RemoveBody() {
+	doc._body = nil
+	doc.rawBody = nil
+}
+
+// TODO: review whether this can just return raw body when available
+func (doc *document) MarshalBody() ([]byte, error) {
+	return json.Marshal(doc.Body())
+}
+
+// Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
+// UseNumber handling is applied to numbers in the body.
 func unmarshalDocument(docid string, data []byte) (*document, error) {
 	doc := newDocument(docid)
 	if len(data) > 0 {
@@ -92,14 +138,14 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 	return doc, nil
 }
 
-func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, cas uint64) (doc *document, err error) {
+func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
 
 	if xattrData == nil || len(xattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
 	} else {
 		doc = newDocument(docid)
-		err = doc.UnmarshalWithXattr(data, xattrData)
+		err = doc.UnmarshalWithXattr(data, xattrData, unmarshalLevel)
 	}
 	if err != nil {
 		return nil, err
@@ -226,6 +272,7 @@ func parseXattrStreamData(xattrName string, data []byte) (body []byte, xattr []b
 }
 
 func (doc *syncData) HasValidSyncData(requireSequence bool) bool {
+
 	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0 || !requireSequence)
 	return valid
 }
@@ -290,7 +337,7 @@ func (db *DatabaseContext) RevisionBodyLoader(key string) ([]byte, error) {
 func (doc *document) getRevisionBody(revid string, loader RevLoaderFunc) Body {
 	var body Body
 	if revid == doc.CurrentRev {
-		body = doc.body
+		body = doc.Body()
 	} else {
 		body = doc.getNonWinningRevisionBody(revid, loader)
 	}
@@ -305,6 +352,7 @@ func (doc *document) getNonWinningRevisionBody(revid string, loader RevLoaderFun
 	if !found {
 		return nil
 	}
+
 	if err := json.Unmarshal(bodyBytes, &body); err != nil {
 		base.Warn("Unexpected error parsing body of rev %q", revid)
 		return nil
@@ -316,7 +364,11 @@ func (doc *document) getNonWinningRevisionBody(revid string, loader RevLoaderFun
 func (doc *document) getRevisionBodyJSON(revid string, loader RevLoaderFunc) []byte {
 	var bodyJSON []byte
 	if revid == doc.CurrentRev {
-		bodyJSON, _ = json.Marshal(doc.body)
+		var marshalErr error
+		bodyJSON, marshalErr = json.Marshal(doc._body)
+		if marshalErr != nil {
+			base.Warn("Marshal error when retrieving active current revision body: %v", marshalErr)
+		}
 	} else {
 		bodyJSON, _ = doc.History.getRevisionBody(revid, loader)
 	}
@@ -336,8 +388,8 @@ func (doc *document) removeRevisionBody(revID string) {
 // makeBodyActive moves a previously non-winning revision body from the rev tree to the document body
 func (doc *document) promoteNonWinningRevisionBody(revid string, loader RevLoaderFunc) {
 	// If the new revision is not current, transfer the current revision's
-	// body to the top level doc.body:
-	doc.body = doc.getNonWinningRevisionBody(revid, loader)
+	// body to the top level doc._body:
+	doc._body = doc.getNonWinningRevisionBody(revid, loader)
 	doc.removeRevisionBody(revid)
 }
 
@@ -356,7 +408,7 @@ func (doc *document) pruneRevisions(maxDepth uint32, keepRev string) int {
 func (doc *document) setRevisionBody(revid string, body Body, storeInline bool) {
 	strippedBody := stripSpecialProperties(body)
 	if revid == doc.CurrentRev {
-		doc.body = strippedBody
+		doc._body = strippedBody
 	} else {
 		var asJson []byte
 		if len(body) > 0 {
@@ -604,16 +656,16 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 		doc.syncData = *root.SyncData
 	}
 
-	if err := doc.unmarshalBody(data); err != nil {
+	if err := json.Unmarshal(data, &doc._body); err != nil {
 		return err
 	}
 
-	delete(doc.body, "_sync")
+	delete(doc._body, "_sync")
 	return nil
 }
 
 func (doc *document) MarshalJSON() ([]byte, error) {
-	body := doc.body
+	body := doc._body
 	if body == nil {
 		body = Body{}
 	}
@@ -623,33 +675,75 @@ func (doc *document) MarshalJSON() ([]byte, error) {
 	return data, err
 }
 
-func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte) error {
+// UnmarshalWithXattr unmarshals the provided raw document and xattr bytes.  The provided DocumentUnmarshalLevel
+// (unmarshalLevel) specifies how much of the provided document/xattr needs to be initially unmarshalled.  If
+// unmarshalLevel is anything less than the full document + metadata, the raw data is retained for subsequent
+// lazy unmarshalling as needed.
+func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
 		base.Warn("Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
 	}
 
-	// Unmarshal sync metadata
-	doc.syncData = syncData{History: make(RevTree)}
-	if err := json.Unmarshal(xdata, &doc.syncData); err != nil {
-		return err
-	}
-	// Unmarshal document body, if present
-	if len(data) > 0 {
-		return doc.unmarshalBody(data)
+	switch unmarshalLevel {
+	case DocUnmarshalAll, DocUnmarshalSync:
+		// Unmarshal full document and/or sync metadata
+		doc.syncData = syncData{History: make(RevTree)}
+		unmarshalErr := json.Unmarshal(xdata, &doc.syncData)
+		if unmarshalErr != nil {
+			return unmarshalErr
+		}
+		// Unmarshal body if requested and present
+		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
+			return json.Unmarshal(data, &doc._body)
+		} else {
+			doc.rawBody = data
+		}
+
+	case DocUnmarshalNoHistory:
+		// Unmarshal sync metadata only, excluding history
+		doc.syncData = syncData{}
+		unmarshalErr := json.Unmarshal(xdata, &doc.syncData)
+		if unmarshalErr != nil {
+			return unmarshalErr
+		}
+		doc.rawBody = data
+	case DocUnmarshalRev:
+		// Unmarshal only rev and cas from sync metadata
+		var revOnlyMeta revOnlySyncData
+		unmarshalErr := json.Unmarshal(xdata, &revOnlyMeta)
+		if unmarshalErr != nil {
+			return unmarshalErr
+		}
+		doc.syncData = syncData{
+			CurrentRev: revOnlyMeta.CurrentRev,
+			Cas:        revOnlyMeta.Cas,
+		}
+		doc.rawBody = data
+	case DocUnmarshalCAS:
+		// Unmarshal only cas from sync metadata
+		var casOnlyMeta casOnlySyncData
+		unmarshalErr := json.Unmarshal(xdata, &casOnlyMeta)
+		if unmarshalErr != nil {
+			return unmarshalErr
+		}
+		doc.syncData = syncData{
+			Cas: casOnlyMeta.Cas,
+		}
+		doc.rawBody = data
 	}
 
 	// If there's no body, but there is an xattr, set body as {"_deleted":true} to align with non-xattr handling
-	if len(xdata) > 0 {
-		doc.body = Body{}
-		doc.body["_deleted"] = true
+	if len(data) == 0 && len(xdata) > 0 {
+		doc._body = Body{}
+		doc._body["_deleted"] = true
 	}
 	return nil
 }
 
 func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 
-	body := doc.body
+	body := doc._body
 	// If body is non-empty and non-deleted, unmarshal and return
 	if body != nil {
 		deleted, _ := body["_deleted"].(bool)
@@ -667,12 +761,4 @@ func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	}
 
 	return data, xdata, nil
-}
-
-func (doc *document) unmarshalBody(data []byte) error {
-	err := json.Unmarshal([]byte(data), &doc.body)
-	if err != nil {
-		base.Warn("Error unmarshaling body of doc %q: %s", doc.ID, err)
-	}
-	return err
 }

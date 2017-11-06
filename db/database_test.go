@@ -251,7 +251,7 @@ func TestGetDeleted(t *testing.T) {
 	assert.DeepEquals(t, body, expectedResult)
 
 	// Get the raw doc and make sure the sync data has the current revision
-	doc, err := db.GetDoc("doc1")
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
 	assertNoError(t, err, "Err getting doc")
 	assert.Equals(t, doc.syncData.CurrentRev, rev2id)
 
@@ -709,8 +709,8 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change with the higher revid won:
 	gotBody, err := db.Get("doc")
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-b", "n": int64(2),
-		"channels": []interface{}{"all", "2b"}})
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-b", "n": 2,
+		"channels": []string{"all", "2b"}})
 
 	// Verify we can still get the other two revisions:
 	gotBody, err = db.GetRev("doc", "1-a", false, nil)
@@ -750,11 +750,11 @@ func TestConflicts(t *testing.T) {
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
 	gotBody, err = db.Get("doc")
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": int64(3),
-		"channels": []interface{}{"all", "2a"}})
+	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": 3,
+		"channels": []string{"all", "2a"}})
 
 	// Verify channel assignments are correct for channels defined by 2-a:
-	doc, _ := db.GetDoc("doc")
+	doc, _ := db.GetDocument("doc", DocUnmarshalAll)
 	chan2a, found := doc.Channels["2a"]
 	assert.True(t, found)
 	assert.True(t, chan2a == nil)             // currently in 2a
@@ -875,7 +875,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	assertNoError(t, err, "PutExistingRev failed")
 
 	// Check that the doc has the correct channel (test for issue #300)
-	doc, err := db.GetDoc("doc1")
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
 	assert.DeepEquals(t, doc.Channels, channels.ChannelMap{
 		"clibup": nil, // i.e. it is currently in this channel (no removal)
 		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
@@ -1089,7 +1089,7 @@ func TestImport(t *testing.T) {
 	}
 
 	// Make sure they aren't visible thru the gateway:
-	doc, err := db.GetDoc("alreadyHere1")
+	doc, err := db.GetDocument("alreadyHere1", DocUnmarshalAll)
 	assert.Equals(t, doc, (*document)(nil))
 	assert.Equals(t, err.(*base.HTTPError).Status, 404)
 
@@ -1099,7 +1099,7 @@ func TestImport(t *testing.T) {
 	assert.Equals(t, count, 20)
 
 	// Now they're visible:
-	doc, err = db.GetDoc("alreadyHere1")
+	doc, err = db.GetDocument("alreadyHere1", DocUnmarshalAll)
 	base.Logf("doc = %+v", doc)
 	assert.True(t, doc != nil)
 	assertNoError(t, err, "can't get doc")
@@ -1121,7 +1121,7 @@ func TestPostWithExistingId(t *testing.T) {
 	assertNoError(t, err, "Couldn't create document")
 
 	// Test retrieval
-	doc, err := db.GetDoc(customDocId)
+	doc, err := db.GetDocument(customDocId, DocUnmarshalAll)
 	assert.True(t, doc != nil)
 	assertNoError(t, err, "Unable to retrieve doc using custom id")
 
@@ -1134,7 +1134,7 @@ func TestPostWithExistingId(t *testing.T) {
 	assertNoError(t, err, "Couldn't create document")
 
 	// Test retrieval
-	doc, err = db.GetDoc(docid)
+	doc, err = db.GetDocument(docid, DocUnmarshalAll)
 	assert.True(t, doc != nil)
 	assertNoError(t, err, "Unable to retrieve doc using generated uuid")
 
@@ -1190,7 +1190,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	assertNoError(t, err, "Couldn't create document")
 
 	// Test retrieval
-	doc, err := db.GetDoc(customDocId)
+	doc, err := db.GetDocument(customDocId, DocUnmarshalAll)
 	assert.True(t, doc != nil)
 	assertNoError(t, err, "Unable to retrieve doc using custom id")
 
@@ -1202,7 +1202,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	assert.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
 
 	// Test retrieval gets rev1
-	doc, err = db.GetDoc(docid)
+	doc, err = db.GetDocument(docid, DocUnmarshalAll)
 	assert.True(t, doc != nil)
 	assert.True(t, doc.CurrentRev == rev1id)
 	assertNoError(t, err, "Unable to retrieve doc using generated uuid")
@@ -1245,7 +1245,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	revid, err := db.Put("doc1", body)
 
 	assert.True(t, revid != "")
-	doc, err := db.GetDoc("doc1")
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
 	assert.True(t, err == nil)
 	assert.DeepEquals(t, doc.RecentSequences, []uint64{1})
 
@@ -1254,7 +1254,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		revid, err = db.Put("doc1", body)
 	}
 
-	doc, err = db.GetDoc("doc1")
+	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	assert.True(t, err == nil)
 	assert.DeepEquals(t, doc.RecentSequences, []uint64{1, 2, 3, 4})
 
@@ -1268,7 +1268,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	db.changeCache.waitForSequence(24)
 	revid, err = db.Put("doc1", body)
-	doc, err = db.GetDoc("doc1")
+	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	assert.True(t, err == nil)
 	log.Printf("recent:%d, max:%d", len(doc.RecentSequences), kMaxRecentSequences)
 	assert.True(t, len(doc.RecentSequences) <= kMaxRecentSequences)
@@ -1282,7 +1282,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	db.changeCache.waitForSequence(64)
 	revid, err = db.Put("doc1", body)
-	doc, err = db.GetDoc("doc1")
+	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	assert.True(t, err == nil)
 	log.Printf("Recent sequences: %v (shouldn't exceed %v)", len(doc.RecentSequences), kMaxRecentSequences)
 	assert.True(t, len(doc.RecentSequences) <= kMaxRecentSequences)
@@ -1340,7 +1340,7 @@ func CouchbaseTestConcurrentImport(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			doc, err := db.GetDoc("directWrite")
+			doc, err := db.GetDocument("directWrite", DocUnmarshalAll)
 			assert.True(t, doc != nil)
 			assertNoError(t, err, "Document retrieval error")
 			assert.Equals(t, doc.syncData.CurrentRev, "1-36fa688dc2a2c39a952ddce46ab53d12")

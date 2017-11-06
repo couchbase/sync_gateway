@@ -41,7 +41,7 @@ func (c *DatabaseContext) assimilate(docid string) {
 		if err := db.initializeSyncData(doc); err != nil {
 			return nil, nil, err
 		}
-		return doc.body, nil, nil
+		return doc.Body(), nil, nil
 	})
 	if err != nil && err != couchbase.UpdateCancel {
 		base.Warn("Failed to import new doc %q: %v", docid, err)

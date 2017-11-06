@@ -12,7 +12,6 @@ package db
 import (
 	"crypto/md5"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -23,12 +22,8 @@ import (
 type Body map[string]interface{}
 
 func (b *Body) Unmarshal(data []byte) error {
-
 	if err := json.Unmarshal(data, &b); err != nil {
 		return err
-	}
-	if b == nil {
-		return errors.New("Unable to unmarshal null document as Body")
 	}
 	return nil
 }
@@ -41,7 +36,9 @@ func (body Body) ShallowCopy() Body {
 	return copied
 }
 
-func (body Body) ImmutableAttachmentsCopy() Body {
+// Creates a mutable copy that does a deep copy of the _attachments property in the body,
+// suitable for modification by the caller
+func (body Body) MutableAttachmentsCopy() Body {
 	if body == nil {
 		return nil
 	}

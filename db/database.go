@@ -1106,7 +1106,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 				if currentValue == nil || len(currentValue) == 0 {
 					return nil, nil, deleteDoc, nil, errors.New("Cancel update")
 				}
-				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas)
+				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll)
 				if err != nil {
 					return nil, nil, deleteDoc, nil, err
 				}

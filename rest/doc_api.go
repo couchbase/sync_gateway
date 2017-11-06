@@ -86,7 +86,7 @@ func (h *handler) handleGetDoc() error {
 
 		if openRevs == "all" {
 			// open_revs=all
-			doc, err := h.db.GetDoc(docid)
+			doc, err := h.db.GetDocument(docid, db.DocUnmarshalSync)
 			if err != nil {
 				return err
 			}

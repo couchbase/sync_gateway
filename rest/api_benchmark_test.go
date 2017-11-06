@@ -146,10 +146,12 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 		{"Admin_Simple", "/db/_changes?since=1", ""},
 		{"Admin_Longpoll", "/db/_changes?since=1&feed=longpoll", ""},
 		{"Admin_StyleAllDocs", "/db/_changes?since=1&style=all_docs", ""},
+		{"Admin_StyleAllDocsChannelFilter", "/db/_changes?since=1&style=all_docs&filter=sync_gateway/bychannel&channels=channel_1", ""},
 		{"Admin_IncludeDocs", "/db/_changes?since=1&include_docs=true", ""},
 		{"User_Simple", "/db/_changes?since=1", username},
 		{"User_Longpoll", "/db/_changes?since=1&feed=longpoll", username},
 		{"User_StyleAllDocs", "/db/_changes?since=1&style=all_docs", username},
+		{"User_StyleAllDocsChannelFilter", "/db/_changes?since=1&style=all_docs&filter=sync_gateway/bychannel&channels=channel_1", username},
 		{"User_IncludeDocs", "/db/_changes?since=1&include_docs=true", username},
 	}
 
