@@ -92,7 +92,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 	// The document, which may include just the syncMeta or may include syncMeta + Body, depending on circumstances
 	if options.IncludeDocs {
 		// load whole doc
-		doc, err = db.GetDoc(entry.ID)
+		doc, err = db.GetDocument(entry.ID, DocUnmarshalAll)
 		if err != nil {
 			base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
 			return

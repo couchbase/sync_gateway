@@ -76,11 +76,12 @@ type syncData struct {
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 // In its JSON form, the body's properties are at top-level while the syncData is in a special
 // "_sync" property.
+// Document doesn't do any locking - document instances aren't intended to be shared across multiple goroutines.
 type document struct {
 	syncData        // Sync metadata
 	_body    Body   // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
 	rawBody  []byte // Raw document body, as retrieved from the bucket
-	ID       string `json:"-"` // Doc id
+	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas      uint64 // Document cas
 }
 
@@ -137,14 +138,14 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 	return doc, nil
 }
 
-func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, cas uint64, unmarshalTo DocumentUnmarshalLevel) (doc *document, err error) {
+func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
 
 	if xattrData == nil || len(xattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
 	} else {
 		doc = newDocument(docid)
-		err = doc.UnmarshalWithXattr(data, xattrData, unmarshalTo)
+		err = doc.UnmarshalWithXattr(data, xattrData, unmarshalLevel)
 	}
 	if err != nil {
 		return nil, err
@@ -363,7 +364,11 @@ func (doc *document) getNonWinningRevisionBody(revid string, loader RevLoaderFun
 func (doc *document) getRevisionBodyJSON(revid string, loader RevLoaderFunc) []byte {
 	var bodyJSON []byte
 	if revid == doc.CurrentRev {
-		bodyJSON, _ = json.Marshal(doc._body)
+		var marshalErr error
+		bodyJSON, marshalErr = json.Marshal(doc._body)
+		if marshalErr != nil {
+			base.Warn("Marshal error when retrieving active current revision body: %v", marshalErr)
+		}
 	} else {
 		bodyJSON, _ = doc.History.getRevisionBody(revid, loader)
 	}
@@ -671,16 +676,16 @@ func (doc *document) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalWithXattr unmarshals the provided raw document and xattr bytes.  The provided DocumentUnmarshalLevel
-// (unmarshalTo) specifies how much of the provided document/xattr needs to be initially unmarshalled.  If
-// unmarshalTo is anything less than the full document + metadata, the raw data is retained for subsequent
+// (unmarshalLevel) specifies how much of the provided document/xattr needs to be initially unmarshalled.  If
+// unmarshalLevel is anything less than the full document + metadata, the raw data is retained for subsequent
 // lazy unmarshalling as needed.
-func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalTo DocumentUnmarshalLevel) error {
+func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
 		base.Warn("Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
 	}
 
-	switch unmarshalTo {
+	switch unmarshalLevel {
 	case DocUnmarshalAll, DocUnmarshalSync:
 		// Unmarshal full document and/or sync metadata
 		doc.syncData = syncData{History: make(RevTree)}
@@ -689,7 +694,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalTo D
 			return unmarshalErr
 		}
 		// Unmarshal body if requested and present
-		if unmarshalTo == DocUnmarshalAll && len(data) > 0 {
+		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
 			return json.Unmarshal(data, &doc._body)
 		} else {
 			doc.rawBody = data

@@ -40,12 +40,8 @@ func realDocID(docid string) string {
 	return docid
 }
 
-// Lowest-level method that reads a document from the bucket.
-func (db *DatabaseContext) GetDoc(docid string) (doc *document, err error) {
-	return db.GetDocument(docid, DocUnmarshalAll)
-}
-
-func (db *DatabaseContext) GetDocument(docid string, unmarshalTo DocumentUnmarshalLevel) (doc *document, err error) {
+// Lowest-level method that reads a document from the bucket
+func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
@@ -53,7 +49,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalTo DocumentUnmarsh
 	dbExpvars.Add("document_gets", 1)
 	if db.UseXattrs() {
 		var rawBucketDoc *sgbucket.BucketDocument
-		doc, rawBucketDoc, err = db.GetDocWithXattr(key, unmarshalTo)
+		doc, rawBucketDoc, err = db.GetDocWithXattr(key, unmarshalLevel)
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +83,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalTo DocumentUnmarsh
 	return doc, nil
 }
 
-func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalTo DocumentUnmarshalLevel) (doc *document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
 	rawBucketDoc.Cas, getErr = db.Bucket.GetWithXattr(key, KSyncXattrName, &rawBucketDoc.Body, &rawBucketDoc.Xattr)
@@ -96,7 +92,7 @@ func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalTo DocumentUnmar
 	}
 
 	var unmarshalErr error
-	doc, unmarshalErr = unmarshalDocumentWithXattr(key, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas, unmarshalTo)
+	doc, unmarshalErr = unmarshalDocumentWithXattr(key, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas, unmarshalLevel)
 	if unmarshalErr != nil {
 		return nil, nil, unmarshalErr
 	}
@@ -178,7 +174,7 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 // Its job is to load a revision from the bucket when there's a cache miss.
 func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
 	var doc *document
-	if doc, err = context.GetDoc(id.DocID); doc == nil {
+	if doc, err = context.GetDocument(id.DocID, DocUnmarshalAll); doc == nil {
 		return body, history, channels, err
 	}
 	return context.revCacheLoaderForDocument(doc, id.RevID)
@@ -339,7 +335,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 // Returns the body of the active revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
 func (db *Database) GetDocAndActiveRev(docid string) (populatedDoc *document, body Body, err error) {
-	populatedDoc, err = db.GetDoc(docid)
+	populatedDoc, err = db.GetDocument(docid, DocUnmarshalAll)
 	if populatedDoc == nil {
 		return
 	}
@@ -353,7 +349,7 @@ func (db *Database) GetDocAndActiveRev(docid string) (populatedDoc *document, bo
 // Returns the body of a revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
 func (db *Database) GetRevAndChannels(docid string, revid string, listRevisions bool) (body Body, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, flags uint8, sequence uint64, err error) {
-	doc, err := db.GetDoc(docid)
+	doc, err := db.GetDocument(docid, DocUnmarshalAll)
 	if doc == nil {
 		return
 	}
@@ -793,7 +789,10 @@ func (db *Database) updateAndReturnDoc(
 
 		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.Body() != nil {
 			// Store the doc's previous body into the revision tree:
-			bodyJSON, _ := doc.MarshalBody()
+			bodyJSON, marshalErr := doc.MarshalBody()
+			if marshalErr != nil {
+				base.Warn("Unable to marshal document body for storage in rev tree: %v", marshalErr)
+			}
 			doc.setNonWinningRevisionBody(prevCurrentRev, bodyJSON, db.AllowExternalRevBodyStorage())
 		}
 
@@ -1458,7 +1457,7 @@ const (
 // Given a docID/revID to be pushed by a client, check whether it can be added _without conflict_.
 // This is used by the BLIP replication code in "allow_conflicts=false" mode.
 func (db *Database) CheckProposedRev(docid string, revid string, parentRevID string) ProposedRevStatus {
-	doc, err := db.GetDoc(docid)
+	doc, err := db.GetDocument(docid, DocUnmarshalAll)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			base.Warn("CheckProposedRev(%q) --> %T %v", docid, err, err)

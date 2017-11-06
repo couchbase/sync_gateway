@@ -317,7 +317,7 @@ func (h *handler) handleActiveTasks() error {
 func (h *handler) handleGetRawDoc() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
-	doc, err := h.db.GetDoc(docid)
+	doc, err := h.db.GetDocument(docid, db.DocUnmarshalAll)
 	if doc != nil {
 		h.writeJSON(doc)
 	}
@@ -327,7 +327,7 @@ func (h *handler) handleGetRawDoc() error {
 func (h *handler) handleGetRevTree() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
-	doc, err := h.db.GetDoc(docid)
+	doc, err := h.db.GetDocument(docid, db.DocUnmarshalAll)
 
 	if doc != nil {
 		h.writeText([]byte(doc.History.RenderGraphvizDot()))

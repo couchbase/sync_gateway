@@ -10,6 +10,8 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+// TODO: Could consider checking this in as a file and include it into the compiled test binary using something like https://github.com/jteeuwen/go-bindata
+// Review if we need larger test docs in future.
 var doc_1k = `{
     "index": 0,
     "guid": "bc22f4d5-e13f-4b64-9397-2afd5a843c4d",
@@ -107,8 +109,8 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 	doc1k_meta := []byte(doc_meta)
 
 	unmarshalBenchmarks := []struct {
-		name        string
-		unmarshalTo DocumentUnmarshalLevel
+		name           string
+		unmarshalLevel DocumentUnmarshalLevel
 	}{
 		{"All", DocUnmarshalAll},
 		{"Sync", DocUnmarshalSync},
@@ -121,7 +123,7 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 	for _, bm := range unmarshalBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				doc, err := unmarshalDocumentWithXattr("doc_1k", doc1k_body, doc1k_meta, 1, bm.unmarshalTo)
+				doc, err := unmarshalDocumentWithXattr("doc_1k", doc1k_body, doc1k_meta, 1, bm.unmarshalLevel)
 				b.StopTimer()
 				if err != nil {
 					log.Printf("Unexpected error during unmarshal: %s", err)

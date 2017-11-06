@@ -159,7 +159,7 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 	if database == nil {
 		return 0, fmt.Errorf("No database found")
 	}
-	doc, err := database.GetDoc(docid)
+	doc, err := database.GetDocument(docid, db.DocUnmarshalAll)
 	if err != nil {
 		return 0, err
 	}
