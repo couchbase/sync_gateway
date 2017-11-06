@@ -67,19 +67,22 @@ func (rc *RevisionCache) Get(docid, revid string) (Body, Body, base.Set, error) 
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
 // rev cache, will use it.  Otherwise will add to the rev cache using the raw document obtained in the
 // initial retrieval.
-func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (Body, Body, base.Set, string, error) {
+func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (body Body, history Body, channels base.Set, currentRev string, err error) {
 
 	// Look up active rev for doc
-	bucketDoc, err := context.GetDocument(docid, DocUnmarshalSync)
+	bucketDoc, getErr := context.GetDocument(docid, DocUnmarshalSync)
+	if getErr != nil {
+		return nil, nil, nil, "", getErr
+	}
 	if bucketDoc == nil {
 		return nil, nil, nil, "", nil
 	}
 
-	currentRev := bucketDoc.CurrentRev
+	currentRev = bucketDoc.CurrentRev
 
 	// Retrieve from or add to rev cache
 	value := rc.getValue(docid, currentRev, true)
-	body, history, channels, err := value.loadForDoc(bucketDoc, context)
+	body, history, channels, err = value.loadForDoc(bucketDoc, context)
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
