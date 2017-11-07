@@ -76,6 +76,7 @@ type handler struct {
 	serialNumber   uint64
 	loggedDuration bool
 	runOffline     bool
+	queryValues    url.Values // Copy of results of rq.URL.Query()
 }
 
 type handlerPrivs int
@@ -376,8 +377,15 @@ func (h *handler) SetPathVar(name string, value string) {
 	mux.Vars(h.rq)[name] = url.QueryEscape(value)
 }
 
+func (h *handler) getQueryValues() url.Values {
+	if h.queryValues == nil {
+		h.queryValues = h.rq.URL.Query()
+	}
+	return h.queryValues
+}
+
 func (h *handler) getQuery(query string) string {
-	return h.rq.URL.Query().Get(query)
+	return h.getQueryValues().Get(query)
 }
 
 func (h *handler) getJSONStringQuery(query string) string {
@@ -405,7 +413,7 @@ func (h *handler) getOptBoolQuery(query string, defaultValue bool) bool {
 
 // Returns the integer value of a URL query, defaulting to 0 if unparseable
 func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) {
-	return getRestrictedIntQuery(h.rq.URL.Query(), query, defaultValue, 0, 0, false)
+	return getRestrictedIntQuery(h.getQueryValues(), query, defaultValue, 0, 0, false)
 }
 
 func (h *handler) getJSONQuery(query string) (value interface{}, err error) {

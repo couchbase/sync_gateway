@@ -149,7 +149,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	base.LogTo("OIDC", "handleOidcTestProviderAuthorize() raw authorize request raw query params = %v", requestParams)
 
-	scope := h.rq.URL.Query().Get("scope")
+	scope := h.getQueryValues().Get("scope")
 	if scope == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "missing scope parameter")
 	}
@@ -263,7 +263,7 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
-	requestParams := h.rq.URL.Query()
+	requestParams := h.getQueryValues()
 	username := h.rq.FormValue("username")
 	tokenttl, err := strconv.Atoi(h.rq.FormValue("tokenttl"))
 	if err != nil {
