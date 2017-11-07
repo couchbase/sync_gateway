@@ -230,7 +230,10 @@ func postChanges(t *testing.T, it indexTester) {
 
 
 type ChangesLongPoller struct {
+
+	// This tries to guard against situations where the goroutine takes several seconds to startup (seems like
 	AboutToCallChangesWg *sync.WaitGroup
+
 	ResultChan           chan *TestResponse
 	IndexTester          indexTester
 }
@@ -241,7 +244,7 @@ func NewChangesLongPoller(it indexTester) *ChangesLongPoller {
 		ResultChan:           make(chan *TestResponse),
 		IndexTester:          it,
 	}
-
+	changesLongPoller.AboutToCallChangesWg.Add(1)
 	// Kick off goroutine that will call _changes feed and return result on ResultChan
 	go changesLongPoller.Run()
 
@@ -250,12 +253,17 @@ func NewChangesLongPoller(it indexTester) *ChangesLongPoller {
 }
 
 func (c *ChangesLongPoller) Run() {
+
 	changesJSON := `{"style":"all_docs", "timeout":6000, "feed":"longpoll", "limit":50, "since":"0"}`
 	log.Printf("TEST: ChangesLongPoller calling _changes API")
+	c.AboutToCallChangesWg.Done()  // If > 5 seconds passes in between this call and the next call getting into a blocking longpoll changes feed, the test passing result will be invalid
 	changesResponse := c.IndexTester.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	c.ResultChan <- changesResponse
 }
 
+func (c *ChangesLongPoller) WaitUntilAboutToCallChanges() {
+	c.AboutToCallChangesWg.Wait()
+}
 
 // Tests race between waking up the changes feed, and detecting that the user doc has changed
 func TestPostChangesUserTiming(t *testing.T) {
@@ -286,11 +294,16 @@ func TestPostChangesUserTiming(t *testing.T) {
 
 	changesLongPoller := NewChangesLongPoller(it)
 
-	timeoutChannelGrant := time.After(time.Second * 2)
+	// Create timers outside of for/select so that they don't get
+	// re-created on subsequent iterations
+	timeoutChannelGrant := time.After(time.Second * 5)
 	timeoutTestFailed := time.After(time.Second * 10)
 
 	// Track whether the access grant has been pushed
 	accessGrantPushed := false
+
+	// At this point the NewChangesLongPoller is running and just about to invoke the Changes request
+	changesLongPoller.WaitUntilAboutToCallChanges()
 
 	OUTER:
 
