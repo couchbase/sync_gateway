@@ -486,11 +486,6 @@ func TestChannelIndexBulkGet10(t *testing.T) {
 
 func TestChannelIndexSimpleReadSingle(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is only working against Walrus currently, since GoCB.Append() not impl'd. " +
-			"Fails with logs: https://gist.github.com/tleyden/8bf960cac555feff66425a3ffdaabed9")
-	}
-
 	log.Printf("Test single...")
 	// num vbuckets
 	vbCount := 1024
