@@ -264,11 +264,17 @@ func TestPostChangesUserTiming(t *testing.T) {
 		// Validate that the user receives backfill plus the new doc
 		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 		assertNoError(t, err, "Error unmarshalling changes response")
+		if len(changes.Results) != 4 {
+			log.Printf("len(changes.Results) != 4, dumping changes response for diagnosis")
+			log.Printf("changes: %+v", changes)
+			log.Printf("changesResponse status code: %v.  Headers: %+v", changesResponse.Code, changesResponse.HeaderMap)
+			log.Printf("changesResponse raw body: %s", changesResponse.Body.String())
+		}
 		assert.Equals(t, len(changes.Results), 4)
 	}()
 
-	// Wait for changes feed to get into wait mode, even when running under race
-	time.Sleep(2 * time.Second)
+	// Wait for changes feed to get into wait mode where it is blocked on the longpoll changes feed response
+	time.Sleep(5 * time.Second)
 
 	// Put a doc in channel bernard, that also grants bernard access to channel PBS
 	response = it.SendAdminRequest("PUT", "/db/grant1", `{"value":1, "channel":["bernard"], "accessUser":"bernard", "accessChannel":"PBS"}`)
