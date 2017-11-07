@@ -76,7 +76,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 		return channelsArray, docIdsArray, nil
 	}
 
-	values := h.rq.URL.Query()
+	values := h.getQueryValues()
 
 	if _, ok := values["feed"]; ok {
 		*feed = h.getQuery("feed")
@@ -134,7 +134,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 
 	if _, ok := values["heartbeat"]; ok {
 		options.HeartbeatMs = getRestrictedIntQuery(
-			h.rq.URL.Query(),
+			h.getQueryValues(),
 			"heartbeat",
 			kDefaultHeartbeatMS,
 			kMinHeartbeatMS,
@@ -145,7 +145,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 
 	if _, ok := values["timeout"]; ok {
 		options.TimeoutMs = getRestrictedIntQuery(
-			h.rq.URL.Query(),
+			h.getQueryValues(),
 			"timeout",
 			kDefaultTimeoutMS,
 			0,
@@ -203,7 +203,7 @@ func (h *handler) handleChanges() error {
 		}
 
 		options.HeartbeatMs = getRestrictedIntQuery(
-			h.rq.URL.Query(),
+			h.getQueryValues(),
 			"heartbeat",
 			kDefaultHeartbeatMS,
 			kMinHeartbeatMS,
@@ -211,7 +211,7 @@ func (h *handler) handleChanges() error {
 			true,
 		)
 		options.TimeoutMs = getRestrictedIntQuery(
-			h.rq.URL.Query(),
+			h.getQueryValues(),
 			"timeout",
 			kDefaultTimeoutMS,
 			0,
