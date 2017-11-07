@@ -266,6 +266,7 @@ func (c *ChangesLongPoller) WaitUntilAboutToCallChanges() {
 }
 
 // Tests race between waking up the changes feed, and detecting that the user doc has changed
+// Reworked in https://github.com/couchbase/sync_gateway/pull/3040
 func TestPostChangesUserTiming(t *testing.T) {
 
 	// --------------------------------------- Setup ------------------------------------------
@@ -311,10 +312,12 @@ func TestPostChangesUserTiming(t *testing.T) {
 		select {
 
 		case changesResponse := <-changesLongPoller.ResultChan:
+
 			log.Printf("TEST: Got changes response from changesLongPoller.ResultChan")
 
-			// If there is a bug in Sync Gateway where it returns the _changes response even without the
-			// access grant, this will catch it and fail the test
+			// The changesLongPoller shouldn't return a result until the channel access grant is made, otherwise
+			// it means that Sync Gateway returned the result even before the channel access grant was made, which
+			// would be a severe bug.
 			assert.True(t, accessGrantPushed)
 
 			var changes struct {
@@ -328,13 +331,17 @@ func TestPostChangesUserTiming(t *testing.T) {
 			break OUTER // done
 
 		case <-timeoutChannelGrant:
+
+			// After 5 seconds, we can be reasonably assured that the changesLongPoller is in a blocking longpoll
+			// _changes request.  However, there is still some small uncertainty there since it's impossible
+			// for the changesLongPoller that it's in a blocking call once it's stuck in one.
+
 			// Put a doc in channel bernard, that also grants bernard access to channel PBS
 			log.Printf("TEST: Put a doc in channel bernard, that also grants bernard access to channel PBS")
 			response = it.SendAdminRequest("PUT", "/db/grant1", `{"value":1, "channel":["bernard"], "accessUser":"bernard", "accessChannel":"PBS"}`)
 			assertStatus(t, response, 201)
 			accessGrantPushed = true
 
-		// nil out timeoutChannel so it doesn't block again
 		case <-timeoutTestFailed:
 			t.Fatalf("Didn't get results within expected time")
 
