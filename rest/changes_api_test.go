@@ -227,8 +227,40 @@ func postChanges(t *testing.T, it indexTester) {
 
 }
 
+
+
+type ChangesLongPoller struct {
+	AboutToCallChangesWg *sync.WaitGroup
+	ResultChan           chan *TestResponse
+	IndexTester          indexTester
+}
+
+func NewChangesLongPoller(it indexTester) *ChangesLongPoller {
+	changesLongPoller := ChangesLongPoller{
+		AboutToCallChangesWg: &sync.WaitGroup{},
+		ResultChan:           make(chan *TestResponse),
+		IndexTester:          it,
+	}
+
+	// Kick off goroutine that will call _changes feed and return result on ResultChan
+	go changesLongPoller.Run()
+
+	return &changesLongPoller
+
+}
+
+func (c *ChangesLongPoller) Run() {
+	changesJSON := `{"style":"all_docs", "timeout":6000, "feed":"longpoll", "limit":50, "since":"0"}`
+	log.Printf("TEST: ChangesLongPoller calling _changes API")
+	changesResponse := c.IndexTester.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	c.ResultChan <- changesResponse
+}
+
+
 // Tests race between waking up the changes feed, and detecting that the user doc has changed
 func TestPostChangesUserTiming(t *testing.T) {
+
+	// --------------------------------------- Setup ------------------------------------------
 
 	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel)}`)
 	defer it.Close()
@@ -242,8 +274,6 @@ func TestPostChangesUserTiming(t *testing.T) {
 	assert.True(t, err == nil)
 	a.Save(bernard)
 
-	var wg sync.WaitGroup
-
 	// Put several documents to channel PBS
 	response = it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -252,28 +282,42 @@ func TestPostChangesUserTiming(t *testing.T) {
 	response = it.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		var changes struct {
-			Results  []db.ChangeEntry
-			Last_Seq string
+	// -------------------------------------- / Setup ------------------------------------------
+
+	changesLongPoller := NewChangesLongPoller(it)
+
+	timeoutChannelGrant := time.After(time.Second * 2)
+	timeoutTestFailed := time.After(time.Second * 10)
+
+	OUTER:
+
+	for {
+		select {
+
+		case changesResponse := <-changesLongPoller.ResultChan:
+			log.Printf("TEST: Got changes response from changesLongPoller.ResultChan")
+			var changes struct {
+				Results  []db.ChangeEntry
+				Last_Seq string
+			}
+			// Validate that the user receives backfill plus the new doc
+			err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+			assertNoError(t, err, "Error unmarshalling changes response")
+			assert.Equals(t, len(changes.Results), 4)
+			break OUTER // done
+
+		case <-timeoutChannelGrant:
+			// Put a doc in channel bernard, that also grants bernard access to channel PBS
+			log.Printf("TEST: Put a doc in channel bernard, that also grants bernard access to channel PBS")
+			response = it.SendAdminRequest("PUT", "/db/grant1", `{"value":1, "channel":["bernard"], "accessUser":"bernard", "accessChannel":"PBS"}`)
+			assertStatus(t, response, 201)
+
+		// nil out timeoutChannel so it doesn't block again
+		case <-timeoutTestFailed:
+			t.Fatalf("Didn't get results within expected time")
+
 		}
-		changesJSON := `{"style":"all_docs", "timeout":6000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := it.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
-		// Validate that the user receives backfill plus the new doc
-		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
-		assertNoError(t, err, "Error unmarshalling changes response")
-		assert.Equals(t, len(changes.Results), 4)
-	}()
-
-	// Wait for changes feed to get into wait mode, even when running under race
-	time.Sleep(2 * time.Second)
-
-	// Put a doc in channel bernard, that also grants bernard access to channel PBS
-	response = it.SendAdminRequest("PUT", "/db/grant1", `{"value":1, "channel":["bernard"], "accessUser":"bernard", "accessChannel":"PBS"}`)
-	assertStatus(t, response, 201)
-	wg.Wait()
+	}
 
 }
 
