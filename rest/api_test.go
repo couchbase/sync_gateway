@@ -897,10 +897,6 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 }
 
-// Open two databases that will share the same _sync:seq
-// Create a hole in the sequence allocation since one bulk doc is rejected
-// Make sure that sequences on docs are always monotonically increasing
-// Added to verify SG Issue 2724
 func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
@@ -958,17 +954,17 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Sequence 3 does not get used here as its using a different sequence allocator
-	doc21Rev, err := rt2.GetDatabase().GetDocSyncData("bulk21")
+	doc21Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk21")
 	assert.Equals(t, doc21Rev.Sequence, uint64(4))
 
-	doc22Rev, err := rt2.GetDatabase().GetDocSyncData("bulk22")
+	doc22Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk22")
 	assert.Equals(t, doc22Rev.Sequence, uint64(5))
 
-	doc23Rev, err := rt2.GetDatabase().GetDocSyncData("bulk23")
+	doc23Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk23")
 	assert.Equals(t, doc23Rev.Sequence, uint64(6))
 
 	//Validate rev2 of doc "bulk1" has a new revision
-	doc1Rev2, err := rt2.GetDatabase().GetDocSyncData("bulk1")
+	doc1Rev2, _ := rt2.GetDatabase().GetDocSyncData("bulk1")
 	assert.Equals(t, doc1Rev2.Sequence, uint64(7))
 
 	//Get the revID for doc "bulk1"
@@ -987,7 +983,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	doc1Rev3, _ := rt1.GetDatabase().GetDocSyncData("bulk1")
 	assert.Equals(t, doc1Rev3.Sequence, uint64(8))
 
-	// validate the doc _sync metadata, should not see last sequence lower than previous sequence
+	//validate the doc _sync metadata, should see last sequence lower than previous sequence
 	rs := doc1Rev3.RecentSequences
 	assert.Equals(t, len(rs), 3)
 	assert.Equals(t, rs[0], uint64(1))
