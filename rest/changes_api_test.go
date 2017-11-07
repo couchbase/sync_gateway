@@ -289,6 +289,9 @@ func TestPostChangesUserTiming(t *testing.T) {
 	timeoutChannelGrant := time.After(time.Second * 2)
 	timeoutTestFailed := time.After(time.Second * 10)
 
+	// Track whether the access grant has been pushed
+	accessGrantPushed := false
+
 	OUTER:
 
 	for {
@@ -296,6 +299,11 @@ func TestPostChangesUserTiming(t *testing.T) {
 
 		case changesResponse := <-changesLongPoller.ResultChan:
 			log.Printf("TEST: Got changes response from changesLongPoller.ResultChan")
+
+			// If there is a bug in Sync Gateway where it returns the _changes response even without the
+			// access grant, this will catch it and fail the test
+			assert.True(t, accessGrantPushed)
+
 			var changes struct {
 				Results  []db.ChangeEntry
 				Last_Seq string
@@ -311,6 +319,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 			log.Printf("TEST: Put a doc in channel bernard, that also grants bernard access to channel PBS")
 			response = it.SendAdminRequest("PUT", "/db/grant1", `{"value":1, "channel":["bernard"], "accessUser":"bernard", "accessChannel":"PBS"}`)
 			assertStatus(t, response, 201)
+			accessGrantPushed = true
 
 		// nil out timeoutChannel so it doesn't block again
 		case <-timeoutTestFailed:
