@@ -50,7 +50,7 @@ type syncData struct {
 	Flags           uint8               `json:"flags,omitempty"`
 	Sequence        uint64              `json:"sequence,omitempty"`
 	UnusedSequences []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
-	RecentSequences []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
+	RecentSequences []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling (dcp coalescing)
 	History         RevTree             `json:"history"`
 	Channels        channels.ChannelMap `json:"channels,omitempty"`
 	Access          UserAccessMap       `json:"access,omitempty"`
