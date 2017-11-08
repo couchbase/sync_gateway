@@ -1240,34 +1240,39 @@ func TestRecentSequenceHistory(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
+	seqTracker := uint64(0)
+
 	// Validate recent sequence is written
 	body := Body{"val": "one"}
 	revid, err := db.Put("doc1", body)
+	seqTracker++
 
+	expectedRecent := make([]uint64, 0)
 	assert.True(t, revid != "")
 	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	expectedRecent = append(expectedRecent, seqTracker)
 	assert.True(t, err == nil)
-	assert.DeepEquals(t, doc.RecentSequences, []uint64{1})
+	assert.DeepEquals(t, doc.RecentSequences, expectedRecent)
 
-	// Add a few revisions - validate they are retained when less than max (20)
-	for i := 0; i < 3; i++ {
+	// Add kMaxRecentSequences more revisions - validate they are retained when total is less than max
+	for i := 0; i < kMaxRecentSequences; i++ {
 		revid, err = db.Put("doc1", body)
+		seqTracker++
+		expectedRecent = append(expectedRecent, seqTracker)
 	}
 
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	assert.True(t, err == nil)
-	assert.DeepEquals(t, doc.RecentSequences, []uint64{1, 2, 3, 4})
+	assert.DeepEquals(t, doc.RecentSequences, expectedRecent)
 
-	// Add many sequences to validate pruning when past max (20)
-	for i := 0; i < kMaxRecentSequences; i++ {
-		revid, err = db.Put("doc1", body)
-		// Sleep needed to ensure consistent results when running single-threaded vs. multi-threaded test:
-		// without it we can't predict the relative update times of nextSequence and RecentSequences
-		time.Sleep(50 * time.Millisecond)
-	}
+	// Recent sequence pruning only prunes entries older than what's been seen over DCP
+	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
+	// for caching before attempting to trigger pruning.
+	db.changeCache.waitForSequence(seqTracker)
 
-	db.changeCache.waitForSequence(24)
+	// Add another sequence to validate pruning when past max (20)
 	revid, err = db.Put("doc1", body)
+	seqTracker++
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	assert.True(t, err == nil)
 	log.Printf("recent:%d, max:%d", len(doc.RecentSequences), kMaxRecentSequences)
@@ -1277,11 +1282,14 @@ func TestRecentSequenceHistory(t *testing.T) {
 	doc2Body := Body{"val": "two"}
 	for i := 0; i < kMaxRecentSequences; i++ {
 		revid, err = db.Put("doc1", body)
+		seqTracker++
 		revid, err = db.Put("doc2", doc2Body)
+		seqTracker++
 	}
 
-	db.changeCache.waitForSequence(64)
+	db.changeCache.waitForSequence(seqTracker) //
 	revid, err = db.Put("doc1", body)
+	seqTracker++
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	assert.True(t, err == nil)
 	log.Printf("Recent sequences: %v (shouldn't exceed %v)", len(doc.RecentSequences), kMaxRecentSequences)
