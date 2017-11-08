@@ -288,7 +288,9 @@ func TestPostChangesUserTiming(t *testing.T) {
 
 
 // Tests race between waking up the changes feed, and detecting that the user doc has changed
-// TODO: make this fail every time with artificial delay
+// This test can sporadically reproduce issue #2068, as reported in #2999#issuecomment-342681828
+// TODO: enhance this test to reproduce the issue more reliably, possibly by writing updates directly to
+// TODO: to the Couchbase bucket and introducing an artifical delay.
 func DisabledTestPostChangesUserTiming(t *testing.T) {
 
 	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel)}`)
