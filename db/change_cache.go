@@ -387,6 +387,9 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		if event.DataType != base.MemcachedDataTypeRaw {
 			base.LogTo("Cache+", "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", docID, err)
 		}
+		if err == base.ErrEmptyMetadata {
+			base.Warn("Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", event.Key, event.Opcode, event.DataType)
+		}
 		return
 	}
 

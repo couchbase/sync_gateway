@@ -237,6 +237,10 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 
 func parseXattrStreamData(xattrName string, data []byte) (body []byte, xattr []byte, err error) {
 
+	if len(data) < 4 {
+		return nil, nil, base.ErrEmptyMetadata
+	}
+
 	xattrsLen := binary.BigEndian.Uint32(data[0:4])
 	body = data[xattrsLen+4:]
 	if xattrsLen == 0 {
