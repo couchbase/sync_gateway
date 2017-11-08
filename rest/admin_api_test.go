@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -25,8 +27,6 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"net/http"
-	"net/http/httptest"
 )
 
 func TestUserAPI(t *testing.T) {
@@ -926,52 +926,6 @@ func TestDBOfflinePostResync(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync", ""), 200)
 }
 
-func NewSlowResponseRecorder(responseDelay time.Duration, responseRecorder *httptest.ResponseRecorder) *SlowResponseRecorder {
-
-	responseStarted := sync.WaitGroup{}
-	responseStarted.Add(1)
-
-	responseFinished := sync.WaitGroup{}
-	responseFinished.Add(1)
-
-	return &SlowResponseRecorder{
-		responseDelay: responseDelay,
-		ResponseRecorder: responseRecorder,
-		responseStarted : &responseStarted,
-		responseFinished : &responseFinished,
-	}
-
-}
-
-type SlowResponseRecorder struct {
-	*httptest.ResponseRecorder
-	responseDelay time.Duration
-	responseStarted *sync.WaitGroup
-	responseFinished *sync.WaitGroup
-}
-
-func (s *SlowResponseRecorder) WaitForResponseToStart() {
-	s.responseStarted.Wait()
-}
-
-func (s *SlowResponseRecorder) WaitForResponseToFinish() {
-	s.responseFinished.Wait()
-}
-
-func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
-
-	s.responseStarted.Done()
-
-	time.Sleep(s.responseDelay)
-
-	numBytesWritten, err := s.ResponseRecorder.Write(buf)
-
-	s.responseFinished.Done()
-
-	return numBytesWritten, err
-}
-
-
 //Take DB offline and ensure only one _resync can be in progress
 // When running under the race flag, we can't guarantee which resync call gets executed first,
 // or even that they execute at the same time.  Disabling test
@@ -1023,7 +977,6 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	// Extract the recorded result and make sure it was a 200 response
 	recordedResponseInitialResync := recorder.Result()
 	assert.Equals(t, recordedResponseInitialResync.StatusCode, 200)
-
 
 }
 

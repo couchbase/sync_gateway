@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime/debug"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -393,4 +395,49 @@ func assertStatus(t *testing.T, response *TestResponse, expectedStatus int) {
 		t.Fatalf("Response status %d (expected %d) for %s <%s> : %s",
 			response.Code, expectedStatus, response.Req.Method, response.Req.URL, response.Body)
 	}
+}
+
+func NewSlowResponseRecorder(responseDelay time.Duration, responseRecorder *httptest.ResponseRecorder) *SlowResponseRecorder {
+
+	responseStarted := sync.WaitGroup{}
+	responseStarted.Add(1)
+
+	responseFinished := sync.WaitGroup{}
+	responseFinished.Add(1)
+
+	return &SlowResponseRecorder{
+		responseDelay:    responseDelay,
+		ResponseRecorder: responseRecorder,
+		responseStarted:  &responseStarted,
+		responseFinished: &responseFinished,
+	}
+
+}
+
+type SlowResponseRecorder struct {
+	*httptest.ResponseRecorder
+	responseDelay    time.Duration
+	responseStarted  *sync.WaitGroup
+	responseFinished *sync.WaitGroup
+}
+
+func (s *SlowResponseRecorder) WaitForResponseToStart() {
+	s.responseStarted.Wait()
+}
+
+func (s *SlowResponseRecorder) WaitForResponseToFinish() {
+	s.responseFinished.Wait()
+}
+
+func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
+
+	s.responseStarted.Done()
+
+	time.Sleep(s.responseDelay)
+
+	numBytesWritten, err := s.ResponseRecorder.Write(buf)
+
+	s.responseFinished.Done()
+
+	return numBytesWritten, err
 }
