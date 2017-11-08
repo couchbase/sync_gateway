@@ -1265,8 +1265,10 @@ func TestRecentSequenceHistory(t *testing.T) {
 	assert.True(t, err == nil)
 	assert.DeepEquals(t, doc.RecentSequences, expectedRecent)
 
-	// Wait for db.sequences.nextSequence to catch up (used by pruning calculation)
-	db.changeCache.waitForSequence(kMaxRecentSequences + 1)
+	// Recent sequence pruning only prunes entries older than what's been seen over DCP
+	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
+	// for caching before attempting to trigger pruning.
+	db.changeCache.waitForSequence(seqTracker)
 
 	// Add another sequence to validate pruning when past max (20)
 	revid, err = db.Put("doc1", body)
