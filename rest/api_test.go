@@ -786,14 +786,17 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
-	doc1Rev, _ := rt.GetDatabase().GetDocSyncData("bulk1")
+	doc1Rev, err := rt.GetDatabase().GetDocSyncData("bulk1")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc1Rev.Sequence, uint64(1))
 
-	doc3Rev, _ := rt.GetDatabase().GetDocSyncData("bulk3")
+	doc3Rev, err := rt.GetDatabase().GetDocSyncData("bulk3")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
-	lastSequence, _ := rt.GetDatabase().LastSequence()
+	lastSequence, err := rt.GetDatabase().LastSequence()
+	assertNoError(t, err, "LastSequence error")
 	assert.Equals(t, lastSequence, uint64(3))
 
 	//send another _bulk_docs and validate the sequences used
@@ -802,17 +805,21 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Sequence 3 get used here
-	doc21Rev, _ := rt.GetDatabase().GetDocSyncData("bulk21")
+	doc21Rev, err := rt.GetDatabase().GetDocSyncData("bulk21")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc21Rev.Sequence, uint64(3))
 
-	doc22Rev, _ := rt.GetDatabase().GetDocSyncData("bulk22")
+	doc22Rev, err := rt.GetDatabase().GetDocSyncData("bulk22")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc22Rev.Sequence, uint64(4))
 
-	doc23Rev, _ := rt.GetDatabase().GetDocSyncData("bulk23")
+	doc23Rev, err := rt.GetDatabase().GetDocSyncData("bulk23")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc23Rev.Sequence, uint64(5))
 
 	//Get current sequence number
-	lastSequence, _ = rt.GetDatabase().LastSequence()
+	lastSequence, err = rt.GetDatabase().LastSequence()
+	assertNoError(t, err, "LastSequence error")
 	assert.Equals(t, lastSequence, uint64(5))
 }
 
@@ -826,14 +833,17 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	response := rt1.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
-	doc1Rev, _ := rt1.GetDatabase().GetDocSyncData("bulk1")
+	doc1Rev, err := rt1.GetDatabase().GetDocSyncData("bulk1")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc1Rev.Sequence, uint64(1))
 
-	doc3Rev, _ := rt1.GetDatabase().GetDocSyncData("bulk3")
+	doc3Rev, err := rt1.GetDatabase().GetDocSyncData("bulk3")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
-	lastSequence, _ := rt1.GetDatabase().LastSequence()
+	lastSequence, err := rt1.GetDatabase().LastSequence()
+	assertNoError(t, err, "LastSequence error")
 	assert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
@@ -849,7 +859,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	spec := base.GetTestBucketSpec(base.DataBucket)
 	username, password, _ := spec.Auth.GetCredentials()
 
-	_, err := rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
+	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
 			Server:   &server,
 			Bucket:   &bucketName,
@@ -867,17 +877,21 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Sequence 3 does not get used here as its using a different sequence allocator
-	doc21Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk21")
+	doc21Rev, err := rt2.GetDatabase().GetDocSyncData("bulk21")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc21Rev.Sequence, uint64(4))
 
-	doc22Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk22")
+	doc22Rev, err := rt2.GetDatabase().GetDocSyncData("bulk22")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc22Rev.Sequence, uint64(5))
 
-	doc23Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk23")
+	doc23Rev, err := rt2.GetDatabase().GetDocSyncData("bulk23")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc23Rev.Sequence, uint64(6))
 
 	//Get current sequence number
-	lastSequence, _ = rt2.GetDatabase().LastSequence()
+	lastSequence, err = rt2.GetDatabase().LastSequence()
+	assertNoError(t, err, "LastSequence error")
 	assert.Equals(t, lastSequence, uint64(6))
 
 	//Now send a bulk_doc to rt1 and see if it uses sequence 3
@@ -886,13 +900,16 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Sequence 3 get used here as its using first sequence allocator
-	doc31Rev, _ := rt1.GetDatabase().GetDocSyncData("bulk31")
+	doc31Rev, err := rt1.GetDatabase().GetDocSyncData("bulk31")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc31Rev.Sequence, uint64(3))
 
-	doc32Rev, _ := rt1.GetDatabase().GetDocSyncData("bulk32")
+	doc32Rev, err := rt1.GetDatabase().GetDocSyncData("bulk32")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc32Rev.Sequence, uint64(7))
 
-	doc33Rev, _ := rt1.GetDatabase().GetDocSyncData("bulk33")
+	doc33Rev, err := rt1.GetDatabase().GetDocSyncData("bulk33")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc33Rev.Sequence, uint64(8))
 
 }
@@ -908,17 +925,20 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	response := rt1.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
-	doc1Rev, _ := rt1.GetDatabase().GetDocSyncData("bulk1")
+	doc1Rev, err := rt1.GetDatabase().GetDocSyncData("bulk1")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID := doc1Rev.CurrentRev
 
-	doc3Rev, _ := rt1.GetDatabase().GetDocSyncData("bulk3")
+	doc3Rev, err := rt1.GetDatabase().GetDocSyncData("bulk3")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
-	lastSequence, _ := rt1.GetDatabase().LastSequence()
+	lastSequence, err := rt1.GetDatabase().LastSequence()
+	assertNoError(t, err, "LastSequence error")
 	assert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
@@ -935,7 +955,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	username, password, _ := spec.Auth.GetCredentials()
 
 	rt1UseXattrs := rt1.GetDatabase().UseXattrs()
-	_, err := rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
+	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
 			Server:   &server,
 			Bucket:   &bucketName,
@@ -954,24 +974,29 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Sequence 3 does not get used here as its using a different sequence allocator
-	doc21Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk21")
+	doc21Rev, err := rt2.GetDatabase().GetDocSyncData("bulk21")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc21Rev.Sequence, uint64(4))
 
-	doc22Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk22")
+	doc22Rev, err := rt2.GetDatabase().GetDocSyncData("bulk22")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc22Rev.Sequence, uint64(5))
 
-	doc23Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk23")
+	doc23Rev, err := rt2.GetDatabase().GetDocSyncData("bulk23")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc23Rev.Sequence, uint64(6))
 
 	//Validate rev2 of doc "bulk1" has a new revision
-	doc1Rev2, _ := rt2.GetDatabase().GetDocSyncData("bulk1")
+	doc1Rev2, err := rt2.GetDatabase().GetDocSyncData("bulk1")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc1Rev2.Sequence, uint64(7))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID2 := doc1Rev2.CurrentRev
 
 	//Get current sequence number
-	lastSequence, _ = rt2.GetDatabase().LastSequence()
+	lastSequence, err = rt2.GetDatabase().LastSequence()
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, lastSequence, uint64(7))
 
 	//Now send a bulk_doc to rt1 to update doc bulk1 again
@@ -980,7 +1005,8 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Sequence 8 should get used here as sequence 3 should have been dropped by the first sequence allocator
-	doc1Rev3, _ := rt1.GetDatabase().GetDocSyncData("bulk1")
+	doc1Rev3, err := rt1.GetDatabase().GetDocSyncData("bulk1")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc1Rev3.Sequence, uint64(8))
 
 	//validate the doc _sync metadata, should see last sequence lower than previous sequence
@@ -1003,17 +1029,20 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	response := rt1.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 
-	doc1Rev, _ := rt1.GetDatabase().GetDocSyncData("bulk1")
+	doc1Rev, err := rt1.GetDatabase().GetDocSyncData("bulk1")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID := doc1Rev.CurrentRev
 
-	doc3Rev, _ := rt1.GetDatabase().GetDocSyncData("bulk3")
+	doc3Rev, err := rt1.GetDatabase().GetDocSyncData("bulk3")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
-	lastSequence, _ := rt1.GetDatabase().LastSequence()
+	lastSequence, err := rt1.GetDatabase().LastSequence()
+	assertNoError(t, err, "LastSequence error")
 	assert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
@@ -1030,7 +1059,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	username, password, _ := spec.Auth.GetCredentials()
 
 	rt1UseXattrs := rt1.GetDatabase().UseXattrs()
-	_, err := rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
+	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
 			Server:   &server,
 			Bucket:   &bucketName,
@@ -1049,21 +1078,25 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Sequence 3 does not get used here as its using a different sequence allocator
-	doc21Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk21")
+	doc21Rev, err := rt2.GetDatabase().GetDocSyncData("bulk21")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc21Rev.Sequence, uint64(4))
 
-	doc22Rev, _ := rt2.GetDatabase().GetDocSyncData("bulk22")
+	doc22Rev, err := rt2.GetDatabase().GetDocSyncData("bulk22")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc22Rev.Sequence, uint64(5))
 
 	//Validate rev2 of doc "bulk1" has a new revision
-	doc1Rev2, _ := rt2.GetDatabase().GetDocSyncData("bulk1")
+	doc1Rev2, err := rt2.GetDatabase().GetDocSyncData("bulk1")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc1Rev2.Sequence, uint64(7))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID2 := doc1Rev2.CurrentRev
 
 	//Get current sequence number
-	lastSequence, _ = rt2.GetDatabase().LastSequence()
+	lastSequence, err = rt2.GetDatabase().LastSequence()
+	assertNoError(t, err, "LastSequence error")
 	assert.Equals(t, lastSequence, uint64(7))
 
 	//Now send a bulk_doc to rt1 to update doc bulk1 again
@@ -1072,7 +1105,8 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Sequence 8 should get used here as sequence 3 should have been dropped by the first sequence allocator
-	doc1Rev3, _ := rt1.GetDatabase().GetDocSyncData("bulk1")
+	doc1Rev3, err := rt1.GetDatabase().GetDocSyncData("bulk1")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc1Rev3.Sequence, uint64(8))
 
 	//Get the revID for doc "bulk1"
@@ -1084,7 +1118,8 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Sequence 9 should get used here as sequence 6 should have been dropped by the second sequence allocator
-	doc1Rev4, _ := rt1.GetDatabase().GetDocSyncData("bulk1")
+	doc1Rev4, err := rt1.GetDatabase().GetDocSyncData("bulk1")
+	assertNoError(t, err, "GetDocSyncData error")
 	assert.Equals(t, doc1Rev4.Sequence, uint64(9))
 
 	//validate the doc _sync metadata, should see last sequence lower than previous sequence
