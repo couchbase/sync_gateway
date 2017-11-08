@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -323,12 +325,12 @@ function(doc, oldDoc) {
 	wg.Wait()
 }
 
-func TestLogging (t *testing.T) {
+func TestLogging(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
 	//Assert default log channels are enabled
-	response := rt.SendAdminRequest("GET", "/_logging","")
+	response := rt.SendAdminRequest("GET", "/_logging", "")
 	var logKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &logKeys)
 	assert.DeepEquals(t, logKeys, map[string]interface{}{})
@@ -336,34 +338,34 @@ func TestLogging (t *testing.T) {
 	//Set logKeys, Changes+ should also enable Changes (PUT replaces any existing log keys)
 	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Cache":true, "HTTP":true}`), 200)
 
-	response = rt.SendAdminRequest("GET", "/_logging","")
+	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var updatedLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &updatedLogKeys)
-	assert.DeepEquals(t, updatedLogKeys, map[string]interface{}{"Changes+":true, "Changes":true, "Cache":true, "HTTP":true})
+	assert.DeepEquals(t, updatedLogKeys, map[string]interface{}{"Changes+": true, "Changes": true, "Cache": true, "HTTP": true})
 
 	//Disable Changes logKey which should also disable Changes+
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
-	response = rt.SendAdminRequest("GET", "/_logging","")
+	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var deletedLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &deletedLogKeys)
-	assert.DeepEquals(t, deletedLogKeys, map[string]interface{}{"Cache":true, "HTTP":true})
+	assert.DeepEquals(t, deletedLogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
 
 	//Enable Changes++, which should enable Changes+ and Changes (POST append logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
-	response = rt.SendAdminRequest("GET", "/_logging","")
+	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var appendedLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &appendedLogKeys)
-	assert.DeepEquals(t, appendedLogKeys, map[string]interface{}{"Changes++":true, "Changes+":true, "Changes":true, "Cache":true, "HTTP":true})
+	assert.DeepEquals(t, appendedLogKeys, map[string]interface{}{"Changes++": true, "Changes+": true, "Changes": true, "Cache": true, "HTTP": true})
 
 	//Disable Changes++ (POST modifies logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
 
-	response = rt.SendAdminRequest("GET", "/_logging","")
+	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabledLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &disabledLogKeys)
-	assert.DeepEquals(t, disabledLogKeys, map[string]interface{}{"Changes":true, "Changes+":true, "Cache":true, "HTTP":true})
+	assert.DeepEquals(t, disabledLogKeys, map[string]interface{}{"Changes": true, "Changes+": true, "Cache": true, "HTTP": true})
 
 	//Re-Enable Changes++, which should enable Changes+ and Changes (POST append logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
@@ -371,26 +373,26 @@ func TestLogging (t *testing.T) {
 	//Disable Changes+ which should also disable Changes++ (POST modifies logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes+":false}`), 200)
 
-	response = rt.SendAdminRequest("GET", "/_logging","")
+	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabled2LogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &disabled2LogKeys)
-	assert.DeepEquals(t, disabled2LogKeys, map[string]interface{}{"Changes":true, "Cache":true, "HTTP":true})
+	assert.DeepEquals(t, disabled2LogKeys, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true})
 
 	//Re-Enable Changes++, which should enable Changes+ and Changes (POST append logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
-	
+
 	//Disable Changes which should also disable Changes+ and Changes++ (POST modifies logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
-	response = rt.SendAdminRequest("GET", "/_logging","")
+	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabled3LogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &disabled3LogKeys)
-	assert.DeepEquals(t, disabled3LogKeys, map[string]interface{}{"Cache":true, "HTTP":true})
+	assert.DeepEquals(t, disabled3LogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
 
 	//Disable all logKeys by using PUT with an empty channel list
 	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{}`), 200)
 
-	response = rt.SendAdminRequest("GET", "/_logging","")
+	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var noLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &noLogKeys)
 	assert.DeepEquals(t, noLogKeys, map[string]interface{}{})
@@ -927,8 +929,8 @@ func TestDBOfflinePostResync(t *testing.T) {
 //Take DB offline and ensure only one _resync can be in progress
 // When running under the race flag, we can't guarantee which resync call gets executed first,
 // or even that they execute at the same time.  Disabling test
-/*
-func RaceTestDBOfflineSingleResync(t *testing.T) {
+func TestDBOfflineSingleResync(t *testing.T) {
+
 	var rt RestTester
 
 	//create documents in DB to cause resync to take a few seconds
@@ -937,35 +939,46 @@ func RaceTestDBOfflineSingleResync(t *testing.T) {
 	}
 
 	log.Printf("Taking DB offline")
-	response := rt.sendAdminRequest("GET", "/db/", "")
+	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.True(t, body["state"].(string) == "Online")
 
-	response = rt.sendAdminRequest("POST", "/db/_offline", "")
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
 
-	response = rt.sendAdminRequest("GET", "/db/", "")
+	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.True(t, body["state"].(string) == "Offline")
 
-	var firstResyncResponse *testResponse
+	input := bytes.NewBufferString("")
+	request, _ := http.NewRequest("POST", "http://localhost/db/_resync", input)
 
-	wg := sync.WaitGroup{}
-	go func() {
-		defer wg.Done()
-		wg.Add(1)
-		firstResyncResponse = rt.sendAdminRequest("POST", "/db/_resync", "")
-	}()
+	// Create a SlowResponseRecorder which wraps an httptest.Recorder, and adds an artificial
+	// delay which will block the _resync handler and force it to stay in the _resync state for numSecsInResync seconds
+	numSecsInResync := time.Second * 2
+	recorder := httptest.NewRecorder()
+	slowResponseRecorder := NewSlowResponseRecorder(numSecsInResync, recorder)
 
-	// Allow goroutine to get scheduled
-	time.Sleep(50 * time.Millisecond)
-	assertStatus(t, rt.sendAdminRequest("POST", "/db/_resync", ""), 503)
-	wg.Wait()
-	assertStatus(t, firstResyncResponse, 200)
+	// Kick off goroutine that will invoke the handler to handle the first _resync request which will return a 200 (asserted below)
+	go rt.TestAdminHandler().ServeHTTP(slowResponseRecorder, request)
+
+	// Wait for the slowResponseRecorder to be called back. After this unblocks, we know it's blocked in a
+	// call to _rsync that is artifically delayed due to the slowResponseRecorder
+	slowResponseRecorder.WaitForResponseToStart()
+
+	// Send a second _resync request.  This must return a 503 since the first one is blocked processing
+	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync", ""), 503)
+
+	// Wait until the first _resync request finishes
+	slowResponseRecorder.WaitForResponseToFinish()
+
+	// Extract the recorded result and make sure it was a 200 response
+	recordedResponseInitialResync := recorder.Result()
+	assert.Equals(t, recordedResponseInitialResync.StatusCode, 200)
+
 }
-*/
 
 // Single threaded bring DB online
 func TestDBOnlineSingle(t *testing.T) {
