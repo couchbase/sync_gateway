@@ -1054,12 +1054,10 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	//They may not have been processed at this point
 	wg.Wait()
 
-	time.Sleep(1500 * time.Millisecond)
+	// Wait for DB to come online (retry loop)
+	errDbOnline := rt.WaitForDBOnline()
+	assertNoError(t, errDbOnline, "Error waiting for db to come online")
 
-	response = rt.SendAdminRequest("GET", "/db/", "")
-	body = nil
-	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
 }
 
 // Test bring DB online with delay of 1 second
@@ -1090,12 +1088,13 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.True(t, body["state"].(string) == "Offline")
 
+	// Wait until after the 1 second delay, since the online request explicitly asked for a delay
 	time.Sleep(1500 * time.Millisecond)
 
-	response = rt.SendAdminRequest("GET", "/db/", "")
-	body = nil
-	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	// Wait for DB to come online (retry loop)
+	errDbOnline := rt.WaitForDBOnline()
+	assertNoError(t, errDbOnline, "Error waiting for db to come online")
+
 }
 
 // Test bring DB online with delay of 2 seconds
@@ -1137,12 +1136,13 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.True(t, body["state"].(string) == "Online")
 
+	// Wait until after the 2 second delay, since the online request explicitly asked for a delay
 	time.Sleep(2500 * time.Millisecond)
 
-	response = rt.SendAdminRequest("GET", "/db/", "")
-	body = nil
-	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	// Wait for DB to come online (retry loop)
+	errDbOnline := rt.WaitForDBOnline()
+	assertNoError(t, errDbOnline, "Error waiting for db to come online")
+
 }
 
 // Test bring DB online concurrently with delay of 1 second
