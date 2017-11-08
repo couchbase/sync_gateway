@@ -7,6 +7,7 @@ import (
 	"log"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -211,6 +212,12 @@ func TestParseXattr(t *testing.T) {
 	assertNoError(t, err, "Unexpected error parsing dcp body")
 	assert.Equals(t, string(resultBody), string(body))
 	assert.Equals(t, string(resultXattr), "")
+
+	// Attempt to retrieve xattr from empty dcp body
+	emptyBody, emptyXattr, emptyErr := parseXattrStreamData("_sync", []byte{})
+	assert.Equals(t, emptyErr, base.ErrEmptyMetadata)
+	assertTrue(t, emptyBody == nil, "Nil body expected")
+	assertTrue(t, emptyXattr == nil, "Nil xattr expected")
 }
 
 func TestParseDocumentCas(t *testing.T) {

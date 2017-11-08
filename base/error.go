@@ -30,6 +30,7 @@ const (
 	importCancelledFilter = sgErrorCode(0x05)
 	documentMigrated      = sgErrorCode(0x06)
 	fatalBucketConnection = sgErrorCode(0x07)
+	emptyMetadata         = sgErrorCode(0x08)
 )
 
 type SGError struct {
@@ -45,6 +46,7 @@ var (
 	ErrImportCancelledFilter = &SGError{importCancelledFilter}
 	ErrDocumentMigrated      = &SGError{documentMigrated}
 	ErrFatalBucketConnection = &SGError{fatalBucketConnection}
+	ErrEmptyMetadata         = &SGError{emptyMetadata}
 )
 
 func (e SGError) Error() string {
@@ -65,6 +67,8 @@ func (e SGError) Error() string {
 		return "Timeout performing ViewQuery - could indicate that views are still reindexing"
 	case fatalBucketConnection:
 		return "Fatal error connecting to bucket"
+	case emptyMetadata:
+		return "Empty Sync Gateway metadata"
 	default:
 		return "Unknown error"
 	}
