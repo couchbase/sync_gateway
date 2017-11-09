@@ -366,6 +366,9 @@ func TestLogging(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
+	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
+	rt.SendAdminRequest("PUT", "/_logging", `{}`)
+
 	//Assert default log channels are enabled
 	response := rt.SendAdminRequest("GET", "/_logging", "")
 	var logKeys map[string]interface{}
