@@ -78,8 +78,6 @@ fi
 
 # ln -f -s $RPM_INSTALL_PREFIX0 @@PREFIX@@
 
-chmod a+x $RPM_INSTALL_PREFIX0/examples
-
 if [ -z `id -u @@PRODUCT_EXEC@@ 2>/dev/null` ]; then
   useradd -m @@PRODUCT_EXEC@@
 fi
@@ -198,7 +196,7 @@ exit 0
 
 %dir %attr (0755, bin, bin) @@PREFIX@@/bin
 %dir %attr (0755, bin, bin) @@PREFIX@@/tools
-%dir %attr (0644, bin, bin) @@PREFIX@@/examples
+%dir %attr (0755, bin, bin) @@PREFIX@@/examples
 %dir %attr (0755, bin, bin) @@PREFIX@@/service
 
 # Files
