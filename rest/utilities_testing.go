@@ -351,6 +351,29 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 
 }
 
+func (rt *RestTester) WaitForDBOnline() (err error) {
+
+	maxTries := 20
+
+	for i := 0; i < maxTries; i++ {
+
+		response := rt.SendAdminRequest("GET", "/db/", "")
+		var body db.Body
+		json.Unmarshal(response.Body.Bytes(), &body)
+
+		if body["state"].(string) == "Online" {
+			return
+		}
+
+		// Otherwise, sleep and try again
+		time.Sleep(500 * time.Millisecond)
+
+	}
+
+	return fmt.Errorf("Give up waiting for DB to come online after %d attempts", maxTries)
+
+}
+
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
