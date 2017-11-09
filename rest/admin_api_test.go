@@ -269,6 +269,7 @@ function(doc, oldDoc) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true}`)
+	defer rt.SendAdminRequest("PUT", "/_logging", `{}`)  // reset logging to initial state
 
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
 	assertStatus(t, response, 201)
