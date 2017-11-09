@@ -313,7 +313,7 @@ function(doc, oldDoc) {
 
 			// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
 			// ensure it doesn't terminate before the first change is sent.
-			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%d&timeout=2000", since), "", "bernard"))
+			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
 
 			changes, err := readContinuousChanges(changesResponse)
 			assert.Equals(t, err, nil)
