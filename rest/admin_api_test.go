@@ -302,8 +302,7 @@ function(doc, oldDoc) {
 	go func() {
 		defer wg.Done()
 
-		var since uint64
-		since = 0
+		since := ""
 
 		maxTries := 10
 		numTries := 0
@@ -314,7 +313,7 @@ function(doc, oldDoc) {
 
 			// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
 			// ensure it doesn't terminate before the first change is sent.
-			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%d&timeout=5000", since), "", "bernard"))
+			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%d&timeout=2000", since), "", "bernard"))
 
 			changes, err := readContinuousChanges(changesResponse)
 			assert.Equals(t, err, nil)
@@ -328,7 +327,7 @@ function(doc, oldDoc) {
 
 			// Advance the since value if we got any changes
 			if len(changes) > 0 {
-				since = changes[len(changes) - 1].Seq.Seq
+				since = changes[len(changes) - 1].Seq.String()
 			}
 
 			numTries++
