@@ -292,12 +292,15 @@ function(doc, oldDoc) {
 
 	// Start changes feed
 	var wg sync.WaitGroup
+
+	wg.Add(1)
+
 	go func() {
 		defer wg.Done()
-		wg.Add(1)
+
 		// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
 		// ensure it doesn't terminate before the first change is sent.
-		changesResponse := rt.Send(requestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=20000", "", "bernard"))
+		changesResponse := rt.Send(requestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=10000", "", "bernard"))
 
 		changes, err := readContinuousChanges(changesResponse)
 		assert.Equals(t, err, nil)
