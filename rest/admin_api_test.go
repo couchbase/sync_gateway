@@ -290,27 +290,59 @@ function(doc, oldDoc) {
 	input = input + `]}`
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", input)
 
+
 	// Start changes feed
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 
+	numExpectedChanges := 201
+
 	go func() {
 		defer wg.Done()
 
-		// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
-		// ensure it doesn't terminate before the first change is sent.
-		changesResponse := rt.Send(requestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=10000", "", "bernard"))
+		var since uint64
+		since = 0
 
-		changes, err := readContinuousChanges(changesResponse)
-		assert.Equals(t, err, nil)
+		maxTries := 10
+		numTries := 0
 
-		log.Printf("Got %d change entries", len(changes))
-		assert.Equals(t, len(changes), 201)
+		changesAccumulated := []db.ChangeEntry{}
+
+		for {
+
+			// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
+			// ensure it doesn't terminate before the first change is sent.
+			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%d&timeout=5000", since), "", "bernard"))
+
+			changes, err := readContinuousChanges(changesResponse)
+			assert.Equals(t, err, nil)
+
+			changesAccumulated = append(changesAccumulated, changes...)
+
+			if len(changesAccumulated) >= numExpectedChanges {
+				log.Printf("Got numExpectedChanges (%d).  Done", numExpectedChanges)
+				break
+			}
+
+			// Advance the since value if we got any changes
+			if len(changes) > 0 {
+				since = changes[len(changes) - 1].Seq.Seq
+			}
+
+			numTries++
+			if numTries > maxTries {
+				t.Fatalf("Giving up trying to receive %d changes.  Only received %d", numExpectedChanges, len(changesAccumulated))
+			}
+
+		}
+
+
 	}()
 
 	// Make bulk docs calls, 100 docs each, all triggering access grants to the list docs.
 	for j := 0; j < 1; j++ {
+
 		input := `{"docs": [`
 		for i := 1; i <= 100; i++ {
 			if i > 1 {
@@ -322,6 +354,7 @@ function(doc, oldDoc) {
 		}
 		input = input + `]}`
 		response = rt.Send(requestByUser("POST", "/db/_bulk_docs", input, "bernard"))
+
 	}
 
 	// wait for changes feed to complete (time out)
