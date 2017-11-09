@@ -1128,8 +1128,9 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	rt.SendAdminRequest("POST", "/db/_online", "")
 	assertStatus(t, response, 200)
 
-	//Allow online goroutine to get scheduled
-	time.Sleep(500 * time.Millisecond)
+	// Wait for DB to come online (retry loop)
+	errDbOnline := rt.WaitForDBOnline()
+	assertNoError(t, errDbOnline, "Error waiting for db to come online")
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1140,7 +1141,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	time.Sleep(2500 * time.Millisecond)
 
 	// Wait for DB to come online (retry loop)
-	errDbOnline := rt.WaitForDBOnline()
+	errDbOnline = rt.WaitForDBOnline()
 	assertNoError(t, errDbOnline, "Error waiting for db to come online")
 
 }

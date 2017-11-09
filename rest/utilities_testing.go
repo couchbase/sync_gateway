@@ -353,7 +353,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 
 func (rt *RestTester) WaitForDBOnline() (err error) {
 
-	maxTries := 50
+	maxTries := 20
 
 	for i := 0; i < maxTries; i++ {
 
