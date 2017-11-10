@@ -229,7 +229,7 @@ Ubuntu)
     ;;
   esac
   ;;
-RedHat* | CentOS)
+RedHat* | CentOS | OracleServer)
   case $OS_MAJOR_VERSION in
   7)
     if [ "$SERVICE_CMD_ONLY" = true ]; then
