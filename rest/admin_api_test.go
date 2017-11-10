@@ -269,7 +269,7 @@ function(doc, oldDoc) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true}`)
-	defer rt.SendAdminRequest("PUT", "/_logging", `{}`)  // reset logging to initial state
+	defer rt.SendAdminRequest("PUT", "/_logging", `{}`) // reset logging to initial state
 
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
 	assertStatus(t, response, 201)
@@ -291,9 +291,11 @@ function(doc, oldDoc) {
 	input = input + `]}`
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", input)
 
-
 	// Start changes feed
 	var wg sync.WaitGroup
+
+	// Init the public handler, to avoid data race initializing in the two usages below.
+	_ = rt.SendRequest("GET", "/db", "")
 
 	wg.Add(1)
 
@@ -327,7 +329,7 @@ function(doc, oldDoc) {
 
 			// Advance the since value if we got any changes
 			if len(changes) > 0 {
-				since = changes[len(changes) - 1].Seq.String()
+				since = changes[len(changes)-1].Seq.String()
 			}
 
 			numTries++
@@ -336,7 +338,6 @@ function(doc, oldDoc) {
 			}
 
 		}
-
 
 	}()
 
