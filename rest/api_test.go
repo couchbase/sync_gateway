@@ -2559,6 +2559,37 @@ func TestCreateTarget(t *testing.T) {
 	assertStatus(t, response, 403)
 }
 
+func TestBasicAuthWithSessionAuthHeader(t *testing.T) {
+
+	var rt RestTester
+	defer rt.Close()
+
+	// Create a user
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["bernard"]}`)
+	assertStatus(t, response, 201)
+
+	// Create a session for the user using the Admin API
+	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"bernard", "ttl":1000}`)
+	assertStatus(t, response, 200)
+
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	sessionId := body["session_id"].(string)
+
+	reqHeaders := map[string]string{
+		"Authorization": "Bearer "+sessionId,
+	}
+
+	// Create a doc as the user, with session ID passed in an Authorization header
+	response = rt.SendRequestWithHeaders("PUT", "/db/bernardDoc", `{"hi": "there", "channels":["bernard"]}`, reqHeaders)
+	assertStatus(t, response, 201)
+
+	// retrieve the doc
+	response = rt.SendRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders)
+	assertStatus(t, response, 200)
+
+}
+
 // Test for issue 758 - basic auth with stale session cookie
 func TestBasicAuthWithSessionCookie(t *testing.T) {
 

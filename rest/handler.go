@@ -335,8 +335,8 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		return nil
 	}
 
-	// Check cookie
-	h.user, err = context.Authenticator().AuthenticateCookie(h.rq, h.response)
+	// Check cookie or custom auth header
+	h.user, err = context.Authenticator().AuthenticateCookieOrAuthHeader(h.rq, h.response)
 	if err != nil {
 		return err
 	} else if h.user != nil {
@@ -347,6 +347,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	if h.user, err = context.Authenticator().GetUser(""); err != nil {
 		return err
 	}
+	
 	if h.privs == regularPrivs && h.user.Disabled() {
 		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
 		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")

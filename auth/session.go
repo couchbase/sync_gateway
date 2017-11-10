@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"strings"
 )
 
 const kDefaultSessionTTL = 24 * time.Hour
@@ -30,15 +31,24 @@ const CookieName = "SyncGatewaySession"
 
 const SessionKeyPrefix = "_sync:session:"
 
-func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.ResponseWriter) (User, error) {
+func (auth *Authenticator) AuthenticateCookieOrAuthHeader(rq *http.Request, response http.ResponseWriter) (User, error) {
 
 	cookie, _ := rq.Cookie(CookieName)
-	if cookie == nil {
-		return nil, nil
+	var sessionToken string
+	if cookie != nil {
+		sessionToken = cookie.Value
+	} else {
+		//Attempt to get session ID token from Authorization header
+		auth := rq.Header.Get("Authorization")
+		if strings.HasPrefix(auth, "Bearer ") {
+			sessionToken = auth[7:]
+		} else {
+			return nil, nil
+		}
 	}
 
 	var session LoginSession
-	_, err := auth.bucket.Get(docIDForSession(cookie.Value), &session)
+	_, err := auth.bucket.Get(docIDForSession(sessionToken), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			err = nil
