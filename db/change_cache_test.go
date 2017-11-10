@@ -535,12 +535,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
-	// Array to read changes from feed to support assertions
-	var changes = make([]*ChangeEntry, 0, 50)
-
-	err = appendFromFeed(&changes, feed, 4)
-
-	// Validate the initial sequences arrive as expected
+	changes, err := verifySequencesInFeed(feed, []uint64{1, 2, 5, 6})
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 4)
 	assert.DeepEquals(t, changes[0], &ChangeEntry{
@@ -552,35 +547,20 @@ func TestLowSequenceHandling(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"ABC", "PBS"}, 4)
 
-	db.changeCache.waitForSequenceWithMissing(4)
-
-	err = appendFromFeed(&changes, feed, 2)
+	_, err = verifySequencesInFeed(feed, []uint64{3, 4})
 	assert.True(t, err == nil)
-	assert.Equals(t, len(changes), 6)
-	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4}))
 
 	WriteDirect(db, []string{"ABC"}, 7)
 	WriteDirect(db, []string{"ABC", "NBC"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
-	db.changeCache.waitForSequence(9)
-	appendFromFeed(&changes, feed, 5)
-	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
+	_, err = verifySequencesInFeed(feed, []uint64{7, 8, 9})
+	assert.True(t, err == nil)
 
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
 // user doesn't have visibility to some of the late arriving sequences
 func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
-
-	/*
-		var logKeys = map[string]bool {
-			"Cache": true,
-			"Changes": true,
-			"Changes+": true,
-		}
-
-		base.UpdateLogKeys(logKeys, true)
-	*/
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -617,27 +597,15 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
-	// Go-routine to work the feed channel and write to an array for use by assertions
-	var changes = make([]*ChangeEntry, 0, 50)
-
-	time.Sleep(50 * time.Millisecond)
-	err = appendFromFeed(&changes, feed, 3)
-
-	// Validate the initial sequences arrive as expected
+	_, err = verifySequencesInFeed(feed, []uint64{1, 2, 6})
 	assert.True(t, err == nil)
-	assert.Equals(t, len(changes), 3)
-	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
 	// Test backfill of sequence the user doesn't have visibility to
 	WriteDirect(db, []string{"PBS"}, 3)
 	WriteDirect(db, []string{"ABC"}, 9)
 
-	db.changeCache.waitForSequenceWithMissing(9)
-
-	time.Sleep(50 * time.Millisecond)
-	err = appendFromFeed(&changes, feed, 1)
-	assert.Equals(t, len(changes), 4)
-	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "3::9"}))
+	_, err = verifySequencesInFeed(feed, []uint64{9})
+	assert.True(t, err == nil)
 
 	close(options.Terminator)
 }
@@ -725,6 +693,87 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// whether the user has already seen the documents on the channel previously, so it gets resent
 
 	close(options.Terminator)
+}
+
+// Disabled until https://github.com/couchbase/sync_gateway/issues/3056 is fixed.
+func DisableTestLowSequenceHandlingNoDuplicates(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
+	var logKeys = map[string]bool{
+		"Cache":    true,
+		"Changes":  true,
+		"Changes+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
+	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channel ABC
+	authenticator := db.Authenticator()
+	assertTrue(t, authenticator != nil, "db.Authenticator() returned nil")
+	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC", "PBS", "NBC", "TBS"))
+	assertNoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
+	authenticator.Save(user)
+
+	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
+	WriteDirect(db, []string{"ABC", "NBC"}, 1)
+	WriteDirect(db, []string{"ABC"}, 2)
+	WriteDirect(db, []string{"ABC", "PBS"}, 5)
+	WriteDirect(db, []string{"ABC", "PBS"}, 6)
+
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 6})
+	db.user, _ = authenticator.GetUser("naomi")
+
+	// Start changes feed
+
+	var options ChangesOptions
+	options.Since = SequenceID{Seq: 0}
+	options.Terminator = make(chan bool)
+	defer close(options.Terminator)
+	options.Continuous = true
+	options.Wait = true
+	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
+	assert.True(t, err == nil)
+
+	// Array to read changes from feed to support assertions
+	var changes = make([]*ChangeEntry, 0, 50)
+
+	err = appendFromFeed(&changes, feed, 4)
+
+	// Validate the initial sequences arrive as expected
+	assert.True(t, err == nil)
+	assert.Equals(t, len(changes), 4)
+	assert.DeepEquals(t, changes[0], &ChangeEntry{
+		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
+		ID:      "doc-1",
+		Changes: []ChangeRev{{"rev": "1-a"}}})
+
+	// Test backfill clear - sequence numbers go back to standard handling
+	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
+	WriteDirect(db, []string{"ABC", "PBS"}, 4)
+
+	db.changeCache.waitForSequenceWithMissing(4)
+
+	err = appendFromFeed(&changes, feed, 2)
+	assert.True(t, err == nil)
+	assert.Equals(t, len(changes), 6)
+	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4}))
+
+	WriteDirect(db, []string{"ABC"}, 7)
+	WriteDirect(db, []string{"ABC", "NBC"}, 8)
+	WriteDirect(db, []string{"ABC", "PBS"}, 9)
+	db.changeCache.waitForSequence(9)
+	appendFromFeed(&changes, feed, 5)
+	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
+
 }
 
 // Test race condition causing skipped sequences in changes feed.  Channel feeds are processed sequentially
@@ -964,7 +1013,6 @@ func TestChannelCacheSize(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
 
-
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC
@@ -1084,6 +1132,24 @@ func verifyChangesSequencesIgnoreOrder(changes []*ChangeEntry, sequences []uint6
 		}
 	}
 	return true
+}
+
+// Reads changes from the feed, one at a time, until the expected sequences are received.  If
+// appendFromFeed times out before the full set of expected sequences are found, returns error.
+func verifySequencesInFeed(feed <-chan (*ChangeEntry), sequences []uint64) ([]*ChangeEntry, error) {
+	log.Printf("Attempting to verify sequences %v in changes feed", sequences)
+	var changes = make([]*ChangeEntry, 0, 50)
+	for {
+		// Attempt to read at one entry from feed
+		err := appendFromFeed(&changes, feed, 1)
+		if err != nil {
+			return nil, err
+		}
+		// Check if we've received the required sequences
+		if verifyChangesSequencesIgnoreOrder(changes, sequences) {
+			return changes, nil
+		}
+	}
 }
 
 func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntries int) error {
