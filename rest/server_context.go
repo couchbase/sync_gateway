@@ -549,16 +549,21 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
-	if config.RevsLimit != nil && *config.RevsLimit > 0 {
+	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
-		if dbcontext.RevsLimit < 20 {
-			return nil, fmt.Errorf("The revs_limit (%v) configuration cannot be set lower than 20.", dbcontext.RevsLimit)
-		}
+		if dbcontext.AllowConflicts() {
+			if dbcontext.RevsLimit < 20 {
+				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", dbcontext.RevsLimit)
+			}
 
-		if dbcontext.RevsLimit < 100 {
-			base.Warn("Setting the revs_limit (%v) to less than 100 may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
+			if dbcontext.RevsLimit < 100 {
+				base.Warn("Setting the revs_limit (%v) to less than 100 may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
+			}
+		} else {
+			if dbcontext.RevsLimit <= 0 {
+				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", dbcontext.RevsLimit)
+			}
 		}
-
 	}
 
 	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
