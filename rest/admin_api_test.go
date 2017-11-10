@@ -239,7 +239,7 @@ func TestUserAllowEmptyPassword(t *testing.T) {
 }
 
 // Test user access grant while that user has an active changes feed.  (see issue #880)
-func DisabledTestUserAccessRace(t *testing.T) {
+func TestUserAccessRace(t *testing.T) {
 
 	syncFunction := `
 function(doc, oldDoc) {
@@ -269,6 +269,7 @@ function(doc, oldDoc) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true}`)
+	defer rt.SendAdminRequest("PUT", "/_logging", `{}`)  // reset logging to initial state
 
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
 	assertStatus(t, response, 201)
@@ -290,24 +291,58 @@ function(doc, oldDoc) {
 	input = input + `]}`
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", input)
 
+
 	// Start changes feed
 	var wg sync.WaitGroup
+
+	wg.Add(1)
+
+	numExpectedChanges := 201
+
 	go func() {
 		defer wg.Done()
-		wg.Add(1)
-		// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
-		// ensure it doesn't terminate before the first change is sent.
-		changesResponse := rt.Send(requestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=2000", "", "bernard"))
 
-		changes, err := readContinuousChanges(changesResponse)
-		assert.Equals(t, err, nil)
+		since := ""
 
-		log.Printf("Got %d change entries", len(changes))
-		assert.Equals(t, len(changes), 201)
+		maxTries := 10
+		numTries := 0
+
+		changesAccumulated := []db.ChangeEntry{}
+
+		for {
+
+			// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
+			// ensure it doesn't terminate before the first change is sent.
+			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
+
+			changes, err := readContinuousChanges(changesResponse)
+			assert.Equals(t, err, nil)
+
+			changesAccumulated = append(changesAccumulated, changes...)
+
+			if len(changesAccumulated) >= numExpectedChanges {
+				log.Printf("Got numExpectedChanges (%d).  Done", numExpectedChanges)
+				break
+			}
+
+			// Advance the since value if we got any changes
+			if len(changes) > 0 {
+				since = changes[len(changes) - 1].Seq.String()
+			}
+
+			numTries++
+			if numTries > maxTries {
+				t.Fatalf("Giving up trying to receive %d changes.  Only received %d", numExpectedChanges, len(changesAccumulated))
+			}
+
+		}
+
+
 	}()
 
 	// Make bulk docs calls, 100 docs each, all triggering access grants to the list docs.
 	for j := 0; j < 1; j++ {
+
 		input := `{"docs": [`
 		for i := 1; i <= 100; i++ {
 			if i > 1 {
@@ -319,6 +354,7 @@ function(doc, oldDoc) {
 		}
 		input = input + `]}`
 		response = rt.Send(requestByUser("POST", "/db/_bulk_docs", input, "bernard"))
+
 	}
 
 	// wait for changes feed to complete (time out)
@@ -328,6 +364,9 @@ function(doc, oldDoc) {
 func TestLogging(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
+
+	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
+	rt.SendAdminRequest("PUT", "/_logging", `{}`)
 
 	//Assert default log channels are enabled
 	response := rt.SendAdminRequest("GET", "/_logging", "")
