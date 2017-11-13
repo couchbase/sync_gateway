@@ -10,7 +10,6 @@
 package auth
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/coreos/go-oidc/jose"

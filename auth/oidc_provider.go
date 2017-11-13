@@ -10,7 +10,6 @@
 package auth
 
 import (
-	"fmt"
 	"net/url"
 
 	"github.com/coreos/go-oidc/oidc"
@@ -133,7 +132,7 @@ func (pc *OidcProviderConfiguration) parseURI(s string) (*url.URL, error) {
 		return nil, nil
 	}
 	u, err := url.Parse(s)
-	if err == nil {  // TODO review per https://github.com/couchbase/sync_gateway/issues/3065
+	if err == nil { // TODO review per https://github.com/couchbase/sync_gateway/issues/3065
 		if u.Host == "" {
 			return nil, errors.Errorf("Host required in URI [%s]:", s)
 		} else if u.Scheme != "http" && u.Scheme != "https" {

@@ -11,7 +11,6 @@ package auth
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"

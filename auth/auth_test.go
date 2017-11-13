@@ -11,7 +11,6 @@ package auth
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"testing"
 	"time"
