@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/pkg/errors"
 )
 
 // Attachments shorter than this will be left in the JSON as base64 rather than being a separate
@@ -152,11 +153,11 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int, docid string) 
 		if ok && revpos >= int64(minRevpos) {
 			digest, ok := meta["digest"]
 			if !ok {
-				return nil, fmt.Errorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to missing digest field", docid, attachmentName, revpos)
+				return nil, errors.Errorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to missing digest field", docid, attachmentName, revpos)
 			}
 			digestStr, ok := digest.(string)
 			if !ok {
-				return nil, fmt.Errorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to unexpected digest field: %v", docid, attachmentName, revpos, digest)
+				return nil, errors.Errorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to unexpected digest field: %v", docid, attachmentName, revpos, digest)
 			}
 			key := AttachmentKey(digestStr)
 			data, err := db.GetAttachment(key)

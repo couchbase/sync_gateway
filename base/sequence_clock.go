@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -312,7 +313,7 @@ func (c *SequenceClockImpl) UpdateWithPartitionClocks(partitionClocks []*Partiti
 			for vbNo, seq := range *partitionClock {
 				if seq > 0 {
 					if seq < c.value[vbNo] && !allowRollback {
-						return fmt.Errorf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vbNo, c.value[vbNo], seq)
+						return errors.Errorf("Update attempted to set clock to earlier sequence.  Vb: %d, currentSequence: %d, newSequence: %d", vbNo, c.value[vbNo], seq)
 					}
 					c.value[vbNo] = seq
 				}
@@ -570,10 +571,10 @@ func (i *IndexablePartitionClock) UnmarshalJSON(data []byte) error {
 	// Reset clock based on storage
 	err := json.Unmarshal(data, i.storage)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "Error unmarshalling IndexablePartitionClock: %s", i)
 	}
 	if len(i.storage.VbNos) != len(i.storage.Seqs) {
-		return fmt.Errorf("Error unmarshalling clock %s: mismatched lengths (%d, %d)", i.Key, len(i.storage.VbNos), len(i.storage.Seqs))
+		return errors.Errorf("Error unmarshalling clock %s: mismatched lengths (%d, %d)", i.Key, len(i.storage.VbNos), len(i.storage.Seqs))
 	}
 	i.PartitionClock = make(PartitionClock)
 	for index, vbNo := range i.storage.VbNos {

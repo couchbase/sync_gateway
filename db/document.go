@@ -16,13 +16,13 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/pkg/errors"
 )
 
 // When external revision storage is used, maximum body size (in bytes) to store inline.
@@ -255,14 +255,14 @@ func parseXattrStreamData(xattrName string, data []byte) (body []byte, xattr []b
 	for pos < xattrsLen {
 		pairLen := binary.BigEndian.Uint32(data[pos : pos+4])
 		if pairLen == 0 || int(pos+pairLen) > len(data) {
-			return nil, nil, fmt.Errorf("Unexpected xattr pair length (%d) - unable to parse xattrs", pairLen)
+			return nil, nil, errors.Errorf("Unexpected xattr pair length (%d) - unable to parse xattrs", pairLen)
 		}
 		pos += 4
 		pairBytes := data[pos : pos+pairLen]
 		components := bytes.Split(pairBytes, separator)
 		// xattr pair has the format [key]0x00[value]0x00, and so should split into three components
 		if len(components) != 3 {
-			return nil, nil, fmt.Errorf("Unexpected number of components found in xattr pair: %s", pairBytes)
+			return nil, nil, errors.Errorf("Unexpected number of components found in xattr pair: %s", pairBytes)
 		}
 		xattrKey := string(components[0])
 		// If this is the xattr we're looking for , we're done
@@ -449,7 +449,7 @@ func (doc *document) persistModifiedRevisionBodies(bucket base.Bucket) error {
 			return err
 		}
 		if revInfo.BodyKey == "" || len(revInfo.Body) == 0 {
-			return fmt.Errorf("Missing key or body for revision during external persistence.  doc: %s rev:%s key: %s  len(body): %d", doc.ID, revID, revInfo.BodyKey, len(revInfo.Body))
+			return errors.Errorf("Missing key or body for revision during external persistence.  doc: %s rev:%s key: %s  len(body): %d", doc.ID, revID, revInfo.BodyKey, len(revInfo.Body))
 		}
 
 		// If addRaw indicates that the doc already exists, can ignore.  Another writer already persisted this rev backup.

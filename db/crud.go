@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -22,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -1035,7 +1035,7 @@ func (db *Database) updateAndReturnDoc(
 
 			currentRevFromHistory, ok := docOut.History[docOut.CurrentRev]
 			if !ok {
-				err = fmt.Errorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", docOut.CurrentRev, docOut)
+				err = errors.Errorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", docOut.CurrentRev, docOut)
 				return
 			}
 

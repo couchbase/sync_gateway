@@ -18,6 +18,7 @@ import (
 	_ "github.com/robertkrimen/otto/underscore"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/pkg/errors"
 )
 
 const funcWrapper = `
@@ -227,7 +228,7 @@ func compileAccessMap(input map[string][]string, prefix string) (AccessMap, erro
 				if strings.HasPrefix(value, prefix) {
 					values[i] = value[len(prefix):]
 				} else {
-					return nil, fmt.Errorf("Value %q does not begin with %q", value, prefix)
+					return nil, errors.Errorf("Value %q does not begin with %q", value, prefix)
 				}
 			}
 		}

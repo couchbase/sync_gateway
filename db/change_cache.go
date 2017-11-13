@@ -2,7 +2,6 @@ package db
 
 import (
 	"container/heap"
-	"errors"
 	"expvar"
 	"fmt"
 	"sort"
@@ -15,6 +14,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -512,7 +512,7 @@ func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Prin
 	if c.context.Bucket != nil {
 		return c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
 	} else {
-		return nil, fmt.Errorf("Attempt to unmarshal principal using closed bucket")
+		return nil, errors.Errorf("Attempt to unmarshal principal using closed bucket")
 	}
 }
 

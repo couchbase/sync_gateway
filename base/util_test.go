@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"github.com/pkg/errors"
 )
 
 func TestFixJSONNumbers(t *testing.T) {
@@ -117,7 +118,7 @@ func TestRetryLoop(t *testing.T) {
 		numTimesInvoked += 1
 		if numTimesInvoked <= 3 {
 			log.Printf("Worker returning shouldRetry true, fake error")
-			return true, fmt.Errorf("Fake error"), nil
+			return true, errors.Errorf("Fake error"), nil
 		}
 		return false, nil, "result"
 	}
@@ -149,7 +150,7 @@ func TestRetryLoopTimeoutSafe(t *testing.T) {
 		numTimesInvoked += 1
 		if numTimesInvoked <= 3 {
 			log.Printf("Worker returning shouldRetry true, fake error")
-			return true, fmt.Errorf("Fake error"), nil
+			return true, errors.Errorf("Fake error"), nil
 		}
 		return false, nil, "result"
 	}

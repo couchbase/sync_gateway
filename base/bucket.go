@@ -10,7 +10,6 @@
 package base
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -23,6 +22,7 @@ import (
 	"github.com/couchbase/gomemcached/client"
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -267,7 +267,7 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 
 	vres, ok := result.(sgbucket.ViewResult)
 	if !ok {
-		return vres, fmt.Errorf("Error converting view result %v to sgbucket.ViewResult", result)
+		return vres, errors.Errorf("Error converting view result %v to sgbucket.ViewResult", result)
 	}
 	return vres, err
 }

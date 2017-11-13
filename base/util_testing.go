@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
+	"github.com/pkg/errors"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -205,7 +206,7 @@ func NewTestBucketManager(spec BucketSpec) *TestBucketManager {
 func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 
 	if NumOpenBuckets(tbm.BucketSpec.BucketName) > 0 {
-		return false, fmt.Errorf("There are already %d open buckets.  The tests expect all buckets to be closed.", NumOpenBuckets(tbm.BucketSpec.BucketName))
+		return false, errors.Errorf("There are already %d open buckets.  The tests expect all buckets to be closed.", NumOpenBuckets(tbm.BucketSpec.BucketName))
 	}
 
 	IncrNumOpenBuckets(tbm.BucketSpec.BucketName)
@@ -265,7 +266,7 @@ func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
 		if err != nil {
 			return -1, err
 		}
-		return -1, fmt.Errorf("Error trying to find number of items in bucket: %v", err)
+		return -1, errors.Wrap(err, "Error trying to find number of items in bucket")
 	}
 
 	respJson := map[string]interface{}{}
@@ -320,7 +321,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		}
 
 		if numTries > maxTries {
-			return fmt.Errorf("Timed out waiting for bucket to be empty after flush.  ItemCount: %v", itemCount)
+			return errors.Errorf("Timed out waiting for bucket to be empty after flush.  ItemCount: %v", itemCount)
 		}
 
 		// Still items left, wait a little bit and try again
@@ -334,7 +335,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	// Wait until high seq nos are all 0
 
 	if tbm.Bucket.IoRouter() == nil {
-		return fmt.Errorf("Cannot determine number of vbuckets")
+		return errors.Errorf("Cannot determine number of vbuckets")
 	}
 	maxVbno := uint16(tbm.Bucket.IoRouter().NumVbuckets())
 
@@ -454,7 +455,7 @@ func (tbm *TestBucketManager) CreateTestBucket() error {
 		}
 
 		if numTries >= maxTries {
-			return fmt.Errorf("Created bucket, but unable to connect to it after several attempts.  Spec: %+v", tbm.BucketSpec)
+			return errors.Errorf("Created bucket, but unable to connect to it after several attempts.  Spec: %+v", tbm.BucketSpec)
 		}
 
 		// Maybe it's not ready yet, wait a little bit and retry

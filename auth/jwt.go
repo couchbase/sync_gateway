@@ -10,12 +10,12 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
+	"github.com/pkg/errors"
 )
 
 // Config options for Json Web Token validation
@@ -61,12 +61,12 @@ func GetJWTIssuer(jwt jose.JWT) (issuer string, audiences []string, err error) {
 
 	claims, err := jwt.Claims()
 	if err != nil {
-		return "", audiences, fmt.Errorf("failed to parse JWT claims: %v", err)
+		return "", audiences, errors.Wrapf(err, "failed to parse JWT claims")
 	}
 
 	iss, ok, err := claims.StringClaim("iss")
 	if err != nil {
-		return "", audiences, fmt.Errorf("Failed to parse 'iss' claim: %v", err)
+		return "", audiences, errors.Wrapf(err, "Failed to parse 'iss' claim")
 	} else if !ok {
 		return "", audiences, errors.New("Missing required 'iss' claim")
 	}

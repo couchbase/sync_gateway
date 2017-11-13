@@ -14,10 +14,10 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"errors"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/pkg/errors"
 )
 
 var MaxBlockSize = 10000 // Maximum size of index block, in bytes
@@ -562,7 +562,7 @@ func (d *DenseBlock) decrEntryCount(amount uint16) (uint16, error) {
 	count := d.getEntryCount()
 	if amount > count {
 		base.Warn("Cannot decrement entry count below zero (%s): %d, %d", d.Key, count, amount)
-		return 0, fmt.Errorf("Can't decrement block entry count below zero")
+		return 0, errors.Errorf("Can't decrement block entry count below zero")
 	}
 	d.setEntryCount(count - amount)
 	return count - amount, nil
