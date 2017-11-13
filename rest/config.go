@@ -26,7 +26,10 @@ import (
 )
 
 // Register profiling handlers (see Go docs)
-import _ "net/http/pprof"
+import (
+	_ "net/http/pprof"
+	"github.com/pkg/errors"
+)
 
 var DefaultInterface = ":4984"
 var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
@@ -281,7 +284,7 @@ func (dbConfig DbConfig) validate() error {
 		if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
 			msg := "ChannelIndex declared in config, but the FeedType is %v " +
 				"rather than expected value of DCPSHARD"
-			return fmt.Errorf(msg, dbConfig.FeedType)
+			return errors.Errorf(msg, dbConfig.FeedType)
 		}
 	}
 
@@ -289,7 +292,7 @@ func (dbConfig DbConfig) validate() error {
 	if strings.ToLower(dbConfig.FeedType) == strings.ToLower(base.DcpShardFeedType) {
 		if dbConfig.ChannelIndex == nil {
 			msg := "FeedType is DCPSHARD, but no ChannelIndex declared in config"
-			return fmt.Errorf(msg)
+			return errors.Errorf(msg)
 		}
 	}
 
@@ -304,7 +307,7 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 	}
 
 	if dbConfig.ChannelIndex != nil && dbConfig.ChannelIndex.IndexWriter == true {
-		return fmt.Errorf("Invalid configuration for Sync Gw.  Must not be configured as an IndexWriter")
+		return errors.Errorf("Invalid configuration for Sync Gw.  Must not be configured as an IndexWriter")
 	}
 
 	// Don't allow Distributed Index and Bucket Shadowing to co-exist
@@ -313,7 +316,7 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 	}
 
 	if dbConfig.FeedType == base.TapFeedType && dbConfig.ImportDocs == "continuous" {
-		return fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import")
+		return errors.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import")
 	}
 
 	return nil
@@ -327,15 +330,15 @@ func (dbConfig *DbConfig) validateSgAccelDbConfig() error {
 	}
 
 	if dbConfig.ChannelIndex == nil {
-		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must have a ChannelIndex defined")
+		return errors.Errorf("Invalid configuration for Sync Gw Accel.  Must have a ChannelIndex defined")
 	}
 
 	if dbConfig.ChannelIndex.IndexWriter == false {
-		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured as an IndexWriter")
+		return errors.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured as an IndexWriter")
 	}
 
 	if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
-		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured for DCPSHARD feedtype")
+		return errors.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured for DCPSHARD feedtype")
 
 	}
 
@@ -351,7 +354,7 @@ func (dbConfig *DbConfig) validateSgAccelDbConfig() error {
 func (dbConfig *DbConfig) verifyNoDistributedIndexAndBucketShadowing() error {
 	// Don't allow Distributed Index and Bucket Shadowing to co-exist
 	if dbConfig.ChannelIndex != nil && dbConfig.Shadow != nil {
-		return fmt.Errorf("Using Sync Gateway Accel with Bucket Shadowing is not supported")
+		return errors.Errorf("Using Sync Gateway Accel with Bucket Shadowing is not supported")
 	}
 	return nil
 }
@@ -485,7 +488,7 @@ func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
 		}
 	} else {
 		if len(*config.Logging) != 1 || ((*config.Logging)["default"] == nil) {
-			return fmt.Errorf("The logging section must define a single \"default\" appender")
+			return errors.Errorf("The logging section must define a single \"default\" appender")
 		}
 		// Validate the default appender configuration
 		if defaultLogger := (*config.Logging)["default"]; defaultLogger != nil {
@@ -515,7 +518,7 @@ func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
 		return dbConfig.validateSgAccelDbConfig()
 	}
 
-	return fmt.Errorf("Unexpected RunMode: %v", config.RunMode)
+	return errors.Errorf("Unexpected RunMode: %v", config.RunMode)
 
 }
 
@@ -549,7 +552,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	}
 	for name, db := range other.Databases {
 		if self.Databases[name] != nil {
-			return fmt.Errorf("Database %q already specified earlier", name)
+			return errors.Errorf("Database %q already specified earlier", name)
 		}
 		self.Databases[name] = db
 	}

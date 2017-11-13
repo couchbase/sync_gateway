@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/pkg/errors"
 )
 
 /** Manages user authentication for a database. */
@@ -307,7 +308,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	base.LogTo("OIDC+", "Provider for issuer: %+v", provider)
 
 	if provider == nil {
-		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
+		return nil, jose.JWT{}, errors.Errorf("No provider found for issuer %v", issuer)
 	}
 
 	// VerifyJWT validates the claims and signature on the JWT

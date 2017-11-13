@@ -192,7 +192,7 @@ func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pend
 func (d *DenseBlock) addEntry(logEntry *LogEntry) (changed bool, removalRequired bool, err error) {
 
 	if logEntry == nil {
-		return false, false, fmt.Errorf("LogEntry must be non-nil")
+		return false, false, errors.Errorf("LogEntry must be non-nil")
 	}
 
 	var entryBytes, indexBytes []byte
@@ -420,7 +420,7 @@ func (d *DenseBlock) removeEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen ui
 func (d *DenseBlock) appendEntry(indexBytes, entryBytes []byte) error {
 
 	if len(d.value) < DB_HEADER_LEN {
-		return fmt.Errorf("Attempted to append entry to invalid block, len=%d", len(d.value))
+		return errors.Errorf("Attempted to append entry to invalid block, len=%d", len(d.value))
 	}
 
 	newCount, err := d.incrEntryCount(1)
@@ -551,7 +551,7 @@ func (d *DenseBlock) incrEntryCount(amount uint16) (uint16, error) {
 	// Check for uint16 overflow
 	if count+amount < count {
 		base.Warn("Overflow incrementing entry count (%s): %d, %d", d.Key, count, amount)
-		return 0, fmt.Errorf("Maximum block entry count exceeded")
+		return 0, errors.Errorf("Maximum block entry count exceeded")
 	}
 	d.setEntryCount(count + amount)
 	return count + amount, nil

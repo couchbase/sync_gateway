@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -627,7 +628,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 	dbExpvars.Add("channelChangesFeeds", 1)
 	changeIndex, ok := db.changeCache.(*kvChangeIndex)
 	if !ok {
-		return nil, fmt.Errorf("Called vectorChangesFeed with non-index cache type: %T", db.changeCache)
+		return nil, errors.Errorf("Called vectorChangesFeed with non-index cache type: %T", db.changeCache)
 	}
 
 	// If we're mid-backfill for this channel, we make one reader call for the backfill and one for non-backfill.  Without

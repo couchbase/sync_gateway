@@ -936,7 +936,7 @@ func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration
 	case err := <-errChannel:
 		return nil, err
 	case _ = <-time.After(timeout):
-		return nil, fmt.Errorf("Timeout waiting for history")
+		return nil, errors.Errorf("Timeout waiting for history")
 	}
 
 }
