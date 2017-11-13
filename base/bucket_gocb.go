@@ -705,7 +705,10 @@ func isRecoverableGoCBError(err error) bool {
 		return false
 	}
 
-	_, ok := recoverableGoCBErrors[err.Error()]
+	// Unwrap this in case it is wrapped
+	underlyingErr := errors.Cause(err)
+
+	_, ok := recoverableGoCBErrors[underlyingErr.Error()]
 
 	return ok
 }
@@ -716,12 +719,16 @@ func isRecoverableGoCBError(err error) bool {
 // it's rebuilding the index.  In that case, it's desirable to return a more informative error than the
 // underlying net/url.Error. See https://github.com/couchbase/sync_gateway/issues/2639
 func isGoCBViewTimeoutError(err error) bool {
+
 	if err == nil {
 		return false
 	}
 
+	// Unwrap this in case it is wrapped
+	underlyingErr := errors.Cause(err)
+
 	// If it's not a *url.Error, then it's not a viewtimeout error
-	netUrlError, ok := err.(*url.Error)
+	netUrlError, ok := underlyingErr.(*url.Error)
 	if !ok {
 		return false
 	}
