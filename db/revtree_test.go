@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -23,6 +22,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+	"github.com/pkg/errors"
 )
 
 // 1-one -- 2-two -- 3-three

@@ -12,7 +12,6 @@ package rest
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -28,6 +27,7 @@ import (
 // Register profiling handlers (see Go docs)
 import (
 	_ "net/http/pprof"
+
 	"github.com/pkg/errors"
 )
 
