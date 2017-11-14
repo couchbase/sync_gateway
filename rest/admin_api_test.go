@@ -49,7 +49,8 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 		t.Fatalf("Error unmarshalling response: %v", err)
 	}
 	revId := responseDoc["rev"].(string)
-	_, revIdHash := ParseRevID(revId)
+	revGeneration, revIdHash := ParseRevID(revId)
+	assert.Equals(t, revGeneration, 1)
 
 	// Update doc (normal update, no conflicting revisions added)
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), fmt.Sprintf(`{"value":"secondval", "_rev":"%s"}`, revId))
@@ -63,10 +64,21 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", docId), input)
 	response.DumpBody()
+	if err := json.Unmarshal(response.Body.Bytes(), &responseDoc); err != nil {
+		t.Fatalf("Error unmarshalling response: %v", err)
+	}
+	revId = responseDoc["rev"].(string)
+	revGeneration, _ = ParseRevID(revId)
+	assert.Equals(t, revGeneration, 2)
 
-	// Create conflict again to reproduce panic
+	// Create conflict again, which used to reproduce panic but now returns an error
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", docId), input)
 	response.DumpBody()
+	if err := json.Unmarshal(response.Body.Bytes(), &responseDoc); err != nil {
+		t.Fatalf("Error unmarshalling response: %v", err)
+	}
+	_, ok := responseDoc["error"]
+	assert.True(t, ok)
 
 }
 
