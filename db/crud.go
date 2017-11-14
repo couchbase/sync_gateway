@@ -881,7 +881,7 @@ func (db *Database) updateAndReturnDoc(
 				doc.RecentSequences = make([]uint64, 0, 1+len(unusedSequences))
 			}
 
-			if len(doc.RecentSequences) > kMaxRecentSequences {
+			if len(doc.RecentSequences) >= kMaxRecentSequences {
 				// Prune recent sequences that are earlier than the nextSequence.  The dedup window
 				// on the feed is small - sub-second, so we usually shouldn't care about more than
 				// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
