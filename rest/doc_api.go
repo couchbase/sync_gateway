@@ -279,7 +279,12 @@ func (h *handler) handlePutDoc() error {
 		if err != nil {
 			return err
 		}
-		newRev = body["_rev"].(string)
+
+		newRevRaw, ok := body["_rev"]
+		if !ok {
+			return fmt.Errorf("No revision was created")
+		}
+		newRev = newRevRaw.(string)
 	}
 	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
