@@ -11,14 +11,14 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"testing"
 	"time"
-	"errors"
 
-	"github.com/couchbaselabs/go.assert"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbaselabs/go.assert"
 )
 
 func canSeeAllChannels(princ Principal, channels base.Set) bool {

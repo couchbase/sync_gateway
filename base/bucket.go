@@ -10,13 +10,12 @@
 package base
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
-
-	"errors"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
