@@ -282,7 +282,7 @@ func (h *handler) handlePutDoc() error {
 
 		newRevRaw, ok := body["_rev"]
 		if !ok {
-			return fmt.Errorf("No revision was created")
+			return base.HTTPErrorf(http.StatusConflict, "No revision was created")
 		}
 		newRev = newRevRaw.(string)
 	}
