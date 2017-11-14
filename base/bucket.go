@@ -16,13 +16,15 @@ import (
 	"strings"
 	"time"
 
+	"errors"
+
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/gomemcached/client"
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -267,7 +269,7 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 
 	vres, ok := result.(sgbucket.ViewResult)
 	if !ok {
-		return vres, errors.Errorf("Error converting view result %v to sgbucket.ViewResult", result)
+		return vres, fmt.Errorf("Error converting view result %v to sgbucket.ViewResult", result)
 	}
 	return vres, err
 }
@@ -606,7 +608,7 @@ func IsKeyNotFoundError(bucket Bucket, err error) bool {
 		return false
 	}
 
-	unwrappedErr := errors.Cause(err)
+	unwrappedErr := pkgerrors.Cause(err)
 
 	if unwrappedErr == gocb.ErrKeyNotFound {
 		return true
@@ -632,7 +634,7 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 		return false
 	}
 
-	unwrappedErr := errors.Cause(err)
+	unwrappedErr := pkgerrors.Cause(err)
 
 	// GoCB handling
 	if unwrappedErr == gocb.ErrKeyExists {

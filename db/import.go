@@ -1,11 +1,12 @@
 package db
 
 import (
+	"errors"
+	"fmt"
 	"strconv"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/pkg/errors"
 	"github.com/robertkrimen/otto"
 )
 
@@ -42,7 +43,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool, mode ImportMode) (docOut *document, err error) {
 
 	if existingDoc == nil {
-		return nil, errors.Errorf("No existing doc present when attempting to import %s", docid)
+		return nil, fmt.Errorf("No existing doc present when attempting to import %s", docid)
 	}
 	// TODO: We need to remarshal the existing doc into bytes.  Less performance overhead than the previous bucket op to get the value in WriteUpdateWithXattr,
 	//       but should refactor import processing to support using the already-unmarshalled doc.
@@ -64,7 +65,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	base.LogTo("Import+", "Attempting to import doc %q...", docid)
 
 	if existingDoc == nil {
-		return nil, errors.Errorf("No existing doc present when attempting to import %s", docid)
+		return nil, fmt.Errorf("No existing doc present when attempting to import %s", docid)
 	}
 
 	var newRev string

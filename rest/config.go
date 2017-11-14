@@ -12,6 +12,7 @@ package rest
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -22,13 +23,9 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-)
 
-// Register profiling handlers (see Go docs)
-import (
+	// Register profiling handlers (see Go docs)
 	_ "net/http/pprof"
-
-	"github.com/pkg/errors"
 )
 
 var DefaultInterface = ":4984"
@@ -284,7 +281,7 @@ func (dbConfig DbConfig) validate() error {
 		if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
 			msg := "ChannelIndex declared in config, but the FeedType is %v " +
 				"rather than expected value of DCPSHARD"
-			return errors.Errorf(msg, dbConfig.FeedType)
+			return fmt.Errorf(msg, dbConfig.FeedType)
 		}
 	}
 
@@ -292,7 +289,7 @@ func (dbConfig DbConfig) validate() error {
 	if strings.ToLower(dbConfig.FeedType) == strings.ToLower(base.DcpShardFeedType) {
 		if dbConfig.ChannelIndex == nil {
 			msg := "FeedType is DCPSHARD, but no ChannelIndex declared in config"
-			return errors.Errorf(msg)
+			return fmt.Errorf(msg)
 		}
 	}
 
@@ -307,7 +304,7 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 	}
 
 	if dbConfig.ChannelIndex != nil && dbConfig.ChannelIndex.IndexWriter == true {
-		return errors.Errorf("Invalid configuration for Sync Gw.  Must not be configured as an IndexWriter")
+		return fmt.Errorf("Invalid configuration for Sync Gw.  Must not be configured as an IndexWriter")
 	}
 
 	// Don't allow Distributed Index and Bucket Shadowing to co-exist
@@ -316,7 +313,7 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 	}
 
 	if dbConfig.FeedType == base.TapFeedType && dbConfig.ImportDocs == "continuous" {
-		return errors.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import")
+		return fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import")
 	}
 
 	return nil
@@ -330,15 +327,15 @@ func (dbConfig *DbConfig) validateSgAccelDbConfig() error {
 	}
 
 	if dbConfig.ChannelIndex == nil {
-		return errors.Errorf("Invalid configuration for Sync Gw Accel.  Must have a ChannelIndex defined")
+		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must have a ChannelIndex defined")
 	}
 
 	if dbConfig.ChannelIndex.IndexWriter == false {
-		return errors.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured as an IndexWriter")
+		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured as an IndexWriter")
 	}
 
 	if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
-		return errors.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured for DCPSHARD feedtype")
+		return fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured for DCPSHARD feedtype")
 
 	}
 
@@ -354,7 +351,7 @@ func (dbConfig *DbConfig) validateSgAccelDbConfig() error {
 func (dbConfig *DbConfig) verifyNoDistributedIndexAndBucketShadowing() error {
 	// Don't allow Distributed Index and Bucket Shadowing to co-exist
 	if dbConfig.ChannelIndex != nil && dbConfig.Shadow != nil {
-		return errors.Errorf("Using Sync Gateway Accel with Bucket Shadowing is not supported")
+		return fmt.Errorf("Using Sync Gateway Accel with Bucket Shadowing is not supported")
 	}
 	return nil
 }
@@ -488,7 +485,7 @@ func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
 		}
 	} else {
 		if len(*config.Logging) != 1 || ((*config.Logging)["default"] == nil) {
-			return errors.Errorf("The logging section must define a single \"default\" appender")
+			return fmt.Errorf("The logging section must define a single \"default\" appender")
 		}
 		// Validate the default appender configuration
 		if defaultLogger := (*config.Logging)["default"]; defaultLogger != nil {
@@ -518,7 +515,7 @@ func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
 		return dbConfig.validateSgAccelDbConfig()
 	}
 
-	return errors.Errorf("Unexpected RunMode: %v", config.RunMode)
+	return fmt.Errorf("Unexpected RunMode: %v", config.RunMode)
 
 }
 
@@ -552,7 +549,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	}
 	for name, db := range other.Databases {
 		if self.Databases[name] != nil {
-			return errors.Errorf("Database %q already specified earlier", name)
+			return fmt.Errorf("Database %q already specified earlier", name)
 		}
 		self.Databases[name] = db
 	}

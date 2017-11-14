@@ -17,7 +17,7 @@ import (
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 type sgErrorCode uint16
@@ -96,7 +96,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return 200, "OK"
 	}
 
-	unwrappedErr := errors.Cause(err)
+	unwrappedErr := pkgerrors.Cause(err)
 
 	// Check for SGErrors
 	switch unwrappedErr {
@@ -172,7 +172,7 @@ func CouchHTTPErrorName(status int) string {
 // Returns true if an error is a doc-not-found error
 func IsDocNotFoundError(err error) bool {
 
-	unwrappedErr := errors.Cause(err)
+	unwrappedErr := pkgerrors.Cause(err)
 
 	if unwrappedErr != nil && unwrappedErr == gocb.ErrKeyNotFound {
 		return true

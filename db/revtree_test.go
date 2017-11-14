@@ -22,7 +22,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-	"github.com/pkg/errors"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -936,7 +935,7 @@ func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration
 	case err := <-errChannel:
 		return nil, err
 	case _ = <-time.After(timeout):
-		return nil, errors.Errorf("Timeout waiting for history")
+		return nil, fmt.Errorf("Timeout waiting for history")
 	}
 
 }

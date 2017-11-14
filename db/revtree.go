@@ -12,12 +12,12 @@ package db
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/pkg/errors"
 )
 
 type RevKey string
@@ -393,7 +393,7 @@ func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string) {
 func (tree RevTree) removeRevisionBody(revid string) (deletedBodyKey string) {
 	info, found := tree[revid]
 	if !found {
-		base.LogError(errors.Errorf("RemoveRevisionBody called for revid not in tree: %v", revid))
+		base.LogError(fmt.Errorf("RemoveRevisionBody called for revid not in tree: %v", revid))
 		return ""
 	}
 	deletedBodyKey = info.BodyKey
@@ -694,7 +694,7 @@ func (tree RevTree) getHistory(revid string) ([]string, error) {
 		}
 		history = append(history, revid)
 		if len(history) > maxHistory {
-			return history, errors.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
+			return history, fmt.Errorf("getHistory found cycle in revision tree, history calculated as: %v", history)
 		}
 		revid = info.Parent
 	}

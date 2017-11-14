@@ -12,6 +12,7 @@ package base
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
 	"io/ioutil"
@@ -24,7 +25,7 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
@@ -272,7 +273,7 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, errors.Errorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
@@ -415,7 +416,7 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 	// Type assertion of result into a map
 	resultMap, ok := result.(map[string][]byte)
 	if !ok {
-		return nil, errors.Errorf("Error doing type assertion of %v into a map", result)
+		return nil, fmt.Errorf("Error doing type assertion of %v into a map", result)
 	}
 
 	return resultMap, err
@@ -453,7 +454,7 @@ func (bucket CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]uin
 	// Type assertion of result into a map
 	resultMap, ok := result.(map[string]uint64)
 	if !ok {
-		return nil, errors.Errorf("Error doing type assertion of %v into a map", result)
+		return nil, fmt.Errorf("Error doing type assertion of %v into a map", result)
 	}
 
 	return resultMap, err
@@ -706,7 +707,7 @@ func isRecoverableGoCBError(err error) bool {
 	}
 
 	// Unwrap this in case it is wrapped
-	unwrappedErr := errors.Cause(err)
+	unwrappedErr := pkgerrors.Cause(err)
 
 	_, ok := recoverableGoCBErrors[unwrappedErr.Error()]
 
@@ -725,7 +726,7 @@ func isGoCBViewTimeoutError(err error) bool {
 	}
 
 	// Unwrap this in case it is wrapped
-	unwrappedErr := errors.Cause(err)
+	unwrappedErr := pkgerrors.Cause(err)
 
 	// If it's not a *url.Error, then it's not a viewtimeout error
 	netUrlError, ok := unwrappedErr.(*url.Error)
@@ -783,7 +784,7 @@ func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []byt
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return nil, 0, errors.Errorf("GetAndTouchRaw: Error doing type assertion of %v into a uint64", result)
+		return nil, 0, fmt.Errorf("GetAndTouchRaw: Error doing type assertion of %v into a uint64", result)
 	}
 
 	// If returnVal was never set to anything, return nil or else type assertion below will panic
@@ -1004,7 +1005,7 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas 
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, errors.Errorf("WriteCas: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("WriteCas: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
@@ -1084,7 +1085,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, errors.Errorf("WriteCasWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("WriteCasWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
@@ -1133,7 +1134,7 @@ func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uin
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, errors.Errorf("UpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("UpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
@@ -1207,7 +1208,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, errors.Errorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", result, result, k)
+		return 0, fmt.Errorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", result, result, k)
 	}
 
 	return cas, err
@@ -1307,7 +1308,7 @@ func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, 
 	// If the doc body is non-empty at this point, then give up because it seems that a doc update has been
 	// interleaved with the purge.  Return error to the caller and cancel the purge.
 	if len(retrievedVal) != 0 {
-		return errors.Errorf("DeleteWithXattr was unable to delete the doc. Another update " +
+		return fmt.Errorf("DeleteWithXattr was unable to delete the doc. Another update " +
 			"was received which resurrected the doc by adding a new revision, in which case this delete operation is " +
 			"considered as cancelled.")
 	}
@@ -1326,7 +1327,7 @@ func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, 
 
 	// If the cas-safe delete of XATTR fails, return an error to the caller.
 	// This might happen if there was a concurrent update interleaved with the purge (someone resurrected doc)
-	return errors.Wrapf(mutateErrDeleteXattr, "DeleteWithXattr was unable to delete the doc.  Another update "+
+	return pkgerrors.Wrapf(mutateErrDeleteXattr, "DeleteWithXattr was unable to delete the doc.  Another update "+
 		"was received which resurrected the doc by adding a new revision, in which case this delete operation is "+
 		"considered as cancelled. ")
 
@@ -1354,7 +1355,7 @@ func (bucket CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, c
 
 	// If the cas-safe delete of doc body fails, return an error to the caller.
 	// This might happen if there was a concurrent update interleaved with the purge (someone resurrected doc)
-	return errors.Wrapf(mutateErrDeleteBody, "DeleteWithXattr was unable to delete the doc.  It might be the case that another update "+
+	return pkgerrors.Wrapf(mutateErrDeleteBody, "DeleteWithXattr was unable to delete the doc.  It might be the case that another update "+
 		"was received which resurrected the doc by adding a new revision, in which case this delete operation is "+
 		"considred as cancelled.")
 
@@ -1473,7 +1474,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sgb
 				//
 				// If this functionality is re-added, this method should probably take a flag called
 				// allowDeletes (bool) so that callers must intentionally allow deletes
-				return errors.Errorf("The ability to remove items via WriteUpdate has been removed.  See code comments in bucket_gocb.go")
+				return fmt.Errorf("The ability to remove items via WriteUpdate has been removed.  See code comments in bucket_gocb.go")
 
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
@@ -1544,7 +1545,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
 		deleteBody := len(value) > 0
 		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
-		switch errors.Cause(writeErr) {
+		switch pkgerrors.Cause(writeErr) {
 		case nil:
 			return casOut, nil
 		case gocb.ErrKeyExists:
@@ -1614,7 +1615,7 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (u
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, errors.Errorf("Incr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, fmt.Errorf("Incr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
 	return cas, err
@@ -1671,7 +1672,7 @@ func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error
 
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
-		return nil, errors.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
+		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
 	}
 	return manager, nil
 }
@@ -1686,7 +1687,7 @@ func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) err
 	case *sgbucket.DesignDoc:
 		sgDesignDoc = *typeValue
 	default:
-		return errors.Errorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", value)
+		return fmt.Errorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", value)
 	}
 
 	manager, err := bucket.getBucketManager()
@@ -1772,7 +1773,7 @@ func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument
 		if err != nil {
 			LogFatal("Failed to close socket (%s)", err)
 		}
-		return errors.Errorf("Client error: %s", string(data))
+		return fmt.Errorf("Client error: %s", string(data))
 	}
 
 	return nil
@@ -1781,7 +1782,7 @@ func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument
 
 func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
 
-	unwrappedErr := errors.Cause(err)
+	unwrappedErr := pkgerrors.Cause(err)
 
 	// TODO: change to this?  return unwrappedErr.Error() == gocb.ErrKeyNotFound.Error()
 	return unwrappedErr == gocb.ErrKeyNotFound
@@ -1792,7 +1793,7 @@ func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
 // Pending question to see if there is an easier way: https://forums.couchbase.com/t/checking-for-errsubdocpathnotfound-errors/13492
 func (bucket CouchbaseBucketGoCB) IsSubDocPathNotFound(err error) bool {
 
-	unwrappedErr := errors.Cause(err)
+	unwrappedErr := pkgerrors.Cause(err)
 
 	subdocMutateErr, ok := unwrappedErr.(gocbcore.SubDocMutateError)
 	if ok {
@@ -2050,7 +2051,7 @@ func (bucket CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 	if bucket.Bucket.IoRouter() != nil {
 		return uint16(bucket.Bucket.IoRouter().NumVbuckets()), nil
 	}
-	return 0, errors.Errorf("Unable to determine vbucket count")
+	return 0, fmt.Errorf("Unable to determine vbucket count")
 }
 
 func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
@@ -2058,7 +2059,7 @@ func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor 
 	if versionString == "" {
 		stats, err := bucket.Bucket.Stats("")
 		if err != nil {
-			return 0, 0, "error", errors.Wrapf(err, "Error calling Stats() on GoCB bucket")
+			return 0, 0, "error", pkgerrors.Wrapf(err, "Error calling Stats() on GoCB bucket")
 		}
 
 		for _, serverMap := range stats {
@@ -2144,7 +2145,7 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		case ViewQueryParamIncludeDocs:
 			// Ignored -- see https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
 		default:
-			return errors.Errorf("Unexpected view query param: %v.  This will be ignored", optionName)
+			return fmt.Errorf("Unexpected view query param: %v.  This will be ignored", optionName)
 		}
 
 	}
@@ -2188,7 +2189,7 @@ func normalizeIntToUint(value interface{}) (uint, error) {
 		i, err := strconv.Atoi(typeValue)
 		return uint(i), err
 	default:
-		return uint(0), errors.Errorf("Unable to convert %v (%T) -> uint.", value, value)
+		return uint(0), fmt.Errorf("Unable to convert %v (%T) -> uint.", value, value)
 	}
 }
 

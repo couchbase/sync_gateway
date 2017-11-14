@@ -14,7 +14,7 @@ import (
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // Config options for Json Web Token validation
@@ -60,14 +60,14 @@ func GetJWTIssuer(jwt jose.JWT) (issuer string, audiences []string, err error) {
 
 	claims, err := jwt.Claims()
 	if err != nil {
-		return "", audiences, errors.Wrapf(err, "failed to parse JWT claims")
+		return "", audiences, pkgerrors.Wrapf(err, "failed to parse JWT claims")
 	}
 
 	iss, ok, err := claims.StringClaim("iss")
 	if err != nil {
-		return "", audiences, errors.Wrapf(err, "Failed to parse 'iss' claim")
+		return "", audiences, pkgerrors.Wrapf(err, "Failed to parse 'iss' claim")
 	} else if !ok {
-		return "", audiences, errors.New("Missing required 'iss' claim")
+		return "", audiences, pkgerrors.New("Missing required 'iss' claim")
 	}
 
 	if aud, ok, err := claims.StringClaim("aud"); err == nil && ok {
@@ -75,7 +75,7 @@ func GetJWTIssuer(jwt jose.JWT) (issuer string, audiences []string, err error) {
 	} else if aud, ok, err := claims.StringsClaim("aud"); err == nil && ok {
 		audiences = aud
 	} else {
-		return "", audiences, errors.New("Missing required 'aud' claim.")
+		return "", audiences, pkgerrors.Wrapf(err, "Missing required 'aud' claim.")
 	}
 
 	return iss, audiences, nil

@@ -18,7 +18,6 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"github.com/pkg/errors"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -160,7 +159,7 @@ func (rt *RestTester) WaitForDoc(docid string) (err error) {
 func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 	database := rt.GetDatabase()
 	if database == nil {
-		return 0, errors.Errorf("No database found")
+		return 0, fmt.Errorf("No database found")
 	}
 	doc, err := database.GetDocument(docid, db.DocUnmarshalAll)
 	if err != nil {
@@ -172,7 +171,7 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 func (rt *RestTester) WaitForSequence(seq uint64) error {
 	database := rt.GetDatabase()
 	if database == nil {
-		return errors.Errorf("No database found")
+		return fmt.Errorf("No database found")
 	}
 	return database.WaitForSequence(seq)
 }
@@ -180,7 +179,7 @@ func (rt *RestTester) WaitForSequence(seq uint64) error {
 func (rt *RestTester) WaitForPendingChanges() error {
 	database := rt.GetDatabase()
 	if database == nil {
-		return errors.Errorf("No database found")
+		return fmt.Errorf("No database found")
 	}
 	return database.WaitForPendingChanges()
 }
@@ -283,7 +282,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesUrl, usernam
 	}
 
 	if changesVal == nil {
-		return changes, errors.Errorf("Got nil value for changes")
+		return changes, fmt.Errorf("Got nil value for changes")
 	}
 
 	if changesVal != nil {
@@ -325,7 +324,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 			response = rt.SendAdminRequest("GET", viewUrlPath, ``)
 		}
 		if response.Code != 200 {
-			return false, errors.Errorf("Got response code: %d from view call.  Expected 200.", response.Code), sgbucket.ViewResult{}
+			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200.", response.Code), sgbucket.ViewResult{}
 		}
 		var result sgbucket.ViewResult
 		json.Unmarshal(response.Body.Bytes(), &result)
@@ -371,7 +370,7 @@ func (rt *RestTester) WaitForDBOnline() (err error) {
 
 	}
 
-	return errors.Errorf("Give up waiting for DB to come online after %d attempts", maxTries)
+	return fmt.Errorf("Give up waiting for DB to come online after %d attempts", maxTries)
 
 }
 

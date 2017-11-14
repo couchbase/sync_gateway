@@ -22,7 +22,7 @@ import (
 	"github.com/coreos/go-oidc/oauth2"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -134,7 +134,7 @@ func (op *OIDCProvider) InitUserPrefix() error {
 func (op *OIDCProvider) InitOIDCClient() error {
 
 	if op.Issuer == "" {
-		return errors.Errorf("Issuer not defined for OpenID Connect provider %+v", op)
+		return fmt.Errorf("Issuer not defined for OpenID Connect provider %+v", op)
 	}
 
 	config, shouldSyncConfig, err := op.DiscoverConfig()
@@ -263,7 +263,7 @@ func GetOIDCUsername(provider *OIDCProvider, subject string) string {
 // Converts an OpenID Connect / OAuth2 error to an HTTP error
 func OIDCToHTTPError(err error) error {
 
-	unwrappedErr := errors.Cause(err)
+	unwrappedErr := pkgerrors.Cause(err)
 
 	if oauthErr, ok := unwrappedErr.(*oauth2.Error); ok {
 		status := 400

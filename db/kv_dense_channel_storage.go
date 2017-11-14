@@ -13,7 +13,7 @@ import (
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -117,7 +117,7 @@ func (l *DenseBlockList) PreviousBlock(currentBlockIndex int) (*DenseBlockListEn
 		}
 	}
 	if !currentFound {
-		return nil, errors.Errorf("Requested previous for unknown current index: [%d]", currentBlockIndex)
+		return nil, fmt.Errorf("Requested previous for unknown current index: [%d]", currentBlockIndex)
 	}
 	if currentPosition == 0 {
 		// Not found in the current list, load the previous block list and run again
@@ -183,7 +183,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 			return nil, err
 		}
 		if !found {
-			return nil, errors.Errorf("CAS error during block list write during AddBlock, but list not found on reload.")
+			return nil, fmt.Errorf("CAS error during block list write during AddBlock, but list not found on reload.")
 		}
 		return l.GetActiveBlock(), nil
 	}
@@ -236,7 +236,7 @@ func (l *DenseBlockList) rotate() error {
 			//  Re-initialize the current block list and return
 			found, err := l.loadDenseBlockList()
 			if !found {
-				return errors.Errorf("CAS fail on block list write, but no list found on reload.")
+				return fmt.Errorf("CAS fail on block list write, but no list found on reload.")
 			}
 			if err != nil {
 				return err
@@ -307,13 +307,13 @@ func (l *DenseBlockList) GetActiveBlock() *DenseBlock {
 //  - updates validFromCounter
 func (l *DenseBlockList) LoadPrevious() error {
 	if l.validFromCounter == 0 {
-		return errors.Errorf("Attempted to load previous block list when count=0")
+		return fmt.Errorf("Attempted to load previous block list when count=0")
 	}
 	previousCount := l.validFromCounter - 1
 	previousBlockListKey := l.generateNumberedListKey(previousCount)
 	previousBlockListStorage, cas, readError := l.loadStorage(previousBlockListKey)
 	if readError != nil {
-		return errors.Errorf("Unable to find block list with key [%s]:%v", previousBlockListKey, readError)
+		return fmt.Errorf("Unable to find block list with key [%s]:%v", previousBlockListKey, readError)
 	}
 	l.blocks = append(previousBlockListStorage.Blocks, l.blocks...)
 	l.activeStartIndex += len(previousBlockListStorage.Blocks)
@@ -379,7 +379,7 @@ func (l *DenseBlockList) populateForRange(partitionRange base.PartitionRange) er
 	for partitionRange.SinceBefore(l.ValidFrom()) {
 		err := l.LoadPrevious()
 		if err != nil {
-			return errors.Wrapf(err, "Unable to load previous block list")
+			return pkgerrors.Wrapf(err, "Unable to load previous block list")
 		}
 	}
 	return nil

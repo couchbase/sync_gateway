@@ -11,18 +11,19 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"math"
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"time"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 var bulkApiBulkGetRollingMean = base.NewIntRollingMeanVar(100)
@@ -262,7 +263,7 @@ func (h *handler) handleDump() error {
 func (h *handler) handleRepair() error {
 
 	if true == true {
-		return errors.Errorf("_repair endpoint disabled")
+		return errors.New("_repair endpoint disabled")
 	}
 
 	base.LogTo("HTTP", "Repair bucket")
@@ -277,7 +278,7 @@ func (h *handler) handleRepair() error {
 
 	repairBucketParams := db.RepairBucketParams{}
 	if err := json.Unmarshal(body, &repairBucketParams); err != nil {
-		return errors.Wrapf(err, "Error unmarshalling %v into RepairJobParams.", string(body))
+		return pkgerrors.Wrapf(err, "Error unmarshalling %v into RepairJobParams.", string(body))
 	}
 
 	repairBucket := db.NewRepairBucket(h.db.Bucket)
@@ -286,12 +287,12 @@ func (h *handler) handleRepair() error {
 
 	repairBucketResult, repairDocsErr := repairBucket.RepairBucket()
 	if repairDocsErr != nil {
-		return errors.Wrapf(err,"Error repairing bucket")
+		return pkgerrors.Wrapf(err, "Error repairing bucket")
 	}
 
 	resultMarshalled, err := json.Marshal(repairBucketResult)
 	if err != nil {
-		return errors.Wrapf(err, "Error marshalling repairBucketResult: %+v", repairBucketResult)
+		return pkgerrors.Wrapf(err, "Error marshalling repairBucketResult: %+v", repairBucketResult)
 	}
 
 	h.setHeader("Content-Type", "application/json")

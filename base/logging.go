@@ -10,6 +10,7 @@
 package base
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -23,7 +24,7 @@ import (
 	"github.com/couchbase/clog"
 	"github.com/couchbase/goutils/logging"
 	"github.com/natefinch/lumberjack"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 var errMarshalNilLevel = errors.New("can't marshal a nil *Level to text")
@@ -161,7 +162,7 @@ func (l *Level) UnmarshalText(text []byte) error {
 	case "fatal":
 		*l = FatalLevel
 	default:
-		return errors.Errorf("unrecognized level: %v", string(text))
+		return fmt.Errorf("unrecognized level: %v", string(text))
 	}
 	return nil
 }
@@ -270,19 +271,19 @@ func (config *LogAppenderConfig) ValidateLogAppender() error {
 	// and no "logFilePath" appender property is defined
 	if config.Rotation != nil {
 		if config.LogFilePath == nil {
-			return errors.Errorf("The default logger must define a \"logFilePath\" when \"rotation\" is defined")
+			return fmt.Errorf("The default logger must define a \"logFilePath\" when \"rotation\" is defined")
 		}
 		if _, err := IsFilePathWritable(*config.LogFilePath); err != nil {
-			return errors.Wrapf(err, "logFilePath %s is not writable", *config.LogFilePath)
+			return pkgerrors.Wrapf(err, "logFilePath %s is not writable", *config.LogFilePath)
 		}
 		if config.Rotation.MaxSize < 0 {
-			return errors.Errorf("Log rotation MaxSize must >= 0")
+			return fmt.Errorf("Log rotation MaxSize must >= 0")
 		}
 		if config.Rotation.MaxAge < 0 {
-			return errors.Errorf("Log rotation MaxAge must >= 0")
+			return fmt.Errorf("Log rotation MaxAge must >= 0")
 		}
 		if config.Rotation.MaxBackups < 0 {
-			return errors.Errorf("Log rotation MaxBackups must >= 0")
+			return fmt.Errorf("Log rotation MaxBackups must >= 0")
 		}
 	}
 
@@ -296,7 +297,7 @@ func ParseLogFlags(flags []string) {
 	keyMap := make(map[string]bool)
 
 	for _, key := range flags {
-		keyMap [key] = true
+		keyMap[key] = true
 	}
 
 	ParseLogFlagsMap(keyMap)
@@ -331,7 +332,7 @@ func ParseLogFlagsMap(flags map[string]bool) {
 			if enabled {
 				LogKeys[key] = enabled
 				for strings.HasSuffix(key, "+") {
-					key = key[0: len(key) - 1]
+					key = key[0 : len(key)-1]
 					LogKeys[key] = enabled // "foo+" also enables "foo"
 				}
 			} else {

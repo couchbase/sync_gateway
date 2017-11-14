@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
 	"io"
@@ -29,7 +30,7 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbaselabs/gocbconnstr"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -272,19 +273,19 @@ func ReflectExpiry(rawExpiry interface{}) (*uint32, error) {
 		if err == nil {
 			return ValidateUint32Expiry(expRFC3339.Unix())
 		} else {
-			return nil, errors.Wrapf(err, "Unable to parse expiry %s as either numeric or date expiry", rawExpiry)
+			return nil, pkgerrors.Wrapf(err, "Unable to parse expiry %s as either numeric or date expiry", rawExpiry)
 		}
 	case nil:
 		// Leave as zero/empty expiry
 		return nil, nil
 	default:
-		return nil, errors.Errorf("Unrecognized expiry format")
+		return nil, fmt.Errorf("Unrecognized expiry format")
 	}
 }
 
 func ValidateUint32Expiry(expiry int64) (*uint32, error) {
 	if expiry < 0 || expiry > math.MaxUint32 {
-		return nil, errors.Errorf("Expiry value is not within valid range: %d", expiry)
+		return nil, fmt.Errorf("Expiry value is not within valid range: %d", expiry)
 	}
 	uint32Expiry := uint32(expiry)
 	return &uint32Expiry, nil
@@ -333,7 +334,7 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 		shouldContinue, sleepMs := sleeper(numAttempts)
 		if !shouldContinue {
 			if err == nil {
-				err = errors.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+				err = fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
 			}
 			Warn("RetryLoop for %v giving up after %v attempts", description, numAttempts)
 			return err, value
@@ -406,7 +407,7 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 			shouldContinue, sleepMs := sleeper(numAttempts)
 			if !shouldContinue {
 				if err == nil {
-					err = errors.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+					err = fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
 				}
 				Warn("RetryLoop for %v giving up after %v attempts", description, numAttempts)
 				return err, value
@@ -418,7 +419,7 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 			numAttempts += 1
 
 		case <-time.After(timeoutPerInvocation):
-			return errors.Errorf("Invocation timeout after waiting %v for worker to complete", timeoutPerInvocation), nil
+			return fmt.Errorf("Invocation timeout after waiting %v for worker to complete", timeoutPerInvocation), nil
 		}
 
 	}
@@ -607,7 +608,7 @@ func VerifyBucketSequenceParity(indexBucketStableClock SequenceClock, bucket Buc
 	// otherwise it could indicate that the data bucket has been _reset_ to empty or to
 	// a value, which would render the index bucket incorrect
 	if !indexBucketStableClock.AllBefore(dataBucketClock) {
-		return errors.Errorf("IndexBucketStable clock is not AllBefore the data bucket clock")
+		return fmt.Errorf("IndexBucketStable clock is not AllBefore the data bucket clock")
 	}
 
 	return nil
@@ -621,7 +622,7 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 	case CouchbaseBucketGoCB:
 		return baseBucket, nil
 	default:
-		return CouchbaseBucketGoCB{}, errors.Errorf("baseBucket %v was not a CouchbaseBucketGoCB.  Was type: %T", baseBucket, baseBucket)
+		return CouchbaseBucketGoCB{}, fmt.Errorf("baseBucket %v was not a CouchbaseBucketGoCB.  Was type: %T", baseBucket, baseBucket)
 	}
 }
 
@@ -675,7 +676,7 @@ func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []strin
 		case "couchbase":
 			fallthrough
 		case "couchbases":
-			return nil, errors.Errorf("couchbase:// and couchbases:// URI schemes can only be used with GoCB buckets.  Bucket: %+v", bucket)
+			return nil, fmt.Errorf("couchbase:// and couchbases:// URI schemes can only be used with GoCB buckets.  Bucket: %+v", bucket)
 		case "https":
 			translatedScheme = "https"
 		}
@@ -738,7 +739,7 @@ func StringPrefix(s string, desiredSize int) string {
 // Retrieves a slice from a byte, but returns error (instead of panic) if range isn't contained by the slice
 func SafeSlice(data []byte, from int, to int) ([]byte, error) {
 	if from > len(data) || to > len(data) || from > to {
-		return nil, errors.Errorf("Invalid slice [%d:%d] of []byte with len %d", from, to, len(data))
+		return nil, fmt.Errorf("Invalid slice [%d:%d] of []byte with len %d", from, to, len(data))
 	}
 	return data[from:to], nil
 }
