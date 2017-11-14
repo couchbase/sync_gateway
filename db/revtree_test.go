@@ -217,7 +217,7 @@ func TestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"]]}`
 	gotmap := RevTree{}
 	err := json.Unmarshal([]byte(testJSON), &gotmap)
-	assert.DeepEquals(t, err, errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent"))
+	assert.Equals(t, err.Error(), "revtreelist data is invalid, revs/parents/channels counts are inconsistent")
 }
 
 func TestRevTreeMarshal(t *testing.T) {
