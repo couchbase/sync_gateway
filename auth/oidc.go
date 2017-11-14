@@ -263,9 +263,7 @@ func GetOIDCUsername(provider *OIDCProvider, subject string) string {
 // Converts an OpenID Connect / OAuth2 error to an HTTP error
 func OIDCToHTTPError(err error) error {
 
-	unwrappedErr := pkgerrors.Cause(err)
-
-	if oauthErr, ok := unwrappedErr.(*oauth2.Error); ok {
+	if oauthErr, ok := pkgerrors.Cause(err).(*oauth2.Error); ok {
 		status := 400
 		switch oauthErr.Type {
 		case oauth2.ErrorAccessDenied,
@@ -285,3 +283,4 @@ func OIDCToHTTPError(err error) error {
 	}
 	return err
 }
+

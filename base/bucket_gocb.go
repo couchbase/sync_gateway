@@ -706,10 +706,7 @@ func isRecoverableGoCBError(err error) bool {
 		return false
 	}
 
-	// Unwrap this in case it is wrapped
-	unwrappedErr := pkgerrors.Cause(err)
-
-	_, ok := recoverableGoCBErrors[unwrappedErr.Error()]
+	_, ok := recoverableGoCBErrors[pkgerrors.Cause(err).Error()]
 
 	return ok
 }
