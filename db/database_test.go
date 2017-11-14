@@ -1308,8 +1308,8 @@ func TestRecentSequenceHistory(t *testing.T) {
 	assert.True(t, err == nil)
 	assert.DeepEquals(t, doc.RecentSequences, expectedRecent)
 
-	// Add kMaxRecentSequences more revisions - validate they are retained when total is less than max
-	for i := 0; i < kMaxRecentSequences; i++ {
+	// Add up to kMaxRecentSequences revisions - validate they are retained when total is less than max
+	for i := 1; i < kMaxRecentSequences; i++ {
 		revid, err = db.Put("doc1", body)
 		seqTracker++
 		expectedRecent = append(expectedRecent, seqTracker)
