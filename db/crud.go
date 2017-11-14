@@ -676,9 +676,24 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 
 		if !db.AllowConflicts() {
-			// Conflict-free mode: If doc exists, its current rev must be the new rev's parent.
+			// Conflict-free mode: If doc exists, its current rev must be the new rev's parent, unless it's a tombstone.
 			if parent != doc.CurrentRev && doc.CurrentRev != "" {
-				return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+				if !deleted {
+					// If it's not a tombstone, it's a (disallowed) conflict.
+					return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+				} else {
+					// If it's a tombstone, it's only allowed if it's tombstoning an existing active leaf
+					allowedTombstone := false
+					for _, leafRevId := range doc.History.GetLeaves() {
+						if leafRevId == parent {
+							allowedTombstone = true
+							break
+						}
+					}
+					if !allowedTombstone {
+						return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+					}
+				}
 			}
 		}
 
