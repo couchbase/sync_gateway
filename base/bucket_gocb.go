@@ -24,8 +24,8 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"gopkg.in/couchbase/gocbcore.v7"
 	"github.com/pkg/errors"
+	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 var gocbExpvars *expvar.Map
@@ -706,9 +706,9 @@ func isRecoverableGoCBError(err error) bool {
 	}
 
 	// Unwrap this in case it is wrapped
-	underlyingErr := errors.Cause(err)
+	unwrappedErr := errors.Cause(err)
 
-	_, ok := recoverableGoCBErrors[underlyingErr.Error()]
+	_, ok := recoverableGoCBErrors[unwrappedErr.Error()]
 
 	return ok
 }
@@ -725,10 +725,10 @@ func isGoCBViewTimeoutError(err error) bool {
 	}
 
 	// Unwrap this in case it is wrapped
-	underlyingErr := errors.Cause(err)
+	unwrappedErr := errors.Cause(err)
 
 	// If it's not a *url.Error, then it's not a viewtimeout error
-	netUrlError, ok := underlyingErr.(*url.Error)
+	netUrlError, ok := unwrappedErr.(*url.Error)
 	if !ok {
 		return false
 	}
@@ -1780,14 +1780,23 @@ func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument
 }
 
 func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
-	return err == gocb.ErrKeyNotFound
+
+	unwrappedErr := errors.Cause(err)
+
+	// TODO: change to this?  return unwrappedErr.Error() == gocb.ErrKeyNotFound.Error()
+	return unwrappedErr == gocb.ErrKeyNotFound
+
 }
 
 // Check if this is a SubDocPathNotFound error
 // Pending question to see if there is an easier way: https://forums.couchbase.com/t/checking-for-errsubdocpathnotfound-errors/13492
 func (bucket CouchbaseBucketGoCB) IsSubDocPathNotFound(err error) bool {
-	subdocMutateErr, ok := err.(gocbcore.SubDocMutateError)
+
+	unwrappedErr := errors.Cause(err)
+
+	subdocMutateErr, ok := unwrappedErr.(gocbcore.SubDocMutateError)
 	if ok {
+		// TODO: change to subdocMutateErr.Err.Error() == gocb.ErrSubDocPathNotFound.Error()?
 		return subdocMutateErr.Err == gocb.ErrSubDocPathNotFound
 	}
 	return false
