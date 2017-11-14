@@ -276,7 +276,7 @@ func TestRevTreeAddRevisionWithEmptyID(t *testing.T) {
 	assert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{Parent: "3-three"})
-	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", "testdoc")))
+	assert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", "testdoc"))
 }
 
 func TestRevTreeAddDuplicateRevID(t *testing.T) {
@@ -284,7 +284,7 @@ func TestRevTreeAddDuplicateRevID(t *testing.T) {
 	assert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{ID: "2-two", Parent: "1-one"})
-	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", "testdoc", "2-two")))
+	assert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", "testdoc", "2-two"))
 }
 
 func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
@@ -292,7 +292,7 @@ func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
 	assert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four"})
-	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", "testdoc", "4-four")))
+	assert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", "testdoc", "4-four"))
 }
 
 func TestRevTreeCompareRevIDs(t *testing.T) {
