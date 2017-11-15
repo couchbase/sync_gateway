@@ -666,6 +666,46 @@ func TestUpdatePrincipal(t *testing.T) {
 	assert.Equals(t, nextSeq, uint64(3))
 }
 
+
+// Re-apply one of the conflicting changes to make sure that PutExistingRev() treats it as a no-op (SG Issue #3048)
+func TestRepeatedConflict(t *testing.T) {
+	
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	// Create rev 1 of "doc":
+	body := Body{"n": 1, "channels": []string{"all", "1"}}
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"1-a"}), "add 1-a")
+
+	// Create two conflicting changes:
+	body["n"] = 2
+	body["channels"] = []string{"all", "2b"}
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-b", "1-a"}), "add 2-b")
+
+	body["n"] = 3
+	body["channels"] = []string{"all", "2a"}
+	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}), "add 2-a")
+
+	// Get the _rev that was set in the body by PutExistingRev() and make assertions on it
+	rev, ok := body["_rev"]
+	assert.True(t, ok)
+	revGen, _ := ParseRevID(rev.(string))
+	assert.Equals(t, revGen, 2)
+
+	// Remove the _rev key from the body, and call PutExistingRev() again, which should re-add it
+	delete(body, "_rev")
+	db.PutExistingRev("doc", body, []string{"2-a", "1-a"})
+
+	// The _rev should pass the same assertions as before, since PutExistingRev() should re-add it
+	rev, ok = body["_rev"]
+	assert.True(t, ok)
+	revGen, _ = ParseRevID(rev.(string))
+	assert.Equals(t, revGen, 2)
+
+
+}
+
 func TestConflicts(t *testing.T) {
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
