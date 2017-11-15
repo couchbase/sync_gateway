@@ -71,14 +71,15 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	revGeneration, _ = ParseRevID(revId)
 	assert.Equals(t, revGeneration, 2)
 
-	// Create conflict again, which used to reproduce panic but now returns an error
+	// Create conflict again, should be a no-op and return the same response as previous attempt
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", docId), input)
 	response.DumpBody()
 	if err := json.Unmarshal(response.Body.Bytes(), &responseDoc); err != nil {
 		t.Fatalf("Error unmarshalling response: %v", err)
 	}
-	_, ok := responseDoc["error"]
-	assert.True(t, ok)
+	revId = responseDoc["rev"].(string)
+	revGeneration, _ = ParseRevID(revId)
+	assert.Equals(t, revGeneration, 2)
 
 }
 
