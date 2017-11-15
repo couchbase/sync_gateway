@@ -29,7 +29,6 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
-
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
 func TestNoPanicInvalidUpdate(t *testing.T) {
 
@@ -60,7 +59,6 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	input := fmt.Sprintf(`
                   {"value": "conflictval",
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "%s"]}}`, revIdHash)
-
 
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", docId), input)
 	response.DumpBody()
