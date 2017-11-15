@@ -1567,6 +1567,10 @@ func (bucket CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp 
 	}
 }
 
+// Increment the atomic counter k by amt.
+//
+// - If amt is 0 and the atomic counter for that key exists, this is treated as a GET operation that returns the current value.
+// - If amt is 0 but the key does not exist, then it will return 0
 func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 
 	// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first

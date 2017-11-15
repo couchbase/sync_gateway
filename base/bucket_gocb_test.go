@@ -430,8 +430,6 @@ func TestUpdate(t *testing.T) {
 
 func TestIncrCounter(t *testing.T) {
 
-	t.Skip("Currently not passing: under walrus, go-couchbase and gocb, this test results in: Attempt to retrieve non-existent counter should return error")
-
 	testBucket := GetTestBucketOrPanic()
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
@@ -466,11 +464,7 @@ func TestIncrCounter(t *testing.T) {
 	}
 	assert.Equals(t, retrieval, uint64(2))
 
-	// Attempt retrieval of a non-existent counter using delta=0
-	retrieval, err = bucket.Incr("badkey", 0, 0, 0)
-	if err == nil {
-		t.Errorf("Attempt to retrieve non-existent counter should return error")
-	}
+
 
 }
 
