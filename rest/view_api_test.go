@@ -28,6 +28,8 @@ func TestDesignDocs(t *testing.T) {
 		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
 	}
 
+	base.LogKeys["View+"] = true
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -60,6 +62,8 @@ func TestViewQuery(t *testing.T) {
 
 	var rt RestTester
 	defer rt.Close()
+
+	base.LogKeys["View+"] = true
 
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	assertStatus(t, response, 201)
@@ -100,6 +104,8 @@ func TestViewQueryMultipleViews(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
+	base.LogKeys["View+"] = true
+
 	//Define three views
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views": {"by_fname": {"map": "function (doc, meta) { emit(doc.fname, null); }"},"by_lname": {"map": "function (doc, meta) { emit(doc.lname, null); }"},"by_age": {"map": "function (doc, meta) { emit(doc.age, null); }"}}}`)
 	assertStatus(t, response, 201)
@@ -128,6 +134,8 @@ func TestViewQueryMultipleViews(t *testing.T) {
 func TestViewQueryUserAccess(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
+
+	base.LogKeys["View+"] = true
 
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map":"function (doc, meta) { if (doc.type != 'type1') { return; } if (doc.state == 'state1' || doc.state == 'state2' || doc.state == 'state3') { emit(doc.state, meta.id); }}"}}}`)
@@ -211,6 +219,8 @@ func TestUserViewQuery(t *testing.T) {
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
+	base.LogKeys["View+"] = true
+
 	a := rt.ServerContext().Database("db").Authenticator()
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 	// Create a view:
@@ -278,6 +288,8 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
+	base.LogKeys["View+"] = true
+
 	// Create a view with a reduce:
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}", "reduce": "_count"}}}`)
 	assertStatus(t, response, 201)
@@ -323,6 +335,8 @@ func TestAdminReduceSumQuery(t *testing.T) {
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
+	base.LogKeys["View+"] = true
+
 	// Create a view with a reduce:
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
 	assertStatus(t, response, 201)
@@ -354,6 +368,8 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
+	base.LogKeys["View+"] = true
+
 	// Create a view with a reduce:
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
 	assertStatus(t, response, 201)
@@ -384,6 +400,8 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
+
+	base.LogKeys["View+"] = true
 
 	// Create a view with a reduce:
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"options":{"raw":true},"views":{"bar": {"map": "function(doc) {if (doc.key && doc.value) emit(doc.key, doc.value);}", "reduce": "_sum"}}}`)
