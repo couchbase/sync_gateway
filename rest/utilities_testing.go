@@ -465,18 +465,3 @@ func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
 	return numBytesWritten, err
 }
 
-
-// Duplicated from DB package
-func ParseRevID(revid string) (int, string) {
-	if revid == "" {
-		return 0, ""
-	}
-	var generation int
-	var id string
-	n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
-	if n < 1 || generation < 1 {
-		base.Warn("parseRevID unsuccessful for %q", revid)
-		return -1, ""
-	}
-	return generation, id
-}

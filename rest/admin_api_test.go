@@ -43,13 +43,13 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	response.DumpBody()
 
 	// Discover revision ID
-	// TODO: Is there any way to leverage db.document here to avoid the type assertions?
+	// TODO: The schema for SG responses should be defined in our code somewhere to avoid this clunky approach
 	var responseDoc map[string]interface{}
 	if err := json.Unmarshal(response.Body.Bytes(), &responseDoc); err != nil {
 		t.Fatalf("Error unmarshalling response: %v", err)
 	}
 	revId := responseDoc["rev"].(string)
-	revGeneration, revIdHash := ParseRevID(revId)
+	revGeneration, revIdHash := db.ParseRevID(revId)
 	assert.Equals(t, revGeneration, 1)
 
 	// Update doc (normal update, no conflicting revisions added)
@@ -68,7 +68,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 		t.Fatalf("Error unmarshalling response: %v", err)
 	}
 	revId = responseDoc["rev"].(string)
-	revGeneration, _ = ParseRevID(revId)
+	revGeneration, _ = db.ParseRevID(revId)
 	assert.Equals(t, revGeneration, 2)
 
 	// Create conflict again, should be a no-op and return the same response as previous attempt
@@ -78,7 +78,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 		t.Fatalf("Error unmarshalling response: %v", err)
 	}
 	revId = responseDoc["rev"].(string)
-	revGeneration, _ = ParseRevID(revId)
+	revGeneration, _ = db.ParseRevID(revId)
 	assert.Equals(t, revGeneration, 2)
 
 }
