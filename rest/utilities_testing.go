@@ -314,13 +314,7 @@ func (rt *RestTester) WaitForNAdminViewResults(numResultsExpected int, viewUrlPa
 // viewUrlPath: is the path to the view, including the db name.  Eg: "/db/_design/foo/_view/bar"
 func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
 
-	numAttempts := 1
-
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-
-		base.LogTo("View+", "WaitForNViewResults waiting for %d results from view %s.  Attempt #%d", numResultsExpected, viewUrlPath, numAttempts)
-		numAttempts += 1
-
 		var response *TestResponse
 		if user != nil {
 			request, _ := http.NewRequest("GET", viewUrlPath, nil)
@@ -350,11 +344,9 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 	err, returnVal := base.RetryLoop(description, worker, sleeper)
 
 	if err != nil {
-		base.LogTo("View+", "WaitForNViewResults got error waiting for %d results from view %s.  Err: %v", numResultsExpected, viewUrlPath, err)
 		return sgbucket.ViewResult{}, err
 	}
 
-	base.LogTo("View+", "WaitForNViewResults successfully waited for %d results from view %s.", numResultsExpected, viewUrlPath)
 	return returnVal.(sgbucket.ViewResult), nil
 
 }
