@@ -1126,11 +1126,10 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assertHTTPError(t, err, 403)
 }
 
-func TestImport(t *testing.T) {
+func TestLegacyImport(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is currently not passing against Couchbase server 4.1.  Needs investigation. " +
-			"Logs: https://gist.github.com/tleyden/77a6aa0cfe6a8395edef616f368e1920")
+	if base.TestUseXattrs() {
+		t.Skip("This test should not be run in XATTR mode.  Skipping")
 	}
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
