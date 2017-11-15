@@ -29,6 +29,58 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+// Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
+func TestNoPanicInvalidUpdate(t *testing.T) {
+
+	var rt RestTester
+	defer rt.Close()
+
+	docId := "conflictTest"
+
+	// Create doc
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), `{"value":"initial"}`)
+	response.DumpBody()
+
+	// Discover revision ID
+	// TODO: The schema for SG responses should be defined in our code somewhere to avoid this clunky approach
+	var responseDoc map[string]interface{}
+	if err := json.Unmarshal(response.Body.Bytes(), &responseDoc); err != nil {
+		t.Fatalf("Error unmarshalling response: %v", err)
+	}
+	revId := responseDoc["rev"].(string)
+	revGeneration, revIdHash := db.ParseRevID(revId)
+	assert.Equals(t, revGeneration, 1)
+
+	// Update doc (normal update, no conflicting revisions added)
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), fmt.Sprintf(`{"value":"secondval", "_rev":"%s"}`, revId))
+	response.DumpBody()
+
+	// Create conflict
+	input := fmt.Sprintf(`
+                  {"value": "conflictval",
+                   "_revisions": {"start": 2, "ids": ["conflicting_rev", "%s"]}}`, revIdHash)
+
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", docId), input)
+	response.DumpBody()
+	if err := json.Unmarshal(response.Body.Bytes(), &responseDoc); err != nil {
+		t.Fatalf("Error unmarshalling response: %v", err)
+	}
+	revId = responseDoc["rev"].(string)
+	revGeneration, _ = db.ParseRevID(revId)
+	assert.Equals(t, revGeneration, 2)
+
+	// Create conflict again, should be a no-op and return the same response as previous attempt
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", docId), input)
+	response.DumpBody()
+	if err := json.Unmarshal(response.Body.Bytes(), &responseDoc); err != nil {
+		t.Fatalf("Error unmarshalling response: %v", err)
+	}
+	revId = responseDoc["rev"].(string)
+	revGeneration, _ = db.ParseRevID(revId)
+	assert.Equals(t, revGeneration, 2)
+
+}
+
 func TestUserAPI(t *testing.T) {
 
 	// PUT a user

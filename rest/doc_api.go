@@ -256,6 +256,7 @@ func (h *handler) handlePutDoc() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Document body is empty")
 	}
 	var newRev string
+	var ok bool
 
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
@@ -279,7 +280,12 @@ func (h *handler) handlePutDoc() error {
 		if err != nil {
 			return err
 		}
-		newRev = body["_rev"].(string)
+
+		newRev, ok = body["_rev"].(string)
+		if !ok {
+			return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
+		}
+
 	}
 	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
