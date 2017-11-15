@@ -282,7 +282,7 @@ func (h *handler) handlePutDoc() error {
 
 		newRevRaw, ok := body["_rev"]
 		if !ok {
-			return base.HTTPErrorf(http.StatusConflict, "No revision was created")
+			return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
 		}
 		newRev = newRevRaw.(string)
 	}
