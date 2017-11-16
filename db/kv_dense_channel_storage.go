@@ -351,8 +351,24 @@ func (l *DenseBlockList) marshalAsStorage() (*DenseBlockListStorage, error) {
 	// When initializing an empty active block list (no blocks), activeStartIndex > len(l.blocks). Only
 	// include blocks in the output when this isn't the case.
 	if l.activeStartIndex <= len(l.blocks) {
+		base.LogTo("DIndex+", "DenseBlockList marshalAsStorage. l.activeStartIndex (%d) <= len(l.blocks) (%d)", l.activeStartIndex, len(l.blocks))
 		activeBlock.Blocks = l.blocks[l.activeStartIndex:]
+	} else {
+		base.LogTo("DIndex+", "DenseBlockList marshalAsStorage. l.activeStartIndex (%d) > len(l.blocks) (%d)", l.activeStartIndex, len(l.blocks))
 	}
+
+	// Only the first block in the list of blocks should have an empty start clock.  Otherwise, treat it as an error and panic
+	for blockIndex, block := range activeBlock.Blocks {
+		if blockIndex == 0 {
+			continue
+		}
+		if block.StartClock.IsZero() {
+			panic(fmt.Sprintf("DenseBlockList %v has a block after the first block with an empty start clock.  Block list: %+v, Block entry: %+v",
+				l, activeBlock, block))
+		}
+	}
+
+
 	return activeBlock, nil
 }
 
