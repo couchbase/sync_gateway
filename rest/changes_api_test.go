@@ -282,10 +282,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 	assertStatus(t, response, 201)
 	wg.Wait()
 
-
 }
-
-
 
 // Tests race between waking up the changes feed, and detecting that the user doc has changed
 // This test can sporadically reproduce issue #2068, as reported in #2999#issuecomment-342681828
@@ -346,7 +343,6 @@ func DisabledTestPostChangesUserTiming(t *testing.T) {
 	wg.Wait()
 
 }
-
 
 func TestPostChangesSinceInteger(t *testing.T) {
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
@@ -1515,7 +1511,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	///it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	//defer it.Close()
 
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true}`)
+	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true, "Cache":true}`)
 	assert.True(t, response != nil)
 
 	// Create user:
