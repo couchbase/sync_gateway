@@ -34,6 +34,17 @@ type LogEntry struct {
 	PrevSequence uint64       // Sequence of previous active revision
 }
 
+func (l LogEntry) String() string {
+	return fmt.Sprintf(
+		"LogEntry(DCP message) seq: %d docid: %s revid: %s vbno: %d type: %v",
+		l.Sequence,
+		l.DocID,
+		l.RevID,
+		l.VbNo,
+		l.Type,
+	)
+}
+
 type ChannelMap map[string]*ChannelRemoval
 type ChannelRemoval struct {
 	Seq     uint64 `json:"seq,omitempty"`

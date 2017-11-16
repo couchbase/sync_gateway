@@ -14,6 +14,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"sync"
+	"fmt"
 )
 
 // Implementation of ChannelStorage that stores entries as an append-based list of
@@ -327,6 +328,10 @@ func NewDensePartitionStorageReader(channelName string, partitionNo uint16, inde
 	return storage
 }
 
+func (d DensePartitionStorageReader) String() string {
+	return fmt.Sprintf("partition: %d channel: %s", d.partitionNo, d.channelName)
+}
+
 // GetChanges attempts to return results from the cached changes.  If the cache doesn't satisfy the specified range,
 // retrieves from the index.  Note: currently no writeback of indexed retrieval into the cache - cache is only updated
 // during UpdateCache()
@@ -523,6 +528,7 @@ func (pr *DensePartitionStorageReader) notifyDuplicateFound(blockKey string) {
 // GetIndexedChanges retrieves changes directly from the index.
 func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange base.PartitionRange) (changes *PartitionChanges, err error) {
 
+
 	// Initialize block list
 	blockList := NewDenseBlockListReader(pr.channelName, pr.partitionNo, pr.indexBucket)
 	if blockList == nil {
@@ -532,6 +538,8 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange base.Par
 	if err != nil {
 		return nil, err
 	}
+
+	base.LogTo("DIndex+", "DensePartitionStorageReader [%s] looping over %d blocks", pr, len(blockList.blocks))
 	changes = NewPartitionChanges()
 	keySet := make(map[string]bool, 0)
 	for i := len(blockList.blocks) - 1; i >= 0; i-- {
@@ -568,11 +576,15 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange base.Par
 				// Expected when processing the oldest block in the range.  Don't include in set
 			}
 		}
+
+		base.LogTo("DIndex+", "DensePartitionStorageReader [%s] prepending %d changes to %d accumulated changes", pr, blockChanges.Count(), changes.Count())
+
 		// Prepend partition changes with the results for this block
 		changes.PrependChanges(blockChanges)
 
 		// If we've reached a block with a startclock earlier than our since value, we're done
 		if partitionRange.SinceAfter(blockListEntry.StartClock) {
+			base.LogTo("DIndex+", "DensePartitionStorageReader [%s] reached a block with a startclock earlier than our since value, so we're done", pr)
 			break
 		}
 	}

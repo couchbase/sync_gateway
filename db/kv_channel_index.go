@@ -195,6 +195,7 @@ func (k *KvChannelIndex) GetChanges(sinceClock base.SequenceClock, toClock base.
 
 	chanClock, err := k.getChannelClock()
 	if err != nil {
+		base.LogTo("Changes+", "getChannelClock() returned error: %v", err)
 		// Note: gocb returns "Key not found.", go-couchbase returns "MCResponse status=KEY_ENOENT, opcode=GET, opaque=0, msg: Not found"
 		// Using string matching to identify key not found for now - really need a better API in go-couchbase/gocb for gets that allows us to distinguish
 		// between errors and key not found with something more robust than string matching.
@@ -205,6 +206,8 @@ func (k *KvChannelIndex) GetChanges(sinceClock base.SequenceClock, toClock base.
 			return results, err
 		}
 	}
+
+	base.LogTo("Changes+", "getChannelClock() returned: %+v", chanClock.ValueAsMap())
 
 	// If requested clock is later than the channel clock, return empty
 	if sinceClock.AllAfter(chanClock) {

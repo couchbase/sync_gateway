@@ -55,6 +55,17 @@ type changeCache struct {
 
 type LogEntry channels.LogEntry
 
+func (l LogEntry) String() string {
+	return fmt.Sprintf(
+		"LogEntry(DCP message) seq: %d docid: %s revid: %s vbno: %d type: %v",
+		l.Sequence,
+		l.DocID,
+		l.RevID,
+		l.VbNo,
+		l.Type,
+	)
+}
+
 type LogEntries []*LogEntry
 
 // A priority-queue of LogEntries, kept ordered by increasing sequence #.
