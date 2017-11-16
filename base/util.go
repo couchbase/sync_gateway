@@ -742,3 +742,18 @@ func SafeSlice(data []byte, from int, to int) ([]byte, error) {
 	}
 	return data[from:to], nil
 }
+
+// Returns string representation of an expvar, given map name and key name
+func GetExpvarAsString(mapName string, name string) string {
+	mapVar := expvar.Get(mapName)
+	expvarMap, ok := mapVar.(*expvar.Map)
+	if !ok {
+		return ""
+	}
+	value := expvarMap.Get(name)
+	if value != nil {
+		return value.String()
+	} else {
+		return ""
+	}
+}
