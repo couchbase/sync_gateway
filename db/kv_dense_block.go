@@ -135,6 +135,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	casOut, err := bucket.WriteCas(d.Key, 0, 0, d.cas, d.value, sgbucket.Raw)
 	if err != nil {
 		casFailure = true
+		// TODO: why is updateClock nil?
 		base.LogTo("ChannelStorage+", "CAS error writing block to database. %v", err)
 		return entries, []*LogEntry{}, nil, casFailure, nil
 	}

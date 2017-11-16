@@ -141,7 +141,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 
 	nextIndex := l.generateNextBlockIndex()
 	var nextStartClock base.PartitionClock
-	if l.activeBlock == nil {
+	if l.activeBlock == nil { // TODO: investigate if this causes the empty clock
 		// No previous active block - new block list
 		nextStartClock = make(base.PartitionClock)
 	} else {
@@ -175,6 +175,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	}
 	casOut, err := l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, storageValue, 0)
 	if err != nil {
+		// TODO: add logging for this cas error.  is reload working correctly?
 		// CAS error.  If there's a concurrent writer for this partition, assume they have created the new block.
 		//  Re-initialize the current block list, and get the active block key from there.
 		found, err := l.loadDenseBlockList()
