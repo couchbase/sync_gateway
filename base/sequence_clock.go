@@ -620,6 +620,16 @@ func (clock PartitionClock) GetSequence(vbNo uint16) uint64 {
 	}
 }
 
+func (clock PartitionClock) IsZero() bool {
+	isZero := true
+	for _, seq := range clock {
+		if seq > 0 {
+			isZero = false
+		}
+	}
+	return isZero
+}
+
 func (clock PartitionClock) AddToClock(seqClock SequenceClock) {
 	for vbNo, seq := range clock {
 		seqClock.SetSequence(vbNo, seq)
