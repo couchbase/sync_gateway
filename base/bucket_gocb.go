@@ -2145,7 +2145,9 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 	if _, ok := params[ViewQueryParamEndKey]; ok {
 		endKey = params[ViewQueryParamEndKey]
 	}
-	inclusiveEnd := false
+
+	// Default value of inclusiveEnd in Couchbase Server is true (if not specified)
+	inclusiveEnd := true
 	if _, ok := params[ViewQueryParamInclusiveEnd]; ok {
 		inclusiveEnd = asBool(params[ViewQueryParamInclusiveEnd])
 	}
