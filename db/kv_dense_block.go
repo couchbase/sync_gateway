@@ -58,6 +58,10 @@ func NewDenseBlock(key string, startClock base.PartitionClock) *DenseBlock {
 	}
 }
 
+func (d DenseBlock) String() string {
+	return fmt.Sprintf("key: %s, count: %d", d.Key, d.Count())
+}
+
 func (d *DenseBlock) Count() uint16 {
 	return d.getEntryCount()
 }
@@ -82,6 +86,9 @@ func (d *DenseBlock) getClock() base.PartitionClock {
 func (d *DenseBlock) getCumulativeClock() base.PartitionClock {
 	cumulativeClock := d.startClock.Copy()
 	cumulativeClock.Set(d.clock)
+	if d.clock.IsZero() {
+		base.LogTo("ChannelStorage+", "WARNING2:  getCumulativeClock() returning a zero clock.  DenseBlock key: %v count: %d", d.Key, d.Count())
+	}
 	return cumulativeClock
 }
 
@@ -116,7 +123,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	casFailure = false
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
-		base.LogTo("ChannelStorage+", "Block full - returning entries as overflow.  #entries:[%d]", len(entries))
+		base.LogTo("ChannelStorage+", "DenseBlock (%s) full - returning entries as overflow.  #entries:[%d]", d, len(entries))
 		return entries, pendingRemoval, nil, casFailure, nil
 	}
 
