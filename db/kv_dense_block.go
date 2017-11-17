@@ -41,7 +41,12 @@ type DenseBlock struct {
 	Key        string              // Key of block document in the index bucket
 	value      []byte              // Binary storage of block data, in the above format
 	cas        uint64              // Document cas
-	clock      base.PartitionClock // Highest seq per vbucket written to the block
+
+	// Highest seq per vbucket written to the block.
+	// Lazily-loaded because DenseBlock is used for both readers and writers, and readers don't care about the cumulative clock.
+	// Should never be read directly, instead call getClock(), otherwise you might hit issues like SG #3026.
+	_clock      base.PartitionClock
+
 	startClock base.PartitionClock // Starting clock for the block (partition clock for all previous blocks)
 }
 
@@ -62,7 +67,7 @@ func (d DenseBlock) String() string {
 	return fmt.Sprintf("key: %s, count: %d clock=zeroclock: %v startClock=zeroclock: %v",
 		d.Key,
 		d.Count(),
-		d.clock.IsZero(),
+		d.getClock().IsZero(),
 		d.startClock.IsZero(),
 	)
 }
@@ -80,10 +85,10 @@ func (d *DenseBlock) setEntryCount(count uint16) {
 }
 
 func (d *DenseBlock) getClock() base.PartitionClock {
-	if d.clock == nil {
+	if d._clock == nil {
 		d.initClock()
 	}
-	return d.clock
+	return d._clock
 }
 
 // Get CumulativeClock returns the full clock for the partition:
@@ -103,9 +108,8 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
 	d.value = value
 	d.cas = cas
 
-	// Init the clock as soon as we load the block to protect against
-	// cases where the clock is accessed before it is loaded.  See SG #3026 for details.
-	d.initClock()
+	// Intentionally set to nil for lazy-loading, and unsafe to read directly.  See comments on d.clock field definition.
+	d._clock = nil
 
 	IndexExpvars.Add("indexReader.blocksLoaded", 1)
 	return nil
@@ -115,13 +119,13 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
 func (d *DenseBlock) initClock() {
 
 	// Initialize clock
-	d.clock = d.startClock.Copy()
+	d._clock = d.startClock.Copy()
 
 	var indexEntry DenseBlockIndexEntry
 	numEntries := d.getEntryCount()
 	for i := 0; i < int(numEntries); i++ {
 		indexEntry = d.value[DB_HEADER_LEN+i*INDEX_ENTRY_LEN : DB_HEADER_LEN+(i+1)*INDEX_ENTRY_LEN]
-		d.clock[indexEntry.getVbNo()] = indexEntry.getSequence()
+		d._clock[indexEntry.getVbNo()] = indexEntry.getSequence()
 	}
 }
 
@@ -292,7 +296,7 @@ func (d *DenseBlock) RemoveEntrySet(entries []*LogEntry, bucket base.Bucket) (pe
 	casOut, writeErr := base.WriteCasRaw(bucket, d.Key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		d.value = value
-		d.clock = nil
+		d._clock = nil
 		pendingRemoval = d.removeEntries(entries)
 
 		// If nothing was removed, cancel the write
@@ -324,13 +328,13 @@ func (d *DenseBlock) RollbackTo(rollbackVbNo uint16, rollbackSeq uint64, bucket 
 	if numRemoved == 0 {
 		return rollbackComplete, nil
 	} else {
-		d.clock = nil
+		d._clock = nil
 	}
 
 	casOut, writeErr := base.WriteCasRaw(bucket, d.Key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		d.value = value
-		d.clock = nil
+		d._clock = nil
 		numRemoved, rollbackComplete = d.rollbackEntries(rollbackVbNo, rollbackSeq)
 
 		// If nothing was removed, cancel the write
