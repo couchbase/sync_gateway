@@ -316,10 +316,6 @@ func TestChannelCacheBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is only working against Walrus currently.  Needs more investigation.  Failure logs: https://gist.github.com/tleyden/7011c68aa85dd739babf90a1a556469d")
-	}
-
 	base.EnableLogKey("Cache")
 	base.EnableLogKey("Changes+")
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
@@ -614,14 +610,13 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
-	if base.TestUseXattrs() {
-		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
-	}
+	// TODO: this should be fixed for the Non-XATTR case and re-enabled
+	// TODO: details here: https://github.com/couchbase/sync_gateway/issues/3075
 
 	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is only working against Walrus currently.  Needs more investigation. " +
-			"Fails with logs: https://gist.github.com/tleyden/98f0415a454256d86b87d6477c1aa5fa")
+		t.Skip("This test is only working against Walrus currently.  Needs more investigation.  Failure logs: https://gist.github.com/tleyden/7011c68aa85dd739babf90a1a556469d")
 	}
+
 
 	var logKeys = map[string]bool{
 		"Sequence": true,
@@ -898,10 +893,6 @@ func TestSkippedViewRetrieval(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is only working against Walrus currently.  Needs more investigation.  Logs: https://gist.github.com/tleyden/d2e1af32dd6979fae7cf06957aeceef3")
-	}
-
 	var logKeys = map[string]bool{
 		"Cache":  true,
 		"Cache+": true,
@@ -991,12 +982,6 @@ func TestChannelCacheSize(t *testing.T) {
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
-	}
-
-	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
-		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://github.com/couchbase/sync_gateway/issues/2561#issuecomment-305353813")
-	} else {
-		log.Printf("Running TestChannelCacheSize.  base.UnitTestUrlIsWalrus(): %v,  base.TestUseXattrs(): %v", base.UnitTestUrlIsWalrus(), base.TestUseXattrs())
 	}
 
 	base.EnableLogKey("Cache")
