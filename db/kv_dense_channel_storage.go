@@ -313,7 +313,7 @@ func (l *DenseBlockList) LoadPrevious() error {
 	previousBlockListKey := l.generateNumberedListKey(previousCount)
 	previousBlockListStorage, cas, readError := l.loadStorage(previousBlockListKey)
 	if readError != nil {
-		return fmt.Errorf("Unable to find block list with key [%s]:%v", previousBlockListKey, readError)
+		return readError
 	}
 	l.blocks = append(previousBlockListStorage.Blocks, l.blocks...)
 	l.activeStartIndex += len(previousBlockListStorage.Blocks)
@@ -328,7 +328,7 @@ func (l *DenseBlockList) loadStorage(key string) (storage DenseBlockListStorage,
 	storage = DenseBlockListStorage{}
 	casOut, err := l.indexBucket.Get(key, &storage)
 	if err != nil {
-		return storage, 0, err
+		return storage, 0, pkgerrors.Wrapf(err, "Error loading DenseBlockListStorage for DenseBlockList: %s with key: %s", l, key)
 	}
 	return storage, casOut, nil
 
