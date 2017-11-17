@@ -105,7 +105,9 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
 
 	// Init the clock as soon as we load the block to protect against
 	// cases where the clock is accessed before it is loaded.  See SG #3026 for details.
-	d.initClock()
+	// TEMP DISABLE as experiment d.initClock()
+
+	d.clock = nil  // will be lazy loaded when getClock() is called
 
 	IndexExpvars.Add("indexReader.blocksLoaded", 1)
 	return nil
