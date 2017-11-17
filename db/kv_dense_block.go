@@ -103,6 +103,7 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
 	d.value = value
 	d.cas = cas
 	d.clock = nil
+	d.initClock()  // WORKAROUND attempt for https://github.com/couchbase/sync_gateway/issues/3026
 	IndexExpvars.Add("indexReader.blocksLoaded", 1)
 	return nil
 }
