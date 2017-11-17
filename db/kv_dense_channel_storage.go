@@ -55,6 +55,10 @@ type DenseBlockListEntry struct {
 	key        string              // Used for key helper function
 }
 
+func (d DenseBlockListEntry) String() string {
+	return fmt.Sprintf("blockindex: %d key: %s ", d.BlockIndex, d.key, d.StartClock.IsZero())
+}
+
 func (e *DenseBlockListEntry) Key(parentList *DenseBlockList) string {
 	if parentList == nil {
 		base.Warn("Attempted to generate key without parent list")
@@ -383,9 +387,12 @@ func (l *DenseBlockList) marshalAsStorage() (*DenseBlockListStorage, error) {
 			continue
 		}
 		if block.StartClock.IsZero() {
-			msg := fmt.Sprintf("WARNING2: DenseBlockList %s (%p) has a block after the first block with an empty start clock.  Block list: %+v, Block entry: %+v",
+			msg := fmt.Sprintf("WARNING2: DenseBlockList %s (%p) has a block after the first block with an empty start clock.  Block list: %+v, Block entry: %+v.  Dumping block list.",
 				l, l, activeBlock, block)
 			base.LogTo("DIndex+", "%s", msg)
+			for innerBlockIndex, innerBlock := range activeBlock.Blocks {
+				base.LogTo("DIndex+", "block list %s block %d: %s" , l, innerBlockIndex, innerBlock)
+			}
 
 			// panic(msg)
 		}
