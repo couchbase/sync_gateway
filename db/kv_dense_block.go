@@ -59,7 +59,7 @@ func NewDenseBlock(key string, startClock base.PartitionClock) *DenseBlock {
 }
 
 func (d DenseBlock) String() string {
-	return fmt.Sprintf("key: %s, count: %d clock=zeroclock: %v", d.Key, d.Count(), d.clock.IsZero())
+	return fmt.Sprintf("key: %s, count: %d clock=zeroclock: %v startClock=zeroclock: %v", d.Key, d.Count(), d.clock.IsZero(), d.startClock.IsZero())
 }
 
 func (d *DenseBlock) Count() uint16 {
