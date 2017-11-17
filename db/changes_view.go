@@ -40,11 +40,11 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	entries := make(LogEntries, 0)
 	activeEntryCount := 0
 
+	base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)
 	// Loop for active-only and limit handling.
 	// The set of changes we get back from the view applies the limit, but includes both active and non-active entries.  When retrieving changes w/ activeOnly=true and a limit,
 	// this means we may need multiple view calls to get a total of [limit] active entries.
 	for {
-		base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)
 		vres := channelsViewResult{}
 		err := dbc.Bucket.ViewCustom(DesignDocSyncGateway, ViewChannels, optMap, &vres)
 		if err != nil {
@@ -59,6 +59,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 		}
 
 		// Convert the output to LogEntries:
+		highSeq := uint64(0)
 		for _, row := range vres.Rows {
 			entry := &LogEntry{
 				Sequence:     uint64(row.Key[1].(float64)),
@@ -77,14 +78,22 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 				}
 			}
 			entries = append(entries, entry)
-			optMap["startkey"] = []interface{}{channelName, entry.Sequence + 1}
+			highSeq = entry.Sequence
 		}
 
-		// If active-only, loop until we've retrieved at least (Limit) active entries
+		// If active-only, loop until either retrieve (limit) entries, or reach endSeq
 		if options.ActiveOnly {
+			// If we've reached limit, we're done
 			if activeEntryCount >= options.Limit || options.Limit == 0 {
 				break
 			}
+			// If we've reached endSeq, we're done
+			if endSeq > 0 && highSeq >= endSeq {
+				break
+			}
+			// Otherwise update startkey and re-query
+			optMap["startkey"] = []interface{}{channelName, highSeq + 1}
+			base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, highSeq+1, endSeq, options.Limit)
 		} else {
 			// If not active-only, we only need one iteration of the loop - the limit applied to the view query is sufficient
 			break
