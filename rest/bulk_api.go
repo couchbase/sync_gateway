@@ -287,7 +287,7 @@ func (h *handler) handleRepair() error {
 
 	repairBucketResult, repairDocsErr := repairBucket.RepairBucket()
 	if repairDocsErr != nil {
-		return pkgerrors.Wrapf(err, "Error repairing bucket")
+		return err
 	}
 
 	resultMarshalled, err := json.Marshal(repairBucketResult)
