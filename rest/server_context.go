@@ -308,7 +308,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		dbName, bucketName, pool, server)
 
 	if err := db.ValidateDatabaseName(dbName); err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error validating database name")
+		return nil, err
 	}
 
 	var importDocs, autoImport bool
