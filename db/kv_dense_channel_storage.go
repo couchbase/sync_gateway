@@ -158,7 +158,6 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 		nextStartClock = l.activeBlock.getCumulativeClock()
 	}
 
-
 	base.LogTo("ChannelStorage+", "Adding block to list. channel:[%s] partition:[%d] index:[%d]", l.channelName, l.partition, nextIndex)
 
 	nextBlockKey := l.generateBlockKey(nextIndex)
