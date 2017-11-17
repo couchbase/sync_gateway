@@ -149,21 +149,21 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	base.LogTo("ChannelStorage+", "DenseBlockList %s (%p) Determining nextStartClock.", l, l)
 
 	if l.activeBlock == nil { // TODO: investigate if this causes the empty clock
-		base.LogTo("ChannelStorage+", "Determining nextStartClock, l.activeBlock == nil so creating new clock")
+		base.LogTo("ChannelStorage+", "Determining nextStartClock for DenseBlockList %s, l.activeBlock == nil so creating new clock", l)
 		if len(l.blocks) > 0 {
 			panic(fmt.Sprintf("How can there be a nil activeBlock if there is more than 1 block already?"))
 		}
 		// No previous active block - new block list
 		nextStartClock = make(base.PartitionClock)
 	} else {
-		base.LogTo("ChannelStorage+", "Determining nextStartClock, l.activeBlock != nil so Determine index and startclock from previous active block")
+		base.LogTo("ChannelStorage+", "Determining nextStartClock for DenseBlockList %s, l.activeBlock != nil so Determine index and startclock from previous active block", l)
 
 		// Determine index and startclock from previous active block
 		nextStartClock = l.activeBlock.getCumulativeClock()
 
 		if nextStartClock.IsZero() {
 			// This will result in the new block having an empty start clock, which shouldn't happen.
-			base.LogTo("ChannelStorage+", "WARNING2: Determining nextStartClock.  l.activeBlock.getCumulativeClock() returned a zero clock")
+			base.LogTo("ChannelStorage+", "WARNING2: Determining nextStartClock for DenseBlockList %s.  l.activeBlock.getCumulativeClock() returned a zero clock.", l)
 		}
 	}
 

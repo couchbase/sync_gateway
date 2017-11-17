@@ -59,7 +59,7 @@ func NewDenseBlock(key string, startClock base.PartitionClock) *DenseBlock {
 }
 
 func (d DenseBlock) String() string {
-	return fmt.Sprintf("key: %s, count: %d", d.Key, d.Count())
+	return fmt.Sprintf("key: %s, count: %d clock=zeroclock: %v", d.Key, d.Count(), d.clock.IsZero())
 }
 
 func (d *DenseBlock) Count() uint16 {
@@ -87,12 +87,15 @@ func (d *DenseBlock) getCumulativeClock() base.PartitionClock {
 	cumulativeClock := d.startClock.Copy()
 	cumulativeClock.Set(d.clock)
 	if d.clock.IsZero() {
-		base.LogTo("ChannelStorage+", "WARNING2:  getCumulativeClock() returning a zero clock.  DenseBlock key: %v count: %d", d.Key, d.Count())
+		base.LogTo("ChannelStorage+", "WARNING2: DenseBlock %s getCumulativeClock() returning a zero clock. ", d)
 	}
 	return cumulativeClock
 }
 
 func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
+
+	base.LogTo("ChannelStorage+", "DenseBlock %s loadBlock() called.  d.clock is nil", d)
+
 	value, cas, err := bucket.GetRaw(d.Key)
 	if err != nil {
 		return err
@@ -106,6 +109,9 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
 
 // Initializes PartitionClock - called on first use of block clock.
 func (d *DenseBlock) initClock() {
+
+	base.LogTo("ChannelStorage+", "DenseBlock %s initClock() called.", d)
+
 	// Initialize clock
 	d.clock = d.startClock.Copy()
 
@@ -123,7 +129,10 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	casFailure = false
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
-		base.LogTo("ChannelStorage+", "DenseBlock (%s) full - returning entries as overflow.  #entries:[%d]", d, len(entries))
+
+		base.LogTo("ChannelStorage+", "DenseBlock (%s) full since len(d.value) %d > MaxBlockSize %d - returning entries as overflow.  #entries:[%d]",
+			d, len(d.value), MaxBlockSize, len(entries))
+
 		return entries, pendingRemoval, nil, casFailure, nil
 	}
 
@@ -143,7 +152,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	if err != nil {
 		casFailure = true
 		// TODO: why is updateClock nil?
-		base.LogTo("ChannelStorage+", "CAS error writing block to database. %v", err)
+		base.LogTo("ChannelStorage+", "DenseBlock (%s) CAS error writing block to database. %v.  WARNING2: Returning nil updateClock", d, err)
 		return entries, []*LogEntry{}, nil, casFailure, nil
 	}
 
