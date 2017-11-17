@@ -90,7 +90,7 @@ func (d *DenseBlock) getClock() base.PartitionClock {
 // the starting clock for this block, plus any changes made in this block
 func (d *DenseBlock) getCumulativeClock() base.PartitionClock {
 	cumulativeClock := d.startClock.Copy()
-	cumulativeClock.Set(d.clock)
+	cumulativeClock.Set(d.getClock())
 	return cumulativeClock
 }
 
