@@ -274,7 +274,7 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 
 	doc, err := unmarshalDocument(docId, contentToSave)
 	if err != nil {
-		return backupOrDryRunDocId, pkgerrors.Wrapf(err, "Error unmarshalling updated/original doc.")
+		return backupOrDryRunDocId, err
 	}
 
 	//If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all

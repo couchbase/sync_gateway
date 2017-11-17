@@ -23,6 +23,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // When external revision storage is used, maximum body size (in bytes) to store inline.
@@ -128,7 +129,7 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 	doc := newDocument(docid)
 	if len(data) > 0 {
 		if err := json.Unmarshal(data, doc); err != nil {
-			return nil, err
+			return nil, pkgerrors.Wrapf(err, "Error unmarshalling doc.")
 		}
 		if doc != nil && doc.Deleted_OLD {
 			doc.Deleted_OLD = false
