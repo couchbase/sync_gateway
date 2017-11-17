@@ -538,18 +538,12 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange base.Par
 		return nil, err
 	}
 
-	base.LogTo("DIndex+", "DensePartitionStorageReader [%s] looping over %d blocks", pr, len(blockList.blocks))
 	changes = NewPartitionChanges()
 	keySet := make(map[string]bool, 0)
 	for i := len(blockList.blocks) - 1; i >= 0; i-- {
 
-
-
 		blockListEntry := blockList.blocks[i]
 		blockKey := blockListEntry.Key(blockList)
-
-		base.LogTo("DIndex+", "DensePartitionStorageReader [%s] processing blockKey: %s.  Loading block with startclock for vb100: %v",
-			pr, blockKey, blockListEntry.StartClock.GetSequence(100))
 
 		currBlock, err := pr.loadBlock(blockKey, blockListEntry.StartClock)
 		if err != nil {
@@ -582,24 +576,12 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange base.Par
 			}
 		}
 
-		base.LogTo("DIndex+", "DensePartitionStorageReader [%s] prepending %d changes to %d accumulated changes", pr, blockChanges.Count(), changes.Count())
-
 		// Prepend partition changes with the results for this block
 		changes.PrependChanges(blockChanges)
 
 		// If we've reached a block with a startclock earlier than our since value, we're done
-		base.LogTo("DIndex+",
-			"DensePartitionStorageReader [%s] call SinceAfter().  partitionRange sequence range for vb100: %v.  StartClock seq for vb100: %v",
-			pr,
-			partitionRange.GetSequenceRange(100),
-			blockListEntry.StartClock.GetSequence(100),
-		)
-
 		if partitionRange.SinceAfter(blockListEntry.StartClock) {
-			base.LogTo("DIndex+", "DensePartitionStorageReader [%s] reached a block with a startclock earlier than our since value, so we're done", pr)
 			break
-		} else {
-			base.LogTo("DIndex+", "DensePartitionStorageReader [%s] hasn't reached a block with a startclock earlier than our since value, keep going", pr)
 		}
 	}
 	return changes, nil

@@ -36,7 +36,7 @@ type LogEntry struct {
 
 func (l LogEntry) String() string {
 	return fmt.Sprintf(
-		"LogEntry(DCP message) seq: %d docid: %s revid: %s vbno: %d type: %v",
+		"seq: %d docid: %s revid: %s vbno: %d type: %v",
 		l.Sequence,
 		l.DocID,
 		l.RevID,

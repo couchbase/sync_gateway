@@ -59,7 +59,12 @@ func NewDenseBlock(key string, startClock base.PartitionClock) *DenseBlock {
 }
 
 func (d DenseBlock) String() string {
-	return fmt.Sprintf("key: %s, count: %d clock=zeroclock: %v startClock=zeroclock: %v", d.Key, d.Count(), d.clock.IsZero(), d.startClock.IsZero())
+	return fmt.Sprintf("key: %s, count: %d clock=zeroclock: %v startClock=zeroclock: %v",
+		d.Key,
+		d.Count(),
+		d.clock.IsZero(),
+		d.startClock.IsZero(),
+	)
 }
 
 func (d *DenseBlock) Count() uint16 {
@@ -86,15 +91,10 @@ func (d *DenseBlock) getClock() base.PartitionClock {
 func (d *DenseBlock) getCumulativeClock() base.PartitionClock {
 	cumulativeClock := d.startClock.Copy()
 	cumulativeClock.Set(d.clock)
-	if d.clock.IsZero() {
-		base.LogTo("ChannelStorage+", "WARNING2: DenseBlock %s getCumulativeClock() returning a zero clock. ", d)
-	}
 	return cumulativeClock
 }
 
 func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
-
-	base.LogTo("ChannelStorage+", "DenseBlock %s loadBlock() called.  d.clock is nil", d)
 
 	value, cas, err := bucket.GetRaw(d.Key)
 	if err != nil {
@@ -102,16 +102,17 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
 	}
 	d.value = value
 	d.cas = cas
-	d.clock = nil
-	d.initClock()  // WORKAROUND attempt for https://github.com/couchbase/sync_gateway/issues/3026
+
+	// Init the clock as soon as we load the block to protect against
+	// cases where the clock is accessed before it is loaded.  See SG #3026 for details.
+	d.initClock()
+
 	IndexExpvars.Add("indexReader.blocksLoaded", 1)
 	return nil
 }
 
 // Initializes PartitionClock - called on first use of block clock.
 func (d *DenseBlock) initClock() {
-
-	base.LogTo("ChannelStorage+", "DenseBlock %s initClock() called.", d)
 
 	// Initialize clock
 	d.clock = d.startClock.Copy()
@@ -131,7 +132,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
 
-		base.LogTo("ChannelStorage+", "DenseBlock (%s) full since len(d.value) %d > MaxBlockSize %d - returning entries as overflow.  #entries:[%d]",
+		base.LogTo("ChannelStorage+", "Block (%s) full since len(d.value) %d > MaxBlockSize %d - returning entries as overflow.  #entries:[%d]",
 			d, len(d.value), MaxBlockSize, len(entries))
 
 		return entries, pendingRemoval, nil, casFailure, nil
@@ -152,8 +153,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	casOut, err := bucket.WriteCas(d.Key, 0, 0, d.cas, d.value, sgbucket.Raw)
 	if err != nil {
 		casFailure = true
-		// TODO: why is updateClock nil?
-		base.LogTo("ChannelStorage+", "DenseBlock (%s) CAS error writing block to database. %v.  WARNING2: Returning nil updateClock", d, err)
+		base.LogTo("ChannelStorage+", "Block (%s) CAS error writing block to database. %v", d, err)
 		return entries, []*LogEntry{}, nil, casFailure, nil
 	}
 

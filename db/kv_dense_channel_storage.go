@@ -56,7 +56,7 @@ type DenseBlockListEntry struct {
 }
 
 func (d DenseBlockListEntry) String() string {
-	return fmt.Sprintf("blockindex: %d key: %s ", d.BlockIndex, d.key, d.StartClock.IsZero())
+	return fmt.Sprintf("blockindex: %d key: %s startclock=zero: %v", d.BlockIndex, d.key, d.StartClock.IsZero())
 }
 
 func (e *DenseBlockListEntry) Key(parentList *DenseBlockList) string {
@@ -150,25 +150,12 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	nextIndex := l.generateNextBlockIndex()
 	var nextStartClock base.PartitionClock
 
-	base.LogTo("ChannelStorage+", "DenseBlockList %s (%p) Determining nextStartClock.", l, l)
-
-	if l.activeBlock == nil { // TODO: investigate if this causes the empty clock
-		base.LogTo("ChannelStorage+", "Determining nextStartClock for DenseBlockList %s, l.activeBlock == nil so creating new clock", l)
-		if len(l.blocks) > 0 {
-			panic(fmt.Sprintf("How can there be a nil activeBlock if there is more than 1 block already?"))
-		}
+	if l.activeBlock == nil {
 		// No previous active block - new block list
 		nextStartClock = make(base.PartitionClock)
 	} else {
-		base.LogTo("ChannelStorage+", "Determining nextStartClock for DenseBlockList %s, l.activeBlock != nil so Determine index and startclock from previous active block", l)
-
 		// Determine index and startclock from previous active block
 		nextStartClock = l.activeBlock.getCumulativeClock()
-
-		if nextStartClock.IsZero() {
-			// This will result in the new block having an empty start clock, which shouldn't happen.
-			base.LogTo("ChannelStorage+", "WARNING2: Determining nextStartClock for DenseBlockList %s.  l.activeBlock.getCumulativeClock() returned a zero clock.", l)
-		}
 	}
 
 
@@ -184,7 +171,6 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	}
 
 	if len(l.blocks) > l.activeStartIndex+MaxListBlockCount {
-		base.LogTo("ChannelStorage+", "len(l.blocks) > l.activeStartIndex+MaxListBlockCount, rotating block list")
 		err := l.rotate()
 		if err != nil {
 			return nil, err
@@ -199,7 +185,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	}
 	casOut, err := l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, storageValue, 0)
 	if err != nil {
-		// TODO: add logging for this cas error.  is reload working correctly?
+		base.LogTo("ChannelStorage+", "DenseBlockList %s got CAS error trying to persist to bucket.  Reloading and retrying", l)
 		// CAS error.  If there's a concurrent writer for this partition, assume they have created the new block.
 		//  Re-initialize the current block list, and get the active block key from there.
 		found, err := l.loadDenseBlockList()
@@ -375,29 +361,8 @@ func (l *DenseBlockList) marshalAsStorage() (*DenseBlockListStorage, error) {
 	// When initializing an empty active block list (no blocks), activeStartIndex > len(l.blocks). Only
 	// include blocks in the output when this isn't the case.
 	if l.activeStartIndex <= len(l.blocks) {
-		base.LogTo("DIndex+", "DenseBlockList %s (%p) marshalAsStorage. l.activeStartIndex (%d) <= len(l.blocks) (%d)", l, l, l.activeStartIndex, len(l.blocks))
 		activeBlock.Blocks = l.blocks[l.activeStartIndex:]
-	} else {
-		base.LogTo("DIndex+", "DenseBlockList %s (%p) marshalAsStorage. l.activeStartIndex (%d) > len(l.blocks) (%d)", l, l, l.activeStartIndex, len(l.blocks))
 	}
-
-	// Only the first block in the list of blocks should have an empty start clock.  Otherwise, treat it as an error and panic
-	for blockIndex, block := range activeBlock.Blocks {
-		if blockIndex == 0 {
-			continue
-		}
-		if block.StartClock.IsZero() {
-			msg := fmt.Sprintf("WARNING2: DenseBlockList %s (%p) has a block after the first block with an empty start clock.  Block list: %+v, Block entry: %+v.  Dumping block list.",
-				l, l, activeBlock, block)
-			base.LogTo("DIndex+", "%s", msg)
-			for innerBlockIndex, innerBlock := range activeBlock.Blocks {
-				base.LogTo("DIndex+", "block list %s block %d: %s" , l, innerBlockIndex, innerBlock)
-			}
-
-			// panic(msg)
-		}
-	}
-
 
 	return activeBlock, nil
 }
