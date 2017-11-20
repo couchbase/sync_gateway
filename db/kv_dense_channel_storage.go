@@ -328,7 +328,7 @@ func (l *DenseBlockList) loadStorage(key string) (storage DenseBlockListStorage,
 	storage = DenseBlockListStorage{}
 	casOut, err := l.indexBucket.Get(key, &storage)
 	if err != nil {
-		return storage, 0, pkgerrors.Wrapf(err, "Error loading DenseBlockListStorage for DenseBlockList: %s with key: %s", l, key)
+		return storage, 0, err
 	}
 	return storage, casOut, nil
 
