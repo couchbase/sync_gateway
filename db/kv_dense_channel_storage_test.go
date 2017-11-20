@@ -96,7 +96,14 @@ func TestDenseBlockMultipleInserts(t *testing.T) {
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
-	block := NewDenseBlock("block1", nil)
+	block := DenseBlock{}
+	block.Key = "block1"
+
+	// Make sure we can safely call getEntryCount() on uninitialized DenseBlock
+	assert.Equals(t, block.getEntryCount(), uint16(0))
+
+	// Initialize the block value 
+	block.value = make([]byte, DB_HEADER_LEN, 400)
 
 	// Inserts
 	entries := make([]*LogEntry, 10)
