@@ -120,6 +120,7 @@ func (doc *document) RemoveBody() {
 
 // TODO: review whether this can just return raw body when available
 func (doc *document) MarshalBody() ([]byte, error) {
+	// TODO: wraperr
 	return json.Marshal(doc.Body())
 }
 
