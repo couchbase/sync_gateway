@@ -22,6 +22,8 @@ import (
 
 var MaxBlockSize = 10000 // Maximum size of index block, in bytes
 
+const DB_HEADER_LEN = 2 // Length of block header.  Currently only contains entry count
+
 // DenseBlock stores a collection of LogEntries for a channel.  Entries which are added to a DenseBlock are
 // appended to existing entries.  A DenseBlock is considered 'full' when the size of the block exceeds
 // MaxBlockSize.
@@ -34,19 +36,12 @@ var MaxBlockSize = 10000 // Maximum size of index block, in bytes
 //  ------------------------------------------------------------------------------------------------
 // When an entry is added to the block, a new index entry is added to the index to store the vb/seq,
 // a new entry is added to entries to store key/revId/flags, and entry count is incremented.
-
-const DB_HEADER_LEN = 2 // Length of block header.  Currently only contains entry count
-
+// The _clock field is lazily loaded because DenseBlock is used for both readers and writers, and readers don't care about the cumulative clock.
 type DenseBlock struct {
 	Key        string              // Key of block document in the index bucket
 	value      []byte              // Binary storage of block data, in the above format
 	cas        uint64              // Document cas
-
-	// Highest seq per vbucket written to the block.
-	// Lazily-loaded because DenseBlock is used for both readers and writers, and readers don't care about the cumulative clock.
-	// Should never be read directly, instead call getClock(), otherwise you might hit issues like SG #3026.
-	_clock      base.PartitionClock
-
+	_clock     base.PartitionClock // Highest seq per vbucket written to the block.  Unsafe to read directly due to lazy loading, use getClock() instead.
 	startClock base.PartitionClock // Starting clock for the block (partition clock for all previous blocks)
 }
 
