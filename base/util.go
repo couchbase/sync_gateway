@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"expvar"
 	"fmt"
 	"io"

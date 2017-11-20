@@ -24,7 +24,6 @@ import (
 	"github.com/couchbase/clog"
 	"github.com/couchbase/goutils/logging"
 	"github.com/natefinch/lumberjack"
-	pkgerrors "github.com/pkg/errors"
 )
 
 var errMarshalNilLevel = errors.New("can't marshal a nil *Level to text")
