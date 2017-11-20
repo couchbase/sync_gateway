@@ -100,11 +100,6 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 
 	// Check for SGErrors
 	switch unwrappedErr {
-	case ErrViewTimeoutError:
-		return http.StatusServiceUnavailable, unwrappedErr.Error()
-	}
-
-	switch unwrappedErr {
 	case gocb.ErrKeyNotFound:
 		return http.StatusNotFound, "missing"
 	case gocb.ErrKeyExists:
@@ -117,6 +112,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrBusy)"
 	case gocb.ErrTmpFail:
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrTmpFail)"
+	case ErrViewTimeoutError:
+		return http.StatusServiceUnavailable, unwrappedErr.Error()
 	}
 
 	switch unwrappedErr := unwrappedErr.(type) {
