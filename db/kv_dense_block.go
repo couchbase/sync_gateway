@@ -59,11 +59,9 @@ func NewDenseBlock(key string, startClock base.PartitionClock) *DenseBlock {
 }
 
 func (d DenseBlock) String() string {
-	return fmt.Sprintf("key: %s, count: %d clock=zeroclock: %v startClock=zeroclock: %v",
+	return fmt.Sprintf("key: %s, count: %d",
 		d.Key,
 		d.Count(),
-		d.getClock().IsZero(),
-		d.startClock.IsZero(),
 	)
 }
 
@@ -103,7 +101,7 @@ func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
 	d.value = value
 	d.cas = cas
 
-	// Intentionally set to nil for lazy-loading, and unsafe to read directly.  See comments on d.clock field definition.
+	// Intentionally set to nil for lazy-loading, and unsafe to read directly.  See comments on d._clock field definition.
 	d._clock = nil
 
 	IndexExpvars.Add("indexReader.blocksLoaded", 1)
