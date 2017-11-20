@@ -379,7 +379,7 @@ func (l *DenseBlockList) populateForRange(partitionRange base.PartitionRange) er
 	for partitionRange.SinceBefore(l.ValidFrom()) {
 		err := l.LoadPrevious()
 		if err != nil {
-			return pkgerrors.Wrapf(err, "Unable to load previous block list")
+			return err
 		}
 	}
 	return nil

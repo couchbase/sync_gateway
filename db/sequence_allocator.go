@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	pkgerrors "github.com/pkg/errors"
 )
 
 const (

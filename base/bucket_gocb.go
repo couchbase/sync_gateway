@@ -276,7 +276,7 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 		return 0, fmt.Errorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
-	return cas, err
+	return cas, pkgerrors.Wrapf(err, "Unrecoverable GoCB error")
 
 }
 
@@ -876,7 +876,7 @@ func (bucket CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) error
 
 
 	err, _ := RetryLoop("CouchbaseBucketGoCB Set()", worker, bucket.spec.RetrySleeper())
-	return pkgerrors.Wrapf(err, "CouchbaseBucketGoCB Set() got an unrecoverable GoCB error")
+	return pkgerrors.Wrapf(err, "Unrecoverable GoCB error")
 
 }
 
@@ -1617,7 +1617,7 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (u
 		return 0, fmt.Errorf("Incr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
-	return cas, pkgerrors.Wrapf(err, "CouchbaseBucketGoCB Incr() got an unrecoverable GoCB error")
+	return cas, pkgerrors.Wrapf(err, "Unrecoverable GoCB error")
 
 }
 
