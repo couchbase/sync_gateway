@@ -121,8 +121,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
-		Warn("Error opening bucket: %s.  Error: %v", spec.BucketName, err)
-		return nil, err
+		return nil, pkgerrors.Wrapf(err, "Error opening GoCB bucket: %s", spec.BucketName)
 	}
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {

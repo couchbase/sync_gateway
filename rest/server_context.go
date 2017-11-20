@@ -418,7 +418,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	})
 
 	if err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error connecting to bucket")
+		return nil, err
 	}
 
 	// Channel index definition, if present
