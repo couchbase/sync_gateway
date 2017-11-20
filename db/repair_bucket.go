@@ -230,7 +230,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			if err != nil {
 				// Ignore couchbase.UpdateCancel (Cas.QUIT) errors.  Any other errors should be returned to caller
 				if pkgerrors.Cause(err) != couchbase.UpdateCancel {
-					return results, pkgerrors.Wrapf(err, "RepairBucket() failed to update bucket")
+					return results, err
 				}
 			}
 
