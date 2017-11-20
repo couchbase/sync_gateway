@@ -575,9 +575,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Create default users & roles:
 	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
-		return nil, err
+		return nil, pkgerrors.Wrapf(err, "Error installing principals for role")
 	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
-		return nil, err
+		return nil, pkgerrors.Wrapf(err, "Error installing principals for user")
 	}
 
 	// Note: disabling access-related warnings, because they potentially block startup during view reindexing trying to query the principals view, which outweighs the usability benefit
