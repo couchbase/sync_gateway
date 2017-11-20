@@ -120,8 +120,11 @@ func (doc *document) RemoveBody() {
 
 // TODO: review whether this can just return raw body when available
 func (doc *document) MarshalBody() ([]byte, error) {
-	// TODO: wraperr
-	return json.Marshal(doc.Body())
+	marshalled, err := json.Marshal(doc.Body())
+	if err != nil {
+		return []byte{}, pkgerrors.Wrapf(err, "Error marshalling JSON")
+	}
+	return marshalled, err
 }
 
 // Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
