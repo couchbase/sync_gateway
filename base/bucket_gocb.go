@@ -721,11 +721,8 @@ func isGoCBViewTimeoutError(err error) bool {
 		return false
 	}
 
-	// Unwrap this in case it is wrapped
-	unwrappedErr := pkgerrors.Cause(err)
-
 	// If it's not a *url.Error, then it's not a viewtimeout error
-	netUrlError, ok := unwrappedErr.(*url.Error)
+	netUrlError, ok := pkgerrors.Cause(err).(*url.Error)
 	if !ok {
 		return false
 	}
@@ -1777,13 +1774,7 @@ func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument
 }
 
 func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
-
-	unwrappedErr := pkgerrors.Cause(err)
-
-	// TODO: should this be changed to match other code and possibly be more reliable if there are mismatched pointer comparisons?
-	// TODO: proposed change: return unwrappedErr.Error() == gocb.ErrKeyNotFound.Error()
-	return unwrappedErr == gocb.ErrKeyNotFound
-
+	return pkgerrors.Cause(err) == gocb.ErrKeyNotFound
 }
 
 // Check if this is a SubDocPathNotFound error
@@ -1792,8 +1783,6 @@ func (bucket CouchbaseBucketGoCB) IsSubDocPathNotFound(err error) bool {
 
 	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
 	if ok {
-		// TODO: should this be changed to match other code and possibly be more reliable if there are mismatched pointer comparisons?
-		// TODO: proposed change: subdocMutateErr.Err.Error() == gocb.ErrSubDocPathNotFound.Error()
 		return subdocMutateErr.Err == gocb.ErrSubDocPathNotFound
 	}
 	return false
