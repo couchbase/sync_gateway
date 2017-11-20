@@ -819,7 +819,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 		if err != nil {
 			// A conflict error just means updatePrincipal didn't overwrite an existing user.
 			if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {
-				return pkgerrors.Wrapf(err, "Couldn't create %s %q", what, name)
+				return err
 			}
 		} else if isGuest {
 			base.Log("    Reset guest user to config")
