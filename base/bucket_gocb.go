@@ -276,7 +276,7 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 		return 0, fmt.Errorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
-	return cas, pkgerrors.Wrapf(err, "Unrecoverable GoCB error")
+	return cas, pkgerrors.Wrapf(err, "Unrecoverable GoCB error doing Get() on key: %s", k)
 
 }
 
@@ -874,7 +874,7 @@ func (bucket CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) error
 
 	}
 	err, _ := RetryLoop("CouchbaseBucketGoCB Set()", worker, bucket.spec.RetrySleeper())
-	return pkgerrors.Wrapf(err, "Unrecoverable GoCB error")
+	return pkgerrors.Wrapf(err, "Unrecoverable GoCB error doing Set() on key: %s", k)
 
 }
 
@@ -1615,7 +1615,7 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (u
 		return 0, fmt.Errorf("Incr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
-	return cas, pkgerrors.Wrapf(err, "Unrecoverable GoCB error")
+	return cas, pkgerrors.Wrapf(err, "Unrecoverable GoCB error doing Incr() on key: %s with amt: %d", k, amt)
 
 }
 
@@ -2056,7 +2056,7 @@ func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor 
 	if versionString == "" {
 		stats, err := bucket.Bucket.Stats("")
 		if err != nil {
-			return 0, 0, "error", pkgerrors.Wrapf(err, "Unrecoverable GoCB error")
+			return 0, 0, "error", pkgerrors.Wrapf(err, "Unrecoverable GoCB error calling Stats()")
 		}
 
 		for _, serverMap := range stats {
