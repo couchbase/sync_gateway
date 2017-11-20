@@ -1791,11 +1791,10 @@ func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
 // Pending question to see if there is an easier way: https://forums.couchbase.com/t/checking-for-errsubdocpathnotfound-errors/13492
 func (bucket CouchbaseBucketGoCB) IsSubDocPathNotFound(err error) bool {
 
-	unwrappedErr := pkgerrors.Cause(err)
-
-	subdocMutateErr, ok := unwrappedErr.(gocbcore.SubDocMutateError)
+	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
 	if ok {
-		// TODO: change to subdocMutateErr.Err.Error() == gocb.ErrSubDocPathNotFound.Error()?
+		// TODO: should this be changed to match other code and possibly be more reliable if there are mismatched pointer comparisons?
+		// TODO: proposed change: subdocMutateErr.Err.Error() == gocb.ErrSubDocPathNotFound.Error()
 		return subdocMutateErr.Err == gocb.ErrSubDocPathNotFound
 	}
 	return false
@@ -2057,7 +2056,7 @@ func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor 
 	if versionString == "" {
 		stats, err := bucket.Bucket.Stats("")
 		if err != nil {
-			return 0, 0, "error", pkgerrors.Wrapf(err, "Error calling Stats() on GoCB bucket")
+			return 0, 0, "error", pkgerrors.Wrapf(err, "Unrecoverable GoCB error")
 		}
 
 		for _, serverMap := range stats {
