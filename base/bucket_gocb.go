@@ -1781,7 +1781,8 @@ func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
 
 	unwrappedErr := pkgerrors.Cause(err)
 
-	// TODO: change to this?  return unwrappedErr.Error() == gocb.ErrKeyNotFound.Error()
+	// TODO: should this be changed to match other code and possibly be more reliable if there are mismatched pointer comparisons?
+	// TODO: proposed change: return unwrappedErr.Error() == gocb.ErrKeyNotFound.Error()
 	return unwrappedErr == gocb.ErrKeyNotFound
 
 }
