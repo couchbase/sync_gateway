@@ -876,9 +876,7 @@ func (bucket CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) error
 
 
 	err, _ := RetryLoop("CouchbaseBucketGoCB Set()", worker, bucket.spec.RetrySleeper())
-	// TODO: wrap err
-
-	return err
+	return pkgerrors.Wrapf(err, "CouchbaseBucketGoCB Set() got an unrecoverable GoCB error")
 
 }
 
