@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/satori/go.uuid"
+	pkgerrors "github.com/pkg/errors"
 )
 
 var dcpExpvars *expvar.Map
@@ -508,11 +509,11 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		dataSourceOptions,
 	)
 	if err != nil {
-		return err
+		return pkgerrors.Wrapf(err, "Error connecting to new bucket cbdatasource.  URLs:%s, pool:%s, bucket:%s", urls, poolName, bucketName)
 	}
 
 	if err = bds.Start(); err != nil {
-		return err
+		return pkgerrors.Wrapf(err, "Error starting bucket cbdatasource.  URLs:%s, pool:%s, bucket:%s", urls, poolName, bucketName)
 	}
 
 	// Close the data source if feed terminator is closed

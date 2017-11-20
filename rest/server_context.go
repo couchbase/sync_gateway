@@ -530,7 +530,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
 	if err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error creating NewDatabaseContext")
+		return nil, err
 	}
 	dbcontext.BucketSpec = spec
 
@@ -539,14 +539,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		syncFn = *config.Sync
 	}
 	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error creating applySyncFunction")
+		return nil, err
 	}
 
 	// Support for legacy importDocs handling - if xattrs aren't enabled, support a backfill-style import on startup
 	if importDocs && !config.UseXattrs() {
 		db, _ := db.GetDatabase(dbcontext, nil) // TODO: shouldn't this be checking the returned err?
 		if _, err := db.UpdateAllDocChannels(false, true); err != nil {
-			return nil, pkgerrors.Wrapf(err, "Error calling UpdateAllDocChannels")
+			return nil, err
 		}
 	}
 
@@ -575,9 +575,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Create default users & roles:
 	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error calling installPrincipals with config.Roles")
+		return nil, err
 	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error calling installPrincipals with config.Users")
+		return nil, err
 	}
 
 	// Note: disabling access-related warnings, because they potentially block startup during view reindexing trying to query the principals view, which outweighs the usability benefit
@@ -593,7 +593,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Initialize event handlers
 	if err := sc.initEventHandlers(dbcontext, config); err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error calling initEventHandlers")
+		return nil, err
 	}
 
 	dbcontext.ExitChanges = make(chan struct{})
@@ -670,10 +670,10 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 		eventHandlersJSON, err := json.Marshal(eventHandlersMap)
 		if err != nil {
-			return err
+			return pkgerrors.Wrapf(err, "Error calling json.Marshal() in initEventHandlers")
 		}
 		if err := json.Unmarshal(eventHandlersJSON, eventHandlers); err != nil {
-			return err
+			return pkgerrors.Wrapf(err, "Error calling json.Unmarshal() in initEventHandlers")
 		}
 
 		// Process document commit event handlers
