@@ -70,6 +70,9 @@ func (d *DenseBlock) Count() uint16 {
 }
 
 func (d *DenseBlock) getEntryCount() uint16 {
+	if len(d.value) < 2 {
+		return 0
+	}
 	return binary.BigEndian.Uint16(d.value[0:2])
 }
 
