@@ -1617,7 +1617,7 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (u
 		return 0, fmt.Errorf("Incr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
-	return cas, err
+	return cas, pkgerrors.Wrapf(err, "CouchbaseBucketGoCB Incr() got an unrecoverable GoCB error")
 
 }
 
