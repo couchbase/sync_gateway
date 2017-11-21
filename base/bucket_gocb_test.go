@@ -22,6 +22,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
 	"gopkg.in/couchbase/gocbcore.v7"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // NOTE: most of these tests are disabled by default and have been renamed to Couchbase*
@@ -1029,7 +1030,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		if len(doc) > 0 {
 			err = json.Unmarshal(doc, &docMap)
 			if err != nil {
-				return nil, nil, false, nil, fmt.Errorf("Unable to unmarshal incoming doc: %v", err)
+				return nil, nil, false, nil, pkgerrors.Wrapf(err, "Unable to unmarshal incoming doc")
 			}
 		} else {
 			// No incoming doc, treat as insert.
@@ -1040,7 +1041,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		if len(xattr) > 0 {
 			err = json.Unmarshal(xattr, &xattrMap)
 			if err != nil {
-				return nil, nil, false, nil, fmt.Errorf("Unable to unmarshal incoming xattr: %v", err)
+				return nil, nil, false, nil, pkgerrors.Wrapf(err, "Unable to unmarshal incoming xattr")
 			}
 		} else {
 			// No incoming xattr, treat as insert.

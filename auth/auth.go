@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	pkgerrors "github.com/pkg/errors"
 )
 
 /** Manages user authentication for a database. */
@@ -102,7 +103,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		}
 		princ = factory()
 		if err := json.Unmarshal(currentValue, princ); err != nil {
-			return nil, nil, err
+			return nil, nil, pkgerrors.Wrapf(err, "Error calling json.Unmarshal() for doc ID: %s in getPrincipal()", docID)
 		}
 		changed := false
 		if princ.Channels() == nil {
@@ -124,7 +125,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if changed {
 			// Save the updated doc:
 			updatedBytes, marshalErr := json.Marshal(princ)
-			return updatedBytes, nil, marshalErr
+			return updatedBytes, nil, pkgerrors.Wrapf(marshalErr, "Error calling json.Marshal() for doc ID: %s in getPrincipal()", docID)
 		} else {
 			// Principal is valid, so stop the update
 			return nil, nil, couchbase.UpdateCancel

@@ -22,6 +22,7 @@ import (
 	"github.com/coreos/go-oidc/oauth2"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -261,7 +262,8 @@ func GetOIDCUsername(provider *OIDCProvider, subject string) string {
 
 // Converts an OpenID Connect / OAuth2 error to an HTTP error
 func OIDCToHTTPError(err error) error {
-	if oauthErr, ok := err.(*oauth2.Error); ok {
+
+	if oauthErr, ok := pkgerrors.Cause(err).(*oauth2.Error); ok {
 		status := 400
 		switch oauthErr.Type {
 		case oauth2.ErrorAccessDenied,
@@ -281,3 +283,4 @@ func OIDCToHTTPError(err error) error {
 	}
 	return err
 }
+

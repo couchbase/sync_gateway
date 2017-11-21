@@ -322,7 +322,7 @@ func (l *DenseBlockList) LoadPrevious() error {
 	previousBlockListKey := l.generateNumberedListKey(previousCount)
 	previousBlockListStorage, cas, readError := l.loadStorage(previousBlockListKey)
 	if readError != nil {
-		return fmt.Errorf("Unable to find block list with key [%s]:%v", previousBlockListKey, readError)
+		return readError
 	}
 	l.blocks = append(previousBlockListStorage.Blocks, l.blocks...)
 	l.activeStartIndex += len(previousBlockListStorage.Blocks)
@@ -389,7 +389,7 @@ func (l *DenseBlockList) populateForRange(partitionRange base.PartitionRange) er
 	for partitionRange.SinceBefore(l.ValidFrom()) {
 		err := l.LoadPrevious()
 		if err != nil {
-			return fmt.Errorf("Unable to load previous block list: %v", err)
+			return err
 		}
 	}
 	return nil

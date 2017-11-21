@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/gomemcached/client"
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -606,17 +607,19 @@ func IsKeyNotFoundError(bucket Bucket, err error) bool {
 		return false
 	}
 
-	if err == gocb.ErrKeyNotFound {
+	unwrappedErr := pkgerrors.Cause(err)
+
+	if unwrappedErr == gocb.ErrKeyNotFound {
 		return true
 	}
 
 	switch bucket.(type) {
 	case CouchbaseBucket:
-		if strings.Contains(err.Error(), "Not found") {
+		if strings.Contains(unwrappedErr.Error(), "Not found") {
 			return true
 		}
 	default:
-		if _, ok := err.(sgbucket.MissingError); ok {
+		if _, ok := unwrappedErr.(sgbucket.MissingError); ok {
 			return true
 		}
 	}
@@ -630,13 +633,15 @@ func IsCasMismatch(bucket Bucket, err error) bool {
 		return false
 	}
 
+	unwrappedErr := pkgerrors.Cause(err)
+
 	// GoCB handling
-	if err == gocb.ErrKeyExists {
+	if unwrappedErr == gocb.ErrKeyExists {
 		return true
 	}
 
 	// GoCouchbase/Walrus handling
-	if strings.Contains(err.Error(), "CAS mismatch") {
+	if strings.Contains(unwrappedErr.Error(), "CAS mismatch") {
 		return true
 	}
 

@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -217,7 +216,7 @@ func TestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"]]}`
 	gotmap := RevTree{}
 	err := json.Unmarshal([]byte(testJSON), &gotmap)
-	assert.DeepEquals(t, err, errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent"))
+	assert.Equals(t, err.Error(), "revtreelist data is invalid, revs/parents/channels counts are inconsistent")
 }
 
 func TestRevTreeMarshal(t *testing.T) {
@@ -276,7 +275,7 @@ func TestRevTreeAddRevisionWithEmptyID(t *testing.T) {
 	assert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{Parent: "3-three"})
-	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", "testdoc")))
+	assert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", "testdoc"))
 }
 
 func TestRevTreeAddDuplicateRevID(t *testing.T) {
@@ -284,7 +283,7 @@ func TestRevTreeAddDuplicateRevID(t *testing.T) {
 	assert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{ID: "2-two", Parent: "1-one"})
-	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", "testdoc", "2-two")))
+	assert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", "testdoc", "2-two"))
 }
 
 func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
@@ -292,7 +291,7 @@ func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
 	assert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four"})
-	assert.DeepEquals(t, err, errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", "testdoc", "4-four")))
+	assert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", "testdoc", "4-four"))
 }
 
 func TestRevTreeCompareRevIDs(t *testing.T) {

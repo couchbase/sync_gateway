@@ -23,6 +23,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // When external revision storage is used, maximum body size (in bytes) to store inline.
@@ -119,7 +120,11 @@ func (doc *document) RemoveBody() {
 
 // TODO: review whether this can just return raw body when available
 func (doc *document) MarshalBody() ([]byte, error) {
-	return json.Marshal(doc.Body())
+	marshalled, err := json.Marshal(doc.Body())
+	if err != nil {
+		return []byte{}, pkgerrors.Wrapf(err, "Error marshalling JSON")
+	}
+	return marshalled, err
 }
 
 // Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
@@ -128,7 +133,7 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 	doc := newDocument(docid)
 	if len(data) > 0 {
 		if err := json.Unmarshal(data, doc); err != nil {
-			return nil, err
+			return nil, pkgerrors.Wrapf(err, "Error unmarshalling doc.")
 		}
 		if doc != nil && doc.Deleted_OLD {
 			doc.Deleted_OLD = false
@@ -654,14 +659,14 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 	err := json.Unmarshal([]byte(data), &root)
 	if err != nil {
 		base.Warn("Error unmarshaling doc %q: %s", doc.ID, err)
-		return err
+		return pkgerrors.Wrapf(err,"Failed to UnmarshalJSON() doc with id: %s", doc.ID)
 	}
 	if root.SyncData != nil {
 		doc.syncData = *root.SyncData
 	}
 
 	if err := json.Unmarshal(data, &doc._body); err != nil {
-		return err
+		return pkgerrors.Wrapf(err,"Failed to UnmarshalJSON() doc with id: %s", doc.ID)
 	}
 
 	delete(doc._body, "_sync")
@@ -676,7 +681,7 @@ func (doc *document) MarshalJSON() ([]byte, error) {
 	body["_sync"] = &doc.syncData
 	data, err := json.Marshal(body)
 	delete(body, "_sync")
-	return data, err
+	return data, pkgerrors.Wrapf(err,"Failed to MarshalJSON() doc with id: %s", doc.ID)
 }
 
 // UnmarshalWithXattr unmarshals the provided raw document and xattr bytes.  The provided DocumentUnmarshalLevel
@@ -695,7 +700,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		doc.syncData = syncData{History: make(RevTree)}
 		unmarshalErr := json.Unmarshal(xdata, &doc.syncData)
 		if unmarshalErr != nil {
-			return unmarshalErr
+			return pkgerrors.Wrapf(unmarshalErr,"Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalAll/Sync)", doc.ID)
 		}
 		// Unmarshal body if requested and present
 		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
@@ -709,7 +714,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		doc.syncData = syncData{}
 		unmarshalErr := json.Unmarshal(xdata, &doc.syncData)
 		if unmarshalErr != nil {
-			return unmarshalErr
+			return pkgerrors.Wrapf(unmarshalErr,"Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalNoHistory)", doc.ID)
 		}
 		doc.rawBody = data
 	case DocUnmarshalRev:
@@ -717,7 +722,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		var revOnlyMeta revOnlySyncData
 		unmarshalErr := json.Unmarshal(xdata, &revOnlyMeta)
 		if unmarshalErr != nil {
-			return unmarshalErr
+			return pkgerrors.Wrapf(unmarshalErr,"Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev)", doc.ID)
 		}
 		doc.syncData = syncData{
 			CurrentRev: revOnlyMeta.CurrentRev,
@@ -729,7 +734,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		var casOnlyMeta casOnlySyncData
 		unmarshalErr := json.Unmarshal(xdata, &casOnlyMeta)
 		if unmarshalErr != nil {
-			return unmarshalErr
+			return pkgerrors.Wrapf(unmarshalErr,"Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalCAS)", doc.ID)
 		}
 		doc.syncData = syncData{
 			Cas: casOnlyMeta.Cas,
@@ -754,14 +759,14 @@ func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 		if !deleted {
 			data, err = json.Marshal(body)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, pkgerrors.Wrapf(err,"Failed to MarshalWithXattr() doc body with id: %s", doc.ID)
 			}
 		}
 	}
 
 	xdata, err = json.Marshal(doc.syncData)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, pkgerrors.Wrapf(err,"Failed to MarshalWithXattr() doc syncData with id: %s", doc.ID)
 	}
 
 	return data, xdata, nil

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -265,7 +266,7 @@ func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
 		if err != nil {
 			return -1, err
 		}
-		return -1, fmt.Errorf("Error trying to find number of items in bucket: %v", err)
+		return -1, pkgerrors.Wrapf(err, "Error trying to find number of items in bucket")
 	}
 
 	respJson := map[string]interface{}{}

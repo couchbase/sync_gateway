@@ -12,12 +12,12 @@ package base
 import (
 	"fmt"
 	"log"
-	"testing"
-
-	"github.com/couchbaselabs/go.assert"
 	"net/url"
 	"strings"
+	"testing"
 	"time"
+
+	"github.com/couchbaselabs/go.assert"
 )
 
 func TestFixJSONNumbers(t *testing.T) {

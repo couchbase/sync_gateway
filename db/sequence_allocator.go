@@ -109,7 +109,7 @@ func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint
 	//       is nil by the time we log the warning above.  This seems most likely to be a race/scope issue with the callback processing
 	//       in the go-couchbase Incr/Do, and the sleep after the last attempt above.  Forcing the error to non-nil here to ensure we don't
 	//       proceed without an error in this case.
-	return 0, fmt.Errorf("Unable to increment sequence: %v", err)
+	return 0, err
 }
 
 // ReleaseSequence writes an unused sequence document, used to notify sequence buffering that a sequence has been allocated and not used.

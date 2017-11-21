@@ -11,15 +11,14 @@ package auth
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log"
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/go.assert"
-
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbaselabs/go.assert"
 )
 
 func canSeeAllChannels(princ Principal, channels base.Set) bool {
@@ -373,7 +372,7 @@ func TestRebuildChannelsError(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, auth.InvalidateChannels(role), nil)
 
-	computer.err = fmt.Errorf("I'm sorry, Dave.")
+	computer.err = errors.New("I'm sorry, Dave.")
 
 	role2, err := auth.GetRole("testRole2")
 	assert.Equals(t, role2, nil)

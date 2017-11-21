@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"expvar"
 	"fmt"
 	"io"
@@ -30,6 +29,7 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbaselabs/gocbconnstr"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -272,7 +272,7 @@ func ReflectExpiry(rawExpiry interface{}) (*uint32, error) {
 		if err == nil {
 			return ValidateUint32Expiry(expRFC3339.Unix())
 		} else {
-			return nil, fmt.Errorf("Unable to parse expiry %s as either numeric or date expiry:%v", err)
+			return nil, pkgerrors.Wrapf(err, "Unable to parse expiry %s as either numeric or date expiry", rawExpiry)
 		}
 	case nil:
 		// Leave as zero/empty expiry
@@ -525,7 +525,7 @@ func IsFilePathWritable(fp string) (bool, error) {
 	//Check that containing dir exists
 	_, err := os.Stat(containingDir)
 	if err != nil {
-		return false, err
+		return false, pkgerrors.Wrapf(err, "Error checking if %s is not writable", fp)
 	}
 
 	//Check that the filePath points to a file not a directory
@@ -533,8 +533,7 @@ func IsFilePathWritable(fp string) (bool, error) {
 	if err == nil || !os.IsNotExist(err) {
 		Warn("filePath exists")
 		if fi.Mode().IsDir() {
-			err = errors.New("filePath is a directory")
-			return false, err
+			return false, fmt.Errorf("IsFilePathWritable() called but %s is a directory rather than a file", fp)
 		}
 	}
 
@@ -545,7 +544,7 @@ func IsFilePathWritable(fp string) (bool, error) {
 		return true, nil
 	}
 	if os.IsPermission(err) {
-		return false, err
+		return false, pkgerrors.Wrapf(err, "Error checking if %s is not writable", fp)
 	}
 
 	return true, nil

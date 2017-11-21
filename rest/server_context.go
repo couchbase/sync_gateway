@@ -28,6 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/sg-replicate"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -307,7 +308,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		dbName, bucketName, pool, server)
 
 	if err := db.ValidateDatabaseName(dbName); err != nil {
-		return nil, fmt.Errorf("Error validating database name: %v", err)
+		return nil, err
 	}
 
 	var importDocs, autoImport bool
@@ -417,7 +418,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("Error connecting to bucket: %v", err)
+		return nil, err
 	}
 
 	// Channel index definition, if present
@@ -529,7 +530,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating NewDatabaseContext: %v", err)
+		return nil, err
 	}
 	dbcontext.BucketSpec = spec
 
@@ -538,14 +539,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		syncFn = *config.Sync
 	}
 	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
-		return nil, fmt.Errorf("Error creating applySyncFunction: %v", err)
+		return nil, err
 	}
 
 	// Support for legacy importDocs handling - if xattrs aren't enabled, support a backfill-style import on startup
 	if importDocs && !config.UseXattrs() {
 		db, _ := db.GetDatabase(dbcontext, nil) // TODO: shouldn't this be checking the returned err?
 		if _, err := db.UpdateAllDocChannels(false, true); err != nil {
-			return nil, fmt.Errorf("Error calling UpdateAllDocChannels: %v", err)
+			return nil, err
 		}
 	}
 
@@ -574,9 +575,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Create default users & roles:
 	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
-		return nil, fmt.Errorf("Error calling installPrincipals with config.Roles: %v", err)
+		return nil, pkgerrors.Wrapf(err, "Error installing principals for role")
 	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
-		return nil, fmt.Errorf("Error calling installPrincipals with config.Users: %v", err)
+		return nil, pkgerrors.Wrapf(err, "Error installing principals for user")
 	}
 
 	// Note: disabling access-related warnings, because they potentially block startup during view reindexing trying to query the principals view, which outweighs the usability benefit
@@ -592,7 +593,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Initialize event handlers
 	if err := sc.initEventHandlers(dbcontext, config); err != nil {
-		return nil, fmt.Errorf("Error calling initEventHandlers: %v", err)
+		return nil, err
 	}
 
 	dbcontext.ExitChanges = make(chan struct{})
@@ -669,10 +670,10 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 		eventHandlersJSON, err := json.Marshal(eventHandlersMap)
 		if err != nil {
-			return err
+			return pkgerrors.Wrapf(err, "Error calling json.Marshal() in initEventHandlers")
 		}
 		if err := json.Unmarshal(eventHandlersJSON, eventHandlers); err != nil {
-			return err
+			return pkgerrors.Wrapf(err, "Error calling json.Unmarshal() in initEventHandlers")
 		}
 
 		// Process document commit event handlers
@@ -818,7 +819,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 		if err != nil {
 			// A conflict error just means updatePrincipal didn't overwrite an existing user.
 			if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {
-				return fmt.Errorf("Couldn't create %s %q: %v", what, name, err)
+				return err
 			}
 		} else if isGuest {
 			base.Log("    Reset guest user to config")

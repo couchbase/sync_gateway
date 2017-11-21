@@ -25,6 +25,7 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
+	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
@@ -120,8 +121,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
-		Warn("Error opening bucket: %s.  Error: %v", spec.BucketName, err)
-		return nil, err
+		return nil, pkgerrors.Wrapf(err, "Error opening GoCB bucket: %s", spec.BucketName)
 	}
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
@@ -275,7 +275,7 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 		return 0, fmt.Errorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
-	return cas, err
+	return cas, pkgerrors.Wrapf(err, "Unrecoverable GoCB error doing Get() on key: %s", k)
 
 }
 
@@ -705,7 +705,7 @@ func isRecoverableGoCBError(err error) bool {
 		return false
 	}
 
-	_, ok := recoverableGoCBErrors[err.Error()]
+	_, ok := recoverableGoCBErrors[pkgerrors.Cause(err).Error()]
 
 	return ok
 }
@@ -716,12 +716,13 @@ func isRecoverableGoCBError(err error) bool {
 // it's rebuilding the index.  In that case, it's desirable to return a more informative error than the
 // underlying net/url.Error. See https://github.com/couchbase/sync_gateway/issues/2639
 func isGoCBViewTimeoutError(err error) bool {
+
 	if err == nil {
 		return false
 	}
 
 	// If it's not a *url.Error, then it's not a viewtimeout error
-	netUrlError, ok := err.(*url.Error)
+	netUrlError, ok := pkgerrors.Cause(err).(*url.Error)
 	if !ok {
 		return false
 	}
@@ -869,7 +870,7 @@ func (bucket CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) error
 
 	}
 	err, _ := RetryLoop("CouchbaseBucketGoCB Set()", worker, bucket.spec.RetrySleeper())
-	return err
+	return pkgerrors.Wrapf(err, "Unrecoverable GoCB error doing Set() on key: %s", k)
 
 }
 
@@ -1319,9 +1320,9 @@ func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, 
 
 	// If the cas-safe delete of XATTR fails, return an error to the caller.
 	// This might happen if there was a concurrent update interleaved with the purge (someone resurrected doc)
-	return fmt.Errorf("DeleteWithXattr was unable to delete the doc.  Another update "+
+	return pkgerrors.Wrapf(mutateErrDeleteXattr, "DeleteWithXattr was unable to delete the doc.  Another update "+
 		"was received which resurrected the doc by adding a new revision, in which case this delete operation is "+
-		"considered as cancelled.  Underlying gocb bucket operation error: %v", mutateErrDeleteXattr)
+		"considered as cancelled. ")
 
 }
 
@@ -1347,9 +1348,9 @@ func (bucket CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, c
 
 	// If the cas-safe delete of doc body fails, return an error to the caller.
 	// This might happen if there was a concurrent update interleaved with the purge (someone resurrected doc)
-	return fmt.Errorf("DeleteWithXattr was unable to delete the doc.  It might be the case that another update "+
+	return pkgerrors.Wrapf(mutateErrDeleteBody, "DeleteWithXattr was unable to delete the doc.  It might be the case that another update "+
 		"was received which resurrected the doc by adding a new revision, in which case this delete operation is "+
-		"considred as cancelled.  Underlying gocb bucket operation error: %v", mutateErrDeleteBody)
+		"considred as cancelled.")
 
 }
 
@@ -1537,7 +1538,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
 		deleteBody := len(value) > 0
 		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
-		switch writeErr {
+		switch pkgerrors.Cause(writeErr) {
 		case nil:
 			return casOut, nil
 		case gocb.ErrKeyExists:
@@ -1614,7 +1615,7 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (u
 		return 0, fmt.Errorf("Incr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
 	}
 
-	return cas, err
+	return cas, pkgerrors.Wrapf(err, "Unrecoverable GoCB error doing Incr() on key: %s with amt: %d", k, amt)
 
 }
 
@@ -1777,13 +1778,14 @@ func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument
 }
 
 func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
-	return err == gocb.ErrKeyNotFound
+	return pkgerrors.Cause(err) == gocb.ErrKeyNotFound
 }
 
 // Check if this is a SubDocPathNotFound error
 // Pending question to see if there is an easier way: https://forums.couchbase.com/t/checking-for-errsubdocpathnotfound-errors/13492
 func (bucket CouchbaseBucketGoCB) IsSubDocPathNotFound(err error) bool {
-	subdocMutateErr, ok := err.(gocbcore.SubDocMutateError)
+
+	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
 	if ok {
 		return subdocMutateErr.Err == gocb.ErrSubDocPathNotFound
 	}
@@ -2046,7 +2048,7 @@ func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor 
 	if versionString == "" {
 		stats, err := bucket.Bucket.Stats("")
 		if err != nil {
-			return 0, 0, "error", fmt.Errorf("Error calling Stats() on GoCB bucket: %v", stats)
+			return 0, 0, "error", pkgerrors.Wrapf(err, "Unrecoverable GoCB error calling Stats()")
 		}
 
 		for _, serverMap := range stats {

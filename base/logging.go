@@ -273,7 +273,7 @@ func (config *LogAppenderConfig) ValidateLogAppender() error {
 			return fmt.Errorf("The default logger must define a \"logFilePath\" when \"rotation\" is defined")
 		}
 		if _, err := IsFilePathWritable(*config.LogFilePath); err != nil {
-			return fmt.Errorf("logFilePath %s is not writable, error: %v", *config.LogFilePath, err)
+			return err
 		}
 		if config.Rotation.MaxSize < 0 {
 			return fmt.Errorf("Log rotation MaxSize must >= 0")
@@ -296,7 +296,7 @@ func ParseLogFlags(flags []string) {
 	keyMap := make(map[string]bool)
 
 	for _, key := range flags {
-		keyMap [key] = true
+		keyMap[key] = true
 	}
 
 	ParseLogFlagsMap(keyMap)
@@ -331,7 +331,7 @@ func ParseLogFlagsMap(flags map[string]bool) {
 			if enabled {
 				LogKeys[key] = enabled
 				for strings.HasSuffix(key, "+") {
-					key = key[0: len(key) - 1]
+					key = key[0 : len(key)-1]
 					LogKeys[key] = enabled // "foo+" also enables "foo"
 				}
 			} else {

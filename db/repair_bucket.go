@@ -7,6 +7,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	"time"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -228,7 +229,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 			if err != nil {
 				// Ignore couchbase.UpdateCancel (Cas.QUIT) errors.  Any other errors should be returned to caller
-				if err != couchbase.UpdateCancel {
+				if pkgerrors.Cause(err) != couchbase.UpdateCancel {
 					return results, err
 				}
 			}
@@ -273,7 +274,7 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 
 	doc, err := unmarshalDocument(docId, contentToSave)
 	if err != nil {
-		return backupOrDryRunDocId, fmt.Errorf("Error unmarshalling updated/original doc.  Err: %v", err)
+		return backupOrDryRunDocId, err
 	}
 
 	//If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all

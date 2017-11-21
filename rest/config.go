@@ -23,10 +23,10 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-)
 
-// Register profiling handlers (see Go docs)
-import _ "net/http/pprof"
+	// Register profiling handlers (see Go docs)
+	_ "net/http/pprof"
+)
 
 var DefaultInterface = ":4984"
 var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
