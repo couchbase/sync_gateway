@@ -1809,7 +1809,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, changes.Results[0].ID, "a1")
 
 	// What happens if we call access() with a nonexistent username?
-	assertStatus(t, rt.Send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201)  // seq 10
+	assertStatus(t, rt.Send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201) // seq 10
 
 	// Must wait for sequence to arrive in cache, since the cache processor will be paused when UpdateSyncFun() is called
 	// below, which could lead to a data race if the cache processor is paused while it's processing a change
@@ -1820,7 +1820,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
 	dbc := rt.ServerContext().Database("db")
 	database, _ := db.GetDatabase(dbc, nil)
-	
+
 	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.Equals(t, err, nil)
 	assert.True(t, changed)
