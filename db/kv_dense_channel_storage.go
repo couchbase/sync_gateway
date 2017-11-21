@@ -45,10 +45,18 @@ type DenseBlockListStorage struct {
 	Blocks  []DenseBlockListEntry `json:"blocks"`
 }
 
+func (d DenseBlockList) String() string {
+	return fmt.Sprintf("channel: %s partition: %d numblocks: %d", d.channelName, d.partition, len(d.blocks))
+}
+
 type DenseBlockListEntry struct {
 	BlockIndex int                 `json:"index"` // Dense Block index
 	StartClock base.PartitionClock `json:"clock"` // Starting clock for Dense Block
 	key        string              // Used for key helper function
+}
+
+func (d DenseBlockListEntry) String() string {
+	return fmt.Sprintf("blockindex: %d key: %s startclock=zero: %v", d.BlockIndex, d.key, d.StartClock.IsZero())
 }
 
 func (e *DenseBlockListEntry) Key(parentList *DenseBlockList) string {
@@ -141,6 +149,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 
 	nextIndex := l.generateNextBlockIndex()
 	var nextStartClock base.PartitionClock
+
 	if l.activeBlock == nil {
 		// No previous active block - new block list
 		nextStartClock = make(base.PartitionClock)
@@ -175,6 +184,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	}
 	casOut, err := l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, storageValue, 0)
 	if err != nil {
+		base.LogTo("ChannelStorage+", "DenseBlockList %s got CAS error trying to persist to bucket.  Reloading and retrying", l)
 		// CAS error.  If there's a concurrent writer for this partition, assume they have created the new block.
 		//  Re-initialize the current block list, and get the active block key from there.
 		found, err := l.loadDenseBlockList()
@@ -352,6 +362,7 @@ func (l *DenseBlockList) marshalAsStorage() (*DenseBlockListStorage, error) {
 	if l.activeStartIndex <= len(l.blocks) {
 		activeBlock.Blocks = l.blocks[l.activeStartIndex:]
 	}
+
 	return activeBlock, nil
 }
 

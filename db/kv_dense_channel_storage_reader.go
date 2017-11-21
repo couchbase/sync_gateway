@@ -11,6 +11,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"sync"
@@ -327,6 +328,10 @@ func NewDensePartitionStorageReader(channelName string, partitionNo uint16, inde
 	return storage
 }
 
+func (d DensePartitionStorageReader) String() string {
+	return fmt.Sprintf("partition: %d channel: %s", d.partitionNo, d.channelName)
+}
+
 // GetChanges attempts to return results from the cached changes.  If the cache doesn't satisfy the specified range,
 // retrieves from the index.  Note: currently no writeback of indexed retrieval into the cache - cache is only updated
 // during UpdateCache()
@@ -532,9 +537,11 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange base.Par
 	if err != nil {
 		return nil, err
 	}
+
 	changes = NewPartitionChanges()
 	keySet := make(map[string]bool, 0)
 	for i := len(blockList.blocks) - 1; i >= 0; i-- {
+
 		blockListEntry := blockList.blocks[i]
 		blockKey := blockListEntry.Key(blockList)
 
@@ -568,6 +575,7 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange base.Par
 				// Expected when processing the oldest block in the range.  Don't include in set
 			}
 		}
+
 		// Prepend partition changes with the results for this block
 		changes.PrependChanges(blockChanges)
 

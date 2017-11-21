@@ -12,15 +12,17 @@ package db
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
-	"errors"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
 
 var MaxBlockSize = 10000 // Maximum size of index block, in bytes
+
+const DB_HEADER_LEN = 2 // Length of block header.  Currently only contains entry count
 
 // DenseBlock stores a collection of LogEntries for a channel.  Entries which are added to a DenseBlock are
 // appended to existing entries.  A DenseBlock is considered 'full' when the size of the block exceeds
@@ -34,14 +36,12 @@ var MaxBlockSize = 10000 // Maximum size of index block, in bytes
 //  ------------------------------------------------------------------------------------------------
 // When an entry is added to the block, a new index entry is added to the index to store the vb/seq,
 // a new entry is added to entries to store key/revId/flags, and entry count is incremented.
-
-const DB_HEADER_LEN = 2 // Length of block header.  Currently only contains entry count
-
+// The _clock field is lazily loaded because DenseBlock is used for both readers and writers, and readers don't care about the cumulative clock.
 type DenseBlock struct {
 	Key        string              // Key of block document in the index bucket
 	value      []byte              // Binary storage of block data, in the above format
 	cas        uint64              // Document cas
-	clock      base.PartitionClock // Highest seq per vbucket written to the block
+	_clock     base.PartitionClock // Highest seq per vbucket written to the block.  Unsafe to read directly due to lazy loading, use getClock() instead.
 	startClock base.PartitionClock // Starting clock for the block (partition clock for all previous blocks)
 }
 
@@ -58,11 +58,21 @@ func NewDenseBlock(key string, startClock base.PartitionClock) *DenseBlock {
 	}
 }
 
+func (d DenseBlock) String() string {
+	return fmt.Sprintf("key: %s, count: %d",
+		d.Key,
+		d.Count(),
+	)
+}
+
 func (d *DenseBlock) Count() uint16 {
 	return d.getEntryCount()
 }
 
 func (d *DenseBlock) getEntryCount() uint16 {
+	if len(d.value) < 2 {
+		return 0
+	}
 	return binary.BigEndian.Uint16(d.value[0:2])
 }
 
@@ -71,42 +81,47 @@ func (d *DenseBlock) setEntryCount(count uint16) {
 }
 
 func (d *DenseBlock) getClock() base.PartitionClock {
-	if d.clock == nil {
+	if d._clock == nil {
 		d.initClock()
 	}
-	return d.clock
+	return d._clock
 }
 
 // Get CumulativeClock returns the full clock for the partition:
 // the starting clock for this block, plus any changes made in this block
 func (d *DenseBlock) getCumulativeClock() base.PartitionClock {
 	cumulativeClock := d.startClock.Copy()
-	cumulativeClock.Set(d.clock)
+	cumulativeClock.Set(d.getClock())
 	return cumulativeClock
 }
 
 func (d *DenseBlock) loadBlock(bucket base.Bucket) error {
+
 	value, cas, err := bucket.GetRaw(d.Key)
 	if err != nil {
 		return err
 	}
 	d.value = value
 	d.cas = cas
-	d.clock = nil
+
+	// Intentionally set to nil for lazy-loading, and unsafe to read directly.  See comments on d._clock field definition.
+	d._clock = nil
+
 	IndexExpvars.Add("indexReader.blocksLoaded", 1)
 	return nil
 }
 
 // Initializes PartitionClock - called on first use of block clock.
 func (d *DenseBlock) initClock() {
+
 	// Initialize clock
-	d.clock = d.startClock.Copy()
+	d._clock = d.startClock.Copy()
 
 	var indexEntry DenseBlockIndexEntry
 	numEntries := d.getEntryCount()
 	for i := 0; i < int(numEntries); i++ {
 		indexEntry = d.value[DB_HEADER_LEN+i*INDEX_ENTRY_LEN : DB_HEADER_LEN+(i+1)*INDEX_ENTRY_LEN]
-		d.clock[indexEntry.getVbNo()] = indexEntry.getSequence()
+		d._clock[indexEntry.getVbNo()] = indexEntry.getSequence()
 	}
 }
 
@@ -116,7 +131,10 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	casFailure = false
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
-		base.LogTo("ChannelStorage+", "Block full - returning entries as overflow.  #entries:[%d]", len(entries))
+
+		base.LogTo("ChannelStorage+", "Block (%s) full since len(d.value) %d > MaxBlockSize %d - returning entries as overflow.  #entries:[%d]",
+			d, len(d.value), MaxBlockSize, len(entries))
+
 		return entries, pendingRemoval, nil, casFailure, nil
 	}
 
@@ -135,7 +153,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	casOut, err := bucket.WriteCas(d.Key, 0, 0, d.cas, d.value, sgbucket.Raw)
 	if err != nil {
 		casFailure = true
-		base.LogTo("ChannelStorage+", "CAS error writing block to database. %v", err)
+		base.LogTo("ChannelStorage+", "Block (%s) CAS error writing block to database. %v", d, err)
 		return entries, []*LogEntry{}, nil, casFailure, nil
 	}
 
@@ -274,7 +292,7 @@ func (d *DenseBlock) RemoveEntrySet(entries []*LogEntry, bucket base.Bucket) (pe
 	casOut, writeErr := base.WriteCasRaw(bucket, d.Key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		d.value = value
-		d.clock = nil
+		d._clock = nil
 		pendingRemoval = d.removeEntries(entries)
 
 		// If nothing was removed, cancel the write
@@ -306,13 +324,13 @@ func (d *DenseBlock) RollbackTo(rollbackVbNo uint16, rollbackSeq uint64, bucket 
 	if numRemoved == 0 {
 		return rollbackComplete, nil
 	} else {
-		d.clock = nil
+		d._clock = nil
 	}
 
 	casOut, writeErr := base.WriteCasRaw(bucket, d.Key, d.value, d.cas, 0, func(value []byte) (updatedValue []byte, err error) {
 		// Note: The following is invoked upon cas failure - may be called multiple times
 		d.value = value
-		d.clock = nil
+		d._clock = nil
 		numRemoved, rollbackComplete = d.rollbackEntries(rollbackVbNo, rollbackSeq)
 
 		// If nothing was removed, cancel the write

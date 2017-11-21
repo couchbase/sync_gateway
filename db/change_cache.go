@@ -55,6 +55,10 @@ type changeCache struct {
 
 type LogEntry channels.LogEntry
 
+func (l LogEntry) String() string {
+	return channels.LogEntry(l).String()
+}
+
 type LogEntries []*LogEntry
 
 // A priority-queue of LogEntries, kept ordered by increasing sequence #.
