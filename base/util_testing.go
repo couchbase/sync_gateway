@@ -332,47 +332,6 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 
 	}
 
-	// Wait until high seq nos are all 0
-
-	if tbm.Bucket.IoRouter() == nil {
-		return fmt.Errorf("Cannot determine number of vbuckets")
-	}
-	maxVbno := uint16(tbm.Bucket.IoRouter().NumVbuckets())
-
-	workerHighSeqNosZero := func() (shouldRetry bool, err error, value interface{}) {
-
-		stats, seqErr := tbm.Bucket.Stats("vbucket-seqno")
-		if seqErr != nil {
-			return false, seqErr, nil
-		}
-
-		_, highSeqnos, err := GetStatsVbSeqno(stats, maxVbno, false)
-
-		if err != nil {
-			return false, err, nil
-		}
-
-		for vbNo := uint16(0); vbNo < maxVbno; vbNo++ {
-			maxSeqForVb := highSeqnos[vbNo]
-			if maxSeqForVb > 0 {
-				log.Printf("max seq for vb %d > 0 (%d).  Retrying", vbNo, maxSeqForVb)
-				return true, nil, nil
-			}
-		}
-
-		// made it this far, then it succeeded
-		return false, nil, nil
-
-	}
-
-	err, _ = RetryLoop(
-		"Wait for vb sequence numbers to be 0",
-		workerHighSeqNosZero,
-		CreateDoublingSleeperFunc(14, 10),
-	)
-	if err != nil {
-		return err
-	}
 
 	return nil
 
