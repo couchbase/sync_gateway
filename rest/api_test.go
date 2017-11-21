@@ -1734,10 +1734,10 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 		alice.Channels(),
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(0x1),
-			"zero":  channels.NewVbSimpleSequence(0x1),
-			"alpha": channels.NewVbSimpleSequence(0x1),
-			"delta": channels.NewVbSimpleSequence(0x3),
+			"!":     channels.NewVbSimpleSequence(uint64(1)),
+			"zero":  channels.NewVbSimpleSequence(uint64(1)),
+			"alpha": channels.NewVbSimpleSequence(uint64(1)),
+			"delta": channels.NewVbSimpleSequence(uint64(3)),
 		})
 
 	zegpold, _ = a.GetUser("zegpold")
@@ -1745,9 +1745,9 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 		zegpold.Channels(),
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(0x1),
-			"zero":  channels.NewVbSimpleSequence(0x1),
-			"gamma": channels.NewVbSimpleSequence(0x4),
+			"!":     channels.NewVbSimpleSequence(uint64(1)),
+			"zero":  channels.NewVbSimpleSequence(uint64(1)),
+			"gamma": channels.NewVbSimpleSequence(uint64(4)),
 		})
 
 	// Update a document to revoke access to alice and grant it to zegpold:
@@ -1760,9 +1760,9 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 		alice.Channels(),
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(0x1),
-			"zero":  channels.NewVbSimpleSequence(0x1),
-			"delta": channels.NewVbSimpleSequence(0x3),
+			"!":     channels.NewVbSimpleSequence(uint64(1)),
+			"zero":  channels.NewVbSimpleSequence(uint64(1)),
+			"delta": channels.NewVbSimpleSequence(uint64(3)),
 		})
 
 	zegpold, _ = a.GetUser("zegpold")
@@ -1770,10 +1770,10 @@ func TestChannelAccessChanges(t *testing.T) {
 		t,
 		zegpold.Channels(),
 		channels.TimedSet{
-			"!":     channels.NewVbSimpleSequence(0x1),
-			"zero":  channels.NewVbSimpleSequence(0x1),
-			"alpha": channels.NewVbSimpleSequence(0x9),
-			"gamma": channels.NewVbSimpleSequence(0x4),
+			"!":     channels.NewVbSimpleSequence(uint64(1)),
+			"zero":  channels.NewVbSimpleSequence(uint64(1)),
+			"alpha": channels.NewVbSimpleSequence(uint64(9)),
+			"gamma": channels.NewVbSimpleSequence(uint64(4)),
 		})
 
 	rt.MustWaitForDoc("alpha", t)
@@ -1809,29 +1809,18 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, changes.Results[0].ID, "a1")
 
 	// What happens if we call access() with a nonexistent username?
-	assertStatus(t, rt.Send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201)
+	assertStatus(t, rt.Send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201)  // seq 10
 
-	// Wait for change caching to complete before running resync below
-	// time.Sleep(500 * time.Millisecond)
+	// Must wait for sequence to arrive in cache, since the cache processor will be paused when UpdateSyncFun() is called
+	// below, which could lead to a data race if the cache processor is paused while it's processing a change
+	rt.ServerContext().Database("db").WaitForSequence(uint64(10))
 
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
 	dbc := rt.ServerContext().Database("db")
 	database, _ := db.GetDatabase(dbc, nil)
-
-	time.Sleep(time.Second)
-
-	validFrom, cachedEntries := database.GetChangeIndex().GetCachedChanges(
-		"alpha",
-		db.ChangesOptions{
-			Since: db.SequenceID{Seq: 0},
-		})
-
-
-	log.Printf("GetChanges(alpha) validFrom: %v.  cachedEntries: %v", validFrom, cachedEntries)
-
-
+	
 	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.Equals(t, err, nil)
 	assert.True(t, changed)
