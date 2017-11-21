@@ -1822,13 +1822,15 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	entries, err := database.GetChangeIndex().GetChanges(
-		"ABC",
+	validFrom, cachedEntries := database.GetChangeIndex().GetCachedChanges(
+		"alpha",
 		db.ChangesOptions{
 			Since: db.SequenceID{Seq: 0},
 		})
-	assertNoError(t, err, "Unexpected error")
-	log.Printf("GetChanges() entries: %v", entries)
+
+
+	log.Printf("GetChanges(alpha) validFrom: %v.  cachedEntries: %v", validFrom, cachedEntries)
+
 
 	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.Equals(t, err, nil)
