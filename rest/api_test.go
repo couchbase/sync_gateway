@@ -962,7 +962,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 			Username: username,
 			Password: password,
 		},
-		Name: "db",
+		Name:         "db",
 		EnableXattrs: &rt1UseXattrs,
 	})
 
@@ -1066,7 +1066,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 			Username: username,
 			Password: password,
 		},
-		Name: "db",
+		Name:         "db",
 		EnableXattrs: &rt1UseXattrs,
 	})
 
@@ -1680,6 +1680,7 @@ func testAccessControl(t *testing.T, rt indexTester) {
 }
 
 func TestChannelAccessChanges(t *testing.T) {
+
 	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
 
 	rt := RestTester{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
@@ -1729,9 +1730,25 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1), "delta": channels.NewVbSimpleSequence(0x3)})
+	assert.DeepEquals(
+		t,
+		alice.Channels(),
+		channels.TimedSet{
+			"!":     channels.NewVbSimpleSequence(uint64(1)),
+			"zero":  channels.NewVbSimpleSequence(uint64(1)),
+			"alpha": channels.NewVbSimpleSequence(uint64(1)),
+			"delta": channels.NewVbSimpleSequence(uint64(3)),
+		})
+
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x4)})
+	assert.DeepEquals(
+		t,
+		zegpold.Channels(),
+		channels.TimedSet{
+			"!":     channels.NewVbSimpleSequence(uint64(1)),
+			"zero":  channels.NewVbSimpleSequence(uint64(1)),
+			"gamma": channels.NewVbSimpleSequence(uint64(4)),
+		})
 
 	// Update a document to revoke access to alice and grant it to zegpold:
 	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
@@ -1739,9 +1756,25 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "delta": channels.NewVbSimpleSequence(0x3)})
+	assert.DeepEquals(
+		t,
+		alice.Channels(),
+		channels.TimedSet{
+			"!":     channels.NewVbSimpleSequence(uint64(1)),
+			"zero":  channels.NewVbSimpleSequence(uint64(1)),
+			"delta": channels.NewVbSimpleSequence(uint64(3)),
+		})
+
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.Channels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "zero": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x9), "gamma": channels.NewVbSimpleSequence(0x4)})
+	assert.DeepEquals(
+		t,
+		zegpold.Channels(),
+		channels.TimedSet{
+			"!":     channels.NewVbSimpleSequence(uint64(1)),
+			"zero":  channels.NewVbSimpleSequence(uint64(1)),
+			"alpha": channels.NewVbSimpleSequence(uint64(9)),
+			"gamma": channels.NewVbSimpleSequence(uint64(4)),
+		})
 
 	rt.MustWaitForDoc("alpha", t)
 
@@ -1776,45 +1809,44 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, changes.Results[0].ID, "a1")
 
 	// What happens if we call access() with a nonexistent username?
-	assertStatus(t, rt.Send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201)
+	assertStatus(t, rt.Send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201) // seq 10
 
-	// Wait for change caching to complete before running resync below
-	time.Sleep(500 * time.Millisecond)
+	// Must wait for sequence to arrive in cache, since the cache processor will be paused when UpdateSyncFun() is called
+	// below, which could lead to a data race if the cache processor is paused while it's processing a change
+	rt.ServerContext().Database("db").WaitForSequence(uint64(10))
 
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
 	// we do it now because we can't close and re-open an ephemeral Walrus database.
 	dbc := rt.ServerContext().Database("db")
-	db, _ := db.GetDatabase(dbc, nil)
-	changed, err := db.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
+	database, _ := db.GetDatabase(dbc, nil)
+
+	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.Equals(t, err, nil)
 	assert.True(t, changed)
-	changeCount, err := db.UpdateAllDocChannels(true, false)
+	changeCount, err := database.UpdateAllDocChannels(true, false)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, changeCount, 9)
 
-	// Artificial delay to let updates show up on changes feed
-	// TODO: not sure how to change this to wait for a sequence
-	time.Sleep(time.Second)
-
-	changes = changesResults{}
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
-	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
-	json.Unmarshal(response.Body.Bytes(), &changes)
-	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	changes, err = rt.WaitForChanges(len(expectedIDs), "/db/_changes", "alice")
+	assertNoError(t, err, "Unexpected error")
+	log.Printf("_changes looks like: %+v", changes)
 	assert.Equals(t, len(changes.Results), len(expectedIDs))
-	json.Unmarshal(response.Body.Bytes(), &changes)
 
 	for i, expectedID := range expectedIDs {
+		if changes.Results[i].ID != expectedID {
+			log.Printf("changes.Results[i].ID != expectedID.  changes.Results: %+v, expectedIDs: %v", changes.Results, expectedIDs)
+		}
 		assert.Equals(t, changes.Results[i].ID, expectedID)
 	}
 
 	// Check accumulated statistics:
-	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(5))
-	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(1))
-	db.ChangesClientStats.Reset()
-	assert.Equals(t, db.ChangesClientStats.TotalCount(), uint32(0))
-	assert.Equals(t, db.ChangesClientStats.MaxCount(), uint32(0))
+	assert.Equals(t, database.ChangesClientStats.TotalCount(), uint32(5))
+	assert.Equals(t, database.ChangesClientStats.MaxCount(), uint32(1))
+	database.ChangesClientStats.Reset()
+	assert.Equals(t, database.ChangesClientStats.TotalCount(), uint32(0))
+	assert.Equals(t, database.ChangesClientStats.MaxCount(), uint32(0))
 }
 
 func TestAccessOnTombstone(t *testing.T) {
