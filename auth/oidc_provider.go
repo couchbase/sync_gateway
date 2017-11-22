@@ -14,6 +14,7 @@ import (
 	"net/url"
 
 	"github.com/coreos/go-oidc/oidc"
+	pkgerrors "github.com/pkg/errors"
 )
 
 type OidcProviderConfiguration struct {
@@ -132,12 +133,15 @@ func (pc *OidcProviderConfiguration) parseURI(s string) (*url.URL, error) {
 		return nil, nil
 	}
 	u, err := url.Parse(s)
-	if err == nil {
-		if u.Host == "" {
-			return nil, fmt.Errorf("Host required in URI [%s]:", s)
-		} else if u.Scheme != "http" && u.Scheme != "https" {
-			return nil, fmt.Errorf("Invalid URI scheme [%s]:", s)
-		}
+	if err != nil {
+		return nil, pkgerrors.Wrapf(err, "Error parsing URI: [%s]", s)
 	}
+
+	if u.Host == "" {
+		return nil, fmt.Errorf("Host required in URI [%s]:", s)
+	} else if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("Invalid URI scheme [%s]:", s)
+	}
+
 	return u, nil
 }
