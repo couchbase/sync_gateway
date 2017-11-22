@@ -7,6 +7,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto"
 )
 
@@ -229,7 +230,16 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 			return nil, false, marshalErr
 		}
 
-		casOut, writeErr := db.Bucket.WriteCasWithXattr(docid, KSyncXattrName, 0, existingDoc.Cas, value, xattrValue)
+		// TODO: Could refactor migrateMetadata to use WriteUpdateWithXattr for both CAS retry and general write handling, and avoid cast to CouchbaseBucketGoCB
+		gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
+		if !ok {
+			return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
+		}
+
+		// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
+		isDelete := doc.hasFlag(channels.Deleted)
+		deleteBody := isDelete && len(existingDoc.Body) > 0
+		casOut, writeErr := gocbBucket.WriteWithXattr(docid, KSyncXattrName, 0, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
 		if writeErr == nil {
 			doc.Cas = casOut
 			base.LogTo("Migrate", "Successfully migrated doc %q", docid)
