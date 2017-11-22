@@ -358,7 +358,7 @@ function(doc, oldDoc) {
 
 		since := ""
 
-		maxTries := 10
+		maxTries := 30
 		numTries := 0
 
 		changesAccumulated := []db.ChangeEntry{}
@@ -367,6 +367,7 @@ function(doc, oldDoc) {
 
 			// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
 			// ensure it doesn't terminate before the first change is sent.
+			log.Printf("Invoking _changes?feed=continuous&since=%s&timeout=2000", since)
 			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
 
 			changes, err := readContinuousChanges(changesResponse)
@@ -377,11 +378,14 @@ function(doc, oldDoc) {
 			if len(changesAccumulated) >= numExpectedChanges {
 				log.Printf("Got numExpectedChanges (%d).  Done", numExpectedChanges)
 				break
+			} else {
+				log.Printf("Only received %d out of %d expected changes.  Attempt %d / %d.", len(changesAccumulated), numExpectedChanges, numTries, maxTries)
 			}
 
 			// Advance the since value if we got any changes
 			if len(changes) > 0 {
 				since = changes[len(changes)-1].Seq.String()
+				log.Printf("Setting since value to: %s.", since)
 			}
 
 			numTries++
@@ -406,9 +410,13 @@ function(doc, oldDoc) {
 			input = input + fmt.Sprintf(`{"_id":"%s", "type":"Want", "owner":"bernard"}`, docId)
 		}
 		input = input + `]}`
+
+		log.Printf("Sending 2nd round of _bulk_docs")
 		response = rt.Send(requestByUser("POST", "/db/_bulk_docs", input, "bernard"))
+		log.Printf("Sent 2nd round of _bulk_docs")
 
 	}
+
 
 	// wait for changes feed to complete (time out)
 	wg.Wait()
