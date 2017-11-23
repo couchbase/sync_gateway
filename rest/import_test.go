@@ -493,7 +493,9 @@ type treeDoc struct {
 	Meta treeMeta `json:"_sync"`
 }
 type treeMeta struct {
-	RevTree treeHistory `json:"history"`
+	RevTree    treeHistory `json:"history"`
+	CurrentRev string      `json:"rev"`
+	Sequence   uint64      `json:"sequence,omitempty"`
 }
 type treeHistory struct {
 	BodyMap    map[string]string `json:"bodymap"`
@@ -562,6 +564,71 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	err = json.Unmarshal(rawResponse.Body.Bytes(), &doc)
 	assert.Equals(t, len(doc.Meta.RevTree.BodyKeyMap), 3)
 	assert.Equals(t, len(doc.Meta.RevTree.BodyMap), 0)
+
+}
+
+// Test migration of a 1.4 doc that's been tombstoned
+func TestMigrateTombstone(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// Write doc in SG format directly to the bucket
+	key := "TestMigrateTombstone"
+	bodyString := `
+{
+    "_deleted": true, 
+    "_sync": {
+        "flags": 1, 
+        "history": {
+            "channels": [
+                null, 
+                null
+            ], 
+            "deleted": [
+                1
+            ], 
+            "parents": [
+                -1, 
+                0
+            ], 
+            "revs": [
+                "1-f6fa803508c40388de38c9f99729c835", 
+                "2-6b1e1af9190829c1ceab6f1c8fb9fa3f"
+            ]
+        }, 
+        "recent_sequences": [
+            4, 
+            5
+        ], 
+        "rev": "2-6b1e1af9190829c1ceab6f1c8fb9fa3f", 
+        "sequence": 5, 
+        "time_saved": "2017-11-22T13:24:33.115313269-08:00"
+    }
+}`
+
+	// Create via the SDK with sync metadata intact
+	_, err := bucket.Add(key, 0, []byte(bodyString))
+	assertNoError(t, err, "Error writing tombstoned doc")
+
+	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
+	response := rt.SendAdminRequest("GET", "/db/"+key, "")
+	assert.Equals(t, response.Code, 404)
+
+	// Get raw to retrieve metadata, and validate bodies have been moved to xattr
+	rawResponse := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
+	assert.Equals(t, rawResponse.Code, 200)
+	var doc treeDoc
+	err = json.Unmarshal(rawResponse.Body.Bytes(), &doc)
+	assert.Equals(t, doc.Meta.CurrentRev, "2-6b1e1af9190829c1ceab6f1c8fb9fa3f")
+	assert.Equals(t, doc.Meta.Sequence, uint64(5))
 
 }
 
