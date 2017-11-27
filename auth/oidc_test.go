@@ -12,6 +12,7 @@ package auth
 import (
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -39,5 +40,29 @@ func TestOIDCUsername(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, provider.UserPrefix, "www.someprovider.com%2Fextra")
 	assert.Equals(t, IsValidPrincipalName(oidcUsername), true)
+
+}
+
+// This test verifies that common OpenIDConnect providers return configurations that
+// don't cause any errors in the Sync Gateway processing, for example if the URL parsing fails.
+// If any errors are found from provider, these should be dealt with appropriately.  As new
+// OIDC providers are tested and supported, their discovery URL should be added to this list.
+// See https://github.com/couchbase/sync_gateway/issues/3065
+func TestFetchCustomProviderConfig(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test is only enabled in integration test mode due to remote webserver dependencies")
+	}
+
+	providerDiscoveryUrls := []string{
+		"https://accounts.google.com/.well-known/openid-configuration",
+		"https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+	}
+
+	for _, discoveryUrl := range providerDiscoveryUrls {
+		oidcProvider := OIDCProvider{}
+		_, err := oidcProvider.FetchCustomProviderConfig(discoveryUrl)
+		assert.True(t, err == nil)
+	}
 
 }
