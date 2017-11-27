@@ -358,7 +358,7 @@ function(doc, oldDoc) {
 
 		since := ""
 
-		maxTries := 30
+		maxTries := 10
 		numTries := 0
 
 		changesAccumulated := []db.ChangeEntry{}
