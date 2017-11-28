@@ -6,9 +6,9 @@ import (
 )
 
 const ServerName = "@PRODUCT_NAME@"                  // DO NOT CHANGE; clients check this
-const VersionNumber float64 = 1.5                    // API/feature level
-const VersionBuildNumberString = "@PRODUCT_VERSION@" // Real string substituted by Gerrit
-const VersionCommitSHA = "@COMMIT_SHA@"              // Real string substituted by Gerrit
+const VersionNumber = "2.0"                          // API/feature level
+const VersionBuildNumberString = "@PRODUCT_VERSION@" // Real string substituted by Jenkins build
+const VersionCommitSHA = "@COMMIT_SHA@"              // Real string substituted by Jenkins build
 
 // This appears in the "Server:" header of HTTP responses.
 // This should be changed only very cautiously, because Couchbase Lite parses the header value
@@ -38,7 +38,7 @@ func init() {
 		ProductName = ServerName
 	} else {
 		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s)", GitProductName, GitBranch, GitCommit, GitDirty)
-		VersionString = fmt.Sprintf("%s/%g branch/%s commit/%.7s%s", GitProductName, VersionNumber, GitBranch, GitCommit, GitDirty)
+		VersionString = fmt.Sprintf("%s/%s branch/%s commit/%.7s%s", GitProductName, VersionNumber, GitBranch, GitCommit, GitDirty)
 		ProductName = GitProductName
 	}
 }
