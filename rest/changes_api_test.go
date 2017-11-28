@@ -1059,7 +1059,6 @@ func updateTestDoc(rt RestTester, docid string, revid string, body string) (newR
 
 // Validate retrieval of various document body types using include_docs.
 func TestChangesIncludeDocs(t *testing.T) {
-
 	var logKeys = map[string]bool{
 		"TEST": true,
 	}
@@ -1080,8 +1079,14 @@ func TestChangesIncludeDocs(t *testing.T) {
 	_, err := updateTestDoc(rt, "doc_active", "", `{"type": "active", "channels":["alpha"]}`)
 	assertNoError(t, err, "Error updating doc")
 
-	// Tombstoned
+	// Multi-revision
 	var revid string
+	revid, err = updateTestDoc(rt, "doc_multi_rev", "", `{"type": "active", "channels":["alpha"], "v":1}`)
+	assertNoError(t, err, "Error updating doc")
+	_, err = updateTestDoc(rt, "doc_multi_rev", revid, `{"type": "active", "channels":["alpha"], "v":2}`)
+	assertNoError(t, err, "Error updating doc")
+
+	// Tombstoned
 	revid, err = updateTestDoc(rt, "doc_tombstone", "", `{"type": "tombstone", "channels":["alpha"]}`)
 	assertNoError(t, err, "Error updating doc")
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/doc_tombstone?rev=%s", revid), "")
@@ -1130,28 +1135,30 @@ func TestChangesIncludeDocs(t *testing.T) {
 	// Conflict
 	revid, err = updateTestDoc(rt, "doc_conflict", "", `{"type": "conflict", "channels":["alpha"]}`)
 	_, err = updateTestDoc(rt, "doc_conflict", revid, `{"type": "conflict", "channels":["alpha"]}`)
-	newEdits_conflict := fmt.Sprintf(`{"type": "conflict", "channels":["alpha"]},
-                   "_revisions": {"start": 2, "ids": ["conflicting_rev", "%s"]}}`, revid)
+	newEdits_conflict := `{"type": "conflict", "channels":["alpha"],
+                   "_revisions": {"start": 2, "ids": ["conflicting_rev", "19a316235cdd9d695d73765dc527d903"]}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc_conflict?new_edits=false", newEdits_conflict)
+	assertStatus(t, response, 201)
 
 	// Resolved conflict
 	revid, err = updateTestDoc(rt, "doc_resolved_conflict", "", `{"type": "resolved_conflict", "channels":["alpha"]}`)
 	_, err = updateTestDoc(rt, "doc_resolved_conflict", revid, `{"type": "resolved_conflict", "channels":["alpha"]}`)
-	newEdits_conflict = fmt.Sprintf(`{"type": "resolved_conflict", "channels":["alpha"]},
-                   "_revisions": {"start": 2, "ids": ["conflicting_rev", "%s"]}}`, revid)
+	newEdits_conflict = `{"type": "resolved_conflict", "channels":["alpha"]},
+                   "_revisions": {"start": 2, "ids": ["conflicting_rev", "4e123c0497a1a6975540977ec127c06c"]}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc_resolved_conflict?new_edits=false", newEdits_conflict)
 	response = rt.SendAdminRequest("DELETE", "/db/doc_resolved_conflict?rev=2-conflicting_rev", "")
 
-	expectedResults := make([]string, 9)
+	expectedResults := make([]string, 10)
 	expectedResults[0] = `{"seq":1,"id":"_user/user1","changes":[]}`
 	expectedResults[1] = `{"seq":2,"id":"doc_active","doc":{"_id":"doc_active","_rev":"1-d59fda97ac4849f6a754fbcf4b522980","channels":["alpha"],"type":"active"},"changes":[{"rev":"1-d59fda97ac4849f6a754fbcf4b522980"}]}`
-	expectedResults[2] = `{"seq":4,"id":"doc_tombstone","deleted":true,"removed":["alpha"],"doc":{"_deleted":true,"_id":"doc_tombstone","_rev":"2-5bd8eb422f30e8d455940672e9e76549"},"changes":[{"rev":"2-5bd8eb422f30e8d455940672e9e76549"}]}`
-	expectedResults[3] = `{"seq":6,"id":"doc_removed","removed":["alpha"],"doc":{"_id":"doc_removed","_removed":true,"_rev":"2-d15cb77d1dbe1cc06d27310de5b75914"},"changes":[{"rev":"2-d15cb77d1dbe1cc06d27310de5b75914"}]}`
-	expectedResults[4] = `{"seq":10,"id":"doc_pruned","removed":["alpha"],"doc":{"_id":"doc_pruned","_removed":true,"_rev":"2-5afcb73bd3eb50615470e3ba54b80f00"},"changes":[{"rev":"2-5afcb73bd3eb50615470e3ba54b80f00"}]}`
-	expectedResults[5] = `{"seq":16,"id":"doc_attachment","doc":{"_attachments":{"attach1":{"content_type":"text/plain","digest":"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=","length":30,"revpos":2,"stub":true}},"_id":"doc_attachment","_rev":"2-0db6aecd6b91981e7f97c95ca64b5019","channels":["alpha"],"type":"attachments"},"changes":[{"rev":"2-0db6aecd6b91981e7f97c95ca64b5019"}]}`
-	expectedResults[6] = `{"seq":17,"id":"doc_large_numbers","doc":{"_id":"doc_large_numbers","_rev":"1-2721633d9000e606e9c642e98f2f5ae7","channels":["alpha"],"largefloat":1234567890.1234,"largeint":1234567890,"type":"large_numbers"},"changes":[{"rev":"1-2721633d9000e606e9c642e98f2f5ae7"}]}`
-	expectedResults[7] = `{"seq":19,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-869a7167ccbad634753105568055bd61","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
-	expectedResults[8] = `{"seq":21,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
+	expectedResults[2] = `{"seq":4,"id":"doc_multi_rev","doc":{"_id":"doc_multi_rev","_rev":"2-db2cf770921c3764b2d213ee0cbb5f45","channels":["alpha"],"type":"active","v":2},"changes":[{"rev":"2-db2cf770921c3764b2d213ee0cbb5f45"}]}`
+	expectedResults[3] = `{"seq":6,"id":"doc_tombstone","deleted":true,"removed":["alpha"],"doc":{"_deleted":true,"_id":"doc_tombstone","_rev":"2-5bd8eb422f30e8d455940672e9e76549"},"changes":[{"rev":"2-5bd8eb422f30e8d455940672e9e76549"}]}`
+	expectedResults[4] = `{"seq":8,"id":"doc_removed","removed":["alpha"],"doc":{"_id":"doc_removed","_removed":true,"_rev":"2-d15cb77d1dbe1cc06d27310de5b75914"},"changes":[{"rev":"2-d15cb77d1dbe1cc06d27310de5b75914"}]}`
+	expectedResults[5] = `{"seq":12,"id":"doc_pruned","removed":["alpha"],"doc":{"_id":"doc_pruned","_removed":true,"_rev":"2-5afcb73bd3eb50615470e3ba54b80f00"},"changes":[{"rev":"2-5afcb73bd3eb50615470e3ba54b80f00"}]}`
+	expectedResults[6] = `{"seq":18,"id":"doc_attachment","doc":{"_attachments":{"attach1":{"content_type":"text/plain","digest":"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=","length":30,"revpos":2,"stub":true}},"_id":"doc_attachment","_rev":"2-0db6aecd6b91981e7f97c95ca64b5019","channels":["alpha"],"type":"attachments"},"changes":[{"rev":"2-0db6aecd6b91981e7f97c95ca64b5019"}]}`
+	expectedResults[7] = `{"seq":19,"id":"doc_large_numbers","doc":{"_id":"doc_large_numbers","_rev":"1-2721633d9000e606e9c642e98f2f5ae7","channels":["alpha"],"largefloat":1234567890.1234,"largeint":1234567890,"type":"large_numbers"},"changes":[{"rev":"1-2721633d9000e606e9c642e98f2f5ae7"}]}`
+	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","_revisions":{"ids":["conflicting_rev","19a316235cdd9d695d73765dc527d903"],"start":2},"channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"}]}`
+	expectedResults[9] = `{"seq":24,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
 	changesResponse := rt.Send(requestByUser("GET", "/db/_changes?include_docs=true", "", "user1"))
 
 	// If we unmarshal results to db.ChangeEntry, json numbers get mangled by the test.  Validate against RawMessage to simplify.
@@ -1171,6 +1178,9 @@ func TestChangesIncludeDocs(t *testing.T) {
 	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
 	testDB.Bucket.Delete("_sync:rev:doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00")
 
+	// Post-flush, the _revisions property isn't present on the conflicted doc.  See https://github.com/couchbase/sync_gateway/issues/3107
+	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"}]}`
+
 	postFlushChangesResponse := rt.Send(requestByUser("GET", "/db/_changes?include_docs=true", "", "user1"))
 
 	var postFlushChanges struct {
@@ -1184,6 +1194,44 @@ func TestChangesIncludeDocs(t *testing.T) {
 		assert.Equals(t, fmt.Sprintf("%s", *result), expectedResults[index])
 	}
 
+	// Validate include_docs=false, style=all_docs permutations
+	expectedStyleAllDocs := make([]string, 10)
+	expectedStyleAllDocs[0] = `{"seq":1,"id":"_user/user1","changes":[]}`
+	expectedStyleAllDocs[1] = `{"seq":2,"id":"doc_active","changes":[{"rev":"1-d59fda97ac4849f6a754fbcf4b522980"}]}`
+	expectedStyleAllDocs[2] = `{"seq":4,"id":"doc_multi_rev","changes":[{"rev":"2-db2cf770921c3764b2d213ee0cbb5f45"}]}`
+	expectedStyleAllDocs[3] = `{"seq":6,"id":"doc_tombstone","deleted":true,"removed":["alpha"],"changes":[{"rev":"2-5bd8eb422f30e8d455940672e9e76549"}]}`
+	expectedStyleAllDocs[4] = `{"seq":8,"id":"doc_removed","removed":["alpha"],"changes":[{"rev":"2-d15cb77d1dbe1cc06d27310de5b75914"}]}`
+	expectedStyleAllDocs[5] = `{"seq":12,"id":"doc_pruned","removed":["alpha"],"changes":[{"rev":"2-5afcb73bd3eb50615470e3ba54b80f00"}]}`
+	expectedStyleAllDocs[6] = `{"seq":18,"id":"doc_attachment","changes":[{"rev":"2-0db6aecd6b91981e7f97c95ca64b5019"}]}`
+	expectedStyleAllDocs[7] = `{"seq":19,"id":"doc_large_numbers","changes":[{"rev":"1-2721633d9000e606e9c642e98f2f5ae7"}]}`
+	expectedStyleAllDocs[8] = `{"seq":22,"id":"doc_conflict","changes":[{"rev":"2-conflicting_rev"},{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
+	expectedStyleAllDocs[9] = `{"seq":24,"id":"doc_resolved_conflict","changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
+
+	styleAllDocsChangesResponse := rt.Send(requestByUser("GET", "/db/_changes?style=all_docs", "", "user1"))
+	var allDocsChanges struct {
+		Results []*json.RawMessage
+	}
+	err = json.Unmarshal(styleAllDocsChangesResponse.Body.Bytes(), &allDocsChanges)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(allDocsChanges.Results), len(expectedStyleAllDocs))
+	for index, result := range allDocsChanges.Results {
+		assert.Equals(t, fmt.Sprintf("%s", *result), expectedStyleAllDocs[index])
+	}
+
+	// Validate style=all_docs, include_docs=true permutations.  Only modified doc from include_docs test is doc_conflict (adds open revisions)
+	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"},{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
+
+	combinedChangesResponse := rt.Send(requestByUser("GET", "/db/_changes?style=all_docs&include_docs=true", "", "user1"))
+	var combinedChanges struct {
+		Results []*json.RawMessage
+	}
+
+	err = json.Unmarshal(combinedChangesResponse.Body.Bytes(), &combinedChanges)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(combinedChanges.Results), len(expectedResults))
+	for index, result := range combinedChanges.Results {
+		assert.Equals(t, fmt.Sprintf("%s", *result), expectedResults[index])
+	}
 }
 
 // Test _changes with channel filter
