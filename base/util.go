@@ -30,6 +30,8 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
+	"encoding/binary"
+	"github.com/couchbase/gomemcached"
 )
 
 const (
@@ -755,4 +757,10 @@ func GetExpvarAsString(mapName string, name string) string {
 	} else {
 		return ""
 	}
+}
+
+
+// TODO: temporary workaround until https://issues.couchbase.com/browse/MB-27026 is implemented
+func ExtractExpiryFromMemcachedRequest(rq *gomemcached.MCRequest) (expiry uint32) {
+	return binary.BigEndian.Uint32(rq.Extras[20:24])
 }

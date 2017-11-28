@@ -104,7 +104,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 	}
 
 	db, _ := CreateDatabase(s.context)
-	expiry, _, err := body.getExpiry()
+	expiry, _, err := body.GetExpiry()
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}

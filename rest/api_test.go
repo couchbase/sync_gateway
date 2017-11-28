@@ -1829,7 +1829,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equals(t, changeCount, 9)
 
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
-	changes, err = rt.WaitForChanges(len(expectedIDs), "/db/_changes", "alice")
+	changes, err = rt.WaitForChanges(len(expectedIDs), "/db/_changes", "alice", false)
 	assertNoError(t, err, "Unexpected error")
 	log.Printf("_changes looks like: %+v", changes)
 	assert.Equals(t, len(changes.Results), len(expectedIDs))

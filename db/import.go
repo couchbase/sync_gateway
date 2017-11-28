@@ -19,7 +19,7 @@ const (
 )
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, isDelete bool, cas uint64, mode ImportMode) (docOut *document, err error) {
+func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, isDelete bool, cas uint64, expiry uint32, mode ImportMode) (docOut *document, err error) {
 
 	var body Body
 	if isDelete {
@@ -33,9 +33,10 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 	}
 
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Body:  value,
-		Xattr: xattrValue,
-		Cas:   cas,
+		Body:   value,
+		Xattr:  xattrValue,
+		Cas:    cas,
+		Expiry: expiry,
 	}
 	return db.importDoc(docid, body, isDelete, existingBucketDoc, mode)
 }
@@ -71,7 +72,8 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 	var newRev string
 	var alreadyImportedDoc *document
-	docOut, _, err = db.updateAndReturnDoc(docid, true, 0, existingDoc, func(doc *document) (Body, AttachmentData, error) {
+	// TODO: what happens on cas retry?  It will need to reload the expiry.
+	docOut, _, err = db.updateAndReturnDoc(docid, true, existingDoc.Expiry, existingDoc, func(doc *document) (Body, AttachmentData, error) {
 
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
@@ -187,6 +189,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
 func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *document, requiresImport bool, err error) {
 
+	// TODO: deal with reloading scenarios
+	expiry := existingDoc.Expiry
+
 	for {
 		// Reload existing doc, if not present
 		if len(existingDoc.Body) == 0 {
@@ -239,7 +244,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 		// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 		isDelete := doc.hasFlag(channels.Deleted)
 		deleteBody := isDelete && len(existingDoc.Body) > 0
-		casOut, writeErr := gocbBucket.WriteWithXattr(docid, KSyncXattrName, 0, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
+		casOut, writeErr := gocbBucket.WriteWithXattr(docid, KSyncXattrName, expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
 		if writeErr == nil {
 			doc.Cas = casOut
 			base.LogTo("Migrate", "Successfully migrated doc %q", docid)

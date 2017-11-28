@@ -55,6 +55,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 		}
 		// If existing doc wasn't an SG Write, import the doc.
 		if !doc.IsSGWrite() {
+
 			var importErr error
 			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas)
 			if importErr != nil {
@@ -126,6 +127,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 		// If existing doc wasn't an SG Write, import the doc.
 		if !doc.IsSGWrite() {
 			var importErr error
+
 			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
 			if importErr != nil {
 				return emptySyncData, importErr
@@ -160,7 +162,9 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 	isDelete := rawDoc == nil
 	importDb := Database{DatabaseContext: db, user: nil}
 	var importErr error
-	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, isDelete, cas, ImportOnDemand)
+
+
+	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, isDelete, cas, 0, ImportOnDemand)
 	if importErr == base.ErrImportCancelledFilter {
 		// If the import was cancelled due to filter, treat as not found
 		return nil, base.HTTPErrorf(404, "Not imported")

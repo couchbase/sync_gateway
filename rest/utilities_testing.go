@@ -247,13 +247,19 @@ type changesResults struct {
 	Results []db.ChangeEntry
 }
 
-func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesUrl, username string) (worker base.RetryWorker) {
+func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesUrl, username string, useAdminPort bool) (worker base.RetryWorker) {
 
 	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
 
 		var changes changesResults
+		var response *TestResponse
 
-		response := rt.Send(requestByUser("GET", changesUrl, "", username))
+		if useAdminPort {
+			response = rt.SendAdminRequest("GET", changesUrl, "")
+
+		} else {
+			response = rt.Send(requestByUser("GET", changesUrl, "", username))
+		}
 		err = json.Unmarshal(response.Body.Bytes(), &changes)
 		if err != nil {
 			return false, err, nil
@@ -270,9 +276,9 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 
 }
 
-func (rt *RestTester) WaitForChanges(numChangesExpected int, changesUrl, username string) (changes changesResults, err error) {
+func (rt *RestTester) WaitForChanges(numChangesExpected int, changesUrl, username string, useAdminPort bool) (changes changesResults, err error) {
 
-	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, changesUrl, username)
+	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, changesUrl, username, useAdminPort)
 
 	sleeper := base.CreateDoublingSleeperFunc(20, 10)
 
@@ -394,6 +400,14 @@ type TestResponse struct {
 
 func (r TestResponse) DumpBody() {
 	log.Printf("%v", string(r.Body.Bytes()))
+}
+
+func (r TestResponse) MustGetBodyAsDoc() db.Body {
+	body := db.Body{}
+	if err := body.Unmarshal(r.Body.Bytes()); err != nil {
+		panic(fmt.Sprintf("Error unmarshalling %s into doc body.  Err: %v", r.Body.String(), err))
+	}
+	return body
 }
 
 func request(method, resource, body string) *http.Request {

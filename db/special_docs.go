@@ -50,7 +50,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 	}
 	var revid string
 
-	expiry, expPresent, err := body.getExpiry()
+	expiry, expPresent, err := body.GetExpiry()
 	if err != nil {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}

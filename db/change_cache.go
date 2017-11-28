@@ -407,8 +407,18 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 				if isDelete {
 					rawBody = nil
 				}
+
+				// Figure out the expiry.  In the case of feed based dcp import, the expiry will be on the
+				// DCP Event.  In the case of feed based migration, the expiry will be in the syncMeta
+				var expiry uint32
+				if event.Expiry > 0 {
+					expiry = event.Expiry
+				} else if syncData.Expiry != nil {
+					expiry = uint32((*syncData.Expiry).Unix())
+				}
+
 				db := Database{DatabaseContext: c.context, user: nil}
-				_, err := db.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, ImportFromFeed)
+				_, err := db.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, expiry, ImportFromFeed)
 				if err != nil {
 					if err == base.ErrImportCasFailure {
 						base.LogTo("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", docID)
