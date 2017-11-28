@@ -524,9 +524,7 @@ func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
 	return
 }
 
-func TestAllDocs(t *testing.T) {
-	// base.LogKeys["Cache"] = true
-	// base.LogKeys["Changes"] = true
+func TestAllDocsOnly(t *testing.T) {
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
@@ -536,15 +534,6 @@ func TestAllDocs(t *testing.T) {
 	DefaultChannelCacheAge = 0
 	defer func() { DefaultChannelCacheAge = oldChannelCacheAge }()
 
-	/*
-		base.LogKeys["Changes"] = true
-		base.LogKeys["Changes+"] = true
-		defer func() {
-			base.LogKeys["Changes"] = false
-			base.LogKeys["Changes+"] = false
-		}()
-	*/
-
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	ids := make([]AllDocsEntry, 100)
@@ -553,7 +542,7 @@ func TestAllDocs(t *testing.T) {
 		if i%10 == 0 {
 			channels = append(channels, "KFJC")
 		}
-		body := Body{"serialnumber": i, "channels": channels}
+		body := Body{"serialnumber": int64(i), "channels": channels}
 		ids[i].DocID = fmt.Sprintf("alldoc-%02d", i)
 		revid, err := db.Put(ids[i].DocID, body)
 		ids[i].RevID = revid
@@ -587,9 +576,9 @@ func TestAllDocs(t *testing.T) {
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
 	db.changeCache.waitForSequence(101)
-	log := db.GetChangeLog("all", 0)
-	assert.Equals(t, len(log), 50)
-	assert.Equals(t, int(log[0].Sequence), 52)
+	changeLog := db.GetChangeLog("all", 0)
+	assert.Equals(t, len(changeLog), 50)
+	assert.Equals(t, int(changeLog[0].Sequence), 52)
 
 	// Now check the changes feed:
 	var options ChangesOptions
@@ -621,6 +610,8 @@ func TestAllDocs(t *testing.T) {
 		assert.Equals(t, change.ID, ids[10*i].DocID)
 		assert.Equals(t, change.Deleted, false)
 		assert.DeepEquals(t, change.Removed, base.Set(nil))
+		// Note: When changes uses the rev cache, this test doesn't trigger FixJSONNumbers (since it writes docs as Body, not raw JSON,
+		//       and doesn't require a read from DB)
 		assert.Equals(t, change.Doc["serialnumber"], int64(10*i))
 	}
 }
@@ -666,10 +657,9 @@ func TestUpdatePrincipal(t *testing.T) {
 	assert.Equals(t, nextSeq, uint64(3))
 }
 
-
 // Re-apply one of the conflicting changes to make sure that PutExistingRev() treats it as a no-op (SG Issue #3048)
 func TestRepeatedConflict(t *testing.T) {
-	
+
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
@@ -702,7 +692,6 @@ func TestRepeatedConflict(t *testing.T) {
 	assert.True(t, ok)
 	revGen, _ = ParseRevID(rev.(string))
 	assert.Equals(t, revGen, 2)
-
 
 }
 
