@@ -2777,7 +2777,12 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// Disable rev cache so that the _bulk_get request is forced to go back to the bucket to load the doc
 	// rather than loading it from the (stale) rev cache.  The rev cache will be stale since the test
 	// short-circuits Sync Gateway and directly updates the bucket.
+	// Need to reset at the end of the test, to avoid bleed into other tests
+	normalCapacity := db.KDefaultRevisionCacheCapacity
 	db.KDefaultRevisionCacheCapacity = 0
+	defer func() {
+		db.KDefaultRevisionCacheCapacity = normalCapacity
+	}()
 
 	docIdDoc1 := "doc"
 	attachmentName := "attach1"
