@@ -1042,6 +1042,150 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 }
 
+func updateTestDoc(rt RestTester, docid string, revid string, body string) (newRevId string, err error) {
+	path := fmt.Sprintf("/db/%s", docid)
+	if revid != "" {
+		path = fmt.Sprintf("%s?rev=%s", path, revid)
+	}
+	response := rt.SendRequest("PUT", path, body)
+	if response.Code != 200 && response.Code != 201 {
+		return "", fmt.Errorf("createDoc got unexpected response code : %d", response.Code)
+	}
+
+	var responseBody db.Body
+	json.Unmarshal(response.Body.Bytes(), &responseBody)
+	return responseBody["rev"].(string), nil
+}
+
+// Validate retrieval of various document body types using include_docs.
+func TestChangesIncludeDocs(t *testing.T) {
+
+	var logKeys = map[string]bool{
+		"TEST": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
+	testDB := rt.GetDatabase()
+	testDB.RevsLimit = 3
+	defer rt.Close()
+
+	// Create user1
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha", "beta"]}`)
+	assertStatus(t, response, 201)
+
+	//Create docs for each scenario
+	// Active
+	_, err := updateTestDoc(rt, "doc_active", "", `{"type": "active", "channels":["alpha"]}`)
+	assertNoError(t, err, "Error updating doc")
+
+	// Tombstoned
+	var revid string
+	revid, err = updateTestDoc(rt, "doc_tombstone", "", `{"type": "tombstone", "channels":["alpha"]}`)
+	assertNoError(t, err, "Error updating doc")
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/doc_tombstone?rev=%s", revid), "")
+	assertStatus(t, response, 200)
+
+	// Removed
+	revid, err = updateTestDoc(rt, "doc_removed", "", `{"type": "removed", "channels":["alpha"]}`)
+	assertNoError(t, err, "Error updating doc")
+	_, err = updateTestDoc(rt, "doc_removed", revid, `{"type": "removed"}`)
+	assertNoError(t, err, "Error updating doc")
+
+	// No access (no channels)
+	_, err = updateTestDoc(rt, "doc_no_channels", "", `{"type": "no_channels", "channels":["gamma"]}`)
+	assertNoError(t, err, "Error updating doc")
+
+	// No access (other channels)
+	_, err = updateTestDoc(rt, "doc_no_access", "", `{"type": "no_access", "channels":["gamma"]}`)
+	assertNoError(t, err, "Error updating doc")
+
+	// Removal, pruned from rev tree
+	var prunedRevId string
+	prunedRevId, err = updateTestDoc(rt, "doc_pruned", "", `{"type": "pruned", "channels":["alpha"]}`)
+	assertNoError(t, err, "Error updating doc")
+	// Generate more revs than revs_limit (3)
+	revid = prunedRevId
+	for i := 0; i < 5; i++ {
+		revid, err = updateTestDoc(rt, "doc_pruned", revid, `{"type": "pruned", "channels":["gamma"]}`)
+		assertNoError(t, err, "Error updating doc")
+	}
+
+	// Doc w/ attachment
+	revid, err = updateTestDoc(rt, "doc_attachment", "", `{"type": "attachments", "channels":["alpha"]}`)
+	assertNoError(t, err, "Error updating doc")
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "text/plain"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+	response = rt.SendRequestWithHeaders("PUT", fmt.Sprintf("/db/doc_attachment/attach1?rev=%s", revid), attachmentBody, reqHeaders)
+	assertStatus(t, response, 201)
+
+	// Doc w/ large numbers
+	_, err = updateTestDoc(rt, "doc_large_numbers", "", `{"type": "large_numbers", "channels":["alpha"], "largeint":1234567890, "largefloat":1234567890.1234}`)
+	assertNoError(t, err, "Error updating doc")
+
+	// Conflict
+	revid, err = updateTestDoc(rt, "doc_conflict", "", `{"type": "conflict", "channels":["alpha"]}`)
+	_, err = updateTestDoc(rt, "doc_conflict", revid, `{"type": "conflict", "channels":["alpha"]}`)
+	newEdits_conflict := fmt.Sprintf(`{"type": "conflict", "channels":["alpha"]},
+                   "_revisions": {"start": 2, "ids": ["conflicting_rev", "%s"]}}`, revid)
+	response = rt.SendAdminRequest("PUT", "/db/doc_conflict?new_edits=false", newEdits_conflict)
+
+	// Resolved conflict
+	revid, err = updateTestDoc(rt, "doc_resolved_conflict", "", `{"type": "resolved_conflict", "channels":["alpha"]}`)
+	_, err = updateTestDoc(rt, "doc_resolved_conflict", revid, `{"type": "resolved_conflict", "channels":["alpha"]}`)
+	newEdits_conflict = fmt.Sprintf(`{"type": "resolved_conflict", "channels":["alpha"]},
+                   "_revisions": {"start": 2, "ids": ["conflicting_rev", "%s"]}}`, revid)
+	response = rt.SendAdminRequest("PUT", "/db/doc_resolved_conflict?new_edits=false", newEdits_conflict)
+	response = rt.SendAdminRequest("DELETE", "/db/doc_resolved_conflict?rev=2-conflicting_rev", "")
+
+	expectedResults := make([]string, 9)
+	expectedResults[0] = `{"seq":1,"id":"_user/user1","changes":[]}`
+	expectedResults[1] = `{"seq":2,"id":"doc_active","doc":{"_id":"doc_active","_rev":"1-d59fda97ac4849f6a754fbcf4b522980","channels":["alpha"],"type":"active"},"changes":[{"rev":"1-d59fda97ac4849f6a754fbcf4b522980"}]}`
+	expectedResults[2] = `{"seq":4,"id":"doc_tombstone","deleted":true,"removed":["alpha"],"doc":{"_deleted":true,"_id":"doc_tombstone","_rev":"2-5bd8eb422f30e8d455940672e9e76549"},"changes":[{"rev":"2-5bd8eb422f30e8d455940672e9e76549"}]}`
+	expectedResults[3] = `{"seq":6,"id":"doc_removed","removed":["alpha"],"doc":{"_id":"doc_removed","_removed":true,"_rev":"2-d15cb77d1dbe1cc06d27310de5b75914"},"changes":[{"rev":"2-d15cb77d1dbe1cc06d27310de5b75914"}]}`
+	expectedResults[4] = `{"seq":10,"id":"doc_pruned","removed":["alpha"],"doc":{"_id":"doc_pruned","_removed":true,"_rev":"2-5afcb73bd3eb50615470e3ba54b80f00"},"changes":[{"rev":"2-5afcb73bd3eb50615470e3ba54b80f00"}]}`
+	expectedResults[5] = `{"seq":16,"id":"doc_attachment","doc":{"_attachments":{"attach1":{"content_type":"text/plain","digest":"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=","length":30,"revpos":2,"stub":true}},"_id":"doc_attachment","_rev":"2-0db6aecd6b91981e7f97c95ca64b5019","channels":["alpha"],"type":"attachments"},"changes":[{"rev":"2-0db6aecd6b91981e7f97c95ca64b5019"}]}`
+	expectedResults[6] = `{"seq":17,"id":"doc_large_numbers","doc":{"_id":"doc_large_numbers","_rev":"1-2721633d9000e606e9c642e98f2f5ae7","channels":["alpha"],"largefloat":1234567890.1234,"largeint":1234567890,"type":"large_numbers"},"changes":[{"rev":"1-2721633d9000e606e9c642e98f2f5ae7"}]}`
+	expectedResults[7] = `{"seq":19,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-869a7167ccbad634753105568055bd61","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
+	expectedResults[8] = `{"seq":21,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
+	changesResponse := rt.Send(requestByUser("GET", "/db/_changes?include_docs=true", "", "user1"))
+
+	// If we unmarshal results to db.ChangeEntry, json numbers get mangled by the test.  Validate against RawMessage to simplify.
+	var changes struct {
+		Results []*json.RawMessage
+	}
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), len(expectedResults))
+
+	for index, result := range changes.Results {
+		assert.Equals(t, fmt.Sprintf("%s", *result), expectedResults[index])
+	}
+
+	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
+	testDB.FlushRevisionCache()
+	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
+	testDB.Bucket.Delete("_sync:rev:doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00")
+
+	postFlushChangesResponse := rt.Send(requestByUser("GET", "/db/_changes?include_docs=true", "", "user1"))
+
+	var postFlushChanges struct {
+		Results []*json.RawMessage
+	}
+	err = json.Unmarshal(postFlushChangesResponse.Body.Bytes(), &postFlushChanges)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(postFlushChanges.Results), len(expectedResults))
+
+	for index, result := range postFlushChanges.Results {
+		assert.Equals(t, fmt.Sprintf("%s", *result), expectedResults[index])
+	}
+
+}
+
 // Test _changes with channel filter
 func changesActiveOnly(t *testing.T, it indexTester) {
 

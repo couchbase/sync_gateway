@@ -87,29 +87,50 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		return
 	}
 
-	var doc *document
-	var err error
-	// The document, which may include just the syncMeta or may include syncMeta + Body, depending on circumstances
-	if options.IncludeDocs {
-		// load whole doc
-		doc, err = db.GetDocument(entry.ID, DocUnmarshalAll)
+	// Three options for retrieving document content, depending on what's required:
+	//   includeConflicts only:
+	//      - Retrieve document metadata from bucket (required to identify current set of conflicts)
+	//   includeDocs only:
+	//      - Use rev cache to retrieve document body
+	//   includeConflicts and includeDocs:
+	//      - Retrieve document AND metadata from bucket; single round-trip usually more efficient than
+	//      metadata retrieval + rev cache retrieval (since rev cache miss will trigger KV retrieval of doc+metadata again)
+
+	if options.IncludeDocs && includeConflicts {
+		// Load doc body + metadata
+		doc, err := db.GetDocument(entry.ID, DocUnmarshalAll)
 		if err != nil {
 			base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
 			return
 		}
+		db.AddDocInstanceToChangeEntry(entry, doc, options)
 
-	} else {
-		// get doc metadata
-		doc = &document{}
+	} else if includeConflicts {
+		// Load doc metadata only
+		doc := &document{}
+		var err error
 		doc.syncData, err = db.GetDocSyncData(entry.ID)
 		if err != nil {
 			base.Warn("Changes feed: error getting doc sync data %q: %v", entry.ID, err)
 			return
 		}
+		db.AddDocInstanceToChangeEntry(entry, doc, options)
 
+	} else if options.IncludeDocs {
+		// Retrieve document from rev cache
+		revID := entry.Changes[0]["rev"]
+		err := db.AddDocToChangeEntryUsingRevCache(entry, revID)
+		if err != nil {
+			base.Warn("Changes feed: error getting revision body for %q (%s): %v", entry.ID, revID, err)
+		}
 	}
-	db.AddDocInstanceToChangeEntry(entry, doc, options)
 
+}
+
+func (db *Database) AddDocToChangeEntryUsingRevCache(entry *ChangeEntry, revID string) (err error) {
+	// GetRevWithHistory for (doc, rev, no max history, no history from, no attachments, no _exp)
+	entry.Doc, err = db.GetRevWithHistory(entry.ID, revID, 0, nil, nil, false)
+	return err
 }
 
 // Adds a document body and/or its conflicts to a ChangeEntry
