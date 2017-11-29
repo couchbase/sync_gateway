@@ -2076,7 +2076,7 @@ func (bucket CouchbaseBucketGoCB) Close() {
 
 
 
-func (bucket CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaError error) {
+func (bucket CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
 
 	bucket.singleOps <- struct{}{}
 	gocbExpvars.Add("SingleOps", 1)
@@ -2105,6 +2105,33 @@ func (bucket CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaErr
 
 	return expiry, getMetaError
 
+
+}
+
+func (bucket CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaError error) {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		expirySingleAttempt, err := bucket.getExpirySingleAttempt(k)
+		shouldRetry = (err != nil && isRecoverableGoCBError(err))
+		return shouldRetry, err, uint32(expirySingleAttempt)
+	}
+
+	// Kick off retry loop
+	description := fmt.Sprintf("GetExpiry for key: %v", k)
+	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint32(0)
+	}
+
+	// Type assertion of result
+	expiry, ok := result.(uint32)
+	if !ok {
+		return 0, fmt.Errorf("Get: Error doing type assertion of %v into a uint32,  Key: %v", result, k)
+	}
+
+	return expiry, pkgerrors.Wrapf(err, "Unrecoverable GoCB error doing GetExpiry() on key: %s", k)
 
 }
 
