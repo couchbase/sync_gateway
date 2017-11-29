@@ -793,7 +793,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 }
 
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via DCP feed
-func DisabledTestXattrOnDemandImportPreservesExpiry(t *testing.T) {
+func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
@@ -844,7 +844,7 @@ func DisabledTestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 }
 
 // Test migration of a 1.5 doc that has an expiry value.
-func DisabledTestOnDemandMigrateWithExpiry(t *testing.T) {
+func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
@@ -863,14 +863,8 @@ func DisabledTestOnDemandMigrateWithExpiry(t *testing.T) {
 	expirySeconds := time.Second * 30
 	syncMetaExpiry := time.Now().Add(expirySeconds)
 	bodyString := rawDocWithSyncMeta()
-	_, err := bucket.Add(key, 0, []byte(bodyString))
+	_, err := bucket.Add(key, uint32(syncMetaExpiry.Unix()), []byte(bodyString))
 	assertNoError(t, err, "Error writing doc w/ expiry")
-
-	// Verify the expiry before the on-demand import is triggered.  Expected to be 0 at this point
-	gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
-	expiry, err := gocbBucket.GetExpiry(key)
-	assertNoError(t, err, "Error calling GetExpiry()")
-	assert.True(t, expiry == 0)
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
 	response := rt.SendAdminRequest("GET", "/db/"+key, "")
@@ -880,7 +874,8 @@ func DisabledTestOnDemandMigrateWithExpiry(t *testing.T) {
 	assertXattrSyncMetaRevGeneration(t, bucket, key, 1)
 
 	// Now get the doc expiry and validate that it has been migrated into the doc metadata
-	expiry, err = gocbBucket.GetExpiry(key)
+	gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
+	expiry, err := gocbBucket.GetExpiry(key)
 	assertNoError(t, err, "Error calling GetExpiry()")
 	assert.True(t, expiry > 0)
 	log.Printf("expiry: %v", expiry)

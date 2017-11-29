@@ -85,8 +85,17 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			// If this is an on-demand import, we want to continue to import the current version of the doc.  Re-initialize existing doc based on the latest doc
 			if mode == ImportOnDemand {
 				body = doc.Body()
+
+				// Reload the doc expiry
+				gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
+				expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
+				if getExpiryErr != nil {
+					return nil, nil, getExpiryErr
+				}
+
 				existingDoc = &sgbucket.BucketDocument{
-					Cas: doc.Cas,
+					Cas:    doc.Cas,
+					Expiry: expiry,
 				}
 			}
 		}
