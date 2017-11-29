@@ -765,9 +765,9 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 
 	// Create via the SDK with sync metadata intact
 	expirySeconds := time.Second * 30
-	syncMetaExpiry := time.Now().Add(expirySeconds)
-	bodyString := expiringRawDocWithSyncMeta(syncMetaExpiry)
-	_, err := bucket.Add(key, 0, []byte(bodyString))
+	testExpiry := time.Now().Add(expirySeconds)
+	bodyString := rawDocWithSyncMeta()
+	_, err := bucket.Add(key, uint32(testExpiry.Unix()), []byte(bodyString))
 	assertNoError(t, err, "Error writing doc w/ expiry")
 
 	// Wait for doc to appear on changes feed
@@ -788,7 +788,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	assert.True(t, expiry > 0)
 	assertNoError(t, err, "Error calling GetExpiry()")
 	log.Printf("expiry: %v", expiry)
-	assert.True(t, expiry == uint32(syncMetaExpiry.Unix()))
+	assert.True(t, expiry == uint32(testExpiry.Unix()))
 
 }
 
@@ -862,7 +862,7 @@ func DisabledTestOnDemandMigrateWithExpiry(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	expirySeconds := time.Second * 30
 	syncMetaExpiry := time.Now().Add(expirySeconds)
-	bodyString := expiringRawDocWithSyncMeta(syncMetaExpiry)
+	bodyString := rawDocWithSyncMeta()
 	_, err := bucket.Add(key, 0, []byte(bodyString))
 	assertNoError(t, err, "Error writing doc w/ expiry")
 
@@ -970,9 +970,9 @@ func assertDocProperty(t *testing.T, getDocResponse *TestResponse, propertyName 
 	assert.Equals(t, value, expectedPropertyValue)
 }
 
-func expiringRawDocWithSyncMeta(syncMetaExpiry time.Time) string {
+func rawDocWithSyncMeta() string {
 
-	bodyStringTemplate := `
+	return `
 {
     "_sync": {
         "rev": "1-ca9ad22802b66f662ff171f226211d5c",
@@ -991,15 +991,12 @@ func expiringRawDocWithSyncMeta(syncMetaExpiry time.Time) string {
                 null
             ]
         },
-	    "exp": "%s",
         "cas": "",
         "time_saved": "2017-11-29T12:46:13.456631-08:00"
     }
 }
 `
 
-	bodyString := fmt.Sprintf(bodyStringTemplate, syncMetaExpiry.Format(time.RFC3339))
-	return bodyString
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
