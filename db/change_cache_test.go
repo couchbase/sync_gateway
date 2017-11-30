@@ -19,6 +19,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
+	"github.com/couchbase/sg-bucket"
+	"sync"
 )
 
 func e(seq uint64, docid string, revid string) *LogEntry {
@@ -1185,3 +1187,110 @@ func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*Chang
 	}
 
 }
+
+
+// This was added to increase code coverage as part of SG #2633
+// It was artifically derived to pick one arbitrarily chosen code block in the change set mentioned
+// in that issue, to try to exercise that code.  If that code block is commented, it does catch
+// error which demonstrates that the code block is useful.
+// This test could also serve as example code for other tests that test the changeCache (channel cache) directly.
+//
+// 1. Create a doc + feed event with unusued sequences 10 and 11
+// 2. Create another doc + feed event that tries to reuse sequence 10 with a doc in channel ABC -- it should be ignored by the change cache
+// 3. Detect whether the 2nd was ignored using an onChange listener callback and make sure it was not added to the ABC channel
+func TestDocChangedSynchronous(t *testing.T) {
+
+	// Enable relevant logging
+	base.EnableLogKey("Cache+")
+	base.EnableLogKey("Changes+")
+
+	// Create a test db that uses channel cache
+	channelOptions := ChannelCacheOptions{
+		ChannelCacheMinLength: 600,
+		ChannelCacheMaxLength: 600,
+	}
+	options := CacheOptions{
+		ChannelCacheOptions: channelOptions,
+	}
+	db, testBucket := setupTestDBWithCacheOptions(t, options)
+	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
+	// ------------------ Feed event with doc that contains unused sequences -------------------
+
+	// Create a doc with unused sequences
+	docId := "foo"
+	doc := document{
+		ID: docId,
+	}
+	doc.syncData = syncData{
+		UnusedSequences: []uint64{
+			10,
+			11,
+		},
+		CurrentRev: "1-abc",
+		Sequence: 12,
+	}
+	docBytes, err := doc.MarshalJSON()
+	assertNoError(t, err, "Unexpected error")
+
+	// Create a feed event that uses that doc
+	feedEvent := sgbucket.FeedEvent{
+		Synchronous: true,
+		Key: []byte(docId),
+		Value: docBytes,
+	}
+
+	db.changeCache.DocChanged(feedEvent)
+
+
+	// ------------------ Feed event with doc in ABC with sequence previously marked as unused -------------------
+
+	// Create a doc + feed event in channel ABC with sequence previously marked as unused
+	doc2 := document{
+		ID: docId,
+	}
+	channelMap := channels.ChannelMap{
+		"ABC": nil,
+	}
+	doc2.syncData = syncData{
+		CurrentRev: "1-cdd",
+		Sequence: 10,  // <-- this was previously marked as an unused sequence and so this event should be ignored
+		Channels: channelMap,
+	}
+	docBytes2, err := doc2.MarshalJSON()
+	assertNoError(t, err, "Unexpected error")
+
+	// Feed event 2
+	feedEvent2 := sgbucket.FeedEvent{
+		Synchronous: true,
+		Key: []byte(docId),
+		Value: docBytes2,
+	}
+
+	// type assert this from ChangeIndex interface -> concrete changeCache implementation
+	changeCacheImpl := db.changeCache.(*changeCache)
+
+	//  Detect whether the 2nd was ignored using an onChange listener callback and make sure it was not added to the ABC channel
+	waitForOnChangeCallback := sync.WaitGroup{}
+	waitForOnChangeCallback.Add(1)
+	changeCacheImpl.onChange = func(channels base.Set) {
+		defer waitForOnChangeCallback.Done()
+		log.Printf("channelsChanged: %v", channels)
+		// Since the sequence was marked as a previously unused sequence, it should have been ignored.
+		// If it was ignored, then this should not have been called back w/ the ABC channel, and any callbacks
+		// with the ABC channel should be considered a bug
+		assert.True(t, !channels.Contains("ABC"))
+
+	}
+
+	// Add feed event to change cache
+	db.changeCache.DocChanged(feedEvent2)
+
+
+	// Block until the onChange callback was invoked
+	waitForOnChangeCallback.Wait()
+
+
+}
+
