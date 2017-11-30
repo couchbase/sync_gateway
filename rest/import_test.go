@@ -843,7 +843,6 @@ func TestXattrOnDemandImportGetPreservesExpiry(t *testing.T) {
 
 }
 
-
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via DCP feed
 func TestXattrOnDemandImportWritePreservesExpiry(t *testing.T) {
 
@@ -898,44 +897,61 @@ func TestXattrOnDemandImportWritePreservesExpiry(t *testing.T) {
 
 }
 
-
-// Test migration of a 1.5 doc that has an expiry value.
-func TestOnDemandMigrateWithExpiry(t *testing.T) {
+func TestOnDemandGetWriteMigrateWithExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
-		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+	var rt RestTester
+
+	triggerOnDemandViaGet := func(key string) {
+		// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
+		response := rt.SendAdminRequest("GET", "/db/"+key, "")
+		assert.Equals(t, response.Code, 200)
 	}
-	defer rt.Close()
-	bucket := rt.Bucket()
+	triggerOnDemandViaWrite := func(key string) {
+		bodyString := rawDocWithSyncMeta()
+		rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), bodyString)
+	}
 
-	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+	testCases := []func(string){
+		triggerOnDemandViaGet,
+		triggerOnDemandViaWrite,
+	}
+	for i, triggerOnDemand := range testCases {
+		t.Run(fmt.Sprintf("Subtest"), func(t *testing.T) {
 
-	// Write doc in SG format directly to the bucket
-	key := "TestMigrateWithExpiry"
+			key := fmt.Sprintf("TestOnDemandGetWriteMigrateWithExpiry-%d", i)
 
-	// Create via the SDK with sync metadata intact
-	expirySeconds := time.Second * 30
-	syncMetaExpiry := time.Now().Add(expirySeconds)
-	bodyString := rawDocWithSyncMeta()
-	_, err := bucket.Add(key, uint32(syncMetaExpiry.Unix()), []byte(bodyString))
-	assertNoError(t, err, "Error writing doc w/ expiry")
+			rt = RestTester{
+				SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+			}
+			defer rt.Close()
+			bucket := rt.Bucket()
 
-	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
-	response := rt.SendAdminRequest("GET", "/db/"+key, "")
-	assert.Equals(t, response.Code, 200)
+			rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
 
-	// Double-check to make sure that it's been imported by checking the Sync Metadata in the xattr
-	assertXattrSyncMetaRevGeneration(t, bucket, key, 1)
+			// Create via the SDK with sync metadata intact
+			expirySeconds := time.Second * 30
+			syncMetaExpiry := time.Now().Add(expirySeconds)
+			bodyString := rawDocWithSyncMeta()
+			_, err := bucket.Add(key, uint32(syncMetaExpiry.Unix()), []byte(bodyString))
+			assertNoError(t, err, "Error writing doc w/ expiry")
 
-	// Now get the doc expiry and validate that it has been migrated into the doc metadata
-	gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
-	expiry, err := gocbBucket.GetExpiry(key)
-	assertNoError(t, err, "Error calling GetExpiry()")
-	assert.True(t, expiry > 0)
-	log.Printf("expiry: %v", expiry)
-	assert.True(t, expiry == uint32(syncMetaExpiry.Unix()))
+			triggerOnDemand(key)
+
+			// Double-check to make sure that it's been imported by checking the Sync Metadata in the xattr
+			assertXattrSyncMeta(t, bucket, key)
+
+			// Now get the doc expiry and validate that it has been migrated into the doc metadata
+			gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
+			expiry, err := gocbBucket.GetExpiry(key)
+			assertNoError(t, err, "Error calling GetExpiry()")
+			assert.True(t, expiry > 0)
+			log.Printf("expiry: %v", expiry)
+			assert.True(t, expiry == uint32(syncMetaExpiry.Unix()))
+
+		})
+	}
 
 }
 
@@ -1057,5 +1073,16 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 	revision, ok := xattr["rev"]
 	assert.True(t, ok)
 	generation, _ := db.ParseRevID(revision.(string))
+	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
 	assert.True(t, generation == expectedRevGeneration)
+}
+
+func assertXattrSyncMeta(t *testing.T, bucket base.Bucket, key string) {
+	xattr := map[string]interface{}{}
+	_, err := bucket.GetWithXattr(key, "_sync", nil, &xattr)
+	assertNoError(t, err, "Error Getting Xattr")
+	revision, ok := xattr["rev"]
+	assert.True(t, ok)
+	generation, _ := db.ParseRevID(revision.(string))
+	assert.True(t, generation > 0)
 }
