@@ -610,13 +610,9 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
-	// TODO: this should be fixed for the Non-XATTR case and re-enabled
-	// TODO: details here: https://github.com/couchbase/sync_gateway/issues/3075
-
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is only working against Walrus currently.  Needs more investigation.  Failure logs: https://gist.github.com/tleyden/7011c68aa85dd739babf90a1a556469d")
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
-
 
 	var logKeys = map[string]bool{
 		"Sequence": true,
@@ -665,7 +661,9 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	assert.Equals(t, len(changes), 3)
 	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
-	db.Bucket.Incr("_sync:seq", 7, 0, 0)
+	_, incrErr := db.Bucket.Incr("_sync:seq", 7, 7, 0)
+	assert.True(t, incrErr == nil)
+
 	// Modify user to have access to both channels (sequence 2):
 	userInfo, err := db.GetPrincipal("naomi", true)
 	assert.True(t, userInfo != nil)
