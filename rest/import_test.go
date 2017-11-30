@@ -868,7 +868,8 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 }
 
 
-
+// Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is migrated via on-demand
+// import (GET or WRITE)
 func TestOnDemandGetWriteMigrateWithExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
