@@ -56,15 +56,8 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 		// If existing doc wasn't an SG Write, import the doc.
 		if !doc.IsSGWrite() {
 
-			// Get the doc doc expiry
-			gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
-			expiry, getExpiryErr := gocbBucket.GetExpiry(key)
-			if getExpiryErr != nil {
-				return nil, getExpiryErr
-			}
-
 			var importErr error
-			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas, expiry)
+			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas)
 			if importErr != nil {
 				return nil, importErr
 			}
@@ -135,14 +128,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 		if !doc.IsSGWrite() {
 			var importErr error
 
-			// Get the doc doc expiry
-			gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
-			expiry, getExpiryErr := gocbBucket.GetExpiry(key)
-			if getExpiryErr != nil {
-				return emptySyncData, getExpiryErr
-			}
-
-			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas, expiry)
+			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
 			if importErr != nil {
 				return emptySyncData, importErr
 			}
@@ -172,10 +158,17 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
-func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, rawXattr []byte, cas uint64, expiry uint32) (docOut *document, err error) {
+func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, rawXattr []byte, cas uint64) (docOut *document, err error) {
 	isDelete := rawDoc == nil
 	importDb := Database{DatabaseContext: db, user: nil}
 	var importErr error
+
+	// Get the doc doc expiry
+	gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
+	expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
+	if getExpiryErr != nil {
+		return nil, getExpiryErr
+	}
 
 	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, isDelete, cas, expiry, ImportOnDemand)
 	if importErr == base.ErrImportCancelledFilter {
@@ -572,7 +565,14 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *document, body Bod
 	// Use an admin-scoped database for import
 	importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
 
-	importedDoc, importErr := importDb.ImportDoc(docid, doc, isDelete, ImportOnDemand)
+	// Get the doc doc expiry
+	gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
+	expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
+	if getExpiryErr != nil {
+		return getExpiryErr
+	}
+
+	importedDoc, importErr := importDb.ImportDoc(docid, doc, isDelete, expiry, ImportOnDemand)
 
 	if importErr == base.ErrImportCancelledFilter {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert

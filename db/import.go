@@ -42,7 +42,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 }
 
 // Import a document, given the existing state of the doc in *document format.
-func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool, mode ImportMode) (docOut *document, err error) {
+func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool, expiry uint32, mode ImportMode) (docOut *document, err error) {
 
 	if existingDoc == nil {
 		return nil, fmt.Errorf("No existing doc present when attempting to import %s", docid)
@@ -54,9 +54,10 @@ func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool
 		return nil, err
 	}
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Body:  rawValue,
-		Xattr: rawXattr,
-		Cas:   existingDoc.Cas,
+		Body:   rawValue,
+		Xattr:  rawXattr,
+		Cas:    existingDoc.Cas,
+		Expiry: expiry,
 	}
 
 	return db.importDoc(docid, existingDoc.Body(), isDelete, existingBucketDoc, mode)
