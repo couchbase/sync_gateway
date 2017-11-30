@@ -1200,6 +1200,10 @@ func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*Chang
 // 3. Detect whether the 2nd was ignored using an onChange listener callback and make sure it was not added to the ABC channel
 func TestDocChangedSynchronous(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		t.Skip("This test only works in channel cache mode")
+	}
+
 	// Enable relevant logging
 	base.EnableLogKey("Cache+")
 	base.EnableLogKey("Changes+")
