@@ -793,7 +793,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 }
 
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via DCP feed
-func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
+func TestXattrOnDemandImportGetPreservesExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
@@ -823,7 +823,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	assertNoError(t, err, "Error calling GetExpiry()")
 	assert.True(t, expiry == uint32(expiryUnixEpoch))
 
-	// Trigger on-demand import
+	// Trigger on-demand GET import
 	rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s", mobileKey), "")
 
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point.
@@ -842,6 +842,62 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	assert.True(t, expiry == uint32(expiryUnixEpoch))
 
 }
+
+
+// Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via DCP feed
+func TestXattrOnDemandImportWritePreservesExpiry(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn:         `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &DbConfig{},
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// 1. Create docs via the SDK with expiry set
+	mobileKey := "TestXattrImportPreservesExpiry"
+	mobileBody := make(map[string]interface{})
+	mobileBody["type"] = "mobile"
+	mobileBody["channels"] = "ABC"
+
+	// Write directly to bucket with an expiry
+	expiryUnixEpoch := time.Now().Add(time.Second * 30).Unix()
+	_, err := bucket.Add(mobileKey, uint32(expiryUnixEpoch), mobileBody)
+	assertNoError(t, err, "Error writing SDK doc")
+
+	// Verify the expiry before the on-demand import is triggered
+	gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
+	expiry, err := gocbBucket.GetExpiry(mobileKey)
+	assertNoError(t, err, "Error calling GetExpiry()")
+	assert.True(t, expiry == uint32(expiryUnixEpoch))
+
+	// Trigger on-demand WRITE import
+	mobileBody["foo"] = "bar"
+	mobileBodyMarshalled, err := json.Marshal(mobileBody)
+	assertNoError(t, err, "Error marshalling body")
+	rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", mobileKey), string(mobileBodyMarshalled))
+
+	// Wait until the change appears on the changes feed to ensure that it's been imported by this point.
+	// This is probably unnecessary in the case of on-demand imports, but it doesn't hurt to leave it in as a double check.
+	changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+	assertNoError(t, err, "Error waiting for changes")
+	changeEntry := changes.Results[0]
+	assert.Equals(t, changeEntry.ID, mobileKey)
+
+	// Double-check to make sure that it's been imported by checking the Sync Metadata in the xattr
+	assertXattrSyncMetaRevGeneration(t, bucket, mobileKey, 1)
+
+	// Verify the expiry has not been changed from the original expiry value
+	expiry, err = gocbBucket.GetExpiry(mobileKey)
+	assertNoError(t, err, "Error calling GetExpiry()")
+	assert.True(t, expiry == uint32(expiryUnixEpoch))
+
+}
+
 
 // Test migration of a 1.5 doc that has an expiry value.
 func TestOnDemandMigrateWithExpiry(t *testing.T) {
