@@ -402,14 +402,6 @@ func (r TestResponse) DumpBody() {
 	log.Printf("%v", string(r.Body.Bytes()))
 }
 
-func (r TestResponse) MustGetBodyAsDoc() db.Body {
-	body := db.Body{}
-	if err := body.Unmarshal(r.Body.Bytes()); err != nil {
-		panic(fmt.Sprintf("Error unmarshalling %s into doc body.  Err: %v", r.Body.String(), err))
-	}
-	return body
-}
-
 func request(method, resource, body string) *http.Request {
 	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
 	request.RequestURI = resource // This doesn't get filled in by NewRequest
