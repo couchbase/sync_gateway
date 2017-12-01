@@ -786,7 +786,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
 	expiry, err := gocbBucket.GetExpiry(key)
 	assert.True(t, expiry > 0)
-	assertNoError(t, err, "Error calling GetExpiry()")
+	assertNoError(t, err, "Error calling getExpiry()")
 	log.Printf("expiry: %v", expiry)
 	assert.True(t, expiry == uint32(testExpiry.Unix()))
 

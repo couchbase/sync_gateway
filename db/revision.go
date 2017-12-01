@@ -62,10 +62,10 @@ func (body Body) MutableAttachmentsCopy() Body {
 	return copied
 }
 
-// Returns the expiry as uint32 (using GetExpiry), and removes the _exp property from the body
+// Returns the expiry as uint32 (using getExpiry), and removes the _exp property from the body
 func (body Body) extractExpiry() (uint32, error) {
 
-	exp, present, err := body.GetExpiry()
+	exp, present, err := body.getExpiry()
 	if !present || err != nil {
 		return exp, err
 	}
@@ -75,7 +75,7 @@ func (body Body) extractExpiry() (uint32, error) {
 }
 
 // Looks up the _exp property in the document, and turns it into a Couchbase Server expiry value, as:
-func (body Body) GetExpiry() (uint32, bool, error) {
+func (body Body) getExpiry() (uint32, bool, error) {
 	rawExpiry, ok := body["_exp"]
 	if !ok {
 		return 0, false, nil //_exp not present

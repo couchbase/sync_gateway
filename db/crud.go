@@ -163,7 +163,7 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 	importDb := Database{DatabaseContext: db, user: nil}
 	var importErr error
 
-	// Get the doc doc expiry
+	// Get the doc expiry
 	gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
 	expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
 	if getExpiryErr != nil {
@@ -565,7 +565,7 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *document, body Bod
 	// Use an admin-scoped database for import
 	importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
 
-	// Get the doc doc expiry
+	// Get the doc expiry
 	gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
 	expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
 	if getExpiryErr != nil {

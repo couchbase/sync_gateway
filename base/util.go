@@ -761,7 +761,7 @@ func GetExpvarAsString(mapName string, name string) string {
 
 
 // TODO: temporary workaround until https://issues.couchbase.com/browse/MB-27026 is implemented
-func ExtractExpiryFromMemcachedRequest(rq *gomemcached.MCRequest) (expiry uint32) {
+func ExtractExpiryFromDCPMutation(rq *gomemcached.MCRequest) (expiry uint32) {
 	if len(rq.Extras) < 24 {
 		return 0
 	}
