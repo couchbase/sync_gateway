@@ -1471,6 +1471,7 @@ func TestReplicateErrorConditions(t *testing.T) {
 }
 
 //These tests validate request parameters not actual replication
+// TODO: Disabled until https://github.com/couchbase/sync_gateway/issues/3113 is fixed.  When re-enabled, 10s sleep must be removed.
 func DisableTestDocumentChangeReplicate(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
