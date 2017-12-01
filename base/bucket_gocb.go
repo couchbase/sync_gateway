@@ -841,7 +841,7 @@ func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added 
 		return false, nil
 	}
 
-	return err == nil, err
+	return err == nil, pkgerrors.Wrapf(err, "Error calling GoCB AddRaw() for doc id: %s", k)
 
 }
 

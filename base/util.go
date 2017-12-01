@@ -148,7 +148,7 @@ func CouchbaseUrlWithAuth(serverUrl, username, password, bucketname string) (str
 	// parse url and reconstruct it piece by piece
 	u, err := url.Parse(serverUrl)
 	if err != nil {
-		return "", err
+		return "", pkgerrors.Wrapf(err, "Error parsing serverUrl: %v", serverUrl)
 	}
 
 	userPass := bytes.Buffer{}
@@ -660,7 +660,7 @@ func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []strin
 	// Unable to do simple URL parse, try to parse into components w/ gocbconnstr
 	connSpec, errParse := gocbconnstr.Parse(couchbaseUri)
 	if errParse != nil {
-		return httpUrls, errParse
+		return httpUrls, pkgerrors.Wrapf(err, "Error parsing gocb connection string: %v", couchbaseUri)
 	}
 
 	for _, address := range connSpec.Addresses {

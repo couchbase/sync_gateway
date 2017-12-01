@@ -17,17 +17,16 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/go-couchbase"
-
-	"sync"
-	"sync/atomic"
-
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -767,7 +766,7 @@ func installViews(bucket base.Bucket, useXattrs bool) error {
 		err, _ := base.RetryLoop(description, worker, sleeper)
 
 		if err != nil {
-			return err
+			return pkgerrors.Wrapf(err, "Error installing Couchbase Design doc: %v", designDocName)
 		}
 	}
 
