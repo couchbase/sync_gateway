@@ -2157,10 +2157,29 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x1)})
-	assert.DeepEquals(t, alice.RoleNames(), channels.TimedSet{"bogus": channels.NewVbSimpleSequence(0x1), "hipster": channels.NewVbSimpleSequence(0x1)})
+	assert.DeepEquals(t,
+		alice.InheritedChannels(),
+		channels.TimedSet{
+			"!":     channels.NewVbSimpleSequence(0x1),
+			"alpha": channels.NewVbSimpleSequence(0x1),
+			"gamma": channels.NewVbSimpleSequence(0x1),
+		},
+	)
+	assert.DeepEquals(t,
+		alice.RoleNames(),
+		channels.TimedSet{
+			"bogus":   channels.NewVbSimpleSequence(0x1),
+			"hipster": channels.NewVbSimpleSequence(0x1),
+		},
+	)
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "beta": channels.NewVbSimpleSequence(0x1)})
+	assert.DeepEquals(t,
+		zegpold.InheritedChannels(),
+		channels.TimedSet{
+			"!":    channels.NewVbSimpleSequence(0x1),
+			"beta": channels.NewVbSimpleSequence(0x1),
+		},
+	)
 	assert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
 
 	// Check the _changes feed:
@@ -2188,9 +2207,22 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1)})
+	assert.DeepEquals(t,
+		alice.InheritedChannels(),
+		channels.TimedSet{
+			"!":     channels.NewVbSimpleSequence(0x1),
+			"alpha": channels.NewVbSimpleSequence(0x1),
+		},
+	)
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "beta": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x6)})
+	assert.DeepEquals(t,
+		zegpold.InheritedChannels(),
+		channels.TimedSet{
+			"!":     channels.NewVbSimpleSequence(0x1),
+			"beta":  channels.NewVbSimpleSequence(0x1),
+			"gamma": channels.NewVbSimpleSequence(0x6),
+		},
+	)
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	changes.Results = nil
@@ -2198,7 +2230,8 @@ func TestRoleAccessChanges(t *testing.T) {
 	log.Printf("3rd _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
-	assert.Equals(t, changes.Last_Seq, "6:2")
+	log.Printf("changes: %+v", changes.Results)
+	assert.Equals(t, changes.Last_Seq, "6:2")  // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
 	assert.Equals(t, changes.Results[0].ID, "b1")
 	assert.Equals(t, changes.Results[1].ID, "g1")
 
