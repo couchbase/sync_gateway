@@ -1463,7 +1463,7 @@ func TestReplicateErrorConditions(t *testing.T) {
 }
 
 //These tests validate request parameters not actual replication
-func TestDocumentChangeReplicate(t *testing.T) {
+func DisableTestDocumentChangeReplicate(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
