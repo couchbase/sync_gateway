@@ -245,6 +245,12 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 		}
 		doc.Cas = existingDoc.Cas
 
+		// If the doc expiry was reloaded, use it
+		if expiry > 0 {
+			latestExpiry := time.Unix(int64(expiry), 0)
+			doc.Expiry = &latestExpiry
+		}
+
 		// If no sync metadata is present, return for import handling
 		if !doc.HasValidSyncData(false) {
 			base.LogTo("Migrate", "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", docid, doc.Cas)
@@ -264,12 +270,6 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 		gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
 		if !ok {
 			return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
-		}
-
-		// If the doc expiry was reloaded, use it
-		if expiry > 0 {
-			latestExpiry := time.Unix(int64(expiry), 0)
-			doc.Expiry = &latestExpiry
 		}
 
 		// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
