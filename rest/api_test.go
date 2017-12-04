@@ -1940,7 +1940,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	}
 
 	limit := 50
-	changesResults, err := rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user1")
+	changesResults, err := rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user1", false)
 	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(changesResults.Results), 50)
 	since := changesResults.Results[49].Seq
@@ -1948,7 +1948,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, since.Seq, uint64(50))
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "user1")
+	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
 	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(changesResults.Results), 50)
 	since = changesResults.Results[49].Seq
@@ -1960,7 +1960,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Retrieve all changes for user2 with no limits
-	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/db/_changes"), "user2")
+	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/db/_changes"), "user2", false)
 	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(changesResults.Results), 101)
 	assert.Equals(t, changesResults.Results[99].ID, "doc99")
@@ -1970,7 +1970,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Get first 50 document changes
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user3")
+	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user3", false)
 	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(changesResults.Results), 50)
 	since = changesResults.Results[49].Seq
@@ -1979,7 +1979,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, since.TriggeredBy, uint64(103))
 
 	//// Get remainder of changes i.e. no limit parameter
-	changesResults, err = rt.WaitForChanges(51, fmt.Sprintf("/db/_changes?since=\"%s\"", since), "user3")
+	changesResults, err = rt.WaitForChanges(51, fmt.Sprintf("/db/_changes?since=\"%s\"", since), "user3", false)
 	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(changesResults.Results), 51)
 	assert.Equals(t, changesResults.Results[49].ID, "doc99")
@@ -1988,7 +1988,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
 	assertStatus(t, response, 201)
 
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user4")
+	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user4", false)
 	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(changesResults.Results), 50)
 	since = changesResults.Results[49].Seq
@@ -1997,7 +1997,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equals(t, since.TriggeredBy, uint64(104))
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "user4")
+	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "user4", false)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changesResults.Results), 50)
 	assert.Equals(t, changesResults.Results[49].ID, "doc99")
