@@ -1,11 +1,11 @@
 package db
 
 import (
-	"log"
 	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbaselabs/go.assert"
 )
 
 // There are additional tests that exercise the import functionality in rest/import_test.go
@@ -51,7 +51,7 @@ func TestMigrateMetadata(t *testing.T) {
 	}
 	testBucket.Bucket.Update(
 		key,
-		uint32(laterSyncMetaExpiry.Unix()),  // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
+		uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
 		updateCallbackFn,
 	)
 
@@ -62,12 +62,14 @@ func TestMigrateMetadata(t *testing.T) {
 		existingBucketDoc,
 	)
 	assertNoError(t, err, "Error calling migrateMetadata()")
-	log.Printf("docOut.Expiry: %v", docOut.Expiry) // TODO: why is this missing?  is this a bug?
 
 	//// Get the doc expiry
 	gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
 	expiry, getExpiryErr := gocbBucket.GetExpiry(key)
 	assertNoError(t, getExpiryErr, "Error getting expiry")
+
+	// This should equal the docOut expiry
+	assert.Equals(t, expiry, uint32(docOut.Expiry.Unix()))
 
 	// Assert that the expiry is the _later_ expiry, otherwise it means that later expiry was discarded and clobbered with
 	// the original expiry that was passed via
