@@ -27,11 +27,11 @@ import (
 	"strings"
 	"time"
 
+	"encoding/binary"
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gomemcached"
 	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
-	"encoding/binary"
-	"github.com/couchbase/gomemcached"
 )
 
 const (
@@ -758,7 +758,6 @@ func GetExpvarAsString(mapName string, name string) string {
 		return ""
 	}
 }
-
 
 // TODO: temporary workaround until https://issues.couchbase.com/browse/MB-27026 is implemented
 func ExtractExpiryFromDCPMutation(rq *gomemcached.MCRequest) (expiry uint32) {

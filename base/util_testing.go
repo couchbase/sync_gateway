@@ -332,7 +332,6 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 
 	}
 
-
 	return nil
 
 }
