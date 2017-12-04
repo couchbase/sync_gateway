@@ -9,6 +9,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto"
+	"time"
+	"log"
 )
 
 type ImportMode uint8
@@ -198,8 +200,6 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
 func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *document, requiresImport bool, err error) {
 
-	expiry := existingDoc.Expiry
-
 	for {
 		// Reload existing doc, if not present
 		if len(existingDoc.Body) == 0 {
@@ -236,6 +236,17 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 
 		// Move any large revision bodies to external storage
 		doc.migrateRevisionBodies(db.Bucket)
+
+		// Reload doc expiry to get the latest value
+		gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
+		expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
+		if getExpiryErr != nil {
+			return nil, false, getExpiryErr
+		}
+		if expiry > 0 {
+			expiryUnix := time.Unix(int64(expiry), 0)
+			doc.Expiry = &expiryUnix
+		}
 
 		// Persist the document in xattr format
 		value, xattrValue, marshalErr := doc.MarshalWithXattr()
