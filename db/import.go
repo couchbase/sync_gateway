@@ -200,7 +200,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
 func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *document, requiresImport bool, err error) {
 
-	var expiry uint32
+	// Initialize expiry to the expiry value of the existing doc, however this may be reloaded later under certain conditions
+	expiry := existingDoc.Expiry
+
 	var getExpiryErr error
 
 	for {
