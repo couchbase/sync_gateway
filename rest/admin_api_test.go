@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
+	"runtime"
 )
 
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
@@ -1471,8 +1472,7 @@ func TestReplicateErrorConditions(t *testing.T) {
 }
 
 //These tests validate request parameters not actual replication
-// TODO: Disabled until https://github.com/couchbase/sync_gateway/issues/3113 is fixed.  When re-enabled, 10s sleep must be removed.
-func DisableTestDocumentChangeReplicate(t *testing.T) {
+func TestDocumentChangeReplicate(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
@@ -1480,8 +1480,6 @@ func DisableTestDocumentChangeReplicate(t *testing.T) {
 
 	var rt RestTester
 	defer rt.Close()
-
-	time.Sleep(10 * time.Second)
 
 	//Initiate synchronous one shot replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db"}`), 500)
@@ -1515,5 +1513,15 @@ func DisableTestDocumentChangeReplicate(t *testing.T) {
 
 	//Cancel a replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 404)
+
+
+	// Dump goroutines
+	rawStackTrace := make([]byte, 1<<20)
+	runtime.Stack(rawStackTrace, true)
+	log.Printf("Stacks")
+	log.Printf("%s", string(rawStackTrace))
+
+
+
 
 }
