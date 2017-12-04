@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strconv"
 
+	"time"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto"
-	"time"
-	"log"
 )
 
 type ImportMode uint8
@@ -215,6 +215,21 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 				if unmarshalErr != nil {
 					return nil, false, unmarshalErr
 				}
+
+				// Reload doc expiry from bucket
+				gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
+				if !ok {
+					return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
+				}
+				expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
+				if getExpiryErr != nil {
+					return nil, false, getExpiryErr
+				}
+				if expiry > 0 {
+					expiryUnix := time.Unix(int64(expiry), 0)
+					updatedDoc.Expiry = &expiryUnix
+				}
+
 				base.LogTo("Migrate", "Returning updated doc because xattr exists (cas=%d): %s", updatedDoc.Cas, existingDoc.Xattr)
 				return updatedDoc, true, nil
 			}
@@ -237,17 +252,6 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 		// Move any large revision bodies to external storage
 		doc.migrateRevisionBodies(db.Bucket)
 
-		// Reload doc expiry to get the latest value
-		gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
-		expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
-		if getExpiryErr != nil {
-			return nil, false, getExpiryErr
-		}
-		if expiry > 0 {
-			expiryUnix := time.Unix(int64(expiry), 0)
-			doc.Expiry = &expiryUnix
-		}
-
 		// Persist the document in xattr format
 		value, xattrValue, marshalErr := doc.MarshalWithXattr()
 		if marshalErr != nil {
@@ -258,6 +262,16 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 		gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
 		if !ok {
 			return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
+		}
+
+		// Reload doc expiry to get the latest value
+		expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
+		if getExpiryErr != nil {
+			return nil, false, getExpiryErr
+		}
+		if expiry > 0 {
+			expiryUnix := time.Unix(int64(expiry), 0)
+			doc.Expiry = &expiryUnix
 		}
 
 		// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
