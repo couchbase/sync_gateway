@@ -27,6 +27,7 @@ func TestMigrateMetadata(t *testing.T) {
 	base.EnableLogKey("Import+")
 
 	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	key := "TestMigrateMetadata"
