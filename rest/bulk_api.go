@@ -454,7 +454,7 @@ func (h *handler) handleBulkDocs() error {
 	}
 	lenDocs := len(userDocs)
 
-	defer bulkApiBulkDocsPerDocRollingMean.AddSincePerItem(handleBulkDocsStartedAt, len(userDocs))
+	defer bulkApiBulkDocsPerDocRollingMean.AddSincePerItem(handleBulkDocsStartedAt, lenDocs)
 
 	// split out local docs, save them on their own
 	localDocs := make([]interface{}, 0, lenDocs)
