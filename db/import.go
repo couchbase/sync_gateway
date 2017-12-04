@@ -200,6 +200,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
 func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *document, requiresImport bool, err error) {
 
+	var expiry uint32
+	var getExpiryErr error
+
 	for {
 		// Reload existing doc, if not present
 		if len(existingDoc.Body) == 0 {
@@ -209,6 +212,16 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 				return nil, false, getErr
 			}
 
+			// Reload doc expiry from bucket
+			gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
+			if !ok {
+				return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
+			}
+			expiry, getExpiryErr = gocbBucket.GetExpiry(docid)
+			if getExpiryErr != nil {
+				return nil, false, getExpiryErr
+			}
+
 			// If an xattr exists on the doc, someone has already migrated.  Cancel and return for potential import checking.
 			if len(existingDoc.Xattr) > 0 {
 				updatedDoc, unmarshalErr := unmarshalDocumentWithXattr(docid, existingDoc.Body, existingDoc.Xattr, cas, DocUnmarshalAll)
@@ -216,19 +229,8 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 					return nil, false, unmarshalErr
 				}
 
-				// Reload doc expiry from bucket
-				gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
-				if !ok {
-					return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
-				}
-				expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
-				if getExpiryErr != nil {
-					return nil, false, getExpiryErr
-				}
-				if expiry > 0 {
-					expiryUnix := time.Unix(int64(expiry), 0)
-					updatedDoc.Expiry = &expiryUnix
-				}
+				latestExpiry := time.Unix(int64(expiry), 0)
+				updatedDoc.Expiry = &latestExpiry
 
 				base.LogTo("Migrate", "Returning updated doc because xattr exists (cas=%d): %s", updatedDoc.Cas, existingDoc.Xattr)
 				return updatedDoc, true, nil
@@ -264,14 +266,10 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 			return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
 		}
 
-		// Reload doc expiry to get the latest value
-		expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
-		if getExpiryErr != nil {
-			return nil, false, getExpiryErr
-		}
+		// If the doc expiry was reloaded, use it
 		if expiry > 0 {
-			expiryUnix := time.Unix(int64(expiry), 0)
-			doc.Expiry = &expiryUnix
+			latestExpiry := time.Unix(int64(expiry), 0)
+			doc.Expiry = &latestExpiry
 		}
 
 		// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
