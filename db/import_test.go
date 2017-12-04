@@ -19,6 +19,10 @@ import (
 // See SG PR #3109 for more details on motivation for this test
 func TestMigrateMetadata(t *testing.T) {
 
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+	
 	base.EnableLogKey("Migrate+")
 	base.EnableLogKey("Import+")
 
