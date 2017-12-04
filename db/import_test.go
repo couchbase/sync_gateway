@@ -19,6 +19,9 @@ import (
 // See SG PR #3109 for more details on motivation for this test
 func TestMigrateMetadata(t *testing.T) {
 
+	base.EnableLogKey("Migrate+")
+	base.EnableLogKey("Import+")
+
 	db, testBucket := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
@@ -75,6 +78,21 @@ func TestMigrateMetadata(t *testing.T) {
 	// the original expiry that was passed via
 	if expiry != uint32(laterSyncMetaExpiry.Unix()) {
 		t.Errorf("Expected expiry to be %v but was %v", laterSyncMetaExpiry.Unix(), expiry)
+	}
+
+	// Try to call migrateMetadata again, even though the doc has already been migrated.
+	// This should essentially abort the migration and return the latest doc
+	docOutAlreadyMigrated, _, err := db.migrateMetadata(
+		key,
+		body,
+		existingBucketDoc,
+	)
+	assertNoError(t, err, "Error calling migrateMetadata()")
+
+	// Assert that the returned doc has the latest doc expiry
+	assert.True(t, docOutAlreadyMigrated.Expiry != nil)
+	if uint32(docOutAlreadyMigrated.Expiry.Unix()) != uint32(laterSyncMetaExpiry.Unix()) {
+		t.Errorf("Expected expiry to be %v but was %v", laterSyncMetaExpiry.Unix(), uint32(docOutAlreadyMigrated.Expiry.Unix()))
 	}
 
 }
