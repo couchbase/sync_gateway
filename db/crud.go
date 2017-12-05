@@ -1116,18 +1116,38 @@ func (db *Database) updateAndReturnDoc(
 	doc.deleteRemovedRevisionBodies(db.Bucket)
 
 	// Mark affected users/roles as needing to recompute their channel access:
+	db.MarkPrincipalsChanged(docid, newRevID, changedPrincipals, changedRoleUsers)
+	return docOut, newRevID, nil
+}
+
+func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changedPrincipals, changedRoleUsers []string) {
+
+	reloadActiveUser := false
+
+	// Mark affected users/roles as needing to recompute their channel access:
 	if len(changedPrincipals) > 0 {
 		base.LogTo("Access", "Rev %q/%q invalidates channels of %s", docid, newRevID, changedPrincipals)
 		for _, name := range changedPrincipals {
 			db.invalUserOrRoleChannels(name)
-			//If this is the current in memory db.user, reload to generate updated channels
-			if db.user != nil && db.user.Name() == name {
-				user, err := db.Authenticator().GetUser(db.user.Name())
-				if err != nil {
-					base.Warn("Error reloading db.user[%s], channels list is out of date --> %+v", db.user.Name(), err)
-				} else {
-					db.user = user
+			// Check whether the active user needs to be recalculated.  Skip check if reload has already been identified
+			// as required for a previous changedPrincipal
+			if db.user != nil && reloadActiveUser == false {
+				// If role changed, check if active user has been granted the role
+				if strings.HasPrefix(name, "role:") {
+					modifiedRole := name[5:]
+					for roleName := range db.user.RoleNames() {
+						if roleName == modifiedRole {
+							base.LogTo("Access+", "Active user belongs to role %q with modified channel access - user %q will be reloaded.", roleName, db.user.Name())
+							reloadActiveUser = true
+							break
+						}
+					}
+				} else if db.user.Name() == name {
+					// User matches
+					base.LogTo("Access+", "Channel set for active user has been modified - user %q will be reloaded.", db.user.Name())
+					reloadActiveUser = true
 				}
+
 			}
 		}
 	}
@@ -1138,17 +1158,22 @@ func (db *Database) updateAndReturnDoc(
 			db.invalUserRoles(name)
 			//If this is the current in memory db.user, reload to generate updated roles
 			if db.user != nil && db.user.Name() == name {
-				user, err := db.Authenticator().GetUser(db.user.Name())
-				if err != nil {
-					base.Warn("Error reloading db.user[%s], roles list is out of date --> %+v", db.user.Name(), err)
-				} else {
-					db.user = user
-				}
+				base.LogTo("Access+", "Role set for active user has been modified - user %q will be reloaded.", db.user.Name())
+				reloadActiveUser = true
+
 			}
 		}
 	}
 
-	return docOut, newRevID, nil
+	if reloadActiveUser {
+		user, err := db.Authenticator().GetUser(db.user.Name())
+		if err != nil {
+			base.Warn("Error reloading active db.user[%s], security information will not be recalculated until next authentication --> %+v", db.user.Name(), err)
+		} else {
+			db.user = user
+		}
+	}
+
 }
 
 // Creates a new document, assigning it a random doc ID.
