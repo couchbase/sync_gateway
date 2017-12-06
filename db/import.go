@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"time"
-
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -200,54 +198,12 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
 func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *document, requiresImport bool, err error) {
 
-	// Initialize expiry to the expiry value of the existing doc, however this may be reloaded later under certain conditions
-	expiry := existingDoc.Expiry
-
-	var getExpiryErr error
-
-	// Reload existing doc, if not present
-	if len(existingDoc.Body) == 0 {
-		cas, getErr := db.Bucket.GetWithXattr(docid, KSyncXattrName, &existingDoc.Body, &existingDoc.Xattr)
-		base.LogTo("Migrate", "Reload in migrate got cas: %d", cas)
-		if getErr != nil {
-			return nil, false, getErr
-		}
-
-		// Reload doc expiry from bucket
-		gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
-		if !ok {
-			return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
-		}
-		expiry, getExpiryErr = gocbBucket.GetExpiry(docid)
-		if getExpiryErr != nil {
-			return nil, false, getExpiryErr
-		}
-
-		// If an xattr exists on the doc, someone has already migrated.  Cancel and return for potential import checking.
-		if len(existingDoc.Xattr) > 0 {
-			updatedDoc, unmarshalErr := unmarshalDocumentWithXattr(docid, existingDoc.Body, existingDoc.Xattr, cas, DocUnmarshalAll)
-			if unmarshalErr != nil {
-				return nil, false, unmarshalErr
-			}
-
-			base.LogTo("Migrate", "Returning updated doc because xattr exists (cas=%d): %s", updatedDoc.Cas, existingDoc.Xattr)
-			return updatedDoc, true, nil
-		}
-		existingDoc.Cas = cas
-	}
-
 	// Unmarshal the existing doc in legacy SG format
 	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
 	if err != nil {
 		return nil, false, unmarshalErr
 	}
 	doc.Cas = existingDoc.Cas
-
-	// If the doc expiry was reloaded, use it
-	if expiry > 0 {
-		latestExpiry := time.Unix(int64(expiry), 0)
-		doc.Expiry = &latestExpiry
-	}
 
 	// If no sync metadata is present, return for import handling
 	if !doc.HasValidSyncData(false) {
@@ -273,7 +229,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 	isDelete := doc.hasFlag(channels.Deleted)
 	deleteBody := isDelete && len(existingDoc.Body) > 0
-	casOut, writeErr := gocbBucket.WriteWithXattr(docid, KSyncXattrName, expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
+	casOut, writeErr := gocbBucket.WriteWithXattr(docid, KSyncXattrName, existingDoc.Expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
 	if writeErr == nil {
 		doc.Cas = casOut
 		base.LogTo("Migrate", "Successfully migrated doc %q", docid)
