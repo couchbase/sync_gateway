@@ -4,8 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"log"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 )
@@ -75,7 +73,6 @@ func TestMigrateMetadata(t *testing.T) {
 	assert.True(t, err == base.ErrCasFailureShouldRetry)
 
 }
-
 
 func rawDocWithSyncMeta() []byte {
 
