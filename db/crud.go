@@ -604,14 +604,15 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 	allowImport := db.UseXattrs()
 
-	return db.updateDoc(docid, allowImport, expiry, func(doc *document) (Body, AttachmentData, error) {
+
+	return db.updateDoc(docid, allowImport, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !doc.IsSGWrite() && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(docid, doc, body)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 		}
 
@@ -622,20 +623,20 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 				// PUT with no parent rev given, but there is an existing current revision.
 				// This is OK as long as the current one is deleted.
 				if !doc.History[matchRev].Deleted {
-					return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
+					return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
 				}
 				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
 		} else if !doc.History.isLeaf(matchRev) || (!db.AllowConflicts() && matchRev != doc.CurrentRev) {
-			return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
 		// Process the attachments, replacing bodies with digests. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
 		newAttachments, err := db.storeAttachments(doc, body, generation, matchRev, nil)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		// Make up a new _rev, and add it to the history:
@@ -643,10 +644,10 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		body["_rev"] = newRev
 		if err := doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.LogTo("CRUD", "Failed to add revision ID: %s, error: %v", newRev, err)
-			return nil, nil, base.ErrRevTreeAddRevFailure
+			return nil, nil, nil, base.ErrRevTreeAddRevFailure
 		}
 
-		return body, newAttachments, nil
+		return body, newAttachments, nil, nil
 	})
 }
 
@@ -666,14 +667,14 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	}
 
 	allowImport := db.UseXattrs()
-	_, err = db.updateDoc(docid, allowImport, expiry, func(doc *document) (Body, AttachmentData, error) {
+	_, err = db.updateDoc(docid, allowImport, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !doc.IsSGWrite() && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(docid, doc, body)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 		}
 
@@ -690,7 +691,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		if currentRevIndex == 0 {
 			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid)
 			body["_rev"] = newRev                   // The _rev field is expected by some callers.  If missing, may cause problems for callers.
-			return nil, nil, couchbase.UpdateCancel // No new revisions to add
+			return nil, nil, nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
 		if !db.AllowConflicts() {
@@ -698,7 +699,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			if parent != doc.CurrentRev && doc.CurrentRev != "" {
 				if !deleted {
 					// If it's not a tombstone, it's a (disallowed) conflict.
-					return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+					return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 				} else {
 					// If it's a tombstone, it's only allowed if it's tombstoning an existing active leaf
 					allowedTombstone := false
@@ -709,7 +710,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 						}
 					}
 					if !allowedTombstone {
-						return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+						return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 					}
 				}
 			}
@@ -724,7 +725,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 					Deleted: (i == 0 && deleted)})
 
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			parent = docHistory[i]
 		}
@@ -733,20 +734,23 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		parentRevID := doc.History[newRev].Parent
 		newAttachments, err := db.storeAttachments(doc, body, generation, parentRevID, docHistory)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		body["_rev"] = newRev
-		return body, newAttachments, nil
+		return body, newAttachments, nil, nil
 	})
 	return err
 }
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
 // make changes to it in a callback and supply a new body, then saves the body and document.
-func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback func(*document) (Body, AttachmentData, error)) (newRevID string, err error) {
+func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback updateAndReturnDocCallback) (newRevID string, err error) {
 	_, newRevID, err = db.updateAndReturnDoc(docid, allowImport, expiry, nil, callback)
 	return newRevID, err
 }
+
+// Function type for the callback passed into updateAndReturnDoc
+type updateAndReturnDocCallback func(*document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error)
 
 // Calling updateAndReturnDoc directly allows callers to:
 //   1. Receive the updated document body in the response
@@ -757,7 +761,7 @@ func (db *Database) updateAndReturnDoc(
 	allowImport bool,
 	expiry uint32,
 	existingDoc *sgbucket.BucketDocument, // If existing is present, passes these to WriteUpdateWithXattr to allow bypass of initial GET
-	callback func(*document) (Body, AttachmentData, error)) (docOut *document, newRevID string, err error) {
+	callback updateAndReturnDocCallback) (docOut *document, newRevID string, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
@@ -782,7 +786,7 @@ func (db *Database) updateAndReturnDoc(
 		}
 
 		// Invoke the callback to update the document and return a new revision body:
-		body, newAttachments, err = callback(doc)
+		body, newAttachments, updatedExpiry, err = callback(doc)
 		if err != nil {
 			return
 		}

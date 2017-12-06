@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"fmt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 	"log"
-	"fmt"
 )
 
 // There are additional tests that exercise the import functionality in rest/import_test.go
@@ -89,19 +89,18 @@ func TestImportDocWithStaleDoc(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-
 	type testcase struct {
-		docBody      []byte
-		name                  string
+		docBody []byte
+		name    string
 	}
 	testCases := []testcase{
 		{
 			docBody: rawDocNoMeta(),
-			name:             "rawDocNoMeta",
+			name:    "rawDocNoMeta",
 		},
 		{
 			docBody: rawDocWithSyncMeta(),
-			name:             "rawDocWithSyncMeta",
+			name:    "rawDocWithSyncMeta",
 		},
 	}
 
@@ -157,7 +156,6 @@ func TestImportDocWithStaleDoc(t *testing.T) {
 			assertNoError(t, err, "Error calling GetExpiry()")
 			log.Printf("expiry: %v  laterSyncMetaExpiry.Unix(): %v", expiry, laterSyncMetaExpiry.Unix())
 			assert.True(t, expiry == uint32(laterSyncMetaExpiry.Unix()))
-
 
 		})
 	}

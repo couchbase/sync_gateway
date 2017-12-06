@@ -73,14 +73,14 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 	var newRev string
 	var alreadyImportedDoc *document
-	docOut, _, err = db.updateAndReturnDoc(docid, true, existingDoc.Expiry, existingDoc, func(doc *document) (Body, AttachmentData, error) {
+	docOut, _, err = db.updateAndReturnDoc(docid, true, existingDoc.Expiry, existingDoc, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
 			// If this is a feed import, cancel on cas failure (doc has been updated )
 			if mode == ImportFromFeed {
-				return nil, nil, base.ErrImportCasFailure
+				return nil, nil, nil, base.ErrImportCasFailure
 			}
 			// If this is an on-demand import, we want to continue to import the current version of the doc.  Re-initialize existing doc based on the latest doc
 			if mode == ImportOnDemand {
@@ -90,13 +90,15 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 				gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
 				expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
 				if getExpiryErr != nil {
-					return nil, nil, getExpiryErr
+					return nil, nil, nil, getExpiryErr
 				}
 
 				existingDoc = &sgbucket.BucketDocument{
 					Cas:    doc.Cas,
 					Expiry: expiry,
 				}
+
+				updatedExpiry = &expiry
 			}
 		}
 
@@ -105,13 +107,14 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		if ok {
 			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(docid, body, existingDoc)
 			if migrateErr != nil {
-				return nil, nil, migrateErr
+				return nil, nil, updatedExpiry, migrateErr
 			}
 			// Migration successful, doesn't require import - return ErrDocumentMigrated to cancel import processing
 			if !requiresImport {
 				alreadyImportedDoc = migratedDoc
-				return nil, nil, base.ErrDocumentMigrated
+				return nil, nil, updatedExpiry, base.ErrDocumentMigrated
 			}
+
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
 			doc = migratedDoc
 			body = migratedDoc.Body()
@@ -121,14 +124,14 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// Check if the doc has been deleted
 		if doc.Cas == 0 {
 			base.LogTo("Import+", "Document has been removed from the bucket before it could be imported - cancelling import.")
-			return nil, nil, base.ErrImportCancelled
+			return nil, nil, updatedExpiry, base.ErrImportCancelled
 		}
 
 		// If this is a delete, and there is no xattr on the existing doc,
 		// we shouldn't import.  (SG purge arriving over DCP feed)
 		if isDelete && doc.CurrentRev == "" {
 			base.LogTo("Import+", "Import not required for delete mutation with no existing SG xattr (SG purge): %s", docid)
-			return nil, nil, base.ErrImportCancelled
+			return nil, nil, updatedExpiry, base.ErrImportCancelled
 		}
 
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
@@ -136,7 +139,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		if doc.IsSGWrite() {
 			base.LogTo("Import+", "During import, existing doc (%s) identified as SG write.  Canceling import.", docid)
 			alreadyImportedDoc = doc
-			return nil, nil, base.ErrAlreadyImported
+			return nil, nil, updatedExpiry, base.ErrAlreadyImported
 		}
 
 		// If there's a filter function defined, evaluate to determine whether we should import this doc
@@ -144,13 +147,13 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			shouldImport, err := db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(body)
 			if err != nil {
 				base.LogTo("Import+", "Error returned for doc %s while evaluating import function - will not be imported.", docid)
-				return nil, nil, base.ErrImportCancelledFilter
+				return nil, nil, updatedExpiry, base.ErrImportCancelledFilter
 			}
 			if shouldImport == false {
 				base.LogTo("Import+", "Doc %s excluded by document import function - will not be imported.", docid)
 				// TODO: If this document has a current revision (this is a document that was previously mobile-enabled), do additional opt-out processing
 				// pending https://github.com/couchbase/sync_gateway/issues/2750
-				return nil, nil, base.ErrImportCancelledFilter
+				return nil, nil, updatedExpiry, base.ErrImportCancelledFilter
 			}
 		}
 
@@ -168,7 +171,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 
-		return body, nil, nil
+		return body, nil, updatedExpiry, nil
 	})
 
 	switch err {

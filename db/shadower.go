@@ -109,10 +109,10 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}
 
-	_, err = db.updateDoc(key, false, expiry, func(doc *document) (Body, AttachmentData, error) {
+	_, err = db.updateDoc(key, false, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		if doc.UpstreamCAS != nil && *doc.UpstreamCAS == cas {
-			return nil, nil, couchbase.UpdateCancel // we already have this doc revision
+			return nil, nil, nil, couchbase.UpdateCancel // we already have this doc revision
 		}
 		base.LogTo("Shadow+", "Pulling %q, CAS=%x ... have UpstreamRev=%q, UpstreamCAS=%x", key, cas, doc.UpstreamRev, doc.UpstreamCAS)
 
@@ -137,7 +137,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 				parentRev = ""
 			}
 			if err = doc.History.addRevision(doc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion}); err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			base.LogTo("Shadow", "Pulling %q, CAS=%x --> rev %q", key, cas, newRev)
 		} else {
@@ -145,7 +145,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 			// doc's UpstreamRev/UpstreamCAS fields.
 			base.LogTo("Shadow+", "Not pulling %q, CAS=%x (echo of rev %q)", key, cas, newRev)
 		}
-		return body, nil, nil
+		return body, nil, nil, nil
 	})
 	if err == couchbase.UpdateCancel {
 		err = nil
