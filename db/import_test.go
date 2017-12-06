@@ -76,58 +76,6 @@ func TestMigrateMetadata(t *testing.T) {
 
 }
 
-func TestMigrateMetadataRequiresImport(t *testing.T) {
-
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
-	base.EnableLogKey("Migrate")
-	base.EnableLogKey("Import+")
-
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
-
-	key := "TestMigrateMetadataRequiresImport"
-	bodyBytes := rawDocWithSyncMeta()
-	body := Body{}
-	err := body.Unmarshal(bodyBytes)
-	assertNoError(t, err, "Error unmarshalling body")
-
-	// Create via the SDK with sync metadata intact
-	expirySeconds := time.Second * 30
-	syncMetaExpiry := time.Now().Add(expirySeconds)
-	_, err = testBucket.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
-	assertNoError(t, err, "Error writing doc w/ expiry")
-
-	// Get the existing bucket doc
-	_, existingBucketDoc, err := db.GetDocWithXattr(key, DocUnmarshalAll)
-	body = Body{}
-	err = body.Unmarshal(existingBucketDoc.Body)
-	assertNoError(t, err, "Error unmarshalling body")
-	log.Printf("existingBucketDoc: %+v", existingBucketDoc)
-
-	// Repro attempt A (not working)
-	//
-	// 1. Set a breakpoint in migrateMeta() before it calls WriteWithXattr()
-	// 2. Call db.importDoc() below
-	// 3. When it hits the migrateMeta() breakpoint before the call to WriteWithXattr():
-	// 			- 3A: Insert a doc with id 'TestMigrateMetadataRequiresImport' via a running Sync Gateway
-	// 4. In this case, the import is aborted due to "if doc.IsSGWrite() {" check in importDoc()
-
-	// Repro attempt B (not working)
-	//
-	// 1. Set a breakpoint in migrateMeta() before it calls WriteWithXattr()
-	// 2. Call db.importDoc() below
-	// 3. When it hits the migrateMeta() breakpoint before the call to WriteWithXattr():
-	// 			- 3A: Insert a doc with id 'TestMigrateMetadataRequiresImport' via CBC SDK
-	// 4. In this case, the call to 'if len(existingDoc.Xattr) > 0 {' in migrateMeta() returns false, and so it doesn't return with requiresInput=true, and I guess keeps trying to migrate
-
-	docOut, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
-	log.Printf("docOut: %v, errImportDoc: %v", docOut, errImportDoc)
-
-}
 
 func rawDocWithSyncMeta() []byte {
 
