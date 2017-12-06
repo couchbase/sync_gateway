@@ -7,6 +7,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 	"log"
+	"fmt"
 )
 
 // There are additional tests that exercise the import functionality in rest/import_test.go
@@ -88,59 +89,84 @@ func TestImportDocWithStaleDoc(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	key := "TestMigrateMetadataRequiresImport"
-	bodyBytes := rawDocWithSyncMeta()
-	body := Body{}
-	err := body.Unmarshal(bodyBytes)
-	assertNoError(t, err, "Error unmarshalling body")
 
-	// Create via the SDK with sync metadata intact
-	expirySeconds := time.Second * 30
-	syncMetaExpiry := time.Now().Add(expirySeconds)
-	_, err = testBucket.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
-	assertNoError(t, err, "Error writing doc w/ expiry")
-
-	// Get the existing bucket doc
-	_, existingBucketDoc, err := db.GetDocWithXattr(key, DocUnmarshalAll)
-	body = Body{}
-	err = body.Unmarshal(existingBucketDoc.Body)
-	assertNoError(t, err, "Error unmarshalling body")
-	log.Printf("existingBucketDoc: %+v", existingBucketDoc)
-
-	// Set the expiry value
-	existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
-
-	// Perform an SDK update to turn existingBucketDoc into a stale doc
-	laterExpirySeconds := time.Second * 60
-	laterSyncMetaExpiry := time.Now().Add(laterExpirySeconds)
-	updateCallbackFn := func(current []byte) (updated []byte, expiry *uint32, err error) {
-		// This update function will not be "competing" with other updates, so it doesn't need
-		// to handle being called back multiple times or performing any merging with existing values.
-		exp := uint32(laterSyncMetaExpiry.Unix())
-		return bodyBytes, &exp, nil
+	type testcase struct {
+		docBody      []byte
+		name                  string
 	}
-	testBucket.Bucket.Update(
-		key,
-		uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
-		updateCallbackFn,
-	)
+	testCases := []testcase{
+		{
+			docBody: rawDocNoMeta(),
+			name:             "rawDocNoMeta",
+		},
+		{
+			docBody: rawDocWithSyncMeta(),
+			name:             "rawDocWithSyncMeta",
+		},
+	}
 
-	// Import the doc (will migrate as part of the import since the doc contains sync meta)
-	docOut, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
-	log.Printf("docOut: %v, errImportDoc: %v", docOut, errImportDoc)
-	assertNoError(t, errImportDoc, "Unexpected error")
+	for _, testCase := range testCases {
 
-	// Verify the expiry has been preserved after the import
-	gocbBucket := testBucket.Bucket.(*base.CouchbaseBucketGoCB)
-	expiry, err := gocbBucket.GetExpiry(key)
-	assertNoError(t, err, "Error calling GetExpiry()")
-	log.Printf("expiry: %v  laterSyncMetaExpiry.Unix(): %v", expiry, laterSyncMetaExpiry.Unix())
-	assert.True(t, expiry == uint32(laterSyncMetaExpiry.Unix()))
+		t.Run(fmt.Sprintf("%s", testCase), func(t *testing.T) {
 
+			key := fmt.Sprintf("TestImportDocWithStaleDoc%-s", testCase.name)
+			bodyBytes := rawDocNoMeta()
+			body := Body{}
+			err := body.Unmarshal(bodyBytes)
+			assertNoError(t, err, "Error unmarshalling body")
+
+			// Create via the SDK with sync metadata intact
+			expirySeconds := time.Second * 30
+			syncMetaExpiry := time.Now().Add(expirySeconds)
+			_, err = testBucket.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
+			assertNoError(t, err, "Error writing doc w/ expiry")
+
+			// Get the existing bucket doc
+			_, existingBucketDoc, err := db.GetDocWithXattr(key, DocUnmarshalAll)
+			body = Body{}
+			err = body.Unmarshal(existingBucketDoc.Body)
+			assertNoError(t, err, "Error unmarshalling body")
+			log.Printf("existingBucketDoc: %+v", existingBucketDoc)
+
+			// Set the expiry value
+			existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
+
+			// Perform an SDK update to turn existingBucketDoc into a stale doc
+			laterExpirySeconds := time.Second * 60
+			laterSyncMetaExpiry := time.Now().Add(laterExpirySeconds)
+			updateCallbackFn := func(current []byte) (updated []byte, expiry *uint32, err error) {
+				// This update function will not be "competing" with other updates, so it doesn't need
+				// to handle being called back multiple times or performing any merging with existing values.
+				exp := uint32(laterSyncMetaExpiry.Unix())
+				return bodyBytes, &exp, nil
+			}
+			testBucket.Bucket.Update(
+				key,
+				uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
+				updateCallbackFn,
+			)
+
+			// Import the doc (will migrate as part of the import since the doc contains sync meta)
+			docOut, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
+			log.Printf("docOut: %v, errImportDoc: %v", docOut, errImportDoc)
+			assertNoError(t, errImportDoc, "Unexpected error")
+
+			// Verify the expiry has been preserved after the import
+			gocbBucket := testBucket.Bucket.(*base.CouchbaseBucketGoCB)
+			expiry, err := gocbBucket.GetExpiry(key)
+			assertNoError(t, err, "Error calling GetExpiry()")
+			log.Printf("expiry: %v  laterSyncMetaExpiry.Unix(): %v", expiry, laterSyncMetaExpiry.Unix())
+			assert.True(t, expiry == uint32(laterSyncMetaExpiry.Unix()))
+
+
+		})
+	}
 
 }
 
-
+func rawDocNoMeta() []byte {
+	return []byte(`{"field": "value"}`)
+}
 
 func rawDocWithSyncMeta() []byte {
 
