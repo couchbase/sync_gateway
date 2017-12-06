@@ -749,6 +749,7 @@ func (db *Database) updateAndReturnDoc(
 	// Added annotation to the following variable declarations for reference during future refactoring of documentUpdateFunc into a standalone function
 	var doc *document                                // Passed to documentUpdateFunc as pointer, may be possible to define in documentUpdateFunc
 	var body Body                                    // Could be returned by documentUpdateFunc
+	var storedBody Body                              // Persisted revision body, used to update rev cache
 	var changedPrincipals, changedRoleUsers []string // Could be returned by documentUpdateFunc
 	var docSequence uint64                           // Must be scoped outside callback, used over multiple iterations
 	var unusedSequences []uint64                     // Must be scoped outside callback, used over multiple iterations
@@ -813,7 +814,7 @@ func (db *Database) updateAndReturnDoc(
 		}
 
 		// Store the new revision body into the doc:
-		doc.setRevisionBody(newRevID, body, db.AllowExternalRevBodyStorage())
+		storedBody = doc.setRevisionBody(newRevID, body, db.AllowExternalRevBodyStorage())
 
 		if doc.CurrentRev == newRevID {
 			doc.NewestRev = ""
@@ -1096,7 +1097,7 @@ func (db *Database) updateAndReturnDoc(
 			body["_deleted"] = true
 		}
 		revChannels := doc.History[newRevID].Channels
-		db.revisionCache.Put(body, encodeRevisions(history), revChannels)
+		db.revisionCache.Put(doc.ID, newRevID, storedBody, encodeRevisions(history), revChannels)
 
 		// Raise event if this is not an echo from a shadow bucket
 		if !shadowerEcho {

@@ -36,7 +36,7 @@ func TestRevisionCache(t *testing.T) {
 	cache := NewRevisionCache(10, nil)
 	for i := 0; i < 10; i++ {
 		body, history, channels := revForTest(i)
-		cache.Put(body, history, channels)
+		cache.Put(body["_id"].(string), body["_rev"].(string), body, history, channels)
 	}
 
 	for i := 0; i < 10; i++ {
@@ -46,7 +46,7 @@ func TestRevisionCache(t *testing.T) {
 
 	for i := 10; i < 13; i++ {
 		body, history, channels := revForTest(i)
-		cache.Put(body, history, channels)
+		cache.Put(body["_id"].(string), body["_rev"].(string), body, history, channels)
 	}
 
 	for i := 0; i < 3; i++ {
@@ -100,4 +100,50 @@ func TestLoaderFunction(t *testing.T) {
 	assert.DeepEquals(t, body, Body(nil))
 	assert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
 	assert.Equals(t, callsToLoader, 3)
+}
+
+// Ensure internal properties aren't being incorrectly stored in revision cache
+func TestRevisionCacheInternalProperties(t *testing.T) {
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	// Invalid _revisions property will be stripped.  Should also not be present in the rev cache.
+	rev1body := Body{
+		"value":      1234,
+		"_revisions": "unexpected data",
+	}
+	rev1id, err := db.Put("doc1", rev1body)
+	assertNoError(t, err, "Put")
+
+	// Get the raw document directly from the bucket, validate _revisions property isn't found
+	var bucketBody Body
+	testBucket.Bucket.Get("doc1", &bucketBody)
+	_, ok := bucketBody["_revisions"]
+	if ok {
+		t.Error("_revisions property still present in document retrieved directly from bucket.")
+	}
+
+	// Get the doc while still resident in the rev cache w/ history=false, validate _revisions property isn't found
+	body, err := db.GetRev("doc1", rev1id, false, nil)
+	assertNoError(t, err, "GetRev")
+	badRevisions, ok := body["_revisions"]
+	if ok {
+		t.Errorf("_revisions property still present in document retrieved from rev cache: %s", badRevisions)
+	}
+
+	// Get the doc while still resident in the rev cache w/ history=true, validate _revisions property is returned with expected
+	// properties ("start", "ids")
+	bodyWithHistory, err := db.GetRev("doc1", rev1id, true, nil)
+	assertNoError(t, err, "GetRev")
+	validRevisions, ok := bodyWithHistory["_revisions"]
+	if !ok {
+		t.Errorf("Expected _revisions property not found in document retrieved from rev cache: %s", validRevisions)
+	}
+	validRevisionsMap, ok := validRevisions.(map[string]interface{})
+	_, startOk := validRevisionsMap["start"]
+	assert.True(t, startOk)
+	_, idsOk := validRevisionsMap["ids"]
+	assert.True(t, idsOk)
 }
