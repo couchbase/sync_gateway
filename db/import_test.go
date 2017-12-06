@@ -107,6 +107,9 @@ func TestImportDocWithStaleDoc(t *testing.T) {
 	assertNoError(t, err, "Error unmarshalling body")
 	log.Printf("existingBucketDoc: %+v", existingBucketDoc)
 
+	// Set the expiry value
+	existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
+
 	// Perform an SDK update to turn existingBucketDoc into a stale doc
 	laterExpirySeconds := time.Second * 60
 	laterSyncMetaExpiry := time.Now().Add(laterExpirySeconds)
