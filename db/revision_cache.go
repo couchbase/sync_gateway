@@ -90,11 +90,11 @@ func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (body
 }
 
 // Adds a revision to the cache.
-func (rc *RevisionCache) Put(body Body, history Body, channels base.Set) {
+func (rc *RevisionCache) Put(docid string, revid string, body Body, history Body, channels base.Set) {
 	if history == nil {
 		panic("Missing history for RevisionCache.Put")
 	}
-	value := rc.getValue(body["_id"].(string), body["_rev"].(string), true)
+	value := rc.getValue(docid, revid, true)
 	value.store(body, history, channels)
 }
 
@@ -175,7 +175,9 @@ func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) 
 func (value *revCacheValue) store(body Body, history Body, channels base.Set) {
 	value.lock.Lock()
 	if value.body == nil {
-		value.body = body.ShallowCopy() // Don't store a body the caller might later mutate
+		value.body = body.ShallowCopy()     // Don't store a body the caller might later mutate
+		value.body["_id"] = value.key.DocID // Rev cache includes id and rev in the body.  Ensure they are set in case callers aren't passing
+		value.body["_rev"] = value.key.RevID
 		value.history = history
 		value.channels = channels
 		value.err = nil
