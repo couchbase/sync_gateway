@@ -125,6 +125,7 @@ func TestImportDocWithStaleDoc(t *testing.T) {
 		updateCallbackFn,
 	)
 
+	// Import the doc (will migrate as part of the import since the doc contains sync meta)
 	docOut, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
 	log.Printf("docOut: %v, errImportDoc: %v", docOut, errImportDoc)
 	assertNoError(t, errImportDoc, "Unexpected error")
