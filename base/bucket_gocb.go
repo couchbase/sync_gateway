@@ -1529,6 +1529,13 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// Invoke callback to get updated value
 		updatedValue, updatedXattrValue, isDelete, callbackExpiry, err := callback(value, xattrValue, cas)
 
+		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
+		if err == ErrCasFailureShouldRetry {
+			cas = 0  // force the call to GetWithXattr() to refresh
+			continue
+		}
+
+		// On any other errors, abort the Write attempt
 		if err != nil {
 			return emptyCas, err
 		}
@@ -2074,8 +2081,6 @@ func (bucket CouchbaseBucketGoCB) Close() {
 	}
 }
 
-
-
 func (bucket CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
 
 	bucket.singleOps <- struct{}{}
@@ -2104,7 +2109,6 @@ func (bucket CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint3
 	wg.Wait()
 
 	return expiry, getMetaError
-
 
 }
 

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"log"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 )
@@ -23,7 +25,7 @@ func TestMigrateMetadata(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	base.EnableLogKey("Migrate+")
+	base.EnableLogKey("Migrate")
 	base.EnableLogKey("Import+")
 
 	db, testBucket := setupTestDB(t)
@@ -64,41 +66,66 @@ func TestMigrateMetadata(t *testing.T) {
 	)
 
 	// Call migrateMeta with stale args that have old stale expiry
-	docOut, _, err := db.migrateMetadata(
+	_, _, err = db.migrateMetadata(
 		key,
 		body,
 		existingBucketDoc,
 	)
-	assertNoError(t, err, "Error calling migrateMetadata()")
+	assert.True(t, err != nil)
+	assert.True(t, err == base.ErrCasFailureShouldRetry)
 
-	//// Get the doc expiry
-	gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
-	expiry, getExpiryErr := gocbBucket.GetExpiry(key)
-	assertNoError(t, getExpiryErr, "Error getting expiry")
+}
 
-	// This should equal the docOut expiry
-	assert.Equals(t, expiry, uint32(docOut.Expiry.Unix()))
+func TestMigrateMetadataRequiresImport(t *testing.T) {
 
-	// Assert that the expiry is the _later_ expiry, otherwise it means that later expiry was discarded and clobbered with
-	// the original expiry that was passed via
-	if expiry != uint32(laterSyncMetaExpiry.Unix()) {
-		t.Errorf("Expected expiry to be %v but was %v", laterSyncMetaExpiry.Unix(), expiry)
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	// Try to call migrateMetadata again, even though the doc has already been migrated.
-	// This should essentially abort the migration and return the latest doc
-	docOutAlreadyMigrated, _, err := db.migrateMetadata(
-		key,
-		body,
-		existingBucketDoc,
-	)
-	assertNoError(t, err, "Error calling migrateMetadata()")
+	base.EnableLogKey("Migrate")
+	base.EnableLogKey("Import+")
 
-	// Assert that the returned doc has the latest doc expiry
-	assert.True(t, docOutAlreadyMigrated.Expiry != nil)
-	if uint32(docOutAlreadyMigrated.Expiry.Unix()) != uint32(laterSyncMetaExpiry.Unix()) {
-		t.Errorf("Expected expiry to be %v but was %v", laterSyncMetaExpiry.Unix(), uint32(docOutAlreadyMigrated.Expiry.Unix()))
-	}
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	key := "TestMigrateMetadataRequiresImport"
+	bodyBytes := rawDocWithSyncMeta()
+	body := Body{}
+	err := body.Unmarshal(bodyBytes)
+	assertNoError(t, err, "Error unmarshalling body")
+
+	// Create via the SDK with sync metadata intact
+	expirySeconds := time.Second * 30
+	syncMetaExpiry := time.Now().Add(expirySeconds)
+	_, err = testBucket.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
+	assertNoError(t, err, "Error writing doc w/ expiry")
+
+	// Get the existing bucket doc
+	_, existingBucketDoc, err := db.GetDocWithXattr(key, DocUnmarshalAll)
+	body = Body{}
+	err = body.Unmarshal(existingBucketDoc.Body)
+	assertNoError(t, err, "Error unmarshalling body")
+	log.Printf("existingBucketDoc: %+v", existingBucketDoc)
+
+	// Repro attempt A (not working)
+	//
+	// 1. Set a breakpoint in migrateMeta() before it calls WriteWithXattr()
+	// 2. Call db.importDoc() below
+	// 3. When it hits the migrateMeta() breakpoint before the call to WriteWithXattr():
+	// 			- 3A: Insert a doc with id 'TestMigrateMetadataRequiresImport' via a running Sync Gateway
+	// 4. In this case, the import is aborted due to "if doc.IsSGWrite() {" check in importDoc()
+
+	// Repro attempt B (not working)
+	//
+	// 1. Set a breakpoint in migrateMeta() before it calls WriteWithXattr()
+	// 2. Call db.importDoc() below
+	// 3. When it hits the migrateMeta() breakpoint before the call to WriteWithXattr():
+	// 			- 3A: Insert a doc with id 'TestMigrateMetadataRequiresImport' via CBC SDK
+	// 4. In this case, the call to 'if len(existingDoc.Xattr) > 0 {' in migrateMeta() returns false, and so it doesn't return with requiresInput=true, and I guess keeps trying to migrate
+
+	docOut, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
+	log.Printf("docOut: %v, errImportDoc: %v", docOut, errImportDoc)
 
 }
 
@@ -125,7 +152,8 @@ func rawDocWithSyncMeta() []byte {
         },
         "cas": "",
         "time_saved": "2017-11-29T12:46:13.456631-08:00"
-    }
+    },
+    "field": "value"
 }
 `)
 

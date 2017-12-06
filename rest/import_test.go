@@ -909,17 +909,15 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 	}
 
 	type testcase struct {
-		onDemandCallback func(string)
-		name             string
+		onDemandCallback      func(string)
+		name                  string
 		expectedRevGeneration int
-
 	}
 	testCases := []testcase{
 		{
 			onDemandCallback: triggerOnDemandViaGet,
 			name:             "triggerOnDemandViaGet",
 			expectedRevGeneration: 1,
-
 		},
 		{
 			onDemandCallback: triggerOnDemandViaWrite,

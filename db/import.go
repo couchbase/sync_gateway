@@ -205,94 +205,89 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 
 	var getExpiryErr error
 
-	for {
-		// Reload existing doc, if not present
-		if len(existingDoc.Body) == 0 {
-			cas, getErr := db.Bucket.GetWithXattr(docid, KSyncXattrName, &existingDoc.Body, &existingDoc.Xattr)
-			base.LogTo("Migrate", "Reload in migrate got cas: %d", cas)
-			if getErr != nil {
-				return nil, false, getErr
-			}
-
-			// Reload doc expiry from bucket
-			gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
-			if !ok {
-				return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
-			}
-			expiry, getExpiryErr = gocbBucket.GetExpiry(docid)
-			if getExpiryErr != nil {
-				return nil, false, getExpiryErr
-			}
-
-			// If an xattr exists on the doc, someone has already migrated.  Cancel and return for potential import checking.
-			if len(existingDoc.Xattr) > 0 {
-				updatedDoc, unmarshalErr := unmarshalDocumentWithXattr(docid, existingDoc.Body, existingDoc.Xattr, cas, DocUnmarshalAll)
-				if unmarshalErr != nil {
-					return nil, false, unmarshalErr
-				}
-
-				latestExpiry := time.Unix(int64(expiry), 0)
-				updatedDoc.Expiry = &latestExpiry
-
-				base.LogTo("Migrate", "Returning updated doc because xattr exists (cas=%d): %s", updatedDoc.Cas, existingDoc.Xattr)
-				return updatedDoc, true, nil
-			}
-			existingDoc.Cas = cas
+	// Reload existing doc, if not present
+	if len(existingDoc.Body) == 0 {
+		cas, getErr := db.Bucket.GetWithXattr(docid, KSyncXattrName, &existingDoc.Body, &existingDoc.Xattr)
+		base.LogTo("Migrate", "Reload in migrate got cas: %d", cas)
+		if getErr != nil {
+			return nil, false, getErr
 		}
 
-		// Unmarshal the existing doc in legacy SG format
-		doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
-		if err != nil {
-			return nil, false, unmarshalErr
-		}
-		doc.Cas = existingDoc.Cas
-
-		// If the doc expiry was reloaded, use it
-		if expiry > 0 {
-			latestExpiry := time.Unix(int64(expiry), 0)
-			doc.Expiry = &latestExpiry
-		}
-
-		// If no sync metadata is present, return for import handling
-		if !doc.HasValidSyncData(false) {
-			base.LogTo("Migrate", "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", docid, doc.Cas)
-			return doc, true, nil
-		}
-
-		// Move any large revision bodies to external storage
-		doc.migrateRevisionBodies(db.Bucket)
-
-		// Persist the document in xattr format
-		value, xattrValue, marshalErr := doc.MarshalWithXattr()
-		if marshalErr != nil {
-			return nil, false, marshalErr
-		}
-
-		// TODO: Could refactor migrateMetadata to use WriteUpdateWithXattr for both CAS retry and general write handling, and avoid cast to CouchbaseBucketGoCB
+		// Reload doc expiry from bucket
 		gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
 		if !ok {
 			return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
 		}
-
-		// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
-		isDelete := doc.hasFlag(channels.Deleted)
-		deleteBody := isDelete && len(existingDoc.Body) > 0
-		casOut, writeErr := gocbBucket.WriteWithXattr(docid, KSyncXattrName, expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
-		if writeErr == nil {
-			doc.Cas = casOut
-			base.LogTo("Migrate", "Successfully migrated doc %q", docid)
-			return doc, false, nil
+		expiry, getExpiryErr = gocbBucket.GetExpiry(docid)
+		if getExpiryErr != nil {
+			return nil, false, getExpiryErr
 		}
 
-		// On any error other than cas mismatch, return error
-		if !base.IsCasMismatch(db.Bucket, writeErr) {
-			return nil, false, writeErr
-		}
+		// If an xattr exists on the doc, someone has already migrated.  Cancel and return for potential import checking.
+		if len(existingDoc.Xattr) > 0 {
+			updatedDoc, unmarshalErr := unmarshalDocumentWithXattr(docid, existingDoc.Body, existingDoc.Xattr, cas, DocUnmarshalAll)
+			if unmarshalErr != nil {
+				return nil, false, unmarshalErr
+			}
 
-		base.LogTo("Migrate", "CAS mismatch, retrying")
-		// On cas mismatch, reset existingDoc.Body to trigger reload
-		existingDoc = &sgbucket.BucketDocument{}
+			base.LogTo("Migrate", "Returning updated doc because xattr exists (cas=%d): %s", updatedDoc.Cas, existingDoc.Xattr)
+			return updatedDoc, true, nil
+		}
+		existingDoc.Cas = cas
 	}
+
+	// Unmarshal the existing doc in legacy SG format
+	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
+	if err != nil {
+		return nil, false, unmarshalErr
+	}
+	doc.Cas = existingDoc.Cas
+
+	// If the doc expiry was reloaded, use it
+	if expiry > 0 {
+		latestExpiry := time.Unix(int64(expiry), 0)
+		doc.Expiry = &latestExpiry
+	}
+
+	// If no sync metadata is present, return for import handling
+	if !doc.HasValidSyncData(false) {
+		base.LogTo("Migrate", "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", docid, doc.Cas)
+		return doc, true, nil
+	}
+
+	// Move any large revision bodies to external storage
+	doc.migrateRevisionBodies(db.Bucket)
+
+	// Persist the document in xattr format
+	value, xattrValue, marshalErr := doc.MarshalWithXattr()
+	if marshalErr != nil {
+		return nil, false, marshalErr
+	}
+
+	// TODO: Could refactor migrateMetadata to use WriteUpdateWithXattr for both CAS retry and general write handling, and avoid cast to CouchbaseBucketGoCB
+	gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
+	if !ok {
+		return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
+	}
+
+	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
+	isDelete := doc.hasFlag(channels.Deleted)
+	deleteBody := isDelete && len(existingDoc.Body) > 0
+	casOut, writeErr := gocbBucket.WriteWithXattr(docid, KSyncXattrName, expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
+	if writeErr == nil {
+		doc.Cas = casOut
+		base.LogTo("Migrate", "Successfully migrated doc %q", docid)
+		return doc, false, nil
+	}
+
+	// If it was a cas mismatch, propagate an error as far up the stack as possible to force a full refresh + retry
+	if base.IsCasMismatch(db.Bucket, writeErr) {
+		return nil, false, base.ErrCasFailureShouldRetry
+	}
+
+	// On any other error, return it as-is since it shouldn't necessarily retry in this case
+	return nil, false, writeErr
+
 }
 
 //////// Import Filter Function
