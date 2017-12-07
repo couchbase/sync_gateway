@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
+	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -67,13 +67,13 @@ func (h *handler) handleAllDocs() error {
 	}
 
 	// Get the set of channels the user has access to; nil if user is admin or has access to user "*"
-	var availableChannels channels.TimedSet
+	var availableChannels ch.TimedSet
 	if h.user != nil {
 		availableChannels = h.user.InheritedChannels()
 		if availableChannels == nil {
 			panic("no channels for user?")
 		}
-		if availableChannels.Contains(channels.UserStarChannel) {
+		if availableChannels.Contains(ch.UserStarChannel) {
 			availableChannels = nil
 		}
 	}
@@ -95,7 +95,7 @@ func (h *handler) handleAllDocs() error {
 		}
 		return channels[0:dst]
 	}
-	filterChannelSet := func(channelMap channels.ChannelMap) []string {
+	filterChannelSet := func(channelMap ch.ChannelMap) []string {
 		var result []string
 		if availableChannels == nil {
 			result = []string{}
@@ -165,7 +165,7 @@ func (h *handler) handleAllDocs() error {
 					value.Access[userName] = channels.AsSet()
 				}
 				for roleName, channels := range roleAccess {
-					value.Access["role:"+roleName] = channels.AsSet()
+					value.Access[ch.RoleAccessPrefix+roleName] = channels.AsSet()
 				}
 			}
 		}

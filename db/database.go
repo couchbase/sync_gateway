@@ -1202,10 +1202,12 @@ func (db *Database) invalRoleChannels(rolename string) {
 }
 
 func (db *Database) invalUserOrRoleChannels(name string) {
-	if strings.HasPrefix(name, "role:") {
-		db.invalRoleChannels(name[5:])
+
+	principalName, isRole := channels.AccessNameToPrincipalName(name)
+	if isRole {
+		db.invalRoleChannels(principalName)
 	} else {
-		db.invalUserChannels(name)
+		db.invalUserChannels(principalName)
 	}
 }
 

@@ -1201,6 +1201,63 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 		map[string]interface{}{"rev": "1-4d79588b9fe9c38faae61f0c1b9471c0", "id": "bulk2"})
 }
 
+func TestBulkDocsChangeToRoleAccess(t *testing.T) {
+
+	var logKeys = map[string]bool{
+		"Access":  true,
+		"Access+": true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
+	rt := RestTester{SyncFn: `
+		function(doc) {
+			if(doc.type == "roleaccess") {
+				channel(doc.channel); 
+				access(doc.grantTo, doc.grantChannel);
+			} else { 
+				requireAccess(doc.mustHaveAccess)
+			}
+		}`}
+	defer rt.Close()
+
+	// Create a role with no channels assigned to it
+	authenticator := rt.ServerContext().Database("db").Authenticator()
+	role, err := authenticator.NewRole("role1", nil)
+	authenticator.Save(role)
+
+	// Create a user with an explicit role grant for role1
+	user, err := authenticator.NewUser("user1", "letmein", nil)
+	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)})
+	err = authenticator.Save(user)
+	assert.Equals(t, err, nil)
+
+	// Bulk docs with 2 docs.  First doc grants role1 access to chan1.  Second requires chan1 for write.
+	input := `{"docs": [
+				{
+					"_id": "bulk1", 
+				 	"type" : "roleaccess", 
+				 	"grantTo":"role:role1", 
+				 	"grantChannel":"chan1"
+				 }, 
+				{
+					"_id": "bulk2",
+					"mustHaveAccess":"chan1"
+				}
+				]}`
+
+	response := rt.Send(requestByUser("POST", "/db/_bulk_docs", input, "user1"))
+	assertStatus(t, response, 201)
+
+	var docs []interface{}
+	json.Unmarshal(response.Body.Bytes(), &docs)
+	assert.Equals(t, len(docs), 2)
+	assert.DeepEquals(t, docs[0],
+		map[string]interface{}{"rev": "1-17424d2a21bf113768dfdbcd344741ac", "id": "bulk1"})
+	assert.DeepEquals(t, docs[1],
+		map[string]interface{}{"rev": "1-f120ccb33c0a6ef43ef202ade28f98ef", "id": "bulk2"})
+}
+
 func TestBulkDocsNoEdits(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()

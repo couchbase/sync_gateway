@@ -98,7 +98,7 @@ func (role *roleImpl) DocID() string {
 
 // Key used in 'access' view (not same meaning as doc ID)
 func (role *roleImpl) accessViewKey() string {
-	return "role:" + role.Name_
+	return ch.RoleAccessPrefix + role.Name_
 }
 
 //////// ACCESSORS:
