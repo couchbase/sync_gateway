@@ -1210,7 +1210,15 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
 	base.UpdateLogKeys(logKeys, true)
 
-	rt := RestTester{SyncFn: `function(doc) {if(doc.type == "roleaccess") {channel(doc.channel); access(doc.grantTo, doc.grantChannel);} else { requireAccess(doc.mustHaveAccess)}}`}
+	rt := RestTester{SyncFn: `
+		function(doc) {
+			if(doc.type == "roleaccess") {
+				channel(doc.channel); 
+				access(doc.grantTo, doc.grantChannel);
+			} else { 
+				requireAccess(doc.mustHaveAccess)
+			}
+		}`}
 	defer rt.Close()
 
 	// Create a role with no channels assigned to it
@@ -1225,7 +1233,18 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 	assert.Equals(t, err, nil)
 
 	// Bulk docs with 2 docs.  First doc grants role1 access to chan1.  Second requires chan1 for write.
-	input := `{"docs": [{"_id": "bulk1", "type" : "roleaccess", "grantTo":"role:role1" , "grantChannel":"chan1"}, {"_id": "bulk2" , "mustHaveAccess":"chan1"}]}`
+	input := `{"docs": [
+				{
+					"_id": "bulk1", 
+				 	"type" : "roleaccess", 
+				 	"grantTo":"role:role1", 
+				 	"grantChannel":"chan1"
+				 }, 
+				{
+					"_id": "bulk2",
+					"mustHaveAccess":"chan1"
+				}
+				]}`
 
 	response := rt.Send(requestByUser("POST", "/db/_bulk_docs", input, "user1"))
 	assertStatus(t, response, 201)

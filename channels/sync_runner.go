@@ -19,6 +19,9 @@ import (
 	_ "github.com/robertkrimen/otto/underscore"
 )
 
+// Prefix used to identify roles in access grants
+const RoleAccessPrefix = "role:"
+
 const funcWrapper = `
 	function() {
 
@@ -189,7 +192,7 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 			if err == nil {
 				output.Access, err = compileAccessMap(runner.access, "")
 				if err == nil {
-					output.Roles, err = compileAccessMap(runner.roles, "role:")
+					output.Roles, err = compileAccessMap(runner.roles, RoleAccessPrefix)
 				}
 			}
 			if runner.expiry != nil {
@@ -236,6 +239,14 @@ func compileAccessMap(input map[string][]string, prefix string) (AccessMap, erro
 		}
 	}
 	return access, nil
+}
+
+// If the provided principal name (in access grant format) is a role, returns the role name without prefix
+func AccessNameToPrincipalName(accessPrincipalName string) (principalName string, isRole bool) {
+	if strings.HasPrefix(accessPrincipalName, RoleAccessPrefix) {
+		return accessPrincipalName[len(RoleAccessPrefix):], true
+	}
+	return accessPrincipalName, false
 }
 
 // Converts a JS string or array into a Go string array.

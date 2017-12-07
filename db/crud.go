@@ -1127,22 +1127,22 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 	// Mark affected users/roles as needing to recompute their channel access:
 	if len(changedPrincipals) > 0 {
 		base.LogTo("Access", "Rev %q/%q invalidates channels of %s", docid, newRevID, changedPrincipals)
-		for _, name := range changedPrincipals {
-			db.invalUserOrRoleChannels(name)
+		for _, changedAccessPrincipalName := range changedPrincipals {
+			db.invalUserOrRoleChannels(changedAccessPrincipalName)
 			// Check whether the active user needs to be recalculated.  Skip check if reload has already been identified
 			// as required for a previous changedPrincipal
 			if db.user != nil && reloadActiveUser == false {
 				// If role changed, check if active user has been granted the role
-				if strings.HasPrefix(name, "role:") {
-					modifiedRole := name[5:]
+				changedPrincipalName, isRole := channels.AccessNameToPrincipalName(changedAccessPrincipalName)
+				if isRole {
 					for roleName := range db.user.RoleNames() {
-						if roleName == modifiedRole {
+						if roleName == changedPrincipalName {
 							base.LogTo("Access+", "Active user belongs to role %q with modified channel access - user %q will be reloaded.", roleName, db.user.Name())
 							reloadActiveUser = true
 							break
 						}
 					}
-				} else if db.user.Name() == name {
+				} else if db.user.Name() == changedPrincipalName {
 					// User matches
 					base.LogTo("Access+", "Channel set for active user has been modified - user %q will be reloaded.", db.user.Name())
 					reloadActiveUser = true
@@ -1279,11 +1279,9 @@ func makeUserCtx(user auth.User) map[string]interface{} {
 // Are the principal and role names in an AccessMap all valid?
 func validateAccessMap(access channels.AccessMap) bool {
 	for name := range access {
-		if strings.HasPrefix(name, "role:") {
-			name = name[5:] // Roles are identified in access view by a "role:" prefix
-		}
-		if !auth.IsValidPrincipalName(name) {
-			base.Warn("Invalid principal name %q in access() or role() call", name)
+		principalName, _ := channels.AccessNameToPrincipalName(name)
+		if !auth.IsValidPrincipalName(principalName) {
+			base.Warn("Invalid principal name %q in access() or role() call", principalName)
 			return false
 		}
 	}
@@ -1321,7 +1319,7 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
-		key = "role:" + key // Roles are identified in access view by a "role:" prefix
+		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
 	}
 
 	var vres struct {
@@ -1346,7 +1344,7 @@ func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.P
 func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
-		key = "role:" + key // Roles are identified in access view by a "role:" prefix
+		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
 	}
 
 	var vres struct {
