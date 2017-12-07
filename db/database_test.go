@@ -69,6 +69,9 @@ func setupTestDBForShadowing(t *testing.T) *Database {
 	return db
 }
 
+// Its important to call tearDownTestDB() on the database and .Close() on the TestBucket that is returned by this helper.
+// For example, if .Close() is not called on the TestBucket before the test is finished, it will be detected and
+// the next test will fail.
 func setupTestDB(t testing.TB) (*Database, base.TestBucket) {
 	return setupTestDBWithCacheOptions(t, CacheOptions{})
 }

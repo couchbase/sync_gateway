@@ -34,7 +34,7 @@
 
   
   <!-- Sync Gateway Accel-->
-  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="118c67acef660fe5593df0f552952cd243029b21"/>
+  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="4a20df9b40c54b9955c7807d0c73a6965580d315"/>
 
   <!-- Dependencies specific to Sync Gateway Accel-->
   <project groups="notdefault,sg-accel" name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="eb79bf552d0992f5d790b25b6ebba9b633a259a2"/>
@@ -61,7 +61,7 @@
 
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="6382451e5ef472cd19e4eba6e82e3c1957e4cc09"/>
 
-  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="c93b867917a3058506fcab2d6948a918776a9374"/>
+  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="e5fbe974fa2c297b36bda375d742ba1419eff25f"/>
 
   <project name="gocbconnstr" path="godeps/src/github.com/couchbaselabs/gocbconnstr" remote="couchbaselabs" revision="f601f521a1ab1c99260c63441e1bbdbbc48b1bd9"/>
 
@@ -71,7 +71,7 @@
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="39fe61b0969ae38f8c6841e9c19c5ad9e57d2b75"/>
 
-  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="befa4a9dc7ef85b54bc464f8735754eb90950b29"/>
+  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="d60aa85bdea5b6f2f285b197a8d7541a2fe90141"/>
 
   <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="elazarl" revision="30f82fa23fd844bd5bb1e5f216db87fd77b5eb43"/>
 

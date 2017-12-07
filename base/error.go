@@ -32,6 +32,7 @@ const (
 	documentMigrated      = sgErrorCode(0x06)
 	fatalBucketConnection = sgErrorCode(0x07)
 	emptyMetadata         = sgErrorCode(0x08)
+	casFailureShouldRetry = sgErrorCode(0x09)
 )
 
 type SGError struct {
@@ -48,6 +49,7 @@ var (
 	ErrDocumentMigrated      = &SGError{documentMigrated}
 	ErrFatalBucketConnection = &SGError{fatalBucketConnection}
 	ErrEmptyMetadata         = &SGError{emptyMetadata}
+	ErrCasFailureShouldRetry = &SGError{casFailureShouldRetry}
 )
 
 func (e SGError) Error() string {

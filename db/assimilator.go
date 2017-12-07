@@ -34,14 +34,14 @@ func (c *DatabaseContext) watchDocChanges() {
 func (c *DatabaseContext) assimilate(docid string) {
 	base.LogTo("CRUD", "Importing new doc %q", docid)
 	db := Database{DatabaseContext: c, user: nil}
-	_, err := db.updateDoc(docid, true, 0, func(doc *document) (Body, AttachmentData, error) {
+	_, err := db.updateDoc(docid, true, 0, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		if doc.HasValidSyncData(c.writeSequences()) {
-			return nil, nil, couchbase.UpdateCancel // someone beat me to it
+			return nil, nil, nil, couchbase.UpdateCancel // someone beat me to it
 		}
 		if err := db.initializeSyncData(doc); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		return doc.Body(), nil, nil
+		return doc.Body(), nil, nil, nil
 	})
 	if err != nil && err != couchbase.UpdateCancel {
 		base.Warn("Failed to import new doc %q: %v", docid, err)

@@ -12,6 +12,7 @@ package base
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"expvar"
 	"fmt"
@@ -28,6 +29,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gomemcached"
 	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -755,4 +757,12 @@ func GetExpvarAsString(mapName string, name string) string {
 	} else {
 		return ""
 	}
+}
+
+// TODO: temporary workaround until https://issues.couchbase.com/browse/MB-27026 is implemented
+func ExtractExpiryFromDCPMutation(rq *gomemcached.MCRequest) (expiry uint32) {
+	if len(rq.Extras) < 24 {
+		return 0
+	}
+	return binary.BigEndian.Uint32(rq.Extras[20:24])
 }

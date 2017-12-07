@@ -206,7 +206,7 @@ func NewTestBucketManager(spec BucketSpec) *TestBucketManager {
 func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 
 	if NumOpenBuckets(tbm.BucketSpec.BucketName) > 0 {
-		return false, fmt.Errorf("There are already %d open buckets.  The tests expect all buckets to be closed.", NumOpenBuckets(tbm.BucketSpec.BucketName))
+		return false, fmt.Errorf("There are already %d open buckets with name: %s.  The tests expect all buckets to be closed.", NumOpenBuckets(tbm.BucketSpec.BucketName), tbm.BucketSpec.BucketName)
 	}
 
 	IncrNumOpenBuckets(tbm.BucketSpec.BucketName)
@@ -331,7 +331,6 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		numTries += 1
 
 	}
-
 
 	return nil
 

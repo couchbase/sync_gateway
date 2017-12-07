@@ -27,6 +27,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
+	"sync"
 )
 
 var gocbExpvars *expvar.Map
@@ -1528,6 +1529,13 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 		// Invoke callback to get updated value
 		updatedValue, updatedXattrValue, isDelete, callbackExpiry, err := callback(value, xattrValue, cas)
 
+		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
+		if err == ErrCasFailureShouldRetry {
+			cas = 0  // force the call to GetWithXattr() to refresh
+			continue
+		}
+
+		// On any other errors, abort the Write attempt
 		if err != nil {
 			return emptyCas, err
 		}
@@ -2071,6 +2079,64 @@ func (bucket CouchbaseBucketGoCB) Close() {
 		Warn("Error closing GoCB bucket: %v.", err)
 		return
 	}
+}
+
+func (bucket CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
+
+	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
+	defer func() {
+		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
+	}()
+
+	agent := bucket.IoRouter()
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	getMetaCallback := func(value []byte, flags uint32, cas gocbcore.Cas, exp uint32, seq gocbcore.SeqNo, dataType uint8, deleted uint32, err error) {
+		defer wg.Done()
+		if err != nil {
+			getMetaError = pkgerrors.Wrapf(getMetaError, "Error getting expiry for doc: %s", k)
+			return
+		}
+		expiry = exp
+	}
+
+	agent.GetMeta([]byte(k), getMetaCallback)
+
+	wg.Wait()
+
+	return expiry, getMetaError
+
+}
+
+func (bucket CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaError error) {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		expirySingleAttempt, err := bucket.getExpirySingleAttempt(k)
+		shouldRetry = (err != nil && isRecoverableGoCBError(err))
+		return shouldRetry, err, uint32(expirySingleAttempt)
+	}
+
+	// Kick off retry loop
+	description := fmt.Sprintf("getExpiry for key: %v", k)
+	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint32(0)
+	}
+
+	// Type assertion of result
+	expiry, ok := result.(uint32)
+	if !ok {
+		return 0, fmt.Errorf("Get: Error doing type assertion of %v into a uint32,  Key: %v", result, k)
+	}
+
+	return expiry, err
+
 }
 
 // Formats binary document to the style expected by the transcoder.  GoCBCustomSGTranscoder

@@ -19,8 +19,8 @@ import (
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/satori/go.uuid"
 	pkgerrors "github.com/pkg/errors"
+	"github.com/satori/go.uuid"
 )
 
 var dcpExpvars *expvar.Map
@@ -165,6 +165,7 @@ func (r *DCPReceiver) incrementCheckpointCount(vbucketId uint16) {
 }
 
 func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
+
 	// not currently doing rq.Extras handling (as in gocouchbase/upr_feed, makeUprEvent) as SG doesn't use
 	// expiry/flags information, and snapshot handling is done by cbdatasource and sent as
 	// SnapshotStart, SnapshotEnd
@@ -175,6 +176,7 @@ func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.
 		Sequence:    rq.Cas,
 		DataType:    rq.DataType,
 		Cas:         rq.Cas,
+		Expiry:      ExtractExpiryFromDCPMutation(rq),
 		Synchronous: true,
 	}
 	return event
