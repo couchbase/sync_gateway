@@ -76,7 +76,20 @@ func TestMigrateMetadata(t *testing.T) {
 
 }
 
-func TestImportDocWithStaleDoc(t *testing.T) {
+// This invokes db.importDoc() with two different scenarios:
+//
+// Scenario 1: normal import
+//
+// 1. Write doc via SDK that is a pure KV doc, no sync metadata `{"key": "val"}` and with expiry value expiryA
+// 2. Perform an update via SDK to update the expiry to expiry value expiryB
+// 3. Invoke db.importDoc() and pass it the stale doc from step 1, that has expiryA
+// 4. Do a get on the doc and verify that it has the later expiry value expiryB, which verifies it did a CAS retry
+//
+// Scenario 2: import with migration
+//
+// - Same as scenario 1, except that in step 1 it writes a doc with sync metadata, so that it excercises the migration code
+//
+func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
@@ -150,6 +163,9 @@ func TestImportDocWithStaleDoc(t *testing.T) {
 			log.Printf("docOut: %v, errImportDoc: %v", docOut, errImportDoc)
 			assertNoError(t, errImportDoc, "Unexpected error")
 
+			// Make sure the doc in the bucket has expected XATTR
+			assertXattrSyncMetaRevGeneration(t, testBucket.Bucket, key, 1)
+
 			// Verify the expiry has been preserved after the import
 			gocbBucket := testBucket.Bucket.(*base.CouchbaseBucketGoCB)
 			expiry, err := gocbBucket.GetExpiry(key)
@@ -195,3 +211,15 @@ func rawDocWithSyncMeta() []byte {
 `)
 
 }
+
+func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
+	xattr := map[string]interface{}{}
+	_, err := bucket.GetWithXattr(key, "_sync", nil, &xattr)
+	assertNoError(t, err, "Error Getting Xattr")
+	revision, ok := xattr["rev"]
+	assert.True(t, ok)
+	generation, _ := ParseRevID(revision.(string))
+	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
+	assert.True(t, generation == expectedRevGeneration)
+}
+
