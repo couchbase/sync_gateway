@@ -15,7 +15,7 @@ $ brew install repo
 Create a directory where you want to store the Sync Gateway source code and bundled dependencies, and change to that directory.  For example:
 
 ```bash
-$ mkdir ~/sync_gateway; cd ~/sync_gateway 
+$ mkdir ~/sync_gateway; cd ~/sync_gateway
 ```
 
 Download the `bootstrap.sh` shell script and run it:
@@ -63,7 +63,7 @@ project godeps/src/github.com/couchbaselabs/walrus/ branch feature/sg_2418_sgbuc
 Once the `repo status` is clean, to switch to a different sync gateway commit (which must be pushed up to github):
 
 ```bash
-$ ./snap-manifest.sh sync-gateway-commit-or-branch
+$ ./snap-manifest.sh --sg-commit sync-gateway-commit-or-branch
 ```
 
 **Manually switch to a different sync gateway branch**
@@ -145,5 +145,3 @@ Install Couchbase Server locally and set the Administrator username / password t
 ```
 $ ./test_integration.sh
 ```
-
-
