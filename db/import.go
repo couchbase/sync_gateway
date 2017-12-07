@@ -19,7 +19,7 @@ const (
 )
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, isDelete bool, cas uint64, expiry uint32, mode ImportMode) (docOut *document, err error) {
+func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *document, err error) {
 
 	var body Body
 	if isDelete {
@@ -32,21 +32,42 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 		}
 	}
 
+	// Get the doc expiry if it wasn't passed in
+	if expiry == nil {
+		gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
+		getExpiry, getExpiryErr := gocbBucket.GetExpiry(docid)
+		if getExpiryErr != nil {
+			return nil, getExpiryErr
+		}
+		expiry = &getExpiry
+	}
+
 	existingBucketDoc := &sgbucket.BucketDocument{
 		Body:   value,
 		Xattr:  xattrValue,
 		Cas:    cas,
-		Expiry: expiry,
+		Expiry: *expiry,
 	}
 	return db.importDoc(docid, body, isDelete, existingBucketDoc, mode)
 }
 
 // Import a document, given the existing state of the doc in *document format.
-func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool, expiry uint32, mode ImportMode) (docOut *document, err error) {
+func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool, expiry *uint32, mode ImportMode) (docOut *document, err error) {
 
 	if existingDoc == nil {
 		return nil, fmt.Errorf("No existing doc present when attempting to import %s", docid)
 	}
+
+	// Get the doc expiry if it wasn't passed in
+	if expiry == nil {
+		gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
+		getExpiry, getExpiryErr := gocbBucket.GetExpiry(docid)
+		if getExpiryErr != nil {
+			return nil, getExpiryErr
+		}
+		expiry = &getExpiry
+	}
+
 	// TODO: We need to remarshal the existing doc into bytes.  Less performance overhead than the previous bucket op to get the value in WriteUpdateWithXattr,
 	//       but should refactor import processing to support using the already-unmarshalled doc.
 	rawValue, rawXattr, err := existingDoc.MarshalWithXattr()
@@ -57,7 +78,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool
 		Body:   rawValue,
 		Xattr:  rawXattr,
 		Cas:    existingDoc.Cas,
-		Expiry: expiry,
+		Expiry: *expiry,
 	}
 
 	return db.importDoc(docid, existingDoc.Body(), isDelete, existingBucketDoc, mode)

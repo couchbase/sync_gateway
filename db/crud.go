@@ -163,14 +163,7 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 	importDb := Database{DatabaseContext: db, user: nil}
 	var importErr error
 
-	// Get the doc expiry
-	gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
-	expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
-	if getExpiryErr != nil {
-		return nil, getExpiryErr
-	}
-
-	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, isDelete, cas, expiry, ImportOnDemand)
+	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, isDelete, cas, nil, ImportOnDemand)
 	if importErr == base.ErrImportCancelledFilter {
 		// If the import was cancelled due to filter, treat as not found
 		return nil, base.HTTPErrorf(404, "Not imported")
@@ -565,14 +558,7 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *document, body Bod
 	// Use an admin-scoped database for import
 	importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
 
-	// Get the doc expiry
-	gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
-	expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
-	if getExpiryErr != nil {
-		return getExpiryErr
-	}
-
-	importedDoc, importErr := importDb.ImportDoc(docid, doc, isDelete, expiry, ImportOnDemand)
+	importedDoc, importErr := importDb.ImportDoc(docid, doc, isDelete, nil, ImportOnDemand)
 
 	if importErr == base.ErrImportCancelledFilter {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert

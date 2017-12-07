@@ -12,6 +12,7 @@ package base
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"expvar"
 	"fmt"
@@ -27,7 +28,6 @@ import (
 	"strings"
 	"time"
 
-	"encoding/binary"
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbaselabs/gocbconnstr"

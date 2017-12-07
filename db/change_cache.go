@@ -409,7 +409,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 				}
 
 				db := Database{DatabaseContext: c.context, user: nil}
-				_, err := db.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, event.Expiry, ImportFromFeed)
+				_, err := db.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
 				if err != nil {
 					if err == base.ErrImportCasFailure {
 						base.LogTo("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", docID)
