@@ -22,12 +22,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/clog"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"runtime"
 )
 
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
@@ -417,7 +417,6 @@ function(doc, oldDoc) {
 		log.Printf("Sent 2nd round of _bulk_docs")
 
 	}
-
 
 	// wait for changes feed to complete (time out)
 	wg.Wait()
@@ -1471,7 +1470,10 @@ func TestReplicateErrorConditions(t *testing.T) {
 
 }
 
-//These tests validate request parameters not actual replication
+// These tests validate request parameters not actual replication.
+// For actual replication tests, see:
+// - sg-replicate mock-based unit test suite
+// - Functional tests in mobile-testkit repo
 func TestDocumentChangeReplicate(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
@@ -1479,7 +1481,12 @@ func TestDocumentChangeReplicate(t *testing.T) {
 	}
 
 	var rt RestTester
-	defer rt.Close()
+	defer rt.Close()  // Close RestTester, which closes ServerContext, which stops all replications
+
+	base.EnableLogKey("Replicate")
+	base.EnableLogKey("Replicate+")
+	clog.EnableKey("Replicate")
+	clog.EnableKey("Replicate+")
 
 	//Initiate synchronous one shot replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db"}`), 500)
@@ -1513,15 +1520,5 @@ func TestDocumentChangeReplicate(t *testing.T) {
 
 	//Cancel a replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 404)
-
-
-	// Dump goroutines
-	rawStackTrace := make([]byte, 1<<20)
-	runtime.Stack(rawStackTrace, true)
-	log.Printf("Stacks")
-	log.Printf("%s", string(rawStackTrace))
-
-
-
 
 }
