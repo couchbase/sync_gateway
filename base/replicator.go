@@ -245,6 +245,8 @@ func (r *Replicator) populateActiveTaskFromReplication(replication sgreplicate.S
 }
 
 func (r *Replicator) StopReplications() error {
+	 r.lock.Lock()
+	 defer r.lock.Unlock()
 	for replicationId, replication := range r.replications {
 		LogTo("Replicate", "Stopping replication %s", replicationId)
 		if err := replication.Stop(); err != nil {
