@@ -143,6 +143,11 @@ func (sc *ServerContext) Close() {
 		}
 	}
 	sc.databases_ = nil
+
+	if err := sc.replicator.StopReplications(); err != nil {
+		base.Warn("Error stopping replications: %+v.  This could cause a resource leak.  Please restart Sync Gateway to cleanup leaked resources.", err)
+	}
+
 }
 
 // Returns the DatabaseContext with the given name

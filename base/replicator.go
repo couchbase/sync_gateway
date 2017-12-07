@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -241,4 +242,14 @@ func (r *Replicator) populateActiveTaskFromReplication(replication sgreplicate.S
 	}
 
 	return
+}
+
+func (r *Replicator) StopReplications() error {
+	for replicationId, replication := range r.replications {
+		LogTo("Replicate", "Stopping replication %s", replicationId)
+		if err := replication.Stop(); err != nil {
+			return pkgerrors.Wrapf(err, "Error stopping sg-replicate replication with id: %s", replicationId)
+		}
+	}
+	return nil
 }
