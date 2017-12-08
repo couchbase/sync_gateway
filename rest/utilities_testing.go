@@ -244,8 +244,7 @@ func (rt *RestTester) TestPublicHandler() http.Handler {
 }
 
 type changesResults struct {
-	Results  []db.ChangeEntry
-	Last_Seq interface{}
+	Results []db.ChangeEntry
 }
 
 func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesUrl, username string, useAdminPort bool) (worker base.RetryWorker) {

@@ -2182,16 +2182,23 @@ func TestRoleAccessChanges(t *testing.T) {
 	)
 	assert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
 
-	changesResult, err := rt.WaitForChanges(2, "/db/_changes", "alice", false)
-	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(changesResult.Results), 2)
-	since := changesResult.Last_Seq
+	// Check the _changes feed:
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
+	log.Printf("1st _changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 2)
+	since := changes.Last_Seq
 	assert.Equals(t, since, "3")
 
-	changesResult, err = rt.WaitForChanges(1, "/db/_changes", "zegpold", false)
-	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(changesResult.Results), 1)
-	since = changesResult.Last_Seq
+	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
+	log.Printf("2nd _changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	since = changes.Last_Seq
 	assert.Equals(t, since, "4")
 
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
@@ -2218,12 +2225,15 @@ func TestRoleAccessChanges(t *testing.T) {
 	)
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
-	changesResult, err = rt.WaitForChanges(2, "/db/_changes", "zegpold", false)
-	assert.Equals(t, len(changesResult.Results), 2)
-	log.Printf("changes: %+v", changesResult.Results)
-	assert.Equals(t, changesResult.Last_Seq, "6:2")  // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
-	assert.Equals(t, changesResult.Results[0].ID, "b1")
-	assert.Equals(t, changesResult.Results[1].ID, "g1")
+	changes.Results = nil
+	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
+	log.Printf("3rd _changes looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 2)
+	log.Printf("changes: %+v", changes.Results)
+	assert.Equals(t, changes.Last_Seq, "6:2")  // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
+	assert.Equals(t, changes.Results[0].ID, "b1")
+	assert.Equals(t, changes.Results[1].ID, "g1")
 
 	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
@@ -2234,10 +2244,12 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	base.UpdateLogKeys(additionalLogKeys, false)
 
-	changesResult, err = rt.WaitForChanges(1, "/db/_changes?since=4", "zegpold", false)
-	assert.Equals(t, len(changesResult.Results), 1)
-	assert.Equals(t, changesResult.Results[0].ID, "g1")
-
+	response = rt.Send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
+	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
+	changes.Results = nil
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, changes.Results[0].ID, "g1")
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
