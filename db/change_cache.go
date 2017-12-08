@@ -413,8 +413,10 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 				if err != nil {
 					if err == base.ErrImportCasFailure {
 						base.LogTo("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", docID)
+					} else if err == base.ErrImportCancelledFilter {
+						// No logging required - filter info already logged during importDoc
 					} else {
-						base.Warn("Unable to import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
+						base.LogTo("Import+", "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
 					}
 				}
 			}

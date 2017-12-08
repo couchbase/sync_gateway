@@ -204,7 +204,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.
 	case base.ErrImportCancelledFilter:
-		// Import was cancelled based on import filter.  Return error but don't log as error/warning.
+		// Import was cancelled based on import filter.  Return error (required for on-demand write import logic), but don't log as error/warning.
 		return nil, err
 	case base.ErrImportCasFailure:
 		// Import was cancelled due to CAS failure.
