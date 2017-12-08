@@ -282,7 +282,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesUrl, usernam
 
 	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, changesUrl, username, useAdminPort)
 
-	sleeper := base.CreateDoublingSleeperFunc(20, 10)
+	sleeper := base.CreateSleeperFunc(200, 100)
 
 	err, changesVal := base.RetryLoop("Wait for changes", waitForChangesWorker, sleeper)
 	if err != nil {
@@ -348,7 +348,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 	}
 
 	description := fmt.Sprintf("Wait for %d view results for query to %v", numResultsExpected, viewUrlPath)
-	sleeper := base.CreateDoublingSleeperFunc(20, 10)
+	sleeper := base.CreateSleeperFunc(200, 100)
 	err, returnVal := base.RetryLoop(description, worker, sleeper)
 
 	if err != nil {

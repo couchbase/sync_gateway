@@ -445,6 +445,19 @@ func CreateDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int) RetrySl
 
 }
 
+// Create a sleeper function that sleeps up to maxNumAttempts, sleeping timeToSleepMs each attempt
+func CreateSleeperFunc(maxNumAttempts, timeToSleepMs int) RetrySleeper {
+
+	sleeper := func(numAttempts int) (bool, int) {
+		if numAttempts > maxNumAttempts {
+			return false, -1
+		}
+		return true, timeToSleepMs
+	}
+	return sleeper
+
+}
+
 // Uint64Slice attaches the methods of sort.Interface to []uint64, sorting in increasing order.
 type Uint64Slice []uint64
 
