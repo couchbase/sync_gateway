@@ -2157,10 +2157,29 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x1)})
-	assert.DeepEquals(t, alice.RoleNames(), channels.TimedSet{"bogus": channels.NewVbSimpleSequence(0x1), "hipster": channels.NewVbSimpleSequence(0x1)})
+	assert.DeepEquals(t,
+		alice.InheritedChannels(),
+		channels.TimedSet{
+			"!":     channels.NewVbSimpleSequence(0x1),
+			"alpha": channels.NewVbSimpleSequence(0x1),
+			"gamma": channels.NewVbSimpleSequence(0x1),
+		},
+	)
+	assert.DeepEquals(t,
+		alice.RoleNames(),
+		channels.TimedSet{
+			"bogus":   channels.NewVbSimpleSequence(0x1),
+			"hipster": channels.NewVbSimpleSequence(0x1),
+		},
+	)
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "beta": channels.NewVbSimpleSequence(0x1)})
+	assert.DeepEquals(t,
+		zegpold.InheritedChannels(),
+		channels.TimedSet{
+			"!":    channels.NewVbSimpleSequence(0x1),
+			"beta": channels.NewVbSimpleSequence(0x1),
+		},
+	)
 	assert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
 
 	// Check the _changes feed:
@@ -2168,19 +2187,23 @@ func TestRoleAccessChanges(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
 	}
+	expectedSeq := uint64(3)
+	rt.WaitForSequence(expectedSeq)
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("1st _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
 	since := changes.Last_Seq
-	assert.Equals(t, since, "3")
+	assert.Equals(t, since, fmt.Sprintf("%d", expectedSeq))
 
+	expectedSeq = uint64(4)
+	rt.WaitForSequence(expectedSeq)
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("2nd _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	since = changes.Last_Seq
-	assert.Equals(t, since, "4")
+	assert.Equals(t, since, fmt.Sprintf("%d", expectedSeq))
 
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
 	str := fmt.Sprintf(`{"user":"zegpold", "role":"role:hipster", "_rev":%q}`, fashionRevID)
@@ -2188,17 +2211,33 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t, alice.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "alpha": channels.NewVbSimpleSequence(0x1)})
+	assert.DeepEquals(t,
+		alice.InheritedChannels(),
+		channels.TimedSet{
+			"!":     channels.NewVbSimpleSequence(0x1),
+			"alpha": channels.NewVbSimpleSequence(0x1),
+		},
+	)
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t, zegpold.InheritedChannels(), channels.TimedSet{"!": channels.NewVbSimpleSequence(0x1), "beta": channels.NewVbSimpleSequence(0x1), "gamma": channels.NewVbSimpleSequence(0x6)})
+	assert.DeepEquals(t,
+		zegpold.InheritedChannels(),
+		channels.TimedSet{
+			"!":     channels.NewVbSimpleSequence(0x1),
+			"beta":  channels.NewVbSimpleSequence(0x1),
+			"gamma": channels.NewVbSimpleSequence(0x6),
+		},
+	)
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	changes.Results = nil
+	expectedSeq = uint64(6)
+	rt.WaitForSequence(expectedSeq)
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("3rd _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
-	assert.Equals(t, changes.Last_Seq, "6:2")
+	log.Printf("changes: %+v", changes.Results)
+	assert.Equals(t, changes.Last_Seq, "6:2")  // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
 	assert.Equals(t, changes.Results[0].ID, "b1")
 	assert.Equals(t, changes.Results[1].ID, "g1")
 

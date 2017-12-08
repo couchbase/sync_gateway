@@ -168,6 +168,7 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 	return doc.Sequence, nil
 }
 
+// Wait for sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) error {
 	database := rt.GetDatabase()
 	if database == nil {
@@ -244,7 +245,8 @@ func (rt *RestTester) TestPublicHandler() http.Handler {
 }
 
 type changesResults struct {
-	Results []db.ChangeEntry
+	Results  []db.ChangeEntry
+	Last_Seq interface{}
 }
 
 func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesUrl, username string, useAdminPort bool) (worker base.RetryWorker) {
