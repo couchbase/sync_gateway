@@ -2187,19 +2187,23 @@ func TestRoleAccessChanges(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
 	}
+	expectedSeq := uint64(3)
+	rt.WaitForSequence(expectedSeq)
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("1st _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
 	since := changes.Last_Seq
-	assert.Equals(t, since, "3")
+	assert.Equals(t, since, fmt.Sprintf("%d", expectedSeq))
 
+	expectedSeq = uint64(4)
+	rt.WaitForSequence(expectedSeq)
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("2nd _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 1)
 	since = changes.Last_Seq
-	assert.Equals(t, since, "4")
+	assert.Equals(t, since, fmt.Sprintf("%d", expectedSeq))
 
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
 	str := fmt.Sprintf(`{"user":"zegpold", "role":"role:hipster", "_rev":%q}`, fashionRevID)
@@ -2226,6 +2230,8 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	changes.Results = nil
+	expectedSeq = uint64(6)
+	rt.WaitForSequence(expectedSeq)
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("3rd _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)

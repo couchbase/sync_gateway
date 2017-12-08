@@ -168,6 +168,7 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 	return doc.Sequence, nil
 }
 
+// Wait for sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) error {
 	database := rt.GetDatabase()
 	if database == nil {
