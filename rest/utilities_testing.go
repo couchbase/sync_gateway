@@ -346,7 +346,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 	}
 
 	description := fmt.Sprintf("Wait for %d view results for query to %v", numResultsExpected, viewUrlPath)
-	sleeper := base.CreateSleeperFunc(20, 100)
+	sleeper := base.CreateSleeperFunc(200, 100)
 	err, returnVal := base.RetryLoop(description, worker, sleeper)
 
 	if err != nil {
