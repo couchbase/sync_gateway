@@ -137,14 +137,23 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	spec.MaxNumRetries = 10
 	spec.InitialRetrySleepTimeMS = 5
 
+	// Identify number of nodes to use as a multiplier for MaxConcurrentOps, since gocb maintains one pipeline per data node.
+	// TODO: We don't currently have a process to monitor cluster changes behind a gocb bucket.  When that's available, should
+	//       consider the ability to modify this as the cluster changes.
+	nodeCount := 1
+	mgmtEps := goCBBucket.IoRouter().MgmtEps()
+	if mgmtEps != nil && len(mgmtEps) > 0 {
+		nodeCount = len(mgmtEps)
+	}
+
 	// Define channels to limit the number of concurrent single and bulk operations,
 	// to avoid gocb queue overflow issues
 	bucket = &CouchbaseBucketGoCB{
 		goCBBucket,
 		spec,
-		make(chan struct{}, MaxConcurrentSingleOps),
-		make(chan struct{}, MaxConcurrentBulkOps),
-		make(chan struct{}, MaxConcurrentViewOps),
+		make(chan struct{}, MaxConcurrentSingleOps*nodeCount),
+		make(chan struct{}, MaxConcurrentBulkOps*nodeCount),
+		make(chan struct{}, MaxConcurrentViewOps*nodeCount),
 	}
 
 	bucket.Bucket.SetViewTimeout(bucket.spec.GetViewQueryTimeout())
@@ -1531,7 +1540,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
 		if err == ErrCasFailureShouldRetry {
-			cas = 0  // force the call to GetWithXattr() to refresh
+			cas = 0 // force the call to GetWithXattr() to refresh
 			continue
 		}
 
