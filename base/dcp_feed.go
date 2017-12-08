@@ -15,12 +15,13 @@ import (
 	"expvar"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 var dcpExpvars *expvar.Map
@@ -48,6 +49,9 @@ const DCPCheckpointPrefix = "_sync:dcp_ck:" // Prefix used for DCP checkpoint pe
 // DCP will already be sending more documents per snapshot.
 const kCheckpointThreshold = 1
 
+// By default, we don't log backill progress more than once every 10 s
+const kBackfillLogInterval = 10 * time.Second
+
 type SimpleFeed struct {
 	eventFeed  chan sgbucket.FeedEvent
 	terminator chan bool
@@ -72,7 +76,7 @@ type Receiver interface {
 	updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo bool)
 	SetBucketNotifyFn(sgbucket.BucketNotifyFn)
 	GetBucketNotifyFn() sgbucket.BucketNotifyFn
-	initMetadata(maxVbNo uint16)
+	initFeed(feedType uint64) error
 }
 
 // DCPReceiver implements cbdatasource.Receiver to manage updates coming from a
@@ -81,32 +85,46 @@ type Receiver interface {
 type DCPReceiver struct {
 	m                      sync.Mutex
 	bucket                 Bucket                         // For metadata persistence/retrieval
+	maxVbNo                uint16                         // Number of vbuckets being used for this feed
 	persistCheckpoints     bool                           // Whether this DCPReceiver should persist metadata to the bucket
 	seqs                   []uint64                       // To track max seq #'s we received per vbucketId.
 	meta                   [][]byte                       // To track metadata blob's per vbucketId.
 	updatesSinceCheckpoint []uint64                       // Number of updates since the last checkpoint. Used to avoid checkpoint persistence feedback loop
 	notify                 sgbucket.BucketNotifyFn        // Function to callback when we lose our dcp feed
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
+	backfillActive         bool                           // Whether this DCP feed is in backfill
+	vbBackfillActive       []bool                         // Whether a vbucket is in backfill
+	backfillStartSeqs      []uint64                       // Backfill start sequences, indexed by vbno
+	backfillEndSeqs        []uint64                       // Backfill complete sequences, indexed by vbno
+	backfillLogTime        time.Time                      // The last time backfill progress was logged
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool) Receiver {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, backfillType uint64) (Receiver, error) {
 
-	// TODO: set using maxvbno
 	r := &DCPReceiver{
 		bucket:             bucket,
+		maxVbNo:            maxVbNo,
 		persistCheckpoints: persistCheckpoints,
 		seqs:               make([]uint64, maxVbNo),
 		meta:               make([][]byte, maxVbNo),
 		updatesSinceCheckpoint: make([]uint64, maxVbNo),
+		vbBackfillActive:       make([]bool, maxVbNo),
+		backfillStartSeqs:      make([]uint64, maxVbNo),
+		backfillEndSeqs:        make([]uint64, maxVbNo),
 	}
 	r.callback = callback
+	initErr := r.initFeed(backfillType)
+	if initErr != nil {
+		return nil, initErr
+	}
 
 	if LogEnabledExcludingLogStar("DCP") {
 		LogTo("DCP", "Using DCP Logging Receiver.")
 		logRec := &DCPLoggingReceiver{rec: r}
-		return logRec
+		return logRec, nil
 	}
-	return r
+
+	return r, nil
 }
 
 func (r *DCPReceiver) SetBucketNotifyFn(notify sgbucket.BucketNotifyFn) {
@@ -265,7 +283,7 @@ func (r *DCPReceiver) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo b
 	}
 
 	r.seqs[vbucketId] = seq // Remember the max seq for GetMetaData().
-
+	r.updateBackfillStats(vbucketId, seq)
 }
 
 // Seeds the sequence numbers returned by GetMetadata to support starting DCP from a particular
@@ -287,6 +305,57 @@ func (r *DCPReceiver) SeedSeqnos(uuids map[uint16]uint64, seqs map[uint16]uint64
 	for vbucketId, uuid := range uuids {
 		r.meta[vbucketId] = makeVbucketMetadata(uuid, seqs[vbucketId])
 	}
+}
+
+// Updates current backfill progress.  Expects caller to have the lock on r.m
+func (r *DCPReceiver) updateBackfillStats(vbno uint16, sequence uint64) {
+	if !r.backfillActive || !r.vbBackfillActive[vbno] {
+		return
+	}
+
+	if time.Since(r.backfillLogTime) > kBackfillLogInterval {
+		r.backfillLogTime = time.Now()
+		r.logBackfillProgress()
+	}
+
+	if sequence >= r.backfillEndSeqs[vbno] {
+		r.vbBackfillActive[vbno] = false
+		r.checkBackfillComplete()
+	}
+}
+
+// Checks whether backfill is complete.  Expects caller to have the lock on r.m
+func (r *DCPReceiver) checkBackfillComplete() bool {
+	if !r.backfillActive {
+		return true
+	}
+
+	for _, vbBackfill := range r.vbBackfillActive {
+		if vbBackfill {
+			return false
+		}
+	}
+	// Didn't find any active vbuckets - we're done backfill
+	LogTo("DCP", "Backfill complete")
+	r.backfillActive = false
+	return true
+}
+
+// Logs current backfill progress.  Expects caller to have the lock on r.m
+func (r *DCPReceiver) logBackfillProgress() {
+	if !r.backfillActive {
+		return
+	}
+	var totalSeqs, completedSeqs uint64
+	for vbNo := uint16(0); vbNo < r.maxVbNo; vbNo++ {
+		totalSeqs += r.backfillEndSeqs[vbNo] - r.backfillStartSeqs[vbNo]
+		if r.vbBackfillActive[vbNo] {
+			completedSeqs += r.seqs[vbNo] - r.backfillStartSeqs[vbNo]
+		} else {
+			completedSeqs += r.backfillEndSeqs[vbNo] - r.backfillStartSeqs[vbNo]
+		}
+	}
+	LogTo("DCP", "Backfill in progress: %d%% (%d / %d)", int(completedSeqs*100/totalSeqs), completedSeqs, totalSeqs)
 }
 
 // Create VBucketMetadata, marshalled to []byte
@@ -352,8 +421,7 @@ func (r *DCPReceiver) initMetadata(maxVbNo uint16) {
 	for i := uint16(0); i < maxVbNo; i++ {
 		metadata, lastSeq, err := r.loadCheckpoint(i)
 		if err != nil {
-			// TODO: instead of failing here, should log warning and init zero metadata/seq
-			Warn("Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that checkpoint from zero.  Error: %v", err)
+			Warn("Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", err)
 			r.meta[i] = []byte{}
 			r.seqs[i] = 0
 		} else {
@@ -361,6 +429,53 @@ func (r *DCPReceiver) initMetadata(maxVbNo uint16) {
 			r.seqs[i] = lastSeq
 		}
 	}
+}
+
+// Initializes DCP Feed.  Determines starting position based on feed type.
+func (r *DCPReceiver) initFeed(backfillType uint64) error {
+
+	statsUuids, highSeqnos, err := r.bucket.GetStatsVbSeqno(r.maxVbNo, false)
+	if err != nil {
+		return errors.New("Error retrieving stats-vbseqno - DCP not supported")
+	}
+
+	switch backfillType {
+	case sgbucket.FeedNoBackfill:
+		// For non-backfill, use vbucket uuids, high sequence numbers
+		LogTo("Feed+", "Initializing DCP with no backfill - seeding seqnos: %v", highSeqnos)
+		r.SeedSeqnos(statsUuids, highSeqnos)
+	case sgbucket.FeedResume:
+		// For resume case, load previously persisted checkpoints from bucket
+		r.initMetadata(r.maxVbNo)
+		// Track backfill (from persisted checkpoints to current high seqno)
+		r.initBackfillStats(r.seqs, highSeqnos)
+		LogTo("Feed+", "Initializing DCP feed based on persisted checkpoints")
+	default:
+		// Otherwise, start feed from zero
+		startSeqnos := make(map[uint16]uint64, r.maxVbNo)
+		vbuuids := make(map[uint16]uint64, r.maxVbNo)
+		r.SeedSeqnos(vbuuids, startSeqnos)
+		// Track backfill (from zero to current high seqno)
+		r.initBackfillStats(r.seqs, highSeqnos)
+		LogTo("Feed+", "Initializing DCP feed to start from zero")
+	}
+	return nil
+}
+
+func (r *DCPReceiver) initBackfillStats(start []uint64, end map[uint16]uint64) {
+	if len(end) != int(r.maxVbNo) {
+		Warn("Invalid range provided for DCP backfill tracking - tracking disabled. len(start):%d len(end):%d", len(start), len(end))
+	}
+
+	for vbNo := uint16(0); vbNo < r.maxVbNo; vbNo++ {
+		r.backfillStartSeqs[vbNo] = start[vbNo]
+		r.backfillEndSeqs[vbNo] = end[vbNo]
+		if end[vbNo] > start[vbNo] {
+			r.vbBackfillActive[vbNo] = true
+		}
+	}
+
+	r.backfillActive = true
 }
 
 // DCPReceiver implements cbdatasource.Receiver to manage updates coming from a
@@ -429,9 +544,9 @@ func (r *DCPLoggingReceiver) updateSeq(vbucketId uint16, seq uint64, warnOnLower
 	r.rec.updateSeq(vbucketId, seq, warnOnLowerSeqNo)
 }
 
-func (r *DCPLoggingReceiver) initMetadata(maxVbNo uint16) {
-	LogTo("DCP", "Initializing metadata:%d", maxVbNo)
-	r.rec.initMetadata(maxVbNo)
+func (r *DCPLoggingReceiver) initFeed(feedType uint64) error {
+	LogTo("DCP", "Initializing feed with type:%d", feedType)
+	return r.rec.initFeed(feedType)
 }
 
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
@@ -463,33 +578,17 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		persistCheckpoints = true
 	}
 
-	dcpReceiver := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints)
+	dcpReceiver, err := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, args.Backfill)
+	if err != nil {
+		return err
+	}
+
 	dcpReceiver.SetBucketNotifyFn(args.Notify)
 
-	// GetStatsVbSeqno retrieves high sequence number for each vbucket, to enable starting
-	// DCP stream from that position.  Also being used as a check on whether the server supports
-	// DCP.
-
-	switch args.Backfill {
-	case sgbucket.FeedNoBackfill:
-		// For non-backfill, use vbucket uuids, high sequence numbers
-		statsUuids, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbno, false)
-		if err != nil {
-			return errors.New("Error retrieving stats-vbseqno - DCP not supported")
-		}
-		LogTo("Feed+", "Seeding seqnos: %v", highSeqnos)
-
-		dcpReceiver.SeedSeqnos(statsUuids, highSeqnos)
-	case sgbucket.FeedResume:
-		// For resume case, load previously persisted checkpoints from bucket
-
-		dcpReceiver.initMetadata(maxVbno)
-	default:
-
-		// Otherwise, start feed from zero
-		startSeqnos := make(map[uint16]uint64, maxVbno)
-		vbuuids := make(map[uint16]uint64, maxVbno)
-		dcpReceiver.SeedSeqnos(vbuuids, startSeqnos)
+	// Initialize the feed based on the backfill type
+	feedInitErr := dcpReceiver.initFeed(args.Backfill)
+	if feedInitErr != nil {
+		return feedInitErr
 	}
 
 	dataSourceOptions := cbdatasource.DefaultBucketDataSourceOptions
