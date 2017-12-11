@@ -628,7 +628,7 @@ func IsKeyNotFoundError(bucket Bucket, err error) bool {
 
 }
 
-func IsCasMismatch(bucket Bucket, err error) bool {
+func IsCasMismatch(err error) bool {
 	if err == nil {
 		return false
 	}

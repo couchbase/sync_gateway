@@ -225,7 +225,7 @@ func (l *DenseBlockList) rotate() error {
 
 	// For CAS error - someone else has already rotated out for this count.  Continue to initialize empty.  For all other errors,
 	// return error
-	if err != nil && !base.IsCasMismatch(l.indexBucket, err) {
+	if err != nil && !base.IsCasMismatch(err) {
 		return err
 	}
 
@@ -240,7 +240,7 @@ func (l *DenseBlockList) rotate() error {
 	var casOut uint64
 	casOut, err = l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, activeStorageValue, 0)
 	if err != nil {
-		if base.IsCasMismatch(l.indexBucket, err) {
+		if base.IsCasMismatch(err) {
 			// CAS error.  Assume concurrent writer has already updated the active block list.
 			//  Re-initialize the current block list and return
 			found, err := l.loadDenseBlockList()

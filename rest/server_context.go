@@ -819,7 +819,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			_, err = context.UpdatePrincipal(*princ, (what == "user"), isGuest)
 			if err != nil {
-				if base.IsConflictError(err) {
+				if base.IsCasMismatch(err) {
 					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.
 					// Since if there's an existing user it's "mission accomplished", this can be treated as a success case.
 					return false, nil, nil

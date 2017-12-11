@@ -189,13 +189,3 @@ func IsDocNotFoundError(err error) bool {
 	}
 }
 
-
-func IsConflictError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if status, _ := ErrorAsHTTPStatus(err); status == http.StatusConflict {
-		return true
-	}
-	return false
-}
