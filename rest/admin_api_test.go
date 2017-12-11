@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/clog"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -1481,12 +1480,10 @@ func TestDocumentChangeReplicate(t *testing.T) {
 	}
 
 	var rt RestTester
-	defer rt.Close()  // Close RestTester, which closes ServerContext, which stops all replications
+	defer rt.Close() // Close RestTester, which closes ServerContext, which stops all replications
 
-	base.EnableLogKey("Replicate")
 	base.EnableLogKey("Replicate+")
-	clog.EnableKey("Replicate")
-	clog.EnableKey("Replicate+")
+	base.EnableSgReplicateLogging()
 
 	//Initiate synchronous one shot replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db"}`), 500)
