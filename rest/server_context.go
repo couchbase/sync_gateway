@@ -824,9 +824,15 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 					// Since if there's an existing user it's "mission accomplished", this can be treated as a success case.
 					return false, nil, nil
 				}
-				// Assume it might be a timeout error due to view re-indexing.  So retry
-				base.LogTo("Auth", "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
-				return true, err, nil
+
+				if err == base.ErrViewTimeoutError {
+					// Timeout error, possibly due to view re-indexing, so retry
+					base.LogTo("Auth", "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
+					return true, err, nil
+				}
+
+				// Unexpected error, return error don't retry
+				return false, err, nil
 			}
 
 			// No errors, assume it worked
