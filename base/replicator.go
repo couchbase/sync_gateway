@@ -246,6 +246,8 @@ func (r *Replicator) populateActiveTaskFromReplication(replication sgreplicate.S
 
 func (r *Replicator) StopReplications() error {
 
+	// Get the replication id's in a separate method call to avoid trying to grab the lock in a
+	// nested fashion.  When r.stopReplication() is called, no locks on r will be held.
 	replicationIds := r.GetReplicationIds()
 
 	for _, replicationId := range replicationIds {
