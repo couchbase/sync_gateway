@@ -110,7 +110,6 @@ type UserViewsOptions struct {
 
 type UnsupportedOptions struct {
 	UserViews        UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
-	Replicator2      bool                    `json:"replicator_2,omitempty"`       // Enable new replicator (_blipsync)
 	OidcTestProvider OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
 	AllowConflicts   *bool                   `json:"allow_conflicts"`              // False forbids creating conflicts
 }

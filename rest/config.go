@@ -87,6 +87,7 @@ type ServerConfig struct {
 	SkipRunmodeValidation          bool                     `json:"skip_runmode_validation,omitempty"` // If this is true, skips any config validation regarding accel vs normal mode
 	Unsupported                    *UnsupportedServerConfig `json:"unsupported,omitempty"`             // Config for unsupported features
 	RunMode                        SyncGatewayRunMode       `json:"runmode,omitempty"`                 // Whether this is an SG reader or an SG Accelerator
+	ReplicatorCompression          *int                     `json:"replicator_compression,omitempty"`  // BLIP data compression level (0-9)
 }
 
 // Bucket configuration elements - used by db, shadow, index

@@ -53,17 +53,26 @@ var kHandlersByProfile = map[string]func(*blipHandler, *blip.Message) error{
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
-	if !h.server.GetDatabaseConfig(h.db.Name).Unsupported.Replicator2 {
-		return base.HTTPErrorf(http.StatusNotFound, "feature not enabled")
+	if c := h.server.GetConfig().ReplicatorCompression; c != nil {
+		blip.CompressionLevel = *c
 	}
 
+	// Create a BLIP context:
+	blipContext := blip.NewContext()
+	blipContext.Logger = func(fmt string, params ...interface{}) {
+		base.LogTo("BLIP", fmt, params...)
+	}
+	blipContext.LogMessages = base.LogEnabledExcludingLogStar("BLIP+")
+	blipContext.LogFrames = base.LogEnabledExcludingLogStar("BLIP++")
+
+	// Create a BLIP-sync context and register handlers:
 	ctx := blipSyncContext{
-		blipContext:       blip.NewContext(),
+		blipContext:       blipContext,
 		dbc:               h.db.DatabaseContext,
 		user:              h.user,
 		effectiveUsername: h.currentEffectiveUserName(),
 	}
-	ctx.blipContext.DefaultHandler = ctx.notFound
+	blipContext.DefaultHandler = ctx.notFound
 	for profile, handlerFn := range kHandlersByProfile {
 		ctx.register(profile, handlerFn)
 	}
@@ -71,24 +80,16 @@ func (h *handler) handleBLIPSync() error {
 		ctx.register("proposeChanges", (*blipHandler).handleProposedChanges)
 	}
 
-	ctx.blipContext.Logger = func(fmt string, params ...interface{}) {
-		base.LogTo("BLIP", fmt, params...)
-	}
-	ctx.blipContext.LogMessages = base.LogEnabledExcludingLogStar("BLIP+")
-	ctx.blipContext.LogFrames = base.LogEnabledExcludingLogStar("BLIP++")
-
-	// Start a WebSocket client and connect it to the BLIP handler:
-	wsHandler := func(conn *websocket.Conn) {
+	// Create a BLIP WebSocket handler and have it handle the request:
+	server := blipContext.WebSocketServer()
+	defaultHandler := server.Handler
+	server.Handler = func(conn *websocket.Conn) {
 		h.logStatus(101, "Upgraded to BLIP+WebSocket protocol")
 		defer func() {
 			conn.Close()
 			base.LogTo("HTTP+", "#%03d:     --> BLIP+WebSocket connection closed", h.serialNumber)
 		}()
-		ctx.blipContext.WebSocketHandler()(conn)
-	}
-	server := websocket.Server{
-		Handshake: func(*websocket.Config, *http.Request) error { return nil },
-		Handler:   wsHandler,
+		defaultHandler(conn)
 	}
 	server.ServeHTTP(h.response, h.rq)
 	return nil
