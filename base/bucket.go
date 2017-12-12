@@ -511,6 +511,11 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 			panic(fmt.Sprintf("Unexpected CouchbaseDriver: %v", spec.CouchbaseDriver))
 		}
 
+		if pkgerrors.Cause(err) == gocb.ErrAuthError {
+			Warn("Unable to authenticate: %v", err)
+			return nil, ErrFatalBucketConnection
+		}
+
 		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
