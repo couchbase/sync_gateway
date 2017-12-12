@@ -245,13 +245,27 @@ func (r *Replicator) populateActiveTaskFromReplication(replication sgreplicate.S
 }
 
 func (r *Replicator) StopReplications() error {
-	 r.lock.Lock()
-	 defer r.lock.Unlock()
-	for replicationId, replication := range r.replications {
+
+	replicationIds := r.GetReplicationIds()
+
+	for _, replicationId := range replicationIds {
 		LogTo("Replicate", "Stopping replication %s", replicationId)
-		if err := replication.Stop(); err != nil {
+		if _, err := r.stopReplication(replicationId); err != nil {
 			return pkgerrors.Wrapf(err, "Error stopping sg-replicate replication with id: %s", replicationId)
 		}
+		LogTo("Replicate", "Stopped replication %s", replicationId)
 	}
 	return nil
+}
+
+func (r *Replicator) GetReplicationIds() (replicationIds []string) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	replicationIds = []string{}
+	for replicationId, _ := range r.replications {
+		replicationIds = append(replicationIds, replicationId)
+	}
+
+	return replicationIds
 }

@@ -1482,6 +1482,7 @@ func TestDocumentChangeReplicate(t *testing.T) {
 	var rt RestTester
 	defer rt.Close() // Close RestTester, which closes ServerContext, which stops all replications
 
+	base.EnableLogKey("Replicate")
 	base.EnableLogKey("Replicate+")
 	base.EnableSgReplicateLogging()
 
@@ -1517,5 +1518,6 @@ func TestDocumentChangeReplicate(t *testing.T) {
 
 	//Cancel a replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 404)
+
 
 }
