@@ -3151,7 +3151,6 @@ func TestCustomCookieName(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
 	assertStatus(t, response, 201)
 
-	// func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	resp := rt.SendAdminRequest("POST", "/db/_session", `{"name": "user1"}`)
 	assert.Equals(t, resp.Code, 200)
 
