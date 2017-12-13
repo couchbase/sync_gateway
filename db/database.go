@@ -94,8 +94,9 @@ type DatabaseContextOptions struct {
 	OIDCOptions           *auth.OIDCOptions
 	DBOnlineCallback      DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions         ImportOptions
-	EnableXattr           bool   // Use xattr for _sync
-	LocalDocExpirySecs    uint32 //The _local doc expiry time in seconds
+	EnableXattr           bool    // Use xattr for _sync
+	LocalDocExpirySecs    uint32  //The _local doc expiry time in seconds
+	SessionCookieName     *string // Pass-through DbConfig.SessionCookieName
 }
 
 type OidcTestProviderOptions struct {
@@ -475,7 +476,11 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
-	return auth.NewAuthenticator(context.Bucket, context)
+	authenticator := auth.NewAuthenticator(context.Bucket, context)
+	if context.Options.SessionCookieName != nil {
+		authenticator.SetSessionCookieName(*context.Options.SessionCookieName)
+	}
+	return authenticator
 }
 
 // Makes a Database object given its name and bucket.

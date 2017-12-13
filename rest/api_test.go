@@ -3138,7 +3138,7 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 }
 
 func TestCustomCookieName(t *testing.T) {
-	
+
 	var rt RestTester
 	defer rt.Close()
 

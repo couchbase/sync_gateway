@@ -23,8 +23,9 @@ import (
 
 /** Manages user authentication for a database. */
 type Authenticator struct {
-	bucket          base.Bucket
-	channelComputer ChannelComputer
+	bucket            base.Bucket
+	channelComputer   ChannelComputer
+	sessionCookieName string // Custom per-database session cookie name
 }
 
 // Interface for deriving the set of channels and roles a User/Role has access to.
@@ -42,9 +43,18 @@ type userByEmailInfo struct {
 // Creates a new Authenticator that stores user info in the given Bucket.
 func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer) *Authenticator {
 	return &Authenticator{
-		bucket:          bucket,
-		channelComputer: channelComputer,
+		bucket:            bucket,
+		channelComputer:   channelComputer,
+		sessionCookieName: DefaultCookieName,
 	}
+}
+
+func (auth *Authenticator) SessionCookieName() string {
+	return auth.sessionCookieName
+}
+
+func (auth *Authenticator) SetSessionCookieName(cookieName string) {
+	auth.sessionCookieName = cookieName
 }
 
 func docIDForUserEmail(email string) string {
