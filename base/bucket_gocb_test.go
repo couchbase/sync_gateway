@@ -1944,6 +1944,18 @@ func TestCouchbaseServerVersion(t *testing.T) {
 
 }
 
+func TestCouchbaseServerIncorrectLogin(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	// Bad auth creds cause a fatal error with logs indicating the reason why.
+	_, err := GetBucketWithInvalidUsernamePassword(DataBucket)
+	assert.Equals(t, err, ErrFatalBucketConnection)
+
+}
+
 func createTombstonedDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) {
 
 	// Create document with XATTR
