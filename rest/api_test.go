@@ -2237,7 +2237,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
 	log.Printf("changes: %+v", changes.Results)
-	assert.Equals(t, changes.Last_Seq, "6:2")  // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
+	assert.Equals(t, changes.Last_Seq, "6:2") // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
 	assert.Equals(t, changes.Results[0].ID, "b1")
 	assert.Equals(t, changes.Results[1].ID, "g1")
 
@@ -3135,6 +3135,38 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 	value, ok := body["_exp"]
 	assert.Equals(t, ok, true)
 	log.Printf("value: %v", value)
+}
+
+func TestCustomCookieName(t *testing.T) {
+	
+	var rt RestTester
+	defer rt.Close()
+
+	customCookieName := "TestCustomCookieName"
+	rt.DatabaseConfig = &DbConfig{
+		Name: "db",
+		SessionCookieName: base.StringPointer(customCookieName),
+	}
+
+	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
+	assertStatus(t, response, 201)
+
+	// func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
+	resp := rt.SendAdminRequest("POST", "/db/_session", `{"name": "user1"}`)
+	assert.Equals(t, resp.Code, 200)
+
+	sessionResponse := struct {
+		SessionID string `json:"session_id"`
+		Expires string `json:"expires"`
+		CookieName string `json:"cookie_name"`
+	}{}
+
+	err := json.Unmarshal(resp.Body.Bytes(), &sessionResponse)
+	assertNoError(t, err, "Unexpected error")
+
+	assert.Equals(t, sessionResponse.CookieName, customCookieName)
+
+
 }
 
 // Reproduces https://github.com/couchbase/sync_gateway/issues/916.  The test-only RestartListener operation used to simulate a
