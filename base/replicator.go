@@ -7,7 +7,6 @@ import (
 	"time"
 
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
-	pkgerrors "github.com/pkg/errors"
 )
 
 const (
