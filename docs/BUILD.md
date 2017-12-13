@@ -66,23 +66,6 @@ Once the `repo status` is clean, to switch to a different sync gateway commit (w
 $ ./snap-manifest.sh --sg-commit sync-gateway-commit-or-branch
 ```
 
-**Manually switch to a different sync gateway branch**
-
-You can also switch to a different sync gateway branch manually with these steps.  The commit needs to be on github in this case too:
-
-```bash
-$ cd .repo/manifests
-$ git reset --hard
-$ git fetch
-$ git checkout sync-gateway-commit-or-branch
-$ vi manifests/default.xml  # edit the sync gateway project commit to have same commit hash as sync-gateway-commit-or-branch
-$ cd ../..
-$ repo sync -d
-```
-
-At this point running `repo status` should return `(working directory clean)`
-
-
 Build via go get w/ dependency pinning
 --------------------------------------
 
