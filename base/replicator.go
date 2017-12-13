@@ -253,7 +253,7 @@ func (r *Replicator) StopReplications() error {
 	for _, replicationId := range replicationIds {
 		LogTo("Replicate", "Stopping replication %s", replicationId)
 		if _, err := r.stopReplication(replicationId); err != nil {
-			return pkgerrors.Wrapf(err, "Error stopping sg-replicate replication with id: %s", replicationId)
+			Warn("Error stopping replication %s.  It's possible that the replication was already stopped and this can be safely ignored. Error: %v.", replicationId, err)
 		}
 		LogTo("Replicate", "Stopped replication %s", replicationId)
 	}
