@@ -143,7 +143,7 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 
 }
 
-func GetBucketWithInvalidUsernamePassword(bucketType CouchbaseBucketType) (*TestBucket, error) {
+func GetBucketWithInvalidUsernamePassword(bucketType CouchbaseBucketType) (TestBucket, error) {
 
 	spec := GetTestBucketSpec(bucketType)
 
@@ -156,11 +156,8 @@ func GetBucketWithInvalidUsernamePassword(bucketType CouchbaseBucketType) (*Test
 
 	// Attempt to open a test bucket with invalid creds. We should expect an error.
 	bucket, err := GetBucket(spec, nil)
-	if err != nil {
-		return nil, err
-	}
+	return TestBucket{Bucket: bucket}, err
 
-	return &TestBucket{Bucket: bucket}, nil
 }
 
 // Convenience function that will cause a bucket to be created if it doesn't already exist.
