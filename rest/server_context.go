@@ -135,6 +135,10 @@ func (sc *ServerContext) Close() {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
+	if err := sc.replicator.StopReplications(); err != nil {
+		base.Warn("Error stopping replications: %+v.  This could cause a resource leak.  Please restart Sync Gateway to cleanup leaked resources.", err)
+	}
+
 	sc.stopStatsReporter()
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
@@ -142,7 +146,11 @@ func (sc *ServerContext) Close() {
 			ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", *sc.config.AdminInterface)
 		}
 	}
+
 	sc.databases_ = nil
+
+
+
 }
 
 // Returns the DatabaseContext with the given name

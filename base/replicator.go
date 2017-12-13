@@ -242,3 +242,31 @@ func (r *Replicator) populateActiveTaskFromReplication(replication sgreplicate.S
 
 	return
 }
+
+func (r *Replicator) StopReplications() error {
+
+	// Get the replication id's in a separate method call to avoid trying to grab the lock in a
+	// nested fashion.  When r.stopReplication() is called, no locks on r will be held.
+	replicationIds := r.GetReplicationIds()
+
+	for _, replicationId := range replicationIds {
+		LogTo("Replicate", "Stopping replication %s", replicationId)
+		if _, err := r.stopReplication(replicationId); err != nil {
+			Warn("Error stopping replication %s.  It's possible that the replication was already stopped and this can be safely ignored. Error: %v.", replicationId, err)
+		}
+		LogTo("Replicate", "Stopped replication %s", replicationId)
+	}
+	return nil
+}
+
+func (r *Replicator) GetReplicationIds() (replicationIds []string) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	replicationIds = []string{}
+	for replicationId, _ := range r.replications {
+		replicationIds = append(replicationIds, replicationId)
+	}
+
+	return replicationIds
+}

@@ -417,7 +417,6 @@ function(doc, oldDoc) {
 
 	}
 
-
 	// wait for changes feed to complete (time out)
 	wg.Wait()
 }
@@ -1470,18 +1469,22 @@ func TestReplicateErrorConditions(t *testing.T) {
 
 }
 
-//These tests validate request parameters not actual replication
-// TODO: Disabled until https://github.com/couchbase/sync_gateway/issues/3113 is fixed.  When re-enabled, 10s sleep must be removed.
-func DisableTestDocumentChangeReplicate(t *testing.T) {
+// These tests validate request parameters not actual replication.
+// For actual replication tests, see:
+// - sg-replicate mock-based unit test suite
+// - Functional tests in mobile-testkit repo
+func TestDocumentChangeReplicate(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
 	}
 
 	var rt RestTester
-	defer rt.Close()
+	defer rt.Close() // Close RestTester, which closes ServerContext, which stops all replications
 
-	time.Sleep(10 * time.Second)
+	base.EnableLogKey("Replicate")
+	base.EnableLogKey("Replicate+")
+	base.EnableSgReplicateLogging()
 
 	//Initiate synchronous one shot replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://localhost:4985/db", "target":"http://localhost:4985/db"}`), 500)
@@ -1515,5 +1518,6 @@ func DisableTestDocumentChangeReplicate(t *testing.T) {
 
 	//Cancel a replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 404)
+
 
 }
