@@ -452,7 +452,15 @@ func (h *handler) putRole() error {
 
 func (h *handler) deleteUser() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator().GetUser(mux.Vars(h.rq)["name"])
+	username := mux.Vars(h.rq)["name"]
+
+	// Can't delete the guest user, only disable.
+	if username == base.GuestUsername {
+		return base.HTTPErrorf(http.StatusMethodNotAllowed,
+			"The %s user cannot be deleted. Only disabled via an update.", base.GuestUsername)
+	}
+
+	user, err := h.db.Authenticator().GetUser(username)
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
