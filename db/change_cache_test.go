@@ -1188,17 +1188,17 @@ func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*Chang
 
 }
 
-
-// This was added to increase code coverage as part of SG #2633
-// It was artifically derived to pick one arbitrarily chosen code block in the change set mentioned
-// in that issue, to try to exercise that code.  If that code block is commented, it does catch
-// error which demonstrates that the code block is useful.
-// This test could also serve as example code for other tests that test the changeCache (channel cache) directly.
+// Repro SG #2633
 //
-// 1. Create a doc + feed event with unusued sequences 10 and 11
-// 2. Create another doc + feed event that tries to reuse sequence 10 with a doc in channel ABC -- it should be ignored by the change cache
-// 3. Detect whether the 2nd was ignored using an onChange listener callback and make sure it was not added to the ABC channel
-func TestDocChangedSynchronous(t *testing.T) {
+// Create doc1 w/ unused sequences 1, actual sequence 3.
+// Create doc2 w/ sequence 2, channel ABC
+// Send feed event for doc2. This won't trigger onChange, as buffering is waiting for seq 1
+// Send feed event for doc1. This should trigger caching for doc2, and trigger onChange for channel ABC.
+//
+// Verify that onChange for channel ABC was sent.
+func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
+
+	// -------- Test setup ----------------
 
 	if base.TestUseXattrs() {
 		t.Skip("This test only works in channel cache mode")
@@ -1220,57 +1220,8 @@ func TestDocChangedSynchronous(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
 
-	// ------------------ Feed event with doc that contains unused sequences -------------------
 
-	// Create a doc with unused sequences
-	docId := "foo"
-	doc := document{
-		ID: docId,
-	}
-	doc.syncData = syncData{
-		UnusedSequences: []uint64{
-			10,
-			11,
-		},
-		CurrentRev: "1-abc",
-		Sequence: 12,
-	}
-	docBytes, err := doc.MarshalJSON()
-	assertNoError(t, err, "Unexpected error")
-
-	// Create a feed event that uses that doc
-	feedEvent := sgbucket.FeedEvent{
-		Synchronous: true,
-		Key: []byte(docId),
-		Value: docBytes,
-	}
-
-	db.changeCache.DocChanged(feedEvent)
-
-
-	// ------------------ Feed event with doc in ABC with sequence previously marked as unused -------------------
-
-	// Create a doc + feed event in channel ABC with sequence previously marked as unused
-	doc2 := document{
-		ID: docId,
-	}
-	channelMap := channels.ChannelMap{
-		"ABC": nil,
-	}
-	doc2.syncData = syncData{
-		CurrentRev: "1-cdd",
-		Sequence: 10,  // <-- this was previously marked as an unused sequence and so this event should be ignored
-		Channels: channelMap,
-	}
-	docBytes2, err := doc2.MarshalJSON()
-	assertNoError(t, err, "Unexpected error")
-
-	// Feed event 2
-	feedEvent2 := sgbucket.FeedEvent{
-		Synchronous: true,
-		Key: []byte(docId),
-		Value: docBytes2,
-	}
+	// -------- Setup onChange callback ----------------
 
 	// type assert this from ChangeIndex interface -> concrete changeCache implementation
 	changeCacheImpl := db.changeCache.(*changeCache)
@@ -1279,22 +1230,70 @@ func TestDocChangedSynchronous(t *testing.T) {
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
 	changeCacheImpl.onChange = func(channels base.Set) {
-		defer waitForOnChangeCallback.Done()
+		// defer waitForOnChangeCallback.Done()
 		log.Printf("channelsChanged: %v", channels)
-		// Since the sequence was marked as a previously unused sequence, it should have been ignored.
-		// If it was ignored, then this should not have been called back w/ the ABC channel, and any callbacks
-		// with the ABC channel should be considered a bug
-		assert.True(t, !channels.Contains("ABC"))
+		// assert.True(t, channels.Contains("ABC"))
+		if channels.Contains("ABC") {
+			waitForOnChangeCallback.Done()
+		}
 
 	}
 
-	// Add feed event to change cache
-	db.changeCache.DocChanged(feedEvent2)
+	// -------- Perform actions ----------------
+
+	// Create doc1 w/ unused sequences 1, actual sequence 3.
+	doc1Id := "doc1Id"
+	doc1 := document{
+		ID: doc1Id,
+	}
+	doc1.syncData = syncData{
+		UnusedSequences: []uint64{
+			1,
+		},
+		CurrentRev: "1-abc",
+		Sequence: 3,
+	}
+	doc1Bytes, err := doc1.MarshalJSON()
+	assertNoError(t, err, "Unexpected error")
 
 
-	// Block until the onChange callback was invoked
+	// Create doc2 w/ sequence 2, channel ABC
+	doc2Id := "doc2Id"
+	doc2 := document{
+		ID: doc2Id,
+	}
+	channelMap := channels.ChannelMap{
+		"ABC": nil,
+	}
+	doc2.syncData = syncData{
+		CurrentRev: "1-cde",
+		Sequence: 2,
+		Channels: channelMap,
+	}
+	doc2Bytes, err := doc2.MarshalJSON()
+	assertNoError(t, err, "Unexpected error")
+
+	// Send feed event for doc2. This won't trigger onChange, as buffering is waiting for seq 1
+	feedEventDoc2 := sgbucket.FeedEvent{
+		Synchronous: true,
+		Key: []byte(doc2Id),
+		Value: doc2Bytes,
+	}
+	db.changeCache.DocChanged(feedEventDoc2)
+
+	// Send feed event for doc1. This should trigger caching for doc2, and trigger onChange for channel ABC.
+	feedEventDoc1 := sgbucket.FeedEvent{
+		Synchronous: true,
+		Key: []byte(doc1Id),
+		Value: doc1Bytes,
+	}
+	db.changeCache.DocChanged(feedEventDoc1)
+
+
+	// -------- Wait for waitgroup ----------------
+
+	// Block until the onChange callback was invoked with the expected channels.
+	// If the callback is never called back with expected, will block forever.
 	waitForOnChangeCallback.Wait()
 
-
 }
-
