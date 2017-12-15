@@ -19,6 +19,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
+	"github.com/couchbase/sg-bucket"
+	"sync"
 )
 
 func e(seq uint64, docid string, revid string) *LogEntry {
@@ -1183,5 +1185,115 @@ func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*Chang
 	case <-time.After(timeout):
 		return nil, errors.New("Timeout waiting for entry")
 	}
+
+}
+
+// Repro SG #2633
+//
+// Create doc1 w/ unused sequences 1, actual sequence 3.
+// Create doc2 w/ sequence 2, channel ABC
+// Send feed event for doc2. This won't trigger onChange, as buffering is waiting for seq 1
+// Send feed event for doc1. This should trigger caching for doc2, and trigger onChange for channel ABC.
+//
+// Verify that onChange for channel ABC was sent.
+func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
+
+	// -------- Test setup ----------------
+
+	if base.TestUseXattrs() {
+		t.Skip("This test only works in channel cache mode")
+	}
+
+	// Enable relevant logging
+	base.EnableLogKey("Cache+")
+	base.EnableLogKey("Changes+")
+
+	// Create a test db that uses channel cache
+	channelOptions := ChannelCacheOptions{
+		ChannelCacheMinLength: 600,
+		ChannelCacheMaxLength: 600,
+	}
+	options := CacheOptions{
+		ChannelCacheOptions: channelOptions,
+	}
+	db, testBucket := setupTestDBWithCacheOptions(t, options)
+	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
+
+	// -------- Setup onChange callback ----------------
+
+	// type assert this from ChangeIndex interface -> concrete changeCache implementation
+	changeCacheImpl := db.changeCache.(*changeCache)
+
+	//  Detect whether the 2nd was ignored using an onChange listener callback and make sure it was not added to the ABC channel
+	waitForOnChangeCallback := sync.WaitGroup{}
+	waitForOnChangeCallback.Add(1)
+	changeCacheImpl.onChange = func(channels base.Set) {
+		// defer waitForOnChangeCallback.Done()
+		log.Printf("channelsChanged: %v", channels)
+		// assert.True(t, channels.Contains("ABC"))
+		if channels.Contains("ABC") {
+			waitForOnChangeCallback.Done()
+		}
+
+	}
+
+	// -------- Perform actions ----------------
+
+	// Create doc1 w/ unused sequences 1, actual sequence 3.
+	doc1Id := "doc1Id"
+	doc1 := document{
+		ID: doc1Id,
+	}
+	doc1.syncData = syncData{
+		UnusedSequences: []uint64{
+			1,
+		},
+		CurrentRev: "1-abc",
+		Sequence: 3,
+	}
+	doc1Bytes, err := doc1.MarshalJSON()
+	assertNoError(t, err, "Unexpected error")
+
+
+	// Create doc2 w/ sequence 2, channel ABC
+	doc2Id := "doc2Id"
+	doc2 := document{
+		ID: doc2Id,
+	}
+	channelMap := channels.ChannelMap{
+		"ABC": nil,
+	}
+	doc2.syncData = syncData{
+		CurrentRev: "1-cde",
+		Sequence: 2,
+		Channels: channelMap,
+	}
+	doc2Bytes, err := doc2.MarshalJSON()
+	assertNoError(t, err, "Unexpected error")
+
+	// Send feed event for doc2. This won't trigger onChange, as buffering is waiting for seq 1
+	feedEventDoc2 := sgbucket.FeedEvent{
+		Synchronous: true,
+		Key: []byte(doc2Id),
+		Value: doc2Bytes,
+	}
+	db.changeCache.DocChanged(feedEventDoc2)
+
+	// Send feed event for doc1. This should trigger caching for doc2, and trigger onChange for channel ABC.
+	feedEventDoc1 := sgbucket.FeedEvent{
+		Synchronous: true,
+		Key: []byte(doc1Id),
+		Value: doc1Bytes,
+	}
+	db.changeCache.DocChanged(feedEventDoc1)
+
+
+	// -------- Wait for waitgroup ----------------
+
+	// Block until the onChange callback was invoked with the expected channels.
+	// If the callback is never called back with expected, will block forever.
+	waitForOnChangeCallback.Wait()
 
 }
