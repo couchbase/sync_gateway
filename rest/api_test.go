@@ -3144,8 +3144,8 @@ func TestCustomCookieName(t *testing.T) {
 
 	customCookieName := "TestCustomCookieName"
 	rt.DatabaseConfig = &DbConfig{
-		Name: "db",
-		SessionCookieName: base.StringPointer(customCookieName),
+		Name:              "db",
+		SessionCookieName: customCookieName,
 	}
 
 	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
@@ -3155,8 +3155,8 @@ func TestCustomCookieName(t *testing.T) {
 	assert.Equals(t, resp.Code, 200)
 
 	sessionResponse := struct {
-		SessionID string `json:"session_id"`
-		Expires string `json:"expires"`
+		SessionID  string `json:"session_id"`
+		Expires    string `json:"expires"`
 		CookieName string `json:"cookie_name"`
 	}{}
 
@@ -3164,7 +3164,6 @@ func TestCustomCookieName(t *testing.T) {
 	assertNoError(t, err, "Unexpected error")
 
 	assert.Equals(t, sessionResponse.CookieName, customCookieName)
-
 
 }
 

@@ -133,7 +133,7 @@ type DbConfig struct {
 	ViewQueryTimeoutSecs *uint32                        `json:"view_query_timeout_secs,omitempty"`     // The view query timeout in seconds
 	LocalDocExpirySecs   *uint32                        `json:"local_doc_expiry_secs,omitempty"`       // The _local doc expiry time in seconds
 	EnableXattrs         *bool                          `json:"enable_shared_bucket_access,omitempty"` // Whether to use extended attributes to store _sync metadata
-	SessionCookieName    *string                        `json:"session_cookie_name"`                   // Custom per-database session cookie name
+	SessionCookieName    string                         `json:"session_cookie_name"`                   // Custom per-database session cookie name
 }
 
 type DbConfigMap map[string]*DbConfig

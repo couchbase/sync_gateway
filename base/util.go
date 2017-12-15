@@ -757,10 +757,6 @@ func SafeSlice(data []byte, from int, to int) ([]byte, error) {
 	return data[from:to], nil
 }
 
-func StringPointer(s string) *string {
-	return &s
-}
-
 // Returns string representation of an expvar, given map name and key name
 func GetExpvarAsString(mapName string, name string) string {
 	mapVar := expvar.Get(mapName)
