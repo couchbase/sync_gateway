@@ -261,7 +261,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	}
 
 	// If it was a cas mismatch, propagate an error as far up the stack as possible to force a full refresh + retry
-	if base.IsCasMismatch(db.Bucket, writeErr) {
+	if base.IsCasMismatch(writeErr) {
 		return nil, false, base.ErrCasFailureShouldRetry
 	}
 
