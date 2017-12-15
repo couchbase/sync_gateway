@@ -626,19 +626,21 @@ func TestGuestUser(t *testing.T) {
 	rt := RestTester{noAdminParty: true}
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("GET", guestUserEndpoint, "")
-	assertStatus(t, response, 200)
+	response := rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
+	assertStatus(t, response, http.StatusOK)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equals(t, body["name"], base.GuestUsername)
 	// This ain't no admin-party, this ain't no nightclub, this ain't no fooling around:
 	assert.DeepEquals(t, body["admin_channels"], nil)
 
-	response = rt.SendAdminRequest("PUT", guestUserEndpoint, `{"disabled":true}`)
-	assertStatus(t, response, 200)
+	// Disable the guest user:
+	response = rt.SendAdminRequest(http.MethodPut, guestUserEndpoint, `{"disabled":true}`)
+	assertStatus(t, response, http.StatusOK)
 
-	response = rt.SendAdminRequest("GET", guestUserEndpoint, "")
-	assertStatus(t, response, 200)
+	// Get guest user and verify it is now disabled:
+	response = rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
+	assertStatus(t, response, http.StatusOK)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	assert.Equals(t, body["name"], base.GuestUsername)
 	assert.DeepEquals(t, body["disabled"], true)
@@ -648,6 +650,10 @@ func TestGuestUser(t *testing.T) {
 	assert.Equals(t, user.Name(), "")
 	assert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{})
 	assert.Equals(t, user.Disabled(), true)
+
+	// We can't delete the guest user, but we should get a reasonable error back.
+	response = rt.SendAdminRequest(http.MethodDelete, guestUserEndpoint, "")
+	assertStatus(t, response, http.StatusMethodNotAllowed)
 }
 
 //Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly
@@ -1518,6 +1524,5 @@ func TestDocumentChangeReplicate(t *testing.T) {
 
 	//Cancel a replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 404)
-
 
 }
