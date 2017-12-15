@@ -123,9 +123,8 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 			// Create a brand new bucket
 			// TODO: in this case, we should still wait until it's empty, just in case there was somehow residue
 			// TODO: in between deleting and recreating it, if it happened in rapid succession
-			createBucketErr := tbm.CreateTestBucket()
-			if createBucketErr != nil {
-				panic(fmt.Sprintf("Could not create bucket.  Spec: %+v Err: %v", spec, createBucketErr))
+			if err := tbm.CreateTestBucket(); err != nil {
+				panic(fmt.Sprintf("Could not create bucket.  Spec: %+v Err: %v", spec, err))
 			}
 		}
 
@@ -141,6 +140,23 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 	}
 
 	return TestBucket{Bucket: bucket}
+
+}
+
+func GetBucketWithInvalidUsernamePassword(bucketType CouchbaseBucketType) (TestBucket, error) {
+
+	spec := GetTestBucketSpec(bucketType)
+
+	// Override spec's auth with invalid creds
+	spec.Auth = TestAuthenticator{
+		Username:   "invalid_username",
+		Password:   "invalid_password",
+		BucketName: spec.BucketName,
+	}
+
+	// Attempt to open a test bucket with invalid creds. We should expect an error.
+	bucket, err := GetBucket(spec, nil)
+	return TestBucket{Bucket: bucket}, err
 
 }
 
@@ -222,8 +238,13 @@ func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 	username, password, _ := tbm.BucketSpec.Auth.GetCredentials()
 	bucket, err := tbm.Cluster.OpenBucket(tbm.BucketSpec.BucketName, password)
 	if err != nil {
-		// Let's assume that if there is an error opening the bucket, it's just because the
-		// bucket does not exist
+		// Authentication failure should return an explicit error as we can't continue from here.
+		if pkgerrors.Cause(err) == gocb.ErrAuthError {
+			log.Printf("Unable to authenticate as %s: %v", username, err)
+			return false, err
+		}
+
+		// There could be other errors here, but we assume the bucket doesn't exist, and may be able to continue.
 		// TODO: should check returned error type
 		log.Printf("GoCB error opening bucket: %v", err)
 		return false, nil
