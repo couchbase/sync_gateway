@@ -15,6 +15,7 @@ var logger service.Logger
 type program struct {
 	ExePath    string
 	ConfigPath string
+	StderrPath  string
 	SGAccel    *exec.Cmd
 }
 
@@ -36,8 +37,7 @@ func (p *program) startup() error {
 		p.SGAccel = exec.Command(p.ExePath)
 	}
 
-	stderrPath := "C:\\Program Files (x86)\\Couchbase\\var\\lib\\couchbase\\logs\\sg_accel_error.log"
-	f, err := os.OpenFile(stderrPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
+	f, err := os.OpenFile(p.StderrPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
 	if err != nil {
 		logger.Warningf("Failed to open std err %q: %v", stderrPath, err)
 		return err
@@ -76,19 +76,29 @@ func main() {
 
 	var exePath string
 	var configPath string
+	var stderrPath string
 
 	switch len(os.Args) {
 	case 2:
 		exePath = "C:\\Program Files (x86)\\Couchbase\\sg_accel.exe" // Uses default binary image path
-		svcConfig.Arguments = []string{"start"}                      // Uses the default config
+		stderrPath = "C:\\Program Files (x86)\\Couchbase\\var\\lib\\couchbase\\logs\\sg_accel_error.log" // Uses default stderr path
+		svcConfig.Arguments = []string{"start", stderrPath}                      // Uses the default config
 	case 3:
 		exePath = "C:\\Program Files (x86)\\Couchbase\\sg_accel.exe" // Uses default binary image path
 		configPath = os.Args[2]                                      // Uses custom config
-		svcConfig.Arguments = []string{"start", configPath}
+		stderrPath = "C:\\Program Files (x86)\\Couchbase\\var\\lib\\couchbase\\logs\\sg_accel_error.log" // Uses default stderr path
+		svcConfig.Arguments = []string{"start", configPath, stderrPath}
 	case 4:
 		exePath = os.Args[2]    // Uses custom binary image path
 		configPath = os.Args[3] // Uses custom config
-		svcConfig.Arguments = []string{"start", exePath, configPath}
+		stderrPath = "C:\\Program Files (x86)\\Couchbase\\var\\lib\\couchbase\\logs\\sg_accel_error.log" // Uses default stderr path
+		svcConfig.Arguments = []string{"start", exePath, configPath, stderrPath}
+	case 5:
+		exePath = os.Args[2]    // Uses custom binary image path
+		configPath = os.Args[3] // Uses custom config
+		stderrPath = os.Args[4]
+		svcConfig.Arguments = []string{"start", exePath, configPath, stderrPath}
+
 	default:
 		panic("Valid parameters combinations are: COMMAND [none, custom config path, or custom exe path and custom config path].")
 	}
@@ -96,6 +106,7 @@ func main() {
 	prg := &program{
 		ExePath:    exePath,
 		ConfigPath: configPath,
+		StderrPath: stderrPath,
 	}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
