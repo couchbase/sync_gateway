@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+        "github.com/couchbase/sg-bucket" 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -212,7 +213,19 @@ func (h *handler) handleAllDocs() error {
 	if explicitDocIDs != nil {
 		count := uint64(0)
 		for _, docID := range explicitDocIDs {
-			writeDoc(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0}, nil)
+			if strings.HasPrefix(docID, "_design") {
+				h.assertAdminOnly() // "_" prefix is for special docs
+				offset := len("_design/")
+				idslug := docID[offset:]
+				var result interface{}
+				if err := h.db.GetDesignDoc(idslug, &result); err != nil {
+					base.Logf("GetDesignDoc error %s %s ", docID, err)
+				} else {
+					h.addJSON(result)
+				}
+			} else {
+				writeDoc(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0}, nil)
+			}
 			count++
 			if options.Limit > 0 && count == options.Limit {
 				break
@@ -458,6 +471,7 @@ func (h *handler) handleBulkDocs() error {
 
 	// split out local docs, save them on their own
 	localDocs := make([]interface{}, 0, lenDocs)
+	designDocs := make([]interface{}, 0, lenDocs)
 	docs := make([]interface{}, 0, lenDocs)
 	for _, item := range userDocs {
 		doc, ok := item.(map[string]interface{})
@@ -472,6 +486,8 @@ func (h *handler) handleBulkDocs() error {
 
 		if strings.HasPrefix(docid, "_local/") {
 			localDocs = append(localDocs, doc)
+		} else if strings.HasPrefix(docid, "_design/") {
+			designDocs = append(designDocs, doc)
 		} else {
 			docs = append(docs, doc)
 		}
@@ -540,6 +556,42 @@ func (h *handler) handleBulkDocs() error {
 			err = nil
 		} else {
 			status["rev"] = revid
+		}
+		result = append(result, status)
+	}
+
+	for _, item := range designDocs {
+		h.assertAdminOnly()
+
+		doc := item.(map[string]interface{})
+
+		var err error
+		offset := len("_design/")
+		docid, _ := doc["_id"].(string)
+		idslug := docid[offset:]
+
+		var ddoc sgbucket.DesignDoc
+		docstr, _ := json.Marshal(doc)
+		json.Unmarshal(docstr, &ddoc)
+
+		/*views := doc["views"].(sgbucket.ViewMap)
+		ddoc := db.DesignDoc{Views: views}
+		*/
+
+		if err = h.db.PutDesignDoc(idslug, ddoc); err != nil {
+			return err
+		}
+		status := db.Body{}
+		status["id"] = docid
+		if err != nil {
+			code, msg := base.ErrorAsHTTPStatus(err)
+			status["status"] = code
+			status["error"] = base.CouchHTTPErrorName(code)
+			status["reason"] = msg
+			base.Logf("\tBulkDocs: Design Doc %q --> %d %s (%v)", docid, code, msg, err)
+			err = nil
+		} else {
+			status["rev"] = "0"
 		}
 		result = append(result, status)
 	}
