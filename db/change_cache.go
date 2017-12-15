@@ -117,6 +117,10 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 
 	base.LogTo("Cache", "Initializing changes cache with options %+v", c.options)
 
+	if context.UseGlobalSequence() {
+		base.Logf("_sync:seq for %s: %d", context.Name, c.initialSequence)
+	}
+
 	heap.Init(&c.pendingLogs)
 
 	// Start a background task for periodic housekeeping:

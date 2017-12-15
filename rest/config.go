@@ -767,16 +767,9 @@ func RunServer(config *ServerConfig) {
 
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
-		c, err := sc.AddDatabaseFromConfig(dbConfig)
-		if err != nil {
-			base.LogFatal("Error opening database: %v", err)
+		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
+			base.LogFatal("Error opening database %s: %v", dbConfig.Name, err)
 		}
-
-		seq, err := c.LastSequence()
-		if err != nil {
-			base.LogFatal("Error getting last sequence for %s: %v", dbConfig.Name, err)
-		}
-		base.LogTo("Cache", "_sync:seq for %s: %d", dbConfig.Name, seq)
 	}
 
 	if config.ProfileInterface != nil {
