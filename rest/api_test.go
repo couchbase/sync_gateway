@@ -1423,8 +1423,6 @@ func TestLogin(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
-	rt.noAdminParty = true
-
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
 	assert.Equals(t, err, nil)
