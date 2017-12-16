@@ -1423,6 +1423,8 @@ func TestLogin(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
+	rt.noAdminParty = true
+
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
 	assert.Equals(t, err, nil)
@@ -1447,6 +1449,57 @@ func TestLogin(t *testing.T) {
 	log.Printf("Set-Cookie: %s", response.Header().Get("Set-Cookie"))
 	assert.True(t, response.Header().Get("Set-Cookie") != "")
 }
+
+func TestCustomCookieName(t *testing.T) {
+
+	var rt RestTester
+	defer rt.Close()
+
+	// In order to test auth, you must disable admin party, which is set by default (should this really be set by default!?)
+	rt.noAdminParty = true
+
+	customCookieName := "TestCustomCookieName"
+	rt.DatabaseConfig = &DbConfig{
+		Name:              "db",
+		SessionCookieName: customCookieName,
+	}
+
+	// Disable guest user
+	a := auth.NewAuthenticator(rt.Bucket(), nil)
+	user, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.Equals(t, err, nil)
+
+	// Create a user
+	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
+	assertStatus(t, response, 201)
+
+	// Create a session
+	resp := rt.SendRequest("POST", "/db/_session", `{"name":"user1", "password":"1234"}`)
+	assert.Equals(t, resp.Code, 200)
+
+	// Extract the cookie from the create session response to verify the "Set-Cookie" value returned by Sync Gateway
+	cookies := resp.Result().Cookies()
+	assert.True(t, len(cookies) == 1)
+	cookie := cookies[0]
+	assert.Equals(t, cookie.Name, customCookieName)
+	assert.Equals(t, cookie.Path, "/db")
+
+	// Attempt to use default cookie name to authenticate -- expect a 401 error
+	headers := map[string]string{}
+	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, cookie.Value)
+	resp = rt.SendRequestWithHeaders("GET", "/db/foo", `{}`, headers)
+	assert.Equals(t, resp.Result().StatusCode, 401)
+
+	// Attempt to use custom cookie name to authenticate
+	headers["Cookie"] = fmt.Sprintf("%s=%s", customCookieName, cookie.Value)
+	resp = rt.SendRequestWithHeaders("POST", "/db/", `{"_id": "foo", "key": "val"}`, headers)
+	assert.Equals(t, resp.Result().StatusCode, 200)
+
+}
+
 
 func TestReadChangesOptionsFromJSON(t *testing.T) {
 
@@ -3137,54 +3190,7 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 	log.Printf("value: %v", value)
 }
 
-func TestCustomCookieName(t *testing.T) {
 
-	var rt RestTester
-	defer rt.Close()
-
-	// In order to test auth, you must disable admin party, which is set by default (should this really be set by default!?)
-	rt.noAdminParty = true
-
-	customCookieName := "TestCustomCookieName"
-	rt.DatabaseConfig = &DbConfig{
-		Name:              "db",
-		SessionCookieName: customCookieName,
-	}
-
-	// Disable guest user
-	dbcontext := rt.GetDatabase()
-	guestUser, err := dbcontext.Authenticator().GetUser("")
-	assertNoError(t, err, "Unexpected error")
-	guestUser.SetDisabled(true)
-
-	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
-	assertStatus(t, response, 201)
-
-	resp := rt.SendAdminRequest("POST", "/db/_session", `{"name": "user1"}`)
-	assert.Equals(t, resp.Code, 200)
-
-	// Validate session response
-	sessionResponse := struct {
-		SessionID  string `json:"session_id"`
-		Expires    string `json:"expires"`
-		CookieName string `json:"cookie_name"`
-	}{}
-	err = json.Unmarshal(resp.Body.Bytes(), &sessionResponse)
-	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, sessionResponse.CookieName, customCookieName)
-
-	// Attempt to use default cookie name to authenticate -- expect a 401 error
-	headers := map[string]string{}
-	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, sessionResponse.SessionID)
-	resp = rt.SendRequestWithHeaders("GET", "/db/foo", `{}`, headers)
-	assert.Equals(t, resp.Result().StatusCode, 401)
-
-	// Attempt to use custom cookie name to authenticate
-	headers["Cookie"] = fmt.Sprintf("%s=%s", customCookieName, sessionResponse.SessionID)
-	resp = rt.SendRequestWithHeaders("POST", "/db/", `{"_id": "foo", "key": "val"}`, headers)
-	assert.Equals(t, resp.Result().StatusCode, 200)
-
-}
 
 // Reproduces https://github.com/couchbase/sync_gateway/issues/916.  The test-only RestartListener operation used to simulate a
 // SG restart isn't race-safe, so disabling the test for now.  Should be possible to reinstate this as a proper unit test
