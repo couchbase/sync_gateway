@@ -1448,6 +1448,57 @@ func TestLogin(t *testing.T) {
 	assert.True(t, response.Header().Get("Set-Cookie") != "")
 }
 
+func TestCustomCookieName(t *testing.T) {
+
+	var rt RestTester
+	defer rt.Close()
+
+	// In order to test auth, you must disable admin party, which is set by default (should this really be set by default!?)
+	rt.noAdminParty = true
+
+	customCookieName := "TestCustomCookieName"
+	rt.DatabaseConfig = &DbConfig{
+		Name:              "db",
+		SessionCookieName: customCookieName,
+	}
+
+	// Disable guest user
+	a := auth.NewAuthenticator(rt.Bucket(), nil)
+	user, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.Equals(t, err, nil)
+
+	// Create a user
+	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
+	assertStatus(t, response, 201)
+
+	// Create a session
+	resp := rt.SendRequest("POST", "/db/_session", `{"name":"user1", "password":"1234"}`)
+	assert.Equals(t, resp.Code, 200)
+
+	// Extract the cookie from the create session response to verify the "Set-Cookie" value returned by Sync Gateway
+	cookies := resp.Result().Cookies()
+	assert.True(t, len(cookies) == 1)
+	cookie := cookies[0]
+	assert.Equals(t, cookie.Name, customCookieName)
+	assert.Equals(t, cookie.Path, "/db")
+
+	// Attempt to use default cookie name to authenticate -- expect a 401 error
+	headers := map[string]string{}
+	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, cookie.Value)
+	resp = rt.SendRequestWithHeaders("GET", "/db/foo", `{}`, headers)
+	assert.Equals(t, resp.Result().StatusCode, 401)
+
+	// Attempt to use custom cookie name to authenticate
+	headers["Cookie"] = fmt.Sprintf("%s=%s", customCookieName, cookie.Value)
+	resp = rt.SendRequestWithHeaders("POST", "/db/", `{"_id": "foo", "key": "val"}`, headers)
+	assert.Equals(t, resp.Result().StatusCode, 200)
+
+}
+
+
 func TestReadChangesOptionsFromJSON(t *testing.T) {
 
 	h := &handler{}
@@ -2237,7 +2288,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 2)
 	log.Printf("changes: %+v", changes.Results)
-	assert.Equals(t, changes.Last_Seq, "6:2")  // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
+	assert.Equals(t, changes.Last_Seq, "6:2") // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
 	assert.Equals(t, changes.Results[0].ID, "b1")
 	assert.Equals(t, changes.Results[1].ID, "g1")
 
@@ -3136,6 +3187,8 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 	assert.Equals(t, ok, true)
 	log.Printf("value: %v", value)
 }
+
+
 
 // Reproduces https://github.com/couchbase/sync_gateway/issues/916.  The test-only RestartListener operation used to simulate a
 // SG restart isn't race-safe, so disabling the test for now.  Should be possible to reinstate this as a proper unit test

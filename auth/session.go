@@ -26,13 +26,13 @@ type LoginSession struct {
 	Ttl        time.Duration `json:"ttl"`
 }
 
-const CookieName = "SyncGatewaySession"
+const DefaultCookieName = "SyncGatewaySession"
 
 const SessionKeyPrefix = "_sync:session:"
 
 func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.ResponseWriter) (User, error) {
 
-	cookie, _ := rq.Cookie(CookieName)
+	cookie, _ := rq.Cookie(auth.sessionCookieName)
 	if cookie == nil {
 		return nil, nil
 	}
@@ -107,14 +107,14 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession) *http.Cookie
 		return nil
 	}
 	return &http.Cookie{
-		Name:    CookieName,
+		Name:    auth.sessionCookieName,
 		Value:   session.ID,
 		Expires: session.Expiration,
 	}
 }
 
 func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie {
-	cookie, _ := rq.Cookie(CookieName)
+	cookie, _ := rq.Cookie(auth.sessionCookieName)
 	if cookie == nil {
 		return nil
 	}

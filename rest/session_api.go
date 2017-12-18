@@ -233,7 +233,8 @@ func (h *handler) createUserSession() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing ttl")
 	}
 
-	session, err := h.db.Authenticator().CreateSession(params.Name, ttl)
+	authenticator := h.db.Authenticator()
+	session, err := authenticator.CreateSession(params.Name, ttl)
 	if err != nil {
 		return err
 	}
@@ -244,7 +245,7 @@ func (h *handler) createUserSession() error {
 	}
 	response.SessionID = session.ID
 	response.Expires = session.Expiration
-	response.CookieName = auth.CookieName
+	response.CookieName = authenticator.SessionCookieName()
 	h.writeJSON(response)
 	return nil
 }

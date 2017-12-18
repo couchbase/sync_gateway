@@ -533,6 +533,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		DBOnlineCallback:      dbOnlineCallback,
 		ImportOptions:         importOptions,
 		EnableXattr:           config.UseXattrs(),
+		SessionCookieName:     config.SessionCookieName,
 	}
 
 	// Create the DB Context
