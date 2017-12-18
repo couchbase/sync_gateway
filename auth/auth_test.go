@@ -435,6 +435,21 @@ func TestRegisterUser(t *testing.T) {
 	user, err = auth.GetUserByEmail("bar@example.com")
 	assert.Equals(t, user.Name(), "bar@example.com")
 	assert.Equals(t, err, nil)
+
+	// Register user without an email address
+	user, err = auth.RegisterNewUser("01234567890", "")
+	assert.Equals(t, user.Name(), "01234567890")
+	assert.Equals(t, user.Email(), "")
+	assert.Equals(t, err, nil)
+	// Get above user by username.
+	user, err = auth.GetUser("01234567890")
+	assert.Equals(t, user.Name(), "01234567890")
+	assert.Equals(t, user.Email(), "")
+	assert.Equals(t, err, nil)
+	// Make sure we can't retrieve 01234567890 by supplying empty email.
+	user, err = auth.GetUserByEmail("")
+	assert.Equals(t, user, nil)
+	assert.Equals(t, err, nil)
 }
 
 // 8 cases

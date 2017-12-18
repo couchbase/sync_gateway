@@ -11,9 +11,10 @@ package rest
 
 import (
 	"encoding/json"
-	"github.com/couchbase/sync_gateway/base"
 	"net/http"
 	"net/url"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 const kFacebookOpenGraphURL = "https://graph.facebook.com"
@@ -48,6 +49,12 @@ func (h *handler) handleFacebookPOST() error {
 	}
 
 	createUserIfNeeded := h.server.config.Facebook.Register
+
+	// #2760 Special case for when users have no email registered with Facebook
+	if len(facebookResponse.Email) < 1 {
+		return h.makeSessionFromName(facebookResponse.Id, createUserIfNeeded)
+	}
+
 	return h.makeSessionFromNameAndEmail(facebookResponse.Id, facebookResponse.Email, createUserIfNeeded)
 
 }

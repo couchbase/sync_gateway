@@ -141,6 +141,7 @@ func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) er
 	if err != nil {
 		return err
 	}
+
 	if user == nil {
 		// The email address is authentic but we have no user account for it.
 		if !createUserIfNeeded {
@@ -157,8 +158,37 @@ func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) er
 			return err
 		}
 	}
+
 	return h.makeSession(user)
 
+}
+
+// makeSessionFromName attempts to find the user by username.
+// If not found, and createUserIfNeeded=true, creates a new user based on username.
+func (h *handler) makeSessionFromName(username string, createUserIfNeeded bool) error {
+
+	// Username is verified. Look up the user and make a login session for her - first
+	// attempt lookup by name
+	user, err := h.db.Authenticator().GetUser(username)
+	if err != nil {
+		return err
+	}
+
+	if user == nil {
+		// The user is validated, but we don't have a user for either
+		if !createUserIfNeeded {
+			return base.HTTPErrorf(http.StatusUnauthorized, "No such user")
+		}
+
+		// Create a User with the given username, and a random password.
+		// No email is set, because we don't have that information.
+		user, err = h.db.Authenticator().RegisterNewUser(username, "")
+		if err != nil {
+			return err
+		}
+	}
+
+	return h.makeSession(user)
 }
 
 // MakeSessionFromUserAndEmail first attempts to find the user by username.  If found, updates the users's
@@ -177,7 +207,7 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 	// external auth system)
 	if user != nil {
 		if email != user.Email() {
-			if err := user.SetEmail(email); err == nil {
+			if err = user.SetEmail(email); err == nil {
 				h.db.Authenticator().Save(user)
 			}
 		}
@@ -189,6 +219,7 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 			return err
 		}
 	}
+
 	if user == nil {
 		// The user/email are validated, but we don't have a user for either
 		if !createUserIfNeeded {
@@ -199,12 +230,13 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 			return base.HTTPErrorf(http.StatusBadRequest, "Cannot register new user: email is missing")
 		}
 
-		// Create a User with the given email address as username and a random password.
+		// Create a User with the given username, email address, and a random password.
 		user, err = h.db.Authenticator().RegisterNewUser(username, email)
 		if err != nil {
 			return err
 		}
 	}
+
 	return h.makeSession(user)
 }
 
