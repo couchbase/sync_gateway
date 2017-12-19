@@ -405,6 +405,7 @@ func TestRoleInheritance(t *testing.T) {
 func TestRegisterUser(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
+
 	// Register user based on name, email
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	user, err := auth.RegisterNewUser("ValidName", "foo@example.com")

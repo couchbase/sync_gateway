@@ -49,12 +49,6 @@ func (h *handler) handleFacebookPOST() error {
 	}
 
 	createUserIfNeeded := h.server.config.Facebook.Register
-
-	// #2760 Special case for when users have no email registered with Facebook
-	if len(facebookResponse.Email) < 1 {
-		return h.makeSessionFromName(facebookResponse.Id, createUserIfNeeded)
-	}
-
 	return h.makeSessionFromNameAndEmail(facebookResponse.Id, facebookResponse.Email, createUserIfNeeded)
 
 }
