@@ -182,13 +182,12 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 			if err = user.SetEmail(email); err == nil {
 				h.db.Authenticator().Save(user)
 			}
-		}
-
-		// User not found by username. Attempt user lookup by email. This provides backward
-		// compatibility for users that were originally created with id = email
-		user, err = h.db.Authenticator().GetUserByEmail(email)
-		if err != nil {
-			return err
+		} else {
+			// User not found by username. Attempt user lookup by email. This provides backward
+			// compatibility for users that were originally created with id = email
+			if user, err = h.db.Authenticator().GetUserByEmail(email); err != nil {
+				return err
+			}
 		}
 	}
 
