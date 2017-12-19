@@ -271,6 +271,7 @@ func TestUnhandledEvent(t *testing.T) {
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 
+	// Validate that no events were handled
 	assertChannelLengthWithTimeout(t, resultChannel, 0, 10*time.Second)
 
 }
