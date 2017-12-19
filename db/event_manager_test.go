@@ -2,7 +2,6 @@ package db
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -111,10 +110,7 @@ func TestDocumentChangeEvent(t *testing.T) {
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 
-	expectedLength := 10
-	length, err := assertChannelLengthWithTimeout(resultChannel, expectedLength, 10*time.Second)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, length, expectedLength)
+	assertChannelLengthWithTimeout(t, resultChannel, 10, 10*time.Second)
 
 }
 
@@ -149,10 +145,7 @@ func TestDBStateChangeEvent(t *testing.T) {
 		}
 	}
 
-	expectedLength := 20
-	length, err := assertChannelLengthWithTimeout(resultChannel, expectedLength, 10*time.Second)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, length, expectedLength)
+	assertChannelLengthWithTimeout(t, resultChannel, 20, 10*time.Second)
 
 }
 
@@ -198,10 +191,7 @@ func TestSlowExecutionProcessing(t *testing.T) {
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 
-	expectedLength := 20
-	length, err := assertChannelLengthWithTimeout(resultChannel, expectedLength, 10*time.Second)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, length, expectedLength)
+	assertChannelLengthWithTimeout(t, resultChannel, 20, 10*time.Second)
 
 }
 
@@ -240,10 +230,7 @@ func TestCustomHandler(t *testing.T) {
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 
-	expectedLength := 10
-	length, err := assertChannelLengthWithTimeout(resultChannel, expectedLength, 10*time.Second)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, length, expectedLength)
+	assertChannelLengthWithTimeout(t, resultChannel, 10, 10*time.Second)
 
 }
 
@@ -284,10 +271,7 @@ func TestUnhandledEvent(t *testing.T) {
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 
-	expectedLength := 0
-	length, err := assertChannelLengthWithTimeout(resultChannel, expectedLength, 10*time.Second)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, length, expectedLength)
+	assertChannelLengthWithTimeout(t, resultChannel, 0, 10*time.Second)
 
 }
 
@@ -741,26 +725,27 @@ func TestUnavailableWebhook(t *testing.T) {
 
 }
 
-// assertChannelLengthWithTimeout will return the number of items seen in the channel, along with an error if it timed out.
+// asserts that the number of items seen in the channel within the specified time limit is the same as the expected value.
 // WARNING: This function will drain the channel of items!
-func assertChannelLengthWithTimeout(c chan Body, expectedLength int, timeout time.Duration) (length int, err error) {
+func assertChannelLengthWithTimeout(t *testing.T, c chan Body, expectedLength int, timeout time.Duration) {
 	count := 0
 	for {
 		if count >= expectedLength {
 			// Make sure there are no additional items on the channel after a short wait.
 			// This avoids relying on the longer timeout value for the final check.
 			time.Sleep(timeout / 100)
-			if len(c) > 0 {
-				err = errors.New("recieved additional items on channel")
+			if count+len(c) > expectedLength {
+				assert.Equals(t, count+len(c), expectedLength)
+			} else {
+				return
 			}
-			return count + len(c), err
 		}
 
 		select {
 		case _ = <-c:
 			count++
 		case <-time.After(timeout):
-			return count, errors.New("timed out waiting for items on channel")
+			t.Fatal("timed out waiting for items on channel... got: %d, expected: %d", count, expectedLength)
 		}
 	}
 }
