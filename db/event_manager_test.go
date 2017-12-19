@@ -734,18 +734,15 @@ func assertChannelLengthWithTimeout(t *testing.T, c chan Body, expectedLength in
 			// Make sure there are no additional items on the channel after a short wait.
 			// This avoids relying on the longer timeout value for the final check.
 			time.Sleep(timeout / 100)
-			if count+len(c) > expectedLength {
-				assert.Equals(t, count+len(c), expectedLength)
-			} else {
-				return
-			}
+			assert.Equals(t, count+len(c), expectedLength)
+			return
 		}
 
 		select {
 		case _ = <-c:
 			count++
 		case <-time.After(timeout):
-			t.Fatal("timed out waiting for items on channel... got: %d, expected: %d", count, expectedLength)
+			t.Fatalf("timed out waiting for items on channel... got: %d, expected: %d", count, expectedLength)
 		}
 	}
 }
