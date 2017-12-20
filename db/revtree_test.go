@@ -832,7 +832,7 @@ func TestRevisionPruningLoop(t *testing.T) {
 		revID := fmt.Sprintf("%d-foo", generation)
 		parentRevID := fmt.Sprintf("%d-foo", generation-1)
 		err := addAndGet(revTree, revID, parentRevID, nonTombstone)
-		assertNoError(t, err, fmt.Sprintf("Error adding revision 1-foo to tree", revID))
+		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
 	}
 
 	// Add tombstone children of 3-foo and 4-foo
