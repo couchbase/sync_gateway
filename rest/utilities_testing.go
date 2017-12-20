@@ -12,12 +12,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
+	"net/url"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -35,9 +37,11 @@ type RestTester struct {
 	DatabaseConfig          *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	AdminHandler            http.Handler
 	PublicHandler           http.Handler
+	EnableNoConflictsMode          bool // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
+
 	if rt.RestTesterBucket == nil {
 
 		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
@@ -84,6 +88,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.DatabaseConfig.Name = "db"
 		rt.DatabaseConfig.Sync = syncFnPtr
 		rt.DatabaseConfig.EnableXattrs = &useXattrs
+		if rt.EnableNoConflictsMode {
+			boolVal := false
+			rt.DatabaseConfig.Unsupported.AllowConflicts = &boolVal
+		}
 
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 		if err != nil {
@@ -228,6 +236,14 @@ func (rt *RestTester) Send(request *http.Request) *TestResponse {
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 	rt.TestPublicHandler().ServeHTTP(response, request)
 	return response
+}
+
+func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
+	rt.EnableNoConflictsMode = true
+	if rt.AdminHandler == nil {
+		rt.AdminHandler = CreateAdminHandler(rt.ServerContext())
+	}
+	return rt.AdminHandler
 }
 
 func (rt *RestTester) TestAdminHandler() http.Handler {
@@ -471,4 +487,70 @@ func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
 	s.responseFinished.Done()
 
 	return numBytesWritten, err
+}
+
+type BlipTester struct {
+	rt          RestTester
+	sender      *blip.Sender
+	blipContext *blip.Context
+}
+
+func (bt BlipTester) Close() {
+	bt.rt.Close()
+}
+
+
+func CreateBlipTester(t *testing.T, noConflictsMode bool) (bt BlipTester) {
+
+	EnableBlipSyncLogs()
+
+	// Create an admin handler
+	var adminHandler http.Handler
+	switch noConflictsMode {
+	case true:
+		adminHandler = bt.rt.TestAdminHandlerNoConflictsMode()
+	default:
+		adminHandler = bt.rt.TestAdminHandler()
+
+	}
+
+
+	// Create a test server and close it when the test is complete
+	srv := httptest.NewServer(adminHandler)
+	defer srv.Close()
+
+	// Construct URL to connect to blipsync target endpoint
+	destUrl := fmt.Sprintf("%s/db/_blipsync", srv.URL)
+	u, err := url.Parse(destUrl)
+	if err != nil {
+		t.Errorf("Error parsing desturl: %v", err)
+	}
+	u.Scheme = "ws"
+
+	// Make BLIP/Websocket connection
+	bt.blipContext = blip.NewContext()
+	bt.blipContext.Logger = func(fmt string, params ...interface{}) {
+		base.LogTo("BLIP", fmt, params...)
+	}
+	bt.blipContext.LogMessages = true
+	bt.blipContext.LogFrames = true
+	origin := "http://localhost" // TODO: what should be used here?
+	bt.sender, err = bt.blipContext.Dial(u.String(), origin)
+	if err != nil {
+		t.Errorf("Websocket connection error: %v", err)
+	}
+
+	return bt
+
+}
+
+func EnableBlipSyncLogs() {
+
+	base.EnableLogKey("HTTP")
+	base.EnableLogKey("HTTP+")
+	base.EnableLogKey("BLIP")
+	base.EnableLogKey("BLIP+")
+	base.EnableLogKey("Sync")
+	base.EnableLogKey("Sync+")
+
 }

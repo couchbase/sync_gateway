@@ -422,6 +422,8 @@ func (context *DatabaseContext) Close() {
 }
 
 func (context *DatabaseContext) IsClosed() bool {
+	context.BucketLock.Lock()
+	defer context.BucketLock.Unlock()
 	return context.Bucket == nil
 }
 
