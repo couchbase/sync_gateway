@@ -11,9 +11,10 @@ package rest
 
 import (
 	"encoding/json"
-	"github.com/couchbase/sync_gateway/base"
 	"net/http"
 	"net/url"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 const kFacebookOpenGraphURL = "https://graph.facebook.com"

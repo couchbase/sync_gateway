@@ -400,19 +400,23 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 	return user, jwt, nil
 }
 
-// Registers a new user account based on the given verified email address.
-// Username will be the same as the verified email address. Password will be random.
-// The user will have access to no channels.
+// Registers a new user account based on the given verified username and optional email address.
+// Password will be random. The user will have access to no channels.
 func (auth *Authenticator) RegisterNewUser(username, email string) (User, error) {
 	user, err := auth.NewUser(username, base.GenerateRandomSecret(), base.Set{})
 	if err != nil {
 		return nil, err
 	}
-	user.SetEmail(email)
+
+	if len(email) > 0 {
+		user.SetEmail(email)
+	}
+
 	err = auth.Save(user)
 	if err != nil {
 		return nil, err
 	}
+
 	return user, err
 }
 

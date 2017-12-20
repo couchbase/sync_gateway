@@ -141,6 +141,7 @@ func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) er
 	if err != nil {
 		return err
 	}
+
 	if user == nil {
 		// The email address is authentic but we have no user account for it.
 		if !createUserIfNeeded {
@@ -157,6 +158,7 @@ func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) er
 			return err
 		}
 	}
+
 	return h.makeSession(user)
 
 }
@@ -166,45 +168,44 @@ func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) er
 // If not found, and createUserIfNeeded=true, creates a new user based on username, email.
 func (h *handler) makeSessionFromNameAndEmail(username, email string, createUserIfNeeded bool) error {
 
-	// Username and email are verified. Look up the user and make a login session for her - first
-	// attempt lookup by name
+	// First attempt lookup by username and make a login session for her.
 	user, err := h.db.Authenticator().GetUser(username)
 	if err != nil {
 		return err
 	}
 
-	// If user found, check whether the email needs to be updated (e.g. user has changed email in
-	// external auth system)
-	if user != nil {
-		if email != user.Email() {
-			if err := user.SetEmail(email); err == nil {
-				h.db.Authenticator().Save(user)
+	// Attempt email updates/lookups if an email is provided.
+	if len(email) > 0 {
+		if user != nil {
+			// User found, check whether the email needs to be updated
+			// (e.g. user has changed email in external auth system)
+			if email != user.Email() {
+				if err = user.SetEmail(email); err == nil {
+					h.db.Authenticator().Save(user)
+				}
+			}
+		} else {
+			// User not found by username. Attempt user lookup by email. This provides backward
+			// compatibility for users that were originally created with id = email
+			if user, err = h.db.Authenticator().GetUserByEmail(email); err != nil {
+				return err
 			}
 		}
-	} else {
-		// User not found by name.  Attempt user lookup by email.  This provides backward
-		// compatibility for users that were originally created with id = email
-		user, err = h.db.Authenticator().GetUserByEmail(email)
-		if err != nil {
-			return err
-		}
 	}
+
+	// Couldn't find existing user.
 	if user == nil {
-		// The user/email are validated, but we don't have a user for either
 		if !createUserIfNeeded {
 			return base.HTTPErrorf(http.StatusUnauthorized, "No such user")
 		}
 
-		if len(email) < 1 {
-			return base.HTTPErrorf(http.StatusBadRequest, "Cannot register new user: email is missing")
-		}
-
-		// Create a User with the given email address as username and a random password.
+		// Create a User with the given username, email address, and a random password.
 		user, err = h.db.Authenticator().RegisterNewUser(username, email)
 		if err != nil {
 			return err
 		}
 	}
+
 	return h.makeSession(user)
 }
 
