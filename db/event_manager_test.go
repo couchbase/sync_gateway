@@ -3,8 +3,6 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
 	"io/ioutil"
 	"log"
 	"net"
@@ -12,6 +10,9 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbaselabs/go.assert"
 )
 
 // Webhook tests use an HTTP listener.  Use of this listener is disabled by default, to avoid
@@ -41,7 +42,7 @@ func (th *TestingHandler) HandleEvent(event Event) {
 
 		doc := dsceEvent.Doc
 
-		assert.True(th.t, len(doc) == 5)
+		assert.Equals(th.t, len(doc), 5)
 
 		state := doc["state"]
 
@@ -53,14 +54,14 @@ func (th *TestingHandler) HandleEvent(event Event) {
 
 		_, err := net.ResolveTCPAddr("tcp", adminInterface)
 
-		assert.True(th.t, err == nil)
+		assert.Equals(th.t, err, nil)
 
 		//localtime must parse from an ISO8601 Format string
 		localtime := (doc["localtime"]).(string)
 
 		_, err = time.Parse(base.ISO8601Format, localtime)
 
-		assert.True(th.t, err == nil)
+		assert.Equals(th.t, err, nil)
 
 		th.ResultChannel <- dsceEvent.Doc
 	}
@@ -108,24 +109,8 @@ func TestDocumentChangeEvent(t *testing.T) {
 		body, channels := eventForTest(i)
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
-	// wait for Event Manager queue worker to process
-	time.Sleep(100 * time.Millisecond)
 
-	// Diagnostics for failures
-	channelSize := len(resultChannel)
-	if channelSize != 10 {
-		log.Printf("Expected 10 change events, got %v", channelSize)
-		for {
-			select {
-			case result := <-resultChannel:
-				log.Printf("Change event: %v", result)
-			default:
-				break
-			}
-		}
-	}
-
-	assert.True(t, channelSize == 10)
+	assertChannelLengthWithTimeout(t, resultChannel, 10, 10*time.Second)
 
 }
 
@@ -154,15 +139,13 @@ func TestDBStateChangeEvent(t *testing.T) {
 		em.RaiseDBStateChangeEvent(ids[i], "offline", "Sync Gateway context closed", "0.0.0.0:0000")
 	}
 
-	// Give the Event Manager queue worker some time to process
 	for i := 0; i < 25; i++ {
 		if len(resultChannel) == 20 {
 			break
 		}
-		time.Sleep(200 * time.Millisecond)
 	}
 
-	assert.True(t, len(resultChannel) == 20)
+	assertChannelLengthWithTimeout(t, resultChannel, 20, 10*time.Second)
 
 }
 
@@ -207,11 +190,8 @@ func TestSlowExecutionProcessing(t *testing.T) {
 		body, channels := eventForTest(i % 10)
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
-	// wait for Event Manager queue worker to process
-	time.Sleep(2 * time.Second)
-	fmt.Println("resultChannel:", len(resultChannel))
 
-	assert.True(t, len(resultChannel) == 20)
+	assertChannelLengthWithTimeout(t, resultChannel, 20, 10*time.Second)
 
 }
 
@@ -249,10 +229,8 @@ func TestCustomHandler(t *testing.T) {
 		body, channels := eventForTest(i)
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
-	// wait for Event Manager queue worker to process
-	time.Sleep(50 * time.Millisecond)
 
-	assert.True(t, len(resultChannel) == 10)
+	assertChannelLengthWithTimeout(t, resultChannel, 10, 10*time.Second)
 
 }
 
@@ -292,11 +270,9 @@ func TestUnhandledEvent(t *testing.T) {
 		body, channels := eventForTest(i)
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
-	// Wait for Event Manager queue worker to process
-	time.Sleep(50 * time.Millisecond)
 
 	// Validate that no events were handled
-	assert.True(t, len(resultChannel) == 0)
+	assertChannelLengthWithTimeout(t, resultChannel, 0, 10*time.Second)
 
 }
 
@@ -748,5 +724,26 @@ func TestUnavailableWebhook(t *testing.T) {
 		em.RaiseDocumentChangeEvent(body, "", channels)
 	}
 
-	time.Sleep(50 * time.Millisecond)
+}
+
+// asserts that the number of items seen in the channel within the specified time limit is the same as the expected value.
+// WARNING: This function will drain the channel of items!
+func assertChannelLengthWithTimeout(t *testing.T, c chan Body, expectedLength int, timeout time.Duration) {
+	count := 0
+	for {
+		if count >= expectedLength {
+			// Make sure there are no additional items on the channel after a short wait.
+			// This avoids relying on the longer timeout value for the final check.
+			time.Sleep(timeout / 100)
+			assert.Equals(t, count+len(c), expectedLength)
+			return
+		}
+
+		select {
+		case _ = <-c:
+			count++
+		case <-time.After(timeout):
+			t.Fatalf("timed out waiting for items on channel... got: %d, expected: %d", count, expectedLength)
+		}
+	}
 }
