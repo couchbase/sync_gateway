@@ -176,11 +176,13 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 
 	// Attempt email updates/lookups if an email is provided.
 	if len(email) > 0 {
-		// If user found, check whether the email needs to be updated
-		// (e.g. user has changed email in external auth system)
-		if user != nil && email != user.Email() {
-			if err = user.SetEmail(email); err == nil {
-				h.db.Authenticator().Save(user)
+		if user != nil {
+			// User found, check whether the email needs to be updated
+			// (e.g. user has changed email in external auth system)
+			if email != user.Email() {
+				if err = user.SetEmail(email); err == nil {
+					h.db.Authenticator().Save(user)
+				}
 			}
 		} else {
 			// User not found by username. Attempt user lookup by email. This provides backward
