@@ -16,11 +16,12 @@ import (
 	"testing"
 	"time"
 
+	"sync"
+
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
-	"github.com/couchbase/sg-bucket"
-	"sync"
 )
 
 func e(seq uint64, docid string, revid string) *LogEntry {
@@ -478,8 +479,9 @@ func TestContinuousChangesBackfill(t *testing.T) {
 			break
 		}
 	}
+
 	if len(expectedDocs) > 0 {
-		log.Printf("Did not receive expected docs: %v")
+		log.Printf("Received %d unexpected docs", len(expectedDocs))
 	}
 
 	assert.Equals(t, len(expectedDocs), 0)
@@ -1220,7 +1222,6 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
 
-
 	// -------- Setup onChange callback ----------------
 
 	// type assert this from ChangeIndex interface -> concrete changeCache implementation
@@ -1251,11 +1252,10 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 			1,
 		},
 		CurrentRev: "1-abc",
-		Sequence: 3,
+		Sequence:   3,
 	}
 	doc1Bytes, err := doc1.MarshalJSON()
 	assertNoError(t, err, "Unexpected error")
-
 
 	// Create doc2 w/ sequence 2, channel ABC
 	doc2Id := "doc2Id"
@@ -1267,8 +1267,8 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 	doc2.syncData = syncData{
 		CurrentRev: "1-cde",
-		Sequence: 2,
-		Channels: channelMap,
+		Sequence:   2,
+		Channels:   channelMap,
 	}
 	doc2Bytes, err := doc2.MarshalJSON()
 	assertNoError(t, err, "Unexpected error")
@@ -1276,19 +1276,18 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	// Send feed event for doc2. This won't trigger onChange, as buffering is waiting for seq 1
 	feedEventDoc2 := sgbucket.FeedEvent{
 		Synchronous: true,
-		Key: []byte(doc2Id),
-		Value: doc2Bytes,
+		Key:         []byte(doc2Id),
+		Value:       doc2Bytes,
 	}
 	db.changeCache.DocChanged(feedEventDoc2)
 
 	// Send feed event for doc1. This should trigger caching for doc2, and trigger onChange for channel ABC.
 	feedEventDoc1 := sgbucket.FeedEvent{
 		Synchronous: true,
-		Key: []byte(doc1Id),
-		Value: doc1Bytes,
+		Key:         []byte(doc1Id),
+		Value:       doc1Bytes,
 	}
 	db.changeCache.DocChanged(feedEventDoc1)
-
 
 	// -------- Wait for waitgroup ----------------
 
