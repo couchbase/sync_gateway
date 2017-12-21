@@ -39,7 +39,7 @@ func (p *program) startup() error {
 
 	f, err := os.OpenFile(p.StderrPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
 	if err != nil {
-		logger.Warningf("Failed to open std err %q: %v", stderrPath, err)
+		logger.Warningf("Failed to open std err %q: %v", p.StderrPath, err)
 		return err
 	}
 	defer f.Close()
