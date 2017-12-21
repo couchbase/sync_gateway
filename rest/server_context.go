@@ -149,8 +149,6 @@ func (sc *ServerContext) Close() {
 
 	sc.databases_ = nil
 
-
-
 }
 
 // Returns the DatabaseContext with the given name
@@ -822,7 +820,8 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 			internalName := ""
 			princ.Name = &internalName
 		} else {
-			princ.Name = &name
+			n := name
+			princ.Name = &n
 		}
 
 		worker := func() (shouldRetry bool, err error, value interface{}) {
@@ -860,13 +859,9 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 			base.Logf("    Created %s %q", what, name)
 		}
 
-
 	}
 	return nil
 }
-
-
-
 
 // Fetch a configuration for a database from the ConfigServer
 func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error) {
