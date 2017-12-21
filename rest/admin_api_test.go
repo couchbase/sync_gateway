@@ -1023,6 +1023,8 @@ func TestDBGetConfigNames(t *testing.T) {
 	var body DbConfig
 	json.Unmarshal(response.Body.Bytes(), &body)
 
+	assert.Equals(t, len(body.Users), len(rt.DatabaseConfig.Users))
+
 	for k, v := range body.Users {
 		assert.Equals(t, *v.Name, k)
 	}
