@@ -348,10 +348,6 @@ func (h *handler) handleBulkGet() error {
 
 	includeAttachments := h.getBoolQuery("attachments")
 	showExp := h.getBoolQuery("show_exp")
-	revsLimit := 0
-	if h.getBoolQuery("revs") {
-		revsLimit = int(h.getIntQuery("revs_limit", math.MaxInt32))
-	}
 
 	// If a client passes the HTTP header "Accept-Encoding: gzip" then the header "X-Accept-Part-Encoding: gzip" will be
 	// ignored and the entire HTTP response will be gzip compressed.  (aside from exception mentioned below for issue 1419)
@@ -374,16 +370,16 @@ func (h *handler) handleBulkGet() error {
 
 	docs, ok := body["docs"].([]interface{})
 	if !ok {
-		internalerr := base.HTTPErrorf(http.StatusBadRequest, "missing 'docs' property")
-		return internalerr
+		return base.HTTPErrorf(http.StatusBadRequest, "missing 'docs' property")
 	}
 
 	defer bulkApiBulkGetPerDocRollingMean.AddSincePerItem(handleBulkGetStartedAt, len(docs))
 
-	err = h.writeMultipart("mixed", func(writer *multipart.Writer) error {
+	return h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 		for _, item := range docs {
 			var body db.Body
 			var revsFrom, attsSince []string
+			var docRevsLimit int
 			var err error
 
 			doc := item.(map[string]interface{})
@@ -397,21 +393,35 @@ func (h *handler) handleBulkGet() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Invalid doc/rev ID in _bulk_get")
 			} else {
 				attsSince, err = db.GetStringArrayProperty(doc, "atts_since")
-				if revsLimit > 0 {
-					revsFrom, err = db.GetStringArrayProperty(doc, "revs_from")
-					if revsFrom == nil {
-						revsFrom = attsSince // revs_from defaults to same value as atts_since
+
+				if h.getBoolQuery("revs") {
+					// Try to pull out a per-doc revs limit, otherwise use request limit.
+					if raw, ok := doc["revs_limit"]; !ok {
+						docRevsLimit = int(h.getIntQuery("revs_limit", math.MaxInt32))
+					} else if val, ok := raw.(float64); ok && val >= 0 {
+						docRevsLimit = int(val)
+					} else {
+						err = base.HTTPErrorf(http.StatusBadRequest, "Invalid revs_limit for doc: %s in _bulk_get", docid)
+					}
+
+					if docRevsLimit > 0 {
+						revsFrom, err = db.GetStringArrayProperty(doc, "revs_from")
+						if revsFrom == nil {
+							revsFrom = attsSince // revs_from defaults to same value as atts_since
+						}
 					}
 				}
+
 				if !includeAttachments {
 					attsSince = nil
 				} else if attsSince == nil {
 					attsSince = []string{}
 				}
+
 			}
 
 			if err == nil {
-				body, err = h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attsSince, showExp)
+				body, err = h.db.GetRevWithHistory(docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
 			}
 
 			if err != nil {
@@ -428,8 +438,6 @@ func (h *handler) handleBulkGet() error {
 		}
 		return nil
 	})
-
-	return err
 }
 
 // HTTP handler for a POST to _bulk_docs

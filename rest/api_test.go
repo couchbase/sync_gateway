@@ -1213,9 +1213,9 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 	rt := RestTester{SyncFn: `
 		function(doc) {
 			if(doc.type == "roleaccess") {
-				channel(doc.channel); 
+				channel(doc.channel);
 				access(doc.grantTo, doc.grantChannel);
-			} else { 
+			} else {
 				requireAccess(doc.mustHaveAccess)
 			}
 		}`}
@@ -1235,11 +1235,11 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 	// Bulk docs with 2 docs.  First doc grants role1 access to chan1.  Second requires chan1 for write.
 	input := `{"docs": [
 				{
-					"_id": "bulk1", 
-				 	"type" : "roleaccess", 
-				 	"grantTo":"role:role1", 
+					"_id": "bulk1",
+				 	"type" : "roleaccess",
+				 	"grantTo":"role:role1",
 				 	"grantChannel":"chan1"
-				 }, 
+				 },
 				{
 					"_id": "bulk2",
 					"mustHaveAccess":"chan1"
@@ -1346,6 +1346,126 @@ func TestOpenRevs(t *testing.T) {
 {"ok":{"_id":"or1","_rev":"12-abc","n":1}}
 ,{"missing":"10-ten"}
 ]`)
+}
+
+// Attempts to get a varying number of revisions on a per-doc basis.
+// Covers feature implemented in issue #2992
+func TestBulkGetPerDocRevsLimit(t *testing.T) {
+
+	var rt RestTester
+	defer rt.Close()
+
+	// Map of doc IDs to latest rev IDs
+	docs := map[string]string{
+		"doc1": "",
+		"doc2": "",
+		"doc3": "",
+		"doc4": "",
+	}
+
+	// Add each doc with a few revisions
+	for k := range docs {
+		var body db.Body
+
+		response := rt.SendRequest("PUT", fmt.Sprintf("/db/%v", k), fmt.Sprintf(`{"val":"1-%s"}`, k))
+		assertStatus(t, response, 201)
+		json.Unmarshal(response.Body.Bytes(), &body)
+		rev := body["rev"].(string)
+
+		response = rt.SendRequest("PUT", fmt.Sprintf("/db/%v?rev=%s", k, rev), fmt.Sprintf(`{"val":"2-%s"}`, k))
+		assertStatus(t, response, 201)
+		json.Unmarshal(response.Body.Bytes(), &body)
+		rev = body["rev"].(string)
+
+		response = rt.SendRequest("PUT", fmt.Sprintf("/db/%v?rev=%s", k, rev), fmt.Sprintf(`{"val":"3-%s"}`, k))
+		assertStatus(t, response, 201)
+		json.Unmarshal(response.Body.Bytes(), &body)
+		rev = body["rev"].(string)
+
+		docs[k] = rev
+	}
+
+	reqRevsLimit := 2
+
+	// Fetch docs by bulk with varying revs_limits
+	bulkGetResponse := rt.SendRequest("POST", fmt.Sprintf("/db/_bulk_get?revs=true&revs_limit=%v", reqRevsLimit), fmt.Sprintf(`
+		{
+			"docs": [
+				{
+					"rev": "%s",
+					"id": "doc1"
+				},
+				{
+					"revs_limit": 1,
+					"rev": "%s",
+					"id": "doc2"
+				},
+				{
+					"revs_limit": 0,
+					"rev": "%s",
+					"id": "doc3"
+				},
+				{
+					"revs_limit": -1,
+					"rev": "%s",
+					"id": "doc4"
+				}
+			]
+		}`, docs["doc1"], docs["doc2"], docs["doc3"], docs["doc4"]))
+	assert.Equals(t, bulkGetResponse.Code, http.StatusOK)
+
+	bulkGetResponse.DumpBody()
+
+	// Parse multipart/mixed docs and create reader
+	contentType, attrs, _ := mime.ParseMediaType(bulkGetResponse.Header().Get("Content-Type"))
+	log.Printf("content-type: %v.  attrs: %v", contentType, attrs)
+	assert.Equals(t, contentType, "multipart/mixed")
+	reader := multipart.NewReader(bulkGetResponse.Body, attrs["boundary"])
+
+readerLoop:
+	for {
+
+		// Get the next part.  Break out of the loop if we hit EOF
+		part, err := reader.NextPart()
+		if err != nil {
+			if err == io.EOF {
+				break readerLoop
+			}
+			t.Fatal(err)
+		}
+
+		partBytes, err := ioutil.ReadAll(part)
+		assertNoError(t, err, "Unexpected error")
+
+		log.Printf("multipart part: %+v", string(partBytes))
+
+		partJSON := map[string]interface{}{}
+		err = json.Unmarshal(partBytes, &partJSON)
+		assertNoError(t, err, "Unexpected error")
+
+		var exp int
+
+		switch partJSON["_id"] {
+		case "doc1":
+			exp = reqRevsLimit
+		case "doc2":
+			exp = 1
+		case "doc3":
+			// revs_limit of zero should display no revision object at all
+			assert.Equals(t, partJSON["_revisions"], nil)
+			break readerLoop
+		case "doc4":
+			// revs_limit must be >= 0
+			assert.Equals(t, partJSON["error"], "bad_request")
+			break readerLoop
+		default:
+			t.Error("unrecognised part in response")
+		}
+
+		revisions := partJSON["_revisions"].(map[string]interface{})
+		assert.Equals(t, len(revisions["ids"].([]interface{})), exp)
+	}
+
 }
 
 func TestLocalDocs(t *testing.T) {
@@ -1497,7 +1617,6 @@ func TestCustomCookieName(t *testing.T) {
 	assert.Equals(t, resp.Result().StatusCode, 200)
 
 }
-
 
 func TestReadChangesOptionsFromJSON(t *testing.T) {
 
@@ -3187,8 +3306,6 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 	assert.Equals(t, ok, true)
 	log.Printf("value: %v", value)
 }
-
-
 
 // Reproduces https://github.com/couchbase/sync_gateway/issues/916.  The test-only RestartListener operation used to simulate a
 // SG restart isn't race-safe, so disabling the test for now.  Should be possible to reinstate this as a proper unit test
