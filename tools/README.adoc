@@ -128,6 +128,6 @@ There are also some extra flags you can pass, which you can see by running `./sg
 
 If `go` and/or `graphviz` is not installed on the machine where `sgcollect_info`, you can still render the raw profiles into a text or pdf formats with:
 
-. Modify `pprof_http_heap.log` to remove the "header" lines mentioned by @malarky in https://github.com/couchbase/sync_gateway/issues/3158#issuecomment-353565630 to avoid the error `pprof_http_heap.log: parsing profile: unrecognized profile format`
+. Modify `pprof_http_heap.log` to remove the top for header lines to avoid the error `pprof_http_heap.log: parsing profile: unrecognized profile format`
 . Pass the path to the **actual sync gateway binary** that was collected in the sgcollect_info zipfile.  Eg: `go tool pprof -top /path/to/sync_gateway modified_pprof_http_heap.log`
 
