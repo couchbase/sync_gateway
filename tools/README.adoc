@@ -8,10 +8,10 @@
 This folder contains the following tools:
 
 . `sgcollect_info` -- a tool that collects diagnostics from Sync Gateway, such as logs, heap profile, cpu profile, expvars, etc.
-. A copy of `cbcollect_info` and `tasks.py`, which was refactored from the upstream `cbollect_info` in the https://github.com/couchbase/ns_server/blob/master/cbcollect_info[ns_server repository], which has since diverged from this version.  `sgcollect_info` depends on the `cbcollect_info` in this repo.
+. A copy of `cbcollect_info` and `tasks.py`, which was refactored from the upstream `cbcollect_info` in the https://github.com/couchbase/ns_server/blob/master/cbcollect_info[ns_server repository], which has since diverged from this version.  `sgcollect_info` depends on the `cbcollect_info` in this repo.
 
 
-== SG Collectinfo
+== SG Collect Info
 
 === Install dependencies (optional)
 
@@ -126,8 +126,8 @@ There are also some extra flags you can pass, which you can see by running `./sg
 
 === How to render raw heap files locally
 
-If `go` and/or `graphviz` is not installed on the machine where `sgcollect_info`, you can still render the raw profiles into a text or pdf formats with:
+If `go` and/or `graphviz` is not installed on the machine where `sgcollect_info` is run, you can still render the raw profiles into a text or pdf formats with:
 
-. Modify `pprof_http_heap.log` to remove the top for header lines to avoid the error `pprof_http_heap.log: parsing profile: unrecognized profile format`
-. Pass the path to the **actual sync gateway binary** that was collected in the sgcollect_info zipfile.  Eg: `go tool pprof -top /path/to/sync_gateway modified_pprof_http_heap.log`
+. Modify `pprof_http_heap.log` to remove the top four header lines to avoid the error `pprof_http_heap.log: parsing profile: unrecognized profile format`
+. Pass the path to the **actual Sync Gateway binary** that was collected in the sgcollect_info zipfile.  Eg: `go tool pprof -top /path/to/sync_gateway modified_pprof_http_heap.log`
 
