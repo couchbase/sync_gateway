@@ -633,7 +633,7 @@ func (h *handler) handlePurge() error {
 	}
 
 	h.response.Write([]byte("}\n}\n"))
-	h.logStatus(http.StatusOK, message)
+	h.logStatus(http.StatusOK, message, false)
 
 	return nil
 }

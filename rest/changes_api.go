@@ -323,14 +323,9 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	h.setHeader("Content-Type", "application/json")
 	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
 	h.response.Write([]byte("{\"results\":[\r\n"))
-
-	logStatus := h.logStatusWithDuration
-
 	if options.Wait {
-		logStatus = h.logStatus
 		h.flush()
 	}
-
 	message := "OK"
 	forceClose := false
 	if feed != nil {
@@ -395,7 +390,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 				break loop
 			}
 			if err != nil {
-				logStatus(599, fmt.Sprintf("Write error: %v", err))
+				h.logStatus(599, fmt.Sprintf("Write error: %v", err), options.Wait)
 				return nil, forceClose // error is probably because the client closed the connection
 			}
 		}
@@ -403,7 +398,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 
 	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
 	h.response.Write([]byte(s))
-	logStatus(http.StatusOK, message)
+	h.logStatus(http.StatusOK, message, options.Wait)
 	return nil, forceClose
 }
 
@@ -521,7 +516,7 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 
 	s := fmt.Sprintf("],\n\"last_seq\":%d}\n", lastSeq)
 	h.response.Write([]byte(s))
-	h.logStatusWithDuration(http.StatusOK, "OK")
+	h.logStatus(http.StatusOK, "OK", !options.Wait)
 	return nil, false
 }
 
@@ -531,7 +526,7 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 // a periodic heartbeat while waiting.
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	err, forceClose := generateContinuousChanges(h.db, inChannels, options, nil, send)
-	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
+	h.logStatus(http.StatusOK, "OK (continuous feed closed)", true)
 	return err, forceClose
 }
 
@@ -669,7 +664,7 @@ loop:
 
 		if err != nil {
 			if h != nil {
-				h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
+				h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err), options.Wait)
 			}
 			return nil, forceClose // error is probably because the client closed the connection
 		}
@@ -684,7 +679,7 @@ func (h *handler) sendContinuousChangesByHTTP(inChannels base.Set, options db.Ch
 	// receiving the response.
 	h.setHeader("Content-Type", "application/octet-stream")
 	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
-	h.logStatus(http.StatusOK, "sending continuous feed")
+	h.logStatus(http.StatusOK, "sending continuous feed", true)
 	return h.generateContinuousChanges(inChannels, options, func(changes []*db.ChangeEntry) error {
 		var err error
 		if changes != nil {
@@ -709,7 +704,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 
 	forceClose := false
 	handler := func(conn *websocket.Conn) {
-		h.logStatus(101, "Upgraded to WebSocket protocol")
+		h.logStatus(101, "Upgraded to WebSocket protocol", true)
 		defer func() {
 			conn.Close()
 			base.LogTo("HTTP+", "#%03d:     --> WebSocket closed", h.serialNumber)
