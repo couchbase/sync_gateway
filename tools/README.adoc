@@ -8,7 +8,7 @@
 This folder contains the following tools:
 
 . `sgcollect_info` -- a tool that collects diagnostics from Sync Gateway, such as logs, heap profile, cpu profile, expvars, etc.
-. A copy of `cbcollect_info` and `tasks.py`, which was refactored from the upstream `cbollect_info` in the [ns_server repository](https://github.com/couchbase/ns_server/blob/master/cbcollect_info), which has since diverged from this version.  `sgcollect_info` depends on the `cbcollect_info` in this repo.
+. A copy of `cbcollect_info` and `tasks.py`, which was refactored from the upstream `cbollect_info` in the https://github.com/couchbase/ns_server/blob/master/cbcollect_info[ns_server repository], which has since diverged from this version.  `sgcollect_info` depends on the `cbcollect_info` in this repo.
 
 
 == SG Collectinfo
@@ -30,7 +30,7 @@ When you see errors in the `sgcollect_info` output, it will give hints about oth
 |Go 1.7.4
 
 |1.5
-|?
+|Go 1.7.4
 
 |===
 
