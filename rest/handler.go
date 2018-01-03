@@ -281,6 +281,11 @@ func (h *handler) logDuration(realTime bool) {
 		float64(duration)/float64(time.Millisecond))
 }
 
+func (h *handler) logStatusWithDuration(status int, message string) {
+	h.setStatus(status, message)
+	h.logDuration(true)
+}
+
 // Used for indefinitely-long handlers like _changes that we don't want to track duration of
 func (h *handler) logStatus(status int, message string) {
 	h.setStatus(status, message)
