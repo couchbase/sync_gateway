@@ -349,6 +349,9 @@ func (h *handler) handleBulkGet() error {
 	includeAttachments := h.getBoolQuery("attachments")
 	showExp := h.getBoolQuery("show_exp")
 
+	showRevs := h.getBoolQuery("revs")
+	globalRevsLimit := int(h.getIntQuery("revs_limit", math.MaxInt32))
+
 	// If a client passes the HTTP header "Accept-Encoding: gzip" then the header "X-Accept-Part-Encoding: gzip" will be
 	// ignored and the entire HTTP response will be gzip compressed.  (aside from exception mentioned below for issue 1419)
 	acceptGzipPartEncoding := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
@@ -394,14 +397,16 @@ func (h *handler) handleBulkGet() error {
 			} else {
 				attsSince, err = db.GetStringArrayProperty(doc, "atts_since")
 
-				if h.getBoolQuery("revs") {
-					// Try to pull out a per-doc revs limit, otherwise use request limit.
-					if raw, ok := doc["revs_limit"]; !ok {
-						docRevsLimit = int(h.getIntQuery("revs_limit", math.MaxInt32))
-					} else if val, ok := raw.(float64); ok && val >= 0 {
-						docRevsLimit = int(val)
-					} else {
-						err = base.HTTPErrorf(http.StatusBadRequest, "Invalid revs_limit for doc: %s in _bulk_get", docid)
+				if showRevs {
+					docRevsLimit = globalRevsLimit
+
+					// Try to pull out a per-doc revs limit that can override the global one.
+					if raw, isSet := doc["revs_limit"]; isSet {
+						if val, ok := base.ToInt64(raw); ok && val >= 0 {
+							docRevsLimit = int(val)
+						} else {
+							err = base.HTTPErrorf(http.StatusBadRequest, "Invalid revs_limit for doc: %s in _bulk_get", docid)
+						}
 					}
 
 					if docRevsLimit > 0 {
