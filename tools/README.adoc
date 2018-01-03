@@ -1,0 +1,133 @@
+[%hardbreaks]
+:toc: left
+:toclevels: 3
+
+
+== Overview
+
+This folder contains the following tools:
+
+. `sgcollect_info` -- a tool that collects diagnostics from Sync Gateway, such as logs, heap profile, cpu profile, expvars, etc.
+. A copy of `cbcollect_info` and `tasks.py`, which was refactored from the upstream `cbcollect_info` in the https://github.com/couchbase/ns_server/blob/master/cbcollect_info[ns_server repository], which has since diverged from this version.  `sgcollect_info` depends on the `cbcollect_info` in this repo.
+
+
+== SG Collect Info
+
+=== Install dependencies (optional)
+
+To improve the quality of the collected zip files, install the following dependencies:
+
+- Go -- ideally use the version of Go that was used to build Sync Gateway
+- Graphviz
+
+When you see errors in the `sgcollect_info` output, it will give hints about other tools that need to be installed.
+
+.Sync Gateway Go versions
+|===
+|Sync Gateway Version |Go Version
+
+|1.4
+|Go 1.7.4
+
+|1.5
+|Go 1.7.4
+
+|===
+
+=== Instructions to run
+
+```
+sgcollect_info output.zip
+```
+
+There are also some extra flags you can pass, which you can see by running `./sgcollect_info --help`
+
+=== List of files includes in collected zip files
+
+.sgcollect_info list of files
+|===
+|Filename |Description
+
+|sync_gateway.log
+|The sgcollect_info python script output which will include errors/warning that occurred while running.
+
+|sgcollect_info_options.log
+|The CLI options that were used when running sgcollect_info
+
+|sync_gateway_error.log
+|The sync gateway log file that contains stderr output.  Sometimes empty if sgcollect_info could not find the log file, if it was in a non-standard place.
+
+|sync_gateway_access.log
+|The sync gateway log file that contains stdout output, which is usually fairly empty/sparse.
+
+|sync_gateway.json
+|The sync gateway configuration as collected from the file system.  Sometimes empty if sgcollect_info could not find the config file, if it was in a non-standard place.
+
+|running_server_config.log
+|The sync gateway configuration as collected from the sync gateway `_config` admin endpoint.
+
+|running_db_{dbname}_config.log
+|Per-database sync gateway configuration as collected from the sync gateway `_config` admin endpoint
+
+|server_status.log
+|The results of calling the sync gateway root endpoint, which contains high level status of the sync gateway process.
+
+|profile.text
+|CPU Profile info rendered into text format as collected by `go tool`.  Requires Go to be installed.
+
+|profile.raw
+|CPU Profile info rendered into raw format as collected by `go tool`.  Requires Go to be installed.
+
+|profile.pdf
+|CPU Profile info rendered into PDF format as collected by `go tool`.  Requires Go and Graphfiz to both be installed.
+
+|profile.dot
+|CPU Profile info rendered into dot format as collected by `go tool`.  Requires Go to be installed.  Can be rendered into `pdf` locally by installing graphviz.
+
+|heap.text
+|Heap Profile info rendered into text format as collected by `go tool`.  Requires Go to be installed.
+
+|heap.raw
+|Heap Profile info rendered into raw format as collected by `go tool`.  Requires Go to be installed.
+
+|heap.pdf
+|Heap Profile info rendered into PDF format as collected by `go tool`.  Requires Go and Graphfiz to both be installed.
+
+|heap.dot
+|Heap Profile info rendered into dot format as collected by `go tool`.  Requires Go to be installed.  Can be rendered into `pdf` locally by installing graphviz.
+
+|goroutine.text
+|Goroutine Profile info rendered into text format as collected by `go tool`.  Requires Go to be installed.
+
+|goroutine.raw
+|Goroutine Profile info rendered into raw format as collected by `go tool`.  Requires Go to be installed.
+
+|goroutine.pdf
+|Goroutine Profile info rendered into PDF format as collected by `go tool`.  Requires Go and Graphfiz to both be installed.
+
+|goroutine.dot
+|Goroutine Profile info rendered into dot format as collected by `go tool`.  Requires Go to be installed.  Can be rendered into `pdf` locally by installing graphviz.
+
+|pprof_http_profile.log
+|CPU Profile in raw format, as collected via HTTP from the `_debug/profile` sync gateway admin endpoint.
+
+|pprof_http_heap.log
+|Heap Profile in raw format, as collected via HTTP from the `_debug/profile` sync gateway admin endpoint.
+
+|pprof_http_goroutine.log
+|Goroutine Profile in raw format, as collected via HTTP from the `_debug/profile` sync gateway admin endpoint.
+
+|expvars_json.log
+|Expvars as collected via HTTP from the sync gateway admin endpoint
+
+
+|===
+
+
+=== How to render raw heap files locally
+
+If `go` and/or `graphviz` is not installed on the machine where `sgcollect_info` is run, you can still render the raw profiles into a text or pdf formats with:
+
+. Modify `pprof_http_heap.log` to remove the top four header lines to avoid the error `pprof_http_heap.log: parsing profile: unrecognized profile format`
+. Pass the path to the **actual Sync Gateway binary** that was collected in the sgcollect_info zipfile.  Eg: `go tool pprof -top /path/to/sync_gateway modified_pprof_http_heap.log`
+
