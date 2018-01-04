@@ -281,11 +281,15 @@ func (h *handler) logDuration(realTime bool) {
 		float64(duration)/float64(time.Millisecond))
 }
 
-// logStatus will log the status of the request, with a message, and an option to hide the duration.
-// hideDuration should be true for indefinite requests, such as longpoll or continuous connections.
-func (h *handler) logStatus(status int, message string, hideDuration bool) {
+func (h *handler) logStatusWithDuration(status int, message string) {
 	h.setStatus(status, message)
-	h.logDuration(!hideDuration)
+	h.logDuration(true)
+}
+
+// Used for indefinitely-long handlers like _changes that we don't want to track duration of
+func (h *handler) logStatus(status int, message string) {
+	h.setStatus(status, message)
+	h.logDuration(false) // don't track actual time
 }
 
 func (h *handler) checkAuth(context *db.DatabaseContext) error {
