@@ -612,8 +612,14 @@ func (h *handler) addJSON(value interface{}) {
 	encoder := json.NewEncoder(h.response)
 	err := encoder.Encode(value)
 	if err != nil {
-		base.Warn("Couldn't serialize JSON for %v : %s", value, err)
-		panic("JSON serialization failed")
+		clientConnectionError := strings.Contains(err.Error(), "write: broken pipe")
+		if clientConnectionError {
+			base.LogTo("CRUD+", "Couldn't serialize document body, HTTP client closed connection")
+			h.writeStatus(http.StatusServiceUnavailable, "Couldn't serialize document body")
+		} else {
+			base.Warn("Couldn't serialize JSON for %v : %s", value, err)
+			h.writeStatus(http.StatusInternalServerError, "Couldn't serialize document body")
+		}
 	}
 }
 
