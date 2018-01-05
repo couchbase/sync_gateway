@@ -1037,6 +1037,61 @@ func TestImportBinaryDoc(t *testing.T) {
 	assert.True(t, response.Code != 200)
 }
 
+// Test DCP backfill stats
+func TestDcpBackfill(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+	base.EnableLogKey("DCP")
+
+	rt := RestTester{}
+
+	log.Printf("Starting get bucket....")
+
+	bucket := rt.Bucket()
+
+	// Write enough documents directly to the bucket to ensure multiple docs per vbucket (on average)
+	docBody := make(map[string]interface{})
+	docBody["type"] = "sdk_write"
+	for i := 0; i < 2500; i++ {
+		err := bucket.Set(fmt.Sprintf("doc_%d", i), 0, docBody)
+		assertNoError(t, err, fmt.Sprintf("error setting doc_%d", i))
+	}
+
+	// Close the previous test context
+	rt.Close()
+
+	log.Print("Creating new database context")
+
+	// Create a new context, with import docs enabled, to process backfill
+	newRt := RestTester{
+		DatabaseConfig: &DbConfig{
+			ImportDocs: "continuous",
+		},
+		NoFlush: true,
+	}
+	log.Printf("Poke the rest tester so it starts DCP processing:")
+	bucket = newRt.Bucket()
+
+	backfillComplete := false
+	var expectedBackfill, completedBackfill int
+	for i := 0; i < 10; i++ {
+		expectedBackfill, _ = base.GetExpvarAsInt("syncGateway_dcp", "backfill_expected")
+		completedBackfill, _ = base.GetExpvarAsInt("syncGateway_dcp", "backfill_completed")
+		if expectedBackfill > 0 && completedBackfill >= expectedBackfill {
+			log.Printf("backfill complete: %d/%d", completedBackfill, expectedBackfill)
+			backfillComplete = true
+			break
+		} else {
+			log.Printf("backfill still in progress: %d/%d", completedBackfill, expectedBackfill)
+			time.Sleep(1 * time.Second)
+		}
+	}
+	assertTrue(t, backfillComplete, fmt.Sprintf("Backfill didn't complete after 20s. Latest: %d/%d", completedBackfill, expectedBackfill))
+
+	log.Printf("done...%s  (%d/%d)", newRt.ServerContext().Database("db").Name, completedBackfill, expectedBackfill)
+
+}
+
 func assertDocProperty(t *testing.T, getDocResponse *TestResponse, propertyName string, expectedPropertyValue interface{}) {
 	var responseBody map[string]interface{}
 	err := json.Unmarshal(getDocResponse.Body.Bytes(), &responseBody)
