@@ -711,7 +711,10 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 	handler := func(conn *websocket.Conn) {
 		h.logStatus(101, "Upgraded to WebSocket protocol")
 		defer func() {
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				base.Warn("WebSocket connection (#%03d) closed with error %v",
+					h.serialNumber, err)
+			}
 			base.LogTo("HTTP+", "#%03d:     --> WebSocket closed", h.serialNumber)
 		}()
 

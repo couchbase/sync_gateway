@@ -86,7 +86,10 @@ func (h *handler) handleBLIPSync() error {
 	server.Handler = func(conn *websocket.Conn) {
 		h.logStatus(101, "Upgraded to BLIP+WebSocket protocol")
 		defer func() {
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				base.Warn("WebSocket connection (#%03d) closed with error %v",
+					h.serialNumber, err)
+			}
 			base.LogTo("HTTP+", "#%03d:     --> BLIP+WebSocket connection closed", h.serialNumber)
 		}()
 		defaultHandler(conn)
