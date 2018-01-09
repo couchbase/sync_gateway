@@ -10,6 +10,43 @@
 * Provides access control and data routing
 * Provides HTTP longpoll changes stream of all database mutations
 
+## Couchbase Mobile Architecture
+
+
+
+```
+                                                                                                                      
+                                     +----------------+      +----------------+     +----------------+                
+                                     |                |      |                |     |                |                
+                                     |Couchbase Server|      |Couchbase Server|     |Couchbase Server|                
+                                     |                |      |                |     |                |                
+                                     +--^-------------+      +-----^----------+     +----^----------^+                
+                                        |                          |                     |          |                 
+                                +-------v--------+    +------------v---+    +------------v---+   +--v-------------+   
+                                |                |    |                |    |                |   |                |   
+                                |  Sync Gateway  |    |  Sync Gateway  |    |  Sync Gateway  |   |  Sync Gateway  |   
+                                |                |    |                |    |                |   |                |   
+                                +-------^--------+    +-------^--------+    +----^-----------+   +-------^--------+   
+                                        |                     |                  |                       |            
+                                        |                     |                  |                       |            
+                           +------------v---------------------v------------------v-----------------------v-----------+
+                           |                                      Load Balancer                                      |
+                           +-----------------^----------------^----------------^-----------------^-------------------+
+                                             |                |                |                 |                    
+                                             |                |                |                 |                    
+                                        +----v----+      +----v----+      +----v----+      +-----v---+                
+                                        |         |      |         |      |         |      |         |                
+                                        |         |      |         |      |         |      |         |                
+                                        |Couchbase|      |Couchbase|      |Couchbase|      |Couchbase|                
+                                        |Lite iOS |      |  Lite   |      |Lite .Net|      |  Lite   |                
+                                        |         |      | Android |      |         |      | Desktop |                
+                                        |         |      |         |      |         |      |         |                
+                                        |         |      |         |      |         |      |         |                
+                                        +---------+      +---------+      +---------+      +---------+                
+
+```
+
+
 ## Resources
 
 [**Official product home page**](http://www.couchbase.com/mobile)
