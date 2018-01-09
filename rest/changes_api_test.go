@@ -116,6 +116,80 @@ func (it *indexTester) ServerContext() *ServerContext {
 	return it.RestTesterServerContext
 }
 
+// Reproduces issue #2383 by forcing a partial error from the view on the first changes request.
+func TestReproduce2383(t *testing.T) {
+	rt := RestTester{leakyBucketConfig: &base.LeakyBucketConfig{}}
+
+	response := rt.SendAdminRequest("PUT", "/_logging", `{"*":true, "color":true}`)
+	assert.NotEquals(t, response, nil)
+
+	a := rt.ServerContext().Database("db").Authenticator()
+	user, err := a.NewUser("ben", "letmein", channels.SetOf("PBS"))
+	assertNoError(t, err, "Error creating new user")
+	a.Save(user)
+
+	// Put several documents
+	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/doc3", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	testDb := rt.ServerContext().Database("db")
+
+	testDb.WaitForSequence(3)
+	testDb.FlushChannelCache()
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
+	assertTrue(t, ok, "Bucket was not of type LeakyBucket")
+	// Force a partial error for the first ViewCustom call we make to initialize an invalid cache.
+	leakyBucket.SetFirstTimeViewCustomPartialError(true)
+
+	changes.Results = nil
+	changesResponse := rt.Send(requestByUser("POST", "/db/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+
+	// In the first changes request since cache flush, we're forcing a nil cache with no error. Thereforce we'd expect to see zero results.
+	assert.Equals(t, len(changes.Results), 0)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+
+	changes.Results = nil
+	changesResponse = rt.Send(requestByUser("POST", "/db/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+
+	// Now we should expect 3 results, as the invalid cache was not persisted.
+	// The second call to ViewCustom will succeed and properly create the channel cache.
+	assert.Equals(t, len(changes.Results), 3)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+
+	// if we create another doc, the cache will get updated with the latest doc.
+	response = rt.SendAdminRequest("PUT", "/db/doc4", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	changes.Results = nil
+	changesResponse = rt.Send(requestByUser("POST", "/db/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+
+	assert.Equals(t, len(changes.Results), 4)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+
+}
+
 func TestDocDeletionFromChannel(t *testing.T) {
 	// See https://github.com/couchbase/couchbase-lite-ios/issues/59
 	// base.LogKeys["Changes"] = true

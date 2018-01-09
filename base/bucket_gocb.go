@@ -23,11 +23,12 @@ import (
 	"strconv"
 	"strings"
 
+	"sync"
+
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
-	"sync"
 )
 
 var gocbExpvars *expvar.Map
@@ -1883,6 +1884,8 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 				}
 				viewResult.Errors = append(viewResult.Errors, viewErr)
 			}
+			// Any kind of partial errors should be bubbled up for the caller to either handle or ignore.
+			return viewResult, err
 		}
 
 	}
@@ -1975,7 +1978,8 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 		return err
 	}
 
-	return nil
+	// Any kind of partial errors should be bubbled up for the caller to either handle or ignore.
+	return errClose
 }
 
 func getTotalRows(goCbViewResult gocb.ViewResults) int {
