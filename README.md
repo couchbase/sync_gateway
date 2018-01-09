@@ -42,7 +42,11 @@ See [Installing Go](https://golang.org/doc/install)
 $ yum install gcc
 ```
 
-## Download and build
+## Download and build via repo
+
+This is the recommended approach.  See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pinning via the `repo` multi-repository tool.
+
+## Download and build via go get
 
 **Warning** currently the `go get` style of building is [broken](https://github.com/couchbase/sync_gateway/issues/2209) due to upstream library changes, please use the [Extended Build Instructions](docs/BUILD.md)
 
@@ -55,8 +59,6 @@ $ go get -u -t github.com/couchbase/sync_gateway/...
 After this operation completes you should have a new `sync_gateway` binary in `$GOPATH/bin`
 
 *NOTE:* This build style is only suitable for development rather than deployment.  There is a chance this might fail or have runtime errors due to using the latest version of all dependencies (whereas release builds use dependency pinning).  Please file an [issue][ISSUE_TRACKER] if you run into problems.
-
-See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pinning via the `repo` multi-repository tool.
 
 ### License
 
