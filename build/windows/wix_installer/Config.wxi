@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Include>
+  <?ifndef Company ?>
+    <?define Company = "Couchbase"?>
+  <?endif?>
+  <?ifndef ProductName ?>
+    <?define ProductName = "sync-gateway"?>
+  <?endif?>
+  <?if $(var.ProductName) = "sync-gateway"  ?>
+    <?define Name = "SyncGateway" ?>
+    <?define DisplayName = "Couchbase Sync Gateway" ?>
+    <?define Description = "Couchbase Sync Gateway mobile application REST gateway service." ?>
+    <?define UpgradeCodeID = "5E6FC699-4DCB-C674-3991-0B7EFC1B3FFD" ?>
+    <?define WinServiceApp = "sg-windows.exe" ?>
+    <?define WinSGWEXE = "sync_gateway.exe" ?>
+    <?define WinServiceConfig = "serviceconfig.json" ?>
+    <?define WinServiceControl = "auto" ?>
+  <?else?>
+    <?define Name = "SGAccel" ?>
+    <?define DisplayName = "Couchbase Sync Gateway Accelerator" ?>
+    <?define Description = "Couchbase Sync Gateway Accelerator performance and scalability service." ?>
+    <?define UpgradeCodeID = "2E9B0757-479E-2DE4-1DDD-CFBAAD58CFEF" ?>
+    <?define WinServiceApp = "sg-accel-service.exe" ?>
+    <?define WinSGWEXE = "sg_accel.exe" ?>
+    <?define WinServiceConfig = "basic_sg_accel_config.json" ?>
+    <?define WinServiceControl = "demand" ?>
+  <?endif?>
+</Include>
