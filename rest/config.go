@@ -769,7 +769,7 @@ func RunServer(config *ServerConfig) {
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.LogFatal("Error opening database %s: %v", dbConfig.Name, err)
+			base.LogFatal("Error opening database %s: %+v", dbConfig.Name, err)
 		}
 	}
 
