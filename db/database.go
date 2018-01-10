@@ -385,6 +385,16 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
+// Create a zero'd out since value (eg, initial since value) based on the sequence type
+// of the database (int or vector clock)
+func (context *DatabaseContext) CreateZeroSinceValue() SequenceID {
+	since := SequenceID{}
+	since.SeqType = context.SequenceType
+	since.SequenceHasher = context.SequenceHasher
+	since.Clock = base.NewSequenceClockImpl()
+	return since
+}
+
 func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
 	context.tapListener.OnDocChanged = callback
 }

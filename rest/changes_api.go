@@ -796,12 +796,12 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		AcceptEncoding string        `json:"accept_encoding"`
 		ActiveOnly     bool          `json:"active_only"` // Return active revisions only
 	}
+
 	// Initialize since clock and hasher ahead of unmarshalling sequence
-	if h.db != nil && h.db.SequenceType == db.ClockSequenceType {
-		input.Since.Clock = base.NewSequenceClockImpl()
-		input.Since.SeqType = h.db.SequenceType
-		input.Since.SequenceHasher = h.db.SequenceHasher
+	if h.db != nil {
+		input.Since = h.db.CreateZeroSinceValue()
 	}
+
 	if err = json.Unmarshal(jsonData, &input); err != nil {
 		return
 	}

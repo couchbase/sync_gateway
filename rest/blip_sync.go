@@ -174,16 +174,9 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
-	var since db.SequenceID
 
 	// Depeding on the db sequence type, use correct zero sequence for since value
-	// TODO #1: Add unit tests or spin off separate ticket
-	// TODO #2: Doesn't this need a valid SeqType field?  Seems to work without it
-	if bh.db.SequenceType == db.IntSequenceType {
-		since = db.SequenceID{Seq: 0}
-	} else {
-		since = db.SequenceID{Clock: base.NewSequenceClockImpl()}
-	}
+	since := bh.db.CreateZeroSinceValue()
 
 	if sinceStr, found := rq.Properties["since"]; found {
 		var err error
