@@ -373,11 +373,11 @@ func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(dbConfig.Username, dbConfig.Password, *dbConfig.Bucket)
 }
 
-func (dbConfig *DbConfig) ConflictsAllowed() bool {
+func (dbConfig *DbConfig) ConflictsAllowed() *bool {
 	if dbConfig.AllowConflicts != nil {
-		return *dbConfig.AllowConflicts
+		return dbConfig.AllowConflicts
 	}
-	return base.DefaultAllowConflicts
+	return base.BooleanPointer(base.DefaultAllowConflicts)
 }
 
 func (dbConfig *DbConfig) UseXattrs() bool {
