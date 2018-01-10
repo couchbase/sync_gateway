@@ -1003,6 +1003,34 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 	assertStatus(t, rt.SendRequest("PUT", "/db/_config", ""), 404)
 }
 
+// Tests that the users returned in the config endpoint have the correct names
+// Reproduces #2223
+func TestDBGetConfigNames(t *testing.T) {
+
+	var rt RestTester
+	defer rt.Close()
+
+	p := "password"
+
+	rt.DatabaseConfig = &DbConfig{
+		Users: map[string]*db.PrincipalConfig{
+			"alice": &db.PrincipalConfig{Password: &p},
+			"bob":   &db.PrincipalConfig{Password: &p},
+		},
+	}
+
+	response := rt.SendAdminRequest("GET", "/db/_config", "")
+	var body DbConfig
+	json.Unmarshal(response.Body.Bytes(), &body)
+
+	assert.Equals(t, len(body.Users), len(rt.DatabaseConfig.Users))
+
+	for k, v := range body.Users {
+		assert.Equals(t, *v.Name, k)
+	}
+
+}
+
 //Take DB offline and ensure can post _resync
 func TestDBOfflinePostResync(t *testing.T) {
 

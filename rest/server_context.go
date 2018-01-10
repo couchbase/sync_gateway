@@ -149,8 +149,6 @@ func (sc *ServerContext) Close() {
 
 	sc.databases_ = nil
 
-
-
 }
 
 // Returns the DatabaseContext with the given name
@@ -822,15 +820,18 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 			internalName := ""
 			princ.Name = &internalName
 		} else {
-			princ.Name = &name
+			n := name
+			princ.Name = &n
 		}
 
+		createdPrincipal := true
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			_, err = context.UpdatePrincipal(*princ, (what == "user"), isGuest)
 			if err != nil {
-				if base.IsCasMismatch(err) {
+				if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 					// Ignore and absorb this error if it's a conflict error, which just means that updatePrincipal didn't overwrite an existing user.
 					// Since if there's an existing user it's "mission accomplished", this can be treated as a success case.
+					createdPrincipal = false
 					return false, nil, nil
 				}
 
@@ -856,17 +857,13 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 
 		if isGuest {
 			base.Log("    Reset guest user to config")
-		} else {
+		} else if createdPrincipal {
 			base.Logf("    Created %s %q", what, name)
 		}
-
 
 	}
 	return nil
 }
-
-
-
 
 // Fetch a configuration for a database from the ConfigServer
 func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error) {

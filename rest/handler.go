@@ -281,7 +281,14 @@ func (h *handler) logDuration(realTime bool) {
 		float64(duration)/float64(time.Millisecond))
 }
 
-// Used for indefinitely-long handlers like _changes that we don't want to track duration of
+// logStatusWithDuration will log the request status and the duration of the request.
+func (h *handler) logStatusWithDuration(status int, message string) {
+	h.setStatus(status, message)
+	h.logDuration(true)
+}
+
+// logStatus will log the request status, but NOT the duration of the request.
+// This is used for indefinitely-long handlers like _changes that we don't want to track duration of
 func (h *handler) logStatus(status int, message string) {
 	h.setStatus(status, message)
 	h.logDuration(false) // don't track actual time
@@ -612,8 +619,14 @@ func (h *handler) addJSON(value interface{}) {
 	encoder := json.NewEncoder(h.response)
 	err := encoder.Encode(value)
 	if err != nil {
-		base.Warn("Couldn't serialize JSON for %v : %s", value, err)
-		panic("JSON serialization failed")
+		clientConnectionError := strings.Contains(err.Error(), "write: broken pipe")
+		if clientConnectionError {
+			base.LogTo("CRUD+", "Couldn't serialize document body, HTTP client closed connection")
+			h.writeStatus(http.StatusServiceUnavailable, "Couldn't serialize document body")
+		} else {
+			base.Warn("Couldn't serialize JSON for %v : %s", value, err)
+			h.writeStatus(http.StatusInternalServerError, "Couldn't serialize document body")
+		}
 	}
 }
 
