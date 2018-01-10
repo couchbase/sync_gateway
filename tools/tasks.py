@@ -149,6 +149,7 @@ class PythonTask(object):
         self.callable = callable
         self.command = "pythontask"
         self.timeout = timeout
+        self.log_exception = False  # default to false, may be overridden by val in **kwargs
         self.__dict__.update(kwargs)
 
     def execute(self, fp):
