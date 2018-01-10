@@ -391,7 +391,9 @@ func (context *DatabaseContext) CreateZeroSinceValue() SequenceID {
 	since := SequenceID{}
 	since.SeqType = context.SequenceType
 	since.SequenceHasher = context.SequenceHasher
-	since.Clock = base.NewSequenceClockImpl()
+	if context.SequenceType == ClockSequenceType {
+		since.Clock = base.NewSequenceClockImpl()
+	}
 	return since
 }
 
