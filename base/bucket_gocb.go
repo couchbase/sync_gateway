@@ -1884,8 +1884,8 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 				}
 				viewResult.Errors = append(viewResult.Errors, viewErr)
 			}
-			// Any kind of partial errors should be bubbled up for the caller to either handle or ignore.
-			return viewResult, err
+
+			return viewResult, ErrPartialViewErrors
 		}
 
 	}
@@ -1978,8 +1978,13 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 		return err
 	}
 
-	// Any kind of partial errors should be bubbled up for the caller to either handle or ignore.
-	return errClose
+	// Checking and returning down here as we still need to
+	// marshal/unmarshal into vres with partial errors present.
+	if errClose != nil {
+		return ErrPartialViewErrors
+	}
+
+	return nil
 }
 
 func getTotalRows(goCbViewResult gocb.ViewResults) int {
