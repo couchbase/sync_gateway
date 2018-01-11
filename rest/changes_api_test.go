@@ -118,6 +118,11 @@ func (it *indexTester) ServerContext() *ServerContext {
 
 // Reproduces issue #2383 by forcing a partial error from the view on the first changes request.
 func TestReproduce2383(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip LeakyBucket test when running in integration")
+	}
+
 	rt := RestTester{leakyBucketConfig: &base.LeakyBucketConfig{}}
 
 	response := rt.SendAdminRequest("PUT", "/_logging", `{"*":true, "color":true}`)
