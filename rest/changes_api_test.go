@@ -178,6 +178,8 @@ func TestReproduce2383(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/doc4", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
+	testDb.WaitForSequence(4)
+
 	changes.Results = nil
 	changesResponse = rt.Send(requestByUser("POST", "/db/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
