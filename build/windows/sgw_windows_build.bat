@@ -8,8 +8,6 @@
 ::
 ::          branch_name   git_commit  version  build_number  Edition  platform
 ::
-::    This script only supports branches 1.2.0 and older
-::
 ::    e.g.: master         123456   0.0.0 0000   community    windows-x64
 ::          release/1.0.0  123456   1.1.0 1234   enterprise   windows-x64
 ::
@@ -216,21 +214,21 @@ GOTO build_sg_accel
 echo ======== remove build meta-data ==============
 move  %TEMPLATE_FILE%.orig  %TEMPLATE_FILE%
 
-::echo ======== test ================================
-::echo ................... running unit tests
-::echo ................... test options: %TEST_OPTIONS%
-::if %TEST_OPTIONS% == "None" (
-::    echo go test github.com\couchbase\sync_gateway\...
-::    go test github.com\couchbase\sync_gateway\...
-::) else (
-::    echo go test %TEST_OPTIONS:"=% github.com\couchbase\sync_gateway\...
-::    go test %TEST_OPTIONS:"=% github.com\couchbase\sync_gateway\...
-::)
+echo ======== test ================================
+echo ................... running unit tests
+echo ................... test options: %TEST_OPTIONS%
+if %TEST_OPTIONS% == "None" (
+    echo go test github.com\couchbase\sync_gateway\...
+    go test github.com\couchbase\sync_gateway\...
+) else (
+    echo go test %TEST_OPTIONS:"=% github.com\couchbase\sync_gateway\...
+    go test %TEST_OPTIONS:"=% github.com\couchbase\sync_gateway\...
+)
 
-::if %ERRORLEVEL% NEQ 0 (
-::    echo "########################### FAIL! Unit test results = %ERRORLEVEL%"
-::    exit 1
-::)
+if %ERRORLEVEL% NEQ 0 (
+    echo "########################### FAIL! Unit test results = %ERRORLEVEL%"
+    exit 1
+)
 
 echo ======== build service wrappers ==============
 set SG_SERVICED=%SGW_DIR%\service\sg-windows

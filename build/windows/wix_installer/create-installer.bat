@@ -5,7 +5,7 @@ set edition=%3
 set productname=%4
 set service_dir=%5
 
-if "%productname%"=="" set productname="SGW"
+if "%productname%"=="" set productname="sync-gateway"
 
 :: Use -ag to have light auto-generate GUIDs, as that way they'll be
 :: based on full filename and therefore consistent from build to build.
