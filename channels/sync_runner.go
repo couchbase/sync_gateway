@@ -138,6 +138,11 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 		return runner.addValueForUser(call.Argument(0), call.Argument(1), runner.roles)
 	})
 
+	runner.DefineNativeFunction("sglog", func(call otto.FunctionCall) otto.Value {
+		base.LogTo("SyncFn", "sglog message: %v", call.Argument(0))
+		return otto.Value{}
+	})
+
 	// Implementation of the 'reject()' callback:
 	runner.DefineNativeFunction("reject", func(call otto.FunctionCall) otto.Value {
 		if runner.output.Rejection == nil {

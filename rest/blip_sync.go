@@ -41,14 +41,35 @@ type blipHandler struct {
 	db *db.Database
 }
 
+type blipHandlerMethod func(*blipHandler, *blip.Message) error
+
+// Wrap all blip handlers with this common code rather than duplicating
+// the code in all blip handlers
+func wrapBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
+
+	wrappedBlipHandler := func(bh *blipHandler, bm *blip.Message) error {
+
+		// Reload the user on each blip request (otherwise runs into SG issue #2717)
+		if err := bh.db.ReloadUser(); err != nil {
+			return err
+		}
+
+		// Call down to underlying method and return it's value
+		return underlyingMethod(bh, bm)
+	}
+
+	return wrappedBlipHandler
+
+}
+
 // Maps the profile (verb) of an incoming request to the method that handles it.
-var kHandlersByProfile = map[string]func(*blipHandler, *blip.Message) error{
-	"getCheckpoint": (*blipHandler).handleGetCheckpoint,
-	"setCheckpoint": (*blipHandler).handleSetCheckpoint,
-	"subChanges":    (*blipHandler).handleSubscribeToChanges,
-	"changes":       (*blipHandler).handlePushedChanges,
-	"rev":           (*blipHandler).handleAddRevision,
-	"getAttachment": (*blipHandler).handleGetAttachment,
+var kHandlersByProfile = map[string]blipHandlerMethod{
+	"getCheckpoint": wrapBlipHandler((*blipHandler).handleGetCheckpoint),
+	"setCheckpoint": wrapBlipHandler((*blipHandler).handleSetCheckpoint),
+	"subChanges":    wrapBlipHandler((*blipHandler).handleSubscribeToChanges),
+	"changes":       wrapBlipHandler((*blipHandler).handlePushedChanges),
+	"rev":           wrapBlipHandler((*blipHandler).handleAddRevision),
+	"getAttachment": wrapBlipHandler((*blipHandler).handleGetAttachment),
 }
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
@@ -472,6 +493,7 @@ func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID strin
 
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
+
 	var body db.Body
 	if err := rq.ReadJSONBody(&body); err != nil {
 		return err
