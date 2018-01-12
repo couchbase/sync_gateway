@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-
 	"sync"
 
 	"github.com/couchbase/gocb"
@@ -1884,10 +1883,14 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 				}
 				viewResult.Errors = append(viewResult.Errors, viewErr)
 			}
-
-			return viewResult, ErrPartialViewErrors
 		}
 
+	}
+
+	// Indicate the view response contained partial errors so consumers can determine
+	// if the result is valid to their particular use-case (see SG issue #2383)
+	if len(viewResult.Errors) > 0 {
+		return viewResult, ErrPartialViewErrors
 	}
 
 	return viewResult, nil
@@ -1978,9 +1981,9 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 		return err
 	}
 
-	// Checking and returning down here as we still need to
-	// marshal/unmarshal into vres with partial errors present.
-	if errClose != nil {
+	// Indicate the view response contained partial errors so consumers can determine
+	// if the result is valid to their particular use-case (see SG issue #2383)
+	if len(viewResponse.Errors) > 0 {
 		return ErrPartialViewErrors
 	}
 
