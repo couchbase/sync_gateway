@@ -41,14 +41,35 @@ type blipHandler struct {
 	db *db.Database
 }
 
+type blipHandlerMethod func(*blipHandler, *blip.Message) error
+
+// Wrap blip handler with code that reloads the user object to make sure that
+// it has the latest channel access grants.
+func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
+
+	wrappedBlipHandler := func(bh *blipHandler, bm *blip.Message) error {
+
+		// Reload the user on each blip request (otherwise runs into SG issue #2717)
+		if err := bh.db.ReloadUser(); err != nil {
+			return err
+		}
+
+		// Call down to underlying method and return it's value
+		return underlyingMethod(bh, bm)
+	}
+
+	return wrappedBlipHandler
+
+}
+
 // Maps the profile (verb) of an incoming request to the method that handles it.
-var kHandlersByProfile = map[string]func(*blipHandler, *blip.Message) error{
+var kHandlersByProfile = map[string]blipHandlerMethod{
 	"getCheckpoint": (*blipHandler).handleGetCheckpoint,
 	"setCheckpoint": (*blipHandler).handleSetCheckpoint,
-	"subChanges":    (*blipHandler).handleSubscribeToChanges,
-	"changes":       (*blipHandler).handlePushedChanges,
-	"rev":           (*blipHandler).handleAddRevision,
-	"getAttachment": (*blipHandler).handleGetAttachment,
+	"subChanges":    userBlipHandler((*blipHandler).handleSubscribeToChanges),
+	"changes":       userBlipHandler((*blipHandler).handlePushedChanges),
+	"rev":           userBlipHandler((*blipHandler).handleAddRevision),
+	"getAttachment": userBlipHandler((*blipHandler).handleGetAttachment),
 }
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
@@ -476,6 +497,7 @@ func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID strin
 
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
+
 	var body db.Body
 	if err := rq.ReadJSONBody(&body); err != nil {
 		return err
