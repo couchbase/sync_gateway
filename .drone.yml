@@ -9,5 +9,5 @@ build:
     # - ./bootstrap.sh -c $$COMMIT -p sg-accel # sg-accel doesn't work, due to drone.io auth issue http://bit.ly/2dLDeb5
     - ./bootstrap.sh -c $$COMMIT -p sg
     - ./build.sh -v
-    - ./test.sh
-    - ./test.sh -race
+    - ./test.sh -v
+    - ./test.sh -v -race
