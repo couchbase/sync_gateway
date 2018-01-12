@@ -80,16 +80,17 @@ func (h *handler) handleBLIPSync() error {
 		ctx.register("proposeChanges", (*blipHandler).handleProposedChanges)
 	}
 
+	ctx.blipContext.FatalErrorHandler = func(err error) {
+		base.LogTo("HTTP", "#%03d:     --> BLIP+WebSocket connection error: %v", h.serialNumber, err)
+	}
+
 	// Create a BLIP WebSocket handler and have it handle the request:
 	server := blipContext.WebSocketServer()
 	defaultHandler := server.Handler
 	server.Handler = func(conn *websocket.Conn) {
 		h.logStatus(101, "Upgraded to BLIP+WebSocket protocol")
 		defer func() {
-			if err := conn.Close(); err != nil {
-				base.Warn("WebSocket connection (#%03d) closed with error %v",
-					h.serialNumber, err)
-			}
+			conn.Close() // in case it wasn't closed already
 			base.LogTo("HTTP+", "#%03d:     --> BLIP+WebSocket connection closed", h.serialNumber)
 		}()
 		defaultHandler(conn)
