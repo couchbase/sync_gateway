@@ -79,7 +79,8 @@ func setupTestDB(t testing.TB) (*Database, base.TestBucket) {
 func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, base.TestBucket) {
 
 	dbcOptions := DatabaseContextOptions{
-		CacheOptions: &options,
+		CacheOptions:   &options,
+		AllowConflicts: true,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	tBucket := testBucket()
@@ -811,7 +812,7 @@ func TestNoConflictsMode(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
-	db.Options.AllowConflicts = base.BooleanPointer(false)
+	db.Options.AllowConflicts = false
 
 	/*
 		var logKeys = map[string]bool {
@@ -901,7 +902,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assertNoError(t, db.PutExistingRev("doc3", body, []string{"2-a", "1-a"}), "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.BooleanPointer(false)
+	db.Options.AllowConflicts = false
 	delete(body, "n")
 	body["_deleted"] = true
 
