@@ -33,6 +33,7 @@ const (
 	fatalBucketConnection = sgErrorCode(0x07)
 	emptyMetadata         = sgErrorCode(0x08)
 	casFailureShouldRetry = sgErrorCode(0x09)
+	errPartialViewErrors  = sgErrorCode(0x10)
 )
 
 type SGError struct {
@@ -50,6 +51,10 @@ var (
 	ErrFatalBucketConnection = &SGError{fatalBucketConnection}
 	ErrEmptyMetadata         = &SGError{emptyMetadata}
 	ErrCasFailureShouldRetry = &SGError{casFailureShouldRetry}
+
+	// ErrPartialViewErrors is returned if the view call contains any partial errors.
+	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.
+	ErrPartialViewErrors = &SGError{errPartialViewErrors}
 )
 
 func (e SGError) Error() string {
@@ -72,6 +77,8 @@ func (e SGError) Error() string {
 		return "Fatal error connecting to bucket"
 	case emptyMetadata:
 		return "Empty Sync Gateway metadata"
+	case errPartialViewErrors:
+		return "Partial errors in view"
 	default:
 		return "Unknown error"
 	}
@@ -188,4 +195,3 @@ func IsDocNotFoundError(err error) bool {
 		return false
 	}
 }
-

@@ -35,6 +35,7 @@ type RestTester struct {
 	DatabaseConfig          *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	AdminHandler            http.Handler
 	PublicHandler           http.Handler
+	leakyBucketConfig       *base.LeakyBucketConfig
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
@@ -93,6 +94,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		if !rt.noAdminParty {
 			rt.SetAdminParty(true)
+		}
+
+		// If given a leakyBucketConfig we'll return a leaky bucket.
+		if rt.leakyBucketConfig != nil {
+			return base.NewLeakyBucket(rt.RestTesterBucket, *rt.leakyBucketConfig)
 		}
 
 	}

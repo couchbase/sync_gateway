@@ -27,6 +27,9 @@ type LeakyBucketConfig struct {
 	TapFeedDeDuplication bool
 	TapFeedVbuckets      bool     // Emulate vbucket numbers on feed
 	TapFeedMissingDocs   []string // Emulate entry not appearing on tap feed
+
+	// Returns a partial error the first time ViewCustom is called
+	FirstTimeViewCustomPartialError bool
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
@@ -35,6 +38,7 @@ func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
 		config: config,
 	}
 }
+
 func (b *LeakyBucket) GetName() string {
 	return b.bucket.GetName()
 }
@@ -113,7 +117,14 @@ func (b *LeakyBucket) View(ddoc, name string, params map[string]interface{}) (sg
 	return b.bucket.View(ddoc, name, params)
 }
 func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
-	return b.bucket.ViewCustom(ddoc, name, params, vres)
+	err := b.bucket.ViewCustom(ddoc, name, params, vres)
+
+	if b.config.FirstTimeViewCustomPartialError {
+		b.config.FirstTimeViewCustomPartialError = !b.config.FirstTimeViewCustomPartialError
+		err = ErrPartialViewErrors
+	}
+
+	return err
 }
 
 func (b *LeakyBucket) GetMaxVbno() (uint16, error) {
@@ -315,6 +326,10 @@ func (b *LeakyBucket) CloseAndDelete() error {
 
 func (b *LeakyBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 	return b.bucket.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
+}
+
+func (b *LeakyBucket) SetFirstTimeViewCustomPartialError(val bool) {
+	b.config.FirstTimeViewCustomPartialError = val
 }
 
 // An implementation of a sgbucket tap feed that wraps

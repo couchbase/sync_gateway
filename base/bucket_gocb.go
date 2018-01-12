@@ -22,12 +22,12 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
-	"sync"
 )
 
 var gocbExpvars *expvar.Map
@@ -1887,6 +1887,12 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 
 	}
 
+	// Indicate the view response contained partial errors so consumers can determine
+	// if the result is valid to their particular use-case (see SG issue #2383)
+	if len(viewResult.Errors) > 0 {
+		return viewResult, ErrPartialViewErrors
+	}
+
 	return viewResult, nil
 
 }
@@ -1973,6 +1979,12 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 	// unmarshal into vres
 	if err := json.Unmarshal(viewResponseBytes, vres); err != nil {
 		return err
+	}
+
+	// Indicate the view response contained partial errors so consumers can determine
+	// if the result is valid to their particular use-case (see SG issue #2383)
+	if len(viewResponse.Errors) > 0 {
+		return ErrPartialViewErrors
 	}
 
 	return nil

@@ -45,6 +45,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	for {
 		vres := channelsViewResult{}
 		err := dbc.Bucket.ViewCustom(DesignDocSyncGateway, ViewChannels, optMap, &vres)
+
 		if err != nil {
 			base.Logf("Error from 'channels' view: %v", err)
 			return nil, err
