@@ -553,7 +553,6 @@ func EnableBlipSyncLogs() {
 	base.EnableLogKey("HTTP")
 	base.EnableLogKey("HTTP+")
 	base.EnableLogKey("BLIP")
-	base.EnableLogKey("BLIP+")
 	base.EnableLogKey("Sync")
 	base.EnableLogKey("Sync+")
 
