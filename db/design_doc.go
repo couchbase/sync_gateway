@@ -19,6 +19,12 @@ import (
 const DesignDocVersion = "2.0"
 const DesignDocFormat = "%s_%s" // Design doc prefix, view version
 
+// DesignDocPreviousVersions defines the set of versions included during removal of obsolete
+// design docs.  Must be updated whenever DesignDocVersion is incremented.
+// Uses a hardcoded list instead of version comparison to simpify the processing
+// (particularly since there aren't expected to be many view versions before moving to GSI).
+var DesignDocPreviousVersions = []string{""}
+
 const (
 	DesignDocSyncGatewayPrefix      = "sync_gateway"
 	DesignDocSyncHousekeepingPrefix = "sync_housekeeping"
@@ -604,5 +610,68 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 			base.Logf("Timeout waiting for view to initialize (%d), retrying.", viewName)
 		}
 	}
+
+}
+
+func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool) (removedDesignDocs []string, err error) {
+
+	removedDesignDocs = make([]string, 0)
+	designDocPrefixes := []string{DesignDocSyncGatewayPrefix, DesignDocSyncHousekeepingPrefix}
+
+	for _, previousVersion := range DesignDocPreviousVersions {
+		for _, ddocPrefix := range designDocPrefixes {
+			var ddocName string
+			if previousVersion == "" {
+				ddocName = ddocPrefix
+			} else {
+				ddocName = fmt.Sprintf(DesignDocFormat, ddocPrefix, previousVersion)
+			}
+
+			if !previewOnly {
+				removeDDocErr := bucket.DeleteDDoc(ddocName)
+				if removeDDocErr != nil && !IsMissingDDocError(removeDDocErr) {
+					base.Warn("Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
+					return removedDesignDocs, removeDDocErr
+				}
+				// Only include in list of removedDesignDocs if it was actually removed
+				if removeDDocErr == nil {
+					removedDesignDocs = append(removedDesignDocs, ddocName)
+				}
+			} else {
+				var result interface{}
+				existsDDocErr := bucket.GetDDoc(ddocName, &result)
+				if existsDDocErr != nil && !IsMissingDDocError(existsDDocErr) {
+					base.Warn("Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
+				}
+				// Only include in list of removedDesignDocs if it exists
+				if existsDDocErr == nil {
+					removedDesignDocs = append(removedDesignDocs, ddocName)
+				}
+
+			}
+		}
+
+	}
+	return removedDesignDocs, nil
+}
+
+// Similar to IsKeyNotFoundError(), but for the specific error returned by GetDDoc/DeleteDDoc
+func IsMissingDDocError(err error) bool {
+	if err == nil {
+		return false
+	}
+	unwrappedErr := pkgerrors.Cause(err)
+
+	// Walrus
+	if _, ok := unwrappedErr.(sgbucket.MissingError); ok {
+		return true
+	}
+
+	// gocb
+	if strings.Contains(unwrappedErr.Error(), "not_found") {
+		return true
+	}
+
+	return false
 
 }

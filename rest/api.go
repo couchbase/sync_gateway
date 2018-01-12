@@ -104,6 +104,29 @@ func (h *handler) handleResync() error {
 	return nil
 }
 
+type PostUpgradeResponse struct {
+	Result  PostUpgradeResult `json:"post_upgrade_results"`
+	Preview bool              `json:"preview,omitempty"`
+}
+
+func (h *handler) handlePostUpgrade() error {
+
+	preview := h.getBoolQuery("preview")
+
+	postUpgradeResults, err := h.server.PostUpgrade(preview)
+	if err != nil {
+		return err
+	}
+
+	result := &PostUpgradeResponse{
+		Result:  postUpgradeResults,
+		Preview: preview,
+	}
+
+	h.writeJSON(result)
+	return nil
+}
+
 func (h *handler) instanceStartTime() json.Number {
 	return json.Number(strconv.FormatInt(h.db.StartTime.UnixNano()/1000, 10))
 }

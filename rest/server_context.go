@@ -236,6 +236,32 @@ func (sc *ServerContext) HasIndexWriters() bool {
 	return numIndexWriters > 0
 }
 
+type PostUpgradeResult map[string]PostUpgradeDatabaseResult
+
+type PostUpgradeDatabaseResult struct {
+	RemovedDDocs []string `json:"removed_design_docs"`
+}
+
+// PostUpgrade performs post-upgrade processing for each database
+func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgradeResult, err error) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	postUpgradeResults = make(map[string]PostUpgradeDatabaseResult, len(sc.databases_))
+
+	for name, database := range sc.databases_ {
+		// View cleanup
+		removedDDocs, err := database.RemoveObsoleteDesignDocs(preview)
+		if err != nil {
+			return nil, err
+		}
+		postUpgradeResults[name] = PostUpgradeDatabaseResult{
+			RemovedDDocs: removedDDocs,
+		}
+	}
+	return postUpgradeResults, nil
+}
+
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.

@@ -463,6 +463,11 @@ func (context *DatabaseContext) FlushChannelCache() {
 	context.changeCache.Clear()
 }
 
+// Removes previous versions of Sync Gateway's design docs found on the server
+func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
+	return removeObsoleteDesignDocs(context.Bucket, previewOnly)
+}
+
 func (context *DatabaseContext) NotifyUser(username string) {
 	context.tapListener.NotifyCheckForTermination(base.SetOf(auth.UserKeyPrefix + username))
 }

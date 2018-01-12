@@ -788,3 +788,12 @@ func ExtractExpiryFromDCPMutation(rq *gomemcached.MCRequest) (expiry uint32) {
 	}
 	return binary.BigEndian.Uint32(rq.Extras[20:24])
 }
+
+func StringSliceContains(set []string, target string) bool {
+	for _, val := range set {
+		if val == target {
+			return true
+		}
+	}
+	return false
+}
