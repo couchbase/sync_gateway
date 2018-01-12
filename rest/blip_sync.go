@@ -43,9 +43,9 @@ type blipHandler struct {
 
 type blipHandlerMethod func(*blipHandler, *blip.Message) error
 
-// Wrap all blip handlers with this common code rather than duplicating
-// the code in all blip handlers
-func wrapBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
+// Wrap blip handler with code that reloads the user object to make sure that
+// it has the latest channel access grants.
+func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 
 	wrappedBlipHandler := func(bh *blipHandler, bm *blip.Message) error {
 
@@ -64,12 +64,12 @@ func wrapBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 
 // Maps the profile (verb) of an incoming request to the method that handles it.
 var kHandlersByProfile = map[string]blipHandlerMethod{
-	"getCheckpoint": wrapBlipHandler((*blipHandler).handleGetCheckpoint),
-	"setCheckpoint": wrapBlipHandler((*blipHandler).handleSetCheckpoint),
-	"subChanges":    wrapBlipHandler((*blipHandler).handleSubscribeToChanges),
-	"changes":       wrapBlipHandler((*blipHandler).handlePushedChanges),
-	"rev":           wrapBlipHandler((*blipHandler).handleAddRevision),
-	"getAttachment": wrapBlipHandler((*blipHandler).handleGetAttachment),
+	"getCheckpoint": (*blipHandler).handleGetCheckpoint,
+	"setCheckpoint": (*blipHandler).handleSetCheckpoint,
+	"subChanges":    userBlipHandler((*blipHandler).handleSubscribeToChanges),
+	"changes":       userBlipHandler((*blipHandler).handlePushedChanges),
+	"rev":           userBlipHandler((*blipHandler).handleAddRevision),
+	"getAttachment": userBlipHandler((*blipHandler).handleGetAttachment),
 }
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
