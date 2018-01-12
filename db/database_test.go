@@ -92,10 +92,8 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 
 func testBucket() base.TestBucket {
 
-	spec := base.GetTestBucketSpec(base.DataBucket)
 	testBucket := base.GetTestBucketOrPanic()
-	bucket := testBucket.Bucket
-	err := installViews(bucket, spec.UseXattrs)
+	err := installViews(testBucket.Bucket)
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
@@ -1498,7 +1496,7 @@ func TestViewCustom(t *testing.T) {
 	// query all docs using ViewCustom query.
 	opts := Body{"stale": false, "reduce": false}
 	viewResult := sgbucket.ViewResult{}
-	errViewCustom := db.Bucket.ViewCustom(DesignDocSyncHousekeeping, ViewAllDocs, opts, &viewResult)
+	errViewCustom := db.Bucket.ViewCustom(DesignDocSyncHousekeeping(), ViewAllDocs, opts, &viewResult)
 	assert.True(t, errViewCustom == nil)
 
 	// assert that the doc added earlier is in the results

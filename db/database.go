@@ -26,7 +26,6 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -35,14 +34,16 @@ const (
 	DBOnline
 	DBStopping
 	DBResyncing
+	DBViewsPending
 )
 
 var RunStateString = []string{
-	DBOffline:   "Offline",
-	DBStarting:  "Starting",
-	DBOnline:    "Online",
-	DBStopping:  "Stopping",
-	DBResyncing: "Resyncing",
+	DBOffline:      "Offline",
+	DBStarting:     "Starting",
+	DBOnline:       "Online",
+	DBStopping:     "Stopping",
+	DBResyncing:    "Resyncing",
+	DBViewsPending: "Unavailable (waiting for views)",
 }
 
 const (
@@ -168,7 +169,7 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 			" Unable to connect to Couchbase Server (connection refused). Please ensure it is running and reachable at the configured host and port.  Detailed error: %s", err)
 	} else {
 		bucket, _ := ibucket.(base.Bucket)
-		err = installViews(bucket, spec.UseXattrs)
+		err = initializeViews(bucket)
 	}
 	return
 }
@@ -557,252 +558,6 @@ func (db *Database) DocCount() int {
 	return int(vres.Rows[0].Value.(float64))
 }
 
-func installViews(bucket base.Bucket, useXattrs bool) error {
-
-	// syncData specifies the path to Sync Gateway sync metadata used in the map function -
-	// in the document body when xattrs available, in the mobile xattr when xattrs enabled.
-	syncData := fmt.Sprintf(`var sync
-							if (meta.xattrs === undefined || meta.xattrs.%s === undefined) {
-		                        sync = doc._sync
-		                  	} else {
-		                       	sync = meta.xattrs.%s
-		                    }
-		                     `, KSyncXattrName, KSyncXattrName)
-
-	// View for finding every Couchbase doc (used when deleting a database)
-	// Key is docid; value is null
-	allbits_map := `function (doc, meta) {
-                      emit(meta.id, null); }`
-
-	// View for _all_docs
-	// Key is docid; value is [revid, sequence]
-	alldocs_map := `function (doc, meta) {
-                     %s
-                     if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-                       return;
-                     if ((sync.flags & 1) || sync.deleted)
-                       return;
-                     var channels = sync.channels;
-                     var channelNames = [];
-                     for (ch in channels) {
-                     	if (channels[ch] == null)
-                     		channelNames.push(ch);
-                     }
-                     emit(meta.id, {r:sync.rev, s:sync.sequence, c:channelNames}); }`
-	alldocs_map = fmt.Sprintf(alldocs_map, syncData)
-
-	// View for importing unknown docs
-	// Key is [existing?, docid] where 'existing?' is false for unknown docs
-	import_map := `function (doc, meta) {
-					 %s
-                     if(meta.id.substring(0,6) != "_sync:") {
-                       var exists = (sync !== undefined);
-                       emit([exists, meta.id], null); } }`
-	import_map = fmt.Sprintf(import_map, syncData)
-
-	// View for compaction -- finds all revision docs
-	// Key and value are ignored.
-	oldrevs_map := `function (doc, meta) {
-                     if (meta.id.substring(0,10) == "_sync:rev:")
-	                     emit("",null); }`
-
-	// Sessions view - used for session delete
-	// Key is username; value is docid
-	sessions_map := `function (doc, meta) {
-                     	var prefix = meta.id.substring(0,%d);
-                     	if (prefix == %q)
-                     		emit(doc.username, meta.id);}`
-	sessions_map = fmt.Sprintf(sessions_map, len(auth.SessionKeyPrefix), auth.SessionKeyPrefix)
-
-	// Tombstones view - used for view tombstone compaction
-	// Key is purge time; value is docid
-	tombstones_map := `function (doc, meta) {
-                     	var sync = meta.xattrs._sync;
-                     	if (sync !== undefined && sync.tombstoned_at !== undefined)
-                     		emit(sync.tombstoned_at, meta.id);}`
-
-	// All-principals view
-	// Key is name; value is true for user, false for role
-	principals_map := `function (doc, meta) {
-							 var prefix = meta.id.substring(0,11);
-							 var isUser = (prefix == %q);
-							 if (isUser || prefix == %q)
-			                     emit(meta.id.substring(%d), isUser); }`
-	principals_map = fmt.Sprintf(principals_map, auth.UserKeyPrefix, auth.RoleKeyPrefix,
-		len(auth.UserKeyPrefix))
-
-	// By-channels view.
-	// Key is [channelname, sequence]; value is [docid, revid, flag?]
-	// where flag is true for doc deletion, false for removed from channel, missing otherwise
-	channels_map := `function (doc, meta) {
-	                    %s
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-	                        return;
-						var sequence = sync.sequence;
-	                    if (sequence === undefined)
-	                        return;
-	                    var value = {rev:sync.rev};
-	                    if (sync.flags) {
-	                    	value.flags = sync.flags
-	                    } else if (sync.deleted) {
-	                    	value.flags = %d // channels.Deleted
-	                    }
-	                    if (%v) // EnableStarChannelLog
-							emit(["*", sequence], value);
-						var channels = sync.channels;
-						if (channels) {
-							for (var name in channels) {
-								removed = channels[name];
-								if (!removed)
-									emit([name, sequence], value);
-								else {
-									var flags = removed.del ? %d : %d; // channels.Removed/Deleted
-									emit([name, removed.seq], {rev:removed.rev, flags: flags});
-								}
-							}
-						}
-					}`
-
-	channels_map = fmt.Sprintf(channels_map, syncData, channels.Deleted, EnableStarChannelLog,
-		channels.Removed|channels.Deleted, channels.Removed)
-
-	// Channel access view, used by ComputeChannelsForPrincipal()
-	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
-	access_map := `function (doc, meta) {
-	                    %s
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-	                        return;
-	                    var access = sync.access;
-	                    if (access) {
-	                        for (var name in access) {
-	                            emit(name, access[name]);
-	                        }
-	                    }
-	               }`
-	access_map = fmt.Sprintf(access_map, syncData)
-
-	// Vbucket sequence version of channel access view, used by ComputeChannelsForPrincipal()
-	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
-
-	access_vbSeq_map := `function (doc, meta) {
-		                    %s
-		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-		                        return;
-		                    var access = sync.access;
-		                    if (access) {
-		                        for (var name in access) {
-		                        	// Build a timed set based on vb and vbseq of this revision
-		                        	var value = {};
-		                        	for (var channel in access[name]) {
-		                        		var timedSetWithVbucket = {};
-				                        timedSetWithVbucket["vb"] = parseInt(meta.vb, 10);
-				                        timedSetWithVbucket["seq"] = parseInt(meta.seq, 10);
-				                        value[channel] = timedSetWithVbucket;
-			                        }
-		                            emit(name, value)
-		                        }
-
-		                    }
-		               }`
-	access_vbSeq_map = fmt.Sprintf(access_vbSeq_map, syncData)
-
-	// Role access view, used by ComputeRolesForUser()
-	// Key is username; value is array of role names
-	roleAccess_map := `function (doc, meta) {
-	                    %s
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-	                        return;
-	                    var access = sync.role_access;
-	                    if (access) {
-	                        for (var name in access) {
-	                            emit(name, access[name]);
-	                        }
-	                    }
-	               }`
-	roleAccess_map = fmt.Sprintf(roleAccess_map, syncData)
-
-	// Vbucket sequence version of role access view, used by ComputeRolesForUser()
-	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
-
-	roleAccess_vbSeq_map := `function (doc, meta) {
-		                    %s
-		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-		                        return;
-		                    var access = sync.role_access;
-		                    if (access) {
-		                        for (var name in access) {
-		                        	// Build a timed set based on vb and vbseq of this revision
-		                        	var value = {};
-		                        	for (var role in access[name]) {
-		                        		var timedSetWithVbucket = {};
-				                        timedSetWithVbucket["vb"] = parseInt(meta.vb, 10);
-				                        timedSetWithVbucket["seq"] = parseInt(meta.seq, 10);
-				                        value[role] = timedSetWithVbucket;
-			                        }
-		                            emit(name, value)
-		                        }
-
-		                    }
-		               }`
-	roleAccess_vbSeq_map = fmt.Sprintf(roleAccess_vbSeq_map, syncData)
-
-	designDocMap := map[string]sgbucket.DesignDoc{}
-	designDocMap[DesignDocSyncGateway] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewChannels:        sgbucket.ViewDef{Map: channels_map},
-			ViewAccess:          sgbucket.ViewDef{Map: access_map},
-			ViewRoleAccess:      sgbucket.ViewDef{Map: roleAccess_map},
-			ViewAccessVbSeq:     sgbucket.ViewDef{Map: access_vbSeq_map},
-			ViewRoleAccessVbSeq: sgbucket.ViewDef{Map: roleAccess_vbSeq_map},
-			ViewPrincipals:      sgbucket.ViewDef{Map: principals_map},
-		},
-		Options: &sgbucket.DesignDocOptions{
-			IndexXattrOnTombstones: true,
-		},
-	}
-
-	designDocMap[DesignDocSyncHousekeeping] = sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			ViewAllBits:    sgbucket.ViewDef{Map: allbits_map},
-			ViewAllDocs:    sgbucket.ViewDef{Map: alldocs_map, Reduce: "_count"},
-			ViewImport:     sgbucket.ViewDef{Map: import_map, Reduce: "_count"},
-			ViewOldRevs:    sgbucket.ViewDef{Map: oldrevs_map, Reduce: "_count"},
-			ViewSessions:   sgbucket.ViewDef{Map: sessions_map},
-			ViewTombstones: sgbucket.ViewDef{Map: tombstones_map},
-		},
-		Options: &sgbucket.DesignDocOptions{
-			IndexXattrOnTombstones: true, // For ViewTombstones
-		},
-	}
-
-	sleeper := base.CreateDoublingSleeperFunc(
-		11, //MaxNumRetries approx 10 seconds total retry duration
-		5,  //InitialRetrySleepTimeMS
-	)
-
-	// add all design docs from map into bucket
-	for designDocName, designDoc := range designDocMap {
-
-		//start a retry loop to put design document backing off double the delay each time
-		worker := func() (shouldRetry bool, err error, value interface{}) {
-			err = bucket.PutDDoc(designDocName, designDoc)
-			if err != nil {
-				base.Warn("Error installing Couchbase design doc: %v", err)
-			}
-			return err != nil, err, nil
-		}
-
-		description := fmt.Sprintf("Attempt to install Couchbase design doc bucket : %v", designDocName)
-		err, _ := base.RetryLoop(description, worker, sleeper)
-
-		if err != nil {
-			return pkgerrors.Wrapf(err, "Error installing Couchbase Design doc: %v", designDocName)
-		}
-	}
-
-	return nil
-}
-
 type IDAndRev struct {
 	DocID    string
 	RevID    string
@@ -841,7 +596,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 		opts["endkey"] = resultsOpts.Endkey
 	}
 
-	err := db.Bucket.ViewCustom(DesignDocSyncHousekeeping, ViewAllDocs, opts, &vres)
+	err := db.Bucket.ViewCustom(DesignDocSyncHousekeeping(), ViewAllDocs, opts, &vres)
 	if err != nil {
 		base.Warn("all_docs got error: %v", err)
 		return err
@@ -864,7 +619,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
-	vres, err := db.Bucket.View(DesignDocSyncGateway, ViewPrincipals, Body{"stale": false})
+	vres, err := db.Bucket.View(DesignDocSyncGateway(), ViewPrincipals, Body{"stale": false})
 	if err != nil {
 		return
 	}
@@ -885,7 +640,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 
 func (db *Database) queryAllDocs(reduce bool) (sgbucket.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewAllDocs, opts)
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 	if err != nil {
 		base.Warn("all_docs got error: %v", err)
 	}
@@ -902,7 +657,7 @@ func (db *Database) DeleteAllDocs(docType string) error {
 		opts["endkey"] = "_sync:" + docType + "~"
 		opts["inclusive_end"] = false
 	}
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewAllBits, opts)
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewAllBits, opts)
 	if err != nil {
 		base.Warn("all_bits view returned %v", err)
 		return err
@@ -924,7 +679,7 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 	opts := Body{"stale": false}
 	opts["startkey"] = userName
 	opts["endkey"] = userName
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewSessions, opts)
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewSessions, opts)
 	if err != nil {
 		base.Warn("sessions view returned %v", err)
 		return err
@@ -959,7 +714,7 @@ func (db *Database) Compact() (int, error) {
 	opts["startkey"] = 1
 	purgeIntervalDuration := time.Duration(-db.PurgeInterval) * time.Hour
 	opts["endkey"] = time.Now().Add(purgeIntervalDuration).Unix()
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewTombstones, opts)
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewTombstones, opts)
 	if err != nil {
 		base.Warn("Tombstones view returned error during compact: %v", err)
 		return 0, err
@@ -1062,7 +817,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	} else if !doImportDocs {
 		options["startkey"] = []interface{}{true}
 	}
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
+	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewImport, options)
 	if err != nil {
 		return 0, err
 	}

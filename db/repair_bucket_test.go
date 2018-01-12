@@ -20,7 +20,7 @@ func testBucketWithViewsAndBrokenDoc() (tBucket base.TestBucket, numDocs int) {
 	tBucket = testBucket()
 	bucket := tBucket.Bucket
 
-	installViews(bucket, false)
+	installViews(bucket)
 
 	// Add harmless docs
 	for i := 0; i < base.DefaultViewQueryPageSize+1; i++ {

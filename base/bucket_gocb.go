@@ -1643,6 +1643,7 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 		return err
 	}
 
+	// TODO: Retry here for recoverable gocb errors?
 	designDocPointer, err := bucketManager.GetDesignDocument(docname)
 	if err != nil {
 		return err

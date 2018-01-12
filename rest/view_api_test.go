@@ -16,9 +16,9 @@ import (
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbase/sync_gateway/channels"
-
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -50,9 +50,9 @@ func TestDesignDocs(t *testing.T) {
 	assertStatus(t, response, 200)
 	response = rt.SendAdminRequest("DELETE", "/db/_design/foo", "")
 	assertStatus(t, response, 200)
-	response = rt.SendAdminRequest("PUT", "/db/_design/sync_gateway", "{}")
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_design/%s", db.DesignDocSyncGateway()), "{}")
 	assertStatus(t, response, 403)
-	response = rt.SendAdminRequest("GET", "/db/_design/sync_gateway", "")
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_design/%s", db.DesignDocSyncGateway()), "")
 	assertStatus(t, response, 200)
 }
 

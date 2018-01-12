@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -105,6 +106,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		if !rt.noAdminParty {
 			rt.SetAdminParty(true)
+		}
+
+		// Wait for bucket to be ready
+		for i := 0; i < 100; i++ {
+			if atomic.LoadUint32(&rt.RestTesterServerContext.Database("db").State) != db.DBViewsPending {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
 		}
 
 		// If given a leakyBucketConfig we'll return a leaky bucket.

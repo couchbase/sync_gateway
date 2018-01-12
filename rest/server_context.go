@@ -624,6 +624,25 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
+	// Set database state to DBViewsPending until views are available
+	base.Logf("Verifying view availability for database %q...", dbName)
+	previousState := atomic.SwapUint32(&dbcontext.State, db.DBViewsPending)
+	// Don't restore the database state until views are ready, but don't block
+	go func() {
+		viewCheckStart := time.Now()
+		viewReadyErr := db.WaitForViews(bucket)
+		if viewReadyErr == nil {
+			swapOk := atomic.CompareAndSwapUint32(&dbcontext.State, db.DBViewsPending, previousState)
+			if swapOk {
+				base.Logf("Views check complete for database %q (%s) - database state is %s.", dbName, time.Since(viewCheckStart), db.RunStateString[previousState])
+			} else {
+				base.Logf("Views check complete for database %q (%s).  Database state was changed during view check - leaving database state as %s.", dbName, time.Since(viewCheckStart), db.RunStateString[atomic.LoadUint32(&dbcontext.State)])
+			}
+		} else {
+			base.LogFatal("View readiness check returned error for database %s: %+v", dbName, viewReadyErr)
+		}
+	}()
+
 	return dbcontext, nil
 }
 
@@ -1013,7 +1032,7 @@ func collectAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext)
 		viewOptions := db.Body{
 			"limit": 1,
 		}
-		vres, err := currentDb.Bucket.View(db.DesignDocSyncGateway, db.ViewPrincipals, viewOptions)
+		vres, err := currentDb.Bucket.View(db.DesignDocSyncGateway(), db.ViewPrincipals, viewOptions)
 		if err != nil {
 			base.Warn("Error trying to query ViewPrincipals: %v", err)
 			return []string{}

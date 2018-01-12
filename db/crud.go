@@ -590,7 +590,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 	allowImport := db.UseXattrs()
 
-
 	return db.updateDoc(docid, allowImport, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		// (Be careful: this block can be invoked multiple times if there are races!)
@@ -676,7 +675,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 		if currentRevIndex == 0 {
 			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid)
-			body["_rev"] = newRev                   // The _rev field is expected by some callers.  If missing, may cause problems for callers.
+			body["_rev"] = newRev                        // The _rev field is expected by some callers.  If missing, may cause problems for callers.
 			return nil, nil, nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
@@ -1337,7 +1336,7 @@ func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.P
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccess, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
 	channelSet := channels.TimedSet{}
@@ -1362,7 +1361,7 @@ func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewAccessVbSeq, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewAccessVbSeq, opts, &vres); verr != nil {
 		return nil, verr
 	}
 
@@ -1393,7 +1392,7 @@ func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (cha
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewRoleAccess, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewRoleAccess, opts, &vres); verr != nil {
 		return nil, verr
 	}
 	// Merge the TimedSets from the view result:
@@ -1418,7 +1417,7 @@ func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (c
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway, ViewRoleAccessVbSeq, opts, &vres); verr != nil {
+	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewRoleAccessVbSeq, opts, &vres); verr != nil {
 		return nil, verr
 	}
 
