@@ -116,6 +116,7 @@ func (h *handler) handleBLIPSync() error {
 		}()
 		defaultHandler(conn)
 	}
+
 	server.ServeHTTP(h.response, h.rq)
 	return nil
 }
