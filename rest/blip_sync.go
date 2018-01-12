@@ -178,7 +178,10 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
-	var since db.SequenceID
+
+	// Depeding on the db sequence type, use correct zero sequence for since value
+	since := bh.db.CreateZeroSinceValue()
+
 	if sinceStr, found := rq.Properties["since"]; found {
 		var err error
 		if since, err = db.ParseSequenceIDFromJSON([]byte(sinceStr)); err != nil {
