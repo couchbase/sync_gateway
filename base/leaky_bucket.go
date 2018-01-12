@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	couchbase "github.com/couchbase/go-couchbase"
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
@@ -122,7 +121,7 @@ func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{
 
 	if b.config.FirstTimeViewCustomPartialError {
 		b.config.FirstTimeViewCustomPartialError = !b.config.FirstTimeViewCustomPartialError
-		err = couchbase.ViewError{From: "partial error from", Reason: "partial error reason"}
+		err = ErrPartialViewErrors
 	}
 
 	return err
