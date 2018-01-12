@@ -135,6 +135,7 @@ type DbConfig struct {
 	LocalDocExpirySecs   *uint32                        `json:"local_doc_expiry_secs,omitempty"`       // The _local doc expiry time in seconds
 	EnableXattrs         *bool                          `json:"enable_shared_bucket_access,omitempty"` // Whether to use extended attributes to store _sync metadata
 	SessionCookieName    string                         `json:"session_cookie_name"`                   // Custom per-database session cookie name
+	AllowConflicts       *bool                          `json:"allow_conflicts,omitempty"`             // False forbids creating conflicts
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -371,6 +372,13 @@ func (dbConfig *DbConfig) modifyConfig() {
 // Implementation of AuthHandler interface for DbConfig
 func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(dbConfig.Username, dbConfig.Password, *dbConfig.Bucket)
+}
+
+func (dbConfig *DbConfig) ConflictsAllowed() *bool {
+	if dbConfig.AllowConflicts != nil {
+		return dbConfig.AllowConflicts
+	}
+	return base.BooleanPointer(base.DefaultAllowConflicts)
 }
 
 func (dbConfig *DbConfig) UseXattrs() bool {
