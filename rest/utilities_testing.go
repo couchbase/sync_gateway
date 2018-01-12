@@ -91,7 +91,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.DatabaseConfig.EnableXattrs = &useXattrs
 		if rt.EnableNoConflictsMode {
 			boolVal := false
-			rt.DatabaseConfig.Unsupported.AllowConflicts = &boolVal
+			rt.DatabaseConfig.AllowConflicts = &boolVal
 		}
 
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
