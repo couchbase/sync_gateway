@@ -96,10 +96,6 @@ func (h *handler) handleBLIPSync() error {
 		defaultHandler(conn)
 	}
 
-	// TODO: I added this workaround to try to get around connection error from blip_api_test.go
-	// TODO: remove this at some point, pending response from Jens: https://github.com/couchbase/sync_gateway/issues/2653#issuecomment-353159801
-	h.rq.Header.Set("Sec-WS-Protocols", blip.WebSocketProtocolName)
-
 	server.ServeHTTP(h.response, h.rq)
 	return nil
 }
