@@ -97,7 +97,7 @@ type DatabaseContextOptions struct {
 	EnableXattr           bool   // Use xattr for _sync
 	LocalDocExpirySecs    uint32 // The _local doc expiry time in seconds
 	SessionCookieName     string // Pass-through DbConfig.SessionCookieName
-	AllowConflicts        bool   // False forbids creating conflicts
+	AllowConflicts        *bool  // False forbids creating conflicts
 }
 
 type OidcTestProviderOptions struct {
@@ -1268,7 +1268,10 @@ func (context *DatabaseContext) FlushRevisionCache() {
 }
 
 func (context *DatabaseContext) AllowConflicts() bool {
-	return context.Options.AllowConflicts
+	if context.Options.AllowConflicts != nil {
+		return *context.Options.AllowConflicts
+	}
+	return base.DefaultAllowConflicts
 }
 
 //////// SEQUENCE ALLOCATION:
