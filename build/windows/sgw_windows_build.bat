@@ -290,7 +290,7 @@ unix2dos  %SGW_INSTALL_DIR%\LICENSE.txt
 unix2dos  %SGW_INSTALL_DIR%\LICENSE.rtf
 
 echo  ======= start wix install  ==============================
-cd %WORKSPACE%\sgw-wix-installer
+cd %WORKSPACE%\%BLD_DIR%\windows\wix_installer
 set WIX_INSTALLER=create-installer.bat
 set VERSION=%VERSION:-=.%
 echo "Staging to wix install dir:  .\%WIX_INSTALLER% %SGW_INSTALL_DIR% %VERSION% %EDITION% "%SGW_NAME%" %SGW_DIR%\service\sg-windows "
@@ -334,7 +334,7 @@ GOTO package_sg_accel
     xcopy /s %SGW_INSTALL_DIR%\tools       %SGWACCEL_INSTALL_DIR%\tools
 
     echo  ======= start wix install  ==============================
-    cd %WORKSPACE%\sgw-wix-installer
+    cd %WORKSPACE%\%BLD_DIR%\windows\wix_installer
     set WIX_INSTALLER=create-installer.bat
     set VERSION=%VERSION:-=.%
     echo "Staging to wix install dir:  .\%WIX_INSTALLER% %SGW_INSTALL_DIR% %VERSION% %EDITION% "sync-gateway-accel" %SGW_DIR%\service\sg-windows "
