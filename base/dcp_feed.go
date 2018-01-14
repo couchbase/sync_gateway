@@ -95,6 +95,7 @@ type DCPReceiver struct {
 	notify                 sgbucket.BucketNotifyFn        // Function to callback when we lose our dcp feed
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
 	backfill               backfillStatus                 // Backfill state and stats
+}
 
 func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, backfillType uint64) (Receiver, error) {
 
@@ -198,8 +199,8 @@ func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.
 func (r *DCPReceiver) SnapshotStart(vbucketId uint16,
 	snapStart, snapEnd uint64, snapType uint32) error {
 	// During initial backfill, we persist snapshot information to support resuming the DCP
-	// stream midway through a snapshot.  This is primarily for the import when initially 
-	// connection to a populated bucket, to avoid restarting the import from 
+	// stream midway through a snapshot.  This is primarily for the import when initially
+	// connection to a populated bucket, to avoid restarting the import from
 	// zero if SG is terminated before completing processing of the initial snapshots.
 	if r.backfill.isActive() && r.backfill.isVbActive(vbucketId) {
 		r.backfill.snapshotStart(vbucketId, snapStart, snapEnd)
