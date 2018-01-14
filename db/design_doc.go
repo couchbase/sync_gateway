@@ -301,7 +301,8 @@ func initializeViews(bucket base.Bucket) error {
 		}
 	}
 
-	return nil
+	// Wait for views to be indexed and available
+	return WaitForViews(bucket)
 }
 
 func checkExistingDDocs(bucket base.Bucket) bool {
@@ -576,6 +577,8 @@ func WaitForViews(bucket base.Bucket) error {
 	var viewsWg sync.WaitGroup
 	views := []string{ViewChannels, ViewAccess, ViewRoleAccess}
 
+	base.Logf("Verifying view availability for bucket %s...", bucket.GetName())
+
 	for _, viewName := range views {
 		viewsWg.Add(1)
 		go func(view string) {
@@ -593,6 +596,8 @@ func WaitForViews(bucket base.Bucket) error {
 		close(viewErrors)
 		return err
 	}
+
+	base.Logf("Views ready for bucket %s.", bucket.GetName())
 	return nil
 
 }
@@ -607,7 +612,7 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 		if err == nil || err != base.ErrViewTimeoutError {
 			return err
 		} else {
-			base.Logf("Timeout waiting for view to initialize (%d), retrying.", viewName)
+			base.Logf("Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, bucket.GetName())
 		}
 	}
 

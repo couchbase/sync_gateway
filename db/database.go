@@ -34,16 +34,14 @@ const (
 	DBOnline
 	DBStopping
 	DBResyncing
-	DBViewsPending
 )
 
 var RunStateString = []string{
-	DBOffline:      "Offline",
-	DBStarting:     "Starting",
-	DBOnline:       "Online",
-	DBStopping:     "Stopping",
-	DBResyncing:    "Resyncing",
-	DBViewsPending: "Unavailable (waiting for views)",
+	DBOffline:   "Offline",
+	DBStarting:  "Starting",
+	DBOnline:    "Online",
+	DBStopping:  "Stopping",
+	DBResyncing: "Resyncing",
 }
 
 const (
