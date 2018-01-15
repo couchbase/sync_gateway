@@ -772,6 +772,15 @@ func GetExpvarAsString(mapName string, name string) string {
 	}
 }
 
+// Returns int representation of an expvar, given map name and key name
+func GetExpvarAsInt(mapName string, name string) (int, error) {
+	stringVal := GetExpvarAsString(mapName, name)
+	if stringVal == "" {
+		return 0, nil
+	}
+	return strconv.Atoi(stringVal)
+}
+
 // TODO: temporary workaround until https://issues.couchbase.com/browse/MB-27026 is implemented
 func ExtractExpiryFromDCPMutation(rq *gomemcached.MCRequest) (expiry uint32) {
 	if len(rq.Extras) < 24 {

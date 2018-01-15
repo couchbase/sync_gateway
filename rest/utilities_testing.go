@@ -39,6 +39,7 @@ type RestTester struct {
 	PublicHandler           http.Handler
 	leakyBucketConfig       *base.LeakyBucketConfig
 	EnableNoConflictsMode   bool // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	NoFlush                 bool // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
@@ -46,8 +47,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterBucket == nil {
 
 		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
-		tempBucket := base.GetTestBucketOrPanic() // side effect of creating/flushing bucket
-		tempBucket.Close()
+		if !rt.NoFlush {
+			tempBucket := base.GetTestBucketOrPanic() // side effect of creating/flushing bucket
+			tempBucket.Close()
+		}
 
 		spec := base.GetTestBucketSpec(base.DataBucket)
 
