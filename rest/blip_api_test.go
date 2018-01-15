@@ -314,3 +314,29 @@ func TestAttachments(t *testing.T) {
 func TestPublicPortAuthentication(t *testing.T) {
 
 }
+
+func TestReloadUser(t *testing.T) {
+
+	bt := CreateBlipTesterPublicPort(t, false)
+	defer bt.Close()
+
+
+	var changeList [][]interface{}
+	changesRequest := blip.NewRequest()
+	changesRequest.SetProfile("changes")                             // TODO: make a constant for "changes" and use it everywhere
+	changesRequest.SetBody([]byte(`[["1", "foo", "1-abc", false]]`)) // [sequence, docID, revID]
+	sent := bt.sender.Send(changesRequest)
+	assert.True(t, sent)
+	changesResponse := changesRequest.Response()
+	assert.Equals(t, changesResponse.SerialNumber(), changesRequest.SerialNumber())
+	body, err := changesResponse.Body()
+	assertNoError(t, err, "Error reading changes response body")
+	err = json.Unmarshal(body, &changeList)
+	assertNoError(t, err, "Error unmarshalling response body")
+	assert.True(t, len(changeList) == 1) // Should be 1 row, corresponding to the single doc that was queried in changes
+	changeRow := changeList[0]
+	assert.True(t, len(changeRow) == 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
+
+
+
+}

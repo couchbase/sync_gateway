@@ -214,6 +214,10 @@ func (rt *RestTester) SetAdminParty(partyTime bool) {
 	a.Save(guest)
 }
 
+func (rt *RestTester) DisableGuestUser() {
+	rt.SetAdminParty(false)
+}
+
 func (rt *RestTester) Close() {
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close()
@@ -550,6 +554,57 @@ func CreateBlipTester(t *testing.T, noConflictsMode bool) (bt BlipTester) {
 	return bt
 
 }
+
+
+func CreateBlipTesterPublicPort(t *testing.T, noConflictsMode bool) (bt BlipTester) {
+
+	EnableBlipSyncLogs()
+
+	// Disable guest access on public port
+	bt.rt = RestTester{noAdminParty: true}
+
+	// Create a handler
+	var publicHandler http.Handler
+	switch noConflictsMode {
+	case true:
+		publicHandler = bt.rt.TestPublicHandler()  // TODO: currently ignores NoConflictsMode
+	default:
+		publicHandler = bt.rt.TestPublicHandler()
+
+	}
+
+
+	// All this is duplicated code and needs to be consolidated
+
+	// Create a test server and close it when the test is complete
+	srv := httptest.NewServer(publicHandler)
+	defer srv.Close()
+
+	// Construct URL to connect to blipsync target endpoint
+	destUrl := fmt.Sprintf("%s/db/_blipsync", srv.URL)
+	u, err := url.Parse(destUrl)
+	if err != nil {
+		t.Errorf("Error parsing desturl: %v", err)
+	}
+	u.Scheme = "ws"
+
+	// Make BLIP/Websocket connection
+	bt.blipContext = blip.NewContext()
+	bt.blipContext.Logger = func(fmt string, params ...interface{}) {
+		base.LogTo("BLIP", fmt, params...)
+	}
+	bt.blipContext.LogMessages = true
+	bt.blipContext.LogFrames = true
+	origin := "http://localhost" // TODO: what should be used here?
+	bt.sender, err = bt.blipContext.Dial(u.String(), origin)
+	if err != nil {
+		panic(fmt.Sprintf("Websocket connection error: %v", err))
+	}
+
+	return bt
+
+}
+
 
 func EnableBlipSyncLogs() {
 
