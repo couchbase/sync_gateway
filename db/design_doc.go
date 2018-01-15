@@ -573,9 +573,9 @@ func installViews(bucket base.Bucket) error {
 
 // Issue a stale=false queries against critical views to guarantee indexing is complete and views are ready
 func WaitForViews(bucket base.Bucket) error {
-	viewErrors := make(chan error, 3)
 	var viewsWg sync.WaitGroup
 	views := []string{ViewChannels, ViewAccess, ViewRoleAccess}
+	viewErrors := make(chan error, len(views))
 
 	base.Logf("Verifying view availability for bucket %s...", bucket.GetName())
 

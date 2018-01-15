@@ -1846,7 +1846,7 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return viewResult, err
+		return viewResult, pkgerrors.Wrapf(err, "Unexpected error querying design doc %q, view %q with params:%+v", ddoc, name, params)
 	}
 
 	if goCbViewResult != nil {
@@ -1919,7 +1919,7 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return err
+		return pkgerrors.Wrapf(err, "Unexpected error querying design doc %q, view %q with params:%+v", ddoc, name, params)
 	}
 
 	// Define a struct to store the rows as raw bytes
