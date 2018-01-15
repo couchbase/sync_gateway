@@ -42,7 +42,7 @@ const (
 const MemcachedDataTypeRaw = 0
 
 const DCPCheckpointPrefix = "_sync:dcp_ck:"  // Prefix used for DCP checkpoint persistence (is appended with vbno)
-const DCPBackfillSeqs = "_sync:dcp_backfill" // File name used for DCP sequence persistence during backfill
+const DCPBackfillSeqs = "_sync:dcp_backfill" // Bucket doc used for DCP sequence persistence during backfill
 
 // Number of non-checkpoint updates per vbucket required to trigger metadata persistence.  Must be greater than zero to avoid
 // retriggering persistence solely based on checkpoint doc echo.
@@ -90,7 +90,7 @@ type DCPReceiver struct {
 	persistCheckpoints     bool                           // Whether this DCPReceiver should persist metadata to the bucket
 	seqs                   []uint64                       // To track max seq #'s we received per vbucketId.
 	meta                   [][]byte                       // To track metadata blob's per vbucketId.
-	vbuuids                map[uint16]uint64              // vbucket uuids.  Used in cases of manual vbucket metadata creation
+	vbuuids                map[uint16]uint64              // Map of vbucket uuids, by vbno.  Used in cases of manual vbucket metadata creation
 	updatesSinceCheckpoint []uint64                       // Number of updates since the last checkpoint. Used to avoid checkpoint persistence feedback loop
 	notify                 sgbucket.BucketNotifyFn        // Function to callback when we lose our dcp feed
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
@@ -398,13 +398,18 @@ func (r *DCPReceiver) initMetadata(maxVbNo uint16) {
 		} else {
 			r.meta[i] = metadata
 			r.seqs[i] = snapStart
-			// If we persisted a backfill sequence midway through the current snapshot, restart from there
-			if backfillSeqs != nil && backfillSeqs.Seqs[i] > snapStart && backfillSeqs.Seqs[i] < backfillSeqs.SnapEnd[i] {
-				LogTo("DCP", "Restarting vb %d using backfill sequence %d ([%d-%d])", i, backfillSeqs.Seqs[i], backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
-				r.seqs[i] = backfillSeqs.Seqs[i]
-				r.meta[i] = makeVbucketMetadata(r.vbuuids[i], backfillSeqs.Seqs[i], backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
+			// Check whether we persisted a sequence midway through a previous incomplete backfill
+			var partialBackfillSequence uint64
+			if backfillSeqs != nil && backfillSeqs.Seqs[i] < backfillSeqs.SnapEnd[i] {
+				partialBackfillSequence = backfillSeqs.Seqs[i]
+			}
+			// If we have a backfill sequence later than the DCP checkpoint's snapStart, start from there
+			if partialBackfillSequence > snapStart {
+				LogTo("DCP", "Restarting vb %d using backfill sequence %d ([%d-%d])", i, partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
+				r.seqs[i] = partialBackfillSequence
+				r.meta[i] = makeVbucketMetadata(r.vbuuids[i], partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
 			} else {
-				LogTo("DCP", "Restarting vb %d using metadata sequence %d  (backfill %d not in [%d-%d])", i, snapStart, backfillSeqs.Seqs[i], snapStart, snapEnd)
+				LogTo("DCP", "Restarting vb %d using metadata sequence %d  (backfill %d not in [%d-%d])", i, snapStart, partialBackfillSequence, snapStart, snapEnd)
 			}
 		}
 	}
