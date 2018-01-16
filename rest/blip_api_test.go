@@ -300,20 +300,20 @@ func TestPublicPortAuthentication(t *testing.T) {
 	)
 
 	// Create bliptester that is connected as user2, with access to the * channel
-	//btUser2 := NewBlipTesterFromSpec(BlipTesterSpec{
-	//	noAdminParty:                true,
-	//	connectingUsername:          "user2",
-	//	connectingPassword:          "1234",
-	//	connectingUserChannelGrants: []string{"*"}, // test, no channels
-	//})
-	//defer btUser2.Close()
-	//
-	//// Send the user2 doc, which is in a "random" channel, but it should be accessible due to * channel access
-	//btUser2.SendRev(
-	//	"foo2",
-	//	"1-abcd",
-	//	[]byte(`{"key": "val", "channels": "[whatever]"}`),
-	//)
+	btUser2 := NewBlipTesterFromSpec(BlipTesterSpec{
+		noAdminParty:                true,
+		connectingUsername:          "user2",
+		connectingPassword:          "1234",
+		connectingUserChannelGrants: []string{"*"}, // test, no channels
+	})
+	defer btUser2.Close()
+
+	// Send the user2 doc, which is in a "random" channel, but it should be accessible due to * channel access
+	btUser2.SendRev(
+		"foo2",
+		"1-abcd",
+		[]byte(`{"key": "val", "channels": ["NBC"]}`),
+	)
 
 	// Assert that user1 received a single expected change
 	changesChannelUser1 := btUser1.GetChanges()
@@ -326,16 +326,16 @@ func TestPublicPortAuthentication(t *testing.T) {
 	assert.True(t, strings.Contains(bodyAsString, "foo"))
 	assert.True(t, strings.Contains(bodyAsString, "1-abc"))
 
-	// Assert that user2 received a single expected change
-	//changesChannelUser2 := btUser2.GetChanges()
-	//assert.True(t, len(changesChannelUser2) == 1)
-	//change = changesChannelUser2[0]
-	//body, err = change.Body()
-	//assertNoError(t, err, "Unexpected error")
-	//bodyAsString = string(body)
-	//log.Printf("Got change: %s", body)
-	//assert.True(t, strings.Contains(bodyAsString, "foo2"))
-	//assert.True(t, strings.Contains(bodyAsString, "1-abcd"))
+	// Assert that user2 received user1's change as well as it's own change
+	changesChannelUser2 := btUser2.GetChanges()
+	assert.True(t, len(changesChannelUser2) == 2)
+	change = changesChannelUser2[1]
+	body, err = change.Body()
+	assertNoError(t, err, "Unexpected error")
+	bodyAsString = string(body)
+	log.Printf("Got change: %s", body)
+	assert.True(t, strings.Contains(bodyAsString, "foo2"))
+	assert.True(t, strings.Contains(bodyAsString, "1-abcd"))
 
 
 
