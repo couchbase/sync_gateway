@@ -128,6 +128,7 @@
 
     <!-- Graphics for installer itself -->
     <WixVariable Id="WixUIDialogBmp" Value="$(sys.CURRENTDIR)\assets\cb_installer_bg.jpg"/>
+    <WixVariable Id="WixUIBannerBmp" Value="$(sys.CURRENTDIR)\assets\cb_installer_banner.jpg"/>
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf"/>
 
     <!-- Text message for exit dialog -->
