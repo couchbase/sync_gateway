@@ -26,7 +26,7 @@ import (
 // Replication Spec: https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#proposechanges
 func TestBlipPushRevisionInspectChanges(t *testing.T) {
 
-	bt := CreateBlipTester(t, false)
+	bt := NewBlipTester()
 	defer bt.Close()
 
 	// Verify Sync Gateway will accept the doc revision that is about to be sent
@@ -53,7 +53,6 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	revRequest.Properties["id"] = "foo"
 	revRequest.Properties["rev"] = "1-abc"
 	revRequest.Properties["deleted"] = "false"
-	revRequest.Properties["sequence"] = "1"
 	revRequest.SetBody([]byte(`{"key": "val"}`))
 	sent = bt.sender.Send(revRequest)
 	assert.True(t, sent)
@@ -99,7 +98,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 			assert.True(t, len(changeListReceived) == 1)
 			change := changeListReceived[0] // [1,"foo","1-abc"]
 			assert.True(t, len(change) == 3)
-			assert.Equals(t, change[0].(float64), float64(1)) // Original sequence sent in pushed rev
+			assert.Equals(t, change[0].(float64), float64(1)) // Expect sequence to be 1, since first item in DB
 			assert.Equals(t, change[1], "foo")                // Doc id of pushed rev
 			assert.Equals(t, change[2], "1-abc")              // Rev id of pushed rev
 
@@ -142,7 +141,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 // Wait until we get the expected updates
 func TestContinousChangesSubscription(t *testing.T) {
 
-	bt := CreateBlipTester(t, false)
+	bt := NewBlipTester()
 	defer bt.Close()
 
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
@@ -198,8 +197,6 @@ func TestContinousChangesSubscription(t *testing.T) {
 			response.SetBody(emptyResponseValBytes)
 		}
 
-
-
 	}
 
 	// Increment waitgroup since just the act of subscribing to continuous changes will cause
@@ -227,7 +224,6 @@ func TestContinousChangesSubscription(t *testing.T) {
 		revRequest.Properties["id"] = fmt.Sprintf("foo-%d", i)
 		revRequest.Properties["rev"] = "1-abc"
 		revRequest.Properties["deleted"] = "false"
-		revRequest.Properties["sequence"] = fmt.Sprintf("%d", i)
 		revRequest.SetBody([]byte(`{"key": "val"}`))
 		sent = bt.sender.Send(revRequest)
 		assert.True(t, sent)
@@ -243,8 +239,6 @@ func TestContinousChangesSubscription(t *testing.T) {
 
 }
 
-
-
 // Push proposed changes and ensure that the server accepts them
 //
 // 1. Start sync gateway in no-conflicts mode
@@ -253,7 +247,9 @@ func TestContinousChangesSubscription(t *testing.T) {
 // 4. Make sure that the server responds to accept the changes (empty array)
 func TestProposedChangesNoConflictsMode(t *testing.T) {
 
-	bt := CreateBlipTester(t, true)
+	bt := NewBlipTesterFromSpec(BlipTesterSpec{
+		noConflictsMode: true,
+	})
 	defer bt.Close()
 
 	proposeChangesRequest := blip.NewRequest()
@@ -284,6 +280,36 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 
 }
 
+// Connect to public port with authentication
+func TestPublicPortAuthentication(t *testing.T) {
+
+	btSpecUser1 := BlipTesterSpec{
+		noAdminParty:                true,
+		connectingUsername:          "user1",
+		connectingPassword:          "1234",
+		connectingUserChannelGrants: []string{"*"}, // test, no channels
+	}
+	btUser1 := NewBlipTesterFromSpec(btSpecUser1)
+	defer btUser1.Close()
+
+	// Send the doc
+	btUser1.SendRev(
+		"foo",
+		"1-abc",
+		[]byte(`{"key": "val", "channels": "[user1]"}`),
+	)
+
+	changesChannel := btUser1.SubscribeToChanges(true)
+	for change := range changesChannel {
+		body, err := change.Body()
+		assertNoError(t, err, "Unexpected error")
+		log.Printf("Got change: %s", body)
+	}
+
+
+
+}
+
 // Make sure it's not possible to have two outstanding subChanges w/ continuous=true.
 func TestConcurrentChangesSubscriptions(t *testing.T) {
 
@@ -310,41 +336,6 @@ func TestAttachments(t *testing.T) {
 
 }
 
-// Connect to public port with authentication
-func TestPublicPortAuthentication(t *testing.T) {
-
-}
-
 func TestReloadUser(t *testing.T) {
-
-	btSpec := BlipTesterSpec{
-		noConflictsMode: false,
-		enableGuestUser: false,
-		connectingUsername: "user1",
-		connectingPassword: "1234",
-	}
-	bt, err := CreateBlipTesterFromSpec(btSpec)
-	if err != nil {
-		t.Fatalf("Error creating blip tester: %v", err)
-	}
-	defer bt.Close()
-
-	var changeList [][]interface{}
-	changesRequest := blip.NewRequest()
-	changesRequest.SetProfile("changes")                             // TODO: make a constant for "changes" and use it everywhere
-	changesRequest.SetBody([]byte(`[["1", "foo", "1-abc", false]]`)) // [sequence, docID, revID]
-	sent := bt.sender.Send(changesRequest)
-	assert.True(t, sent)
-	changesResponse := changesRequest.Response()
-	assert.Equals(t, changesResponse.SerialNumber(), changesRequest.SerialNumber())
-	body, err := changesResponse.Body()
-	assertNoError(t, err, "Error reading changes response body")
-	err = json.Unmarshal(body, &changeList)
-	assertNoError(t, err, "Error unmarshalling response body")
-	assert.True(t, len(changeList) == 1) // Should be 1 row, corresponding to the single doc that was queried in changes
-	changeRow := changeList[0]
-	assert.True(t, len(changeRow) == 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
-
-
 
 }
