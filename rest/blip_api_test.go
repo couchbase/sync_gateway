@@ -317,9 +317,20 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 func TestReloadUser(t *testing.T) {
 
-	bt := CreateBlipTesterPublicPort(t, false)
+	btSpec := BlipTesterSpec{
+		noConflictsMode: false,
+		enableGuestUser: false,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+	}
+	bt, err := CreateBlipTesterFromSpec(btSpec)
+	if err != nil {
+		t.Fatalf("Error creating blip tester: %v", err)
+	}
 	defer bt.Close()
 
+	//bt := CreateBlipTesterPublicPort(t, false)
+	//defer bt.Close()
 
 	var changeList [][]interface{}
 	changesRequest := blip.NewRequest()

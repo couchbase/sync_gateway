@@ -508,93 +508,61 @@ type BlipTester struct {
 	rt          RestTester
 	sender      *blip.Sender
 	blipContext *blip.Context
+	server      *httptest.Server
 }
 
 func (bt BlipTester) Close() {
 	bt.rt.Close()
-}
-
-func CreateBlipTester(t *testing.T, noConflictsMode bool) (bt BlipTester) {
-
-	EnableBlipSyncLogs()
-
-	// Create an admin handler
-	var adminHandler http.Handler
-	switch noConflictsMode {
-	case true:
-		adminHandler = bt.rt.TestAdminHandlerNoConflictsMode()
-	default:
-		adminHandler = bt.rt.TestAdminHandler()
-
+	if bt.server != nil {
+		bt.server.Close()
 	}
-
-	// Create a test server and close it when the test is complete
-	srv := httptest.NewServer(adminHandler)
-	defer srv.Close()
-
-	// Construct URL to connect to blipsync target endpoint
-	destUrl := fmt.Sprintf("%s/db/_blipsync", srv.URL)
-	u, err := url.Parse(destUrl)
-	if err != nil {
-		t.Errorf("Error parsing desturl: %v", err)
-	}
-	u.Scheme = "ws"
-
-	// Make BLIP/Websocket connection
-	bt.blipContext = blip.NewContext()
-	bt.blipContext.Logger = func(fmt string, params ...interface{}) {
-		base.LogTo("BLIP", fmt, params...)
-	}
-	bt.blipContext.LogMessages = true
-	bt.blipContext.LogFrames = true
-	origin := "http://localhost" // TODO: what should be used here?
-	bt.sender, err = bt.blipContext.Dial(u.String(), origin)
-	if err != nil {
-		t.Errorf("Websocket connection error: %v", err)
-	}
-
-	return bt
 
 }
 
+type BlipTesterSpec struct {
+	noConflictsMode    bool
+	enableGuestUser    bool
+	connectingUsername string // or empty to indicate connect as admin
+	connectingPassword string
+}
 
-
-func CreateBlipTesterPublicPort(t *testing.T, noConflictsMode bool) (bt BlipTester) {
+func CreateBlipTesterFromSpec(spec BlipTesterSpec) (bt BlipTester, err error) {
 
 	EnableBlipSyncLogs()
 
-	// Disable guest access on public port
-	bt.rt = RestTester{noAdminParty: true}
+	// Since blip requests all go over the public handler, wrap the public handler with the httptest server
+	publicHandler := bt.rt.TestPublicHandler()
 
-	// Create a handler
-	var publicHandler http.Handler
-	switch noConflictsMode {
-	case true:
-		publicHandler = bt.rt.TestPublicHandler() // TODO: currently ignores NoConflictsMode
-	default:
-		publicHandler = bt.rt.TestPublicHandler()
-
+	if len(spec.connectingUsername) > 0 {
+		// Create a user.
+		// NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
+		response := bt.rt.SendAdminRequest(
+			"POST",
+			"/db/_user/",
+			fmt.Sprintf(`{"name":"%s", "password":"%s"}`, spec.connectingUsername, spec.connectingPassword),
+		)
+		if response.Code != 201 {
+			return bt, fmt.Errorf("Expected 201 response.  Got: %v", response.Code)
+		}
 	}
 
-	// Temporary code to create a user, just to see if it's possible to do an authenticated connection
-	// TODO: pass this in as a param, at least
-	username := "user1"
-	password := "1234"
-	response := bt.rt.SendAdminRequest("POST", "/db/_user/", fmt.Sprintf(`{"name":"%s", "password":"%s"}`, username, password))
-	assertStatus(t, response, 201)
+	if !spec.enableGuestUser {
+		// Disable guest access on public port
+		bt.rt = RestTester{noAdminParty: true}
+	}
 
-	// All this is duplicated code w/ CreateBlipTester() and needs to be consolidated
+	bt.rt.EnableNoConflictsMode = spec.noConflictsMode
+
 
 	// Create a test server and close it when the test is complete
 	srv := httptest.NewServer(publicHandler)
-	log.Printf("Start server on: %s", srv.URL)
-	defer srv.Close()
+	bt.server = srv
 
 	// Construct URL to connect to blipsync target endpoint
 	destUrl := fmt.Sprintf("%s/db/_blipsync", srv.URL)
 	u, err := url.Parse(destUrl)
 	if err != nil {
-		t.Errorf("Error parsing desturl: %v", err)
+		return bt, err
 	}
 	u.Scheme = "ws"
 
@@ -607,20 +575,23 @@ func CreateBlipTesterPublicPort(t *testing.T, noConflictsMode bool) (bt BlipTest
 	bt.blipContext.LogFrames = true
 	origin := "http://localhost" // TODO: what should be used here?
 
-
 	config, err := websocket.NewConfig(u.String(), origin)
 	if err != nil {
-		panic(fmt.Sprintf("Websocket NewConfig error: %v", err))
-	}
-	config.Header = http.Header{
-		"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))},
-	}
-	bt.sender, err = bt.blipContext.DialConfig(config)
-	if err != nil {
-		panic(fmt.Sprintf("Websocket DialConfig error: %v", err))
+		return bt, err
 	}
 
-	return bt
+	if len(spec.connectingUsername) > 0 {
+		config.Header = http.Header{
+			"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(spec.connectingUsername+":"+spec.connectingPassword))},
+		}
+	}
+
+	bt.sender, err = bt.blipContext.DialConfig(config)
+	if err != nil {
+		return bt, err
+	}
+
+	return bt, nil
 
 }
 
