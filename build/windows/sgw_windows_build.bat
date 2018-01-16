@@ -70,8 +70,8 @@ set GOPLAT=%GOOS%-%GOARCH%
 set PLATFORM=%OS%-%ARCH%
 
 set PKGTYPE=msi
-set SGW_PKG_NAME=couchbase-sync-gateway-%EDITION%_%VERSION%_%PARCH%.%PKGTYPE%
-set ACCEL_PKG_NAME=couchbase-sg-accel-%EDITION%_%VERSION%_%PARCH%.%PKGTYPE%
+set SGW_PKG_NAME=couchbase-sync-gateway-%EDITION%_%VERSION%_%PARCH%-unsigned.%PKGTYPE%
+set ACCEL_PKG_NAME=couchbase-sg-accel-%EDITION%_%VERSION%_%PARCH%-unsigned.%PKGTYPE%
 
 
 set GOROOT=c:\usr\local\go\%GO_RELEASE%\go
