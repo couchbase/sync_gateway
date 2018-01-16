@@ -600,15 +600,18 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) *BlipTester {
 		}
 		adminChannelsStr := fmt.Sprintf("%s", adminChannelsJson)
 
+		userDocBody := fmt.Sprintf(`{"name":"%s", "password":"%s", "admin_channels":%s}`,
+			spec.connectingUsername,
+			spec.connectingPassword,
+			adminChannelsStr,
+		)
+		log.Printf("UserDoc: %v", userDocBody)
+
 		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
 		response := bt.restTester.SendAdminRequest(
 			"POST",
 			"/db/_user/",
-			fmt.Sprintf(`{"name":"%s", "password":"%s", "admin_channels":%s}`,
-				spec.connectingUsername,
-				spec.connectingPassword,
-				adminChannelsStr,
-			),
+			userDocBody,
 		)
 		if response.Code != 201 {
 			panic(fmt.Sprintf("Expected 201 response.  Got: %v", response.Code))
