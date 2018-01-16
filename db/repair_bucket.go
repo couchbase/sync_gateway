@@ -6,8 +6,8 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
-	"time"
 	pkgerrors "github.com/pkg/errors"
+	"time"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -149,7 +149,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 		options["limit"] = r.ViewQueryPageSize
 
 		base.LogTo("CRUD", "RepairBucket() querying view with options: %+v", options)
-		vres, err := r.Bucket.View(DesignDocSyncHousekeeping, ViewImport, options)
+		vres, err := r.Bucket.View(DesignDocSyncHousekeeping(), ViewImport, options)
 		base.LogTo("CRUD", "RepairBucket() queried view and got %d results", len(vres.Rows))
 		if err != nil {
 			return results, err

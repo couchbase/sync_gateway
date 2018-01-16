@@ -17,7 +17,7 @@ func (h *handler) handleGetDesignDoc() error {
 	ddocID := h.PathVar("ddoc")
 	base.TEMP("GetDesignDoc %q", ddocID)
 	var result interface{}
-	if ddocID == db.DesignDocSyncGateway {
+	if ddocID == db.DesignDocSyncGateway() {
 		// we serve this content here so that CouchDB 1.2 has something to
 		// hash into the replication-id, to correspond to our filter.
 		filter := "ok"
@@ -64,7 +64,7 @@ func (h *handler) handleView() error {
 	ddocName := h.PathVar("ddoc")
 	viewName := h.PathVar("view")
 	if ddocName == "" {
-		ddocName = db.DesignDocSyncGateway
+		ddocName = db.DesignDocSyncGateway()
 	}
 	opts := db.Body{}
 

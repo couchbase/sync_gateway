@@ -16,9 +16,9 @@ import (
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbase/sync_gateway/channels"
-
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -50,9 +50,9 @@ func TestDesignDocs(t *testing.T) {
 	assertStatus(t, response, 200)
 	response = rt.SendAdminRequest("DELETE", "/db/_design/foo", "")
 	assertStatus(t, response, 200)
-	response = rt.SendAdminRequest("PUT", "/db/_design/sync_gateway", "{}")
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_design/%s", db.DesignDocSyncGateway()), "{}")
 	assertStatus(t, response, 403)
-	response = rt.SendAdminRequest("GET", "/db/_design/sync_gateway", "")
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_design/%s", db.DesignDocSyncGateway()), "")
 	assertStatus(t, response, 200)
 }
 
@@ -409,4 +409,59 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 	row := result.Rows[1]
 	value := row.Value.(float64)
 	assert.Equals(t, value, 99.0)
+}
+
+func TestPostInstallCleanup(t *testing.T) {
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+	mapFunction := `function (doc, meta) { emit(); }`
+	// Create design docs in obsolete format
+	err := bucket.PutDDoc(db.DesignDocSyncGatewayPrefix, sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"channels": sgbucket.ViewDef{Map: mapFunction},
+		},
+	})
+	assertNoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
+
+	err = bucket.PutDDoc(db.DesignDocSyncHousekeepingPrefix, sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"all_docs": sgbucket.ViewDef{Map: mapFunction},
+		},
+	})
+	assertNoError(t, err, "Unable to create design doc (DesignDocSyncHousekeepingPrefix)")
+
+	// Run post-upgrade in preview mode
+	var postUpgradeResponse PostUpgradeResponse
+	response := rt.SendAdminRequest("POST", "/_post_upgrade?preview=true", "")
+	assertStatus(t, response, 200)
+	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.Equals(t, postUpgradeResponse.Preview, true)
+	assert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 2)
+
+	// Run post-upgrade in non-preview mode
+	postUpgradeResponse = PostUpgradeResponse{}
+	response = rt.SendAdminRequest("POST", "/_post_upgrade", "")
+	assertStatus(t, response, 200)
+	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.Equals(t, postUpgradeResponse.Preview, false)
+	assert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 2)
+
+	// Run post-upgrade in preview mode again, expect no results for database
+	postUpgradeResponse = PostUpgradeResponse{}
+	response = rt.SendAdminRequest("POST", "/_post_upgrade?preview=true", "")
+	assertStatus(t, response, 200)
+	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.Equals(t, postUpgradeResponse.Preview, true)
+	assert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 0)
+
+	// Run post-upgrade in non-preview mode again, expect no results for database
+	postUpgradeResponse = PostUpgradeResponse{}
+	response = rt.SendAdminRequest("POST", "/_post_upgrade", "")
+	assertStatus(t, response, 200)
+	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.Equals(t, postUpgradeResponse.Preview, false)
+	assert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 0)
+
 }

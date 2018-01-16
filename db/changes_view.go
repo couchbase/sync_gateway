@@ -44,8 +44,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	// this means we may need multiple view calls to get a total of [limit] active entries.
 	for {
 		vres := channelsViewResult{}
-		err := dbc.Bucket.ViewCustom(DesignDocSyncGateway, ViewChannels, optMap, &vres)
-
+		err := dbc.Bucket.ViewCustom(DesignDocSyncGateway(), ViewChannels, optMap, &vres)
 		if err != nil {
 			base.Logf("Error from 'channels' view: %v", err)
 			return nil, err
