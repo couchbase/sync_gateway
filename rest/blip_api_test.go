@@ -304,7 +304,8 @@ func TestPublicPortAuthentication(t *testing.T) {
 		noAdminParty:                true,
 		connectingUsername:          "user2",
 		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"}, // test, no channels
+		connectingUserChannelGrants: []string{"*"}, // TODO: revert to *
+		restTester:                  btUser1.restTester,
 	})
 	defer btUser2.Close()
 
