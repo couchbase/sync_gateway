@@ -70,8 +70,8 @@ set GOPLAT=%GOOS%-%GOARCH%
 set PLATFORM=%OS%-%ARCH%
 
 set PKGTYPE=msi
-set SGW_PKG_NAME=couchbase-sync-gateway-%EDITION%_%VERSION%_%PARCH%.%PKGTYPE%
-set ACCEL_PKG_NAME=couchbase-sg-accel-%EDITION%_%VERSION%_%PARCH%.%PKGTYPE%
+set SGW_PKG_NAME=couchbase-sync-gateway-%EDITION%_%VERSION%_%PARCH%-unsigned.%PKGTYPE%
+set ACCEL_PKG_NAME=couchbase-sg-accel-%EDITION%_%VERSION%_%PARCH%-unsigned.%PKGTYPE%
 
 
 set GOROOT=c:\usr\local\go\%GO_RELEASE%\go
@@ -292,9 +292,8 @@ unix2dos  %SGW_INSTALL_DIR%\LICENSE.rtf
 echo  ======= start wix install  ==============================
 cd %BLD_DIR%\windows\wix_installer
 set WIX_INSTALLER=create-installer.bat
-set VERSION=%VERSION:-=.%
-echo "Staging to wix install dir:  .\%WIX_INSTALLER% %SGW_INSTALL_DIR% %VERSION% %EDITION% "%SGW_NAME%" %SGW_DIR%\service\sg-windows "
-call .\%WIX_INSTALLER% %SGW_INSTALL_DIR% %VERSION% %EDITION% "%SGW_NAME%" %SGW_DIR%\service\sg-windows || goto :error
+echo "Staging to wix install dir:  .\%WIX_INSTALLER% %SGW_INSTALL_DIR% %REL_VER% %EDITION% "%SGW_NAME%" %SGW_DIR%\service\sg-windows "
+call .\%WIX_INSTALLER% %SGW_INSTALL_DIR% %REL_VER% %EDITION% "%SGW_NAME%" %SGW_DIR%\service\sg-windows || goto :error
 
 if %ERRORLEVEL% NEQ 0 (
     echo "############################# Sync-Gateway Installer warning!"
@@ -310,7 +309,6 @@ GOTO package_sg_accel
     if "%EDITION%" == "community" GOTO skip_package_sg_accel
 
     set ACCEL_DIR=%TARGET_DIR%\godeps\src\github.com\couchbaselabs\sync-gateway-accel
-    #set ACCEL_STAGING=%BLD_DIR%\opt\couchbase-sg-accel
 
     cd %BLD_DIR%
 
@@ -336,9 +334,8 @@ GOTO package_sg_accel
     echo  ======= start wix install  ==============================
     cd %BLD_DIR%\windows\wix_installer
     set WIX_INSTALLER=create-installer.bat
-    set VERSION=%VERSION:-=.%
-    echo "Staging to wix install dir:  .\%WIX_INSTALLER% %SGW_INSTALL_DIR% %VERSION% %EDITION% "sync-gateway-accel" %SGW_DIR%\service\sg-windows "
-    call .\%WIX_INSTALLER% %SGWACCEL_INSTALL_DIR% %VERSION% %EDITION% "sync-gateway-accel" %SGW_DIR%\service\sg-windows || goto :error
+    echo "Staging to wix install dir:  .\%WIX_INSTALLER% %SGW_INSTALL_DIR% %REL_VER% %EDITION% "sync-gateway-accel" %SGW_DIR%\service\sg-windows "
+    call .\%WIX_INSTALLER% %SGWACCEL_INSTALL_DIR% %REL_VER% %EDITION% "sync-gateway-accel" %SGW_DIR%\service\sg-windows || goto :error
 
     if %ERRORLEVEL% NEQ 0 (
         echo "#############################  SG-ACCEL Installer warning!"
