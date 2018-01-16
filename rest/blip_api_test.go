@@ -296,15 +296,21 @@ func TestPublicPortAuthentication(t *testing.T) {
 	btUser1.SendRev(
 		"foo",
 		"1-abc",
-		[]byte(`{"key": "val", "channels": "[user1]"}`),
+		[]byte(`{"key": "val", "channels": "[foo]"}`),
 	)
 
-	changesChannel := btUser1.SubscribeToChanges(true)
-	for change := range changesChannel {
-		body, err := change.Body()
-		assertNoError(t, err, "Unexpected error")
-		log.Printf("Got change: %s", body)
-	}
+	// Assert that user1 received their expected change
+	changesChannelUser1 := btUser1.GetChanges()
+	assert.True(t, len(changesChannelUser1) == 1)
+	change := changesChannelUser1[0]
+	body, err := change.Body()
+	assertNoError(t, err, "Unexpected error")
+	bodyAsString := string(body)
+	log.Printf("Got change: %s", body)
+	assert.True(t, strings.Contains(bodyAsString, "foo"))
+	assert.True(t, strings.Contains(bodyAsString, "1-abc"))
+
+
 
 
 

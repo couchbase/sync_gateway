@@ -593,14 +593,21 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) *BlipTester {
 			adminChannels = append(adminChannels, spec.connectingUserChannelGrants...)
 		}
 
+		// serialize admin channels to json array
+		adminChannelsJson, err := json.Marshal(adminChannels)
+		if err != nil {
+			panic(fmt.Sprintf("Error marshalling adming channels: %v", err))
+		}
+		adminChannelsStr := fmt.Sprintf("%s", adminChannelsJson)
+
 		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
 		response := bt.restTester.SendAdminRequest(
 			"POST",
 			"/db/_user/",
-			fmt.Sprintf(`{"name":"%s", "password":"%s", "admin_channels":["%s"]}`,
+			fmt.Sprintf(`{"name":"%s", "password":"%s", "admin_channels":%s}`,
 				spec.connectingUsername,
 				spec.connectingPassword,
-				adminChannels,
+				adminChannelsStr,
 			),
 		)
 		if response.Code != 201 {
@@ -673,21 +680,41 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte) (sent bool, req
 
 }
 
-func (bt *BlipTester) SubscribeToChanges(continuous bool) (changes chan *blip.Message) {
+func (bt *BlipTester) GetChanges() (changes []*blip.Message) {
 
-	changes = make(chan *blip.Message)
+	collectedChanges := []*blip.Message{}
+	chanChanges := make(chan *blip.Message)
+	bt.SubscribeToChanges(false, chanChanges)
 
-	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	for change := range chanChanges {
 
-		body, err := request.Body()
+		body, err := change.Body()
 		if err != nil {
 			panic(fmt.Sprintf("Error getting request body: %v", err))
 		}
 
-		if string(body) != "null" {
-			changes <- request
+		if string(body) == "null" {
+			// the other side indicated that it's done sending changes
+			close(chanChanges)
+			break
 		}
+
+		collectedChanges = append(collectedChanges, change)
+
+	}
+
+	return collectedChanges
+
+}
+
+
+func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.Message) () {
+
+
+	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+
+		changes <- request
 
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
@@ -710,7 +737,6 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool) (changes chan *blip.Me
 		subChangesRequest.Properties["continuous"] = "true"
 	default:
 		subChangesRequest.Properties["continuous"] = "false"
-
 	}
 	sent := bt.sender.Send(subChangesRequest)
 	if !sent {
@@ -721,7 +747,6 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool) (changes chan *blip.Me
 		panic(fmt.Sprintf("subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber().  %v != %v", subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber()))
 	}
 
-	return changes
 
 }
 
