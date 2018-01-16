@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"encoding/base64"
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -19,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
+	"golang.org/x/net/websocket"
 	"net/url"
 )
 
@@ -556,6 +558,7 @@ func CreateBlipTester(t *testing.T, noConflictsMode bool) (bt BlipTester) {
 }
 
 
+
 func CreateBlipTesterPublicPort(t *testing.T, noConflictsMode bool) (bt BlipTester) {
 
 	EnableBlipSyncLogs()
@@ -567,17 +570,24 @@ func CreateBlipTesterPublicPort(t *testing.T, noConflictsMode bool) (bt BlipTest
 	var publicHandler http.Handler
 	switch noConflictsMode {
 	case true:
-		publicHandler = bt.rt.TestPublicHandler()  // TODO: currently ignores NoConflictsMode
+		publicHandler = bt.rt.TestPublicHandler() // TODO: currently ignores NoConflictsMode
 	default:
 		publicHandler = bt.rt.TestPublicHandler()
 
 	}
 
+	// Temporary code to create a user, just to see if it's possible to do an authenticated connection
+	// TODO: pass this in as a param, at least
+	username := "user1"
+	password := "1234"
+	response := bt.rt.SendAdminRequest("POST", "/db/_user/", fmt.Sprintf(`{"name":"%s", "password":"%s"}`, username, password))
+	assertStatus(t, response, 201)
 
-	// All this is duplicated code and needs to be consolidated
+	// All this is duplicated code w/ CreateBlipTester() and needs to be consolidated
 
 	// Create a test server and close it when the test is complete
 	srv := httptest.NewServer(publicHandler)
+	log.Printf("Start server on: %s", srv.URL)
 	defer srv.Close()
 
 	// Construct URL to connect to blipsync target endpoint
@@ -596,15 +606,23 @@ func CreateBlipTesterPublicPort(t *testing.T, noConflictsMode bool) (bt BlipTest
 	bt.blipContext.LogMessages = true
 	bt.blipContext.LogFrames = true
 	origin := "http://localhost" // TODO: what should be used here?
-	bt.sender, err = bt.blipContext.Dial(u.String(), origin)
+
+
+	config, err := websocket.NewConfig(u.String(), origin)
 	if err != nil {
-		panic(fmt.Sprintf("Websocket connection error: %v", err))
+		panic(fmt.Sprintf("Websocket NewConfig error: %v", err))
+	}
+	config.Header = http.Header{
+		"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))},
+	}
+	bt.sender, err = bt.blipContext.DialConfig(config)
+	if err != nil {
+		panic(fmt.Sprintf("Websocket DialConfig error: %v", err))
 	}
 
 	return bt
 
 }
-
 
 func EnableBlipSyncLogs() {
 
