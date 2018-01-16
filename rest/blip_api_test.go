@@ -329,9 +329,6 @@ func TestReloadUser(t *testing.T) {
 	}
 	defer bt.Close()
 
-	//bt := CreateBlipTesterPublicPort(t, false)
-	//defer bt.Close()
-
 	var changeList [][]interface{}
 	changesRequest := blip.NewRequest()
 	changesRequest.SetProfile("changes")                             // TODO: make a constant for "changes" and use it everywhere
