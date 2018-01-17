@@ -360,22 +360,67 @@ func TestNoConflictsModeReplication(t *testing.T) {
 }
 
 // Reproduce issue where ReloadUser was not being called, and so it was
-// using a stale channel access grant for the user
-// See: https://github.com/couchbase/sync_gateway/issues/2717
+// using a stale channel access grant for the user.
+// Reproduces https://github.com/couchbase/sync_gateway/issues/2717
 func TestReloadUser(t *testing.T) {
-
-
-}
-
-// Grant a user access to a channel via the Sync Function and a doc change, and make sure
-// it shows up in the user's changes feed
-func TestAccessGrantViaSyncFunction(t *testing.T) {
 
 	base.EnableLogKey("*")
 	base.EnableLogKey("Access")
 	base.EnableLogKey("Access+")
 	base.EnableLogKey("Changes")
 	base.EnableLogKey("Changes+")
+
+	//
+	//syncFn := `
+	//	function(doc) {
+	//		if (doc._id == "access1") {
+	//			// if its an access grant doc, grant access
+	//			access(doc.accessUser, doc.accessChannel);
+	//		} else {
+     //           // otherwise if its a normal access doc, require access then add to channels
+	//			requireAccess("PBS");
+	//			channel(doc.channels);
+	//		}
+	//	}
+	//	`
+
+	// Setup
+	rt := RestTester{
+		SyncFn:       `function(doc) { if (doc._id == "access1") { access(doc.accessUser, doc.accessChannel); } else { requireAccess("PBS"); channel(doc.channels); } }`,
+		noAdminParty: true,
+	}
+	bt := NewBlipTesterFromSpec(BlipTesterSpec{
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         &rt,
+	})
+	defer bt.Close()
+
+	// Put document that triggers access grant for user to channel PBS
+	response := rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	// Add a doc in the PBS channel
+	_, _, addRevResponse := bt.SendRev(
+		"foo",
+		"1-abc",
+		[]byte(`{"key": "val", "channels": ["PBS"]}`),
+	)
+
+	// Make assertions on response to make sure the change was accepted
+	addRevResponseBody, err := addRevResponse.Body()
+	assertNoError(t, err, "Unexpected error")
+	errorCode, hasErrorCode := addRevResponse.Properties["Error-Code"]
+	assert.False(t, hasErrorCode)
+	if hasErrorCode {
+		t.Fatalf("Unexpected error sending revision.  Error code: %v.  Response body: %s", errorCode, addRevResponseBody)
+	}
+
+}
+
+// Grant a user access to a channel via the Sync Function and a doc change, and make sure
+// it shows up in the user's changes feed
+func TestAccessGrantViaSyncFunction(t *testing.T) {
 
 	// Setup
 	rt := RestTester{
