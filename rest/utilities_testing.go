@@ -605,7 +605,7 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) *BlipTester {
 			spec.connectingPassword,
 			adminChannelsStr,
 		)
-		log.Printf("UserDoc: %v", userDocBody)
+		log.Printf("Creating user: %v", userDocBody)
 
 		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
 		response := bt.restTester.SendAdminRequest(
@@ -683,26 +683,37 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte) (sent bool, req
 
 }
 
-func (bt *BlipTester) GetChanges() (changes []*blip.Message) {
+// Returns changes in form of [[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
+func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
-	collectedChanges := []*blip.Message{}
+	collectedChanges := [][]interface{}{}
 	chanChanges := make(chan *blip.Message)
 	bt.SubscribeToChanges(false, chanChanges)
 
-	for change := range chanChanges {
+	for changeMsg := range chanChanges {
 
-		body, err := change.Body()
+		body, err := changeMsg.Body()
 		if err != nil {
 			panic(fmt.Sprintf("Error getting request body: %v", err))
 		}
 
 		if string(body) == "null" {
-			// the other side indicated that it's done sending changes
+			// the other side indicated that it's done sending changes.
+			// this only works (I think) because continuous=false.
 			close(chanChanges)
 			break
 		}
 
-		collectedChanges = append(collectedChanges, change)
+		// unmarshal into json array
+		changesBatch := [][]interface{}{}
+
+		if err := json.Unmarshal(body, &changesBatch); err != nil {
+			panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
+		}
+
+		for _, change := range changesBatch {
+			collectedChanges = append(collectedChanges, change)
+		}
 
 	}
 
@@ -712,7 +723,6 @@ func (bt *BlipTester) GetChanges() (changes []*blip.Message) {
 
 
 func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.Message) () {
-
 
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
@@ -741,6 +751,8 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	default:
 		subChangesRequest.Properties["continuous"] = "false"
 	}
+	subChangesRequest.Properties["batch"] = "100"
+
 	sent := bt.sender.Send(subChangesRequest)
 	if !sent {
 		panic(fmt.Sprintf("Unable to subscribe to changes."))
