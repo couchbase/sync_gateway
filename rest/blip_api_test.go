@@ -11,6 +11,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbaselabs/go.assert"
 	"sync/atomic"
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -362,5 +363,91 @@ func TestNoConflictsModeReplication(t *testing.T) {
 // using a stale channel access grant for the user
 // See: https://github.com/couchbase/sync_gateway/issues/2717
 func TestReloadUser(t *testing.T) {
+
+
+}
+
+// Grant a user access to a channel via the Sync Function and a doc change, and make sure
+// it shows up in the user's changes feed
+func TestAccessGrantViaSyncFunction(t *testing.T) {
+
+	base.EnableLogKey("*")
+	base.EnableLogKey("Access")
+	base.EnableLogKey("Access+")
+	base.EnableLogKey("Changes")
+	base.EnableLogKey("Changes+")
+
+	// Setup
+	rt := RestTester{
+		SyncFn:       `function(doc) {channel(doc.channels); access(doc.accessUser, doc.accessChannel);}`,
+		noAdminParty: true,
+	}
+	bt := NewBlipTesterFromSpec(BlipTesterSpec{
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         &rt,
+	})
+	defer bt.Close()
+
+	// Add a doc in the PBS channel
+	bt.SendRev(
+		"foo",
+		"1-abc",
+		[]byte(`{"key": "val", "channels": ["PBS"]}`),
+	)
+
+	// Put document that triggers access grant for user to channel PBS
+	response := rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	// Add another doc in the PBS channel
+	bt.SendRev(
+		"foo2",
+		"1-abc",
+		[]byte(`{"key": "val", "channels": ["PBS"]}`),
+	)
+
+	// Make sure we can see it by getting changes
+	changes := bt.GetChanges()
+	log.Printf("changes: %+v", changes)
+	assert.True(t, len(changes) == 2)
+
+
+
+}
+
+// Grant a user access to a channel via the REST Admin API, and make sure
+// it shows up in the user's changes feed
+func TestAccessGrantViaAdminApi(t *testing.T) {
+
+	// Create blip tester
+	bt := NewBlipTesterFromSpec(BlipTesterSpec{
+		noAdminParty:       true,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+	})
+	defer bt.Close()
+
+	// Add a doc in the PBS channel
+	bt.SendRev(
+		"foo",
+		"1-abc",
+		[]byte(`{"key": "val", "channels": ["PBS"]}`),
+	)
+
+	// Update the user doc to grant access to PBS
+	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", `{"admin_channels":["user1", "PBS"]}`)
+	assertStatus(t, response, 200)
+
+	// Add another doc in the PBS channel
+	bt.SendRev(
+		"foo2",
+		"1-abc",
+		[]byte(`{"key": "val", "channels": ["PBS"]}`),
+	)
+
+	// Make sure we can see both docs in the changes
+	changes := bt.GetChanges()
+	assert.True(t, len(changes) == 2)
 
 }

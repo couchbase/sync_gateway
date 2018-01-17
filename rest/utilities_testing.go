@@ -685,6 +685,8 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte) (sent bool, req
 }
 
 // Returns changes in form of [[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
+// WARN: calling this multiple times from a test results in multiple concurrent outstanding subChanges, and
+// might result in duplicate results.  More investigation needed.
 func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
 	collectedChanges := [][]interface{}{}
@@ -722,8 +724,7 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
 }
 
-
-func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.Message) () {
+func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.Message) {
 
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
@@ -762,7 +763,6 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	if subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber() {
 		panic(fmt.Sprintf("subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber().  %v != %v", subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber()))
 	}
-
 
 }
 
