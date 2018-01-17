@@ -10,6 +10,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbaselabs/go.assert"
+	"sync/atomic"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -149,6 +150,7 @@ func TestContinousChangesSubscription(t *testing.T) {
 
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
+	var numbatchesReceived int32
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		log.Printf("got changes message: %+v", request)
@@ -157,6 +159,8 @@ func TestContinousChangesSubscription(t *testing.T) {
 		log.Printf("changes body: %v, err: %v", string(body), err)
 
 		if string(body) != "null" {
+
+			atomic.AddInt32(&numbatchesReceived, 1)
 
 			// Expected changes body: [[1,"foo","1-abc"]]
 			changeListReceived := [][]interface{}{}
@@ -208,6 +212,7 @@ func TestContinousChangesSubscription(t *testing.T) {
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
+	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
@@ -215,27 +220,25 @@ func TestContinousChangesSubscription(t *testing.T) {
 	assert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 
 	for i := 1; i < 1500; i++ {
-
-		// Add a change: Send an unsolicited doc revision in a rev request
+		//// Add a change: Send an unsolicited doc revision in a rev request
 		receviedChangesWg.Add(1)
-		revRequest := blip.NewRequest()
-		revRequest.SetCompressed(true)
-		revRequest.SetProfile("rev")
-		revRequest.Properties["id"] = fmt.Sprintf("foo-%d", i)
-		revRequest.Properties["rev"] = "1-abc"
-		revRequest.Properties["deleted"] = "false"
-		revRequest.SetBody([]byte(`{"key": "val"}`))
-		sent = bt.sender.Send(revRequest)
-		assert.True(t, sent)
-		revResponse := revRequest.Response()
-		assert.Equals(t, revResponse.SerialNumber(), revRequest.SerialNumber())
-		body, err := revResponse.Body()
+		_, _, revResponse := bt.SendRev(
+			fmt.Sprintf("foo-%d", i),
+			"	1-abc",
+			[]byte(`{"key": "val"}`),
+		)
+
+		_, err := revResponse.Body()
 		assertNoError(t, err, "Error unmarshalling response body")
-		log.Printf("rev response body: %s", body)
 
 	}
 
+	// Wait until all expected changes are received by change handler
 	receviedChangesWg.Wait()
+
+	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
+	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
+	assert.True(t, numBatchesReceivedSnapshot >= 2)
 
 }
 
