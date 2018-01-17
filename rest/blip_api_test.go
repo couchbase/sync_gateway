@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/couchbase/go-blip"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 	"sync/atomic"
-	"github.com/couchbase/sync_gateway/base"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -370,23 +370,22 @@ func TestReloadUser(t *testing.T) {
 	base.EnableLogKey("Changes")
 	base.EnableLogKey("Changes+")
 
-	//
-	//syncFn := `
-	//	function(doc) {
-	//		if (doc._id == "access1") {
-	//			// if its an access grant doc, grant access
-	//			access(doc.accessUser, doc.accessChannel);
-	//		} else {
-     //           // otherwise if its a normal access doc, require access then add to channels
-	//			requireAccess("PBS");
-	//			channel(doc.channels);
-	//		}
-	//	}
-	//	`
+	syncFn := `
+		function(doc) {
+			if (doc._id == "access1") {
+				// if its an access grant doc, grant access
+				access(doc.accessUser, doc.accessChannel);
+			} else {
+                // otherwise if its a normal access doc, require access then add to channels
+				requireAccess("PBS");
+				channel(doc.channels);
+			}
+		}
+    `
 
 	// Setup
 	rt := RestTester{
-		SyncFn:       `function(doc) { if (doc._id == "access1") { access(doc.accessUser, doc.accessChannel); } else { requireAccess("PBS"); channel(doc.channels); } }`,
+		SyncFn:       syncFn,
 		noAdminParty: true,
 	}
 	bt := NewBlipTesterFromSpec(BlipTesterSpec{
@@ -456,8 +455,6 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	changes := bt.GetChanges()
 	log.Printf("changes: %+v", changes)
 	assert.True(t, len(changes) == 2)
-
-
 
 }
 
