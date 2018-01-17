@@ -285,10 +285,9 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 	// Create bliptester that is connected as user1, with access to the user1 channel
 	btUser1 := NewBlipTesterFromSpec(BlipTesterSpec{
-		noAdminParty:                true,
-		connectingUsername:          "user1",
-		connectingPassword:          "1234",
-		// connectingUserChannelGrants: []string{"user1"}, // test, no channels
+		noAdminParty:       true,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
 	})
 	defer btUser1.Close()
 
@@ -304,8 +303,8 @@ func TestPublicPortAuthentication(t *testing.T) {
 		noAdminParty:                true,
 		connectingUsername:          "user2",
 		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"}, // TODO: revert to *
-		restTester:                  btUser1.restTester,
+		connectingUserChannelGrants: []string{"*"},      // user2 has access to all channels
+		restTester:                  btUser1.restTester, // re-use rest tester, otherwise it will create a new underlying bucket in walrus case
 	})
 	defer btUser2.Close()
 
@@ -320,25 +319,18 @@ func TestPublicPortAuthentication(t *testing.T) {
 	changesChannelUser1 := btUser1.GetChanges()
 	assert.True(t, len(changesChannelUser1) == 1)
 	change := changesChannelUser1[0]
-	body, err := change.Body()
-	assertNoError(t, err, "Unexpected error")
-	bodyAsString := string(body)
-	log.Printf("Got change: %s", body)
-	assert.True(t, strings.Contains(bodyAsString, "foo"))
-	assert.True(t, strings.Contains(bodyAsString, "1-abc"))
+	assert.True(t, strings.Contains(change[1].(string), "foo"))
+	assert.True(t, strings.Contains(change[2].(string), "1-abc"))
 
 	// Assert that user2 received user1's change as well as it's own change
 	changesChannelUser2 := btUser2.GetChanges()
 	assert.True(t, len(changesChannelUser2) == 2)
+	change = changesChannelUser2[0]
+	assert.True(t, strings.Contains(change[1].(string), "foo"))
+	assert.True(t, strings.Contains(change[2].(string), "1-abc"))
 	change = changesChannelUser2[1]
-	body, err = change.Body()
-	assertNoError(t, err, "Unexpected error")
-	bodyAsString = string(body)
-	log.Printf("Got change: %s", body)
-	assert.True(t, strings.Contains(bodyAsString, "foo2"))
-	assert.True(t, strings.Contains(bodyAsString, "1-abcd"))
-
-
+	assert.True(t, strings.Contains(change[1].(string), "foo2"))
+	assert.True(t, strings.Contains(change[2].(string), "1-abcd"))
 
 }
 
