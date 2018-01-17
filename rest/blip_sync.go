@@ -310,7 +310,8 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		sender.Send(outrq)
 	}
 	if len(changeArray) > 0 {
-		base.LogTo("Sync", "Sent %d changes to client, from seq %v ... %s", len(changeArray), changeArray[0][0], bh.effectiveUsername)
+		sequence := changeArray[0][0].(db.SequenceID)
+		base.LogTo("Sync", "Sent %d changes to client, from seq %s ... %s", len(changeArray), sequence.String(), bh.effectiveUsername)
 	} else {
 		base.LogTo("Sync", "Sent all changes to client. ... %s", bh.effectiveUsername)
 	}
