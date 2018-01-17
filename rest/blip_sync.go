@@ -141,9 +141,9 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
 			}
-			base.LogTo("Sync", "%s    --> %d %s ... %s", rq, status, msg, ctx.effectiveUsername)
+			base.LogTo("Sync", "%s %q   --> %d %s ... %s", rq, profile, status, msg, ctx.effectiveUsername)
 		} else {
-			base.LogTo("Sync+", "%s    --> OK ... %s", rq, ctx.effectiveUsername)
+			base.LogTo("Sync+", "%s %q   --> OK ... %s", rq, profile, ctx.effectiveUsername)
 		}
 	}
 }

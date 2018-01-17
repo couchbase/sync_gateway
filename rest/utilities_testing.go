@@ -679,6 +679,7 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte) (sent bool, req
 	if revResponse.SerialNumber() != revRequest.SerialNumber() {
 		panic(fmt.Sprintf("revResponse.SerialNumber() != revRequest.SerialNumber().  %v != %v", revResponse.SerialNumber(), revRequest.SerialNumber()))
 	}
+
 	return sent, revRequest, revResponse
 
 }
