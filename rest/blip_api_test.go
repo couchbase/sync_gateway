@@ -48,18 +48,12 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.True(t, len(changeRow) == 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
 
 	// Send the doc revision in a rev request
-	revRequest := blip.NewRequest()
-	revRequest.SetCompressed(true)
-	revRequest.SetProfile("rev")
-	revRequest.Properties["id"] = "foo"
-	revRequest.Properties["rev"] = "1-abc"
-	revRequest.Properties["deleted"] = "false"
-	revRequest.SetBody([]byte(`{"key": "val"}`))
-	sent = bt.sender.Send(revRequest)
-	assert.True(t, sent)
-	revResponse := revRequest.Response()
-	assert.Equals(t, revResponse.SerialNumber(), revRequest.SerialNumber())
-	body, err = revResponse.Body()
+	_, _, revResponse := bt.SendRev(
+		"foo",
+		"1-abc",
+		[]byte(`{"key": "val"}`),
+	)
+	_, err = revResponse.Body()
 	assertNoError(t, err, "Error unmarshalling response body")
 
 	// Call changes with a hypothetical new revision, assert that it returns last pushed revision
@@ -337,7 +331,13 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 }
 
+// Test adding / retrieving attachments
+func TestAttachments(t *testing.T) {
+
+}
+
 // Make sure it's not possible to have two outstanding subChanges w/ continuous=true.
+// Expected behavior is that the first continous change subscription should get discarded in favor of 2nd.
 func TestConcurrentChangesSubscriptions(t *testing.T) {
 
 }
@@ -358,11 +358,9 @@ func TestNoConflictsModeReplication(t *testing.T) {
 
 }
 
-// Test adding / retrieving attachments
-func TestAttachments(t *testing.T) {
-
-}
-
+// Reproduce issue where ReloadUser was not being called, and so it was
+// using a stale channel access grant for the user
+// See: https://github.com/couchbase/sync_gateway/issues/2717
 func TestReloadUser(t *testing.T) {
 
 }
