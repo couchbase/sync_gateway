@@ -217,7 +217,7 @@ func TestContinousChangesSubscription(t *testing.T) {
 	subChangesResponse := subChangesRequest.Response()
 	assert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 
-	for i := 1; i < 5; i++ {
+	for i := 1; i < 1500; i++ {
 
 		// Add a change: Send an unsolicited doc revision in a rev request
 		receviedChangesWg.Add(1)
