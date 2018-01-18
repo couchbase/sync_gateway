@@ -11,6 +11,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbaselabs/go.assert"
 	"sync/atomic"
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -316,20 +317,25 @@ func TestPublicPortAuthentication(t *testing.T) {
 	changesChannelUser1 := btUser1.GetChanges()
 	assert.True(t, len(changesChannelUser1) == 1)
 	change := changesChannelUser1[0]
-	assert.True(t, strings.Contains(change[1].(string), "foo"))
-	assert.True(t, strings.Contains(change[2].(string), "1-abc"))
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
 
 	// Assert that user2 received user1's change as well as it's own change
 	changesChannelUser2 := btUser2.GetChanges()
 	assert.True(t, len(changesChannelUser2) == 2)
 	change = changesChannelUser2[0]
-	assert.True(t, strings.Contains(change[1].(string), "foo"))
-	assert.True(t, strings.Contains(change[2].(string), "1-abc"))
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
+
 	change = changesChannelUser2[1]
-	assert.True(t, strings.Contains(change[1].(string), "foo2"))
-	assert.True(t, strings.Contains(change[2].(string), "1-abcd"))
+	AssertChangeEquals(t, change, ExpectedChange{docId: "foo2", revId: "1-abcd", sequence: "*", deleted: base.BoolPtr(false)})
 
 }
+
+func AssertChangeEquals(t *testing.T, change []interface{}, expectedChange ExpectedChange) {
+	if err := expectedChange.Equals(change); err != nil {
+		t.Errorf("Change %+v does not equal expected change: %+v.  Error: %v", change, expectedChange, err)
+	}
+}
+
 
 // Test adding / retrieving attachments
 func TestAttachments(t *testing.T) {

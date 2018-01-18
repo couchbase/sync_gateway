@@ -722,8 +722,7 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
 }
 
-
-func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.Message) () {
+func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.Message) {
 
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
