@@ -24,7 +24,6 @@ import (
 // This connection remains open until the client closes it, and can receive any number of requests.
 type blipSyncContext struct {
 	blipContext        *blip.Context
-	// sender             *blip.Sender
 	dbc                *db.DatabaseContext
 	user               auth.User
 	effectiveUsername  string
@@ -128,10 +127,6 @@ func (h *handler) handleBLIPSync() error {
 func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler, *blip.Message) error) {
 
 	ctx.blipContext.HandlerForProfile[profile] = func(rq *blip.Message) {
-
-		// ctx.sender = rq.Sender  // TODO: why isn't sender set for lifetime?  is this lazy loading?
-		// TODO: will requestsender change in scope of replication?
-		// TODO:
 
 		base.LogTo("Sync", "%s %q ... %s", rq, profile, ctx.effectiveUsername)
 
@@ -241,12 +236,12 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 	} else if filter != "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
-	go bh.sendChanges(since, rq.Sender)  // TODO: does this ever end?
+	go bh.sendChanges(rq.Sender, since)  // TODO: does this ever end?
 	return nil
 }
 
 // Sends all changes since the given sequence
-func (bh *blipHandler) sendChanges(since db.SequenceID, sender *blip.Sender) {
+func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warn("*** PANIC sending changes: %v\n%s", panicked, debug.Stack())
@@ -272,7 +267,7 @@ func (bh *blipHandler) sendChanges(since db.SequenceID, sender *blip.Sender) {
 	pendingChanges := make([][]interface{}, 0, bh.batchSize)
 	sendPendingChangesAt := func(minChanges int) {
 		if len(pendingChanges) >= minChanges {
-			bh.sendBatchOfChanges(pendingChanges, sender)
+			bh.sendBatchOfChanges(sender, pendingChanges)
 			pendingChanges = make([][]interface{}, 0, bh.batchSize)
 		}
 	}
@@ -295,21 +290,21 @@ func (bh *blipHandler) sendChanges(since db.SequenceID, sender *blip.Sender) {
 			sendPendingChangesAt(1)
 			if !caughtUp {
 				caughtUp = true
-				bh.sendBatchOfChanges(nil, sender) // Signal to client that it's caught up
+				bh.sendBatchOfChanges(sender,nil) // Signal to client that it's caught up
 			}
 		}
 		return nil
 	})
 }
 
-func (bh *blipHandler) sendBatchOfChanges(changeArray [][]interface{}, sender *blip.Sender) {
+func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}) {
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
 	outrq.SetJSONBody(changeArray)
 	if len(changeArray) > 0 {
 		// Spawn a goroutine to await the client's response:
 		sender.Send(outrq)
-		go bh.handleChangesResponse(outrq.Response(), changeArray, sender)
+		go bh.handleChangesResponse(sender, outrq.Response(), changeArray)
 	} else {
 		outrq.SetNoReply(true)
 		sender.Send(outrq)
@@ -322,7 +317,7 @@ func (bh *blipHandler) sendBatchOfChanges(changeArray [][]interface{}, sender *b
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray [][]interface{}, sender *blip.Sender) {
+func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warn("*** PANIC handling 'changes' response: %v\n%s", panicked, debug.Stack())
@@ -364,7 +359,7 @@ func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray
 					return
 				}
 			}
-			bh.sendRevision(seq, docID, revID, knownRevs, maxHistory, sender)
+			bh.sendRevision(sender, seq, docID, revID, knownRevs, maxHistory)
 		}
 	}
 }
@@ -453,7 +448,7 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 //////// DOCUMENTS:
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int, sender *blip.Sender) {
+func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
 	base.LogTo("Sync+", "Sending rev %q %s based on %d known ... %s", docID, revID, len(knownRevs), bh.effectiveUsername)
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
