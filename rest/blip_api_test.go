@@ -28,7 +28,8 @@ import (
 // Replication Spec: https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#proposechanges
 func TestBlipPushRevisionInspectChanges(t *testing.T) {
 
-	bt := NewBlipTester()
+	bt, err := NewBlipTester()
+	assertNoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
 	// Verify Sync Gateway will accept the doc revision that is about to be sent
@@ -137,7 +138,8 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 // Wait until we get the expected updates
 func TestContinousChangesSubscription(t *testing.T) {
 
-	bt := NewBlipTester()
+	bt, err := NewBlipTester()
+	assertNoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
@@ -245,9 +247,10 @@ func TestContinousChangesSubscription(t *testing.T) {
 // 4. Make sure that the server responds to accept the changes (empty array)
 func TestProposedChangesNoConflictsMode(t *testing.T) {
 
-	bt := NewBlipTesterFromSpec(BlipTesterSpec{
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		noConflictsMode: true,
 	})
+	assertNoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
 	proposeChangesRequest := blip.NewRequest()
@@ -282,11 +285,12 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 func TestPublicPortAuthentication(t *testing.T) {
 
 	// Create bliptester that is connected as user1, with access to the user1 channel
-	btUser1 := NewBlipTesterFromSpec(BlipTesterSpec{
+	btUser1, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
+	assertNoError(t, err, "Error creating BlipTester")
 	defer btUser1.Close()
 
 	// Send the user1 doc
@@ -297,13 +301,14 @@ func TestPublicPortAuthentication(t *testing.T) {
 	)
 
 	// Create bliptester that is connected as user2, with access to the * channel
-	btUser2 := NewBlipTesterFromSpec(BlipTesterSpec{
+	btUser2, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		noAdminParty:                true,
 		connectingUsername:          "user2",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"*"},      // user2 has access to all channels
 		restTester:                  btUser1.restTester, // re-use rest tester, otherwise it will create a new underlying bucket in walrus case
 	})
+	assertNoError(t, err, "Error creating BlipTester")
 	defer btUser2.Close()
 
 	// Send the user2 doc, which is in a "random" channel, but it should be accessible due to * channel access

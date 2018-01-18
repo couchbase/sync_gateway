@@ -557,13 +557,13 @@ func (bt BlipTester) Close() {
 }
 
 // Create a BlipTester using the default spec
-func NewBlipTester() *BlipTester {
+func NewBlipTester() (*BlipTester, error) {
 	defaultSpec := BlipTesterSpec{}
 	return NewBlipTesterFromSpec(defaultSpec)
 }
 
 // Create a BlipTester using the given spec
-func NewBlipTesterFromSpec(spec BlipTesterSpec) *BlipTester {
+func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
 	EnableBlipSyncLogs()
 
@@ -596,7 +596,7 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) *BlipTester {
 		// serialize admin channels to json array
 		adminChannelsJson, err := json.Marshal(adminChannels)
 		if err != nil {
-			panic(fmt.Sprintf("Error marshalling adming channels: %v", err))
+			return nil, err
 		}
 		adminChannelsStr := fmt.Sprintf("%s", adminChannelsJson)
 
@@ -614,7 +614,7 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) *BlipTester {
 			userDocBody,
 		)
 		if response.Code != 201 {
-			panic(fmt.Sprintf("Expected 201 response.  Got: %v", response.Code))
+			return nil, fmt.Errorf("Expected 201 response.  Got: %v", response.Code)
 		}
 	}
 
@@ -629,7 +629,7 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) *BlipTester {
 	destUrl := fmt.Sprintf("%s/db/_blipsync", srv.URL)
 	u, err := url.Parse(destUrl)
 	if err != nil {
-		panic(fmt.Sprintf("Error parsing url: %v", err))
+		return nil, err
 	}
 	u.Scheme = "ws"
 
@@ -644,7 +644,7 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) *BlipTester {
 
 	config, err := websocket.NewConfig(u.String(), origin)
 	if err != nil {
-		panic(fmt.Sprintf("Error creating websocket config: %v", err))
+		return nil, err
 	}
 
 	if len(spec.connectingUsername) > 0 {
@@ -655,10 +655,10 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) *BlipTester {
 
 	bt.sender, err = bt.blipContext.DialConfig(config)
 	if err != nil {
-		panic(fmt.Sprintf("Error dialing websocket: %v", err))
+		return nil, err
 	}
 
-	return bt
+	return bt, nil
 
 }
 
