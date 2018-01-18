@@ -752,7 +752,6 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	default:
 		subChangesRequest.Properties["continuous"] = "false"
 	}
-	subChangesRequest.Properties["batch"] = "100"
 
 	sent := bt.sender.Send(subChangesRequest)
 	if !sent {
@@ -763,7 +762,49 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 		panic(fmt.Sprintf("subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber().  %v != %v", subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber()))
 	}
 
+}
 
+// Helper for comparing BLIP changes received with expected BLIP changes
+type ExpectedChange struct {
+	docId    string // DocId or "*" for any doc id
+	revId    string // RevId or "*" for any rev id
+	sequence string // Sequence or "*" for any sequence
+	deleted  *bool  // Deleted status or nil for any deleted status
+}
+
+func (e ExpectedChange) Equals(change []interface{}) error {
+
+	// TODO: this is commented because it's giving an error: panic: interface conversion: interface {} is float64, not string [recovered].
+	// TODO: I think this should be addressed by adding a BlipChange struct stronger typing than a slice of empty interfaces.  TBA.
+	// changeSequence := change[0].(string)
+
+	var changeDeleted *bool
+
+	changeDocId := change[1].(string)
+	changeRevId := change[2].(string)
+	if len(change) > 3 {
+		changeDeletedVal := change[3].(bool)
+		changeDeleted = &changeDeletedVal
+	}
+
+	if e.docId != "*" && changeDocId != e.docId {
+		return fmt.Errorf("changeDocId (%s) != expectedChangeDocId (%s)", changeDocId, e.docId)
+	}
+
+	if e.revId != "*" && changeRevId != e.revId {
+		return fmt.Errorf("changeRevId (%s) != expectedChangeRevId (%s)", changeRevId, e.revId)
+	}
+
+	// TODO: commented due to reasons given above
+	//if e.sequence != "*" && changeSequence != e.sequence {
+	//	return fmt.Errorf("changeSequence (%s) != expectedChangeSequence (%s)", changeSequence, e.sequence)
+	//}
+
+	if changeDeleted != nil && e.deleted != nil && *changeDeleted != *e.deleted {
+		return fmt.Errorf("changeDeleted (%v) != expectedChangeDeleted (%v)", *changeDeleted, *e.deleted)
+	}
+
+	return nil
 }
 
 // SubscribeToChanges
