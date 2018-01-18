@@ -24,7 +24,7 @@ import (
 // This connection remains open until the client closes it, and can receive any number of requests.
 type blipSyncContext struct {
 	blipContext        *blip.Context
-	sender             *blip.Sender
+	// sender             *blip.Sender
 	dbc                *db.DatabaseContext
 	user               auth.User
 	effectiveUsername  string
@@ -121,11 +121,18 @@ func (h *handler) handleBLIPSync() error {
 	return nil
 }
 
+
+
 // Registers a BLIP handler including the outer-level work of logging & error handling.
 // Includes the outer handler as a nested function.
 func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler, *blip.Message) error) {
+
 	ctx.blipContext.HandlerForProfile[profile] = func(rq *blip.Message) {
-		ctx.sender = rq.Sender
+
+		// ctx.sender = rq.Sender  // TODO: why isn't sender set for lifetime?  is this lazy loading?
+		// TODO: will requestsender change in scope of replication?
+		// TODO:
+
 		base.LogTo("Sync", "%s %q ... %s", rq, profile, ctx.effectiveUsername)
 
 		db, _ := db.GetDatabase(ctx.dbc, ctx.user)
@@ -234,12 +241,12 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 	} else if filter != "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
-	go bh.sendChanges(since)
+	go bh.sendChanges(since, rq.Sender)  // TODO: does this ever end?
 	return nil
 }
 
 // Sends all changes since the given sequence
-func (bh *blipHandler) sendChanges(since db.SequenceID) {
+func (bh *blipHandler) sendChanges(since db.SequenceID, sender *blip.Sender) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warn("*** PANIC sending changes: %v\n%s", panicked, debug.Stack())
@@ -265,7 +272,7 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 	pendingChanges := make([][]interface{}, 0, bh.batchSize)
 	sendPendingChangesAt := func(minChanges int) {
 		if len(pendingChanges) >= minChanges {
-			bh.sendBatchOfChanges(pendingChanges)
+			bh.sendBatchOfChanges(pendingChanges, sender)
 			pendingChanges = make([][]interface{}, 0, bh.batchSize)
 		}
 	}
@@ -288,24 +295,24 @@ func (bh *blipHandler) sendChanges(since db.SequenceID) {
 			sendPendingChangesAt(1)
 			if !caughtUp {
 				caughtUp = true
-				bh.sendBatchOfChanges(nil) // Signal to client that it's caught up
+				bh.sendBatchOfChanges(nil, sender) // Signal to client that it's caught up
 			}
 		}
 		return nil
 	})
 }
 
-func (bh *blipHandler) sendBatchOfChanges(changeArray [][]interface{}) {
+func (bh *blipHandler) sendBatchOfChanges(changeArray [][]interface{}, sender *blip.Sender) {
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
 	outrq.SetJSONBody(changeArray)
 	if len(changeArray) > 0 {
 		// Spawn a goroutine to await the client's response:
-		bh.sender.Send(outrq)
-		go bh.handleChangesResponse(outrq.Response(), changeArray)
+		sender.Send(outrq)
+		go bh.handleChangesResponse(outrq.Response(), changeArray, sender)
 	} else {
 		outrq.SetNoReply(true)
-		bh.sender.Send(outrq)
+		sender.Send(outrq)
 	}
 	if len(changeArray) > 0 {
 		base.LogTo("Sync", "Sent %d changes to client, from seq %v ... %s", len(changeArray), changeArray[0][0], bh.effectiveUsername)
@@ -315,7 +322,7 @@ func (bh *blipHandler) sendBatchOfChanges(changeArray [][]interface{}) {
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray [][]interface{}) {
+func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray [][]interface{}, sender *blip.Sender) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warn("*** PANIC handling 'changes' response: %v\n%s", panicked, debug.Stack())
@@ -357,7 +364,7 @@ func (bh *blipHandler) handleChangesResponse(response *blip.Message, changeArray
 					return
 				}
 			}
-			bh.sendRevision(seq, docID, revID, knownRevs, maxHistory)
+			bh.sendRevision(seq, docID, revID, knownRevs, maxHistory, sender)
 		}
 	}
 }
@@ -446,7 +453,7 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 //////// DOCUMENTS:
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int, sender *blip.Sender) {
 	base.LogTo("Sync+", "Sending rev %q %s based on %d known ... %s", docID, revID, len(knownRevs), bh.effectiveUsername)
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
@@ -485,14 +492,14 @@ func (bh *blipHandler) sendRevision(seq db.SequenceID, docID string, revID strin
 	if atts := db.BodyAttachments(body); atts != nil {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bh.addAllowedAttachments(atts)
-		bh.sender.Send(outrq)
+		sender.Send(outrq)
 		go func() {
 			defer bh.removeAllowedAttachments(atts)
 			outrq.Response() // blocks till reply is received
 		}()
 	} else {
 		outrq.SetNoReply(true)
-		bh.sender.Send(outrq)
+		sender.Send(outrq)
 	}
 }
 
@@ -528,7 +535,7 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 	}
 
 	// Check for any attachments I don't have yet, and request them:
-	if err := bh.downloadOrVerifyAttachments(body, minRevpos); err != nil {
+	if err := bh.downloadOrVerifyAttachments(body, minRevpos, rq.Sender); err != nil {
 		return err
 	}
 
@@ -560,7 +567,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
-func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int) error {
+func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, sender *blip.Sender) error {
 	return bh.db.ForEachStubAttachment(body, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			if knownData != nil {
@@ -573,7 +580,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int) 
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{"Profile": "proveAttachment", "digest": digest}
 				outrq.SetBody(nonce)
-				bh.sender.Send(outrq)
+				sender.Send(outrq)
 				if body, err := outrq.Response().Body(); err != nil {
 					return nil, err
 				} else if string(body) != proof {
@@ -589,7 +596,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int) 
 				if isCompressible(name, meta) {
 					outrq.Properties["compress"] = "true"
 				}
-				bh.sender.Send(outrq)
+				sender.Send(outrq)
 				return outrq.Response().Body()
 			}
 		})
