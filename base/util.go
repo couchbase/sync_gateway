@@ -797,3 +797,7 @@ func StringSliceContains(set []string, target string) bool {
 	}
 	return false
 }
+
+func BoolPtr(b bool) *bool {
+	return &b
+}
