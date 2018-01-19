@@ -80,10 +80,10 @@ func (h *handler) handleBLIPSync() error {
 	// Create a BLIP context:
 	blipContext := blip.NewContext()
 	blipContext.Logger = func(fmt string, params ...interface{}) {
-		base.LogTo("BLIP", fmt, params...)
+		base.LogTo("Sync", fmt, params...)
 	}
-	blipContext.LogMessages = base.LogEnabledExcludingLogStar("BLIP+")
-	blipContext.LogFrames = base.LogEnabledExcludingLogStar("BLIP++")
+	blipContext.LogMessages = base.LogEnabledExcludingLogStar("Sync+")
+	blipContext.LogFrames = base.LogEnabledExcludingLogStar("Sync++")
 
 	// Create a BLIP-sync context and register handlers:
 	ctx := blipSyncContext{
