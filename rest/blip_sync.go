@@ -141,9 +141,9 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
 			}
-			base.LogTo("Sync", "%s    --> %d %s ... %s", rq, status, msg, ctx.effectiveUsername)
+			base.LogTo("Sync", "%s %q   --> %d %s ... %s", rq, profile, status, msg, ctx.effectiveUsername)
 		} else {
-			base.LogTo("Sync+", "%s    --> OK ... %s", rq, ctx.effectiveUsername)
+			base.LogTo("Sync+", "%s %q   --> OK ... %s", rq, profile, ctx.effectiveUsername)
 		}
 	}
 }
@@ -310,7 +310,8 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		sender.Send(outrq)
 	}
 	if len(changeArray) > 0 {
-		base.LogTo("Sync", "Sent %d changes to client, from seq %v ... %s", len(changeArray), changeArray[0][0], bh.effectiveUsername)
+		sequence := changeArray[0][0].(db.SequenceID)
+		base.LogTo("Sync", "Sent %d changes to client, from seq %s ... %s", len(changeArray), sequence.String(), bh.effectiveUsername)
 	} else {
 		base.LogTo("Sync", "Sent all changes to client. ... %s", bh.effectiveUsername)
 	}
