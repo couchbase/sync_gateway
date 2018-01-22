@@ -16,6 +16,7 @@
   <remote fetch="https://github.com/jonboulle/" name="jonboulle"/>
   <remote fetch="https://github.com/satori/" name="satori"/>
   <remote fetch="https://github.com/pkg/" name="pkg"/>
+  <remote fetch="https://github.com/go-sourcemap/" name="go-sourcemap"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
@@ -71,7 +72,7 @@
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="39fe61b0969ae38f8c6841e9c19c5ad9e57d2b75"/>
 
-  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="d60aa85bdea5b6f2f285b197a8d7541a2fe90141"/>
+  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="d25c8b33eb1c0db1a143bc1b5546025605326cda"/>
 
   <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="elazarl" revision="30f82fa23fd844bd5bb1e5f216db87fd77b5eb43"/>
 
@@ -83,7 +84,7 @@
 
   <project name="lumberjack" path="godeps/src/github.com/natefinch/lumberjack" remote="natefinch" revision="dd45e6a67c53f673bb49ca8a001fd3a63ceb640e"/>
 
-  <project name="otto" path="godeps/src/github.com/robertkrimen/otto" remote="couchbasedeps" revision="5282a5a45ba989692b3ae22f730fa6b9dd67662f"/>
+  <project name="otto" path="godeps/src/github.com/robertkrimen/otto" remote="couchbasedeps" revision="a813c59b1b4471ff7ecd3b533bac2f7e7d178784"/>
 
   <project name="go-metrics" path="godeps/src/github.com/samuel/go-metrics" remote="samuel" revision="52e6232924c9e785c3c4117b63a3e58b1f724544"/>
 
@@ -123,6 +124,7 @@
 
   <project name="errors" path="godeps/src/github.com/pkg/errors" remote="pkg" revision="f15c970de5b76fac0b59abb32d62c17cc7bed265"/>
 
+  <project name="sourcemap" path="godeps/src/gopkg.in/sourcemap.v1" remote="go-sourcemap" revision="6e83acea0053641eff084973fee085f0c193c61a"/>
 
 </manifest>
 
