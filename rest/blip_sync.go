@@ -71,6 +71,8 @@ var kHandlersByProfile = map[string]blipHandlerMethod{
 	"getAttachment": userBlipHandler((*blipHandler).handleGetAttachment),
 }
 
+
+
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
 	if c := h.server.GetConfig().ReplicatorCompression; c != nil {
@@ -79,9 +81,7 @@ func (h *handler) handleBLIPSync() error {
 
 	// Create a BLIP context:
 	blipContext := blip.NewContext()
-	blipContext.Logger = func(fmt string, params ...interface{}) {
-		base.LogTo("Sync", fmt, params...)
-	}
+	blipContext.Logger = DefaultBlipLogger
 	blipContext.LogMessages = base.LogEnabledExcludingLogStar("Sync+")
 	blipContext.LogFrames = base.LogEnabledExcludingLogStar("Sync++")
 
@@ -662,4 +662,15 @@ func isCompressible(filename string, meta map[string]interface{}) bool {
 				!kBadTypes.MatchString(mimeType))
 	}
 	return true // be optimistic by default
+}
+
+func DefaultBlipLogger(eventType blip.LogEventType, fmt string, params ...interface{}) {
+	switch eventType {
+	case blip.LogMessage:
+		base.LogTo("Sync+", fmt, params...)
+	case blip.LogFrame:
+		base.LogTo("Sync++", fmt, params...)
+	default:
+		base.LogTo("Sync", fmt, params...)
+	}
 }

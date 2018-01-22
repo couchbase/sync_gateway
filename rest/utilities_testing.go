@@ -635,9 +635,7 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
 	// Make BLIP/Websocket connection
 	bt.blipContext = blip.NewContext()
-	bt.blipContext.Logger = func(fmt string, params ...interface{}) {
-		base.LogTo("BLIP", fmt, params...)
-	}
+	bt.blipContext.Logger = DefaultBlipLogger
 
 	bt.blipContext.LogMessages = base.LogEnabledExcludingLogStar("Sync+")
 	bt.blipContext.LogFrames = base.LogEnabledExcludingLogStar("Sync++")
@@ -816,5 +814,6 @@ func EnableBlipSyncLogs() {
 	base.EnableLogKey("HTTP+")
 	base.EnableLogKey("Sync")
 	base.EnableLogKey("Sync+")
+	base.EnableLogKey("Sync++")
 
 }
