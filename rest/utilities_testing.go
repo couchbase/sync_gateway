@@ -2,18 +2,17 @@ package rest
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"runtime/debug"
 	"sync"
 	"testing"
 	"time"
-
-	"encoding/base64"
-	"net/url"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sg-bucket"
