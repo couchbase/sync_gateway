@@ -875,8 +875,74 @@ func TestNoConflictsMode(t *testing.T) {
 	assertHTTPError(t, err, 409)
 }
 
-// Test tombstoning of existing conflicts after AllowConflicts is set to false
+// Test tombstoning of existing conflicts after AllowConflicts is set to false via Put
 func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	// Create documents with multiple non-deleted branches
+	log.Printf("Creating docs")
+	body := Body{"n": 1}
+	assertNoError(t, db.PutExistingRev("doc1", body, []string{"1-a"}), "add 1-a")
+	assertNoError(t, db.PutExistingRev("doc2", body, []string{"1-a"}), "add 1-a")
+	assertNoError(t, db.PutExistingRev("doc3", body, []string{"1-a"}), "add 1-a")
+
+	// Create two conflicting changes:
+	body["n"] = 2
+	assertNoError(t, db.PutExistingRev("doc1", body, []string{"2-b", "1-a"}), "add 2-b")
+	assertNoError(t, db.PutExistingRev("doc2", body, []string{"2-b", "1-a"}), "add 2-b")
+	assertNoError(t, db.PutExistingRev("doc3", body, []string{"2-b", "1-a"}), "add 2-b")
+	body["n"] = 3
+	assertNoError(t, db.PutExistingRev("doc1", body, []string{"2-a", "1-a"}), "add 2-a")
+	assertNoError(t, db.PutExistingRev("doc2", body, []string{"2-a", "1-a"}), "add 2-a")
+	assertNoError(t, db.PutExistingRev("doc3", body, []string{"2-a", "1-a"}), "add 2-a")
+
+	// Set AllowConflicts to false
+	db.Options.AllowConflicts = base.BooleanPointer(false)
+	delete(body, "n")
+	body["_deleted"] = true
+
+	// Attempt to tombstone a non-leaf node of a conflicted document
+	err := db.PutExistingRev("doc1", body, []string{"2-c", "1-a"})
+	assertTrue(t, err != nil, "expected error tombstoning non-leaf")
+
+	// Tombstone the non-winning branch of a conflicted document
+	body["_rev"] = "2-a"
+	tombstoneRev, putErr := db.Put("doc1", body)
+	assertNoError(t, putErr, "tombstone 2-a")
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	assertNoError(t, err, "Retrieve doc post-tombstone")
+	assert.Equals(t, doc.CurrentRev, "2-b")
+
+	// Attempt to add a tombstone rev w/ the previous tombstone as parent
+	body["_rev"] = tombstoneRev
+	_, putErr = db.Put("doc1", body)
+	assertTrue(t, putErr != nil, "Expect error tombstoning a tombstone")
+
+	// Tombstone the winning branch of a conflicted document
+	body["_rev"] = "2-b"
+	_, putErr = db.Put("doc2", body)
+	assertNoError(t, putErr, "tombstone 2-b")
+	doc, err = db.GetDocument("doc2", DocUnmarshalAll)
+	assertNoError(t, err, "Retrieve doc post-tombstone")
+	assert.Equals(t, doc.CurrentRev, "2-a")
+
+	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
+	db.RevsLimit = uint32(1)
+	body["_rev"] = "2-a"
+	_, putErr = db.Put("doc3", body)
+	assertNoError(t, putErr, "tombstone 2-a w/ revslimit=1")
+	doc, err = db.GetDocument("doc3", DocUnmarshalAll)
+	assertNoError(t, err, "Retrieve doc post-tombstone")
+	assert.Equals(t, doc.CurrentRev, "2-b")
+
+	log.Printf("tombstoned conflicts: %+v", doc)
+
+}
+
+// Test tombstoning of existing conflicts after AllowConflicts is set to false via PutExistingRev
+func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T) {
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
