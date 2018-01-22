@@ -613,7 +613,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
-		} else if !doc.History.isLeaf(matchRev) || (!db.AllowConflicts() && matchRev != doc.CurrentRev) {
+		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
@@ -679,26 +679,9 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 			return nil, nil, nil, couchbase.UpdateCancel // No new revisions to add
 		}
 
-		if !db.AllowConflicts() {
-			// Conflict-free mode: If doc exists, its current rev must be the new rev's parent, unless it's a tombstone.
-			if parent != doc.CurrentRev && doc.CurrentRev != "" {
-				if !deleted {
-					// If it's not a tombstone, it's a (disallowed) conflict.
-					return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
-				} else {
-					// If it's a tombstone, it's only allowed if it's tombstoning an existing active leaf
-					allowedTombstone := false
-					for _, leafRevId := range doc.History.GetLeaves() {
-						if leafRevId == parent {
-							allowedTombstone = true
-							break
-						}
-					}
-					if !allowedTombstone {
-						return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
-					}
-				}
-			}
+		// Conflict-free mode check
+		if db.IsIllegalConflict(doc, parent, deleted) {
+			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
@@ -725,6 +708,39 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		return body, newAttachments, nil, nil
 	})
 	return err
+}
+
+// Allow-conflicts=false handling
+func (db *Database) IsIllegalConflict(doc *document, parentRevID string, deleted bool) bool {
+	if db.AllowConflicts() {
+		return false
+	}
+
+	// Conflict-free mode: If doc exists, its current rev must be the new rev's parent, unless it's a tombstone.
+
+	// If the parent is the current rev, it's not a conflict.
+	if parentRevID == doc.CurrentRev || doc.CurrentRev == "" {
+		return false
+	}
+
+	// If the parent isn't the current rev, reject as a conflict unless this is tombstoning an existing non-winning leaf
+	if !deleted {
+		base.LogTo("CRUD+", "Conflict - non-tombstone updates to non-winning revisions aren't valid when allow_conflicts=false")
+		return true
+	}
+
+	// If it's a tombstone, it's only allowed if it's tombstoning an existing non-tombstoned leaf
+	illegalConflict := true
+	for _, leafRevId := range doc.History.GetLeaves() {
+		if leafRevId == parentRevID && doc.History[leafRevId].Deleted == false {
+			illegalConflict = false
+			break
+		}
+	}
+	if illegalConflict {
+		base.LogTo("CRUD+", "Conflict - tombstone updates to non-leaf or already tombstoned revisions aren't valid when allow_conflicts=false")
+	}
+	return illegalConflict
 }
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
