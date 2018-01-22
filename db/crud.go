@@ -729,18 +729,17 @@ func (db *Database) IsIllegalConflict(doc *document, parentRevID string, deleted
 		return true
 	}
 
-	// If it's a tombstone, it's only allowed if it's tombstoning an existing non-tombstoned leaf
-	illegalConflict := true
+	// If it's a tombstone, it's allowed if it's tombstoning an existing non-tombstoned leaf
 	for _, leafRevId := range doc.History.GetLeaves() {
 		if leafRevId == parentRevID && doc.History[leafRevId].Deleted == false {
-			illegalConflict = false
+			return false
 			break
 		}
 	}
-	if illegalConflict {
-		base.LogTo("CRUD+", "Conflict - tombstone updates to non-leaf or already tombstoned revisions aren't valid when allow_conflicts=false")
-	}
-	return illegalConflict
+
+	// If we haven't found a valid conflict scenario by this point, flag as invalid
+	base.LogTo("CRUD+", "Conflict - tombstone updates to non-leaf or already tombstoned revisions aren't valid when allow_conflicts=false")
+	return true
 }
 
 // Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
