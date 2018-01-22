@@ -10,4 +10,4 @@ build:
     - ./bootstrap.sh -c $$COMMIT -p sg
     - ./build.sh -v
     - ./test.sh
-    - ./test.sh -race -timeout 20m
+    - ./test.sh -race
