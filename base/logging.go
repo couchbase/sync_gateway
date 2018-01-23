@@ -421,6 +421,11 @@ func GetCallersName(depth int) string {
 	return fmt.Sprintf("%s() at %s:%d", lastComponent(fnname), lastComponent(file), line)
 }
 
+// Partial interface for the SGLogger
+type SGLogger interface {
+	LogTo(key string, format string, args ...interface{})
+}
+
 // Logs a message to the console, but only if the corresponding key is true in LogKeys.
 func LogTo(key string, format string, args ...interface{}) {
 	logLock.RLock()

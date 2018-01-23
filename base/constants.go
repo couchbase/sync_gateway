@@ -60,6 +60,7 @@ const (
 
 	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
 
+	FilterByChannel = "sync_gateway/bychannel"
 )
 
 func UnitTestUrl() string {
