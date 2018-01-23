@@ -634,7 +634,7 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
 	// Make BLIP/Websocket connection
 	bt.blipContext = blip.NewContext()
-	bt.blipContext.Logger = DefaultBlipLogger
+	bt.blipContext.Logger = DefaultBlipLogger(bt.blipContext.ID)
 
 	bt.blipContext.LogMessages = base.LogEnabledExcludingLogStar("Sync+")
 	bt.blipContext.LogFrames = base.LogEnabledExcludingLogStar("Sync++")

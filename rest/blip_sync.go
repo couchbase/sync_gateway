@@ -81,7 +81,7 @@ func (h *handler) handleBLIPSync() error {
 
 	// Create a BLIP context:
 	blipContext := blip.NewContext()
-	blipContext.Logger = DefaultBlipLogger
+	blipContext.Logger = DefaultBlipLogger(blipContext.ID)
 	blipContext.LogMessages = base.LogEnabledExcludingLogStar("Sync+")
 	blipContext.LogFrames = base.LogEnabledExcludingLogStar("Sync++")
 
@@ -153,8 +153,23 @@ func (ctx *blipSyncContext) notFound(rq *blip.Message) {
 	blip.Unhandled(rq)
 }
 
+// Prepend a context ID to each blip logging message.  The contextID uniquely identifies the blip context, and
+// is useful for grouping the blip connections in the log output.
+func PrependContextID(contextID, format string, params ...interface{}) (newFormat string, newParams []interface{}) {
+
+	// Add a new format placeholder for the context ID, which should appear at the beginning of the logs
+	formatWithContextID := `[%s] ` + format
+
+	paramsWithContextID := []interface{}{contextID}
+	if len(params) > 0 {
+		paramsWithContextID = append(paramsWithContextID, params...)
+	}
+	return formatWithContextID, paramsWithContextID
+
+}
+
 func (ctx *blipSyncContext) LogTo(key string, format string, args ...interface{}) {
-	formatWithContextID, paramsWithContextID := ctx.blipContext.PrependContextID(format, args...)
+	formatWithContextID, paramsWithContextID := PrependContextID(ctx.blipContext.ID, format, args...)
 	base.LogTo(key, formatWithContextID, paramsWithContextID...)
 }
 
@@ -668,13 +683,17 @@ func isCompressible(filename string, meta map[string]interface{}) bool {
 	return true // be optimistic by default
 }
 
-func DefaultBlipLogger(eventType blip.LogEventType, fmt string, params ...interface{}) {
-	switch eventType {
-	case blip.LogMessage:
-		base.LogTo("Sync+", fmt, params...)
-	case blip.LogFrame:
-		base.LogTo("Sync++", fmt, params...)
-	default:
-		base.LogTo("Sync", fmt, params...)
+func DefaultBlipLogger(contextID string) blip.LogFn {
+	return func(eventType blip.LogEventType, format string, params ...interface{}) {
+		formatWithContextID, paramsWithContextID := PrependContextID(contextID, format, params...)
+
+		switch eventType {
+		case blip.LogMessage:
+			base.LogTo("Sync+", formatWithContextID, paramsWithContextID...)
+		case blip.LogFrame:
+			base.LogTo("Sync++", formatWithContextID, paramsWithContextID...)
+		default:
+			base.LogTo("Sync", formatWithContextID, paramsWithContextID...)
+		}
 	}
 }
