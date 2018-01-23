@@ -14,11 +14,12 @@ import (
 	"github.com/couchbase/go-blip"
 	"golang.org/x/net/websocket"
 
+	"fmt"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"fmt"
 )
 
 // Represents one BLIP connection (socket) opened by a client.
@@ -72,8 +73,6 @@ var kHandlersByProfile = map[string]blipHandlerMethod{
 	"getAttachment": userBlipHandler((*blipHandler).handleGetAttachment),
 }
 
-
-
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
 	if c := h.server.GetConfig().ReplicatorCompression; c != nil {
@@ -109,7 +108,7 @@ func (h *handler) handleBLIPSync() error {
 	server := blipContext.WebSocketServer()
 	defaultHandler := server.Handler
 	server.Handler = func(conn *websocket.Conn) {
-		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol for user: %s.", blipContext.ID, h.effectiveUsername()))
+		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol %s.", blipContext.ID, h.currentEffectiveUserName()))
 		defer func() {
 			conn.Close() // in case it wasn't closed already
 			base.LogTo("HTTP+", "#%03d: [%s]    --> BLIP+WebSocket connection closed", blipContext.ID, h.serialNumber)
@@ -120,8 +119,6 @@ func (h *handler) handleBLIPSync() error {
 	server.ServeHTTP(h.response, h.rq)
 	return nil
 }
-
-
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.
 // Includes the outer handler as a nested function.
@@ -237,7 +234,7 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 	} else if filter != "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
-	go bh.sendChanges(rq.Sender, since)  // TODO: does this ever end?
+	go bh.sendChanges(rq.Sender, since) // TODO: does this ever end?
 	return nil
 }
 
@@ -291,7 +288,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 			sendPendingChangesAt(1)
 			if !caughtUp {
 				caughtUp = true
-				bh.sendBatchOfChanges(sender,nil) // Signal to client that it's caught up
+				bh.sendBatchOfChanges(sender, nil) // Signal to client that it's caught up
 			}
 		}
 		return nil
@@ -664,7 +661,6 @@ func isCompressible(filename string, meta map[string]interface{}) bool {
 	}
 	return true // be optimistic by default
 }
-
 
 func DefaultBlipLogger(eventType blip.LogEventType, fmt string, params ...interface{}) {
 	switch eventType {

@@ -226,12 +226,7 @@ func (h *handler) logRequestLine() {
 	if !base.LogEnabled("HTTP") {
 		return
 	}
-	as := ""
-	if h.privs == adminPrivs {
-		as = fmt.Sprintf("  (%s)", h.effectiveUsername())
-	} else if h.user != nil && h.user.Name() != "" {
-		as = fmt.Sprintf("  (as %s)", h.effectiveUsername())
-	}
+	as := h.currentEffectiveUserName()
 	proto := ""
 	if h.rq.ProtoMajor >= 2 {
 		proto = " HTTP/2"
@@ -240,14 +235,6 @@ func (h *handler) logRequestLine() {
 	base.LogTo("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.SanitizeRequestURL(h.rq.URL), proto, as)
 }
 
-func (h *handler) effectiveUsername() string {
-	if h.privs == adminPrivs {
-		return "ADMIN"
-	} else if h.user != nil && h.user.Name() != "" {
-		return h.user.Name()
-	}
-	return ""
-}
 
 func (h *handler) logRequestBody() {
 
