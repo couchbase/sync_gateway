@@ -711,10 +711,11 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 	// Add a new format placeholder for the context ID, which should appear at the beginning of the logs
 	formatWithContextID := `[%s] ` + format
 
-	paramsWithContextID := []interface{}{contextID}
-	if len(params) > 0 {
-		paramsWithContextID = append(paramsWithContextID, params...)
-	}
-	return formatWithContextID, paramsWithContextID
+	params = append(params, 0)
+	copy(params[0+1:], params[0:])
+	params[0] = contextID
+
+	return formatWithContextID, params
+
 
 }
