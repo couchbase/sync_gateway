@@ -702,3 +702,19 @@ func LogColor() {
 	bgCyan = "\x1b[46m"
 	bgWhite = "\x1b[47m"
 }
+
+
+// Prepend a context ID to each blip logging message.  The contextID uniquely identifies the blip context, and
+// is useful for grouping the blip connections in the log output.
+func PrependContextID(contextID, format string, params ...interface{}) (newFormat string, newParams []interface{}) {
+
+	// Add a new format placeholder for the context ID, which should appear at the beginning of the logs
+	formatWithContextID := `[%s] ` + format
+
+	paramsWithContextID := []interface{}{contextID}
+	if len(params) > 0 {
+		paramsWithContextID = append(paramsWithContextID, params...)
+	}
+	return formatWithContextID, paramsWithContextID
+
+}
