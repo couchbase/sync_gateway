@@ -611,7 +611,7 @@ func WaitForViews(bucket base.Bucket) error {
 // Issues stale=false view queries to determine when view indexing is complete.  Retries on timeout
 func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) error {
 	var vres interface{}
-	opts := map[string]interface{}{"stale": false, "key": fmt.Sprintf("view_%d_ready_check", viewName), "limit": 1}
+	opts := map[string]interface{}{"stale": false, "key": fmt.Sprintf("view_%s_ready_check", viewName), "limit": 1}
 	for {
 		err := bucket.ViewCustom(ddocName, viewName, opts, &vres)
 		// Retry on timeout error, otherwise return
