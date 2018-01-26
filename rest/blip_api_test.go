@@ -13,7 +13,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"time"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -577,28 +576,16 @@ func TestAttachment(t *testing.T) {
 
 	docId := "doc"
 	revId := "1-rev1"
+	attachmentName := "myAttachment"
+	attachmentBody := "attach"
 
 	myAttachment := base.DocAttachment{
 		ContentType: "application/json",
 		Digest:      "fakedigest",
-		Length:      5,
+		Length:      6,
 		Revpos:      1,
 		Stub:        true,
 	}
-
-	//type TestDoc struct {
-	//	Attachments struct {
-	//		MyAttachment struct {
-	//			ContentType string `json:"content_type"`
-	//			Digest      string `json:"digest"`
-	//			Length      int    `json:"length"`
-	//			Revpos      int    `json:"revpos"`
-	//			Stub        bool   `json:"stub"`
-	//		} `json:"MyAttachment"`
-	//	} `json:"_attachments"`
-	//	ID  string `json:"_id"`
-	//	Rev string `json:"_rev"`
-	//}
 
 	type TestDoc struct {
 		ID          string                        `json:"_id"`
@@ -610,7 +597,7 @@ func TestAttachment(t *testing.T) {
 		ID:  docId,
 		Rev: revId,
 		Attachments: map[string]base.DocAttachment{
-			"myAttachment": myAttachment,
+			attachmentName: myAttachment,
 		},
 	}
 
@@ -618,7 +605,18 @@ func TestAttachment(t *testing.T) {
 	docBody, err := json.Marshal(doc)
 	assertNoError(t, err, "Unexpected error")
 
+	getAttachmentWg := sync.WaitGroup{}
+
+	bt.blipContext.HandlerForProfile["getAttachment"] = func(request *blip.Message) {
+		defer getAttachmentWg.Done()
+		log.Printf("getAttachment request: %+v", request)
+		assert.Equals(t, request.Properties["digest"], myAttachment.Digest)
+		response := request.Response()
+		response.SetBody([]byte(attachmentBody))
+	}
+
 	// Push a rev with an attachment.
+	getAttachmentWg.Add(1)
 	revRequest := blip.NewRequest()
 	revRequest.SetCompressed(true)
 	revRequest.SetProfile("rev")
@@ -628,13 +626,38 @@ func TestAttachment(t *testing.T) {
 	revRequest.SetBody(docBody)
 	sent := bt.sender.Send(revRequest)
 	if !sent {
-		panic(fmt.Sprintf("Failed to send revRequest for doc: %v", docId))
+		panic(fmt.Sprintf("Failed to send request for doc: %v", docId))
 	}
 
-	time.Sleep(time.Second * 10)
-
 	// Expect a callback to the getAttachment endpoint
+	getAttachmentWg.Wait()
 
-	// Read the attachment and make sure it has the expected content.
+	// Get the revResponse, make sure there are no errors
+	revResponse := revRequest.Response()
+	_, hasErrorCode := revResponse.Properties["Error-Code"]
+	assert.False(t, hasErrorCode)
+
+	// Try to fetch the attachment directly via getAttachment, expected to fail for security reasons
+	// since it's not in the context of responding to the peer's "rev" request.
+	getAttachmentRequest := blip.NewRequest()
+	getAttachmentRequest.SetProfile("getAttachment")
+	getAttachmentRequest.Properties["digest"] = myAttachment.Digest
+	sent = bt.sender.Send(getAttachmentRequest)
+	if !sent {
+		panic(fmt.Sprintf("Failed to send request for doc: %v", docId))
+	}
+	getAttachmentResponse := getAttachmentRequest.Response()
+	errorCode, hasErrorCode := getAttachmentResponse.Properties["Error-Code"]
+	_, err = getAttachmentResponse.Body()
+	assertNoError(t, err, "Unexpected error")
+	log.Printf("errorCode: %v", errorCode)
+	assert.Equals(t, errorCode, "403")  // "Attachment's doc not being synced"
+	assert.True(t, hasErrorCode)
+
+	// Get the attachment via REST api and make sure it matches the attachment pushed earlier
+	response := bt.restTester.SendAdminRequest("GET", fmt.Sprintf("/db/%s/%s", docId, attachmentName), ``)
+	log.Printf("response: %s", response.Body)
+	assert.Equals(t, response.Body.String(), attachmentBody)
+
 
 }
