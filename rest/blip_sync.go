@@ -3,6 +3,7 @@ package rest
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"regexp"
@@ -12,12 +13,11 @@ import (
 	"sync"
 
 	"github.com/couchbase/go-blip"
-	"golang.org/x/net/websocket"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"golang.org/x/net/websocket"
 )
 
 // Represents one BLIP connection (socket) opened by a client.
@@ -71,8 +71,6 @@ var kHandlersByProfile = map[string]blipHandlerMethod{
 	"getAttachment": userBlipHandler((*blipHandler).handleGetAttachment),
 }
 
-
-
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
 	if c := h.server.GetConfig().ReplicatorCompression; c != nil {
@@ -81,7 +79,7 @@ func (h *handler) handleBLIPSync() error {
 
 	// Create a BLIP context:
 	blipContext := blip.NewContext()
-	blipContext.Logger = DefaultBlipLogger
+	blipContext.Logger = DefaultBlipLogger(blipContext.ID)
 	blipContext.LogMessages = base.LogEnabledExcludingLogStar("Sync+")
 	blipContext.LogFrames = base.LogEnabledExcludingLogStar("Sync++")
 
@@ -101,17 +99,17 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	ctx.blipContext.FatalErrorHandler = func(err error) {
-		base.LogTo("HTTP", "#%03d:     --> BLIP+WebSocket connection error: %v", h.serialNumber, err)
+		ctx.LogTo("HTTP", "#%03d:     --> BLIP+WebSocket connection error: %v", h.serialNumber, err)
 	}
 
 	// Create a BLIP WebSocket handler and have it handle the request:
 	server := blipContext.WebSocketServer()
 	defaultHandler := server.Handler
 	server.Handler = func(conn *websocket.Conn) {
-		h.logStatus(101, "Upgraded to BLIP+WebSocket protocol")
+		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol %s.", blipContext.ID, h.currentEffectiveUserName()))
 		defer func() {
 			conn.Close() // in case it wasn't closed already
-			base.LogTo("HTTP+", "#%03d:     --> BLIP+WebSocket connection closed", h.serialNumber)
+			ctx.LogTo("HTTP+", "#%03d:    --> BLIP+WebSocket connection closed", h.serialNumber)
 		}()
 		defaultHandler(conn)
 	}
@@ -120,15 +118,13 @@ func (h *handler) handleBLIPSync() error {
 	return nil
 }
 
-
-
 // Registers a BLIP handler including the outer-level work of logging & error handling.
 // Includes the outer handler as a nested function.
 func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler, *blip.Message) error) {
 
 	ctx.blipContext.HandlerForProfile[profile] = func(rq *blip.Message) {
 
-		base.LogTo("Sync", "%s %q ... %s", rq, profile, ctx.effectiveUsername)
+		ctx.LogTo("Sync", "%s %q ... %s", rq, profile, ctx.effectiveUsername)
 
 		db, _ := db.GetDatabase(ctx.dbc, ctx.user)
 		handler := blipHandler{
@@ -141,18 +137,23 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
 			}
-			base.LogTo("Sync", "%s %q   --> %d %s ... %s", rq, profile, status, msg, ctx.effectiveUsername)
+			ctx.LogTo("Sync", "%s %q   --> %d %s ... %s", rq, profile, status, msg, ctx.effectiveUsername)
 		} else {
-			base.LogTo("Sync+", "%s %q   --> OK ... %s", rq, profile, ctx.effectiveUsername)
+			ctx.LogTo("Sync+", "%s %q   --> OK ... %s", rq, profile, ctx.effectiveUsername)
 		}
 	}
 }
 
 // Handler for unknown requests
 func (ctx *blipSyncContext) notFound(rq *blip.Message) {
-	base.LogTo("Sync", "%s %q ... %s", rq, rq.Profile(), ctx.effectiveUsername)
-	base.LogTo("Sync", "%s    --> 404 Unknown profile ... %s", rq, ctx.effectiveUsername)
+	ctx.LogTo("Sync", "%s %q ... %s", rq, rq.Profile(), ctx.effectiveUsername)
+	ctx.LogTo("Sync", "%s    --> 404 Unknown profile ... %s", rq, ctx.effectiveUsername)
 	blip.Unhandled(rq)
+}
+
+func (ctx *blipSyncContext) LogTo(key string, format string, args ...interface{}) {
+	formatWithContextID, paramsWithContextID := base.PrependContextID(ctx.blipContext.ID, format, args...)
+	base.LogTo(key, formatWithContextID, paramsWithContextID...)
 }
 
 //////// CHECKPOINTS
@@ -210,7 +211,7 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 	if sinceStr, found := rq.Properties["since"]; found {
 		var err error
 		if since, err = db.ParseSequenceIDFromJSON([]byte(sinceStr)); err != nil {
-			base.LogTo("Sync", "%s: Invalid sequence ID in 'since': %s ... %s", rq, sinceStr, bh.effectiveUsername)
+			bh.blipSyncContext.LogTo("Sync", "%s: Invalid sequence ID in 'since': %s ... %s", rq, sinceStr, bh.effectiveUsername)
 			since = db.SequenceID{}
 		}
 	}
@@ -236,7 +237,7 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 	} else if filter != "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
-	go bh.sendChanges(rq.Sender, since)  // TODO: does this ever end?
+	go bh.sendChanges(rq.Sender, since) // TODO: does this ever end?
 	return nil
 }
 
@@ -244,11 +245,11 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.Warn("*** PANIC sending changes: %v\n%s", panicked, debug.Stack())
+			base.Warn("[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
-	base.LogTo("Sync", "Sending changes since %v ... %s", since, bh.effectiveUsername)
+	bh.blipSyncContext.LogTo("Sync", "Sending changes since %v ... %s", since, bh.effectiveUsername)
 	options := db.ChangesOptions{
 		Since:      since,
 		Conflicts:  true,
@@ -273,7 +274,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 	}
 
 	generateContinuousChanges(bh.db, channelSet, options, nil, func(changes []*db.ChangeEntry) error {
-		base.LogTo("Sync+", "    Sending %d changes ... %s", len(changes), bh.effectiveUsername)
+		bh.blipSyncContext.LogTo("Sync+", "    Sending %d changes ... %s", len(changes), bh.effectiveUsername)
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
 				for _, item := range change.Changes {
@@ -290,7 +291,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 			sendPendingChangesAt(1)
 			if !caughtUp {
 				caughtUp = true
-				bh.sendBatchOfChanges(sender,nil) // Signal to client that it's caught up
+				bh.sendBatchOfChanges(sender, nil) // Signal to client that it's caught up
 			}
 		}
 		return nil
@@ -311,9 +312,9 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	}
 	if len(changeArray) > 0 {
 		sequence := changeArray[0][0].(db.SequenceID)
-		base.LogTo("Sync", "Sent %d changes to client, from seq %s ... %s", len(changeArray), sequence.String(), bh.effectiveUsername)
+		bh.blipSyncContext.LogTo("Sync", "Sent %d changes to client, from seq %s ... %s", len(changeArray), sequence.String(), bh.effectiveUsername)
 	} else {
-		base.LogTo("Sync", "Sent all changes to client. ... %s", bh.effectiveUsername)
+		bh.blipSyncContext.LogTo("Sync", "Sent all changes to client. ... %s", bh.effectiveUsername)
 	}
 }
 
@@ -321,13 +322,13 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.Warn("*** PANIC handling 'changes' response: %v\n%s", panicked, debug.Stack())
+			base.Warn("[%s] PANIC handling 'changes' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
 	var answer []interface{}
 	if err := response.ReadJSONBody(&answer); err != nil {
-		base.LogTo("Sync", "Invalid response to 'changes' message: %s -- %s ... %s", response, err, bh.effectiveUsername)
+		bh.blipSyncContext.LogTo("Sync", "Invalid response to 'changes' message: %s -- %s ... %s", response, err, bh.effectiveUsername)
 		return
 	}
 
@@ -356,7 +357,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 				if revID, ok := rev.(string); ok {
 					knownRevs[revID] = true
 				} else {
-					base.LogTo("Sync", "Invalid response to 'changes' message ... %s", bh.effectiveUsername)
+					bh.blipSyncContext.LogTo("Sync", "Invalid response to 'changes' message ... %s", bh.effectiveUsername)
 					return
 				}
 			}
@@ -375,7 +376,7 @@ func (bh *blipHandler) handlePushedChanges(rq *blip.Message) error {
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		return err
 	}
-	base.LogTo("Sync", "Received %d changes from client ... %s", len(changeList), bh.effectiveUsername)
+	bh.blipSyncContext.LogTo("Sync", "Received %d changes from client ... %s", len(changeList), bh.effectiveUsername)
 	if len(changeList) == 0 {
 		return nil
 	}
@@ -412,7 +413,7 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		return err
 	}
-	base.LogTo("Sync", "Received %d changes from client", len(changeList))
+	bh.blipSyncContext.LogTo("Sync", "Received %d changes from client", len(changeList))
 	if len(changeList) == 0 {
 		return nil
 	}
@@ -450,10 +451,10 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 
 // Pushes a revision body to the client
 func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
-	base.LogTo("Sync+", "Sending rev %q %s based on %d known ... %s", docID, revID, len(knownRevs), bh.effectiveUsername)
+	bh.blipSyncContext.LogTo("Sync+", "Sending rev %q %s based on %d known ... %s", docID, revID, len(knownRevs), bh.effectiveUsername)
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
-		base.Warn("blipHandler can't get doc %q/%s: %v", docID, revID, err)
+		base.Warn("[%s] blipHandler can't get doc %q/%s: %v", bh.blipContext.ID, docID, revID, err)
 		return
 	}
 
@@ -521,7 +522,7 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 	if historyStr := rq.Properties["history"]; historyStr != "" {
 		history = append(history, strings.Split(historyStr, ",")...)
 	}
-	base.LogTo("Sync+", "Inserting rev %q %s history=%q, array = %#v ... %s", docID, revID, rq.Properties["history"], history, bh.effectiveUsername)
+	bh.blipSyncContext.LogTo("Sync+", "Inserting rev %q %s history=%q, array = %#v ... %s", docID, revID, rq.Properties["history"], history, bh.effectiveUsername)
 
 	// Look at attachments with revpos > the last common ancestor's
 	minRevpos := 1
@@ -554,7 +555,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	if err != nil {
 		return err
 	}
-	base.LogTo("Sync+", "Sending attachment with digest=%q (%dkb) ... %s", digest, len(attachment)/1024, bh.effectiveUsername)
+	bh.blipSyncContext.LogTo("Sync+", "Sending attachment with digest=%q (%dkb) ... %s", digest, len(attachment)/1024, bh.effectiveUsername)
 	response := rq.Response()
 	response.SetBody(attachment)
 	response.SetCompressed(rq.Properties["compress"] == "true")
@@ -571,7 +572,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				// security purposes I do need the client to _prove_ it has the data, otherwise if
 				// it knew the digest it could acquire the data by uploading a document with the
 				// claimed attachment, then downloading it.
-				base.LogTo("Sync+", "    Verifying attachment %q (digest %s)  ... %s", name, digest, bh.effectiveUsername)
+				bh.blipSyncContext.LogTo("Sync+", "    Verifying attachment %q (digest %s)  ... %s", name, digest, bh.effectiveUsername)
 				nonce, proof := db.GenerateProofOfAttachment(knownData)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{"Profile": "proveAttachment", "digest": digest}
@@ -580,13 +581,13 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				if body, err := outrq.Response().Body(); err != nil {
 					return nil, err
 				} else if string(body) != proof {
-					base.LogTo("Sync+", "Error: Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q ... %s", digest, nonce, proof, body, bh.effectiveUsername)
+					bh.blipSyncContext.LogTo("Sync+", "Error: Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q ... %s", digest, nonce, proof, body, bh.effectiveUsername)
 					return nil, base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
 				}
 				return nil, nil
 			} else {
 				// If I don't have the attachment, I will request it from the client:
-				base.LogTo("Sync+", "    Asking for attachment %q (digest %s)  ... %s", name, digest, bh.effectiveUsername)
+				bh.blipSyncContext.LogTo("Sync+", "    Asking for attachment %q (digest %s)  ... %s", name, digest, bh.effectiveUsername)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{"Profile": "getAttachment", "digest": digest}
 				if isCompressible(name, meta) {
@@ -664,13 +665,17 @@ func isCompressible(filename string, meta map[string]interface{}) bool {
 	return true // be optimistic by default
 }
 
-func DefaultBlipLogger(eventType blip.LogEventType, fmt string, params ...interface{}) {
-	switch eventType {
-	case blip.LogMessage:
-		base.LogTo("Sync+", fmt, params...)
-	case blip.LogFrame:
-		base.LogTo("Sync++", fmt, params...)
-	default:
-		base.LogTo("Sync", fmt, params...)
+func DefaultBlipLogger(contextID string) blip.LogFn {
+	return func(eventType blip.LogEventType, format string, params ...interface{}) {
+		formatWithContextID, paramsWithContextID := base.PrependContextID(contextID, format, params...)
+
+		switch eventType {
+		case blip.LogMessage:
+			base.LogTo("Sync+", formatWithContextID, paramsWithContextID...)
+		case blip.LogFrame:
+			base.LogTo("Sync++", formatWithContextID, paramsWithContextID...)
+		default:
+			base.LogTo("Sync", formatWithContextID, paramsWithContextID...)
+		}
 	}
 }

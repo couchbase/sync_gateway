@@ -11,6 +11,8 @@ package base
 
 import (
 	"errors"
+	"github.com/couchbaselabs/go.assert"
+	"log"
 	"testing"
 )
 
@@ -32,4 +34,43 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 		Warn("%s", "A WARNING message")
 		TEMP("%s", "A TEMP message")
 	}
+}
+
+// func PrependContextID(contextID, format string, params ...interface{}) (newFormat string, newParams []interface{}) {
+
+func TestPrependContextID(t *testing.T) {
+
+	contextID := "context"
+
+	var testInputsOutputs = []struct {
+		inputFormat  string        // input
+		inputParams  []interface{} // input
+		outputFormat string        // output
+		outputParams []interface{} // outout
+	}{
+		{
+			"%v",
+			[]interface{}{"hello"},
+			"[%s] %v",
+			[]interface{}{contextID, "hello"},
+		},
+		{
+			"",
+			[]interface{}{},
+			"[%s] ",
+			[]interface{}{contextID},
+		},
+	}
+
+	for _, testInputOutput := range testInputsOutputs {
+		newFormat, newParams := PrependContextID(contextID, testInputOutput.inputFormat, testInputOutput.inputParams...)
+		assert.Equals(t, newFormat, testInputOutput.outputFormat)
+
+		assert.Equals(t, len(newParams), len(testInputOutput.outputParams))
+		for i, newParam := range newParams {
+			assert.Equals(t, newParam, testInputOutput.outputParams[i])
+		}
+	}
+
+	log.Printf("testInputsOutputs: %+v", testInputsOutputs)
 }
