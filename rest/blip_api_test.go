@@ -587,19 +587,12 @@ func TestAttachment(t *testing.T) {
 		Stub:        true,
 	}
 
-	type TestDoc struct {
-		ID          string                        `json:"_id"`
-		Rev         string                        `json:"_rev"`
-		Attachments map[string]base.DocAttachment `json:"_attachments,omitempty"`
-	}
-
-	doc := TestDoc{
-		ID:  docId,
-		Rev: revId,
-		Attachments: map[string]base.DocAttachment{
-			attachmentName: myAttachment,
-		},
-	}
+	doc := base.NewRestDocument()
+	doc.SetID(docId)
+	doc.SetRevID(revId)
+	doc.SetAttachments(base.AttachmentMap{
+		attachmentName: myAttachment,
+	})
 
 	log.Printf("doc: %+v", doc)
 	docBody, err := json.Marshal(doc)
