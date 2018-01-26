@@ -712,7 +712,7 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 	formatWithContextID := `[%s] ` + format
 
 	params = append(params, 0)
-	copy(params[0+1:], params[0:])
+	copy(params[1:], params[0:])
 	params[0] = contextID
 
 	return formatWithContextID, params
