@@ -13,6 +13,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
+	"time"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -559,5 +560,81 @@ func TestCheckpoint(t *testing.T) {
 	log.Printf("body: %s", body)
 	assert.True(t, strings.Contains(string(body), "Key"))
 	assert.True(t, strings.Contains(string(body), "Value"))
+
+}
+
+// Test Attachment replication behavior described here: https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol
+func TestAttachment(t *testing.T) {
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		noAdminParty:       true,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	docId := "doc"
+	revId := "1-rev1"
+
+	myAttachment := base.DocAttachment{
+		ContentType: "application/json",
+		Digest:      "fakedigest",
+		Length:      5,
+		Revpos:      1,
+		Stub:        true,
+	}
+
+	//type TestDoc struct {
+	//	Attachments struct {
+	//		MyAttachment struct {
+	//			ContentType string `json:"content_type"`
+	//			Digest      string `json:"digest"`
+	//			Length      int    `json:"length"`
+	//			Revpos      int    `json:"revpos"`
+	//			Stub        bool   `json:"stub"`
+	//		} `json:"MyAttachment"`
+	//	} `json:"_attachments"`
+	//	ID  string `json:"_id"`
+	//	Rev string `json:"_rev"`
+	//}
+
+	type TestDoc struct {
+		ID          string                        `json:"_id"`
+		Rev         string                        `json:"_rev"`
+		Attachments map[string]base.DocAttachment `json:"_attachments,omitempty"`
+	}
+
+	doc := TestDoc{
+		ID:  docId,
+		Rev: revId,
+		Attachments: map[string]base.DocAttachment{
+			"myAttachment": myAttachment,
+		},
+	}
+
+	log.Printf("doc: %+v", doc)
+	docBody, err := json.Marshal(doc)
+	assertNoError(t, err, "Unexpected error")
+
+	// Push a rev with an attachment.
+	revRequest := blip.NewRequest()
+	revRequest.SetCompressed(true)
+	revRequest.SetProfile("rev")
+	revRequest.Properties["id"] = docId
+	revRequest.Properties["rev"] = revId
+	revRequest.Properties["deleted"] = "false"
+	revRequest.SetBody(docBody)
+	sent := bt.sender.Send(revRequest)
+	if !sent {
+		panic(fmt.Sprintf("Failed to send revRequest for doc: %v", docId))
+	}
+
+	time.Sleep(time.Second * 10)
+
+	// Expect a callback to the getAttachment endpoint
+
+	// Read the attachment and make sure it has the expected content.
 
 }
