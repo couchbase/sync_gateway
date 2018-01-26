@@ -562,8 +562,9 @@ func TestCheckpoint(t *testing.T) {
 
 }
 
+
 // Test Attachment replication behavior described here: https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol
-func TestAttachment(t *testing.T) {
+func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
@@ -574,83 +575,31 @@ func TestAttachment(t *testing.T) {
 	assertNoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
-	docId := "doc"
-	revId := "1-rev1"
-	attachmentName := "myAttachment"
-	attachmentBody := "attach"
-
-	myAttachment := base.DocAttachment{
-		ContentType: "application/json",
-		Digest:      "fakedigest",
-		Length:      6,
-		Revpos:      1,
-		Stub:        true,
+	input := SendRevWithAttachmentInput{
+		docId: "doc",
+		revId: "1-rev1",
+		attachmentName: "myAttachment",
+		attachmentBody: "attach",
+		attachmentDigest: "fakedigest",
 	}
+	bt.SendRevWithAttachment(input)
 
-	doc := base.NewRestDocument()
-	doc.SetID(docId)
-	doc.SetRevID(revId)
-	doc.SetAttachments(base.AttachmentMap{
-		attachmentName: myAttachment,
-	})
-
-	log.Printf("doc: %+v", doc)
-	docBody, err := json.Marshal(doc)
-	assertNoError(t, err, "Unexpected error")
-
-	getAttachmentWg := sync.WaitGroup{}
-
-	bt.blipContext.HandlerForProfile["getAttachment"] = func(request *blip.Message) {
-		defer getAttachmentWg.Done()
-		log.Printf("getAttachment request: %+v", request)
-		assert.Equals(t, request.Properties["digest"], myAttachment.Digest)
-		response := request.Response()
-		response.SetBody([]byte(attachmentBody))
-	}
-
-	// Push a rev with an attachment.
-	getAttachmentWg.Add(1)
-	revRequest := blip.NewRequest()
-	revRequest.SetCompressed(true)
-	revRequest.SetProfile("rev")
-	revRequest.Properties["id"] = docId
-	revRequest.Properties["rev"] = revId
-	revRequest.Properties["deleted"] = "false"
-	revRequest.SetBody(docBody)
-	sent := bt.sender.Send(revRequest)
-	if !sent {
-		panic(fmt.Sprintf("Failed to send request for doc: %v", docId))
-	}
-
-	// Expect a callback to the getAttachment endpoint
-	getAttachmentWg.Wait()
-
-	// Get the revResponse, make sure there are no errors
-	revResponse := revRequest.Response()
-	_, hasErrorCode := revResponse.Properties["Error-Code"]
-	assert.False(t, hasErrorCode)
-
-	// Try to fetch the attachment directly via getAttachment, expected to fail for security reasons
-	// since it's not in the context of responding to the peer's "rev" request.
+	// Try to fetch the attachment directly via getAttachment, expected to fail w/ 403 error for security reasons
+	// since it's not in the context of responding to a "rev" request from the peer.
 	getAttachmentRequest := blip.NewRequest()
 	getAttachmentRequest.SetProfile("getAttachment")
-	getAttachmentRequest.Properties["digest"] = myAttachment.Digest
-	sent = bt.sender.Send(getAttachmentRequest)
+	getAttachmentRequest.Properties["digest"] = input.attachmentDigest
+	sent := bt.sender.Send(getAttachmentRequest)
 	if !sent {
-		panic(fmt.Sprintf("Failed to send request for doc: %v", docId))
+		panic(fmt.Sprintf("Failed to send request for doc: %v", input.docId))
 	}
 	getAttachmentResponse := getAttachmentRequest.Response()
 	errorCode, hasErrorCode := getAttachmentResponse.Properties["Error-Code"]
-	_, err = getAttachmentResponse.Body()
-	assertNoError(t, err, "Unexpected error")
-	log.Printf("errorCode: %v", errorCode)
-	assert.Equals(t, errorCode, "403")  // "Attachment's doc not being synced"
+	assert.Equals(t, errorCode, "403") // "Attachment's doc not being synced"
 	assert.True(t, hasErrorCode)
 
 	// Get the attachment via REST api and make sure it matches the attachment pushed earlier
-	response := bt.restTester.SendAdminRequest("GET", fmt.Sprintf("/db/%s/%s", docId, attachmentName), ``)
-	log.Printf("response: %s", response.Body)
-	assert.Equals(t, response.Body.String(), attachmentBody)
-
+	response := bt.restTester.SendAdminRequest("GET", fmt.Sprintf("/db/%s/%s", input.docId, input.attachmentName), ``)
+	assert.Equals(t, response.Body.String(), input.attachmentBody)
 
 }

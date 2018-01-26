@@ -679,7 +679,70 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte) (sent bool, req
 		panic(fmt.Sprintf("revResponse.SerialNumber() != revRequest.SerialNumber().  %v != %v", revResponse.SerialNumber(), revRequest.SerialNumber()))
 	}
 
+	// Make sure no errors.  Just panic for now, but if there are tests that expect errors and want
+	// to use SendRev(), this could be returned.
+	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
+	if hasErrorCode {
+		panic(fmt.Sprintf("Unexpected error sending rev: %v", errorCode))
+	}
+
 	return sent, revRequest, revResponse
+
+}
+
+type SendRevWithAttachmentInput struct {
+	docId            string
+	revId            string
+	attachmentName   string
+	attachmentBody   string
+	attachmentDigest string
+}
+
+func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (sent bool, req, res *blip.Message) {
+
+	// Create a doc with an attachment
+	myAttachment := base.DocAttachment{
+		ContentType: "application/json",
+		Digest:      input.attachmentDigest,
+		Length:      6,
+		Revpos:      1,
+		Stub:        true,
+	}
+	doc := base.NewRestDocument()
+	doc.SetID(input.docId)
+	doc.SetRevID(input.revId)
+	doc.SetAttachments(base.AttachmentMap{
+		input.attachmentName: myAttachment,
+	})
+
+	docBody, err := json.Marshal(doc)
+	if err != nil {
+		panic(fmt.Sprintf("Error marshalling doc.  Error: %v", err))
+	}
+
+	getAttachmentWg := sync.WaitGroup{}
+
+	bt.blipContext.HandlerForProfile["getAttachment"] = func(request *blip.Message) {
+		defer getAttachmentWg.Done()
+		if request.Properties["digest"] != myAttachment.Digest {
+			panic(fmt.Sprintf("Unexpected digest.  Got: %v, expected: %v", request.Properties["digest"], myAttachment.Digest))
+		}
+		response := request.Response()
+		response.SetBody([]byte(input.attachmentBody))
+	}
+
+	// Push a rev with an attachment.
+	getAttachmentWg.Add(1)
+	sent, req, res = bt.SendRev(
+		input.docId,
+		input.revId,
+		docBody,
+	)
+
+	// Expect a callback to the getAttachment endpoint
+	getAttachmentWg.Wait()
+
+	return sent, req, res
 
 }
 
