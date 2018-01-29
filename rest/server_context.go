@@ -110,7 +110,7 @@ func (sc *ServerContext) startReplicators() {
 
 			// Run single replication, cancel parameter will always be false
 			if _, err := sc.replicator.Replicate(params, false); err != nil {
-				base.Warn("Error starting replication: %v", err)
+				base.Warn("Error starting replication: %v, err: %v", params.ReplicationId, err)
 			}
 		}
 
