@@ -353,8 +353,12 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
+
+		base.StatsExpvars.Add("simpleChanges_total", 1)
+		base.StatsExpvars.Add("simpleChanges_active", 1)
 		defer func() {
 			base.LogTo("Changes", "MultiChangesFeed done %s", to)
+			base.StatsExpvars.Add("simpleChanges_active", -1)
 			close(output)
 		}()
 
