@@ -530,7 +530,7 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 // It will call send(nil) to notify that it's caught up and waiting for new changes, or as
 // a periodic heartbeat while waiting.
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
-	err, forceClose := generateContinuousChanges(h.db, inChannels, options, nil, send)
+	err, forceClose := generateContinuousChanges(h.db, inChannels, options, h, send)
 	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
 	return err, forceClose
 }
