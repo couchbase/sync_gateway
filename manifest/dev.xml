@@ -9,7 +9,6 @@
   <remote fetch="https://github.com/natefinch/" name="natefinch"/>
   <remote fetch="https://github.com/rcrowley/" name="rcrowley"/>
   <remote fetch="https://github.com/samuel/" name="samuel"/>
-  <remote fetch="https://github.com/snej/" name="snej"/>
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
   <remote fetch="https://github.com/mreiferson/" name="mreiferson"/>
   <remote fetch="https://github.com/kardianos/" name="kardianos"/>
@@ -19,7 +18,7 @@
   <remote fetch="https://github.com/brett19/" name="brett19"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
-  
+
   <default remote="couchbase" revision="master"/>
 
   <!-- Build Scripts (required on CI servers) -->
@@ -29,26 +28,26 @@
     <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
   </project>
 
-  
-  <!-- Sync Gateway -->
-  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/1.5.0"/> 
 
-  
+  <!-- Sync Gateway -->
+  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/1.5.0"/>
+
+
   <!-- Sync Gateway Accel-->
   <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="bc9e483a80f72ff744b5008af1135b6e2dbfd531"/>
 
   <!-- Dependencies specific to Sync Gateway Accel-->
   <project groups="notdefault,sg-accel" name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="eb79bf552d0992f5d790b25b6ebba9b633a259a2"/>
-  
+
   <project groups="notdefault,sg-accel" name="go-metrics" path="godeps/src/github.com/rcrowley/go-metrics" remote="rcrowley" revision="7aeccdae5c4ea7140b90c8af1dcf9563065cc6dd"/>
 
   <project groups="notdefault,sg-accel" name="cbauth" path="godeps/src/github.com/couchbase/cbauth" remote="couchbase" revision="1323b92ac2619c29d50e588e59d7a6b4839da629"/>
-  
+
   <project groups="notdefault,sg-accel" name="cb-heartbeat" path="godeps/src/github.com/couchbase/cb-heartbeat" remote="couchbase" revision="aedb0776e80d25a79d4b17c1f322a75a2c52a518"/>
 
   <project groups="notdefault,sg-accel" name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="3d39b57188c372649beedd5c13c9003156d5a055"/>
-  
-  
+
+
   <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
   <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
 
@@ -118,7 +117,7 @@
 
   <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="5823a0cbaaa9008406021dc5daf80125ea30bba6"/>
 
-  <project name="go-blip" path="godeps/src/github.com/snej/go-blip" remote="snej" revision="d91ad03dfa1649aab06b0ce04577a744f97749b0"/>
+  <project name="go-blip" path="godeps/src/github.com/snej/go-blip" revision="d91ad03dfa1649aab06b0ce04577a744f97749b0"/>
 
   <project name="go.uuid" path="godeps/src/github.com/satori/go.uuid" remote="satori" revision="5bf94b69c6b68ee1b541973bb8e1144db23a194b"/>
 
