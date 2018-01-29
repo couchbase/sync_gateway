@@ -134,12 +134,12 @@ func (r *Replicator) removeReplication(repId string) {
 // Starts a replication based on the provided replication config.
 func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParameters) (sgreplicate.SGReplication, error) {
 
-	// Generate ID for the new replication, and add to the map of active replications
+	// Generate ID if blank for the new replication
 	if parameters.ReplicationId == "" {
 		parameters.ReplicationId = CreateUUID()
 	}
 
-	LogTo("Replicate", "Starting replication with parameters %+v", parameters)
+	LogTo("Replicate", "Creating replication with parameters %+v", parameters)
 
 	switch parameters.Lifecycle {
 	case sgreplicate.ONE_SHOT:
