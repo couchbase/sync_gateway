@@ -562,8 +562,10 @@ func TestCheckpoint(t *testing.T) {
 
 }
 
-
 // Test Attachment replication behavior described here: https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol
+// - Put attachment via blip
+// - Verifies that getAttachment won't return attachment "out of context" of a rev request
+// - Get attachment via REST and verifies it returns the correct content
 func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
 	// Create blip tester
@@ -576,10 +578,10 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	defer bt.Close()
 
 	input := SendRevWithAttachmentInput{
-		docId: "doc",
-		revId: "1-rev1",
-		attachmentName: "myAttachment",
-		attachmentBody: "attach",
+		docId:            "doc",
+		revId:            "1-rev1",
+		attachmentName:   "myAttachment",
+		attachmentBody:   "attach",
 		attachmentDigest: "fakedigest",
 	}
 	bt.SendRevWithAttachment(input)
@@ -601,5 +603,44 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	// Get the attachment via REST api and make sure it matches the attachment pushed earlier
 	response := bt.restTester.SendAdminRequest("GET", fmt.Sprintf("/db/%s/%s", input.docId, input.attachmentName), ``)
 	assert.Equals(t, response.Body.String(), input.attachmentBody)
+
+}
+
+func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		noAdminParty:                true,
+		connectingUsername:          "user1",
+		connectingPassword:          "1234",
+		connectingUserChannelGrants: []string{"*"}, // All channels
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	input := SendRevWithAttachmentInput{
+		docId:            "doc",
+		revId:            "1-rev1",
+		attachmentName:   "myAttachment",
+		attachmentBody:   "attach",
+		attachmentDigest: "fakedigest",
+	}
+	sent, req, res := bt.SendRevWithAttachment(input)
+	assert.True(t, sent)
+	log.Printf("req: %v.  res: %v", req, res)
+
+	allDocs := bt.GetAllDocsViaChanges()
+	log.Printf("allDocs: %v", allDocs)
+
+	// make assertions on allDocs -- make sure attachment is present w/ expected body
+	assert.Equals(t, len(allDocs), 1)
+	retrievedDoc := allDocs[input.docId]
+	assert.Equals(t, len(retrievedDoc.Attachments), 1)
+	retrievedAttachment := retrievedDoc.Attachments[input.attachmentName]
+	assert.Equals(t, string(retrievedAttachment.Data), input.attachmentBody)
+
+	// Makes sure the the digest matches expected value
+	// TODO: this assertion fails with "fakedigest" != "sha1-E84HH2iVirRjaYhTGJ1jYQANtcI=", and I need to figure out why digest is not "fakedigest", to make sure it's not an error
+	// assert.Equals(t, retrievedAttachment.Digest, input.attachmentDigest)
 
 }

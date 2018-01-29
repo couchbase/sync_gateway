@@ -7,7 +7,7 @@ type RestDocument struct {
 	Attachments AttachmentMap `json:"_attachments,omitempty"`
 }
 
-type AttachmentMap map[string]DocAttachment
+type AttachmentMap map[string]*DocAttachment
 
 type DocAttachment struct {
 	ContentType string `json:"content_type,omitempty"`
@@ -15,7 +15,7 @@ type DocAttachment struct {
 	Length      int    `json:"length,omitempty"`
 	Revpos      int    `json:"revpos,omitempty"`
 	Stub        bool   `json:"stub,omitempty"`
-	Data        bool   `json:"data,omitempty"`
+	Data        []byte  // TODO: add tag to tell json marshal/unmarshal to ignore this field
 }
 
 func NewRestDocument() *RestDocument {
@@ -28,6 +28,15 @@ func NewRestDocument() *RestDocument {
 func (d *RestDocument) SetID(docId string) {
 	d.RestBody["_id"] = docId
 }
+
+func (d *RestDocument) ID() string {
+	return d.RestBody["_id"].(string)
+}
+
+func (d *RestDocument) RevID() string {
+	return d.RestBody["_rev"].(string)
+}
+
 
 func (d *RestDocument) SetRevID(revId string) {
 	d.RestBody["_rev"] = revId

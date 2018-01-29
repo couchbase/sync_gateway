@@ -712,7 +712,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 	doc.SetID(input.docId)
 	doc.SetRevID(input.revId)
 	doc.SetAttachments(base.AttachmentMap{
-		input.attachmentName: myAttachment,
+		input.attachmentName: &myAttachment,
 	})
 
 	docBody, err := json.Marshal(doc)
@@ -781,6 +781,117 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 	}
 
 	return collectedChanges
+
+}
+
+// GetAllDocsViaChanges
+func (bt *BlipTester) GetAllDocsViaChanges() (docs map[string]base.RestDocument) {
+
+	docs = map[string]base.RestDocument{}
+	changesFinishedWg := sync.WaitGroup{}
+	revsFinishedWg := sync.WaitGroup{}
+
+	// -------- Changes handler callback --------
+	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+
+		// Send a response telling the other side we want ALL revisions
+
+		body, err := request.Body()
+		if err != nil {
+			panic(fmt.Sprintf("Error getting request body: %v", err))
+		}
+
+		if string(body) == "null" {
+			changesFinishedWg.Done()
+			return
+		}
+
+		if !request.NoReply() {
+
+			// unmarshal into json array
+			changesBatch := [][]interface{}{}
+
+			if err := json.Unmarshal(body, &changesBatch); err != nil {
+				panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
+			}
+
+			responseVal := [][]interface{}{}
+			for _, change := range changesBatch {
+				revId := change[2].(string)
+				responseVal = append(responseVal, []interface{}{ revId })
+				revsFinishedWg.Add(1)
+			}
+
+			response := request.Response()
+			responseValBytes, err := json.Marshal(responseVal)
+			log.Printf("responseValBytes: %s", responseValBytes)
+			if err != nil {
+				panic(fmt.Sprintf("Error marshalling response: %v", err))
+			}
+			response.SetBody(responseValBytes)
+
+		}
+	}
+
+	// -------- Rev handler callback --------
+	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
+
+		defer revsFinishedWg.Done()
+		body, err := request.Body()
+		log.Printf("err: %v body: %s", err, body)
+		var doc base.RestDocument
+		err = json.Unmarshal(body, &doc)
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected err: %v", err))
+		}
+		docs[doc.ID()] = doc
+
+		for _, attachment := range doc.Attachments {
+
+			// Get attachments and append to RestDocument
+			getAttachmentRequest := blip.NewRequest()
+			getAttachmentRequest.SetProfile("getAttachment")
+			getAttachmentRequest.Properties["digest"] = attachment.Digest
+			sent := bt.sender.Send(getAttachmentRequest)
+			if !sent {
+				panic(fmt.Sprintf("Unable to get attachment."))
+			}
+			getAttachmentResponse := getAttachmentRequest.Response()
+			getAttachmentBody, getAttachmentErr := getAttachmentResponse.Body()
+			if getAttachmentErr != nil {
+				panic(fmt.Sprintf("Unexpected err: %v", err))
+			}
+			log.Printf("getAttachmentBody: %s", getAttachmentBody)
+			attachment.Data = getAttachmentBody
+		}
+
+
+
+		// Send response to rev request
+		if !request.NoReply() {
+			response := request.Response()
+			response.SetBody([]byte{}) // Empty response to indicate success
+		}
+
+	}
+
+	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	changesFinishedWg.Add(1)
+	subChangesRequest := blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "false"
+
+	sent := bt.sender.Send(subChangesRequest)
+	if !sent {
+		panic(fmt.Sprintf("Unable to subscribe to changes."))
+	}
+
+	changesFinishedWg.Wait()
+
+	revsFinishedWg.Wait()
+
+	return docs
 
 }
 
