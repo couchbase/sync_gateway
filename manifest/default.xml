@@ -17,6 +17,7 @@
   <remote fetch="https://github.com/satori/" name="satori"/>
   <remote fetch="https://github.com/pkg/" name="pkg"/>
   <remote fetch="https://github.com/go-sourcemap/" name="go-sourcemap"/>
+  <remote fetch="https://github.com/google/" name="google"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
@@ -60,15 +61,15 @@
 
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="195945aa8fd23ea4772883396fd6b31730035eff"/>
 
-  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="6382451e5ef472cd19e4eba6e82e3c1957e4cc09"/>
+  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="72b08dc5389b2536dd073f16a093a964edce65eb"/>
 
-  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="e5fbe974fa2c297b36bda375d742ba1419eff25f"/>
+  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="de2ebfbb130fe9df6ffdacde73f799f17a72e70b"/>
 
-  <project name="gocbconnstr" path="godeps/src/github.com/couchbaselabs/gocbconnstr" remote="couchbaselabs" revision="f601f521a1ab1c99260c63441e1bbdbbc48b1bd9"/>
+  <project name="gocbconnstr" path="godeps/src/github.com/couchbaselabs/gocbconnstr" remote="couchbaselabs" revision="710456e087a6d497e87f41d0a9d98d6a75672186"/>
 
   <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="5b7baa20429a46a5543ee259664cc86502738cad"/>
 
-  <project name="gocbconnstr" path="godeps/src/gopkg.in/couchbaselabs/gocbconnstr.v1" remote="couchbaselabs" revision="f601f521a1ab1c99260c63441e1bbdbbc48b1bd9"/>
+  <project name="gocbconnstr" path="godeps/src/gopkg.in/couchbaselabs/gocbconnstr.v1" remote="couchbaselabs" revision="710456e087a6d497e87f41d0a9d98d6a75672186"/>
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="39fe61b0969ae38f8c6841e9c19c5ad9e57d2b75"/>
 
@@ -125,5 +126,7 @@
   <project name="errors" path="godeps/src/github.com/pkg/errors" remote="pkg" revision="f15c970de5b76fac0b59abb32d62c17cc7bed265"/>
 
   <project name="sourcemap" path="godeps/src/gopkg.in/sourcemap.v1" remote="go-sourcemap" revision="6e83acea0053641eff084973fee085f0c193c61a"/>
+
+  <project name="uuid" path="godeps/src/github.com/google/uuid" remote="google" revision="dec09d789f3dba190787f8b4454c7d3c936fed9e"/>
 
 </manifest>
