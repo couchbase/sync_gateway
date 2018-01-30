@@ -210,9 +210,9 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 
 	if sinceStr, found := rq.Properties["since"]; found {
 		var err error
-		if since, err = db.ParseSequenceIDFromJSON([]byte(sinceStr)); err != nil {
-			bh.blipSyncContext.LogTo("Sync", "%s: Invalid sequence ID in 'since': %s ... %s", rq, sinceStr, bh.effectiveUsername)
-			since = db.SequenceID{}
+		if since, err = bh.db.ParseSequenceID(sinceStr); err != nil {
+			bh.blipSyncContext.LogTo("Sync", "%s: Error parsing sequence ID in 'since': %s.  Error: %v ... %s", rq, sinceStr, err, bh.effectiveUsername)
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid sequence ID in 'since': %s", sinceStr)
 		}
 	}
 	bh.batchSize = int(getRestrictedIntFromString(rq.Properties["batch"], 200, 10, math.MaxUint64, true))
