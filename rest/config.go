@@ -61,7 +61,7 @@ type ServerConfig struct {
 	SSLKey                         *string                  `json:",omitempty"`            // Path to SSL private key file, or nil
 	ServerReadTimeout              *int                     `json:",omitempty"`            // maximum duration.Second before timing out read of the HTTP(S) request
 	ServerWriteTimeout             *int                     `json:",omitempty"`            // maximum duration.Second before timing out write of the HTTP(S) response
-	AdminInterface                 *string                  `json:",omitempty"`            // Interface to bind admin API to, default "127.0.0.1:4985"
+	AdminInterface                 *string                  `json:",omitempty"`            // Interface to bind admin API to, default "localhost:4985"
 	AdminUI                        *string                  `json:",omitempty"`            // Path to Admin HTML page, if omitted uses bundled HTML
 	ProfileInterface               *string                  `json:",omitempty"`            // Interface to bind Go profile API to (no default)
 	ConfigServer                   *string                  `json:",omitempty"`            // URL of config server (for dynamic db discovery)
@@ -799,9 +799,7 @@ func RunServer(config *ServerConfig) {
 		if err := waitForResponse(*config.Interface); err != nil {
 			base.LogFatal("Error waiting for public REST API: %v", err)
 		}
-
-		// Start up replicators only when the APIs are ready
-		sc.StartReplicators()
+		sc.PostStartup()
 	}()
 
 	base.Logf("Starting admin server on %s", *config.AdminInterface)
@@ -876,8 +874,8 @@ func waitForResponse(addr string) error {
 			return shouldRetry, nil, nil
 		}),
 
-		// 100ms * 64^2 == ~6.8 minutes longest wait
-		base.CreateDoublingSleeperFunc(64, 100),
+		// 100ms * 2^12 == ~6.5 minutes longest wait
+		base.CreateDoublingSleeperFunc(12, 100),
 	)
 
 	return err

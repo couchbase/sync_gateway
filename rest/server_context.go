@@ -88,9 +88,14 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 	return sc
 }
 
-func (sc *ServerContext) StartReplicators() {
+func (sc *ServerContext) PostStartup() {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
+
+	sc.startReplicators()
+}
+
+func (sc *ServerContext) startReplicators() {
 
 	if sc.config.Replications != nil {
 
