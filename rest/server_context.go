@@ -103,17 +103,20 @@ func (sc *ServerContext) StartReplicators() {
 				continue
 			}
 
-			//Force one-shot replications to run Async
-			//to avoid blocking server startup
+			// Force one-shot replications to run Async
+			// to avoid blocking server startup
 			params.Async = true
 
-			//Run single replication, cancel parameter will always be false
+			// Run single replication, cancel parameter will always be false
 			go func() {
-				sc.replicator.Replicate(params, false)
+				if _, err := sc.replicator.Replicate(params, false); err != nil {
+					base.Warn("Error running replication: %v", err)
+				}
 			}()
 		}
 
 	}
+
 }
 
 func (sc *ServerContext) FindDbByBucketName(bucketName string) string {
