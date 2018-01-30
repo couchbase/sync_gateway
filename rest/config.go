@@ -864,19 +864,21 @@ func localhostAddr(addr string) string {
 
 // waitForResponse blocks until the given address returns a HTTP 200 response at the root
 func waitForResponse(addr string) error {
+	// TODO: Could this ever be https-only?
 	url := "http://" + localhostAddr(addr) + "/"
 
-	// This could take a long time to start working if views are being re-calculated
-	// 100ms * 64^2 == ~6.8 minutes longest wait
 	err, _ := base.RetryLoop(
 		"GET "+url,
+
 		base.RetryWorker(func() (bool, error, interface{}) {
-			// TODO: Could this be https-only? What if config.Interface provides a full address???
 			resp, err := http.Get(url)
 			shouldRetry := err != nil || resp.StatusCode != http.StatusOK
 			return shouldRetry, nil, nil
 		}),
-		base.CreateDoublingSleeperFunc(64, 100))
+
+		// 100ms * 64^2 == ~6.8 minutes longest wait
+		base.CreateDoublingSleeperFunc(64, 100),
+	)
 
 	return err
 }
