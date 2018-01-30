@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -60,7 +61,7 @@ type ServerConfig struct {
 	SSLKey                         *string                  `json:",omitempty"`            // Path to SSL private key file, or nil
 	ServerReadTimeout              *int                     `json:",omitempty"`            // maximum duration.Second before timing out read of the HTTP(S) request
 	ServerWriteTimeout             *int                     `json:",omitempty"`            // maximum duration.Second before timing out write of the HTTP(S) response
-	AdminInterface                 *string                  `json:",omitempty"`            // Interface to bind admin API to, default ":4985"
+	AdminInterface                 *string                  `json:",omitempty"`            // Interface to bind admin API to, default "127.0.0.1:4985"
 	AdminUI                        *string                  `json:",omitempty"`            // Path to Admin HTML page, if omitted uses bundled HTML
 	ProfileInterface               *string                  `json:",omitempty"`            // Interface to bind Go profile API to (no default)
 	ConfigServer                   *string                  `json:",omitempty"`            // URL of config server (for dynamic db discovery)
@@ -790,8 +791,22 @@ func RunServer(config *ServerConfig) {
 		}()
 	}
 
+	go func() {
+		// The APIs could take a long time to start if they're blocked on view re-indexing
+		if err := waitForResponse(*config.AdminInterface); err != nil {
+			base.LogFatal("Error waiting for admin REST API: %v", err)
+		}
+		if err := waitForResponse(*config.Interface); err != nil {
+			base.LogFatal("Error waiting for public REST API: %v", err)
+		}
+
+		// Start up replicators only when the APIs are ready
+		sc.StartReplicators()
+	}()
+
 	base.Logf("Starting admin server on %s", *config.AdminInterface)
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
+
 	base.Logf("Starting server on %s ...", *config.Interface)
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
@@ -836,4 +851,32 @@ func ServerMain(runMode SyncGatewayRunMode) {
 	ParseCommandLine(runMode)
 	ValidateConfigOrPanic(runMode)
 	RunServer(config)
+}
+
+// localhostAddr takes an address like ':4984' or '127.0.0.1:4984' and prefixes with localhost if required.
+func localhostAddr(addr string) string {
+	port := regexp.MustCompile("^:\\d+$")
+	if port.MatchString(addr) {
+		return "localhost" + addr
+	}
+	return addr
+}
+
+// waitForResponse blocks until the given address returns a HTTP 200 response at the root
+func waitForResponse(addr string) error {
+	url := "http://" + localhostAddr(addr) + "/"
+
+	// This could take a long time to start working if views are being re-calculated
+	// 100ms * 64^2 == ~6.8 minutes longest wait
+	err, _ := base.RetryLoop(
+		"GET "+url,
+		base.RetryWorker(func() (bool, error, interface{}) {
+			// TODO: Could this be https-only? What if config.Interface provides a full address???
+			resp, err := http.Get(url)
+			shouldRetry := err != nil || resp.StatusCode != http.StatusOK
+			return shouldRetry, nil, nil
+		}),
+		base.CreateDoublingSleeperFunc(64, 100))
+
+	return err
 }

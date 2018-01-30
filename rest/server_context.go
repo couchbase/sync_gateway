@@ -27,7 +27,6 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/sg-replicate"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -86,11 +85,18 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		sc.startStatsReporter()
 	}
 
-	if config.Replications != nil {
+	return sc
+}
 
-		for _, replicationConfig := range config.Replications {
+func (sc *ServerContext) StartReplicators() {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
 
-			params, _, localdb, err := validateReplicationParameters(*replicationConfig, true, *config.AdminInterface)
+	if sc.config.Replications != nil {
+
+		for _, replicationConfig := range sc.config.Replications {
+
+			params, _, _, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
 
 			if err != nil {
 				base.LogError(err)
@@ -103,19 +109,11 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 			//Run single replication, cancel parameter will always be false
 			go func() {
-				//Delay the start of the replication if its a oneshot that
-				//uses a localdb reference to allow the REST API's to come up
-				if params.Lifecycle == sgreplicate.ONE_SHOT && localdb {
-					base.Warn("Delaying start of local database one-shot replication, source %v, target %v for %v seconds", params.SourceDb, params.TargetDb, kOneShotLocalDbReplicateWait)
-					time.Sleep(kOneShotLocalDbReplicateWait)
-				}
 				sc.replicator.Replicate(params, false)
 			}()
 		}
 
 	}
-
-	return sc
 }
 
 func (sc *ServerContext) FindDbByBucketName(bucketName string) string {
