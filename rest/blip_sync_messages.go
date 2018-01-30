@@ -181,9 +181,17 @@ func (a *addRevision) rev() (rev string, found bool) {
 	return rev, found
 }
 
-func (a *addRevision) deleted() (deleted string, found bool) {
-	deleted, found = a.rq.Properties["deleted"]
-	return deleted, found
+func (a *addRevision) deleted() bool {
+	deleted, found := a.rq.Properties["deleted"]
+	if !found {
+		return false
+	}
+	return deleted != "0" && deleted != "false"
+}
+
+func (a *addRevision) hasDeletedPropery() bool {
+	_, found := a.rq.Properties["deleted"]
+	return found
 }
 
 func (a *addRevision) sequence() (sequence string, found bool) {
@@ -203,8 +211,8 @@ func (a *addRevision) String() string {
 		buffer.WriteString(fmt.Sprintf("Rev:%v ", rev))
 	}
 
-	if deleted, foundDeleted := a.deleted(); foundDeleted {
-		buffer.WriteString(fmt.Sprintf("Deleted:%v ", deleted))
+	if a.hasDeletedPropery() {
+		buffer.WriteString(fmt.Sprintf("Deleted:%v ", a.deleted()))
 	}
 
 	if sequence, foundSequence := a.sequence(); foundSequence == true {

@@ -545,9 +545,7 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 	if !found || !rfound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
-	if del, found := addRevision.deleted(); found && del != "0" && del != "false" {
-		body["_deleted"] = true // (PutExistingRev expects deleted flag in the body)
-	}
+	body["_deleted"] = addRevision.deleted()
 
 	history := []string{revID}
 	if historyStr := rq.Properties["history"]; historyStr != "" {
