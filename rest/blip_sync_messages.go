@@ -92,7 +92,13 @@ func (s *subChanges) String() string {
 
 	buffer := bytes.NewBufferString("")
 
-	buffer.WriteString(fmt.Sprintf("Since:%v ", s.since()))
+	since, err := s.since()
+	if err != nil {
+		base.Warn("Error discovering since value from subchanges.  Err: %v", err)
+	} else {
+		buffer.WriteString(fmt.Sprintf("Since:%v ", since))
+	}
+
 
 	continuous := s.continuous()
 	if continuous {
