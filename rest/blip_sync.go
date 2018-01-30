@@ -130,7 +130,8 @@ func (h *handler) handleBLIPSync() error {
 // Includes the outer handler as a nested function.
 func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler, *blip.Message) error) {
 
-	ctx.blipContext.HandlerForProfile[profile] = func(rq *blip.Message) {
+	// Wrap the handler function with a function that adds handling needed by all handlers
+	handlerFnWrapper := func(rq *blip.Message) {
 
 		startTime := time.Now()
 
@@ -156,6 +157,9 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 			}
 		}
 	}
+
+	ctx.blipContext.HandlerForProfile[profile] = handlerFnWrapper
+
 }
 
 // Handler for unknown requests
