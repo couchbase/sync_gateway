@@ -523,7 +523,7 @@ func (h *handler) currentEffectiveUserName() string {
 		effectiveName = "ADMIN"
 	} else if h.user != nil {
 		if h.user.Name() != "" {
-			effectiveName = fmt.Sprintf("%s", h.user.Name())
+			effectiveName = h.user.Name()
 		} else {
 			effectiveName = "GUEST"
 		}
