@@ -16,7 +16,7 @@ import (
 type SequenceIDParser func(since string) (db.SequenceID, error)
 
 // Helper for handling BLIP subChanges requests.  Supports Stringer() interface to log aspects of the request.
-type subChanges struct {
+type subChangesParams struct {
 	rq               *blip.Message    // The underlying BLIP message
 	logger           base.SGLogger    // A logger object which might encompass more state (eg, blipContext id)
 	zeroSeq          db.SequenceID    // A zero sequence ID with correct subtype (int sequence / channel clock)
@@ -24,8 +24,8 @@ type subChanges struct {
 }
 
 // Create a new subChanges helper
-func newSubChanges(rq *blip.Message, logger base.SGLogger, zeroSeq db.SequenceID, sequenceIDParser SequenceIDParser) *subChanges {
-	return &subChanges{
+func newSubChangesParams(rq *blip.Message, logger base.SGLogger, zeroSeq db.SequenceID, sequenceIDParser SequenceIDParser) *subChangesParams {
+	return &subChangesParams{
 		rq:               rq,
 		logger:           logger,
 		zeroSeq:          zeroSeq,
@@ -33,7 +33,7 @@ func newSubChanges(rq *blip.Message, logger base.SGLogger, zeroSeq db.SequenceID
 	}
 }
 
-func (s *subChanges) since() (db.SequenceID, error) {
+func (s *subChangesParams) since() (db.SequenceID, error) {
 
 	// Depending on the db sequence type, use correct zero sequence for since value
 	sinceSequenceId := s.zeroSeq
@@ -50,11 +50,11 @@ func (s *subChanges) since() (db.SequenceID, error) {
 
 }
 
-func (s *subChanges) batchSize() int {
+func (s *subChangesParams) batchSize() int {
 	return int(getRestrictedIntFromString(s.rq.Properties["batch"], BlipDefaultBatchSize, 10, math.MaxUint64, true))
 }
 
-func (s *subChanges) continuous() bool {
+func (s *subChangesParams) continuous() bool {
 	continuous := false
 	if val, found := s.rq.Properties["continuous"]; found && val != "false" {
 		continuous = true
@@ -62,20 +62,20 @@ func (s *subChanges) continuous() bool {
 	return continuous
 }
 
-func (s *subChanges) activeOnly() bool {
+func (s *subChangesParams) activeOnly() bool {
 	return (s.rq.Properties["active_only"] == "true")
 }
 
-func (s *subChanges) filter() string {
+func (s *subChangesParams) filter() string {
 	return s.rq.Properties["filter"]
 }
 
-func (s *subChanges) channels() (channels string, found bool) {
+func (s *subChangesParams) channels() (channels string, found bool) {
 	channels, found = s.rq.Properties["channels"]
 	return channels, found
 }
 
-func (s *subChanges) channelsExpandedSet() (resultChannels base.Set, err error) {
+func (s *subChangesParams) channelsExpandedSet() (resultChannels base.Set, err error) {
 	channelsParam, found := s.rq.Properties["channels"]
 	if !found {
 		return nil, fmt.Errorf("Missing 'channels' filter parameter")
@@ -85,7 +85,7 @@ func (s *subChanges) channelsExpandedSet() (resultChannels base.Set, err error) 
 }
 
 // Satisfy fmt.Stringer interface for dumping attributes of this subChanges request to logs
-func (s *subChanges) String() string {
+func (s *subChangesParams) String() string {
 
 	buffer := bytes.NewBufferString("")
 
@@ -124,25 +124,25 @@ func (s *subChanges) String() string {
 
 }
 
-type setCheckpoint struct {
+type setCheckpointParams struct {
 	rq *blip.Message // The underlying BLIP message
 }
 
-func newSetCheckpoint(rq *blip.Message) *setCheckpoint {
-	return &setCheckpoint{
+func newSetCheckpointParams(rq *blip.Message) *setCheckpointParams {
+	return &setCheckpointParams{
 		rq: rq,
 	}
 }
 
-func (s *setCheckpoint) client() string {
+func (s *setCheckpointParams) client() string {
 	return s.rq.Properties["client"]
 }
 
-func (s *setCheckpoint) rev() string {
+func (s *setCheckpointParams) rev() string {
 	return s.rq.Properties["rev"]
 }
 
-func (s *setCheckpoint) String() string {
+func (s *setCheckpointParams) String() string {
 
 	buffer := bytes.NewBufferString("")
 
@@ -157,27 +157,27 @@ func (s *setCheckpoint) String() string {
 
 }
 
-type addRevision struct {
+type addRevisionParams struct {
 	rq *blip.Message // The underlying BLIP message
 }
 
-func newAddRevision(rq *blip.Message) *addRevision {
-	return &addRevision{
+func newAddRevisionParams(rq *blip.Message) *addRevisionParams {
+	return &addRevisionParams{
 		rq: rq,
 	}
 }
 
-func (a *addRevision) id() (id string, found bool) {
+func (a *addRevisionParams) id() (id string, found bool) {
 	id, found = a.rq.Properties["id"]
 	return id, found
 }
 
-func (a *addRevision) rev() (rev string, found bool) {
+func (a *addRevisionParams) rev() (rev string, found bool) {
 	rev, found = a.rq.Properties["rev"]
 	return rev, found
 }
 
-func (a *addRevision) deleted() bool {
+func (a *addRevisionParams) deleted() bool {
 	deleted, found := a.rq.Properties["deleted"]
 	if !found {
 		return false
@@ -185,17 +185,17 @@ func (a *addRevision) deleted() bool {
 	return deleted != "0" && deleted != "false"
 }
 
-func (a *addRevision) hasDeletedPropery() bool {
+func (a *addRevisionParams) hasDeletedPropery() bool {
 	_, found := a.rq.Properties["deleted"]
 	return found
 }
 
-func (a *addRevision) sequence() (sequence string, found bool) {
+func (a *addRevisionParams) sequence() (sequence string, found bool) {
 	sequence, found = a.rq.Properties["sequence"]
 	return sequence, found
 }
 
-func (a *addRevision) String() string {
+func (a *addRevisionParams) String() string {
 
 	buffer := bytes.NewBufferString("")
 
@@ -219,21 +219,21 @@ func (a *addRevision) String() string {
 
 }
 
-type getAttachment struct {
+type getAttachmentParams struct {
 	rq *blip.Message // The underlying BLIP message
 }
 
-func newGetAttachment(rq *blip.Message) *getAttachment {
-	return &getAttachment{
+func newGetAttachmentParams(rq *blip.Message) *getAttachmentParams {
+	return &getAttachmentParams{
 		rq: rq,
 	}
 }
 
-func (g *getAttachment) digest() string {
+func (g *getAttachmentParams) digest() string {
 	return g.rq.Properties["digest"]
 }
 
-func (g *getAttachment) String() string {
+func (g *getAttachmentParams) String() string {
 
 	buffer := bytes.NewBufferString("")
 

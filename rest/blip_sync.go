@@ -180,7 +180,7 @@ func (ctx *blipSyncContext) LogTo(key string, format string, args ...interface{}
 func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 
 	client := rq.Properties["client"]
-	bh.logEndpointEntry(rq.Profile(), NewAdhocStringer(fmt.Sprintf("Client:%s", client)))
+	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("Client:%s", client))
 
 	docID := fmt.Sprintf("checkpoint/%s", client)
 	response := rq.Response()
@@ -206,8 +206,8 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 // Received a "setCheckpoint" request
 func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
-	setCheckpoint := newSetCheckpoint(rq)
-	bh.logEndpointEntry(rq.Profile(), setCheckpoint)
+	setCheckpoint := newSetCheckpointParams(rq)
+	bh.logEndpointEntry(rq.Profile(), setCheckpoint.String())
 
 	docID := fmt.Sprintf("checkpoint/%s", setCheckpoint.client())
 
@@ -231,8 +231,8 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 
-	subChanges := newSubChanges(rq, bh.blipSyncContext, bh.db.CreateZeroSinceValue(), bh.db.ParseSequenceID)
-	bh.logEndpointEntry(rq.Profile(), subChanges)
+	subChanges := newSubChangesParams(rq, bh.blipSyncContext, bh.db.CreateZeroSinceValue(), bh.db.ParseSequenceID)
+	bh.logEndpointEntry(rq.Profile(), subChanges.String())
 
 	since, err := subChanges.since()
 	if err != nil {
@@ -408,7 +408,7 @@ func (bh *blipHandler) handlePushedChanges(rq *blip.Message) error {
 		return err
 	}
 
-	bh.logEndpointEntry(rq.Profile(), NewAdhocStringer(fmt.Sprintf("#Changes:%d", len(changeList))))
+	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("#Changes:%d", len(changeList)))
 	if len(changeList) == 0 {
 		return nil
 	}
@@ -445,7 +445,7 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		return err
 	}
-	bh.logEndpointEntry(rq.Profile(), NewAdhocStringer(fmt.Sprintf("#Changes: %d", len(changeList))))
+	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("#Changes: %d", len(changeList)))
 	if len(changeList) == 0 {
 		return nil
 	}
@@ -535,8 +535,8 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 
-	addRevision := newAddRevision(rq)
-	bh.logEndpointEntry(rq.Profile(), addRevision)
+	addRevision := newAddRevisionParams(rq)
+	bh.logEndpointEntry(rq.Profile(), addRevision.String())
 
 	var body db.Body
 	if err := rq.ReadJSONBody(&body); err != nil {
@@ -577,8 +577,8 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 // Received a "getAttachment" request
 func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
-	getAttachment := newGetAttachment(rq)
-	bh.logEndpointEntry(rq.Profile(), getAttachment)
+	getAttachment := newGetAttachmentParams(rq)
+	bh.logEndpointEntry(rq.Profile(), getAttachment.String())
 
 	digest := getAttachment.digest()
 	if digest == "" {
@@ -706,21 +706,11 @@ func isCompressible(filename string, meta map[string]interface{}) bool {
 	return true // be optimistic by default
 }
 
-func (bh *blipHandler) logEndpointEntry(profile string, endpoint fmt.Stringer) {
+func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
+	// Prof is short for "Profile", which is basically the blip message type
 	bh.LogTo("SyncMsg", "#%03d: Prof:%s %s User:%s", bh.serialNumber, profile, endpoint, bh.effectiveUsername)
 }
 
-type AdhocStringer struct {
-	s string
-}
-
-func NewAdhocStringer(s string) *AdhocStringer {
-	return &AdhocStringer{s: s}
-}
-
-func (a AdhocStringer) String() string {
-	return a.s
-}
 
 func DefaultBlipLogger(contextID string) blip.LogFn {
 	return func(eventType blip.LogEventType, format string, params ...interface{}) {
