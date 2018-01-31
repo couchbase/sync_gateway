@@ -30,22 +30,23 @@ const (
 // Represents one BLIP connection (socket) opened by a client.
 // This connection remains open until the client closes it, and can receive any number of requests.
 type blipSyncContext struct {
-	blipContext        *blip.Context
-	dbc                *db.DatabaseContext
-	user               auth.User
-	effectiveUsername  string
-	batchSize          int
-	continuous         bool
-	activeOnly         bool
-	channels           base.Set
-	lock               sync.Mutex
-	allowedAttachments map[string]int
-	blipSerialNumber   uint64
+	blipContext         *blip.Context
+	dbc                 *db.DatabaseContext
+	user                auth.User
+	effectiveUsername   string
+	batchSize           int
+	continuous          bool
+	activeOnly          bool
+	channels            base.Set
+	lock                sync.Mutex
+	allowedAttachments  map[string]int
+	handlerSerialNumber uint64 // Each handler within a context gets a unique serial number for logging
 }
 
 type blipHandler struct {
 	*blipSyncContext
-	db *db.Database
+	db           *db.Database
+	serialNumber uint64 // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
 type blipHandlerMethod func(*blipHandler, *blip.Message) error
@@ -139,21 +140,20 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 		handler := blipHandler{
 			blipSyncContext: ctx,
 			db:              db,
+			serialNumber:    ctx.incrementSerialNumber(),
 		}
-
-		ctx.incrementSerialNumber()
 
 		if err := handlerFn(&handler, rq); err != nil {
 			status, msg := base.ErrorAsHTTPStatus(err)
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
 			}
-			ctx.LogTo("SyncMsg", "#%03d: Type:%s   --> %d %s Time:%v User:%s", ctx.getSerialNumber(), profile, status, msg, time.Since(startTime), ctx.effectiveUsername)
+			ctx.LogTo("SyncMsg", "#%03d: Type:%s   --> %d %s Time:%v User:%s", handler.serialNumber, profile, status, msg, time.Since(startTime), ctx.effectiveUsername)
 		} else {
 
 			// Log the fact that the handler has finished, except for the "subChanges" special case which does it's own termination related logging
 			if profile != "subChanges" {
-				ctx.LogTo("SyncMsg+", "#%03d: Type:%s   --> OK Time:%v User:%s ", ctx.getSerialNumber(), profile, time.Since(startTime), ctx.effectiveUsername)
+				ctx.LogTo("SyncMsg+", "#%03d: Type:%s   --> OK Time:%v User:%s ", handler.serialNumber, profile, time.Since(startTime), ctx.effectiveUsername)
 			}
 		}
 	}
@@ -265,7 +265,7 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 		// Send changes
 		bh.sendChanges(rq.Sender, since)
 
-		bh.LogTo("SyncMsg+", "#%03d: Type:%s   --> Time:%v User:%s ", bh.getSerialNumber(), rq.Profile(), time.Since(startTime), bh.effectiveUsername)
+		bh.LogTo("SyncMsg+", "#%03d: Type:%s   --> Time:%v User:%s ", bh.serialNumber, rq.Profile(), time.Since(startTime), bh.effectiveUsername)
 
 	}()
 
@@ -635,12 +635,9 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 		})
 }
 
-func (ctx *blipSyncContext) incrementSerialNumber() {
-	ctx.blipSerialNumber = atomic.AddUint64(&ctx.blipSerialNumber, 1)
-}
-
-func (ctx *blipSyncContext) getSerialNumber() uint64 {
-	return atomic.LoadUint64(&ctx.blipSerialNumber)
+func (ctx *blipSyncContext) incrementSerialNumber() uint64 {
+	ctx.handlerSerialNumber = atomic.AddUint64(&ctx.handlerSerialNumber, 1)
+	return atomic.LoadUint64(&ctx.handlerSerialNumber)
 }
 
 func (ctx *blipSyncContext) addAllowedAttachments(atts map[string]interface{}) {
@@ -710,7 +707,7 @@ func isCompressible(filename string, meta map[string]interface{}) bool {
 }
 
 func (bh *blipHandler) logEndpointEntry(profile string, endpoint fmt.Stringer) {
-	bh.LogTo("SyncMsg", "#%03d: Prof:%s %s User:%s", bh.getSerialNumber(), profile, endpoint, bh.effectiveUsername)
+	bh.LogTo("SyncMsg", "#%03d: Prof:%s %s User:%s", bh.serialNumber, profile, endpoint, bh.effectiveUsername)
 }
 
 type AdhocStringer struct {
