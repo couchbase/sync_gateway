@@ -651,7 +651,57 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	retrievedAttachment := attachments[input.attachmentName]
 	assert.Equals(t, string(retrievedAttachment.Data), input.attachmentBody)
 	assert.Equals(t, retrievedAttachment.Length, len(attachmentBody))
-
 	assert.Equals(t, input.attachmentDigest, retrievedAttachment.Digest)
+
+}
+
+
+// Put a revision that is rejected by the sync function and assert that Sync Gateway
+// returns an error code
+func TestPutInvalidRevSyncFnReject(t *testing.T) {
+
+	syncFn := `
+		function(doc) {
+			requireAccess("PBS");
+			channel(doc.channels);
+		}
+    `
+
+	// Setup
+	rt := RestTester{
+		SyncFn:       syncFn,
+		noAdminParty: true,
+	}
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         &rt,
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	// Add a doc that will be rejected by sync function, since user
+	// does not have access to the CNN channel
+
+	revRequest := blip.NewRequest()
+	revRequest.SetCompressed(true)
+	revRequest.SetProfile("rev")
+	revRequest.Properties["id"] = "foo"
+	revRequest.Properties["rev"] = "1-aaa"
+	revRequest.Properties["deleted"] = "false"
+	revRequest.SetBody([]byte(`{"key": "val", "channels": ["CNN"]}`))
+	sent := bt.sender.Send(revRequest)
+	assert.True(t, sent)
+
+	revResponse := revRequest.Response()
+
+	// Since doc is rejected by sync function, expect a 403 error
+	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
+	assert.True(t, hasErrorCode)
+	assert.Equals(t, errorCode, "403")
+
+	// Make sure that a one-off GetChanges() returns no documents
+	changes := bt.GetChanges()
+	assert.True(t, len(changes) == 0)
 
 }
