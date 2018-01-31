@@ -1,10 +1,10 @@
 package rest
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"strings"
-	"bytes"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -12,26 +12,23 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-// Function signature for something that generates a sequence id
-type SequenceIDGenerator func() db.SequenceID
-
 // Function signature for something that parses a sequence id from a string
 type SequenceIDParser func(since string) (db.SequenceID, error)
 
 // Helper for handling BLIP subChanges requests.  Supports Stringer() interface to log aspects of the request.
 type subChanges struct {
-	rq                    *blip.Message       // The underlying BLIP message
-	logger                base.SGLogger       // A logger object which might encompass more state (eg, blipContext id)
-	sinceZeroValueCreator SequenceIDGenerator // A sequence generator for creating zero'd since values
-	sequenceIDParser SequenceIDParser
+	rq               *blip.Message    // The underlying BLIP message
+	logger           base.SGLogger    // A logger object which might encompass more state (eg, blipContext id)
+	zeroSeq          db.SequenceID    // A zero sequence ID with correct subtype (int sequence / channel clock)
+	sequenceIDParser SequenceIDParser // Function which can convert a sequence id string to a db.SequenceID
 }
 
 // Create a new subChanges helper
-func newSubChanges(rq *blip.Message, logger base.SGLogger, sinceZeroValueCreator SequenceIDGenerator, sequenceIDParser SequenceIDParser) *subChanges {
+func newSubChanges(rq *blip.Message, logger base.SGLogger, zeroSeq db.SequenceID, sequenceIDParser SequenceIDParser) *subChanges {
 	return &subChanges{
-		rq:                    rq,
-		logger:                logger,
-		sinceZeroValueCreator: sinceZeroValueCreator,
+		rq:               rq,
+		logger:           logger,
+		zeroSeq:          zeroSeq,
 		sequenceIDParser: sequenceIDParser,
 	}
 }
@@ -39,7 +36,7 @@ func newSubChanges(rq *blip.Message, logger base.SGLogger, sinceZeroValueCreator
 func (s *subChanges) since() (db.SequenceID, error) {
 
 	// Depending on the db sequence type, use correct zero sequence for since value
-	sinceSequenceId := s.sinceZeroValueCreator()
+	sinceSequenceId := s.zeroSeq
 
 	if sinceStr, found := s.rq.Properties["since"]; found {
 		var err error
@@ -98,7 +95,6 @@ func (s *subChanges) String() string {
 	} else {
 		buffer.WriteString(fmt.Sprintf("Since:%v ", since))
 	}
-
 
 	continuous := s.continuous()
 	if continuous {
