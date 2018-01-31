@@ -682,9 +682,8 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 
 	// Add a doc that will be rejected by sync function, since user
 	// does not have access to the CNN channel
-
 	revRequest := blip.NewRequest()
-	revRequest.SetCompressed(true)
+	revRequest.SetCompressed(false)
 	revRequest.SetProfile("rev")
 	revRequest.Properties["id"] = "foo"
 	revRequest.Properties["rev"] = "1-aaa"
@@ -699,6 +698,44 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
 	assert.True(t, hasErrorCode)
 	assert.Equals(t, errorCode, "403")
+
+	// Make sure that a one-off GetChanges() returns no documents
+	changes := bt.GetChanges()
+	assert.True(t, len(changes) == 0)
+
+}
+
+
+func TestPutInvalidRevMalformedBody(t *testing.T) {
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		noAdminParty:                true,
+		connectingUsername:          "user1",
+		connectingPassword:          "1234",
+		connectingUserChannelGrants: []string{"*"}, // All channels
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+
+	// Add a doc that will be rejected by sync function, since user
+	// does not have access to the CNN channel
+	revRequest := blip.NewRequest()
+	revRequest.SetCompressed(false)
+	revRequest.SetProfile("rev")
+	revRequest.Properties["deleted"] = "false"
+	revRequest.SetBody([]byte(`{"key": "val", "channels": [" MALFORMED JSON DOC`))
+
+	sent := bt.sender.Send(revRequest)
+	assert.True(t, sent)
+
+	revResponse := revRequest.Response()
+
+	// Since doc is rejected by sync function, expect a 403 error
+	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
+	assert.True(t, hasErrorCode)
+	assert.Equals(t, errorCode, "500")
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
