@@ -813,7 +813,4 @@ func EnableBlipSyncLogs() {
 	base.EnableLogKey("HTTP+")
 	base.EnableLogKey("Sync")
 	base.EnableLogKey("Sync+")
-	base.EnableLogKey("SyncMsg")
-	base.EnableLogKey("SyncMsg+")
-	base.EnableLogKey("WS")
 }
