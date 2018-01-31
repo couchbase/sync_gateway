@@ -870,8 +870,11 @@ func waitForResponse(addr string) error {
 
 		base.RetryWorker(func() (bool, error, interface{}) {
 			resp, err := http.Get(url)
+			if err != nil {
+				return true, nil, nil
+			}
 			defer resp.Body.Close()
-			shouldRetry := err != nil || resp.StatusCode != http.StatusOK
+			shouldRetry := resp.StatusCode != http.StatusOK
 			return shouldRetry, nil, nil
 		}),
 
