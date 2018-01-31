@@ -622,6 +622,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 	digest := base.Sha1DigestKey([]byte(attachmentBody))
 
+	// Send revision with attachment
 	input := SendRevWithAttachmentInput{
 		docId:            "doc",
 		revId:            "1-rev1",
@@ -629,12 +630,11 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 		attachmentBody:   attachmentBody,
 		attachmentDigest: digest,
 	}
-	sent, req, res := bt.SendRevWithAttachment(input)
+	sent, _, _ := bt.SendRevWithAttachment(input)
 	assert.True(t, sent)
-	log.Printf("req: %v.  res: %v", req, res)
 
+	// Get all docs and attachment via subChanges request
 	allDocs := bt.GetAllDocsViaChanges()
-	log.Printf("allDocs: %v", allDocs)
 
 	// make assertions on allDocs -- make sure attachment is present w/ expected body
 	assert.Equals(t, len(allDocs), 1)
