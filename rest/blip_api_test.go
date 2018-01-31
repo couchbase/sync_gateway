@@ -13,7 +13,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"crypto/sha1"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -619,12 +618,9 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	assertNoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
-
 	attachmentBody := "attach"
 
-	// calculate raw sha1 hash
-	shaBytes := sha1.Sum([]byte(attachmentBody))
-	digest := fmt.Sprintf("%x", shaBytes)
+	digest := base.Sha1DigestKey([]byte(attachmentBody))
 
 	input := SendRevWithAttachmentInput{
 		docId:            "doc",
@@ -649,14 +645,13 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	assert.Equals(t, retrievedDoc.RevID(), input.revId)
 
 	// attachment assertions
-	assert.Equals(t, len(retrievedDoc.Attachments), 1)
-	retrievedAttachment := retrievedDoc.Attachments[input.attachmentName]
+	attachments, err := retrievedDoc.GetAttachments()
+	assert.True(t, err == nil)
+	assert.Equals(t, len(attachments), 1)
+	retrievedAttachment := attachments[input.attachmentName]
 	assert.Equals(t, string(retrievedAttachment.Data), input.attachmentBody)
-	assert.Equals(t, retrievedAttachment.Digest, input.attachmentDigest)
 	assert.Equals(t, retrievedAttachment.Length, len(attachmentBody))
 
-
-
-
+	assert.Equals(t, input.attachmentDigest, retrievedAttachment.Digest)
 
 }

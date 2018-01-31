@@ -839,15 +839,23 @@ func (bt *BlipTester) GetAllDocsViaChanges() (docs map[string]base.RestDocument)
 
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
-		log.Printf("err: %v body: %s", err, body)
 		var doc base.RestDocument
 		err = json.Unmarshal(body, &doc)
 		if err != nil {
 			panic(fmt.Sprintf("Unexpected err: %v", err))
 		}
-		docs[doc.ID()] = doc
+		docId := request.Properties["id"]
+		docRev := request.Properties["rev"]
+		doc.SetID(docId)
+		doc.SetRevID(docRev)
+		docs[docId] = doc
 
-		for _, attachment := range doc.Attachments {
+		attachments, err := doc.GetAttachments()
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected err: %v", err))
+		}
+
+		for _, attachment := range attachments {
 
 			// Get attachments and append to RestDocument
 			getAttachmentRequest := blip.NewRequest()
@@ -865,8 +873,6 @@ func (bt *BlipTester) GetAllDocsViaChanges() (docs map[string]base.RestDocument)
 			log.Printf("getAttachmentBody: %s", getAttachmentBody)
 			attachment.Data = getAttachmentBody
 		}
-
-
 
 		// Send response to rev request
 		if !request.NoReply() {
