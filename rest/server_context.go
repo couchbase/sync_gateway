@@ -89,9 +89,6 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 }
 
 func (sc *ServerContext) PostStartup() {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-
 	sc.startReplicators()
 }
 

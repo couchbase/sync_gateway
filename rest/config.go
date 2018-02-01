@@ -792,7 +792,8 @@ func RunServer(config *ServerConfig) {
 	}
 
 	go func() {
-		// The APIs could take a long time to start if they're blocked on view re-indexing
+		// The APIs might not be ready to serve requests instantly, and anything
+		// depending on them could fail. We'll kick those off in PostStartup.
 		if err := waitForResponse(*config.AdminInterface); err != nil {
 			base.LogFatal("Error waiting for admin REST API: %v", err)
 		}
