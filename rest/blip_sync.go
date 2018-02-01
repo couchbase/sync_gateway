@@ -193,7 +193,7 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 		return err
 	}
 	if value == nil {
-		return base.HTTPErrorf(401, "Not found")
+		return base.HTTPErrorf(http.StatusNotFound, http.StatusText(http.StatusNotFound))
 	}
 	response.Properties["rev"] = value["_rev"].(string)
 	delete(value, "_rev")
