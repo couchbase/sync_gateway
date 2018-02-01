@@ -707,8 +707,7 @@ func isCompressible(filename string, meta map[string]interface{}) bool {
 }
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
-	// Prof is short for "Profile", which is basically the blip message type
-	bh.LogTo("SyncMsg", "#%03d: Prof:%s %s User:%s", bh.serialNumber, profile, endpoint, bh.effectiveUsername)
+	bh.LogTo("SyncMsg", "#%03d: Type:%s %s User:%s", bh.serialNumber, profile, endpoint, bh.effectiveUsername)
 }
 
 
