@@ -380,13 +380,13 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
-				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
+				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
 			case <-timeout:
 				message = "OK (timeout)"
 				forceClose = true
 				break loop
 			case <-closeNotify:
-				base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
+				base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserNameAsUser())
 				forceClose = true
 				break loop
 			case <-h.db.ExitChanges:
@@ -653,13 +653,13 @@ loop:
 		case <-heartbeat:
 			err = send(nil)
 			if h != nil {
-				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
+				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
 			}
 		case <-timeout:
 			forceClose = true
 			break loop
 		case <-closeNotify:
-			base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
+			base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserNameAsUser())
 			forceClose = true
 			break loop
 		case <-database.ExitChanges:

@@ -11,6 +11,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -35,7 +36,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	// Verify Sync Gateway will accept the doc revision that is about to be sent
 	var changeList [][]interface{}
 	changesRequest := blip.NewRequest()
-	changesRequest.SetProfile("changes")                             // TODO: make a constant for "changes" and use it everywhere
+	changesRequest.SetProfile("changes")
 	changesRequest.SetBody([]byte(`[["1", "foo", "1-abc", false]]`)) // [sequence, docID, revID]
 	sent := bt.sender.Send(changesRequest)
 	assert.True(t, sent)
@@ -136,7 +137,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 // Start subChanges w/ continuous=true, batchsize=20
 // Make several updates
 // Wait until we get the expected updates
-func TestContinousChangesSubscription(t *testing.T) {
+func TestContinuousChangesSubscription(t *testing.T) {
 
 	bt, err := NewBlipTester()
 	assertNoError(t, err, "Error creating BlipTester")
@@ -150,10 +151,7 @@ func TestContinousChangesSubscription(t *testing.T) {
 	var numbatchesReceived int32
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
-		log.Printf("got changes message: %+v", request)
-
 		body, err := request.Body()
-		log.Printf("changes body: %v, err: %v", string(body), err)
 
 		if string(body) != "null" {
 
@@ -497,5 +495,69 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	// Make sure we can see both docs in the changes
 	changes := bt.GetChanges()
 	assert.True(t, len(changes) == 2)
+
+}
+
+func TestCheckpoint(t *testing.T) {
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		noAdminParty:       true,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	client := "testClient"
+
+	// Get the checkpoint -- expect to be missing at this point
+	request := blip.NewRequest()
+	request.SetCompressed(true)
+	request.SetProfile("getCheckpoint")
+	request.Properties["client"] = client
+	sent := bt.sender.Send(request)
+	if !sent {
+		panic(fmt.Sprintf("Failed to get checkpoint for client: %v", client))
+	}
+	checkpointResponse := request.Response()
+
+	// Expect to get no checkpoint
+	errorcode, ok := checkpointResponse.Properties["Error-Code"]
+	assert.True(t, ok)
+	assert.Equals(t, errorcode, "404")
+
+	// Set a checkpoint
+	requestSetCheckpoint := blip.NewRequest()
+	requestSetCheckpoint.SetCompressed(true)
+	requestSetCheckpoint.SetProfile("setCheckpoint")
+	requestSetCheckpoint.Properties["client"] = client
+	checkpointBody := db.Body{"Key": "Value"}
+	requestSetCheckpoint.SetJSONBody(checkpointBody)
+	// requestSetCheckpoint.Properties["rev"] = "rev1"
+	sent = bt.sender.Send(requestSetCheckpoint)
+	if !sent {
+		panic(fmt.Sprintf("Failed to set checkpoint for client: %v", client))
+	}
+	checkpointResponse = requestSetCheckpoint.Response()
+	body, err := checkpointResponse.Body()
+	assertNoError(t, err, "Unexpected error")
+	log.Printf("responseSetCheckpoint body: %s", body)
+
+	// Get the checkpoint and make sure it has the expected value
+	requestGetCheckpoint2 := blip.NewRequest()
+	requestGetCheckpoint2.SetCompressed(true)
+	requestGetCheckpoint2.SetProfile("getCheckpoint")
+	requestGetCheckpoint2.Properties["client"] = client
+	sent = bt.sender.Send(requestGetCheckpoint2)
+	if !sent {
+		panic(fmt.Sprintf("Failed to get checkpoint for client: %v", client))
+	}
+	checkpointResponse = requestGetCheckpoint2.Response()
+	body, err = checkpointResponse.Body()
+	assertNoError(t, err, "Unexpected error")
+	log.Printf("body: %s", body)
+	assert.True(t, strings.Contains(string(body), "Key"))
+	assert.True(t, strings.Contains(string(body), "Value"))
 
 }
