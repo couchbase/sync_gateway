@@ -79,6 +79,8 @@ type DatabaseContext struct {
 	ExitChanges        chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders      auth.OIDCProviderMap    // OIDC clients
 	PurgeInterval      int                     // Metadata purge interval, in hours
+
+	UseRevCache bool // TODO: Remove me! Benchmarking purposes only...
 }
 
 type DatabaseContextOptions struct {

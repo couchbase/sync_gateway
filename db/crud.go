@@ -248,8 +248,30 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 		// (which will load them if necessary, by calling revCacheLoader, above)
 		body, revisions, inChannels, err = db.revisionCache.Get(docid, revid)
 	} else {
-		// No rev ID given, so load active revision
-		body, revisions, inChannels, revid, err = db.revisionCache.GetActive(docid, db.DatabaseContext)
+		if db.UseRevCache {
+			// No rev ID given, so load active revision
+			body, revisions, inChannels, revid, err = db.revisionCache.GetActive(docid, db.DatabaseContext)
+		} else {
+			// Use old no-revcache behaviour from
+			// https://github.com/couchbase/sync_gateway/commit/9e4f0b0eaba21fff5e44075a3bc2875fd96d126f#diff-500de431407fcf791176e4d5aa2c2b03
+			if doc, err = db.GetDocument(docid, DocUnmarshalAll); doc == nil {
+				return nil, err
+			}
+			revid = doc.CurrentRev
+			if body, err = db.getRevision(doc, revid); err != nil {
+				return nil, err
+			}
+			if doc.hasFlag(channels.Deleted) {
+				body["_deleted"] = true
+			}
+			if maxHistory != 0 {
+				validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+				if getHistoryErr != nil {
+					return nil, getHistoryErr
+				}
+				revisions = encodeRevisions(validatedHistory)
+			}
+		}
 	}
 
 	if body == nil {
