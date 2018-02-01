@@ -206,16 +206,16 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 // Received a "setCheckpoint" request
 func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
-	setCheckpoint := newSetCheckpointParams(rq)
-	bh.logEndpointEntry(rq.Profile(), setCheckpoint.String())
+	setCheckpointParams := newSetCheckpointParams(rq)
+	bh.logEndpointEntry(rq.Profile(), setCheckpointParams.String())
 
-	docID := fmt.Sprintf("checkpoint/%s", setCheckpoint.client())
+	docID := fmt.Sprintf("checkpoint/%s", setCheckpointParams.client())
 
 	var checkpoint db.Body
 	if err := rq.ReadJSONBody(&checkpoint); err != nil {
 		return err
 	}
-	if revID := setCheckpoint.rev(); revID != "" {
+	if revID := setCheckpointParams.rev(); revID != "" {
 		checkpoint["_rev"] = revID
 	}
 	revID, err := bh.db.PutSpecial("local", docID, checkpoint)
@@ -231,22 +231,22 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 
-	subChanges := newSubChangesParams(rq, bh.blipSyncContext, bh.db.CreateZeroSinceValue(), bh.db.ParseSequenceID)
-	bh.logEndpointEntry(rq.Profile(), subChanges.String())
+	subChangesParams := newSubChangesParams(rq, bh.blipSyncContext, bh.db.CreateZeroSinceValue(), bh.db.ParseSequenceID)
+	bh.logEndpointEntry(rq.Profile(), subChangesParams.String())
 
-	since, err := subChanges.since()
+	since, err := subChangesParams.since()
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid sequence ID in 'since'")
 	}
 
-	bh.batchSize = subChanges.batchSize()
-	bh.continuous = subChanges.continuous()
-	bh.activeOnly = subChanges.activeOnly()
+	bh.batchSize = subChangesParams.batchSize()
+	bh.continuous = subChangesParams.continuous()
+	bh.activeOnly = subChangesParams.activeOnly()
 
-	if filter := subChanges.filter(); filter == "sync_gateway/bychannel" {
+	if filter := subChangesParams.filter(); filter == "sync_gateway/bychannel" {
 		var err error
 
-		bh.channels, err = subChanges.channelsExpandedSet()
+		bh.channels, err = subChangesParams.channelsExpandedSet()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "%s", err)
 		} else if len(bh.channels) == 0 {
@@ -535,8 +535,8 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 
-	addRevision := newAddRevisionParams(rq)
-	bh.logEndpointEntry(rq.Profile(), addRevision.String())
+	addRevisionParams := newAddRevisionParams(rq)
+	bh.logEndpointEntry(rq.Profile(), addRevisionParams.String())
 
 	var body db.Body
 	if err := rq.ReadJSONBody(&body); err != nil {
@@ -544,12 +544,12 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 	}
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
-	docID, found := addRevision.id()
-	revID, rfound := addRevision.rev()
+	docID, found := addRevisionParams.id()
+	revID, rfound := addRevisionParams.rev()
 	if !found || !rfound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
-	body["_deleted"] = addRevision.deleted()
+	body["_deleted"] = addRevisionParams.deleted()
 
 	history := []string{revID}
 	if historyStr := rq.Properties["history"]; historyStr != "" {
@@ -577,10 +577,10 @@ func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
 // Received a "getAttachment" request
 func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
-	getAttachment := newGetAttachmentParams(rq)
-	bh.logEndpointEntry(rq.Profile(), getAttachment.String())
+	getAttachmentParams := newGetAttachmentParams(rq)
+	bh.logEndpointEntry(rq.Profile(), getAttachmentParams.String())
 
-	digest := getAttachment.digest()
+	digest := getAttachmentParams.digest()
 	if digest == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'digest'")
 	}
