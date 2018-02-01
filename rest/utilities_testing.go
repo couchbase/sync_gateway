@@ -746,6 +746,29 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 }
 
+func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]interface{}) {
+
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+		currentChanges := bt.GetChanges()
+		if len(currentChanges) >= numChangesExpected {
+			return false, nil, currentChanges
+		}
+
+		// haven't seen numDocsExpected yet, so wait and retry
+		return true, nil, nil
+
+	}
+
+	_, rawChanges := base.RetryLoop(
+		"WaitForNumChanges",
+		retryWorker,
+		base.CreateDoublingSleeperFunc(10, 10),
+	)
+
+	return rawChanges.([][]interface{})
+
+}
+
 // Returns changes in form of [[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
 func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
@@ -781,6 +804,30 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 	}
 
 	return collectedChanges
+
+}
+
+
+func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[string]RestDocument) {
+
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+			allDocs := bt.GetAllDocsViaChanges()
+			if len(allDocs) >= numDocsExpected {
+				return false, nil, allDocs
+			}
+
+			// haven't seen numDocsExpected yet, so wait and retry
+			return true, nil, nil
+
+	}
+
+	_, allDocs := base.RetryLoop(
+		"WaitForNumDocsViaChanges",
+		retryWorker,
+		base.CreateDoublingSleeperFunc(10, 10),
+		)
+
+	return allDocs.(map[string]RestDocument)
 
 }
 

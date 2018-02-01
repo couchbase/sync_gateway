@@ -317,13 +317,13 @@ func TestPublicPortAuthentication(t *testing.T) {
 	)
 
 	// Assert that user1 received a single expected change
-	changesChannelUser1 := btUser1.GetChanges()
+	changesChannelUser1 := btUser1.WaitForNumChanges(1)
 	assert.True(t, len(changesChannelUser1) == 1)
 	change := changesChannelUser1[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
 
 	// Assert that user2 received user1's change as well as it's own change
-	changesChannelUser2 := btUser2.GetChanges()
+	changesChannelUser2 := btUser2.WaitForNumChanges(2)
 	assert.True(t, len(changesChannelUser2) == 2)
 	change = changesChannelUser2[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
@@ -455,7 +455,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	)
 
 	// Make sure we can see it by getting changes
-	changes := bt.GetChanges()
+	changes := bt.WaitForNumChanges(2)
 	log.Printf("changes: %+v", changes)
 	assert.True(t, len(changes) == 2)
 
@@ -493,7 +493,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	)
 
 	// Make sure we can see both docs in the changes
-	changes := bt.GetChanges()
+	changes := bt.WaitForNumChanges(2)
 	assert.True(t, len(changes) == 2)
 
 }
@@ -634,7 +634,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	assert.True(t, sent)
 
 	// Get all docs and attachment via subChanges request
-	allDocs := bt.GetAllDocsViaChanges()
+	allDocs := bt.WaitForNumDocsViaChanges(1)
 
 	// make assertions on allDocs -- make sure attachment is present w/ expected body
 	assert.Equals(t, len(allDocs), 1)
@@ -654,7 +654,6 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	assert.Equals(t, input.attachmentDigest, retrievedAttachment.Digest)
 
 }
-
 
 // Put a revision that is rejected by the sync function and assert that Sync Gateway
 // returns an error code
@@ -705,7 +704,6 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 
 }
 
-
 func TestPutInvalidRevMalformedBody(t *testing.T) {
 
 	// Create blip tester
@@ -717,7 +715,6 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 	})
 	assertNoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
-
 
 	// Add a doc that will be rejected by sync function, since user
 	// does not have access to the CNN channel
