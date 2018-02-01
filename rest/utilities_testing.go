@@ -784,7 +784,12 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
 }
 
-// GetAllDocsViaChanges
+// Get all documents and their attachments via the following steps:
+//
+// - Invoking one-shot subChanges request
+// - Responding to all incoming "changes" requests from peer to request the changed rev, and accumulate rev body
+// - Responding to all incoming "rev" requests from peer to get all attachments, and accumulate them
+// - Return accumulated docs + attachements to caller
 func (bt *BlipTester) GetAllDocsViaChanges() (docs map[string]RestDocument) {
 
 	docs = map[string]RestDocument{}
