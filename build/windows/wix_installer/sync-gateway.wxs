@@ -15,6 +15,20 @@
 
     <MediaTemplate EmbedCab="yes"/>
 
+    <!-- Check if SGW 1.x previously install -->
+    <Property Id="SYNC_GATEWAY_NAME_1X_EXISTS">
+        <RegistrySearch Id="Sync_Gateway_name_1X_exist"
+                  Root="HKLM"
+                  Key="SOFTWARE\Classes\Installer\Products\75E3CA1D72467484D8075AB630073F8A"
+                  Name="ProductName"
+                  Type="raw" />
+    </Property>
+    <!-- option to bypass check of previous version of SGW installation -->
+    <Property Id="IGNORE_SGW1X_CHECK" Value="false"/>
+    <!-- Proceed with the installation IF (the product is already installed, OR the user asked us not to check for SGW 1.x, OR SGW 1.x isn't installed)-->
+     <Condition Message="An older version of Couchbase Sync Gateway has been detected on your computer. To complete the installation of this version, please uninstall your older version before you continue.">Installed OR IGNORE_SGW1X_CHECK = "true" OR NOT SYNC_GATEWAY_NAME_1X_EXISTS
+    </Condition>
+
     <!-- Enable Windows Installer "major upgrade", the uninstall/install kind. -->
     <!-- The Schedule attribute specifies where RemoveExistingProducts will go; -->
     <!-- see https://msdn.microsoft.com/library/aa371197.aspx for details. -->
