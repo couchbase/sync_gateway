@@ -701,7 +701,7 @@ type SendRevWithAttachmentInput struct {
 func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (sent bool, req, res *blip.Message) {
 
 	// Create a doc with an attachment
-	myAttachment := DocAttachment{
+	myAttachment := db.DocAttachment{
 		ContentType: "application/json",
 		Digest:      input.attachmentDigest,
 		Length:      6,
@@ -711,7 +711,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 	doc := NewRestDocument()
 	doc.SetID(input.docId)
 	doc.SetRevID(input.revId)
-	doc.SetAttachments(AttachmentMap{
+	doc.SetAttachments(db.AttachmentMap{
 		input.attachmentName: &myAttachment,
 	})
 
@@ -811,7 +811,7 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[string]RestDocument) {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-			allDocs := bt.GetAllDocsViaChanges()
+			allDocs := bt.PullDocs()
 			if len(allDocs) >= numDocsExpected {
 				return false, nil, allDocs
 			}
@@ -837,7 +837,9 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 // - Responding to all incoming "changes" requests from peer to request the changed rev, and accumulate rev body
 // - Responding to all incoming "rev" requests from peer to get all attachments, and accumulate them
 // - Return accumulated docs + attachements to caller
-func (bt *BlipTester) GetAllDocsViaChanges() (docs map[string]RestDocument) {
+//
+// It is basically a pull replication without the checkpointing
+func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 	docs = map[string]RestDocument{}
 	changesFinishedWg := sync.WaitGroup{}
@@ -1048,16 +1050,7 @@ func EnableBlipSyncLogs() {
 }
 
 
-type AttachmentMap map[string]*DocAttachment
 
-type DocAttachment struct {
-	ContentType string `json:"content_type,omitempty"`
-	Digest      string `json:"digest,omitempty"`
-	Length      int    `json:"length,omitempty"`
-	Revpos      int    `json:"revpos,omitempty"`
-	Stub        bool   `json:"stub,omitempty"`
-	Data        []byte `json:-` // tell json marshal/unmarshal to ignore this field
-}
 
 // --------------------------------------------
 
@@ -1094,23 +1087,23 @@ func (d RestDocument) SetRevID(revId string) {
 	d["_rev"] = revId
 }
 
-func (d RestDocument) SetAttachments(attachments AttachmentMap) {
+func (d RestDocument) SetAttachments(attachments db.AttachmentMap) {
 	d["_attachments"] = attachments
 }
 
-func (d RestDocument) GetAttachments() (AttachmentMap, error) {
+func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
 
 	rawAttachments, hasAttachments := d["_attachments"]
 
 	// If the map doesn't even have the _attachments key, return an empty attachments map
 	if !hasAttachments {
-		return AttachmentMap{}, nil
+		return db.AttachmentMap{}, nil
 	}
 
 	// Otherwise, create an AttachmentMap from the value in the raw map
-	attachmentMap := AttachmentMap{}
+	attachmentMap := db.AttachmentMap{}
 	switch v := rawAttachments.(type) {
-	case AttachmentMap:
+	case db.AttachmentMap:
 		// If it's already an AttachmentMap (maybe due to previous call to SetAttachments), then return as-is
 		return v, nil
 	default:
@@ -1120,11 +1113,11 @@ func (d RestDocument) GetAttachments() (AttachmentMap, error) {
 			// marshal attachmentVal into a byte array, then unmarshal into a DocAttachment
 			attachmentValMarshalled, err := json.Marshal(attachmentVal)
 			if err != nil {
-				return AttachmentMap{}, err
+				return db.AttachmentMap{}, err
 			}
-			docAttachment := DocAttachment{}
+			docAttachment := db.DocAttachment{}
 			if err := json.Unmarshal(attachmentValMarshalled, &docAttachment); err != nil {
-				return AttachmentMap{}, err
+				return db.AttachmentMap{}, err
 			}
 
 			attachmentMap[attachmentName] = &docAttachment

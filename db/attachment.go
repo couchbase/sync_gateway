@@ -39,6 +39,20 @@ const kMinCompressedJSONSize = 300
 type AttachmentKey string
 type AttachmentData map[AttachmentKey][]byte
 
+// A map of keys -> DocAttachments.
+type AttachmentMap map[string]*DocAttachment
+
+// A struct which models an attachment.  Currently only used by test code, however
+// new code or refactoring in the main codebase should try to use where appropriate.
+type DocAttachment struct {
+	ContentType string `json:"content_type,omitempty"`
+	Digest      string `json:"digest,omitempty"`
+	Length      int    `json:"length,omitempty"`
+	Revpos      int    `json:"revpos,omitempty"`
+	Stub        bool   `json:"stub,omitempty"`
+	Data        []byte `json:-` // tell json marshal/unmarshal to ignore this field
+}
+
 // Given a CouchDB document body about to be stored in the database, goes through the _attachments
 // dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
 // the bodies with the 'digest' attributes which are the keys to retrieving them.

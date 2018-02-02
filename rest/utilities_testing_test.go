@@ -5,6 +5,7 @@ import (
 	"github.com/couchbaselabs/go.assert"
 	"encoding/json"
 	"log"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 func TestDocumentUnmarshal(t *testing.T) {
@@ -54,12 +55,12 @@ func TestAttachmentRoundTrip(t *testing.T) {
 
 
 	doc := RestDocument{}
-	attachmentMap := AttachmentMap{
-		"foo": &DocAttachment{
+	attachmentMap := db.AttachmentMap{
+		"foo": &db.DocAttachment{
 			ContentType: "text",
 			Digest: "whatever",
 		},
-		"bar": &DocAttachment{
+		"bar": &db.DocAttachment{
 			ContentType: "text",
 			Digest: "whatever",
 		},
