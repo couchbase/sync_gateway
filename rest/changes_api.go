@@ -307,7 +307,7 @@ func (h *handler) handleChanges() error {
 
 	// On forceClose, send notify to trigger immediate exit from change waiter
 	if forceClose && h.user != nil {
-		h.db.DatabaseContext.NotifyUser(h.user.Name())
+		h.db.DatabaseContext.NotifyTerminatedChanges(h.user.Name())
 	}
 
 	return err

@@ -466,7 +466,10 @@ func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (remo
 	return removeObsoleteDesignDocs(context.Bucket, previewOnly)
 }
 
-func (context *DatabaseContext) NotifyUser(username string) {
+// Trigger terminate check handling for connected continuous replications.
+// TODO: The underlying code (NotifyCheckForTermination) doesn't actually leverage the specific username - should be refactored
+//    to remove
+func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
 	context.tapListener.NotifyCheckForTermination(base.SetOf(auth.UserKeyPrefix + username))
 }
 
