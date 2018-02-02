@@ -40,7 +40,8 @@ type blipSyncContext struct {
 	channels            base.Set
 	lock                sync.Mutex
 	allowedAttachments  map[string]int
-	handlerSerialNumber uint64 // Each handler within a context gets a unique serial number for logging
+	handlerSerialNumber uint64    // Each handler within a context gets a unique serial number for logging
+	terminator          chan bool // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
 }
 
 type blipHandler struct {
@@ -74,9 +75,9 @@ func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 var kHandlersByProfile = map[string]blipHandlerMethod{
 	"getCheckpoint": (*blipHandler).handleGetCheckpoint,
 	"setCheckpoint": (*blipHandler).handleSetCheckpoint,
-	"subChanges":    userBlipHandler((*blipHandler).handleSubscribeToChanges),
-	"changes":       userBlipHandler((*blipHandler).handlePushedChanges),
-	"rev":           userBlipHandler((*blipHandler).handleAddRevision),
+	"subChanges":    userBlipHandler((*blipHandler).handleSubChanges),
+	"changes":       userBlipHandler((*blipHandler).handleChanges),
+	"rev":           userBlipHandler((*blipHandler).handleRev),
 	"getAttachment": userBlipHandler((*blipHandler).handleGetAttachment),
 }
 
@@ -98,7 +99,10 @@ func (h *handler) handleBLIPSync() error {
 		dbc:               h.db.DatabaseContext,
 		user:              h.user,
 		effectiveUsername: h.currentEffectiveUserName(),
+		terminator:        make(chan bool),
 	}
+	defer ctx.close()
+
 	blipContext.DefaultHandler = ctx.notFound
 	for profile, handlerFn := range kHandlersByProfile {
 		ctx.register(profile, handlerFn)
@@ -160,6 +164,10 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 
 	ctx.blipContext.HandlerForProfile[profile] = handlerFnWrapper
 
+}
+
+func (ctx *blipSyncContext) close() {
+	close(ctx.terminator)
 }
 
 // Handler for unknown requests
@@ -229,7 +237,7 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 //////// CHANGES
 
 // Received a "subChanges" subscription request
-func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
+func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	subChangesParams := newSubChangesParams(rq, bh.blipSyncContext, bh.db.CreateZeroSinceValue(), bh.db.ParseSequenceID)
 	bh.logEndpointEntry(rq.Profile(), subChangesParams.String())
@@ -257,16 +265,15 @@ func (bh *blipHandler) handleSubscribeToChanges(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
 
-	// Kick off async goroutine to send (possibly continuous) changes to other side
+	// Start asynchronous changes goroutine
 	go func() {
-
+		base.StatsExpvars.Add("subChanges_total", 1)
+		base.StatsExpvars.Add("subChanges_active", 1)
+		defer base.StatsExpvars.Add("subChanges_active", -1)
+		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
-
-		// Send changes
 		bh.sendChanges(rq.Sender, since)
-
 		bh.LogTo("SyncMsg+", "#%03d: Type:%s   --> Time:%v User:%s ", bh.serialNumber, rq.Profile(), time.Since(startTime), bh.effectiveUsername)
-
 	}()
 
 	return nil
@@ -286,9 +293,8 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 		Conflicts:  true,
 		Continuous: bh.continuous,
 		ActiveOnly: bh.activeOnly,
-		Terminator: make(chan bool),
+		Terminator: bh.blipSyncContext.terminator,
 	}
-	defer close(options.Terminator)
 
 	channelSet := bh.channels
 	if channelSet == nil {
@@ -304,7 +310,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 		}
 	}
 
-	generateContinuousChanges(bh.db, channelSet, options, nil, func(changes []*db.ChangeEntry) error {
+	_, forceClose := generateContinuousChanges(bh.db, channelSet, options, nil, func(changes []*db.ChangeEntry) error {
 		bh.LogTo("Sync+", "    Sending %d changes. User:%s", len(changes), bh.effectiveUsername)
 		for _, change := range changes {
 
@@ -328,6 +334,12 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 		}
 		return nil
 	})
+
+	// On forceClose, send notify to trigger immediate exit from change waiter
+	if forceClose && bh.user != nil {
+		bh.db.DatabaseContext.NotifyUser(bh.user.Name())
+	}
+
 }
 
 func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}) {
@@ -399,7 +411,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 }
 
 // Handles a "changes" request, i.e. a set of changes pushed by the client
-func (bh *blipHandler) handlePushedChanges(rq *blip.Message) error {
+func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	if !bh.db.AllowConflicts() {
 		return base.HTTPErrorf(http.StatusConflict, "Use 'proposeChanges' instead")
 	}
@@ -533,7 +545,7 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 }
 
 // Received a "rev" request, i.e. client is pushing a revision body
-func (bh *blipHandler) handleAddRevision(rq *blip.Message) error {
+func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
 	addRevisionParams := newAddRevisionParams(rq)
 	bh.logEndpointEntry(rq.Profile(), addRevisionParams.String())
@@ -709,7 +721,6 @@ func isCompressible(filename string, meta map[string]interface{}) bool {
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
 	bh.LogTo("SyncMsg", "#%03d: Type:%s %s User:%s", bh.serialNumber, profile, endpoint, bh.effectiveUsername)
 }
-
 
 func DefaultBlipLogger(contextID string) blip.LogFn {
 	return func(eventType blip.LogEventType, format string, params ...interface{}) {

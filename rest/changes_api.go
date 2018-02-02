@@ -305,6 +305,7 @@ func (h *handler) handleChanges() error {
 
 	close(options.Terminator)
 
+	// On forceClose, send notify to trigger immediate exit from change waiter
 	if forceClose && h.user != nil {
 		h.db.DatabaseContext.NotifyUser(h.user.Name())
 	}
@@ -659,14 +660,20 @@ loop:
 			forceClose = true
 			break loop
 		case <-closeNotify:
-			base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserNameAsUser())
+			if h != nil {
+				base.LogTo("Changes+", "Client connection lost: %v", h.currentEffectiveUserNameAsUser())
+			} else {
+				base.LogTo("Changes+", "Client connection lost")
+			}
 			forceClose = true
 			break loop
 		case <-database.ExitChanges:
 			forceClose = true
 			break loop
+		case <-options.Terminator:
+			forceClose = true
+			break loop
 		}
-
 		if err != nil {
 			if h != nil {
 				h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
