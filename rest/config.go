@@ -867,7 +867,7 @@ func waitForResponse(addr string) error {
 	url := "http://" + localhostAddr(addr) + "/"
 
 	err, _ := base.RetryLoop(
-		"GET "+url,
+		"Waiting until REST API is available on "+url,
 
 		base.RetryWorker(func() (bool, error, interface{}) {
 			resp, err := http.Get(url)

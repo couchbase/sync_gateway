@@ -34,7 +34,6 @@ import (
 const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowServerCallWarningThreshold = 200 // ms
-const kOneShotLocalDbReplicateWait = 10 * time.Second
 const KDefaultNumShards = 16
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
