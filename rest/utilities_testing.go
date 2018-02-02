@@ -1049,11 +1049,16 @@ func EnableBlipSyncLogs() {
 	base.EnableLogKey("Sync+")
 }
 
-
-
-
-// --------------------------------------------
-
+// Model "CouchDB" style REST documents which define the following special fields:
+//
+// - _id
+// - _rev
+// - _deleted (not accounted for yet)
+// - _attachments
+//
+// This struct wraps a map and provides convenience methods for getting at the special
+// fields with the appropriate types (string in the id/rev case, db.AttachmentMap in the attachments case).
+// Currently only used in tests, but if similar functionality needed in primary codebase, could be moved.
 type RestDocument map[string]interface{}
 
 func NewRestDocument() *RestDocument {
