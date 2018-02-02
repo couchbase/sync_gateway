@@ -337,7 +337,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 
 	// On forceClose, send notify to trigger immediate exit from change waiter
 	if forceClose && bh.user != nil {
-		bh.db.DatabaseContext.NotifyUser(bh.user.Name())
+		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.user.Name())
 	}
 
 }
