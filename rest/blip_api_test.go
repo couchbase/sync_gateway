@@ -13,6 +13,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
+	"time"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -130,7 +131,8 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	receviedChangesRequestWg.Add(1)
 
 	// Wait until we got the expected callback on the "changes" profile handler
-	receviedChangesRequestWg.Wait()
+	timeoutErr := WaitWithTimeout(&receviedChangesRequestWg, time.Second * 60)
+	assertNoError(t, timeoutErr, "Timed out waiting")
 
 }
 
@@ -229,7 +231,9 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	}
 
 	// Wait until all expected changes are received by change handler
-	receviedChangesWg.Wait()
+	// receviedChangesWg.Wait()
+	timeoutErr := WaitWithTimeout(&receviedChangesWg, time.Second * 60)
+	assertNoError(t, timeoutErr, "Timed out waiting for all changes.")
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
