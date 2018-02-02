@@ -620,7 +620,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 	attachmentBody := "attach"
 
-	digest := base.Sha1DigestKey([]byte(attachmentBody))
+	digest := db.Sha1DigestKey([]byte(attachmentBody))
 
 	// Send revision with attachment
 	input := SendRevWithAttachmentInput{

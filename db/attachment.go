@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
+	"crypto/md5"
 )
 
 // Attachments shorter than this will be left in the JSON as base64 rather than being a separate
@@ -60,7 +61,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			if err != nil {
 				return nil, err
 			}
-			key := AttachmentKey(base.Sha1DigestKey(attachment))
+			key := AttachmentKey(Sha1DigestKey(attachment))
 			newAttachmentData[key] = attachment
 
 			newMeta := map[string]interface{}{
@@ -177,7 +178,7 @@ func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
 
 // Stores a base64-encoded attachment and returns the key to get it by.
 func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
-	key := AttachmentKey(base.Sha1DigestKey(attachment))
+	key := AttachmentKey(Sha1DigestKey(attachment))
 	_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
 	if err == nil {
 		base.LogTo("Attach", "\tAdded attachment %q", key)
@@ -391,10 +392,10 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		}
 
 		// Look up the attachment by its digest:
-		digest := base.Sha1DigestKey(data)
+		digest := Sha1DigestKey(data)
 		name, meta := findFollowingAttachment(digest)
 		if meta == nil {
-			name, meta = findFollowingAttachment(base.Md5DigestKey(data))
+			name, meta = findFollowingAttachment(Md5DigestKey(data))
 			if meta == nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest,
 					"MIME part #%d doesn't match any attachment", i+2)
@@ -512,4 +513,17 @@ func decodeAttachment(att interface{}) ([]byte, error) {
 	default:
 		return nil, base.HTTPErrorf(400, "invalid attachment data (type %T)", att)
 	}
+}
+
+func Sha1DigestKey(data []byte) string {
+	digester := sha1.New()
+	digester.Write(data)
+	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
+}
+
+// This is only here for backwards compatibility.  Otherwise should be avoided.
+func Md5DigestKey(data []byte) string {
+	digester := md5.New()
+	digester.Write(data)
+	return "md5-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }

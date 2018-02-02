@@ -32,9 +32,6 @@ import (
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
-	"crypto/sha1"
-	"encoding/base64"
-	"crypto/md5"
 )
 
 const (
@@ -811,17 +808,4 @@ func StringSliceContains(set []string, target string) bool {
 
 func BoolPtr(b bool) *bool {
 	return &b
-}
-
-
-func Sha1DigestKey(data []byte) string {
-	digester := sha1.New()
-	digester.Write(data)
-	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
-}
-
-func Md5DigestKey(data []byte) string {
-	digester := md5.New()
-	digester.Write(data)
-	return "md5-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }
