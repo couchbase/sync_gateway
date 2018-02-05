@@ -662,14 +662,15 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 
 	//We can only transition to Online from Offline state
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
-
-		if _, err := sc.ReloadDatabaseFromConfig(database.Name, true); err != nil {
+		reloadedDb, err := sc.ReloadDatabaseFromConfig(database.Name, true)
+		if err != nil {
 			base.LogError(err)
 			return
 		}
 
-		//Set DB state to DBOnline, this wil cause new API requests to be be accepted
-		atomic.StoreUint32(&sc.databases_[database.Name].State, db.DBOnline)
+		// Reloaded DB should already be online in most cases, but force state to online to handle cases
+		// where config specifies offline startup
+		atomic.StoreUint32(&reloadedDb.State, db.DBOnline)
 
 	} else {
 		base.LogTo("CRUD", "Unable to take Database : %v online , database must be in Offline state", database.Name)
