@@ -79,7 +79,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.Equals(t, changeRow2[0], "1-abc")
 
 	// Call subChanges api and make sure we get expected changes back
-	receviedChangesRequestWg := sync.WaitGroup{}
+	receivedChangesRequestWg := sync.WaitGroup{}
 
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
@@ -93,7 +93,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 			// Expected changes body: [[1,"foo","1-abc"]]
 			changeListReceived := [][]interface{}{}
 			err = json.Unmarshal(body, &changeListReceived)
-			assertNoError(t, err, "Error unmarshalling changes recevied")
+			assertNoError(t, err, "Error unmarshalling changes received")
 			assert.True(t, len(changeListReceived) == 1)
 			change := changeListReceived[0] // [1,"foo","1-abc"]
 			assert.True(t, len(change) == 3)
@@ -112,7 +112,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 			response.SetBody(emptyResponseValBytes)
 		}
 
-		receviedChangesRequestWg.Done()
+		receivedChangesRequestWg.Done()
 
 	}
 
@@ -122,16 +122,16 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	subChangesRequest.Properties["continuous"] = "false"
 	sent = bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
-	receviedChangesRequestWg.Add(1)
+	receivedChangesRequestWg.Add(1)
 	subChangesResponse := subChangesRequest.Response()
 	assert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 
 	// Also expect the "changes" profile handler above to be called back again with an empty request that
 	// will be ignored since body will be "null"
-	receviedChangesRequestWg.Add(1)
+	receivedChangesRequestWg.Add(1)
 
 	// Wait until we got the expected callback on the "changes" profile handler
-	timeoutErr := WaitWithTimeout(&receviedChangesRequestWg, time.Second * 60)
+	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second * 60)
 	assertNoError(t, timeoutErr, "Timed out waiting")
 
 }
@@ -146,7 +146,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	defer bt.Close()
 
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
-	receviedChangesWg := sync.WaitGroup{}
+	receivedChangesWg := sync.WaitGroup{}
 
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
@@ -162,7 +162,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 			// Expected changes body: [[1,"foo","1-abc"]]
 			changeListReceived := [][]interface{}{}
 			err = json.Unmarshal(body, &changeListReceived)
-			assertNoError(t, err, "Error unmarshalling changes recevied")
+			assertNoError(t, err, "Error unmarshalling changes received")
 
 			for _, change := range changeListReceived {
 
@@ -180,12 +180,12 @@ func TestContinuousChangesSubscription(t *testing.T) {
 				assert.True(t, strings.HasPrefix(docId, "foo"))
 				assert.Equals(t, change[2], "1-abc") // Rev id of pushed rev
 
-				receviedChangesWg.Done()
+				receivedChangesWg.Done()
 			}
 
 		} else {
 
-			receviedChangesWg.Done()
+			receivedChangesWg.Done()
 
 		}
 
@@ -203,7 +203,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	// Increment waitgroup since just the act of subscribing to continuous changes will cause
 	// the callback changes handler to be invoked with an initial change w/ empty body, signaling that
 	// all of the changes have been sent (eg, there are no changes to send)
-	receviedChangesWg.Add(1)
+	receivedChangesWg.Add(1)
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := blip.NewRequest()
@@ -218,7 +218,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 	for i := 1; i < 1500; i++ {
 		//// Add a change: Send an unsolicited doc revision in a rev request
-		receviedChangesWg.Add(1)
+		receivedChangesWg.Add(1)
 		_, _, revResponse := bt.SendRev(
 			fmt.Sprintf("foo-%d", i),
 			"1-abc",
@@ -231,8 +231,8 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	}
 
 	// Wait until all expected changes are received by change handler
-	// receviedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receviedChangesWg, time.Second * 60)
+	// receivedChangesWg.Wait()
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second * 60)
 	assertNoError(t, timeoutErr, "Timed out waiting for all changes.")
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
