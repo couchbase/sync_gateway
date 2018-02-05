@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -60,7 +61,7 @@ type ServerConfig struct {
 	SSLKey                         *string                  `json:",omitempty"`            // Path to SSL private key file, or nil
 	ServerReadTimeout              *int                     `json:",omitempty"`            // maximum duration.Second before timing out read of the HTTP(S) request
 	ServerWriteTimeout             *int                     `json:",omitempty"`            // maximum duration.Second before timing out write of the HTTP(S) response
-	AdminInterface                 *string                  `json:",omitempty"`            // Interface to bind admin API to, default ":4985"
+	AdminInterface                 *string                  `json:",omitempty"`            // Interface to bind admin API to, default "localhost:4985"
 	AdminUI                        *string                  `json:",omitempty"`            // Path to Admin HTML page, if omitted uses bundled HTML
 	ProfileInterface               *string                  `json:",omitempty"`            // Interface to bind Go profile API to (no default)
 	ConfigServer                   *string                  `json:",omitempty"`            // URL of config server (for dynamic db discovery)
@@ -790,8 +791,21 @@ func RunServer(config *ServerConfig) {
 		}()
 	}
 
+	go func() {
+		// The APIs might not be ready to serve requests instantly, and anything
+		// depending on them could fail. We'll kick those off in PostStartup.
+		if err := waitForResponse(*config.AdminInterface); err != nil {
+			base.LogFatal("Error waiting for admin REST API: %v", err)
+		}
+		if err := waitForResponse(*config.Interface); err != nil {
+			base.LogFatal("Error waiting for public REST API: %v", err)
+		}
+		sc.PostStartup()
+	}()
+
 	base.Logf("Starting admin server on %s", *config.AdminInterface)
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
+
 	base.Logf("Starting server on %s ...", *config.Interface)
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
@@ -836,4 +850,38 @@ func ServerMain(runMode SyncGatewayRunMode) {
 	ParseCommandLine(runMode)
 	ValidateConfigOrPanic(runMode)
 	RunServer(config)
+}
+
+// localhostAddr takes an address like ':4984' or '127.0.0.1:4984' and prefixes with localhost if required.
+func localhostAddr(addr string) string {
+	port := regexp.MustCompile("^:\\d+$")
+	if port.MatchString(addr) {
+		return "localhost" + addr
+	}
+	return addr
+}
+
+// waitForResponse blocks until the given address returns a HTTP 200 response at the root
+func waitForResponse(addr string) error {
+	// TODO: Could this ever be https-only?
+	url := "http://" + localhostAddr(addr) + "/"
+
+	err, _ := base.RetryLoop(
+		"Waiting until REST API is available on "+url,
+
+		base.RetryWorker(func() (bool, error, interface{}) {
+			resp, err := http.Get(url)
+			if err != nil {
+				return true, nil, nil
+			}
+			defer resp.Body.Close()
+			shouldRetry := resp.StatusCode != http.StatusOK
+			return shouldRetry, nil, nil
+		}),
+
+		// 100ms * 2^12 == ~6.5 minutes longest wait
+		base.CreateDoublingSleeperFunc(12, 100),
+	)
+
+	return err
 }
