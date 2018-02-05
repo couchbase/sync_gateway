@@ -317,13 +317,13 @@ func TestPublicPortAuthentication(t *testing.T) {
 	)
 
 	// Assert that user1 received a single expected change
-	changesChannelUser1 := btUser1.GetChanges()
+	changesChannelUser1 := btUser1.WaitForNumChanges(1)
 	assert.True(t, len(changesChannelUser1) == 1)
 	change := changesChannelUser1[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
 
 	// Assert that user2 received user1's change as well as it's own change
-	changesChannelUser2 := btUser2.GetChanges()
+	changesChannelUser2 := btUser2.WaitForNumChanges(2)
 	assert.True(t, len(changesChannelUser2) == 2)
 	change = changesChannelUser2[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
@@ -455,7 +455,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	)
 
 	// Make sure we can see it by getting changes
-	changes := bt.GetChanges()
+	changes := bt.WaitForNumChanges(2)
 	log.Printf("changes: %+v", changes)
 	assert.True(t, len(changes) == 2)
 
@@ -493,7 +493,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	)
 
 	// Make sure we can see both docs in the changes
-	changes := bt.GetChanges()
+	changes := bt.WaitForNumChanges(2)
 	assert.True(t, len(changes) == 2)
 
 }
@@ -559,5 +559,183 @@ func TestCheckpoint(t *testing.T) {
 	log.Printf("body: %s", body)
 	assert.True(t, strings.Contains(string(body), "Key"))
 	assert.True(t, strings.Contains(string(body), "Value"))
+
+}
+
+// Test Attachment replication behavior described here: https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol
+// - Put attachment via blip
+// - Verifies that getAttachment won't return attachment "out of context" of a rev request
+// - Get attachment via REST and verifies it returns the correct content
+func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		noAdminParty:       true,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	input := SendRevWithAttachmentInput{
+		docId:            "doc",
+		revId:            "1-rev1",
+		attachmentName:   "myAttachment",
+		attachmentBody:   "attach",
+		attachmentDigest: "fakedigest",
+	}
+	bt.SendRevWithAttachment(input)
+
+	// Try to fetch the attachment directly via getAttachment, expected to fail w/ 403 error for security reasons
+	// since it's not in the context of responding to a "rev" request from the peer.
+	getAttachmentRequest := blip.NewRequest()
+	getAttachmentRequest.SetProfile("getAttachment")
+	getAttachmentRequest.Properties["digest"] = input.attachmentDigest
+	sent := bt.sender.Send(getAttachmentRequest)
+	if !sent {
+		panic(fmt.Sprintf("Failed to send request for doc: %v", input.docId))
+	}
+	getAttachmentResponse := getAttachmentRequest.Response()
+	errorCode, hasErrorCode := getAttachmentResponse.Properties["Error-Code"]
+	assert.Equals(t, errorCode, "403") // "Attachment's doc not being synced"
+	assert.True(t, hasErrorCode)
+
+	// Get the attachment via REST api and make sure it matches the attachment pushed earlier
+	response := bt.restTester.SendAdminRequest("GET", fmt.Sprintf("/db/%s/%s", input.docId, input.attachmentName), ``)
+	assert.Equals(t, response.Body.String(), input.attachmentBody)
+
+}
+
+func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		noAdminParty:                true,
+		connectingUsername:          "user1",
+		connectingPassword:          "1234",
+		connectingUserChannelGrants: []string{"*"}, // All channels
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	attachmentBody := "attach"
+
+	digest := db.Sha1DigestKey([]byte(attachmentBody))
+
+	// Send revision with attachment
+	input := SendRevWithAttachmentInput{
+		docId:            "doc",
+		revId:            "1-rev1",
+		attachmentName:   "myAttachment",
+		attachmentBody:   attachmentBody,
+		attachmentDigest: digest,
+	}
+	sent, _, _ := bt.SendRevWithAttachment(input)
+	assert.True(t, sent)
+
+	// Get all docs and attachment via subChanges request
+	allDocs := bt.WaitForNumDocsViaChanges(1)
+
+	// make assertions on allDocs -- make sure attachment is present w/ expected body
+	assert.Equals(t, len(allDocs), 1)
+	retrievedDoc := allDocs[input.docId]
+
+	// doc assertions
+	assert.Equals(t, retrievedDoc.ID(), input.docId)
+	assert.Equals(t, retrievedDoc.RevID(), input.revId)
+
+	// attachment assertions
+	attachments, err := retrievedDoc.GetAttachments()
+	assert.True(t, err == nil)
+	assert.Equals(t, len(attachments), 1)
+	retrievedAttachment := attachments[input.attachmentName]
+	assert.Equals(t, string(retrievedAttachment.Data), input.attachmentBody)
+	assert.Equals(t, retrievedAttachment.Length, len(attachmentBody))
+	assert.Equals(t, input.attachmentDigest, retrievedAttachment.Digest)
+
+}
+
+// Put a revision that is rejected by the sync function and assert that Sync Gateway
+// returns an error code
+func TestPutInvalidRevSyncFnReject(t *testing.T) {
+
+	syncFn := `
+		function(doc) {
+			requireAccess("PBS");
+			channel(doc.channels);
+		}
+    `
+
+	// Setup
+	rt := RestTester{
+		SyncFn:       syncFn,
+		noAdminParty: true,
+	}
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         &rt,
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	// Add a doc that will be rejected by sync function, since user
+	// does not have access to the CNN channel
+	revRequest := blip.NewRequest()
+	revRequest.SetCompressed(false)
+	revRequest.SetProfile("rev")
+	revRequest.Properties["id"] = "foo"
+	revRequest.Properties["rev"] = "1-aaa"
+	revRequest.Properties["deleted"] = "false"
+	revRequest.SetBody([]byte(`{"key": "val", "channels": ["CNN"]}`))
+	sent := bt.sender.Send(revRequest)
+	assert.True(t, sent)
+
+	revResponse := revRequest.Response()
+
+	// Since doc is rejected by sync function, expect a 403 error
+	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
+	assert.True(t, hasErrorCode)
+	assert.Equals(t, errorCode, "403")
+
+	// Make sure that a one-off GetChanges() returns no documents
+	changes := bt.GetChanges()
+	assert.True(t, len(changes) == 0)
+
+}
+
+func TestPutInvalidRevMalformedBody(t *testing.T) {
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		noAdminParty:                true,
+		connectingUsername:          "user1",
+		connectingPassword:          "1234",
+		connectingUserChannelGrants: []string{"*"}, // All channels
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	// Add a doc that will be rejected by sync function, since user
+	// does not have access to the CNN channel
+	revRequest := blip.NewRequest()
+	revRequest.SetCompressed(false)
+	revRequest.SetProfile("rev")
+	revRequest.Properties["deleted"] = "false"
+	revRequest.SetBody([]byte(`{"key": "val", "channels": [" MALFORMED JSON DOC`))
+
+	sent := bt.sender.Send(revRequest)
+	assert.True(t, sent)
+
+	revResponse := revRequest.Response()
+
+	// Since doc is rejected by sync function, expect a 403 error
+	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
+	assert.True(t, hasErrorCode)
+	assert.Equals(t, errorCode, "500")
+
+	// Make sure that a one-off GetChanges() returns no documents
+	changes := bt.GetChanges()
+	assert.True(t, len(changes) == 0)
 
 }

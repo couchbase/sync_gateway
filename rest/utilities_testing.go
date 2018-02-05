@@ -679,7 +679,93 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte) (sent bool, req
 		panic(fmt.Sprintf("revResponse.SerialNumber() != revRequest.SerialNumber().  %v != %v", revResponse.SerialNumber(), revRequest.SerialNumber()))
 	}
 
+	// Make sure no errors.  Just panic for now, but if there are tests that expect errors and want
+	// to use SendRev(), this could be returned.
+	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
+	if hasErrorCode {
+		panic(fmt.Sprintf("Unexpected error sending rev: %v", errorCode))
+	}
+
 	return sent, revRequest, revResponse
+
+}
+
+type SendRevWithAttachmentInput struct {
+	docId            string
+	revId            string
+	attachmentName   string
+	attachmentBody   string
+	attachmentDigest string
+}
+
+func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (sent bool, req, res *blip.Message) {
+
+	// Create a doc with an attachment
+	myAttachment := db.DocAttachment{
+		ContentType: "application/json",
+		Digest:      input.attachmentDigest,
+		Length:      6,
+		Revpos:      1,
+		Stub:        true,
+	}
+	doc := NewRestDocument()
+	doc.SetID(input.docId)
+	doc.SetRevID(input.revId)
+	doc.SetAttachments(db.AttachmentMap{
+		input.attachmentName: &myAttachment,
+	})
+
+	docBody, err := json.Marshal(doc)
+	if err != nil {
+		panic(fmt.Sprintf("Error marshalling doc.  Error: %v", err))
+	}
+
+	getAttachmentWg := sync.WaitGroup{}
+
+	bt.blipContext.HandlerForProfile["getAttachment"] = func(request *blip.Message) {
+		defer getAttachmentWg.Done()
+		if request.Properties["digest"] != myAttachment.Digest {
+			panic(fmt.Sprintf("Unexpected digest.  Got: %v, expected: %v", request.Properties["digest"], myAttachment.Digest))
+		}
+		response := request.Response()
+		response.SetBody([]byte(input.attachmentBody))
+	}
+
+	// Push a rev with an attachment.
+	getAttachmentWg.Add(1)
+	sent, req, res = bt.SendRev(
+		input.docId,
+		input.revId,
+		docBody,
+	)
+
+	// Expect a callback to the getAttachment endpoint
+	getAttachmentWg.Wait()
+
+	return sent, req, res
+
+}
+
+func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]interface{}) {
+
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+		currentChanges := bt.GetChanges()
+		if len(currentChanges) >= numChangesExpected {
+			return false, nil, currentChanges
+		}
+
+		// haven't seen numDocsExpected yet, so wait and retry
+		return true, nil, nil
+
+	}
+
+	_, rawChanges := base.RetryLoop(
+		"WaitForNumChanges",
+		retryWorker,
+		base.CreateDoublingSleeperFunc(10, 10),
+	)
+
+	return rawChanges.([][]interface{})
 
 }
 
@@ -718,6 +804,154 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 	}
 
 	return collectedChanges
+
+}
+
+
+func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[string]RestDocument) {
+
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+			allDocs := bt.PullDocs()
+			if len(allDocs) >= numDocsExpected {
+				return false, nil, allDocs
+			}
+
+			// haven't seen numDocsExpected yet, so wait and retry
+			return true, nil, nil
+
+	}
+
+	_, allDocs := base.RetryLoop(
+		"WaitForNumDocsViaChanges",
+		retryWorker,
+		base.CreateDoublingSleeperFunc(10, 10),
+		)
+
+	return allDocs.(map[string]RestDocument)
+
+}
+
+// Get all documents and their attachments via the following steps:
+//
+// - Invoking one-shot subChanges request
+// - Responding to all incoming "changes" requests from peer to request the changed rev, and accumulate rev body
+// - Responding to all incoming "rev" requests from peer to get all attachments, and accumulate them
+// - Return accumulated docs + attachements to caller
+//
+// It is basically a pull replication without the checkpointing
+func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
+
+	docs = map[string]RestDocument{}
+	changesFinishedWg := sync.WaitGroup{}
+	revsFinishedWg := sync.WaitGroup{}
+
+	// -------- Changes handler callback --------
+	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+
+		// Send a response telling the other side we want ALL revisions
+
+		body, err := request.Body()
+		if err != nil {
+			panic(fmt.Sprintf("Error getting request body: %v", err))
+		}
+
+		if string(body) == "null" {
+			changesFinishedWg.Done()
+			return
+		}
+
+		if !request.NoReply() {
+
+			// unmarshal into json array
+			changesBatch := [][]interface{}{}
+
+			if err := json.Unmarshal(body, &changesBatch); err != nil {
+				panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
+			}
+
+			responseVal := [][]interface{}{}
+			for _, change := range changesBatch {
+				revId := change[2].(string)
+				responseVal = append(responseVal, []interface{}{ revId })
+				revsFinishedWg.Add(1)
+			}
+
+			response := request.Response()
+			responseValBytes, err := json.Marshal(responseVal)
+			log.Printf("responseValBytes: %s", responseValBytes)
+			if err != nil {
+				panic(fmt.Sprintf("Error marshalling response: %v", err))
+			}
+			response.SetBody(responseValBytes)
+
+		}
+	}
+
+	// -------- Rev handler callback --------
+	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
+
+		defer revsFinishedWg.Done()
+		body, err := request.Body()
+		var doc RestDocument
+		err = json.Unmarshal(body, &doc)
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected err: %v", err))
+		}
+		docId := request.Properties["id"]
+		docRev := request.Properties["rev"]
+		doc.SetID(docId)
+		doc.SetRevID(docRev)
+		docs[docId] = doc
+
+		attachments, err := doc.GetAttachments()
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected err: %v", err))
+		}
+
+		for _, attachment := range attachments {
+
+			// Get attachments and append to RestDocument
+			getAttachmentRequest := blip.NewRequest()
+			getAttachmentRequest.SetProfile("getAttachment")
+			getAttachmentRequest.Properties["digest"] = attachment.Digest
+			sent := bt.sender.Send(getAttachmentRequest)
+			if !sent {
+				panic(fmt.Sprintf("Unable to get attachment."))
+			}
+			getAttachmentResponse := getAttachmentRequest.Response()
+			getAttachmentBody, getAttachmentErr := getAttachmentResponse.Body()
+			if getAttachmentErr != nil {
+				panic(fmt.Sprintf("Unexpected err: %v", err))
+			}
+			log.Printf("getAttachmentBody: %s", getAttachmentBody)
+			attachment.Data = getAttachmentBody
+		}
+
+		// Send response to rev request
+		if !request.NoReply() {
+			response := request.Response()
+			response.SetBody([]byte{}) // Empty response to indicate success
+		}
+
+	}
+
+	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	changesFinishedWg.Add(1)
+	subChangesRequest := blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "false"
+
+	sent := bt.sender.Send(subChangesRequest)
+	if !sent {
+		panic(fmt.Sprintf("Unable to subscribe to changes."))
+	}
+
+	changesFinishedWg.Wait()
+
+	revsFinishedWg.Wait()
+
+	return docs
 
 }
 
@@ -814,3 +1048,91 @@ func EnableBlipSyncLogs() {
 	base.EnableLogKey("Sync")
 	base.EnableLogKey("Sync+")
 }
+
+// Model "CouchDB" style REST documents which define the following special fields:
+//
+// - _id
+// - _rev
+// - _deleted (not accounted for yet)
+// - _attachments
+//
+// This struct wraps a map and provides convenience methods for getting at the special
+// fields with the appropriate types (string in the id/rev case, db.AttachmentMap in the attachments case).
+// Currently only used in tests, but if similar functionality needed in primary codebase, could be moved.
+type RestDocument map[string]interface{}
+
+func NewRestDocument() *RestDocument {
+	emptyBody := make(map[string]interface{})
+	restDoc := RestDocument(emptyBody)
+	return &restDoc
+}
+
+func (d RestDocument) ID() string {
+	rawID, hasID := d["_id"]
+	if !hasID {
+		return ""
+	}
+	return rawID.(string)
+
+}
+
+func (d RestDocument) SetID(docId string) {
+	d["_id"] = docId
+}
+
+func (d RestDocument) RevID() string {
+	rawRev, hasRev := d["_rev"]
+	if !hasRev {
+		return ""
+	}
+	return rawRev.(string)
+}
+
+func (d RestDocument) SetRevID(revId string) {
+	d["_rev"] = revId
+}
+
+func (d RestDocument) SetAttachments(attachments db.AttachmentMap) {
+	d["_attachments"] = attachments
+}
+
+func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
+
+	rawAttachments, hasAttachments := d["_attachments"]
+
+	// If the map doesn't even have the _attachments key, return an empty attachments map
+	if !hasAttachments {
+		return db.AttachmentMap{}, nil
+	}
+
+	// Otherwise, create an AttachmentMap from the value in the raw map
+	attachmentMap := db.AttachmentMap{}
+	switch v := rawAttachments.(type) {
+	case db.AttachmentMap:
+		// If it's already an AttachmentMap (maybe due to previous call to SetAttachments), then return as-is
+		return v, nil
+	default:
+		rawAttachmentsMap := v.(map[string]interface{})
+		for attachmentName, attachmentVal := range rawAttachmentsMap {
+
+			// marshal attachmentVal into a byte array, then unmarshal into a DocAttachment
+			attachmentValMarshalled, err := json.Marshal(attachmentVal)
+			if err != nil {
+				return db.AttachmentMap{}, err
+			}
+			docAttachment := db.DocAttachment{}
+			if err := json.Unmarshal(attachmentValMarshalled, &docAttachment); err != nil {
+				return db.AttachmentMap{}, err
+			}
+
+			attachmentMap[attachmentName] = &docAttachment
+		}
+
+		// Avoid the unnecessary re-Marshal + re-Unmarshal
+		d.SetAttachments(attachmentMap)
+	}
+
+	return attachmentMap, nil
+
+}
+
