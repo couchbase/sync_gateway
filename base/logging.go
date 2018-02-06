@@ -421,6 +421,11 @@ func GetCallersName(depth int) string {
 	return fmt.Sprintf("%s() at %s:%d", lastComponent(fnname), lastComponent(file), line)
 }
 
+// Partial interface for the SGLogger
+type SGLogger interface {
+	LogTo(key string, format string, args ...interface{})
+}
+
 // Logs a message to the console, but only if the corresponding key is true in LogKeys.
 func LogTo(key string, format string, args ...interface{}) {
 	logLock.RLock()
@@ -703,7 +708,6 @@ func LogColor() {
 	bgWhite = "\x1b[47m"
 }
 
-
 // Prepend a context ID to each blip logging message.  The contextID uniquely identifies the blip context, and
 // is useful for grouping the blip connections in the log output.
 func PrependContextID(contextID, format string, params ...interface{}) (newFormat string, newParams []interface{}) {
@@ -716,6 +720,5 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 	params[0] = contextID
 
 	return formatWithContextID, params
-
 
 }

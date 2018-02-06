@@ -27,7 +27,6 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/sg-replicate"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -35,7 +34,6 @@ import (
 const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowServerCallWarningThreshold = 200 // ms
-const kOneShotLocalDbReplicateWait = 10 * time.Second
 const KDefaultNumShards = 16
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
@@ -86,36 +84,38 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		sc.startStatsReporter()
 	}
 
-	if config.Replications != nil {
+	return sc
+}
 
-		for _, replicationConfig := range config.Replications {
+func (sc *ServerContext) PostStartup() {
+	sc.startReplicators()
+}
 
-			params, _, localdb, err := validateReplicationParameters(*replicationConfig, true, *config.AdminInterface)
+func (sc *ServerContext) startReplicators() {
+
+	if sc.config.Replications != nil {
+
+		for _, replicationConfig := range sc.config.Replications {
+
+			params, _, _, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
 
 			if err != nil {
 				base.LogError(err)
 				continue
 			}
 
-			//Force one-shot replications to run Async
-			//to avoid blocking server startup
+			// Force one-shot replications to run Async
+			// to avoid blocking server startup
 			params.Async = true
 
-			//Run single replication, cancel parameter will always be false
-			go func() {
-				//Delay the start of the replication if its a oneshot that
-				//uses a localdb reference to allow the REST API's to come up
-				if params.Lifecycle == sgreplicate.ONE_SHOT && localdb {
-					base.Warn("Delaying start of local database one-shot replication, source %v, target %v for %v seconds", params.SourceDb, params.TargetDb, kOneShotLocalDbReplicateWait)
-					time.Sleep(kOneShotLocalDbReplicateWait)
-				}
-				sc.replicator.Replicate(params, false)
-			}()
+			// Run single replication, cancel parameter will always be false
+			if _, err := sc.replicator.Replicate(params, false); err != nil {
+				base.Warn("Error starting replication: %v", err)
+			}
 		}
 
 	}
 
-	return sc
 }
 
 func (sc *ServerContext) FindDbByBucketName(bucketName string) string {
@@ -662,14 +662,15 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 
 	//We can only transition to Online from Offline state
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
-
-		if _, err := sc.ReloadDatabaseFromConfig(database.Name, true); err != nil {
+		reloadedDb, err := sc.ReloadDatabaseFromConfig(database.Name, true)
+		if err != nil {
 			base.LogError(err)
 			return
 		}
 
-		//Set DB state to DBOnline, this wil cause new API requests to be be accepted
-		atomic.StoreUint32(&sc.databases_[database.Name].State, db.DBOnline)
+		// Reloaded DB should already be online in most cases, but force state to online to handle cases
+		// where config specifies offline startup
+		atomic.StoreUint32(&reloadedDb.State, db.DBOnline)
 
 	} else {
 		base.LogTo("CRUD", "Unable to take Database : %v online , database must be in Offline state", database.Name)

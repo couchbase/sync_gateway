@@ -305,8 +305,9 @@ func (h *handler) handleChanges() error {
 
 	close(options.Terminator)
 
+	// On forceClose, send notify to trigger immediate exit from change waiter
 	if forceClose && h.user != nil {
-		h.db.DatabaseContext.NotifyUser(h.user.Name())
+		h.db.DatabaseContext.NotifyTerminatedChanges(h.user.Name())
 	}
 
 	return err
@@ -380,13 +381,13 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
-				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
+				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
 			case <-timeout:
 				message = "OK (timeout)"
 				forceClose = true
 				break loop
 			case <-closeNotify:
-				base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
+				base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserNameAsUser())
 				forceClose = true
 				break loop
 			case <-h.db.ExitChanges:
@@ -530,7 +531,7 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 // It will call send(nil) to notify that it's caught up and waiting for new changes, or as
 // a periodic heartbeat while waiting.
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
-	err, forceClose := generateContinuousChanges(h.db, inChannels, options, nil, send)
+	err, forceClose := generateContinuousChanges(h.db, inChannels, options, h, send)
 	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
 	return err, forceClose
 }
@@ -653,20 +654,26 @@ loop:
 		case <-heartbeat:
 			err = send(nil)
 			if h != nil {
-				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserName())
+				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
 			}
 		case <-timeout:
 			forceClose = true
 			break loop
 		case <-closeNotify:
-			base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserName())
+			if h != nil {
+				base.LogTo("Changes+", "Client connection lost: %v", h.currentEffectiveUserNameAsUser())
+			} else {
+				base.LogTo("Changes+", "Client connection lost")
+			}
 			forceClose = true
 			break loop
 		case <-database.ExitChanges:
 			forceClose = true
 			break loop
+		case <-options.Terminator:
+			forceClose = true
+			break loop
 		}
-
 		if err != nil {
 			if h != nil {
 				h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))

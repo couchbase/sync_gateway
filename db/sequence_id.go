@@ -311,12 +311,6 @@ func (s *SequenceID) unmarshalClockSequence(data []byte) error {
 	return err
 }
 
-func ParseSequenceIDFromJSON(data []byte) (SequenceID, error) {
-	var seq SequenceID
-	err := json.Unmarshal(data, &seq)
-	return seq, err
-}
-
 func (s SequenceID) SafeSequence() uint64 {
 	if s.LowSeq > 0 {
 		return s.LowSeq

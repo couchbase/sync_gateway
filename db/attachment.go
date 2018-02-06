@@ -12,7 +12,6 @@ package db
 import (
 	"bytes"
 	"compress/gzip"
-	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
@@ -26,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
+	"crypto/md5"
 )
 
 // Attachments shorter than this will be left in the JSON as base64 rather than being a separate
@@ -38,6 +38,20 @@ const kMinCompressedJSONSize = 300
 // Key for retrieving an attachment from Couchbase.
 type AttachmentKey string
 type AttachmentData map[AttachmentKey][]byte
+
+// A map of keys -> DocAttachments.
+type AttachmentMap map[string]*DocAttachment
+
+// A struct which models an attachment.  Currently only used by test code, however
+// new code or refactoring in the main codebase should try to use where appropriate.
+type DocAttachment struct {
+	ContentType string `json:"content_type,omitempty"`
+	Digest      string `json:"digest,omitempty"`
+	Length      int    `json:"length,omitempty"`
+	Revpos      int    `json:"revpos,omitempty"`
+	Stub        bool   `json:"stub,omitempty"`
+	Data        []byte `json:-` // tell json marshal/unmarshal to ignore this field
+}
 
 // Given a CouchDB document body about to be stored in the database, goes through the _attachments
 // dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
@@ -61,7 +75,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			if err != nil {
 				return nil, err
 			}
-			key := AttachmentKey(sha1DigestKey(attachment))
+			key := AttachmentKey(Sha1DigestKey(attachment))
 			newAttachmentData[key] = attachment
 
 			newMeta := map[string]interface{}{
@@ -178,7 +192,7 @@ func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
 
 // Stores a base64-encoded attachment and returns the key to get it by.
 func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
-	key := AttachmentKey(sha1DigestKey(attachment))
+	key := AttachmentKey(Sha1DigestKey(attachment))
 	_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
 	if err == nil {
 		base.LogTo("Attach", "\tAdded attachment %q", key)
@@ -392,10 +406,10 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		}
 
 		// Look up the attachment by its digest:
-		digest := sha1DigestKey(data)
+		digest := Sha1DigestKey(data)
 		name, meta := findFollowingAttachment(digest)
 		if meta == nil {
-			name, meta = findFollowingAttachment(md5DigestKey(data))
+			name, meta = findFollowingAttachment(Md5DigestKey(data))
 			if meta == nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest,
 					"MIME part #%d doesn't match any attachment", i+2)
@@ -486,18 +500,6 @@ func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof strin
 
 //////// HELPERS:
 
-func sha1DigestKey(data []byte) string {
-	digester := sha1.New()
-	digester.Write(data)
-	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
-}
-
-func md5DigestKey(data []byte) string {
-	digester := md5.New()
-	digester.Write(data)
-	return "md5-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
-}
-
 func BodyAttachments(body Body) map[string]interface{} {
 	atts, _ := body["_attachments"].(map[string]interface{})
 	return atts
@@ -525,4 +527,17 @@ func decodeAttachment(att interface{}) ([]byte, error) {
 	default:
 		return nil, base.HTTPErrorf(400, "invalid attachment data (type %T)", att)
 	}
+}
+
+func Sha1DigestKey(data []byte) string {
+	digester := sha1.New()
+	digester.Write(data)
+	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
+}
+
+// This is only here for backwards compatibility.  Otherwise should be avoided.
+func Md5DigestKey(data []byte) string {
+	digester := md5.New()
+	digester.Write(data)
+	return "md5-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }

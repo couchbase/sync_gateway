@@ -1069,6 +1069,7 @@ func TestDcpBackfill(t *testing.T) {
 		},
 		NoFlush: true,
 	}
+	defer newRt.Close()
 	log.Printf("Poke the rest tester so it starts DCP processing:")
 	bucket = newRt.Bucket()
 
