@@ -56,6 +56,11 @@ const funcWrapper = `
 			return false;
 		}
 
+		function requireAdmin() {
+			if (shouldValidate)
+				throw({forbidden: "admin required"});
+		}
+
 		function requireUser(names) {
 				if (!shouldValidate) return;
 				names = makeArray(names);

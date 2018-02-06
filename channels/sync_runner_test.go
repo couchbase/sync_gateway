@@ -46,6 +46,21 @@ func TestRequireAccess(t *testing.T) {
 	assertRejected(t, result, base.HTTPErrorf(403, "missing channel access"))
 }
 
+func TestRequireAdmin(t *testing.T) {
+	const funcSource = `function(doc, oldDoc) { requireAdmin() }`
+	runner, err := NewSyncRunner(funcSource)
+	assert.Equals(t, err, nil)
+	var result interface{}
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{}`))
+	assertNotRejected(t, result)
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{"name": ""}`))
+	assertRejected(t, result, base.HTTPErrorf(403, "admin required"))
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{"name": "GUEST"}`))
+	assertRejected(t, result, base.HTTPErrorf(403, "admin required"))
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{"name": "beta"}`))
+	assertRejected(t, result, base.HTTPErrorf(403, "admin required"))
+}
+
 // Helpers
 func assertRejected(t *testing.T, result interface{}, err *base.HTTPError) {
 	r, ok := result.(*ChannelMapperOutput)
