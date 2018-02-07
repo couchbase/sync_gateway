@@ -538,6 +538,7 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 			defer func() {
 				if panicked := recover(); panicked != nil {
 					base.Warn("[%s] PANIC handling 'sendRevision' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
+					bh.close()
 				}
 			}()
 			defer bh.removeAllowedAttachments(atts)
