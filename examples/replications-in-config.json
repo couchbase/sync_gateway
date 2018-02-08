@@ -5,15 +5,18 @@
    "databases":{
       "db":{
          "server":"walrus:",
-         "allow_conflicts": false
+         "allow_conflicts": false,
+         "revs_limit": 20
       },
       "db2":{
          "server":"walrus:",
-         "allow_conflicts": false
+         "allow_conflicts": false,
+         "revs_limit": 20
       },
       "db3":{
          "server":"walrus:",
-         "allow_conflicts": false
+         "allow_conflicts": false,
+         "revs_limit": 20
       },
       "db4":{
          "server":"walrus:",
@@ -25,7 +28,8 @@
                ]
             }
          },
-         "allow_conflicts": false
+         "allow_conflicts": false,
+         "revs_limit": 20
       },
       "db5":{
          "server":"walrus:",
@@ -37,7 +41,8 @@
                ]
             }
          },
-         "allow_conflicts": false
+         "allow_conflicts": false,
+         "revs_limit": 20
       }
    },
    "replications":[

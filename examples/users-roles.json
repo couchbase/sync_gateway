@@ -11,7 +11,8 @@
         }
       },
       "roles": { "froods": { "admin_channels": ["hoopy"] } },
-      "allow_conflicts": false
+      "allow_conflicts": false,
+      "revs_limit": 20
     }
   }
 }

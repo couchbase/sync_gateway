@@ -11,7 +11,8 @@
       "users": {
         "GUEST": {"disabled": false, "admin_channels": ["*"]}
       },
-      "allow_conflicts": false
+      "allow_conflicts": false,
+      "revs_limit": 20
     },
     "connect2014": {
       "server":"http://172.23.121.38:8091",
@@ -90,7 +91,8 @@
         }
       }
       `,
-      "allow_conflicts": false
+      "allow_conflicts": false,
+      "revs_limit": 20
     },
     "connect2015": {
       "server":"http://172.23.121.38:8091",
@@ -169,7 +171,8 @@
         }
       }
       `,
-      "allow_conflicts": false
+      "allow_conflicts": false,
+      "revs_limit": 20
     },
     "grocery-sync": {
       "server":"http://172.23.121.38:8091",
@@ -177,7 +180,8 @@
       "users": {
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]}
       },
-      "allow_conflicts": false
+      "allow_conflicts": false,
+      "revs_limit": 20
     },
     "todolite": {
       "server":"http://172.23.121.38:8091",
@@ -235,7 +239,8 @@
         }
       }
     `,
-    "allow_conflicts": false
+    "allow_conflicts": false,
+    "revs_limit": 20
     }
   }
 }

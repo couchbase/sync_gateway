@@ -6,7 +6,8 @@
       "password": "password",
       "import_docs": "continuous",
       "enable_shared_bucket_access":true,
-      "allow_conflicts": false
+      "allow_conflicts": false,
+      "revs_limit": 20
     }
   }
 }

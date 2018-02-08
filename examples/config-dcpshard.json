@@ -33,7 +33,8 @@
                 "bucket":"channel_index",
                 "writer":true
             },
-            "allow_conflicts": false
+            "allow_conflicts": false,
+            "revs_limit": 20
         }
     }
 }

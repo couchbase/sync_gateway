@@ -12,7 +12,8 @@
         "server":"http://localhost:8091",
         "bucket":"channel_bucket"
       },
-      "allow_conflicts": false
+      "allow_conflicts": false,
+      "revs_limit": 20
     }
   }
 }
