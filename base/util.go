@@ -90,8 +90,12 @@ func FixJSONNumbers(value interface{}) interface{} {
 }
 
 
+
 // Convert a JSON string, which has extra double quotes (eg, `"thing"`) into a normal string
-// with the extra double quotes removed (eg "thing")
+// with the extra double quotes removed (eg "thing").  Normal strings will be returned as-is.
+//
+// `"thing"` -> "thing"
+// "thing" -> "thing"
 func ConvertJSONString(s string) string {
 	var jsonString string
 	err := json.Unmarshal([]byte(s), &jsonString)

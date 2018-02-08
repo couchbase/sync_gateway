@@ -36,6 +36,7 @@ func TestFixJSONNumbers(t *testing.T) {
 
 func TestConvertJSONString(t *testing.T) {
 	assert.Equals(t, ConvertJSONString(`"blah"`), "blah")
+	assert.Equals(t, ConvertJSONString("blah"), "blah")
 }
 
 func TestBackQuotedStrings(t *testing.T) {
