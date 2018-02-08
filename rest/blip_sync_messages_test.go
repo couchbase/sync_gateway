@@ -1,11 +1,11 @@
 package rest
 
 import (
+	"testing"
+
 	"github.com/couchbase/go-blip"
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"testing"
 )
 
 func TestAddRevision(t *testing.T) {
@@ -56,6 +56,8 @@ func TestAddRevision(t *testing.T) {
 
 }
 
+// Make sure that the subChangesParams helper deals correctly with JSON strings.
+// Reproduces SG #3283
 func TestSubChangesSince(t *testing.T) {
 
 	var rt RestTester
@@ -64,11 +66,9 @@ func TestSubChangesSince(t *testing.T) {
 	testDb := rt.GetDatabase()
 
 	rq := blip.NewRequest()
-	rq.Properties["since"] = `"3-0::20.1"`
+	rq.Properties["since"] = `"1"`
 
 	zeroSinceVal := db.SequenceID{}
-	zeroSinceVal.SeqType = db.ClockSequenceType
-	zeroSinceVal.Clock = base.NewSequenceClockImpl()
 
 	subChangesParams := newSubChangesParams(
 		rq,
@@ -78,7 +78,7 @@ func TestSubChangesSince(t *testing.T) {
 	)
 	seqId, err := subChangesParams.since()
 	assert.True(t, err == nil)
-	assert.True(t, seqId.SeqType == db.ClockSequenceType)
-
+	assert.True(t, seqId.SeqType == db.IntSequenceType)
+	assert.True(t, seqId.Seq == 1)
 
 }
