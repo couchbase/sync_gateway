@@ -89,6 +89,19 @@ func FixJSONNumbers(value interface{}) interface{} {
 	return value
 }
 
+
+// Convert a JSON string, which has extra double quotes (eg, `"thing"`) into a normal string
+// with the extra double quotes removed (eg "thing")
+func ConvertJSONString(s string) string {
+	var jsonString string
+	err := json.Unmarshal([]byte(s), &jsonString)
+	if err != nil {
+		return s
+	} else {
+		return jsonString
+	}
+}
+
 var kBackquoteStringRegexp *regexp.Regexp
 
 // Preprocesses a string containing `...`-delimited strings. Converts the backquotes into double-quotes,
