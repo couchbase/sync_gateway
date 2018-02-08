@@ -5,7 +5,9 @@
   "databases": {
     "db": {
       "server": "walrus:",
-      "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } }
+      "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
+      "allow_conflicts": false,
+      "revs_limit": 20
     }
   }
 }

@@ -10,7 +10,9 @@
       "bucket":"gaggle",
       "users": {
         "GUEST": {"disabled": false, "admin_channels": ["*"]}
-      }
+      },
+      "allow_conflicts": false,
+      "revs_limit": 20
     },
     "connect2014": {
       "server":"http://172.23.121.38:8091",
@@ -88,7 +90,9 @@
           channel("public")
         }
       }
-        `
+      `,
+      "allow_conflicts": false,
+      "revs_limit": 20
     },
     "connect2015": {
       "server":"http://172.23.121.38:8091",
@@ -166,14 +170,18 @@
           channel("public")
         }
       }
-        `
+      `,
+      "allow_conflicts": false,
+      "revs_limit": 20
     },
     "grocery-sync": {
       "server":"http://172.23.121.38:8091",
       "bucket":"grocery-sync",
       "users": {
         "GUEST": {"disabled": false, "all_channels": ["*"], "admin_channels": ["*"]}
-      }
+      },
+      "allow_conflicts": false,
+      "revs_limit": 20
     },
     "todolite": {
       "server":"http://172.23.121.38:8091",
@@ -230,7 +238,9 @@
           access(user, "profiles"); // TODO this should use roles
         }
       }
-    `
+    `,
+    "allow_conflicts": false,
+    "revs_limit": 20
     }
   }
 }

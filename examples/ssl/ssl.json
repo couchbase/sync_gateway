@@ -14,7 +14,9 @@
                   "*"
                ]
             }
-         }
+         },
+         "allow_conflicts": false,
+         "revs_limit": 20
       }
    }
 }

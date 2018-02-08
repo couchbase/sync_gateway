@@ -7,8 +7,9 @@
 			"server": "walrus:data",
 			"users": {
 				"GUEST": {"disabled": false, "admin_channels": ["*"] }
-			}
+			},
+      "allow_conflicts": false,
+      "revs_limit": 20
 		}
 	}
 }
-
