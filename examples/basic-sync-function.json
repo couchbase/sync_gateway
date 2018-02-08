@@ -24,8 +24,8 @@
       expiry(doc.expiry)    
 	}
       }
-    `
+    `,
+    "allow_conflicts": false
     }
   }
 }
-

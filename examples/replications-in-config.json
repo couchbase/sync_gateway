@@ -4,13 +4,16 @@
    ],
    "databases":{
       "db":{
-         "server":"walrus:"
+         "server":"walrus:",
+         "allow_conflicts": false
       },
       "db2":{
-         "server":"walrus:"
+         "server":"walrus:",
+         "allow_conflicts": false
       },
       "db3":{
-         "server":"walrus:"
+         "server":"walrus:",
+         "allow_conflicts": false
       },
       "db4":{
          "server":"walrus:",
@@ -21,7 +24,8 @@
                   "*"
                ]
             }
-         }
+         },
+         "allow_conflicts": false
       },
       "db5":{
          "server":"walrus:",
@@ -32,7 +36,8 @@
                   "*"
                ]
             }
-         }
+         },
+         "allow_conflicts": false
       }
    },
    "replications":[

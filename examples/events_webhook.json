@@ -23,14 +23,8 @@
               }`
           }
         ]
-      }
+      },
+      "allow_conflicts": false
     }
   }
 }
-
-
-
-
-
-
-

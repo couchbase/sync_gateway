@@ -16,7 +16,8 @@
                 "register":true
             }
           }
-        }
+        },
+        "allow_conflicts": false
       }
    }
 }

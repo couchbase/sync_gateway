@@ -5,8 +5,8 @@
       "bucket": "default",
       "password": "password",
       "import_docs": "continuous",
-      "enable_shared_bucket_access":true,  
+      "enable_shared_bucket_access":true,
+      "allow_conflicts": false
     }
   }
 }
-

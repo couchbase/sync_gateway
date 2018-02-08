@@ -32,7 +32,8 @@
                 "server":"http://localhost:8091",
                 "bucket":"channel_index",
                 "writer":true
-            }
+            },
+            "allow_conflicts": false
         }
     }
 }

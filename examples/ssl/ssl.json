@@ -14,7 +14,8 @@
                   "*"
                ]
             }
-         }
+         },
+         "allow_conflicts": false
       }
    }
 }

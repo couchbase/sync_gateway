@@ -11,7 +11,8 @@
       "channel_index":{
         "server":"http://localhost:8091",
         "bucket":"channel_bucket"
-      }
+      },
+      "allow_conflicts": false
     }
   }
 }

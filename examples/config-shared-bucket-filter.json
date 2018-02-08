@@ -14,7 +14,7 @@
 		  return true
 		}
 		`,
+    "allow_conflicts": false
     }
   }
 }
-
