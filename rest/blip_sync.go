@@ -561,12 +561,14 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 	body["_deleted"] = addRevisionParams.deleted()
 
+	// noconflicts flag from LiteCore
+	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev
 	var noConflicts bool
 	if val, ok := rq.Properties["noconflicts"]; ok {
 		var err error
 		noConflicts, err = strconv.ParseBool(val)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Incorrect value for noconflicts: %s", err))
+			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Invalid value for noconflicts: %s", err))
 		}
 	}
 
