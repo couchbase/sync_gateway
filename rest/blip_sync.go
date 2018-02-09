@@ -561,6 +561,15 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 	body["_deleted"] = addRevisionParams.deleted()
 
+	var noConflicts bool
+	if val, ok := rq.Properties["noconflicts"]; ok {
+		var err error
+		noConflicts, err = strconv.ParseBool(val)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Incorrect value for noconflicts: %s", err))
+		}
+	}
+
 	history := []string{revID}
 	if historyStr := rq.Properties["history"]; historyStr != "" {
 		history = append(history, strings.Split(historyStr, ",")...)
@@ -579,7 +588,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	// Finally, save the revision (with the new attachments inline)
-	return bh.db.PutExistingRev(docID, body, history)
+	return bh.db.PutExistingRev(docID, body, history, noConflicts)
 }
 
 //////// ATTACHMENTS:

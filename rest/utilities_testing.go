@@ -681,9 +681,9 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte) (sent bool, req
 
 	// Make sure no errors.  Just panic for now, but if there are tests that expect errors and want
 	// to use SendRev(), this could be returned.
-	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
-	if hasErrorCode {
-		panic(fmt.Sprintf("Unexpected error sending rev: %v", errorCode))
+	if errorCode, ok := revResponse.Properties["Error-Code"]; ok {
+		body, _ := revResponse.Body()
+		panic(fmt.Sprintf("Unexpected error sending rev: %v\n%s", errorCode, body))
 	}
 
 	return sent, revRequest, revResponse
@@ -807,17 +807,16 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
 }
 
-
 func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[string]RestDocument) {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-			allDocs := bt.PullDocs()
-			if len(allDocs) >= numDocsExpected {
-				return false, nil, allDocs
-			}
+		allDocs := bt.PullDocs()
+		if len(allDocs) >= numDocsExpected {
+			return false, nil, allDocs
+		}
 
-			// haven't seen numDocsExpected yet, so wait and retry
-			return true, nil, nil
+		// haven't seen numDocsExpected yet, so wait and retry
+		return true, nil, nil
 
 	}
 
@@ -825,7 +824,7 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 		"WaitForNumDocsViaChanges",
 		retryWorker,
 		base.CreateDoublingSleeperFunc(10, 10),
-		)
+	)
 
 	return allDocs.(map[string]RestDocument)
 
@@ -873,7 +872,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 			responseVal := [][]interface{}{}
 			for _, change := range changesBatch {
 				revId := change[2].(string)
-				responseVal = append(responseVal, []interface{}{ revId })
+				responseVal = append(responseVal, []interface{}{revId})
 				revsFinishedWg.Add(1)
 			}
 

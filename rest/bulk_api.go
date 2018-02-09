@@ -511,7 +511,7 @@ func (h *handler) handleBulkDocs() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
 				revid = revisions[0]
-				err = h.db.PutExistingRev(docid, doc, revisions)
+				err = h.db.PutExistingRev(docid, doc, revisions, false)
 			}
 		}
 

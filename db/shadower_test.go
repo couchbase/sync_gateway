@@ -233,7 +233,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 	assertNoError(t, err, "NewShadower")
 
 	// Push an existing doc revision (the way a client's push replicator would)
-	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"})
+	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"}, false)
 	waitFor(t, func() bool {
 		return atomic.LoadUint64(&db.Shadower.pullCount) >= 1
 	})
@@ -272,7 +272,7 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 	assertNoError(t, err, "NewShadower")
 
 	// Push an existing doc revision (the way a client's push replicator would)
-	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"})
+	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"}, false)
 	waitFor(t, func() bool {
 		return atomic.LoadUint64(&db.Shadower.pullCount) >= 1
 	})
