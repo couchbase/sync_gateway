@@ -8,12 +8,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"time"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -47,9 +47,9 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assertNoError(t, err, "Error reading changes response body")
 	err = json.Unmarshal(body, &changeList)
 	assertNoError(t, err, "Error unmarshalling response body")
-	assert.True(t, len(changeList) == 1) // Should be 1 row, corresponding to the single doc that was queried in changes
+	assert.Equals(t, len(changeList), 1) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow := changeList[0]
-	assert.True(t, len(changeRow) == 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
+	assert.Equals(t, len(changeRow), 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
 
 	// Send the doc revision in a rev request
 	_, _, revResponse := bt.SendRev(
@@ -73,9 +73,9 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assertNoError(t, err, "Error reading changes response body")
 	err = json.Unmarshal(body2, &changeList2)
 	assertNoError(t, err, "Error unmarshalling response body")
-	assert.True(t, len(changeList2) == 1) // Should be 1 row, corresponding to the single doc that was queried in changes
+	assert.Equals(t, len(changeList2), 1) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow2 := changeList2[0]
-	assert.True(t, len(changeRow2) == 1) // Should have 1 item in row, which is the rev id of the previous revision pushed
+	assert.Equals(t, len(changeRow2), 1) // Should have 1 item in row, which is the rev id of the previous revision pushed
 	assert.Equals(t, changeRow2[0], "1-abc")
 
 	// Call subChanges api and make sure we get expected changes back
@@ -94,9 +94,9 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 			changeListReceived := [][]interface{}{}
 			err = json.Unmarshal(body, &changeListReceived)
 			assertNoError(t, err, "Error unmarshalling changes received")
-			assert.True(t, len(changeListReceived) == 1)
+			assert.Equals(t, len(changeListReceived), 1)
 			change := changeListReceived[0] // [1,"foo","1-abc"]
-			assert.True(t, len(change) == 3)
+			assert.Equals(t, len(change), 3)
 			assert.Equals(t, change[0].(float64), float64(1)) // Expect sequence to be 1, since first item in DB
 			assert.Equals(t, change[1], "foo")                // Doc id of pushed rev
 			assert.Equals(t, change[2], "1-abc")              // Rev id of pushed rev
@@ -131,7 +131,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	receivedChangesRequestWg.Add(1)
 
 	// Wait until we got the expected callback on the "changes" profile handler
-	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second * 60)
+	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*60)
 	assertNoError(t, timeoutErr, "Timed out waiting")
 
 }
@@ -168,7 +168,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 				// The change should have three items in the array
 				// [1,"foo","1-abc"]
-				assert.True(t, len(change) == 3)
+				assert.Equals(t, len(change), 3)
 
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq := change[0].(float64)
@@ -232,7 +232,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 	// Wait until all expected changes are received by change handler
 	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second * 60)
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*60)
 	assertNoError(t, timeoutErr, "Timed out waiting for all changes.")
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
@@ -279,7 +279,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 
 	// The common case of an empty array response tells the sender to send all of the proposed revisions,
 	// so the changeList returned by Sync Gateway is expected to be empty
-	assert.True(t, len(changeList) == 0)
+	assert.Equals(t, len(changeList), 0)
 
 }
 
@@ -322,13 +322,13 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 	// Assert that user1 received a single expected change
 	changesChannelUser1 := btUser1.WaitForNumChanges(1)
-	assert.True(t, len(changesChannelUser1) == 1)
+	assert.Equals(t, len(changesChannelUser1), 1)
 	change := changesChannelUser1[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
 
 	// Assert that user2 received user1's change as well as it's own change
 	changesChannelUser2 := btUser2.WaitForNumChanges(2)
-	assert.True(t, len(changesChannelUser2) == 2)
+	assert.Equals(t, len(changesChannelUser2), 2)
 	change = changesChannelUser2[0]
 	AssertChangeEquals(t, change, ExpectedChange{docId: "foo", revId: "1-abc", sequence: "*", deleted: base.BoolPtr(false)})
 
@@ -461,7 +461,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	// Make sure we can see it by getting changes
 	changes := bt.WaitForNumChanges(2)
 	log.Printf("changes: %+v", changes)
-	assert.True(t, len(changes) == 2)
+	assert.Equals(t, len(changes), 2)
 
 }
 
@@ -498,7 +498,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 
 	// Make sure we can see both docs in the changes
 	changes := bt.WaitForNumChanges(2)
-	assert.True(t, len(changes) == 2)
+	assert.Equals(t, len(changes), 2)
 
 }
 
@@ -704,7 +704,7 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
-	assert.True(t, len(changes) == 0)
+	assert.Equals(t, len(changes), 0)
 
 }
 
@@ -740,6 +740,6 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
-	assert.True(t, len(changes) == 0)
+	assert.Equals(t, len(changes), 0)
 
 }
