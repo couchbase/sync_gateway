@@ -716,7 +716,6 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 noconflicts=true    continue checks         continue checks
 noconflicts=false   return false            continue checks */
 func (db *Database) IsIllegalConflict(doc *document, parentRevID string, deleted, noConflicts bool) bool {
-	fmt.Printf("     bbrks - IsIllegalConflict: nocConflicts: %v\n", noConflicts)
 
 	if db.AllowConflicts() && !noConflicts {
 		return false
