@@ -52,11 +52,14 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.Equals(t, len(changeRow), 0) // Should be empty, meaning the server is saying it doesn't have the revision yet
 
 	// Send the doc revision in a rev request
-	_, _, revResponse := bt.SendRev(
+	_, _, revResponse, err := bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val"}`),
+		blip.Properties{},
 	)
+	assert.Equals(t, err, nil)
+
 	_, err = revResponse.Body()
 	assertNoError(t, err, "Error unmarshalling response body")
 
@@ -219,13 +222,15 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	for i := 1; i < 1500; i++ {
 		//// Add a change: Send an unsolicited doc revision in a rev request
 		receivedChangesWg.Add(1)
-		_, _, revResponse := bt.SendRev(
+		_, _, revResponse, err := bt.SendRev(
 			fmt.Sprintf("foo-%d", i),
 			"1-abc",
 			[]byte(`{"key": "val"}`),
+			blip.Properties{},
 		)
+		assert.Equals(t, err, nil)
 
-		_, err := revResponse.Body()
+		_, err = revResponse.Body()
 		assertNoError(t, err, "Error unmarshalling response body")
 
 	}
@@ -300,6 +305,7 @@ func TestPublicPortAuthentication(t *testing.T) {
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["user1"]}`),
+		blip.Properties{},
 	)
 
 	// Create bliptester that is connected as user2, with access to the * channel
@@ -318,6 +324,7 @@ func TestPublicPortAuthentication(t *testing.T) {
 		"foo2",
 		"1-abcd",
 		[]byte(`{"key": "val", "channels": ["NBC"]}`),
+		blip.Properties{},
 	)
 
 	// Assert that user1 received a single expected change
@@ -406,11 +413,13 @@ func TestReloadUser(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	// Add a doc in the PBS channel
-	_, _, addRevResponse := bt.SendRev(
+	_, _, addRevResponse, err := bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
+		blip.Properties{},
 	)
+	assert.Equals(t, err, nil)
 
 	// Make assertions on response to make sure the change was accepted
 	addRevResponseBody, err := addRevResponse.Body()
@@ -445,6 +454,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
+		blip.Properties{},
 	)
 
 	// Put document that triggers access grant for user to channel PBS
@@ -456,6 +466,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 		"foo2",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
+		blip.Properties{},
 	)
 
 	// Make sure we can see it by getting changes
@@ -483,6 +494,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
+		blip.Properties{},
 	)
 
 	// Update the user doc to grant access to PBS
@@ -494,6 +506,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 		"foo2",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
+		blip.Properties{},
 	)
 
 	// Make sure we can see both docs in the changes
@@ -741,5 +754,57 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
 	assert.Equals(t, len(changes), 0)
+
+}
+
+func TestPutRevNoConflictsMode(t *testing.T) {
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		noConflictsMode: true,
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)                          // no error
+	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
+
+	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
+	assert.True(t, sent)
+	assert.NotEquals(t, err, nil)                          // conflict error
+	assert.Equals(t, resp.Properties["Error-Code"], "409") // conflict
+
+	sent, _, resp, err = bt.SendRev("foo", "1-ghi", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
+	assert.True(t, sent)
+	assert.NotEquals(t, err, nil)                          // conflict error
+	assert.Equals(t, resp.Properties["Error-Code"], "409") // conflict
+
+}
+
+func TestPutRevConflictsMode(t *testing.T) {
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		noConflictsMode: false,
+	})
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)                          // no error
+	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
+
+	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)                          // no error
+	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
+
+	sent, _, resp, err = bt.SendRev("foo", "1-ghi", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
+	assert.True(t, sent)
+	assert.NotEquals(t, err, nil)                          // conflict error
+	assert.Equals(t, resp.Properties["Error-Code"], "409") // conflict
 
 }
