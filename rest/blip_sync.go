@@ -73,12 +73,13 @@ func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 
 // Maps the profile (verb) of an incoming request to the method that handles it.
 var kHandlersByProfile = map[string]blipHandlerMethod{
-	"getCheckpoint": (*blipHandler).handleGetCheckpoint,
-	"setCheckpoint": (*blipHandler).handleSetCheckpoint,
-	"subChanges":    userBlipHandler((*blipHandler).handleSubChanges),
-	"changes":       userBlipHandler((*blipHandler).handleChanges),
-	"rev":           userBlipHandler((*blipHandler).handleRev),
-	"getAttachment": userBlipHandler((*blipHandler).handleGetAttachment),
+	"getCheckpoint":  (*blipHandler).handleGetCheckpoint,
+	"setCheckpoint":  (*blipHandler).handleSetCheckpoint,
+	"subChanges":     userBlipHandler((*blipHandler).handleSubChanges),
+	"changes":        userBlipHandler((*blipHandler).handleChanges),
+	"rev":            userBlipHandler((*blipHandler).handleRev),
+	"getAttachment":  userBlipHandler((*blipHandler).handleGetAttachment),
+	"proposeChanges": (*blipHandler).handleProposedChanges,
 }
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
@@ -106,9 +107,6 @@ func (h *handler) handleBLIPSync() error {
 	blipContext.DefaultHandler = ctx.notFound
 	for profile, handlerFn := range kHandlersByProfile {
 		ctx.register(profile, handlerFn)
-	}
-	if !h.db.AllowConflicts() {
-		ctx.register("proposeChanges", (*blipHandler).handleProposedChanges)
 	}
 
 	ctx.blipContext.FatalErrorHandler = func(err error) {
@@ -569,6 +567,17 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 	body["_deleted"] = addRevisionParams.deleted()
 
+	// noconflicts flag from LiteCore
+	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev
+	var noConflicts bool
+	if val, ok := rq.Properties["noconflicts"]; ok {
+		var err error
+		noConflicts, err = strconv.ParseBool(val)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Invalid value for noconflicts: %s", err))
+		}
+	}
+
 	history := []string{revID}
 	if historyStr := rq.Properties["history"]; historyStr != "" {
 		history = append(history, strings.Split(historyStr, ",")...)
@@ -587,7 +596,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	// Finally, save the revision (with the new attachments inline)
-	return bh.db.PutExistingRev(docID, body, history)
+	return bh.db.PutExistingRev(docID, body, history, noConflicts)
 }
 
 //////// ATTACHMENTS:

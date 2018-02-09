@@ -105,7 +105,7 @@ func TestAttachments(t *testing.T) {
 	var body2B Body
 	err = json.Unmarshal([]byte(rev2Bstr), &body2B)
 	assertNoError(t, err, "bad JSON")
-	err = db.PutExistingRev("doc1", body2B, []string{"2-f000", rev1id})
+	err = db.PutExistingRev("doc1", body2B, []string{"2-f000", rev1id}, false)
 	assertNoError(t, err, "Couldn't update document")
 }
 

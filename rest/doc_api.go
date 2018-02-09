@@ -12,13 +12,14 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"math"
 	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 // HTTP handler for a GET of a document
@@ -276,7 +277,7 @@ func (h *handler) handlePutDoc() error {
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		err = h.db.PutExistingRev(docid, body, revisions)
+		err = h.db.PutExistingRev(docid, body, revisions, false)
 		if err != nil {
 			return err
 		}

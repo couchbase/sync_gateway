@@ -661,32 +661,39 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
 }
 
-func (bt *BlipTester) SendRev(docId, docRev string, body []byte) (sent bool, req, res *blip.Message) {
+func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
 
 	revRequest := blip.NewRequest()
 	revRequest.SetCompressed(true)
 	revRequest.SetProfile("rev")
+
 	revRequest.Properties["id"] = docId
 	revRequest.Properties["rev"] = docRev
 	revRequest.Properties["deleted"] = "false"
+
+	// Override any properties which have been supplied explicitly
+	for k, v := range properties {
+		revRequest.Properties[k] = v
+	}
+
 	revRequest.SetBody(body)
 	sent = bt.sender.Send(revRequest)
 	if !sent {
-		panic(fmt.Sprintf("Failed to send revRequest for doc: %v", docId))
+		return sent, revRequest, nil, fmt.Errorf("Failed to send revRequest for doc: %v", docId)
 	}
 	revResponse := revRequest.Response()
 	if revResponse.SerialNumber() != revRequest.SerialNumber() {
-		panic(fmt.Sprintf("revResponse.SerialNumber() != revRequest.SerialNumber().  %v != %v", revResponse.SerialNumber(), revRequest.SerialNumber()))
+		return sent, revRequest, revResponse, fmt.Errorf("revResponse.SerialNumber() != revRequest.SerialNumber().  %v != %v", revResponse.SerialNumber(), revRequest.SerialNumber())
 	}
 
 	// Make sure no errors.  Just panic for now, but if there are tests that expect errors and want
 	// to use SendRev(), this could be returned.
-	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
-	if hasErrorCode {
-		panic(fmt.Sprintf("Unexpected error sending rev: %v", errorCode))
+	if errorCode, ok := revResponse.Properties["Error-Code"]; ok {
+		body, _ := revResponse.Body()
+		return sent, revRequest, revResponse, fmt.Errorf("Unexpected error sending rev: %v\n%s", errorCode, body)
 	}
 
-	return sent, revRequest, revResponse
+	return sent, revRequest, revResponse, nil
 
 }
 
@@ -733,11 +740,15 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 	// Push a rev with an attachment.
 	getAttachmentWg.Add(1)
-	sent, req, res = bt.SendRev(
+	sent, req, res, err = bt.SendRev(
 		input.docId,
 		input.revId,
 		docBody,
+		blip.Properties{},
 	)
+	if err != nil {
+		panic(fmt.Sprintf("Error sending rev: %v", err))
+	}
 
 	// Expect a callback to the getAttachment endpoint
 	getAttachmentWg.Wait()
@@ -807,17 +818,16 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
 }
 
-
 func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[string]RestDocument) {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-			allDocs := bt.PullDocs()
-			if len(allDocs) >= numDocsExpected {
-				return false, nil, allDocs
-			}
+		allDocs := bt.PullDocs()
+		if len(allDocs) >= numDocsExpected {
+			return false, nil, allDocs
+		}
 
-			// haven't seen numDocsExpected yet, so wait and retry
-			return true, nil, nil
+		// haven't seen numDocsExpected yet, so wait and retry
+		return true, nil, nil
 
 	}
 
@@ -825,7 +835,7 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 		"WaitForNumDocsViaChanges",
 		retryWorker,
 		base.CreateDoublingSleeperFunc(10, 10),
-		)
+	)
 
 	return allDocs.(map[string]RestDocument)
 
@@ -873,7 +883,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 			responseVal := [][]interface{}{}
 			for _, change := range changesBatch {
 				revId := change[2].(string)
-				responseVal = append(responseVal, []interface{}{ revId })
+				responseVal = append(responseVal, []interface{}{revId})
 				revsFinishedWg.Add(1)
 			}
 

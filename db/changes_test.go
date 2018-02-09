@@ -19,6 +19,7 @@ import (
 
 	"bytes"
 	"fmt"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
@@ -331,14 +332,14 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 		// Create child rev 1
 		docBody["child"] = "A"
-		err = db.PutExistingRev(docid, docBody, []string{"2-A", revId})
+		err = db.PutExistingRev(docid, docBody, []string{"2-A", revId}, false)
 		if err != nil {
 			b.Fatalf("Error creating child1 rev: %v", err)
 		}
 
 		// Create child rev 2
 		docBody["child"] = "B"
-		err = db.PutExistingRev(docid, docBody, []string{"2-B", revId})
+		err = db.PutExistingRev(docid, docBody, []string{"2-B", revId}, false)
 		if err != nil {
 			b.Fatalf("Error creating child2 rev: %v", err)
 		}

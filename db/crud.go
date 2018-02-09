@@ -613,7 +613,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
-		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted) {
+		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
@@ -638,7 +638,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
 // This is equivalent to the "new_edits":false mode of CouchDB.
-func (db *Database) PutExistingRev(docid string, body Body, docHistory []string) error {
+func (db *Database) PutExistingRev(docid string, body Body, docHistory []string, noConflicts bool) error {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
@@ -680,7 +680,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 		}
 
 		// Conflict-free mode check
-		if db.IsIllegalConflict(doc, parent, deleted) {
+		if db.IsIllegalConflict(doc, parent, deleted, noConflicts) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
@@ -710,9 +710,18 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string)
 	return err
 }
 
-// Allow-conflicts=false handling
-func (db *Database) IsIllegalConflict(doc *document, parentRevID string, deleted bool) bool {
-	if db.AllowConflicts() {
+// IsIllegalConflict returns true if the given operation is forbidden due to conflicts.
+// AllowConflicts is whether or not the database allows conflicts,
+// and 'noConflicts' is whether or not the request should allow conflicts to occurr.
+/*
+Truth table for AllowConflicts and noConflicts combinations:
+
+                       AllowConflicts=true     AllowConflicts=false
+   noConflicts=true    continue checks         continue checks
+   noConflicts=false   return false            continue checks */
+func (db *Database) IsIllegalConflict(doc *document, parentRevID string, deleted, noConflicts bool) bool {
+
+	if db.AllowConflicts() && !noConflicts {
 		return false
 	}
 
