@@ -638,7 +638,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
 // This is equivalent to the "new_edits":false mode of CouchDB.
-// noConflicts is passed from LiteCore's rev.noconflicts flag.
 func (db *Database) PutExistingRev(docid string, body Body, docHistory []string, noConflicts bool) error {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
@@ -712,13 +711,14 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 }
 
 // IsIllegalConflict returns true if the given operation is forbidden due to conflicts.
+// AllowConflicts is whether or not the database allows conflicts,
+// and 'noConflicts' is whether or not the request should allow conflicts to occurr.
 /*
-Truth table for Allow-conflicts and noConflicts combinations:
+Truth table for AllowConflicts and noConflicts combinations:
 
-                       Allow-conflicts=true    Allow-conflicts=false
+                       AllowConflicts=true     AllowConflicts=false
    noConflicts=true    continue checks         continue checks
-   noConflicts=false   return false            continue checks
-*/
+   noConflicts=false   return false            continue checks */
 func (db *Database) IsIllegalConflict(doc *document, parentRevID string, deleted, noConflicts bool) bool {
 
 	if db.AllowConflicts() && !noConflicts {
