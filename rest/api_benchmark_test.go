@@ -68,9 +68,6 @@ func BenchmarkReadOps_Get(b *testing.B) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	revid := body["rev"].(string)
 
-	// Get database handle
-	//rtDatabase := rt.GetDatabase()
-
 	// Create user
 	username := "user1"
 	rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
