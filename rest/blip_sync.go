@@ -73,12 +73,13 @@ func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 
 // Maps the profile (verb) of an incoming request to the method that handles it.
 var kHandlersByProfile = map[string]blipHandlerMethod{
-	"getCheckpoint": (*blipHandler).handleGetCheckpoint,
-	"setCheckpoint": (*blipHandler).handleSetCheckpoint,
-	"subChanges":    userBlipHandler((*blipHandler).handleSubChanges),
-	"changes":       userBlipHandler((*blipHandler).handleChanges),
-	"rev":           userBlipHandler((*blipHandler).handleRev),
-	"getAttachment": userBlipHandler((*blipHandler).handleGetAttachment),
+	"getCheckpoint":  (*blipHandler).handleGetCheckpoint,
+	"setCheckpoint":  (*blipHandler).handleSetCheckpoint,
+	"subChanges":     userBlipHandler((*blipHandler).handleSubChanges),
+	"changes":        userBlipHandler((*blipHandler).handleChanges),
+	"rev":            userBlipHandler((*blipHandler).handleRev),
+	"getAttachment":  userBlipHandler((*blipHandler).handleGetAttachment),
+	"proposeChanges": (*blipHandler).handleProposedChanges,
 }
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
@@ -106,9 +107,6 @@ func (h *handler) handleBLIPSync() error {
 	blipContext.DefaultHandler = ctx.notFound
 	for profile, handlerFn := range kHandlersByProfile {
 		ctx.register(profile, handlerFn)
-	}
-	if !h.db.AllowConflicts() {
-		ctx.register("proposeChanges", (*blipHandler).handleProposedChanges)
 	}
 
 	ctx.blipContext.FatalErrorHandler = func(err error) {
