@@ -40,7 +40,7 @@ func (s *subChangesParams) since() (db.SequenceID, error) {
 
 	if sinceStr, found := s.rq.Properties["since"]; found {
 		var err error
-		if sinceSequenceId, err = s.sequenceIDParser(sinceStr); err != nil {
+		if sinceSequenceId, err = s.sequenceIDParser(base.ConvertJSONString(sinceStr)); err != nil {
 			s.logger.LogTo("Sync", "%s: Invalid sequence ID in 'since': %s", s.rq, sinceStr)
 			return db.SequenceID{}, err
 		}

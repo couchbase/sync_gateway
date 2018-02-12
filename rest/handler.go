@@ -392,14 +392,7 @@ func (h *handler) getQuery(query string) string {
 }
 
 func (h *handler) getJSONStringQuery(query string) string {
-	var jsonString string
-	rawString := h.getQuery(query)
-	err := json.Unmarshal([]byte(rawString), &jsonString)
-	if err != nil {
-		return rawString
-	} else {
-		return jsonString
-	}
+	return base.ConvertJSONString(h.getQuery(query))
 }
 
 func (h *handler) getBoolQuery(query string) bool {

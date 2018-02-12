@@ -1165,3 +1165,9 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 	}
 
 }
+
+type StdIoLogger struct {}
+
+func (s StdIoLogger) LogTo(key string, format string, args ...interface{}) {
+	base.LogTo(key, format, args...)
+}

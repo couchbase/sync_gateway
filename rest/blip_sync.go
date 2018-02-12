@@ -237,7 +237,12 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
-	subChangesParams := newSubChangesParams(rq, bh.blipSyncContext, bh.db.CreateZeroSinceValue(), bh.db.ParseSequenceID)
+	subChangesParams := newSubChangesParams(
+		rq,
+		bh.blipSyncContext,
+		bh.db.CreateZeroSinceValue(),
+		bh.db.ParseSequenceID,
+	)
 	bh.logEndpointEntry(rq.Profile(), subChangesParams.String())
 
 	since, err := subChangesParams.since()

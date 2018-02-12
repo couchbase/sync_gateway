@@ -111,7 +111,10 @@ func (s SequenceID) clockSeqToString() string {
 	}
 }
 
+// Currently accepts a plain string, but in the future might accept generic JSON objects.
+// Calling this with a JSON string will result in an error.
 func (dbc *DatabaseContext) ParseSequenceID(str string) (s SequenceID, err error) {
+
 	// If there's a sequence hasher defined, we're expecting clock-based sequences
 	if dbc.SequenceHasher != nil {
 		return parseClockSequenceID(str, dbc.SequenceHasher)
