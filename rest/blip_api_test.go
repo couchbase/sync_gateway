@@ -14,6 +14,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
+	"encoding/base64"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -955,5 +956,87 @@ func TestPutRevConflictsMode(t *testing.T) {
 	assert.True(t, sent)
 	assert.NotEquals(t, err, nil)                          // conflict error
 	assert.Equals(t, resp.Properties["Error-Code"], "409") // conflict
+
+}
+
+
+// Repro SG #3281
+//
+// - Set up a user w/ access to channel A
+// - Write two revision of a document (both in channel A)
+// - Write two more revisions of the document, no longer in channel A
+// - Have the user issue a rev request for rev 3.
+//
+// Expected:
+// - Users gets a removed:true response
+//
+// Actual: (before fix)
+// - User gets 404 missing
+//
+func TestGetRemovedDoc(t *testing.T) {
+
+	// Setup
+	rt := RestTester{
+		noAdminParty: true,
+	}
+	btSpec := BlipTesterSpec{
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         &rt,
+	}
+	bt, err := NewBlipTesterFromSpec(btSpec)
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}"`), blip.Properties{})
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)                          // no error
+	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
+
+	history := RevisionIDList{
+		RevisionID("1-abc"),
+	}
+	sent, _, resp, err = bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}"`), blip.Properties{"noconflicts": "true"})
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)                          // no error
+	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
+
+	history = RevisionIDList{
+		RevisionID("2-bcd"),
+		RevisionID("1-abc"),
+	}
+	sent, _, resp, err = bt.SendRevWithHistory("foo", "3-cde", history, []byte(`{"key": "val", "channels": ["another_channel"]}`), blip.Properties{"noconflicts": "true"})
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)                          // no error
+	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
+
+	history = RevisionIDList{
+		RevisionID("3-cde"),
+		RevisionID("2-bcd"),
+		RevisionID("1-abc"),
+	}
+	sent, _, resp, err = bt.SendRevWithHistory("foo", "4-def", history, []byte(`{"key": "val", "channels": ["another_channel"]}"`), blip.Properties{"noconflicts": "true"})
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)                          // no error
+	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
+
+	// Try to get rev 3 via REST API, and assert that _removed == true
+	headers := map[string]string{}
+	headers["Authorization"] = "Basic "+ base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
+	response := rt.SendRequestWithHeaders("GET", "/db/foo?rev=3-cde", "", headers)
+	restDocument := response.GetRestDocument()
+	assert.True(t, restDocument.IsRemoved())
+
+	// Try to get rev 3 via BLIP API and assert that _removed == true
+	resultDoc, err := bt.GetDocAtRev("foo", "3-cde")
+	assertNoError(t, err, "Unexpected Error")
+	assert.True(t, resultDoc.IsRemoved())
+
+
+	log.Printf("resultDoc: %+v", resultDoc)
+
+	time.Sleep(time.Second * 10)
+
+
 
 }

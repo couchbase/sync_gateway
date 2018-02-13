@@ -638,6 +638,16 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
 // This is equivalent to the "new_edits":false mode of CouchDB.
+//
+// The docHistory should be a list of previous revisions in reverse order, not including the revision itself.
+// For example, if the rev tree is currently:
+//
+// 1-abc
+//  |
+// 2-bcd
+//
+// and the new revision being added is "3-cde", then docHistory passed in should be ["2-bcd", "1-abc"].
+//
 func (db *Database) PutExistingRev(docid string, body Body, docHistory []string, noConflicts bool) error {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)

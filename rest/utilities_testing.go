@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
 	"golang.org/x/net/websocket"
+	"strings"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -435,6 +436,15 @@ func (r TestResponse) DumpBody() {
 	log.Printf("%v", string(r.Body.Bytes()))
 }
 
+func (r TestResponse) GetRestDocument() RestDocument {
+	restDoc := NewRestDocument()
+	err := json.Unmarshal(r.Body.Bytes(), restDoc)
+	if err != nil {
+		panic(fmt.Sprintf("Error parsing body into RestDocument.  Body: %s.  Err: %v",  string(r.Body.Bytes()), err))
+	}
+	return *restDoc
+}
+
 func request(method, resource, body string) *http.Request {
 	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
 	request.RequestURI = resource // This doesn't get filled in by NewRequest
@@ -661,7 +671,23 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
 }
 
-func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
+// Introduce a type to hopefully lay the ground work for a custom RevisionID type that
+// has methods like Generation() and Digest()
+type RevisionID string
+
+type RevisionIDList []RevisionID
+
+// Blip Requests expect the history in a comma delimited format like: "2-bcd, 1-abc"
+func (r RevisionIDList) ExportAsBlipHistory() string {
+	s := []string{}
+	for _, revisionId := range r {
+		s = append(s, string(revisionId))
+	}
+	return strings.Join(s, ",")
+}
+
+// The docHistory should be in the same format as expected by db.PutExistingRev(), or empty if this is the first revision
+func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory RevisionIDList, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
 
 	revRequest := blip.NewRequest()
 	revRequest.SetCompressed(true)
@@ -670,6 +696,9 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 	revRequest.Properties["id"] = docId
 	revRequest.Properties["rev"] = docRev
 	revRequest.Properties["deleted"] = "false"
+	if len(revHistory) > 0 {
+		revRequest.Properties["history"] = revHistory.ExportAsBlipHistory()
+	}
 
 	// Override any properties which have been supplied explicitly
 	for k, v := range properties {
@@ -694,6 +723,108 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 	}
 
 	return sent, revRequest, revResponse, nil
+
+
+}
+
+func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
+
+	return bt.SendRevWithHistory(docId, docRev, []RevisionID{}, body, properties)
+
+
+}
+
+func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resultDoc RestDocument, err error) {
+
+	// Call subchanges
+
+	// On the change callback only request the docid / revid pair specified in params
+
+
+	docs := map[string]RestDocument{}
+	changesFinishedWg := sync.WaitGroup{}
+	revsFinishedWg := sync.WaitGroup{}
+
+	// -------- Changes handler callback --------
+	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+
+		// Send a response telling the other side we want ALL revisions
+
+		body, err := request.Body()
+		if err != nil {
+			panic(fmt.Sprintf("Error getting request body: %v", err))
+		}
+
+		if string(body) == "null" {
+			changesFinishedWg.Done()
+			return
+		}
+
+		if !request.NoReply() {
+
+			// unmarshal into json array
+			changesBatch := [][]interface{}{}
+
+			if err := json.Unmarshal(body, &changesBatch); err != nil {
+				panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
+			}
+
+			responseVal := [][]interface{}{}
+			for _, change := range changesBatch {
+				revId := change[2].(string)
+				responseVal = append(responseVal, []interface{}{revId})
+				revsFinishedWg.Add(1)
+			}
+
+			response := request.Response()
+			responseValBytes, err := json.Marshal(responseVal)
+			log.Printf("responseValBytes: %s", responseValBytes)
+			if err != nil {
+				panic(fmt.Sprintf("Error marshalling response: %v", err))
+			}
+			response.SetBody(responseValBytes)
+
+		}
+	}
+
+	// -------- Rev handler callback --------
+	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
+
+		defer revsFinishedWg.Done()
+		body, err := request.Body()
+		var doc RestDocument
+		err = json.Unmarshal(body, &doc)
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected err: %v", err))
+		}
+		docId := request.Properties["id"]
+		docRev := request.Properties["rev"]
+		doc.SetID(docId)
+		doc.SetRevID(docRev)
+		docs[docId] = doc
+
+		if docId == requestedDocID && docRev == requestedDocRev {
+			resultDoc = doc
+		}
+
+	}
+
+	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	changesFinishedWg.Add(1)
+	subChangesRequest := blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "false"
+
+	sent := bt.sender.Send(subChangesRequest)
+	if !sent {
+		panic(fmt.Sprintf("Unable to subscribe to changes."))
+	}
+
+	changesFinishedWg.Wait()
+	revsFinishedWg.Wait()
+
+	return resultDoc, nil
 
 }
 
@@ -1063,6 +1194,7 @@ func EnableBlipSyncLogs() {
 //
 // - _id
 // - _rev
+// - _removed
 // - _deleted (not accounted for yet)
 // - _attachments
 //
@@ -1145,6 +1277,15 @@ func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
 	return attachmentMap, nil
 
 }
+
+func (d RestDocument) IsRemoved() bool {
+	removed, ok := d["_removed"]
+	if !ok {
+		return false
+	}
+	return removed.(bool) == true
+}
+
 
 // Wait for the WaitGroup, or return an error if the wg.Wait() doesn't return within timeout
 func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
