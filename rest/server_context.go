@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	sgreplicate "github.com/couchbaselabs/sg-replicate"
 	pkgerrors "github.com/pkg/errors"
 )
 
