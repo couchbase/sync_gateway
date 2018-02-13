@@ -101,25 +101,23 @@ func (sc *ServerContext) PostStartup() {
 // startReplicators will start up any replicators for the ServerContext
 func (sc *ServerContext) startReplicators() {
 
-	if sc.config.Replications != nil {
-		for _, replicationConfig := range sc.config.Replications {
+	for _, replicationConfig := range sc.config.Replications {
 
-			params, _, _, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
-			if err != nil {
-				base.LogError(err)
-				continue
-			}
-
-			// Force one-shot replications to run Async
-			// to avoid blocking server startup
-			params.Async = true
-
-			// Run single replication, cancel parameter will always be false
-			if _, err := sc.replicator.Replicate(params, false); err != nil {
-				base.Warn("Error starting replication: %v", err)
-			}
-
+		params, _, _, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
+		if err != nil {
+			base.LogError(err)
+			continue
 		}
+
+		// Force one-shot replications to run Async
+		// to avoid blocking server startup
+		params.Async = true
+
+		// Run single replication, cancel parameter will always be false
+		if _, err := sc.replicator.Replicate(params, false); err != nil {
+			base.Warn("Error starting replication: %v", err)
+		}
+
 	}
 
 }
