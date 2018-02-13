@@ -27,7 +27,6 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	sgreplicate "github.com/couchbaselabs/sg-replicate"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -35,7 +34,6 @@ import (
 const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowServerCallWarningThreshold = 200 // ms
-const kOneShotLocalDbReplicateWait = time.Second * 10
 const KDefaultNumShards = 16
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
@@ -89,13 +87,26 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 	return sc
 }
 
-func (sc *ServerContext) StartReplicators() {
+// PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
+func (sc *ServerContext) PostStartup() {
+	go func() {
+		// Introduce a minor delay if there are any replications
+		// (sc.startReplicators() might rely on SG being fully started)
+		if len(sc.config.Replications) > 0 {
+			time.Sleep(time.Second)
+		}
+
+		sc.startReplicators()
+	}()
+}
+
+// startReplicators will start up any replicators for the ServerContext
+func (sc *ServerContext) startReplicators() {
 
 	if sc.config.Replications != nil {
-
 		for _, replicationConfig := range sc.config.Replications {
 
-			params, _, localdb, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
+			params, _, _, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
 			if err != nil {
 				base.LogError(err)
 				continue
@@ -105,19 +116,12 @@ func (sc *ServerContext) StartReplicators() {
 			// to avoid blocking server startup
 			params.Async = true
 
-			go func() {
-				if params.Lifecycle == sgreplicate.ONE_SHOT && localdb {
-					base.Warn("Delaying start of local database one-shot replication, source %v, target %v for %v seconds", params.SourceDb, params.TargetDb, kOneShotLocalDbReplicateWait)
-					time.Sleep(kOneShotLocalDbReplicateWait)
-				}
+			// Run single replication, cancel parameter will always be false
+			if _, err := sc.replicator.Replicate(params, false); err != nil {
+				base.Warn("Error starting replication: %v", err)
+			}
 
-				// Run single replication, cancel parameter will always be false
-				if _, err := sc.replicator.Replicate(params, false); err != nil {
-					base.Warn("Error starting replication: %v", err)
-				}
-			}()
 		}
-
 	}
 
 }
