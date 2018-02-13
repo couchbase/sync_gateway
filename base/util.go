@@ -104,31 +104,6 @@ func ConvertJSONString(s string) string {
 	}
 }
 
-var kBackquoteStringRegexp *regexp.Regexp
-
-// Preprocesses a string containing `...`-delimited strings. Converts the backquotes into double-quotes,
-// and escapes any literal backslashes, newlines or double-quotes within them with backslashes.
-func ConvertBackQuotedStrings(data []byte) []byte {
-	if kBackquoteStringRegexp == nil {
-		kBackquoteStringRegexp = regexp.MustCompile("`((?s).*?)[^\\\\]`")
-	}
-	// Find backquote-delimited strings and replace them:
-	return kBackquoteStringRegexp.ReplaceAllFunc(data, func(bytes []byte) []byte {
-		str := string(bytes)
-		// Remove \r  and Escape literal backslashes, newlines and double-quotes:
-		str = strings.Replace(str, `\`, `\\`, -1)
-		str = strings.Replace(str, "\r", "", -1)
-		str = strings.Replace(str, "\n", `\n`, -1)
-		str = strings.Replace(str, "\t", `\t`, -1)
-		str = strings.Replace(str, `"`, `\"`, -1)
-		bytes = []byte(str)
-		// Replace the backquotes with double-quotes
-		bytes[0] = '"'
-		bytes[len(bytes)-1] = '"'
-		return bytes
-	})
-}
-
 // Concatenates and merges multiple string arrays into one, discarding all duplicates (including
 // duplicates within a single array.) Ordering is preserved.
 func MergeStringArrays(arrays ...[]string) (merged []string) {
@@ -483,15 +458,15 @@ func CreateSleeperFunc(maxNumAttempts, timeToSleepMs int) RetrySleeper {
 
 }
 
-// Uint64Slice attaches the methods of sort.Interface to []uint64, sorting in increasing order.
-type Uint64Slice []uint64
+// SortedUint64Slice attaches the methods of sort.Interface to []uint64, sorting in increasing order.
+type SortedUint64Slice []uint64
 
-func (s Uint64Slice) Len() int           { return len(s) }
-func (s Uint64Slice) Less(i, j int) bool { return s[i] < s[j] }
-func (s Uint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s SortedUint64Slice) Len() int           { return len(s) }
+func (s SortedUint64Slice) Less(i, j int) bool { return s[i] < s[j] }
+func (s SortedUint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // Sort is a convenience method.
-func (s Uint64Slice) Sort() {
+func (s SortedUint64Slice) Sort() {
 	sort.Sort(s)
 }
 
@@ -825,4 +800,29 @@ func StringSliceContains(set []string, target string) bool {
 
 func BoolPtr(b bool) *bool {
 	return &b
+}
+
+var kBackquoteStringRegexp *regexp.Regexp
+
+// Preprocesses a string containing `...`-delimited strings. Converts the backquotes into double-quotes,
+// and escapes any literal backslashes, newlines or double-quotes within them with backslashes.
+func ConvertBackQuotedStrings(data []byte) []byte {
+	if kBackquoteStringRegexp == nil {
+		kBackquoteStringRegexp = regexp.MustCompile("`((?s).*?)[^\\\\]`")
+	}
+	// Find backquote-delimited strings and replace them:
+	return kBackquoteStringRegexp.ReplaceAllFunc(data, func(bytes []byte) []byte {
+		str := string(bytes)
+		// Remove \r  and Escape literal backslashes, newlines and double-quotes:
+		str = strings.Replace(str, `\`, `\\`, -1)
+		str = strings.Replace(str, "\r", "", -1)
+		str = strings.Replace(str, "\n", `\n`, -1)
+		str = strings.Replace(str, "\t", `\t`, -1)
+		str = strings.Replace(str, `"`, `\"`, -1)
+		bytes = []byte(str)
+		// Replace the backquotes with double-quotes
+		bytes[0] = '"'
+		bytes[len(bytes)-1] = '"'
+		return bytes
+	})
 }

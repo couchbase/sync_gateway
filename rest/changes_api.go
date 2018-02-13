@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -289,11 +290,11 @@ func (h *handler) handleChanges() error {
 		if filter == "_doc_ids" {
 			err, forceClose = h.sendChangesForDocIds(userChannels, docIdsArray, options)
 		} else {
-			err, forceClose = h.sendSimpleChanges(userChannels, options)
+			err, forceClose = h.sendSimpleChanges(userChannels, options, nil)
 		}
 	case "longpoll":
 		options.Wait = true
-		err, forceClose = h.sendSimpleChanges(userChannels, options)
+		err, forceClose = h.sendSimpleChanges(userChannels, options, nil)
 	case "continuous":
 		err, forceClose = h.sendContinuousChangesByHTTP(userChannels, options)
 	case "websocket":
@@ -313,10 +314,16 @@ func (h *handler) handleChanges() error {
 	return err
 }
 
-func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions) (error, bool) {
+func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions, docids []string) (error, bool) {
 	lastSeq := options.Since
 	var first bool = true
-	feed, err := h.db.MultiChangesFeed(channels, options)
+	var feed <-chan *db.ChangeEntry
+	var err error
+	if len(docids) > 0 {
+		feed, err = h.DocIdChangesFeed(channels, docids, options)
+	} else {
+		feed, err = h.db.MultiChangesFeed(channels, options)
+	}
 	if err != nil {
 		return err, false
 	}
@@ -410,6 +417,109 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 
 /*
  * Generate the changes for a specific list of doc ID's, only documents accesible to the user will generate
+ * results.  Return as buffered channel, to reuse handling in sendSimpleChanges
+ */
+func (h *handler) DocIdChangesFeed(userChannels base.Set, explicitDocIds []string, options db.ChangesOptions) (<-chan *db.ChangeEntry, error) {
+
+	// Subroutine that creates a response row for a document:
+	output := make(chan *db.ChangeEntry, len(explicitDocIds))
+	rowMap := make(map[uint64]*db.ChangeEntry)
+
+	createChangeEntry := func(docid string) *db.ChangeEntry {
+		row := &db.ChangeEntry{ID: docid}
+
+		// Fetch the document body and other metadata that lives with it:
+		populatedDoc, body, err := h.db.GetDocAndActiveRev(docid)
+		if err != nil {
+			base.LogTo("Changes", "Unable to get changes for docID %v, caused by %v", docid, err)
+			return nil
+		}
+
+		if populatedDoc.Sequence <= options.Since.Seq {
+			return nil
+		}
+
+		if body == nil {
+			return nil
+		}
+
+		changes := make([]db.ChangeRev, 1)
+		changes[0] = db.ChangeRev{"rev": body["_rev"].(string)}
+		row.Changes = changes
+		row.Seq = db.SequenceID{Seq: populatedDoc.Sequence}
+		row.SetBranched((populatedDoc.Flags & ch.Branched) != 0)
+
+		var removedChannels []string
+
+		if deleted, _ := body["_deleted"].(bool); deleted {
+			row.Deleted = true
+		}
+
+		userCanSeeDocChannel := false
+
+		if h.user == nil || h.user.Channels().Contains(ch.UserStarChannel) {
+			userCanSeeDocChannel = true
+		} else if len(populatedDoc.Channels) > 0 {
+			//Do special _removed/_deleted processing
+			for channel, removal := range populatedDoc.Channels {
+				//Doc is tagged with channel or was removed at a sequence later that since sequence
+				if removal == nil || removal.Seq > options.Since.Seq {
+					//if the current user has access to this channel
+					if h.user.CanSeeChannel(channel) {
+						userCanSeeDocChannel = true
+						//If the doc has been removed
+						if removal != nil {
+							removedChannels = append(removedChannels, channel)
+							if removal.Deleted {
+								row.Deleted = true
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if !userCanSeeDocChannel {
+			return nil
+		}
+
+		row.Removed = base.SetFromArray(removedChannels)
+		if options.IncludeDocs || options.Conflicts {
+			h.db.AddDocInstanceToChangeEntry(row, populatedDoc, options)
+		}
+
+		return row
+	}
+
+	// Sort results by sequence
+	var sequences base.SortedUint64Slice
+	for _, docID := range explicitDocIds {
+		row := createChangeEntry(docID)
+		if row != nil {
+			rowMap[row.Seq.Seq] = row
+			sequences = append(sequences, row.Seq.Seq)
+		}
+	}
+
+	// Send ChangeEntries sorted by sequenceID
+	sequences.Sort()
+	for _, k := range sequences {
+		output <- rowMap[k]
+		if options.Limit > 0 {
+			options.Limit--
+			if options.Limit == 0 {
+				break
+			}
+		}
+	}
+
+	close(output)
+
+	return output, nil
+}
+
+/*
+ * Generate the changes for a specific list of doc ID's, only documents accesible to the user will generate
  * results
  */
 func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []string, options db.ChangesOptions) (error, bool) {
@@ -490,7 +600,7 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
 	h.response.Write([]byte("{\"results\":[\r\n"))
 
-	var keys base.Uint64Slice
+	var keys base.SortedUint64Slice
 
 	for _, docID := range explicitDocIds {
 		row := createRow(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0})
