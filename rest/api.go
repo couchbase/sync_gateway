@@ -64,11 +64,37 @@ func (h *handler) handleVacuum() error {
 }
 
 func (h *handler) handleFlush() error {
+
 	if bucket, ok := h.db.Bucket.(sgbucket.DeleteableBucket); ok {
+
+		switch
+
 		name := h.db.Name
 		config := h.server.GetDatabaseConfig(name)
 		h.server.RemoveDatabase(name)
-		err := bucket.CloseAndDelete()
+
+		// Manually re-open
+		// Flush
+
+		// err := bucket.CloseAndDelete() -- replace w/ a Flush
+
+
+		// Factor out the code to build
+
+		/*
+			// Connect to the bucket and add the database:
+	spec := base.BucketSpec{
+		Server:               server,
+		PoolName:             pool,
+		BucketName:           bucketName,
+		FeedType:             feedType,
+		Auth:                 config,
+		CouchbaseDriver:      couchbaseDriver,
+		UseXattrs:            config.UseXattrs(),
+		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
+	}
+		 */
+
 		_, err2 := h.server.AddDatabaseFromConfig(config)
 		if err == nil {
 			err = err2
@@ -78,6 +104,9 @@ func (h *handler) handleFlush() error {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket does not support flush")
 	}
 }
+
+
+
 
 func (h *handler) handleResync() error {
 
