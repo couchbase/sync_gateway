@@ -89,15 +89,13 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 // PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
-	go func() {
-		// Introduce a minor delay if there are any replications
-		// (sc.startReplicators() might rely on SG being fully started)
-		if len(sc.config.Replications) > 0 {
-			time.Sleep(time.Second)
-		}
+	// Introduce a minor delay if there are any replications
+	// (sc.startReplicators() might rely on SG being fully started)
+	if len(sc.config.Replications) > 0 {
+		time.Sleep(time.Second)
+	}
 
-		sc.startReplicators()
-	}()
+	sc.startReplicators()
 }
 
 // startReplicators will start up any replicators for the ServerContext

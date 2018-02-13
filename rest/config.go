@@ -790,7 +790,7 @@ func RunServer(config *ServerConfig) {
 		}()
 	}
 
-	sc.PostStartup()
+	go sc.PostStartup()
 
 	base.Logf("Starting admin server on %s", *config.AdminInterface)
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
