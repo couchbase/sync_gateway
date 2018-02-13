@@ -791,17 +791,7 @@ func RunServer(config *ServerConfig) {
 		}()
 	}
 
-	go func() {
-		// The APIs might not be ready to serve requests instantly, and anything
-		// depending on them could fail. We'll kick those off in PostStartup.
-		if err := waitForResponse(*config.AdminInterface); err != nil {
-			base.LogFatal("Error waiting for admin REST API: %v", err)
-		}
-		if err := waitForResponse(*config.Interface); err != nil {
-			base.LogFatal("Error waiting for public REST API: %v", err)
-		}
-		sc.PostStartup()
-	}()
+	sc.StartReplicators()
 
 	base.Logf("Starting admin server on %s", *config.AdminInterface)
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
