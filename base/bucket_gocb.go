@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -2148,6 +2149,111 @@ func (bucket *CouchbaseBucketGoCB) Close() {
 		Warnf(KeyAll, "Error closing GoCB bucket: %v.", err)
 		return
 	}
+}
+
+
+// This flushes the bucket but doesn't actually close the bucket, despite the name CloseAndDelete(),
+// which is based on the sgbucket.DeleteableBucket interface.
+func (bucket *CouchbaseBucketGoCB) CloseAndDelete() error {
+
+	bucketManager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
+	}
+
+	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
+		err = bucketManager.Flush()
+		if err != nil {
+			Warn("Error flushing bucket: %v  Will retry.", err)
+		}
+		shouldRetry = (err != nil) // retry (until max attempts) if there was an error
+		return shouldRetry, err, nil
+	}
+
+	err, _ = RetryLoop("EmptyTestBucket", workerFlush, CreateDoublingSleeperFunc(12, 10))
+	if err != nil {
+		return err
+	}
+
+	maxTries := 20
+	numTries := 0
+	for {
+
+		itemCount, err := bucket.BucketItemCount()
+		if err != nil {
+			return err
+		}
+
+		if itemCount == 0 {
+			// Bucket flushed, we're done
+			break
+		}
+
+		if numTries > maxTries {
+			return fmt.Errorf("Timed out waiting for bucket to be empty after flush.  ItemCount: %v", itemCount)
+		}
+
+		// Still items left, wait a little bit and try again
+		Warn("TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
+		time.Sleep(time.Millisecond * 500)
+
+		numTries += 1
+
+	}
+
+	return nil
+
+}
+
+// GOCB doesn't currently offer a way to do this, and so this is a workaround to go directly
+// to Couchbase Server REST API.
+// See https://forums.couchbase.com/t/is-there-a-way-to-get-the-number-of-items-in-a-bucket/12816/4
+// for GOCB discussion.
+// NOTE: unfortunately this code was duplicated with TestBucketManager.BucketItemCount() since TestBucketManager
+// holds a reference to a *gocb.Bucket, but not a CouchbaseBucketGoCB wrapper.  If this code could get
+// pushed down into *gocb.Bucket, then both methods could be removed.
+func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
+
+	reqUri := fmt.Sprintf("%s/pools/default/buckets/%s", bucket.spec.Server, bucket.spec.BucketName)
+	req, err := http.NewRequest("GET", reqUri, nil)
+	if err != nil {
+		return -1, err
+	}
+	req.Header.Add("Content-Type", "application/json")
+
+	user, pass, _ := bucket.spec.Auth.GetCredentials()
+
+	req.SetBasicAuth(user, pass)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return -1, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		_, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return -1, err
+		}
+		return -1, pkgerrors.Wrapf(err, "Error trying to find number of items in bucket")
+	}
+
+	respJson := map[string]interface{}{}
+
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&respJson); err != nil {
+		return -1, err
+	}
+
+	basicStats := respJson["basicStats"].(map[string]interface{})
+
+	itemCountRaw := basicStats["itemCount"]
+
+	itemCountFloat := itemCountRaw.(float64)
+
+	return int(itemCountFloat), nil
+
 }
 
 func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {

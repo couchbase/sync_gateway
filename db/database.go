@@ -110,9 +110,14 @@ type UserViewsOptions struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether pass-through view query is supported through public API
 }
 
+type APIEndpoints struct {
+	EnableCouchbaseBucketFlush bool `json:"enable_couchbase_bucket_flush,omitempty"` // Whether Couchbase buckets can be flushed via Admin REST API
+}
+
 type UnsupportedOptions struct {
 	UserViews        UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
 	OidcTestProvider OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
+	APIEndpoints     APIEndpoints            `json:"api_endpoints,omitempty"`      // Config settings for API endpoints
 }
 
 // Options associated with the import of documents not written by Sync Gateway
@@ -1069,6 +1074,10 @@ func (context *DatabaseContext) AllowConflicts() bool {
 		return *context.Options.AllowConflicts
 	}
 	return base.DefaultAllowConflicts
+}
+
+func (context *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
+	return context.Options.UnsupportedOptions.APIEndpoints.EnableCouchbaseBucketFlush
 }
 
 //////// SEQUENCE ALLOCATION:
