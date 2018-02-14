@@ -14,7 +14,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"encoding/base64"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -959,7 +958,6 @@ func TestPutRevConflictsMode(t *testing.T) {
 
 }
 
-
 // Repro SG #3281
 //
 // - Set up a user w/ access to channel A
@@ -988,11 +986,13 @@ func TestGetRemovedDoc(t *testing.T) {
 	assertNoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
+	// Add rev-1 in channel user1
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}"`), blip.Properties{})
 	assert.True(t, sent)
 	assert.Equals(t, err, nil)                          // no error
 	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
+	// Add rev-2 in channel user1
 	history := RevisionIDList{
 		RevisionID("1-abc"),
 	}
@@ -1001,6 +1001,12 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.Equals(t, err, nil)                          // no error
 	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
+	// Try to get rev 2 via BLIP API and assert that _removed == false
+	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
+	assertNoError(t, err, "Unexpected Error")
+	assert.False(t, resultDoc.IsRemoved())
+
+	// Add rev-3, remove from channel user1 and put into channel another_channel
 	history = RevisionIDList{
 		RevisionID("2-bcd"),
 		RevisionID("1-abc"),
@@ -1010,6 +1016,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.Equals(t, err, nil)                          // no error
 	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
+	// Add rev-4, keeping it in channel another_channel
 	history = RevisionIDList{
 		RevisionID("3-cde"),
 		RevisionID("2-bcd"),
@@ -1023,23 +1030,26 @@ func TestGetRemovedDoc(t *testing.T) {
 	// Flush rev cache
 	rt.GetDatabase().FlushRevisionCache()
 
-	// Try to get rev 3 via REST API, and assert that _removed == true
-	headers := map[string]string{}
-	headers["Authorization"] = "Basic "+ base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
-	response := rt.SendRequestWithHeaders("GET", "/db/foo?rev=3-cde", "", headers)
-	restDocument := response.GetRestDocument()
-	assert.True(t, restDocument.IsRemoved())
+	// Delete any temp revisions
+	tempRevisionDocId := "_sync:rev:foo:5:3-cde"
+	err = rt.GetDatabase().Bucket.Delete(tempRevisionDocId)
+	assertNoError(t, err, "Unexpected Error")
+
+	// It works when getting the doc/rev pair via REST API, but I commented this in case it was skewing the result
+	//// Try to get rev 3 via REST API, and assert that _removed == true
+	//headers := map[string]string{}
+	//headers["Authorization"] = "Basic "+ base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
+	//response := rt.SendRequestWithHeaders("GET", "/db/foo?rev=3-cde", "", headers)
+	//restDocument := response.GetRestDocument()
+	//assert.True(t, restDocument.IsRemoved())
 
 	// Try to get rev 3 via BLIP API and assert that _removed == true
-	resultDoc, err := bt.GetDocAtRev("foo", "3-cde")
+	resultDoc, err = bt.GetDocAtRev("foo", "3-cde")
 	assertNoError(t, err, "Unexpected Error")
 	assert.True(t, resultDoc.IsRemoved())
 
-
-	log.Printf("resultDoc: %+v", resultDoc)
-
-	time.Sleep(time.Second * 10)
-
-
+	// Debugging: Dump Bucket doc
+	responseRawDoc := rt.SendAdminRequest("GET", "/db/_raw/foo", "")
+	responseRawDoc.DumpBody()
 
 }
