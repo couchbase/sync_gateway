@@ -89,8 +89,6 @@ func FixJSONNumbers(value interface{}) interface{} {
 	return value
 }
 
-
-
 // Convert a JSON string, which has extra double quotes (eg, `"thing"`) into a normal string
 // with the extra double quotes removed (eg "thing").  Normal strings will be returned as-is.
 //
@@ -452,7 +450,9 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 }
 
 // Create a RetrySleeper that will double the retry time on every iteration and
-// use the given parameters
+// use the given parameters.
+// The longest wait time can be calculated with: initialTimeToSleepMs * 2^maxNumAttempts
+// The total wait time can be calculated with: initialTimeToSleepMs * 2^maxNumAttempts+1
 func CreateDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int) RetrySleeper {
 
 	timeToSleepMs := initialTimeToSleepMs
