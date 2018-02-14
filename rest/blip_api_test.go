@@ -1022,7 +1022,7 @@ func TestGetRemovedDoc(t *testing.T) {
 		RevisionID("2-bcd"),
 		RevisionID("1-abc"),
 	}
-	sent, _, resp, err = bt.SendRevWithHistory("foo", "4-def", history, []byte(`{"key": "val", "channels": ["another_channel"]}"`), blip.Properties{"noconflicts": "true"})
+	sent, _, resp, err = bt.SendRevWithHistory("foo", "4-def", history, []byte("{}"), blip.Properties{"noconflicts": "true", "deleted": "true"})
 	assert.True(t, sent)
 	assert.Equals(t, err, nil)                          // no error
 	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
