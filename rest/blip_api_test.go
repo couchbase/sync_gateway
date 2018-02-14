@@ -1020,6 +1020,9 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.Equals(t, err, nil)                          // no error
 	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
+	// Flush rev cache
+	rt.GetDatabase().FlushRevisionCache()
+
 	// Try to get rev 3 via REST API, and assert that _removed == true
 	headers := map[string]string{}
 	headers["Authorization"] = "Basic "+ base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
