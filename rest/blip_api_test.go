@@ -254,6 +254,9 @@ func TestContinuousChangesSubscription(t *testing.T) {
 // 4. Make sure that the server responds to accept the changes (empty array)
 func TestProposedChangesNoConflictsMode(t *testing.T) {
 
+	EnableBlipSyncLogs()
+	defer DisableBlipSyncLogs()
+
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		noConflictsMode: true,
 	})
@@ -290,6 +293,9 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 
 // Connect to public port with authentication
 func TestPublicPortAuthentication(t *testing.T) {
+
+	EnableBlipSyncLogs()
+	defer DisableBlipSyncLogs()
 
 	// Create bliptester that is connected as user1, with access to the user1 channel
 	btUser1, err := NewBlipTesterFromSpec(BlipTesterSpec{
@@ -480,6 +486,9 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 // it shows up in the user's changes feed
 func TestAccessGrantViaAdminApi(t *testing.T) {
 
+	EnableBlipSyncLogs()
+	defer DisableBlipSyncLogs()
+
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		noAdminParty:       true,
@@ -516,6 +525,9 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 }
 
 func TestCheckpoint(t *testing.T) {
+
+	EnableBlipSyncLogs()
+	defer DisableBlipSyncLogs()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
@@ -585,6 +597,9 @@ func TestCheckpoint(t *testing.T) {
 // - Get attachment via REST and verifies it returns the correct content
 func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
+	EnableBlipSyncLogs()
+	defer DisableBlipSyncLogs()
+
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		noAdminParty:       true,
@@ -624,6 +639,9 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 }
 
 func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
+
+	EnableBlipSyncLogs()
+	defer DisableBlipSyncLogs()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
@@ -676,6 +694,9 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 // returns an error code
 func TestPutInvalidRevSyncFnReject(t *testing.T) {
 
+	EnableBlipSyncLogs()
+	defer DisableBlipSyncLogs()
+
 	syncFn := `
 		function(doc) {
 			requireAccess("PBS");
@@ -723,6 +744,9 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 
 func TestPutInvalidRevMalformedBody(t *testing.T) {
 
+	EnableBlipSyncLogs()
+	defer DisableBlipSyncLogs()
+
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		noAdminParty:                true,
@@ -759,6 +783,9 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 
 func TestPutRevNoConflictsMode(t *testing.T) {
 
+	EnableBlipSyncLogs()
+	defer DisableBlipSyncLogs()
+
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		noConflictsMode: true,
@@ -784,6 +811,9 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 }
 
 func TestPutRevConflictsMode(t *testing.T) {
+
+	EnableBlipSyncLogs()
+	defer DisableBlipSyncLogs()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
