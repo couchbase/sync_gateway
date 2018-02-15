@@ -23,12 +23,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
-	"time"
 )
 
 var gocbExpvars *expvar.Map
@@ -2207,7 +2207,6 @@ func (bucket CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
 	return int(itemCountFloat), nil
 
 }
-
 
 func (bucket CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
 
