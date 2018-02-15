@@ -534,7 +534,7 @@ func TEMP(format string, args ...interface{}) {
 
 // TEMPR redacts any arguments implementing the Redactor interface before calling TEMP
 func TEMPR(format string, args ...interface{}) {
-	TEMP(format, redact(args))
+	TEMP(format, redact(args)...)
 }
 
 // Logs a warning to the console, then panics.
