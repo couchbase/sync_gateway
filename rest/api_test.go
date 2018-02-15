@@ -3354,6 +3354,17 @@ func TestWriteTombstonedDoc(t *testing.T) {
 		}
 	}
 
+
+	// Fetch the xattr and make sure it contains the above value
+	baseBucket := rt.GetDatabase().Bucket
+	gocbBucket := baseBucket.(*base.CouchbaseBucketGoCB)
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	_, err = gocbBucket.GetWithXattr("-21SK00U-ujxUO9fU2HezxL", "_sync", &retrievedVal, &retrievedXattr)
+	assertNoError(t, err, "Unexpected Error")
+	assert.True(t, retrievedXattr["rev"].(string) == "2-466a1fab90a810dc0a63565b70680e4e")
+
+
 }
 
 
