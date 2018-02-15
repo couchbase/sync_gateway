@@ -22,20 +22,20 @@ func TestUserDataRedact(t *testing.T) {
 
 func BenchmarkUserDataRedact(b *testing.B) {
 	username := UserData("alice")
-	RedactUserData = true
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		username.Redact()
-	}
-}
+	b.Run("Enabled", func(bn *testing.B) {
+		RedactUserData = true
+		bn.ResetTimer()
+		for i := 0; i < bn.N; i++ {
+			username.Redact()
+		}
+	})
 
-func BenchmarkUserDataRedactDisabled(b *testing.B) {
-	username := UserData("alice")
-	RedactUserData = false
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		username.Redact()
-	}
+	b.Run("Disabled", func(bn *testing.B) {
+		RedactUserData = false
+		bn.ResetTimer()
+		for i := 0; i < bn.N; i++ {
+			username.Redact()
+		}
+	})
 }
