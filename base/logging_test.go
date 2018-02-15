@@ -10,11 +10,36 @@
 package base
 
 import (
+	"bytes"
 	"errors"
-	"github.com/couchbaselabs/go.assert"
 	"log"
 	"testing"
+
+	"github.com/couchbaselabs/go.assert"
 )
+
+// asserts that the logs produced by function f contain string s.
+func assertLogContains(t *testing.T, s string, f func()) {
+	var b bytes.Buffer
+	logger = log.New(&b, "", 0)
+	f()
+	assert.StringContains(t, b.String(), s)
+}
+
+func TestRedactedLogFuncs(t *testing.T) {
+	username := ToUD("alice")
+
+	EnableLogKey("TEST")
+
+	assertLogContains(t, "TEST: alice", func() { LogTo("TEST", "%s", username) })
+	assertLogContains(t, "TEST: <ud>alice</ud>", func() { LogToR("TEST", "%s", username) })
+
+	assertLogContains(t, "WARNING: alice", func() { Warn("%s", username) })
+	assertLogContains(t, "WARNING: <ud>alice</ud>", func() { WarnR("%s", username) })
+
+	assertLogContains(t, "TEMP: alice", func() { TEMP("%s", username) })
+	assertLogContains(t, "TEMP: <ud>alice</ud>", func() { TEMPR("%s", username) })
+}
 
 func Benchmark_LoggingPerformance(b *testing.B) {
 
