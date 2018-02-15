@@ -1,6 +1,7 @@
 package base
 
 import (
+	"math/big"
 	"testing"
 
 	assert "github.com/couchbaselabs/go.assert"
@@ -18,6 +19,19 @@ func TestUserDataRedact(t *testing.T) {
 
 	RedactUserData = false
 	assert.Equals(t, userdata.Redact(), username)
+}
+
+func TestToUD(t *testing.T) {
+	RedactUserData = true
+
+	ud := ToUD(big.NewInt(1234))
+	assert.Equals(t, ud.Redact(), "<ud>1234</ud>")
+
+	ud = ToUD("hello world")
+	assert.Equals(t, ud.Redact(), "<ud>hello world</ud>")
+
+	ud = ToUD(struct{}{})
+	assert.Equals(t, ud.Redact(), "<ud>{}</ud>")
 }
 
 func BenchmarkUserDataRedact(b *testing.B) {
