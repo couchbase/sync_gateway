@@ -20,8 +20,13 @@ import (
 
 // asserts that the logs produced by function f contain string s.
 func assertLogContains(t *testing.T, s string, f func()) {
-	var b bytes.Buffer
+	originalLogger := logger
+	b := bytes.Buffer{}
+
+	// temporarily override logger for the function call
 	logger = log.New(&b, "", 0)
+	defer func() { logger = originalLogger }()
+
 	f()
 	assert.StringContains(t, b.String(), s)
 }
