@@ -1,5 +1,7 @@
 package base
 
+import "fmt"
+
 const (
 	userDataPrefix = "<ud>"
 	userDataSuffix = "</ud>"
@@ -20,4 +22,16 @@ func (ud UserData) Redact() string {
 		return string(ud)
 	}
 	return userDataPrefix + string(ud) + userDataSuffix
+}
+
+// ToUD is a helper function for getting a UserData type.
+func ToUD(i interface{}) UserData {
+	switch v := i.(type) {
+	case string:
+		return UserData(v)
+	case fmt.Stringer:
+		return UserData(v.String())
+	default:
+		return UserData(fmt.Sprintf("%v", v))
+	}
 }
