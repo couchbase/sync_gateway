@@ -19,6 +19,8 @@ func TestRedactHelper(t *testing.T) {
 		struct{}{},
 	}
 
+	RedactUserData = true
+
 	out := redact(in)
 
 	// Since redact performs an in-place redaction,
@@ -45,6 +47,8 @@ func BenchmarkRedactHelper(b *testing.B) {
 		big.NewInt(1234),
 		struct{}{},
 	}
+
+	RedactUserData = true
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
