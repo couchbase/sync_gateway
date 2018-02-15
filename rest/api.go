@@ -65,44 +65,51 @@ func (h *handler) handleVacuum() error {
 
 func (h *handler) handleFlush() error {
 
-	if bucket, ok := h.db.Bucket.(sgbucket.DeleteableBucket); ok {
-
-		switch
+	if _, ok := h.db.Bucket.(sgbucket.DeleteableBucket); ok {
 
 		name := h.db.Name
 		config := h.server.GetDatabaseConfig(name)
+
+		// This needs to first call RemoveDatabase since flushing the bucket under Sync Gateway might cause issues.
 		h.server.RemoveDatabase(name)
 
-		// Manually re-open
-		// Flush
-
-		// err := bucket.CloseAndDelete() -- replace w/ a Flush
-
-
-		// Factor out the code to build
-
-		/*
-			// Connect to the bucket and add the database:
-	spec := base.BucketSpec{
-		Server:               server,
-		PoolName:             pool,
-		BucketName:           bucketName,
-		FeedType:             feedType,
-		Auth:                 config,
-		CouchbaseDriver:      couchbaseDriver,
-		UseXattrs:            config.UseXattrs(),
-		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
-	}
-		 */
-
-		_, err2 := h.server.AddDatabaseFromConfig(config)
-		if err == nil {
-			err = err2
+		// Create a bucket connection spec from the database config
+		spec, err := GetBucketSpec(config)
+		if err != nil {
+			return err
 		}
-		return err
+
+		// Manually re-open a temporary bucket connection just for flushing purposes
+		tempBucketForFlush, err := db.ConnectToBucket(spec, nil)
+		if err != nil {
+			return err
+		}
+
+		// Flush the bucket (assuming it conforms to sgbucket.DeleteableBucket interface
+		if tempBucketForFlush, ok := tempBucketForFlush.(sgbucket.DeleteableBucket); ok {
+
+			// Flush
+			err := tempBucketForFlush.CloseAndDelete()
+			if err != nil {
+				return err
+			}
+
+		}
+
+		// Close the temporary connection to the bucket that was just for purposes of flushing it
+		tempBucketForFlush.Close()
+
+		 // Re-open database and add to Sync Gateway
+		_, err2 := h.server.AddDatabaseFromConfig(config)
+		if err2 != nil {
+			return err2
+		}
+
 	} else {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket does not support flush")
 	}
+
+	return nil
 }
 
 
