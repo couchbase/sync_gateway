@@ -1285,6 +1285,9 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 }
 
+// Reproduce SG #3307.  Try to write a doc with no body but with an XATTR that has metadata
+// that indicates the doc was deleted.  Originally failing because the doc doesn't exist,
+// and it wasn't passing the right subdoc flags.
 func TestXattrTombstoneNonExistentXattrDoc(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
@@ -1299,6 +1302,50 @@ func TestXattrTombstoneNonExistentXattrDoc(t *testing.T) {
 		log.Printf("Can't cast to bucket")
 		return
 	}
+
+	key := "NoDocNoXattr"
+	xattrName := "_sync"
+
+	xattrVal := `
+{
+   "rev":"2-466a1fab90a810dc0a63565b70680e4e",
+   "flags":1,
+   "sequence":1,
+   "recent_sequences":[
+      1
+   ],
+   "history":{
+      "revs":[
+         "1-9e1084304cd2e60c5c106b308a82f40e",
+         "2-466a1fab90a810dc0a63565b70680e4e"
+      ],
+      "parents":[
+         -1,
+         0
+      ],
+      "deleted":[
+         1
+      ],
+      "channels":[
+         null,
+         null
+      ]
+   },
+   "cas":"",
+   "tombstoned_at":1518731178,
+   "time_saved":"2018-02-15T13:46:18.446791-08:00"
+}
+`
+
+	_, err := bucket.UpdateXattr(key, xattrName, 0, uint64(0), xattrVal, false)
+	assertNoError(t, err, "Unexpected Error")
+
+	// Fetch the xattr and make sure it contains the above value
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	_, err = bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
+	assertNoError(t, err, "Unexpected Error")
+	assert.True(t, retrievedXattr["rev"].(string) == "2-466a1fab90a810dc0a63565b70680e4e")
 
 }
 
@@ -1399,6 +1446,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	_, errDelete := bucket.UpdateXattr(key4, xattrName, 0, uint64(0), &updatedXattrVal, false)
 	assertTrue(t, bucket.IsKeyNotFoundError(errDelete), "Exepcted keynotfound error")
 	assertTrue(t, verifyDocAndXattrDeleted(bucket, key4, xattrName), "Expected doc to be deleted")
+
 }
 
 // Validates deletion of doc + xattr in a matrix of various possible previous states of the document.
