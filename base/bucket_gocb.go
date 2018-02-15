@@ -1094,28 +1094,42 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 	return cas, err
 }
 
+func GetUpdateXattrSubdocMutationFlags(deleteBody bool, cas uint64) (mutateFlag gocb.SubdocDocFlag) {
+
+	if deleteBody {
+
+		// If the body exists (and we're trying to delete it), use SubdocDocFlagNone
+		mutateFlag = gocb.SubdocDocFlagNone
+
+	} else {
+
+		if cas == 0 {
+
+			// If the cas is 0, that means the document doesn't exist, in which case we are trying to set
+			// Xattrs on a non-existent document, so we must set the SubdocDocFlagMkDoc flag
+			mutateFlag = gocb.SubdocDocFlagMkDoc
+
+		} else {
+
+			// If the body doesn't exist, we need to set the AccessDelete flag to mutate the xattr.
+			mutateFlag = gocb.SubdocDocFlagAccessDeleted
+		}
+
+	}
+
+	return mutateFlag
+
+}
+
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
 func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
-
-	// TEMP EXPERIMENT
-	// deleteBody = true
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		// If the body doesn't exist, we need to set the AccessDelete flag to mutate the xattr.  If the body exists (and we're trying to delete it), revert
-		// to SubdocDocFlagNone
 
-		// mutateFlag := gocb.SubdocDocFlagAccessDeleted
-		mutateFlag := gocb.SubdocDocFlagMkDoc
-
-		if deleteBody {
-			mutateFlag = gocb.SubdocDocFlagNone
-		} else {
-			mutateFlag = mutateFlag|gocb.SubdocDocFlagMkDoc
-		}
-
+		mutateFlag := GetUpdateXattrSubdocMutationFlags(deleteBody, cas)
 
 		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), exp).
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
