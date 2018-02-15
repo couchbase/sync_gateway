@@ -532,6 +532,11 @@ func TEMP(format string, args ...interface{}) {
 	logWithCaller(fgYellow, "TEMP", format, args...)
 }
 
+// TEMPR redacts any arguments implementing the Redactor interface before calling TEMP
+func TEMPR(key, format string, args ...interface{}) {
+	TEMP(key, format, redact(args))
+}
+
 // Logs a warning to the console, then panics.
 func LogPanic(format string, args ...interface{}) {
 	logWithCaller(fgRed, "PANIC", format, args...)
