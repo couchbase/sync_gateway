@@ -1285,6 +1285,23 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 }
 
+func TestXattrTombstoneNonExistentXattrDoc(t *testing.T) {
+
+	SkipXattrTestsIfNotEnabled(t)
+
+	LogKeys["CRUD+"] = true
+
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+}
+
 // Validates tombstone of doc + xattr in a matrix of various possible previous states of the document.
 func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
