@@ -1104,15 +1104,14 @@ func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uin
 
 		var mutateFlag gocb.SubdocDocFlag
 		if deleteBody {
-			// If the body exists (and we're trying to delete it), use SubdocDocFlagNone
+			// Since the body exists, we don't need to set a SubdocDocFlag
 			mutateFlag = gocb.SubdocDocFlagNone
 		} else {
 			if cas == 0 {
-				// If the cas is 0, that means the document doesn't exist, in which case we are trying to set
-				// Xattrs on a non-existent document, so we must set the SubdocDocFlagMkDoc flag
+				// If the doc doesn't exist, set SubdocDocFlagMkDoc to allow us to write the xattr
 				mutateFlag = gocb.SubdocDocFlagMkDoc
 			} else {
-				// If the body doesn't exist, we need to set the AccessDelete flag to mutate the xattr.
+				// Since the body _may_ not exist, we need to set SubdocDocFlagAccessDeleted
 				mutateFlag = gocb.SubdocDocFlagAccessDeleted
 			}
 		}
