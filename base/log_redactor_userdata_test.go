@@ -25,7 +25,6 @@ func BenchmarkUserDataRedact(b *testing.B) {
 
 	b.Run("Enabled", func(bn *testing.B) {
 		RedactUserData = true
-		bn.ResetTimer()
 		for i := 0; i < bn.N; i++ {
 			username.Redact()
 		}
@@ -33,7 +32,6 @@ func BenchmarkUserDataRedact(b *testing.B) {
 
 	b.Run("Disabled", func(bn *testing.B) {
 		RedactUserData = false
-		bn.ResetTimer()
 		for i := 0; i < bn.N; i++ {
 			username.Redact()
 		}
