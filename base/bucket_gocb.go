@@ -2161,6 +2161,9 @@ func (bucket CouchbaseBucketGoCB) CloseAndDelete() error {
 // to Couchbase Server REST API.
 // See https://forums.couchbase.com/t/is-there-a-way-to-get-the-number-of-items-in-a-bucket/12816/4
 // for GOCB discussion.
+// NOTE: unfortunately this code was duplicated with TestBucketManager.BucketItemCount() since TestBucketManager
+// holds a reference to a *gocb.Bucket, but not a CouchbaseBucketGoCB wrapper.  If this code could get
+// pushed down into *gocb.Bucket, then both methods could be removed.
 func (bucket CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
 
 	reqUri := fmt.Sprintf("%s/pools/default/buckets/%s", bucket.spec.Server, bucket.spec.BucketName)
@@ -2205,60 +2208,6 @@ func (bucket CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
 
 }
 
-
-/*
-
-
-func (tbm *TestBucketManager) EmptyTestBucket() error {
-
-	// Try to Flush the bucket in a retry loop
-	// Ignore sporadic errors like:
-	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
-
-	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
-		err = tbm.BucketManager.Flush()
-		if err != nil {
-			Warn("Error flushing bucket: %v  Will retry.", err)
-		}
-		shouldRetry = (err != nil) // retry (until max attempts) if there was an error
-		return shouldRetry, err, nil
-	}
-
-	err, _ := RetryLoop("EmptyTestBucket", workerFlush, CreateDoublingSleeperFunc(12, 10))
-	if err != nil {
-		return err
-	}
-
-	maxTries := 20
-	numTries := 0
-	for {
-
-		itemCount, err := tbm.BucketItemCount()
-		if err != nil {
-			return err
-		}
-
-		if itemCount == 0 {
-			// Bucket flushed, we're done
-			break
-		}
-
-		if numTries > maxTries {
-			return fmt.Errorf("Timed out waiting for bucket to be empty after flush.  ItemCount: %v", itemCount)
-		}
-
-		// Still items left, wait a little bit and try again
-		Warn("TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
-		time.Sleep(time.Millisecond * 500)
-
-		numTries += 1
-
-	}
-
-	return nil
-
-}
- */
 
 func (bucket CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
 
