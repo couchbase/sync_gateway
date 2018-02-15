@@ -489,8 +489,8 @@ func Logf(format string, args ...interface{}) {
 }
 
 // LogfR redacts any arguments implementing the Redactor interface before calling Logf
-func LogfR(key, format string, args ...interface{}) {
-	Logf(key, format, redact(args))
+func LogfR(format string, args ...interface{}) {
+	Logf(format, redact(args))
 }
 
 // If the error is not nil, logs its description and the name of the calling function.
@@ -520,8 +520,8 @@ func Warn(format string, args ...interface{}) {
 }
 
 // WarnR redacts any arguments implementing the Redactor interface before calling Warn
-func WarnR(key, format string, args ...interface{}) {
-	Warn(key, format, redact(args))
+func WarnR(format string, args ...interface{}) {
+	Warn(format, redact(args))
 }
 
 // Logs a highlighted message prefixed with "TEMP". This function is intended for
@@ -532,8 +532,8 @@ func TEMP(format string, args ...interface{}) {
 }
 
 // TEMPR redacts any arguments implementing the Redactor interface before calling TEMP
-func TEMPR(key, format string, args ...interface{}) {
-	TEMP(key, format, redact(args))
+func TEMPR(format string, args ...interface{}) {
+	TEMP(format, redact(args))
 }
 
 // Logs a warning to the console, then panics.
@@ -543,8 +543,8 @@ func LogPanic(format string, args ...interface{}) {
 }
 
 // LogPanicR redacts any arguments implementing the Redactor interface before calling LogPanic
-func LogPanicR(key, format string, args ...interface{}) {
-	LogPanic(key, format, redact(args))
+func LogPanicR(format string, args ...interface{}) {
+	LogPanic(format, redact(args))
 }
 
 // Logs a warning to the console, then exits the process.
@@ -554,8 +554,8 @@ func LogFatal(format string, args ...interface{}) {
 }
 
 // LogFatalR redacts any arguments implementing the Redactor interface before calling LogFatal
-func LogFatalR(key, format string, args ...interface{}) {
-	LogFatal(key, format, redact(args))
+func LogFatalR(format string, args ...interface{}) {
+	LogFatal(format, redact(args))
 }
 
 func logWithCaller(color string, prefix string, format string, args ...interface{}) {
