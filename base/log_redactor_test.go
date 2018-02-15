@@ -20,6 +20,7 @@ func TestRedactHelper(t *testing.T) {
 	}
 
 	RedactUserData = true
+	defer func() { RedactUserData = false }()
 
 	out := redact(in)
 
@@ -49,6 +50,7 @@ func BenchmarkRedactHelper(b *testing.B) {
 	}
 
 	RedactUserData = true
+	defer func() { RedactUserData = false }()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

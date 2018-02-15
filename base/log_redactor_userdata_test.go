@@ -12,6 +12,7 @@ func TestUserDataRedact(t *testing.T) {
 	userdata := UserData(username)
 
 	RedactUserData = true
+	defer func() { RedactUserData = false }()
 
 	// This is intentionally brittle (hardcoded redaction tags)
 	// We'd probably want to know if this changed by accident...
@@ -22,20 +23,25 @@ func TestUserDataRedact(t *testing.T) {
 }
 
 func TestToUD(t *testing.T) {
+
 	RedactUserData = true
+	defer func() { RedactUserData = false }()
 
 	ud := ToUD(big.NewInt(1234))
-	assert.Equals(t, ud.Redact(), "<ud>1234</ud>")
+	assert.Equals(t, ud.Redact(), userDataPrefix+"1234"+userDataSuffix)
 
 	ud = ToUD("hello world")
-	assert.Equals(t, ud.Redact(), "<ud>hello world</ud>")
+	assert.Equals(t, ud.Redact(), userDataPrefix+"hello world"+userDataSuffix)
 
 	ud = ToUD(struct{}{})
-	assert.Equals(t, ud.Redact(), "<ud>{}</ud>")
+	assert.Equals(t, ud.Redact(), userDataPrefix+"{}"+userDataSuffix)
 }
 
 func BenchmarkUserDataRedact(b *testing.B) {
 	username := UserData("alice")
+
+	RedactUserData = true
+	defer func() { RedactUserData = false }()
 
 	b.Run("Enabled", func(bn *testing.B) {
 		RedactUserData = true
