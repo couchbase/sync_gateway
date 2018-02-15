@@ -34,6 +34,8 @@ func assertLogContains(t *testing.T, s string, f func()) {
 func TestRedactedLogFuncs(t *testing.T) {
 	username := ToUD("alice")
 
+	RedactUserData = true
+	defer func() { RedactUserData = false }()
 	EnableLogKey("TEST")
 
 	assertLogContains(t, "TEST: alice", func() { LogTo("TEST", "%s", username) })
@@ -41,9 +43,6 @@ func TestRedactedLogFuncs(t *testing.T) {
 
 	assertLogContains(t, "WARNING: alice", func() { Warn("%s", username) })
 	assertLogContains(t, "WARNING: <ud>alice</ud>", func() { WarnR("%s", username) })
-
-	assertLogContains(t, "TEMP: alice", func() { TEMP("%s", username) })
-	assertLogContains(t, "TEMP: <ud>alice</ud>", func() { TEMPR("%s", username) })
 }
 
 func Benchmark_LoggingPerformance(b *testing.B) {
