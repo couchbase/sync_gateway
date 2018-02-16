@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,7 +23,6 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
 	"golang.org/x/net/websocket"
-	"strings"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -440,7 +440,7 @@ func (r TestResponse) GetRestDocument() RestDocument {
 	restDoc := NewRestDocument()
 	err := json.Unmarshal(r.Body.Bytes(), restDoc)
 	if err != nil {
-		panic(fmt.Sprintf("Error parsing body into RestDocument.  Body: %s.  Err: %v",  string(r.Body.Bytes()), err))
+		panic(fmt.Sprintf("Error parsing body into RestDocument.  Body: %s.  Err: %v", string(r.Body.Bytes()), err))
 	}
 	return *restDoc
 }
@@ -671,23 +671,8 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
 }
 
-// Introduce a type to hopefully lay the ground work for a custom RevisionID type that
-// has methods like Generation() and Digest()
-type RevisionID string
-
-type RevisionIDList []RevisionID
-
-// Blip Requests expect the history in a comma delimited format like: "2-bcd, 1-abc"
-func (r RevisionIDList) ExportAsBlipHistory() string {
-	s := []string{}
-	for _, revisionId := range r {
-		s = append(s, string(revisionId))
-	}
-	return strings.Join(s, ",")
-}
-
 // The docHistory should be in the same format as expected by db.PutExistingRev(), or empty if this is the first revision
-func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory RevisionIDList, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
+func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory []string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
 
 	revRequest := blip.NewRequest()
 	revRequest.SetCompressed(true)
@@ -697,7 +682,7 @@ func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory Revisi
 	revRequest.Properties["rev"] = docRev
 	revRequest.Properties["deleted"] = "false"
 	if len(revHistory) > 0 {
-		revRequest.Properties["history"] = revHistory.ExportAsBlipHistory()
+		revRequest.Properties["history"] = strings.Join(revHistory, ",")
 	}
 
 	// Override any properties which have been supplied explicitly
@@ -724,29 +709,33 @@ func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory Revisi
 
 	return sent, revRequest, revResponse, nil
 
-
 }
 
 func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
 
-	return bt.SendRevWithHistory(docId, docRev, []RevisionID{}, body, properties)
-
+	return bt.SendRevWithHistory(docId, docRev, []string{}, body, properties)
 
 }
 
+// Get a doc at a particular revision from Sync Gateway.
+//
+// If that is not found, it will return an empty resultDoc with no errors.
+//
+// - Call subChanges (continuous=false) endpoint to get all changes from Sync Gateway
+// - Respond to each "change" request telling the other side to send the revision
+//		- NOTE: this could be made more efficient by only requesting the revision for the docid/revid pair
+//              passed in the parameter.
+// - If the rev handler is called back with the desired docid/revid pair, save that into a variable that will be returned
+// - Block until all pending operations are complete
+// - Return the resultDoc or an empty resultDoc
+//
 func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resultDoc RestDocument, err error) {
-
-	// Call subchanges
-
-	// On the change callback only request the docid / revid pair specified in params
-
 
 	docs := map[string]RestDocument{}
 	changesFinishedWg := sync.WaitGroup{}
 	revsFinishedWg := sync.WaitGroup{}
 
 	// -------- Changes handler callback --------
-	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		// Send a response telling the other side we want ALL revisions
@@ -1286,7 +1275,6 @@ func (d RestDocument) IsRemoved() bool {
 	return removed.(bool) == true
 }
 
-
 // Wait for the WaitGroup, or return an error if the wg.Wait() doesn't return within timeout
 func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 
@@ -1307,7 +1295,7 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 
 }
 
-type StdIoLogger struct {}
+type StdIoLogger struct{}
 
 func (s StdIoLogger) LogTo(key string, format string, args ...interface{}) {
 	base.LogTo(key, format, args...)

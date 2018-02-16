@@ -14,6 +14,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
+	"encoding/base64"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -958,7 +959,7 @@ func TestPutRevConflictsMode(t *testing.T) {
 
 }
 
-// Repro SG #3281
+// Repro attempt for SG #3281
 //
 // - Set up a user w/ access to channel A
 // - Write two revision of a document (both in channel A)
@@ -968,8 +969,8 @@ func TestPutRevConflictsMode(t *testing.T) {
 // Expected:
 // - Users gets a removed:true response
 //
-// Actual: (before fix)
-// - User gets 404 missing
+// Actual:
+// - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
 //
 func TestGetRemovedDoc(t *testing.T) {
 
@@ -993,9 +994,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	// Add rev-2 in channel user1
-	history := RevisionIDList{
-		RevisionID("1-abc"),
-	}
+	history := []string{"1-abc"}
 	sent, _, resp, err = bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}"`), blip.Properties{"noconflicts": "true"})
 	assert.True(t, sent)
 	assert.Equals(t, err, nil)                          // no error
@@ -1007,49 +1006,37 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.False(t, resultDoc.IsRemoved())
 
 	// Add rev-3, remove from channel user1 and put into channel another_channel
-	history = RevisionIDList{
-		RevisionID("2-bcd"),
-		RevisionID("1-abc"),
-	}
+	history = []string{"2-bcd", "1-abc"}
 	sent, _, resp, err = bt.SendRevWithHistory("foo", "3-cde", history, []byte(`{"key": "val", "channels": ["another_channel"]}`), blip.Properties{"noconflicts": "true"})
 	assert.True(t, sent)
 	assert.Equals(t, err, nil)                          // no error
 	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	// Add rev-4, keeping it in channel another_channel
-	history = RevisionIDList{
-		RevisionID("3-cde"),
-		RevisionID("2-bcd"),
-		RevisionID("1-abc"),
-	}
+	history = []string{"3-cde", "2-bcd", "1-abc"}
 	sent, _, resp, err = bt.SendRevWithHistory("foo", "4-def", history, []byte("{}"), blip.Properties{"noconflicts": "true", "deleted": "true"})
 	assert.True(t, sent)
 	assert.Equals(t, err, nil)                          // no error
 	assert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
-	// Flush rev cache
+	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
 	rt.GetDatabase().FlushRevisionCache()
 
-	// Delete any temp revisions
+	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocId := "_sync:rev:foo:5:3-cde"
 	err = rt.GetDatabase().Bucket.Delete(tempRevisionDocId)
 	assertNoError(t, err, "Unexpected Error")
-
-	// It works when getting the doc/rev pair via REST API, but I commented this in case it was skewing the result
-	//// Try to get rev 3 via REST API, and assert that _removed == true
-	//headers := map[string]string{}
-	//headers["Authorization"] = "Basic "+ base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
-	//response := rt.SendRequestWithHeaders("GET", "/db/foo?rev=3-cde", "", headers)
-	//restDocument := response.GetRestDocument()
-	//assert.True(t, restDocument.IsRemoved())
 
 	// Try to get rev 3 via BLIP API and assert that _removed == true
 	resultDoc, err = bt.GetDocAtRev("foo", "3-cde")
 	assertNoError(t, err, "Unexpected Error")
 	assert.True(t, resultDoc.IsRemoved())
 
-	// Debugging: Dump Bucket doc
-	responseRawDoc := rt.SendAdminRequest("GET", "/db/_raw/foo", "")
-	responseRawDoc.DumpBody()
+	// Try to get rev 3 via REST API, and assert that _removed == true
+	headers := map[string]string{}
+	headers["Authorization"] = "Basic "+ base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
+	response := rt.SendRequestWithHeaders("GET", "/db/foo?rev=3-cde", "", headers)
+	restDocument := response.GetRestDocument()
+	assert.True(t, restDocument.IsRemoved())
 
 }
