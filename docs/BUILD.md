@@ -78,7 +78,8 @@ Cross-compiling for Linux
 **x86 Linux**
 
 ```
-GOOS=linux GOARCH=amd64 ./build.sh
+$ ls $(go env GOROOT)/pkg && sudo chown -R $USER $(go env GOROOT)/pkg
+$ GOOS=linux GOARCH=amd64 ./build.sh
 ```
 
 **ARM Linux**
