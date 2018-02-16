@@ -313,7 +313,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 		}
 	}
 
-	_, forceClose := generateContinuousChanges(bh.db, channelSet, options, nil, func(changes []*db.ChangeEntry) error {
+	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, func(changes []*db.ChangeEntry) error {
 		bh.LogTo("Sync+", "    Sending %d changes. User:%s", len(changes), bh.effectiveUsername)
 		for _, change := range changes {
 

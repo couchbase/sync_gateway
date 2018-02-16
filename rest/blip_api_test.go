@@ -134,7 +134,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	receivedChangesRequestWg.Add(1)
 
 	// Wait until we got the expected callback on the "changes" profile handler
-	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*60)
+	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*15)
 	assertNoError(t, timeoutErr, "Timed out waiting")
 
 }
@@ -244,6 +244,148 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
 	assert.True(t, numBatchesReceivedSnapshot >= 2)
 
+}
+
+// Make several updates
+// Start subChanges w/ continuous=false, batchsize=20
+// Validate we get the expected updates and changes ends
+func TestOneShotChangesSubscription(t *testing.T) {
+
+	bt, err := NewBlipTester()
+	assertNoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
+	receivedChangesWg := sync.WaitGroup{}
+	receivedCaughtUpChange := false
+
+	// Build set of docids
+	docIdsReceived := make(map[string]bool)
+	for i := 1; i < 105; i++ {
+		docIdsReceived[fmt.Sprintf("preOneShot-%d", i)] = false
+	}
+
+	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
+	lastReceivedSeq := float64(0)
+	var numbatchesReceived int32
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+
+		body, err := request.Body()
+
+		if string(body) != "null" {
+
+			atomic.AddInt32(&numbatchesReceived, 1)
+
+			// Expected changes body: [[1,"foo","1-abc"]]
+			changeListReceived := [][]interface{}{}
+			err = json.Unmarshal(body, &changeListReceived)
+			assertNoError(t, err, "Error unmarshalling changes received")
+
+			for _, change := range changeListReceived {
+
+				// The change should have three items in the array
+				// [1,"foo","1-abc"]
+				assert.Equals(t, len(change), 3)
+
+				// Make sure sequence numbers are monotonically increasing
+				receivedSeq := change[0].(float64)
+				assert.True(t, receivedSeq > lastReceivedSeq)
+				lastReceivedSeq = receivedSeq
+
+				// Verify doc id and rev id have expected vals
+				docId := change[1].(string)
+				assert.True(t, strings.HasPrefix(docId, "preOneShot"))
+				assert.Equals(t, change[2], "1-abc") // Rev id of pushed rev
+				docIdsReceived[docId] = true
+				receivedChangesWg.Done()
+			}
+
+		} else {
+			receivedCaughtUpChange = true
+			receivedChangesWg.Done()
+
+		}
+
+		if !request.NoReply() {
+			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
+			response := request.Response()
+			emptyResponseVal := []interface{}{}
+			emptyResponseValBytes, err := json.Marshal(emptyResponseVal)
+			assertNoError(t, err, "Error marshalling response")
+			response.SetBody(emptyResponseValBytes)
+		}
+
+	}
+
+	// Increment waitgroup to account for the expected 'caught up' nil changes entry.
+	receivedChangesWg.Add(1)
+
+	// Add a few batches worth of documents
+	for docID, _ := range docIdsReceived {
+		//// Add a change: Send an unsolicited doc revision in a rev request
+		_, _, revResponse, err := bt.SendRev(
+			docID,
+			"1-abc",
+			[]byte(`{"key": "val"}`),
+			blip.Properties{},
+		)
+		assert.Equals(t, err, nil)
+		_, err = revResponse.Body()
+		assertNoError(t, err, "Error unmarshalling response body")
+		receivedChangesWg.Add(1)
+	}
+
+	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	subChangesRequest := blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "false"
+	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
+	subChangesRequest.SetCompressed(false)
+	sent := bt.sender.Send(subChangesRequest)
+	assert.True(t, sent)
+	subChangesResponse := subChangesRequest.Response()
+	assert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+
+	// Wait until all expected changes are received by change handler
+	// receivedChangesWg.Wait()
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*60)
+	assertNoError(t, timeoutErr, "Timed out waiting for all changes.")
+
+	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
+	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
+	assert.True(t, numBatchesReceivedSnapshot >= 2)
+
+	// Validate all expected documents were received.
+	for docID, received := range docIdsReceived {
+		if !received {
+			t.Errorf("Did not receive expected doc %s in changes", docID)
+		}
+	}
+
+	// Validate that the 'caught up' message was sent
+	assert.True(t, receivedCaughtUpChange)
+
+	// Create a few more changes, validate that they aren't sent (subChanges has been closed).
+	// Validated by the prefix matching in the subChanges callback, as well as waitgroup check below.
+	for i := 0; i < 5; i++ {
+		//// Add a change: Send an unsolicited doc revision in a rev request
+		_, _, revResponse, err := bt.SendRev(
+			fmt.Sprintf("postOneShot_%d", i),
+			"1-abc",
+			[]byte(`{"key": "val"}`),
+			blip.Properties{},
+		)
+		assert.Equals(t, err, nil)
+		_, err = revResponse.Body()
+		assertNoError(t, err, "Error unmarshalling response body")
+		receivedChangesWg.Add(1)
+	}
+
+	// Wait long enough to ensure the changes aren't being sent
+	expectedTimeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*3)
+	if expectedTimeoutErr == nil {
+		t.Errorf("Received additional changes after one-shot should have been closed.")
+	}
 }
 
 // Push proposed changes and ensure that the server accepts them
