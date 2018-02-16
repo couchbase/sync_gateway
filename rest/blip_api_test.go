@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -14,7 +15,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"encoding/base64"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -1034,7 +1034,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Try to get rev 3 via REST API, and assert that _removed == true
 	headers := map[string]string{}
-	headers["Authorization"] = "Basic "+ base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
+	headers["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
 	response := rt.SendRequestWithHeaders("GET", "/db/foo?rev=3-cde", "", headers)
 	restDocument := response.GetRestDocument()
 	assert.True(t, restDocument.IsRemoved())
