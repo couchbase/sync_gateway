@@ -1027,8 +1027,21 @@ func TestGetRemovedDoc(t *testing.T) {
 	err = rt.GetDatabase().Bucket.Delete(tempRevisionDocId)
 	assertNoError(t, err, "Unexpected Error")
 
+	// Workaround data race (https://gist.github.com/tleyden/0ace70b8a38b76a7beee95529610b6cf) that happens because
+	// there are multiple goroutines accessing the bt.blipContext.HandlerForProfile map.
+	// The workaround uses a separate blipTester, and therefore a separate context.  It uses a different
+	// user to avoid an error when the NewBlipTesterFromSpec tries to create the user (eg, user1 already exists error)
+	btSpec2 := BlipTesterSpec{
+		connectingUsername: "user2",
+		connectingPassword: "1234",
+		connectingUserChannelGrants: []string{"user1"},  // so it can see user1's docs
+		restTester:         &rt,
+	}
+	bt2, err := NewBlipTesterFromSpec(btSpec2)
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+
 	// Try to get rev 3 via BLIP API and assert that _removed == true
-	resultDoc, err = bt.GetDocAtRev("foo", "3-cde")
+	resultDoc, err = bt2.GetDocAtRev("foo", "3-cde")
 	assertNoError(t, err, "Unexpected Error")
 	assert.True(t, resultDoc.IsRemoved())
 
