@@ -3307,6 +3307,68 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 	log.Printf("value: %v", value)
 }
 
+
+// Repro attempt for SG #3307.  Before fix for #3307, fails when SG_TEST_USE_XATTRS=true and run against an actual couchbase server
+func TestWriteTombstonedDoc(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
+	}
+
+	// This doesn't need to specify XATTR's because that is controlled by the test
+	// env variable: SG_TEST_USE_XATTRS
+	rt := RestTester{}
+	defer rt.Close()
+
+	bulkDocsBody := `
+{
+  "docs": [
+  	{
+         "_id":"-21SK00U-ujxUO9fU2HezxL",
+         "_rev":"2-466a1fab90a810dc0a63565b70680e4e",
+         "_deleted":true,
+         "_revisions":{
+            "ids":[
+               "466a1fab90a810dc0a63565b70680e4e",
+               "9e1084304cd2e60c5c106b308a82f40e"
+            ],
+            "start":2
+         }
+  	}
+  ],
+  "new_edits": false
+}
+`
+
+	response := rt.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocsBody)
+	log.Printf("Response: %s", response.Body)
+
+	bulkDocsResponse := []map[string]interface{}{}
+	err := json.Unmarshal(response.Body.Bytes(), &bulkDocsResponse)
+	assertNoError(t, err, "Unexpected error")
+	log.Printf("bulkDocsResponse: %+v", bulkDocsResponse)
+	for _, bulkDocResponse := range bulkDocsResponse {
+		bulkDocErr, gotErr := bulkDocResponse["error"]
+		if gotErr && bulkDocErr.(string) == "not_found" {
+			t.Errorf("The bulk docs response had an embedded error: %v.  Response for this doc: %+v", bulkDocErr, bulkDocsResponse)
+		}
+	}
+
+
+	// Fetch the xattr and make sure it contains the above value
+	baseBucket := rt.GetDatabase().Bucket
+	gocbBucket := baseBucket.(*base.CouchbaseBucketGoCB)
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	_, err = gocbBucket.GetWithXattr("-21SK00U-ujxUO9fU2HezxL", "_sync", &retrievedVal, &retrievedXattr)
+	assertNoError(t, err, "Unexpected Error")
+	assert.True(t, retrievedXattr["rev"].(string) == "2-466a1fab90a810dc0a63565b70680e4e")
+
+
+}
+
+
+
 // Reproduces https://github.com/couchbase/sync_gateway/issues/916.  The test-only RestartListener operation used to simulate a
 // SG restart isn't race-safe, so disabling the test for now.  Should be possible to reinstate this as a proper unit test
 // once we add the ability to take a bucket offline/online.

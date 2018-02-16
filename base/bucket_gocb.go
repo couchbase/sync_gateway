@@ -1101,12 +1101,21 @@ func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uin
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		// If the body doesn't exist, we need to set the AccessDelete flag to mutate the xattr.  If the body exists (and we're trying to delete it), revert
-		// to SubdocDocFlagNone
-		mutateFlag := gocb.SubdocDocFlagAccessDeleted
+
+		var mutateFlag gocb.SubdocDocFlag
 		if deleteBody {
+			// Since the body exists, we don't need to set a SubdocDocFlag
 			mutateFlag = gocb.SubdocDocFlagNone
+		} else {
+			if cas == 0 {
+				// If the doc doesn't exist, set SubdocDocFlagMkDoc to allow us to write the xattr
+				mutateFlag = gocb.SubdocDocFlagMkDoc
+			} else {
+				// Since the body _may_ not exist, we need to set SubdocDocFlagAccessDeleted
+				mutateFlag = gocb.SubdocDocFlagAccessDeleted
+			}
 		}
+
 		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), exp).
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr

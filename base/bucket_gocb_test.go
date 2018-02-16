@@ -1377,11 +1377,12 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 		assertTrue(t, verifyDocDeletedXattrExists(bucket, key, xattrName), fmt.Sprintf("Expected doc %s to be deleted", key))
 	}
 
-	// Now attempt to delete key4 (NoDocNoXattr), which is expected to return a Key Not Found error
+	// Now attempt to tombstone key4 (NoDocNoXattr), should not return an error (per SG #3307).  Should save xattr metadata.
 	log.Printf("Deleting key: %v", key4)
 	_, errDelete := bucket.UpdateXattr(key4, xattrName, 0, uint64(0), &updatedXattrVal, false)
-	assertTrue(t, bucket.IsKeyNotFoundError(errDelete), "Exepcted keynotfound error")
-	assertTrue(t, verifyDocAndXattrDeleted(bucket, key4, xattrName), "Expected doc to be deleted")
+	assertNoError(t, errDelete, "Unexpected error tombstoning non-existent doc")
+	assertTrue(t, verifyDocDeletedXattrExists(bucket, key4, xattrName), "Expected doc to be deleted, but xattrs to exist")
+
 }
 
 // Validates deletion of doc + xattr in a matrix of various possible previous states of the document.
