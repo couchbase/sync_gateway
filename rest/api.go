@@ -64,20 +64,56 @@ func (h *handler) handleVacuum() error {
 }
 
 func (h *handler) handleFlush() error {
-	if bucket, ok := h.db.Bucket.(sgbucket.DeleteableBucket); ok {
+
+	if _, ok := h.db.Bucket.(sgbucket.DeleteableBucket); ok {
+
 		name := h.db.Name
 		config := h.server.GetDatabaseConfig(name)
+
+		// This needs to first call RemoveDatabase since flushing the bucket under Sync Gateway might cause issues.
 		h.server.RemoveDatabase(name)
-		err := bucket.CloseAndDelete()
-		_, err2 := h.server.AddDatabaseFromConfig(config)
-		if err == nil {
-			err = err2
+
+		// Create a bucket connection spec from the database config
+		spec, err := GetBucketSpec(config)
+		if err != nil {
+			return err
 		}
-		return err
+
+		// Manually re-open a temporary bucket connection just for flushing purposes
+		tempBucketForFlush, err := db.ConnectToBucket(spec, nil)
+		if err != nil {
+			return err
+		}
+
+		// Flush the bucket (assuming it conforms to sgbucket.DeleteableBucket interface
+		if tempBucketForFlush, ok := tempBucketForFlush.(sgbucket.DeleteableBucket); ok {
+
+			// Flush
+			err := tempBucketForFlush.CloseAndDelete()
+			if err != nil {
+				return err
+			}
+
+		}
+
+		// Close the temporary connection to the bucket that was just for purposes of flushing it
+		tempBucketForFlush.Close()
+
+		 // Re-open database and add to Sync Gateway
+		_, err2 := h.server.AddDatabaseFromConfig(config)
+		if err2 != nil {
+			return err2
+		}
+
 	} else {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket does not support flush")
 	}
+
+	return nil
 }
+
+
+
 
 func (h *handler) handleResync() error {
 

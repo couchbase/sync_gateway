@@ -292,12 +292,53 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	return sc._getOrAddDatabaseFromConfig(config, useExisting)
 }
 
+
+func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
+
+	server := "http://localhost:8091"
+	if config.Server != nil {
+		server = *config.Server
+	}
+
+	pool := "default"
+	if config.Pool != nil {
+		pool = *config.Pool
+	}
+
+	bucketName := config.Name
+	if config.Bucket != nil {
+		bucketName = *config.Bucket
+	}
+
+	feedType := strings.ToLower(config.FeedType)
+
+	couchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket)
+
+	var viewQueryTimeoutSecs *uint32
+	if config.ViewQueryTimeoutSecs != nil {
+		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
+	}
+
+	// Connect to the bucket and add the database:
+	spec = base.BucketSpec{
+		Server:               server,
+		PoolName:             pool,
+		BucketName:           bucketName,
+		FeedType:             feedType,
+		Auth:                 config,
+		CouchbaseDriver:      couchbaseDriver,
+		UseXattrs:            config.UseXattrs(),
+		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
+	}
+
+
+	return spec, nil
+}
+
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
 func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
-
-	var viewQueryTimeoutSecs *uint32
 
 	server := "http://localhost:8091"
 	pool := "default"
@@ -316,10 +357,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	dbName := config.Name
 	if dbName == "" {
 		dbName = bucketName
-	}
-
-	if config.ViewQueryTimeoutSecs != nil {
-		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
 	if config.OldRevExpirySeconds != nil && *config.OldRevExpirySeconds >= 0 {
@@ -364,22 +401,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter)
 	}
 
-	feedType := strings.ToLower(config.FeedType)
-
-	couchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket)
-
-	// Connect to the bucket and add the database:
-	spec := base.BucketSpec{
-		Server:               server,
-		PoolName:             pool,
-		BucketName:           bucketName,
-		FeedType:             feedType,
-		Auth:                 config,
-		CouchbaseDriver:      couchbaseDriver,
-		UseXattrs:            config.UseXattrs(),
-		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
-	}
-
 	// Set cache properties, if present
 	cacheOptions := db.CacheOptions{}
 	if config.CacheConfig != nil {
@@ -407,6 +428,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheAge) * time.Second
 		}
 
+	}
+
+	// Connect to the bucket and add the database:
+	spec, err := GetBucketSpec(config)
+	if err != nil {
+		return nil, err
 	}
 
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {

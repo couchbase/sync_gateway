@@ -564,8 +564,6 @@ func NewBlipTester() (*BlipTester, error) {
 // Create a BlipTester using the given spec
 func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
-	EnableBlipSyncLogs()
-
 	bt := &BlipTester{}
 
 	if spec.restTester != nil {
@@ -1051,13 +1049,25 @@ func (e ExpectedChange) Equals(change []interface{}) error {
 
 // SubscribeToChanges
 
-func EnableBlipSyncLogs() {
+var BlipSyncLogKeys = []string{
+	"HTTP",
+	"HTTP+",
+	"Sync",
+	"Sync+",
+	}
 
-	base.EnableLogKey("HTTP")
-	base.EnableLogKey("HTTP+")
-	base.EnableLogKey("Sync")
-	base.EnableLogKey("Sync+")
+func EnableBlipSyncLogs() {
+	for _, logKey := range BlipSyncLogKeys {
+		base.EnableLogKey(logKey)
+	}
 }
+
+func DisableBlipSyncLogs() {
+	for _, logKey := range BlipSyncLogKeys {
+		base.DisableLogKey(logKey)
+	}
+}
+
 
 // Model "CouchDB" style REST documents which define the following special fields:
 //
