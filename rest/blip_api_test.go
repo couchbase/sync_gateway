@@ -251,6 +251,8 @@ func TestContinuousChangesSubscription(t *testing.T) {
 // Validate we get the expected updates and changes ends
 func TestBlipOneShotChangesSubscription(t *testing.T) {
 
+	base.EnableLogKey("Cache")
+	base.EnableLogKey("Cache+")
 	bt, err := NewBlipTester()
 	assertNoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -320,7 +322,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	// Increment waitgroup to account for the expected 'caught up' nil changes entry.
 	receivedChangesWg.Add(1)
 
-	// Add a few batches worth of documents
+	// Add documents
 	for docID, _ := range docIdsReceived {
 		//// Add a change: Send an unsolicited doc revision in a rev request
 		_, _, revResponse, err := bt.SendRev(
