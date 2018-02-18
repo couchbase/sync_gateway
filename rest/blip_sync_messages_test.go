@@ -70,14 +70,15 @@ func TestSubChangesSince(t *testing.T) {
 
 	zeroSinceVal := db.SequenceID{}
 
-	subChangesParams := newSubChangesParams(
+	subChangesParams, err := newSubChangesParams(
 		rq,
 		StdIoLogger{},
 		zeroSinceVal,
 		testDb.ParseSequenceID,
 	)
-	seqId, err := subChangesParams.since()
 	assert.True(t, err == nil)
+
+	seqId := subChangesParams.since()
 	assert.True(t, seqId.SeqType == db.IntSequenceType)
 	assert.True(t, seqId.Seq == 1)
 

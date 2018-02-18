@@ -820,3 +820,106 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
 	db.changeCache.getChannelCache(feedHandler.channelName).ReleaseLateSequenceClient(feedHandler.lastSequence)
 }
+
+/*
+ * Generate the changes for a specific list of doc ID's, only documents accesible to the user will generate
+ * results.  Only supports non-continuous changes, closes buffered channel before returning.
+ */
+func (db *Database) DocIdChangesFeed(userChannels base.Set, explicitDocIds []string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+
+	// Subroutine that creates a response row for a document:
+	output := make(chan *ChangeEntry, len(explicitDocIds))
+	rowMap := make(map[uint64]*ChangeEntry)
+
+	createChangeEntry := func(docid string) *ChangeEntry {
+		row := &ChangeEntry{ID: docid}
+
+		// Fetch the document body and other metadata that lives with it:
+		populatedDoc, body, err := db.GetDocAndActiveRev(docid)
+		if err != nil {
+			base.LogTo("Changes", "Unable to get changes for docID %v, caused by %v", docid, err)
+			return nil
+		}
+
+		if populatedDoc.Sequence <= options.Since.Seq {
+			return nil
+		}
+
+		if body == nil {
+			return nil
+		}
+
+		changes := make([]ChangeRev, 1)
+		changes[0] = ChangeRev{"rev": body["_rev"].(string)}
+		row.Changes = changes
+		row.Seq = SequenceID{Seq: populatedDoc.Sequence}
+		row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
+
+		var removedChannels []string
+
+		if deleted, _ := body["_deleted"].(bool); deleted {
+			row.Deleted = true
+		}
+
+		userCanSeeDocChannel := false
+
+		if db.user == nil || db.user.Channels().Contains(channels.UserStarChannel) {
+			userCanSeeDocChannel = true
+		} else if len(populatedDoc.Channels) > 0 {
+			//Do special _removed/_deleted processing
+			for channel, removal := range populatedDoc.Channels {
+				//Doc is tagged with channel or was removed at a sequence later that since sequence
+				if removal == nil || removal.Seq > options.Since.Seq {
+					//if the current user has access to this channel
+					if db.user.CanSeeChannel(channel) {
+						userCanSeeDocChannel = true
+						//If the doc has been removed
+						if removal != nil {
+							removedChannels = append(removedChannels, channel)
+							if removal.Deleted {
+								row.Deleted = true
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if !userCanSeeDocChannel {
+			return nil
+		}
+
+		row.Removed = base.SetFromArray(removedChannels)
+		if options.IncludeDocs || options.Conflicts {
+			db.AddDocInstanceToChangeEntry(row, populatedDoc, options)
+		}
+
+		return row
+	}
+
+	// Sort results by sequence
+	var sequences base.SortedUint64Slice
+	for _, docID := range explicitDocIds {
+		row := createChangeEntry(docID)
+		if row != nil {
+			rowMap[row.Seq.Seq] = row
+			sequences = append(sequences, row.Seq.Seq)
+		}
+	}
+
+	// Send ChangeEntries sorted by sequenceID
+	sequences.Sort()
+	for _, k := range sequences {
+		output <- rowMap[k]
+		if options.Limit > 0 {
+			options.Limit--
+			if options.Limit == 0 {
+				break
+			}
+		}
+	}
+
+	close(output)
+
+	return output, nil
+}

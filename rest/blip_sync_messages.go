@@ -2,6 +2,7 @@ package rest
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -17,36 +18,69 @@ type SequenceIDParser func(since string) (db.SequenceID, error)
 
 // Helper for handling BLIP subChanges requests.  Supports Stringer() interface to log aspects of the request.
 type subChangesParams struct {
-	rq               *blip.Message    // The underlying BLIP message
-	logger           base.SGLogger    // A logger object which might encompass more state (eg, blipContext id)
-	zeroSeq          db.SequenceID    // A zero sequence ID with correct subtype (int sequence / channel clock)
-	sequenceIDParser SequenceIDParser // Function which can convert a sequence id string to a db.SequenceID
+	rq      *blip.Message // The underlying BLIP message
+	_since  db.SequenceID // Since value on the incoming request
+	_docIDs []string      // Document ID filter specified on the incoming request
+}
+
+type subChangesBody struct {
+	docIDs []string `json:"docIDs"`
 }
 
 // Create a new subChanges helper
-func newSubChangesParams(rq *blip.Message, logger base.SGLogger, zeroSeq db.SequenceID, sequenceIDParser SequenceIDParser) *subChangesParams {
-	return &subChangesParams{
-		rq:               rq,
-		logger:           logger,
-		zeroSeq:          zeroSeq,
-		sequenceIDParser: sequenceIDParser,
+func newSubChangesParams(rq *blip.Message, logger base.SGLogger, zeroSeq db.SequenceID, sequenceIDParser SequenceIDParser) (*subChangesParams, error) {
+
+	params := &subChangesParams{
+		rq: rq,
 	}
-}
 
-func (s *subChangesParams) since() (db.SequenceID, error) {
-
-	// Depending on the db sequence type, use correct zero sequence for since value
-	sinceSequenceId := s.zeroSeq
-
-	if sinceStr, found := s.rq.Properties["since"]; found {
+	// Determine incoming since and docIDs once, since there is some overhead associated with their calculation
+	sinceSequenceId := zeroSeq
+	if sinceStr, found := rq.Properties["since"]; found {
 		var err error
-		if sinceSequenceId, err = s.sequenceIDParser(base.ConvertJSONString(sinceStr)); err != nil {
-			s.logger.LogTo("Sync", "%s: Invalid sequence ID in 'since': %s", s.rq, sinceStr)
-			return db.SequenceID{}, err
+		if sinceSequenceId, err = sequenceIDParser(base.ConvertJSONString(sinceStr)); err != nil {
+			logger.LogTo("Sync", "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
+			return params, err
 		}
 	}
+	params._since = sinceSequenceId
 
-	return sinceSequenceId, nil
+	// rq.BodyReader() returns an EOF for a non-existent body, so using rq.Body() here
+	docIDs, err := readDocIDsFromRequest(rq)
+	if err != nil {
+		logger.LogTo("Sync", "%s: Error reading doc IDs on subChanges request: %s", rq, err)
+		return params, err
+	}
+	params._docIDs = docIDs
+
+	return params, nil
+}
+
+func (s *subChangesParams) since() db.SequenceID {
+	return s._since
+}
+
+func (s *subChangesParams) docIDs() []string {
+	return s._docIDs
+}
+
+func readDocIDsFromRequest(rq *blip.Message) (docIDs []string, err error) {
+	// Get Body from request.  Not using BodyReader(), to avoid EOF on empty body
+	rawBody, err := rq.Body()
+	if err != nil {
+		return nil, err
+	}
+	// If there's a non-empty body, unmarshal to get the docIDs
+	if len(rawBody) > 0 {
+		var body subChangesBody
+		unmarshalErr := json.Unmarshal(rawBody, &body)
+		if unmarshalErr != nil {
+			return nil, err
+		} else {
+			docIDs = body.docIDs
+		}
+	}
+	return docIDs, err
 
 }
 
@@ -88,13 +122,7 @@ func (s *subChangesParams) channelsExpandedSet() (resultChannels base.Set, err e
 func (s *subChangesParams) String() string {
 
 	buffer := bytes.NewBufferString("")
-
-	since, err := s.since()
-	if err != nil {
-		base.Warn("Error discovering since value from subchanges.  Err: %v", err)
-	} else {
-		buffer.WriteString(fmt.Sprintf("Since:%v ", since))
-	}
+	buffer.WriteString(fmt.Sprintf("Since:%v ", s.since()))
 
 	continuous := s.continuous()
 	if continuous {
@@ -120,6 +148,9 @@ func (s *subChangesParams) String() string {
 		buffer.WriteString(fmt.Sprintf("BatchSize:%v ", s.batchSize()))
 	}
 
+	if len(s.docIDs()) > 0 {
+		buffer.WriteString(fmt.Sprintf("DocIDs:%v ", s.docIDs()))
+	}
 	return buffer.String()
 
 }

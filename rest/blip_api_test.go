@@ -134,7 +134,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	receivedChangesRequestWg.Add(1)
 
 	// Wait until we got the expected callback on the "changes" profile handler
-	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*15)
+	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*5)
 	assertNoError(t, timeoutErr, "Timed out waiting")
 	log.Printf("Starting sleep")
 	time.Sleep(3 * time.Second)
@@ -239,7 +239,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 	// Wait until all expected changes are received by change handler
 	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*60)
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*5)
 	assertNoError(t, timeoutErr, "Timed out waiting for all changes.")
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches

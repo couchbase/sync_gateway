@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -288,7 +287,7 @@ func (h *handler) handleChanges() error {
 	switch feed {
 	case "normal", "":
 		if filter == "_doc_ids" {
-			err, forceClose = h.sendChangesForDocIds(userChannels, docIdsArray, options)
+			err, forceClose = h.sendSimpleChanges(userChannels, options, docIdsArray)
 		} else {
 			err, forceClose = h.sendSimpleChanges(userChannels, options, nil)
 		}
@@ -320,7 +319,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	var feed <-chan *db.ChangeEntry
 	var err error
 	if len(docids) > 0 {
-		feed, err = h.DocIdChangesFeed(channels, docids, options)
+		feed, err = h.db.DocIdChangesFeed(channels, docids, options)
 	} else {
 		feed, err = h.db.MultiChangesFeed(channels, options)
 	}
@@ -413,109 +412,6 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	h.response.Write([]byte(s))
 	logStatus(http.StatusOK, message)
 	return nil, forceClose
-}
-
-/*
- * Generate the changes for a specific list of doc ID's, only documents accesible to the user will generate
- * results.  Return as buffered channel, to reuse handling in sendSimpleChanges
- */
-func (h *handler) DocIdChangesFeed(userChannels base.Set, explicitDocIds []string, options db.ChangesOptions) (<-chan *db.ChangeEntry, error) {
-
-	// Subroutine that creates a response row for a document:
-	output := make(chan *db.ChangeEntry, len(explicitDocIds))
-	rowMap := make(map[uint64]*db.ChangeEntry)
-
-	createChangeEntry := func(docid string) *db.ChangeEntry {
-		row := &db.ChangeEntry{ID: docid}
-
-		// Fetch the document body and other metadata that lives with it:
-		populatedDoc, body, err := h.db.GetDocAndActiveRev(docid)
-		if err != nil {
-			base.LogTo("Changes", "Unable to get changes for docID %v, caused by %v", docid, err)
-			return nil
-		}
-
-		if populatedDoc.Sequence <= options.Since.Seq {
-			return nil
-		}
-
-		if body == nil {
-			return nil
-		}
-
-		changes := make([]db.ChangeRev, 1)
-		changes[0] = db.ChangeRev{"rev": body["_rev"].(string)}
-		row.Changes = changes
-		row.Seq = db.SequenceID{Seq: populatedDoc.Sequence}
-		row.SetBranched((populatedDoc.Flags & ch.Branched) != 0)
-
-		var removedChannels []string
-
-		if deleted, _ := body["_deleted"].(bool); deleted {
-			row.Deleted = true
-		}
-
-		userCanSeeDocChannel := false
-
-		if h.user == nil || h.user.Channels().Contains(ch.UserStarChannel) {
-			userCanSeeDocChannel = true
-		} else if len(populatedDoc.Channels) > 0 {
-			//Do special _removed/_deleted processing
-			for channel, removal := range populatedDoc.Channels {
-				//Doc is tagged with channel or was removed at a sequence later that since sequence
-				if removal == nil || removal.Seq > options.Since.Seq {
-					//if the current user has access to this channel
-					if h.user.CanSeeChannel(channel) {
-						userCanSeeDocChannel = true
-						//If the doc has been removed
-						if removal != nil {
-							removedChannels = append(removedChannels, channel)
-							if removal.Deleted {
-								row.Deleted = true
-							}
-						}
-					}
-				}
-			}
-		}
-
-		if !userCanSeeDocChannel {
-			return nil
-		}
-
-		row.Removed = base.SetFromArray(removedChannels)
-		if options.IncludeDocs || options.Conflicts {
-			h.db.AddDocInstanceToChangeEntry(row, populatedDoc, options)
-		}
-
-		return row
-	}
-
-	// Sort results by sequence
-	var sequences base.SortedUint64Slice
-	for _, docID := range explicitDocIds {
-		row := createChangeEntry(docID)
-		if row != nil {
-			rowMap[row.Seq.Seq] = row
-			sequences = append(sequences, row.Seq.Seq)
-		}
-	}
-
-	// Send ChangeEntries sorted by sequenceID
-	sequences.Sort()
-	for _, k := range sequences {
-		output <- rowMap[k]
-		if options.Limit > 0 {
-			options.Limit--
-			if options.Limit == 0 {
-				break
-			}
-		}
-	}
-
-	close(output)
-
-	return output, nil
 }
 
 /*
