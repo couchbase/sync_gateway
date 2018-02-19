@@ -319,7 +319,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	var feed <-chan *db.ChangeEntry
 	var err error
 	if len(docids) > 0 {
-		feed, err = h.db.DocIdChangesFeed(channels, docids, options)
+		feed, err = h.db.DocIDChangesFeed(channels, docids, options)
 	} else {
 		feed, err = h.db.MultiChangesFeed(channels, options)
 	}
@@ -539,17 +539,17 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
 	options.Continuous = true
-	err, forceClose := generateChanges(h.db, inChannels, options, h, send)
+	err, forceClose := generateChanges(h.db, inChannels, options, nil, h, send)
 	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
 	return err, forceClose
 }
 
 // Used by BLIP connections for changes.  Supports both one-shot and continuous changes.
-func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
+func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, docIDFilter []string, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	err, forceClose = generateChanges(database, inChannels, options, nil, send)
+	err, forceClose = generateChanges(database, inChannels, options, docIDFilter, nil, send)
 
 	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
 	// is done by MultiChangesFeed prior to going into Wait mode)
@@ -562,7 +562,7 @@ func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options
 // Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
 // This is called from BLIP connections as well as HTTP handlers, which is why this is not a
 // method on `handler`. (In the BLIP case the `h` parameter will be nil.)
-func generateChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, h *handler, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
+func generateChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, docIDFilter []string, h *handler, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -618,7 +618,11 @@ loop:
 				forceClose = true
 				break loop
 			}
-			feed, err = database.MultiChangesFeed(inChannels, options)
+			if len(docIDFilter) > 0 {
+				feed, err = database.DocIDChangesFeed(inChannels, docIDFilter, options)
+			} else {
+				feed, err = database.MultiChangesFeed(inChannels, options)
+			}
 			if err != nil || feed == nil {
 				return err, forceClose
 			}

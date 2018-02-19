@@ -25,6 +25,7 @@ const (
 
 	// Blip default vals
 	BlipDefaultBatchSize = uint64(200)
+	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
 )
 
 // Represents one BLIP connection (socket) opened by a client.
@@ -247,6 +248,10 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
 
+	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
+		return base.HTTPErrorf(http.StatusBadRequest, "DocIDs filter not supported for continuous subChanges")
+	}
+
 	bh.logEndpointEntry(rq.Profile(), subChangesParams.String())
 
 	// TODO: Do we need to store the changes-specific parameters on the blip sync context?  Seems like they only need to be passed in to sendChanges
@@ -313,7 +318,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		}
 	}
 
-	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, func(changes []*db.ChangeEntry) error {
+	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
 		bh.LogTo("Sync+", "    Sending %d changes. User:%s", len(changes), bh.effectiveUsername)
 		for _, change := range changes {
 

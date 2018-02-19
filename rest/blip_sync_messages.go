@@ -24,7 +24,7 @@ type subChangesParams struct {
 }
 
 type subChangesBody struct {
-	docIDs []string `json:"docIDs"`
+	DocIDs []string `json:"docIDs"`
 }
 
 // Create a new subChanges helper
@@ -70,6 +70,7 @@ func readDocIDsFromRequest(rq *blip.Message) (docIDs []string, err error) {
 	if err != nil {
 		return nil, err
 	}
+
 	// If there's a non-empty body, unmarshal to get the docIDs
 	if len(rawBody) > 0 {
 		var body subChangesBody
@@ -77,7 +78,7 @@ func readDocIDsFromRequest(rq *blip.Message) (docIDs []string, err error) {
 		if unmarshalErr != nil {
 			return nil, err
 		} else {
-			docIDs = body.docIDs
+			docIDs = body.DocIDs
 		}
 	}
 	return docIDs, err
@@ -85,7 +86,7 @@ func readDocIDsFromRequest(rq *blip.Message) (docIDs []string, err error) {
 }
 
 func (s *subChangesParams) batchSize() int {
-	return int(getRestrictedIntFromString(s.rq.Properties["batch"], BlipDefaultBatchSize, 10, math.MaxUint64, true))
+	return int(getRestrictedIntFromString(s.rq.Properties["batch"], BlipDefaultBatchSize, BlipMinimumBatchSize, math.MaxUint64, true))
 }
 
 func (s *subChangesParams) continuous() bool {
