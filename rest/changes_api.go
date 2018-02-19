@@ -531,15 +531,32 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 // It will call send(nil) to notify that it's caught up and waiting for new changes, or as
 // a periodic heartbeat while waiting.
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
-	err, forceClose := generateContinuousChanges(h.db, inChannels, options, h, send)
+	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
+	options.Continuous = true
+	err, forceClose := generateChanges(h.db, inChannels, options, h, send)
 	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
+	return err, forceClose
+}
+
+// Used by BLIP connections for changes.  Supports both one-shot and continuous changes.
+func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
+
+	// Store one-shot here to protect
+	isOneShot := !options.Continuous
+	err, forceClose = generateChanges(database, inChannels, options, nil, send)
+
+	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
+	// is done by MultiChangesFeed prior to going into Wait mode)
+	if isOneShot {
+		send(nil)
+	}
 	return err, forceClose
 }
 
 // Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
 // This is called from BLIP connections as well as HTTP handlers, which is why this is not a
 // method on `handler`. (In the BLIP case the `h` parameter will be nil.)
-func generateContinuousChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, h *handler, send func([]*db.ChangeEntry) error) (error, bool) {
+func generateChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, h *handler, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -557,12 +574,13 @@ func generateContinuousChanges(database *db.Database, inChannels base.Set, optio
 		}()
 	}
 
-	options.Wait = true       // we want the feed channel to wait for changes
-	options.Continuous = true // and to keep sending changes indefinitely
+	if options.Continuous {
+		options.Wait = true // we want the feed channel to wait for changes
+	}
+
 	var lastSeq db.SequenceID
 	var feed <-chan *db.ChangeEntry
 	var timeout <-chan time.Time
-	var err error
 
 	var closeNotify <-chan bool
 	if h != nil {
@@ -574,10 +592,17 @@ func generateContinuousChanges(database *db.Database, inChannels base.Set, optio
 		}
 	}
 
-	forceClose := false
+	// feedStarted identifies whether at least one MultiChangesFeed has been started.  Used to identify when a one-shot changes is done.
+	feedStarted := false
 
 loop:
 	for {
+		// If the feed has already been started once and closed, and this isn't a continuous
+		// replication, we're done.
+		if feedStarted && feed == nil && !options.Continuous {
+			break loop
+		}
+
 		if feed == nil {
 			// Refresh the feed of all current changes:
 			if lastSeq.IsNonZero() { // start after end of last feed
@@ -591,6 +616,7 @@ loop:
 			if err != nil || feed == nil {
 				return err, forceClose
 			}
+			feedStarted = true
 		}
 
 		if timeoutInterval > 0 && timer == nil {

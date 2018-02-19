@@ -2694,6 +2694,10 @@ func TestStarAccess(t *testing.T) {
 	assert.Equals(t, allDocsResult.Rows[1].ID, "doc3")
 	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"!"})
 
+	// Ensure docs have been processed before issuing changes requests
+	expectedSeq := uint64(6)
+	rt.WaitForSequence(expectedSeq)
+
 	// GET /db/_changes
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())

@@ -1041,7 +1041,6 @@ func TestImportBinaryDoc(t *testing.T) {
 func TestDcpBackfill(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
-	base.EnableLogKey("DCP")
 
 	rt := RestTester{}
 
