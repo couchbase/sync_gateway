@@ -16,6 +16,7 @@ INSTALL_DIR="$(dirname "${SCRIPT_DIR}")"
 SRCCFGDIR=${INSTALL_DIR}/examples
 SRCCFG=serviceconfig.json
 RUNAS_TEMPLATE_VAR=sync_gateway
+PIDFILE_TEMPLATE_VAR=/var/run/sync-gateway.pid
 RUNBASE_TEMPLATE_VAR=/home/sync_gateway
 GATEWAY_TEMPLATE_VAR=${INSTALL_DIR}/bin/sync_gateway
 CONFIG_TEMPLATE_VAR=${RUNBASE_TEMPLATE_VAR}/sync_gateway.json

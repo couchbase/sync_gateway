@@ -443,6 +443,12 @@ func EnableLogKey(key string) {
 	LogKeys[key] = true
 }
 
+func DisableLogKey(key string) {
+	logLock.Lock()
+	defer logLock.Unlock()
+	LogKeys[key] = false
+}
+
 func LogEnabled(key string) bool {
 	logLock.RLock()
 	defer logLock.RUnlock()

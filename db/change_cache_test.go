@@ -282,6 +282,14 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	base.EnableLogKey("Changes")
 	base.EnableLogKey("Changes+")
 	base.EnableLogKey("DCP")
+	defer func() {
+		base.DisableLogKey("Cache")
+		base.DisableLogKey("Cache+")
+		base.DisableLogKey("Changes")
+		base.DisableLogKey("Changes+")
+		base.DisableLogKey("DCP")
+	}()
+
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()

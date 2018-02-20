@@ -34,6 +34,11 @@ func TestFixJSONNumbers(t *testing.T) {
 		map[string]interface{}{"foo": int64(123456)})
 }
 
+func TestConvertJSONString(t *testing.T) {
+	assert.Equals(t, ConvertJSONString(`"blah"`), "blah")
+	assert.Equals(t, ConvertJSONString("blah"), "blah")
+}
+
 func TestBackQuotedStrings(t *testing.T) {
 	input := `{"foo": "bar"}`
 	output := ConvertBackQuotedStrings([]byte(input))

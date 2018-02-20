@@ -87,31 +87,35 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 	return sc
 }
 
+// PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
+	// Introduce a minor delay if there are any replications
+	// (sc.startReplicators() might rely on SG being fully started)
+	if len(sc.config.Replications) > 0 {
+		time.Sleep(time.Second)
+	}
+
 	sc.startReplicators()
 }
 
+// startReplicators will start up any replicators for the ServerContext
 func (sc *ServerContext) startReplicators() {
 
-	if sc.config.Replications != nil {
+	for _, replicationConfig := range sc.config.Replications {
 
-		for _, replicationConfig := range sc.config.Replications {
+		params, _, _, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
+		if err != nil {
+			base.LogError(err)
+			continue
+		}
 
-			params, _, _, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
+		// Force one-shot replications to run Async
+		// to avoid blocking server startup
+		params.Async = true
 
-			if err != nil {
-				base.LogError(err)
-				continue
-			}
-
-			// Force one-shot replications to run Async
-			// to avoid blocking server startup
-			params.Async = true
-
-			// Run single replication, cancel parameter will always be false
-			if _, err := sc.replicator.Replicate(params, false); err != nil {
-				base.Warn("Error starting replication: %v", err)
-			}
+		// Run single replication, cancel parameter will always be false
+		if _, err := sc.replicator.Replicate(params, false); err != nil {
+			base.Warn("Error starting replication: %v", err)
 		}
 
 	}

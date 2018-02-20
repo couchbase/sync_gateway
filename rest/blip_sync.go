@@ -237,7 +237,12 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
-	subChangesParams := newSubChangesParams(rq, bh.blipSyncContext, bh.db.CreateZeroSinceValue(), bh.db.ParseSequenceID)
+	subChangesParams := newSubChangesParams(
+		rq,
+		bh.blipSyncContext,
+		bh.db.CreateZeroSinceValue(),
+		bh.db.ParseSequenceID,
+	)
 	bh.logEndpointEntry(rq.Profile(), subChangesParams.String())
 
 	since, err := subChangesParams.since()
@@ -308,7 +313,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 		}
 	}
 
-	_, forceClose := generateContinuousChanges(bh.db, channelSet, options, nil, func(changes []*db.ChangeEntry) error {
+	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, func(changes []*db.ChangeEntry) error {
 		bh.LogTo("Sync+", "    Sending %d changes. User:%s", len(changes), bh.effectiveUsername)
 		for _, change := range changes {
 
