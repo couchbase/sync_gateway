@@ -12,10 +12,14 @@ import (
 	"log"
 	"net/http"
 	"testing"
+
+	assert "github.com/couchbaselabs/go.assert"
+	"github.com/tleyden/fakehttp"
 )
 
-/* Commented due to https://github.com/couchbase/sync_gateway/issues/1659
 func TestVerifyFacebook(t *testing.T) {
+	// TODO: Disabled due to https://github.com/couchbase/sync_gateway/issues/1659
+	t.Skip("WARNING: TEST DISABLED")
 
 	testServer := fakehttp.NewHTTPServer()
 	testServer.Start()
