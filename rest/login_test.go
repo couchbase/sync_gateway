@@ -9,8 +9,10 @@
 package rest
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"testing"
 
 	assert "github.com/couchbaselabs/go.assert"
@@ -42,13 +44,18 @@ func TestVerifyFacebook(t *testing.T) {
 	assert.Equals(t, facebookResponse.Email, "alice@dot.com")
 
 }
-*/
 
 // This test exists because there have been problems with builds of Go being unable to make HTTPS
 // connections due to the TLS package missing the Cgo bits needed to load system root certs.
 func TestVerifyHTTPSSupport(t *testing.T) {
-	_, err := http.Get("https://google.com")
+	resp, err := http.Get("https://google.com")
 	if err != nil {
-		log.Panicf("Error making HTTPS connection: %v", err)
+		// Skip test if dial tcp fails with no such host.
+		// This is to allow tests to be run offline/without third-party dependencies.
+		if strings.Contains(err.Error(), "no such host") {
+			t.Skipf("WARNING: Host could not be reached: %s", err)
+		}
+		t.Errorf("Error making HTTPS connection: %v", err)
 	}
+	defer resp.Body.Close()
 }

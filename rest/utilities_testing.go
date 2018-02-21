@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -452,6 +453,12 @@ func requestByUser(method, resource, body, username string) *http.Request {
 }
 
 func assertStatus(t *testing.T, response *TestResponse, expectedStatus int) {
+	// Skip test if dial tcp fails with no such host.
+	// This is to allow tests to be run offline/without third-party dependencies.
+	if response.Code == http.StatusInternalServerError && strings.Contains(response.Body.String(), "no such host") {
+		t.Skipf("WARNING: Host could not be reached: %s", response.Body.String())
+	}
+
 	if response.Code != expectedStatus {
 		debug.PrintStack()
 		t.Fatalf("Response status %d (expected %d) for %s <%s> : %s",
