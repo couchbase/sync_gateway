@@ -3311,12 +3311,15 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 	log.Printf("value: %v", value)
 }
 
-
 // Repro attempt for SG #3307.  Before fix for #3307, fails when SG_TEST_USE_XATTRS=true and run against an actual couchbase server
-func TestWriteTombstonedDoc(t *testing.T) {
+func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
 
 	// This doesn't need to specify XATTR's because that is controlled by the test
@@ -3358,7 +3361,6 @@ func TestWriteTombstonedDoc(t *testing.T) {
 		}
 	}
 
-
 	// Fetch the xattr and make sure it contains the above value
 	baseBucket := rt.GetDatabase().Bucket
 	gocbBucket := baseBucket.(*base.CouchbaseBucketGoCB)
@@ -3368,10 +3370,7 @@ func TestWriteTombstonedDoc(t *testing.T) {
 	assertNoError(t, err, "Unexpected Error")
 	assert.True(t, retrievedXattr["rev"].(string) == "2-466a1fab90a810dc0a63565b70680e4e")
 
-
 }
-
-
 
 // Reproduces https://github.com/couchbase/sync_gateway/issues/916.  The test-only RestartListener operation used to simulate a
 // SG restart isn't race-safe, so disabling the test for now.  Should be possible to reinstate this as a proper unit test
