@@ -1126,7 +1126,12 @@ func TestAccessFunction(t *testing.T) {
 	assert.DeepEquals(t, user.InheritedChannels(), expected)
 }
 
-func CouchbaseTestAccessFunctionWithVbuckets(t *testing.T) {
+func TestAccessFunctionWithVbuckets(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test only works with a Couchbase server")
+	}
+
 	//base.LogKeys["CRUD"] = true
 	//base.LogKeys["Access"] = true
 
@@ -1480,7 +1485,11 @@ func TestChannelView(t *testing.T) {
 
 //////// XATTR specific tests.  These tests current require setting DefaultUseXattrs=true, and must be run against a Couchbase bucket
 
-func CouchbaseTestConcurrentImport(t *testing.T) {
+func TestConcurrentImport(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("Test only works with a Couchbase server and XATTRS")
+	}
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
