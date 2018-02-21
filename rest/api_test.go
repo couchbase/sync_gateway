@@ -465,6 +465,13 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 	assertStatus(t, response, 401)
 
 	response = rt.SendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
+
+	// Skip test if dial tcp fails with no such host.
+	// This is to allow tests to be run offline/without third-party dependencies.
+	if response.Code == http.StatusInternalServerError && strings.Contains(response.Body.String(), "no such host") {
+		t.Skipf("WARNING: Host could not be reached: %s", response.Body.String())
+	}
+
 	assertStatus(t, response, 401)
 }
 
