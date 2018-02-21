@@ -28,7 +28,7 @@ const (
 
 	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
 
-	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore)
+	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
 	BlipCBMobileReplication = "CBMobile_2"
 
 )
