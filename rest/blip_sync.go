@@ -25,6 +25,7 @@ const (
 
 	// Blip default vals
 	BlipDefaultBatchSize = uint64(200)
+	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
 )
 
 // Represents one BLIP connection (socket) opened by a client.
@@ -237,19 +238,23 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
-	subChangesParams := newSubChangesParams(
+	subChangesParams, err := newSubChangesParams(
 		rq,
 		bh.blipSyncContext,
 		bh.db.CreateZeroSinceValue(),
 		bh.db.ParseSequenceID,
 	)
-	bh.logEndpointEntry(rq.Profile(), subChangesParams.String())
-
-	since, err := subChangesParams.since()
 	if err != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "Invalid sequence ID in 'since'")
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
 
+	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
+		return base.HTTPErrorf(http.StatusBadRequest, "DocIDs filter not supported for continuous subChanges")
+	}
+
+	bh.logEndpointEntry(rq.Profile(), subChangesParams.String())
+
+	// TODO: Do we need to store the changes-specific parameters on the blip sync context?  Seems like they only need to be passed in to sendChanges
 	bh.batchSize = subChangesParams.batchSize()
 	bh.continuous = subChangesParams.continuous()
 	bh.activeOnly = subChangesParams.activeOnly()
@@ -275,7 +280,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		defer base.StatsExpvars.Add("subChanges_active", -1)
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
-		bh.sendChanges(rq.Sender, since)
+		bh.sendChanges(rq.Sender, subChangesParams)
 		bh.LogTo("SyncMsg+", "#%03d: Type:%s   --> Time:%v User:%s ", bh.serialNumber, rq.Profile(), time.Since(startTime), bh.effectiveUsername)
 	}()
 
@@ -283,16 +288,16 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 // Sends all changes since the given sequence
-func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
+func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warn("[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
-	bh.LogTo("Sync", "Sending changes since %v. User:%s", since, bh.effectiveUsername)
+	bh.LogTo("Sync", "Sending changes since %v. User:%s", params.since(), bh.effectiveUsername)
 	options := db.ChangesOptions{
-		Since:      since,
+		Since:      params.since(),
 		Conflicts:  true,
 		Continuous: bh.continuous,
 		ActiveOnly: bh.activeOnly,
@@ -313,7 +318,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, since db.SequenceID) {
 		}
 	}
 
-	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, func(changes []*db.ChangeEntry) error {
+	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
 		bh.LogTo("Sync+", "    Sending %d changes. User:%s", len(changes), bh.effectiveUsername)
 		for _, change := range changes {
 
@@ -420,6 +425,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 	var changeList [][]interface{}
 	if err := rq.ReadJSONBody(&changeList); err != nil {
+		base.Warn("Handle changes got error: %v", err)
 		return err
 	}
 

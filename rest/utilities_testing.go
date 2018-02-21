@@ -552,6 +552,7 @@ type BlipTester struct {
 
 // Close the bliptester
 func (bt BlipTester) Close() {
+	defer DisableBlipSyncLogs()
 	bt.restTester.Close()
 }
 
@@ -1049,14 +1050,20 @@ func (e ExpectedChange) Equals(change []interface{}) error {
 	return nil
 }
 
-// SubscribeToChanges
-
 func EnableBlipSyncLogs() {
-
 	base.EnableLogKey("HTTP")
 	base.EnableLogKey("HTTP+")
 	base.EnableLogKey("Sync")
 	base.EnableLogKey("Sync+")
+	base.EnableLogKey("SyncMsg")
+}
+
+func DisableBlipSyncLogs() {
+	base.DisableLogKey("HTTP")
+	base.DisableLogKey("HTTP+")
+	base.DisableLogKey("Sync")
+	base.DisableLogKey("Sync+")
+	base.DisableLogKey("SyncMsg")
 }
 
 // Model "CouchDB" style REST documents which define the following special fields:
@@ -1166,7 +1173,7 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 
 }
 
-type StdIoLogger struct {}
+type StdIoLogger struct{}
 
 func (s StdIoLogger) LogTo(key string, format string, args ...interface{}) {
 	base.LogTo(key, format, args...)

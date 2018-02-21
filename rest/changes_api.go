@@ -287,13 +287,13 @@ func (h *handler) handleChanges() error {
 	switch feed {
 	case "normal", "":
 		if filter == "_doc_ids" {
-			err, forceClose = h.sendChangesForDocIds(userChannels, docIdsArray, options)
+			err, forceClose = h.sendSimpleChanges(userChannels, options, docIdsArray)
 		} else {
-			err, forceClose = h.sendSimpleChanges(userChannels, options)
+			err, forceClose = h.sendSimpleChanges(userChannels, options, nil)
 		}
 	case "longpoll":
 		options.Wait = true
-		err, forceClose = h.sendSimpleChanges(userChannels, options)
+		err, forceClose = h.sendSimpleChanges(userChannels, options, nil)
 	case "continuous":
 		err, forceClose = h.sendContinuousChangesByHTTP(userChannels, options)
 	case "websocket":
@@ -313,10 +313,16 @@ func (h *handler) handleChanges() error {
 	return err
 }
 
-func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions) (error, bool) {
+func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions, docids []string) (error, bool) {
 	lastSeq := options.Since
 	var first bool = true
-	feed, err := h.db.MultiChangesFeed(channels, options)
+	var feed <-chan *db.ChangeEntry
+	var err error
+	if len(docids) > 0 {
+		feed, err = h.db.DocIDChangesFeed(channels, docids, options)
+	} else {
+		feed, err = h.db.MultiChangesFeed(channels, options)
+	}
 	if err != nil {
 		return err, false
 	}
@@ -408,124 +414,6 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	return nil, forceClose
 }
 
-/*
- * Generate the changes for a specific list of doc ID's, only documents accesible to the user will generate
- * results
- */
-func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []string, options db.ChangesOptions) (error, bool) {
-
-	// Subroutine that creates a response row for a document:
-	first := true
-	var lastSeq uint64 = 0
-	//rowMap := make(map[uint64]*changesRow)
-	rowMap := make(map[uint64]*db.ChangeEntry)
-
-	createRow := func(doc db.IDAndRev) *db.ChangeEntry {
-		row := &db.ChangeEntry{ID: doc.DocID}
-
-		// Fetch the document body and other metadata that lives with it:
-		populatedDoc, body, err := h.db.GetDocAndActiveRev(doc.DocID)
-		if err != nil {
-			base.LogTo("Changes", "Unable to get changes for docID %v, caused by %v", doc.DocID, err)
-			return nil
-		}
-
-		if populatedDoc.Sequence <= options.Since.Seq {
-			return nil
-		}
-
-		if body == nil {
-			return nil
-		}
-
-		changes := make([]db.ChangeRev, 1)
-		changes[0] = db.ChangeRev{"rev": body["_rev"].(string)}
-		row.Changes = changes
-		row.Seq = db.SequenceID{Seq: populatedDoc.Sequence}
-		row.SetBranched((populatedDoc.Flags & ch.Branched) != 0)
-
-		var removedChannels []string
-
-		if deleted, _ := body["_deleted"].(bool); deleted {
-			row.Deleted = true
-		}
-
-		userCanSeeDocChannel := false
-
-		if h.user == nil || h.user.Channels().Contains(ch.UserStarChannel) {
-			userCanSeeDocChannel = true
-		} else if len(populatedDoc.Channels) > 0 {
-			//Do special _removed/_deleted processing
-			for channel, removal := range populatedDoc.Channels {
-				//Doc is tagged with channel or was removed at a sequence later that since sequence
-				if removal == nil || removal.Seq > options.Since.Seq {
-					//if the current user has access to this channel
-					if h.user.CanSeeChannel(channel) {
-						userCanSeeDocChannel = true
-						//If the doc has been removed
-						if removal != nil {
-							removedChannels = append(removedChannels, channel)
-							if removal.Deleted {
-								row.Deleted = true
-							}
-						}
-					}
-				}
-			}
-		}
-
-		if !userCanSeeDocChannel {
-			return nil
-		}
-
-		row.Removed = base.SetFromArray(removedChannels)
-		if options.IncludeDocs || options.Conflicts {
-			h.db.AddDocInstanceToChangeEntry(row, populatedDoc, options)
-		}
-
-		return row
-	}
-
-	h.setHeader("Content-Type", "application/json")
-	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
-	h.response.Write([]byte("{\"results\":[\r\n"))
-
-	var keys base.Uint64Slice
-
-	for _, docID := range explicitDocIds {
-		row := createRow(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0})
-		if row != nil {
-			rowMap[row.Seq.Seq] = row
-			keys = append(keys, row.Seq.Seq)
-		}
-	}
-
-	//Write out rows sorted by sequenceID
-	keys.Sort()
-	for _, k := range keys {
-		if first {
-			first = false
-		} else {
-			h.response.Write([]byte(","))
-		}
-		h.addJSON(rowMap[k])
-
-		lastSeq = k
-
-		if options.Limit > 0 {
-			options.Limit--
-			if options.Limit == 0 {
-				break
-			}
-		}
-	}
-
-	s := fmt.Sprintf("],\n\"last_seq\":%d}\n", lastSeq)
-	h.response.Write([]byte(s))
-	h.logStatusWithDuration(http.StatusOK, "OK")
-	return nil, false
-}
-
 // This is the core functionality of both the HTTP and WebSocket-based continuous change feed.
 // It defers to a callback function 'send()' to actually send the changes to the client.
 // It will call send(nil) to notify that it's caught up and waiting for new changes, or as
@@ -533,17 +421,17 @@ func (h *handler) sendChangesForDocIds(userChannels base.Set, explicitDocIds []s
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
 	options.Continuous = true
-	err, forceClose := generateChanges(h.db, inChannels, options, h, send)
+	err, forceClose := generateChanges(h.db, inChannels, options, nil, h, send)
 	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
 	return err, forceClose
 }
 
 // Used by BLIP connections for changes.  Supports both one-shot and continuous changes.
-func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
+func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, docIDFilter []string, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	err, forceClose = generateChanges(database, inChannels, options, nil, send)
+	err, forceClose = generateChanges(database, inChannels, options, docIDFilter, nil, send)
 
 	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
 	// is done by MultiChangesFeed prior to going into Wait mode)
@@ -556,7 +444,7 @@ func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options
 // Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
 // This is called from BLIP connections as well as HTTP handlers, which is why this is not a
 // method on `handler`. (In the BLIP case the `h` parameter will be nil.)
-func generateChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, h *handler, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
+func generateChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, docIDFilter []string, h *handler, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -612,7 +500,11 @@ loop:
 				forceClose = true
 				break loop
 			}
-			feed, err = database.MultiChangesFeed(inChannels, options)
+			if len(docIDFilter) > 0 {
+				feed, err = database.DocIDChangesFeed(inChannels, docIDFilter, options)
+			} else {
+				feed, err = database.MultiChangesFeed(inChannels, options)
+			}
 			if err != nil || feed == nil {
 				return err, forceClose
 			}
