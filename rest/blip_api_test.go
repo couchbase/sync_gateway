@@ -136,9 +136,6 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	// Wait until we got the expected callback on the "changes" profile handler
 	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*5)
 	assertNoError(t, timeoutErr, "Timed out waiting")
-	log.Printf("Starting sleep")
-	time.Sleep(3 * time.Second)
-	log.Printf("Ending sleep")
 }
 
 // Start subChanges w/ continuous=true, batchsize=20

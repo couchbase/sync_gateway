@@ -821,16 +821,15 @@ func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
 	db.changeCache.getChannelCache(feedHandler.channelName).ReleaseLateSequenceClient(feedHandler.lastSequence)
 }
 
-/*
- * Generate the changes for a specific list of doc ID's, only documents accesible to the user will generate
- * results.  Only supports non-continuous changes, closes buffered channel before returning.
- */
+// Generate the changes for a specific list of doc ID's, only documents accesible to the user will generate
+// results.  Only supports non-continuous changes, closes buffered channel before returning.
 func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 
 	// Subroutine that creates a response row for a document:
 	output := make(chan *ChangeEntry, len(explicitDocIds))
 	rowMap := make(map[uint64]*ChangeEntry)
 
+	// TODO: This doesn't need to be an inline function, and would be easier to unit test as a standalone function.
 	createChangeEntry := func(docid string) *ChangeEntry {
 		row := &ChangeEntry{ID: docid}
 
@@ -863,22 +862,22 @@ func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []str
 
 		userCanSeeDocChannel := false
 
+		// If admin, or the user has the star channel, include it in the results
 		if db.user == nil || db.user.Channels().Contains(channels.UserStarChannel) {
 			userCanSeeDocChannel = true
 		} else if len(populatedDoc.Channels) > 0 {
-			//Do special _removed/_deleted processing
+			// Iterate over the doc's channels, including in the results:
+			//   - the active revision is in a channel the user can see (removal==nil)
+			//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
 			for channel, removal := range populatedDoc.Channels {
-				//Doc is tagged with channel or was removed at a sequence later that since sequence
-				if removal == nil || removal.Seq > options.Since.Seq {
-					//if the current user has access to this channel
-					if db.user.CanSeeChannel(channel) {
-						userCanSeeDocChannel = true
-						//If the doc has been removed
-						if removal != nil {
-							removedChannels = append(removedChannels, channel)
-							if removal.Deleted {
-								row.Deleted = true
-							}
+				if db.user.CanSeeChannel(channel) && (removal == nil || removal.Seq > options.Since.Seq) {
+					userCanSeeDocChannel = true
+					// If removal, update removed channels and deleted flag.
+					if removal != nil {
+						removedChannels = append(removedChannels, channel)
+						if removal.Deleted {
+							// TODO: Need validation that this properly handles resurrection scenario (https://github.com/couchbase/sync_gateway/issues/3327)
+							row.Deleted = true
 						}
 					}
 				}
@@ -909,8 +908,8 @@ func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []str
 
 	// Send ChangeEntries sorted by sequenceID
 	sequences.Sort()
-	for _, k := range sequences {
-		output <- rowMap[k]
+	for _, sequence := range sequences {
+		output <- rowMap[sequence]
 		if options.Limit > 0 {
 			options.Limit--
 			if options.Limit == 0 {
