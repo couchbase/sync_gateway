@@ -700,8 +700,9 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	close(options.Terminator)
 }
 
-// Disabled until https://github.com/couchbase/sync_gateway/issues/3056 is fixed.
-func DisableTestLowSequenceHandlingNoDuplicates(t *testing.T) {
+func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
+	// TODO: Disabled until https://github.com/couchbase/sync_gateway/issues/3056 is fixed.
+	t.Skip("WARNING: TEST DISABLED")
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -797,9 +798,10 @@ func DisableTestLowSequenceHandlingNoDuplicates(t *testing.T) {
 // lines at the start of changesFeed() in changes.go to simulate slow processing:
 //	    base.LogTo("Sequences", "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
 //	    time.Sleep(100 * time.Millisecond)
-
-// Test current fails intermittently on concurrent access to var changes.  Disabling for now - should be refactored.
-func FailingTestChannelRace(t *testing.T) {
+func TestChannelRace(t *testing.T) {
+	// TODO: Test current fails intermittently on concurrent access to var changes.
+	// Disabling for now - should be refactored.
+	t.Skip("WARNING: TEST DISABLED")
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
