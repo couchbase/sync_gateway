@@ -102,7 +102,7 @@ func TestDenseBlockMultipleInserts(t *testing.T) {
 	// Make sure we can safely call getEntryCount() on uninitialized DenseBlock
 	assert.Equals(t, block.getEntryCount(), uint16(0))
 
-	// Initialize the block value 
+	// Initialize the block value
 	block.value = make([]byte, DB_HEADER_LEN, 400)
 
 	// Inserts
@@ -404,7 +404,11 @@ func TestDenseBlockRollbackTo(t *testing.T) {
 	assert.Equals(t, block.getEntryCount(), uint16(0))
 }
 
-func DisableTestDenseBlockOverflow(t *testing.T) {
+func TestDenseBlockOverflow(t *testing.T) {
+	// TODO: Test disabled in #2227 for unknown reason.
+	// Test passes locally with both Walrus and Couchbase, and with and without -race.
+	t.Skip("WARNING: TEST DISABLED")
+
 	base.EnableLogKey("ChannelStorage")
 
 	testIndexBucket := base.GetTestIndexBucketOrPanic()
