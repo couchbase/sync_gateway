@@ -544,6 +544,8 @@ type BlipTesterSpec struct {
 }
 
 // State associated with a BlipTester
+// Note that it's not safe to have multiple goroutines access a single BlipTester due to the
+// fact that certain methods register profile handlers on the BlipContext
 type BlipTester struct {
 
 	// The underlying RestTester which is used to bootstrap the initial blip websocket creation,
@@ -719,6 +721,8 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 // Get a doc at a particular revision from Sync Gateway.
 //
+// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
+//
 // If that is not found, it will return an empty resultDoc with no errors.
 //
 // - Call subChanges (continuous=false) endpoint to get all changes from Sync Gateway
@@ -734,6 +738,12 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 	docs := map[string]RestDocument{}
 	changesFinishedWg := sync.WaitGroup{}
 	revsFinishedWg := sync.WaitGroup{}
+
+	defer func() {
+		// Clean up all profile handlers that are registered as part of this test
+		delete(bt.blipContext.HandlerForProfile, "changes")
+		delete(bt.blipContext.HandlerForProfile, "rev")
+	}()
 
 	// -------- Changes handler callback --------
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
@@ -825,7 +835,13 @@ type SendRevWithAttachmentInput struct {
 	attachmentDigest string
 }
 
+// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
 func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (sent bool, req, res *blip.Message) {
+
+	defer func() {
+		// Clean up all profile handlers that are registered as part of this test
+		delete(bt.blipContext.HandlerForProfile, "getAttachment")
+	}()
 
 	// Create a doc with an attachment
 	myAttachment := db.DocAttachment{
@@ -901,7 +917,13 @@ func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]int
 }
 
 // Returns changes in form of [[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
+// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
 func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
+
+	defer func() {
+		// Clean up all profile handlers that are registered as part of this test
+		delete(bt.blipContext.HandlerForProfile, "changes")  // a handler for this profile is registered in SubscribeToChanges
+	}()
 
 	collectedChanges := [][]interface{}{}
 	chanChanges := make(chan *blip.Message)
@@ -969,11 +991,19 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 // - Return accumulated docs + attachements to caller
 //
 // It is basically a pull replication without the checkpointing
+// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
 func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 	docs = map[string]RestDocument{}
 	changesFinishedWg := sync.WaitGroup{}
 	revsFinishedWg := sync.WaitGroup{}
+
+	defer func() {
+		// Clean up all profile handlers that are registered as part of this test
+		delete(bt.blipContext.HandlerForProfile, "changes")
+		delete(bt.blipContext.HandlerForProfile, "rev")
+	}()
+
 
 	// -------- Changes handler callback --------
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
