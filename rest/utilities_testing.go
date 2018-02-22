@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -435,6 +436,15 @@ func (r TestResponse) DumpBody() {
 	log.Printf("%v", string(r.Body.Bytes()))
 }
 
+func (r TestResponse) GetRestDocument() RestDocument {
+	restDoc := NewRestDocument()
+	err := json.Unmarshal(r.Body.Bytes(), restDoc)
+	if err != nil {
+		panic(fmt.Sprintf("Error parsing body into RestDocument.  Body: %s.  Err: %v", string(r.Body.Bytes()), err))
+	}
+	return *restDoc
+}
+
 func request(method, resource, body string) *http.Request {
 	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
 	request.RequestURI = resource // This doesn't get filled in by NewRequest
@@ -534,6 +544,8 @@ type BlipTesterSpec struct {
 }
 
 // State associated with a BlipTester
+// Note that it's not safe to have multiple goroutines access a single BlipTester due to the
+// fact that certain methods register profile handlers on the BlipContext
 type BlipTester struct {
 
 	// The underlying RestTester which is used to bootstrap the initial blip websocket creation,
@@ -662,7 +674,8 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
 }
 
-func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
+// The docHistory should be in the same format as expected by db.PutExistingRev(), or empty if this is the first revision
+func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory []string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
 
 	revRequest := blip.NewRequest()
 	revRequest.SetCompressed(true)
@@ -671,6 +684,9 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 	revRequest.Properties["id"] = docId
 	revRequest.Properties["rev"] = docRev
 	revRequest.Properties["deleted"] = "false"
+	if len(revHistory) > 0 {
+		revRequest.Properties["history"] = strings.Join(revHistory, ",")
+	}
 
 	// Override any properties which have been supplied explicitly
 	for k, v := range properties {
@@ -698,6 +714,120 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
+func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
+
+	return bt.SendRevWithHistory(docId, docRev, []string{}, body, properties)
+
+}
+
+// Get a doc at a particular revision from Sync Gateway.
+//
+// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
+//
+// If that is not found, it will return an empty resultDoc with no errors.
+//
+// - Call subChanges (continuous=false) endpoint to get all changes from Sync Gateway
+// - Respond to each "change" request telling the other side to send the revision
+//		- NOTE: this could be made more efficient by only requesting the revision for the docid/revid pair
+//              passed in the parameter.
+// - If the rev handler is called back with the desired docid/revid pair, save that into a variable that will be returned
+// - Block until all pending operations are complete
+// - Return the resultDoc or an empty resultDoc
+//
+func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resultDoc RestDocument, err error) {
+
+	docs := map[string]RestDocument{}
+	changesFinishedWg := sync.WaitGroup{}
+	revsFinishedWg := sync.WaitGroup{}
+
+	defer func() {
+		// Clean up all profile handlers that are registered as part of this test
+		delete(bt.blipContext.HandlerForProfile, "changes")
+		delete(bt.blipContext.HandlerForProfile, "rev")
+	}()
+
+	// -------- Changes handler callback --------
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+
+		// Send a response telling the other side we want ALL revisions
+
+		body, err := request.Body()
+		if err != nil {
+			panic(fmt.Sprintf("Error getting request body: %v", err))
+		}
+
+		if string(body) == "null" {
+			changesFinishedWg.Done()
+			return
+		}
+
+		if !request.NoReply() {
+
+			// unmarshal into json array
+			changesBatch := [][]interface{}{}
+
+			if err := json.Unmarshal(body, &changesBatch); err != nil {
+				panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
+			}
+
+			responseVal := [][]interface{}{}
+			for _, change := range changesBatch {
+				revId := change[2].(string)
+				responseVal = append(responseVal, []interface{}{revId})
+				revsFinishedWg.Add(1)
+			}
+
+			response := request.Response()
+			responseValBytes, err := json.Marshal(responseVal)
+			log.Printf("responseValBytes: %s", responseValBytes)
+			if err != nil {
+				panic(fmt.Sprintf("Error marshalling response: %v", err))
+			}
+			response.SetBody(responseValBytes)
+
+		}
+	}
+
+	// -------- Rev handler callback --------
+	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
+
+		defer revsFinishedWg.Done()
+		body, err := request.Body()
+		var doc RestDocument
+		err = json.Unmarshal(body, &doc)
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected err: %v", err))
+		}
+		docId := request.Properties["id"]
+		docRev := request.Properties["rev"]
+		doc.SetID(docId)
+		doc.SetRevID(docRev)
+		docs[docId] = doc
+
+		if docId == requestedDocID && docRev == requestedDocRev {
+			resultDoc = doc
+		}
+
+	}
+
+	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	changesFinishedWg.Add(1)
+	subChangesRequest := blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "false"
+
+	sent := bt.sender.Send(subChangesRequest)
+	if !sent {
+		panic(fmt.Sprintf("Unable to subscribe to changes."))
+	}
+
+	changesFinishedWg.Wait()
+	revsFinishedWg.Wait()
+
+	return resultDoc, nil
+
+}
+
 type SendRevWithAttachmentInput struct {
 	docId            string
 	revId            string
@@ -706,7 +836,13 @@ type SendRevWithAttachmentInput struct {
 	attachmentDigest string
 }
 
+// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
 func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (sent bool, req, res *blip.Message) {
+
+	defer func() {
+		// Clean up all profile handlers that are registered as part of this test
+		delete(bt.blipContext.HandlerForProfile, "getAttachment")
+	}()
 
 	// Create a doc with an attachment
 	myAttachment := db.DocAttachment{
@@ -782,7 +918,13 @@ func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]int
 }
 
 // Returns changes in form of [[sequence, docID, revID, deleted], [sequence, docID, revID, deleted]]
+// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
 func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
+
+	defer func() {
+		// Clean up all profile handlers that are registered as part of this test
+		delete(bt.blipContext.HandlerForProfile, "changes")  // a handler for this profile is registered in SubscribeToChanges
+	}()
 
 	collectedChanges := [][]interface{}{}
 	chanChanges := make(chan *blip.Message)
@@ -850,11 +992,19 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 // - Return accumulated docs + attachements to caller
 //
 // It is basically a pull replication without the checkpointing
+// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
 func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 	docs = map[string]RestDocument{}
 	changesFinishedWg := sync.WaitGroup{}
 	revsFinishedWg := sync.WaitGroup{}
+
+	defer func() {
+		// Clean up all profile handlers that are registered as part of this test
+		delete(bt.blipContext.HandlerForProfile, "changes")
+		delete(bt.blipContext.HandlerForProfile, "rev")
+	}()
+
 
 	// -------- Changes handler callback --------
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
@@ -1070,6 +1220,7 @@ func DisableBlipSyncLogs() {
 //
 // - _id
 // - _rev
+// - _removed
 // - _deleted (not accounted for yet)
 // - _attachments
 //
@@ -1151,6 +1302,14 @@ func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
 
 	return attachmentMap, nil
 
+}
+
+func (d RestDocument) IsRemoved() bool {
+	removed, ok := d["_removed"]
+	if !ok {
+		return false
+	}
+	return removed.(bool) == true
 }
 
 // Wait for the WaitGroup, or return an error if the wg.Wait() doesn't return within timeout
