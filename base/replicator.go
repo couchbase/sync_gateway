@@ -105,15 +105,15 @@ func (r *Replicator) getReplicationForParams(queryParams sgreplicate.Replication
 
 }
 
-func (r *Replicator) removeReplication(repId string) {
+func (r *Replicator) _removeReplication(repId string) {
 	delete(r.replications, repId)
 	delete(r.replicationParams, repId)
 }
 
-func (r *Replicator) removeReplicationLock(repId string) {
+func (r *Replicator) removeReplication(repId string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	r.removeReplication(repId)
+	r._removeReplication(repId)
 }
 
 // Starts a replication based on the provided replication config.
@@ -170,7 +170,7 @@ func (r *Replicator) stopReplication(parameters sgreplicate.ReplicationParameter
 
 	taskState := r.populateActiveTaskFromReplication(replication, parameters)
 
-	r.removeReplication(repId)
+	r._removeReplication(repId)
 	return taskState, nil
 }
 
@@ -181,13 +181,13 @@ func (r *Replicator) startOneShotReplication(parameters sgreplicate.ReplicationP
 
 	if parameters.Async {
 		go func() {
-			defer r.removeReplicationLock(parameters.ReplicationId)
+			defer r.removeReplication(parameters.ReplicationId)
 			r.runOneShotReplication(replication, parameters)
 		}()
 		return replication, nil
 	} else {
 		err := r.runOneShotReplication(replication, parameters)
-		r.removeReplication(parameters.ReplicationId)
+		r._removeReplication(parameters.ReplicationId)
 		return replication, err
 	}
 }
@@ -214,7 +214,7 @@ func (r *Replicator) startContinuousReplication(parameters sgreplicate.Replicati
 
 	// Start goroutine to monitor notification channel, to remove the replication if it's terminated internally by sg-replicate
 	go func(rep sgreplicate.SGReplication, notificationChan chan sgreplicate.ContinuousReplicationNotification) {
-		defer r.removeReplicationLock(parameters.ReplicationId)
+		defer r.removeReplication(parameters.ReplicationId)
 
 		for {
 			select {
