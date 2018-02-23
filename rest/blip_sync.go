@@ -25,7 +25,13 @@ const (
 
 	// Blip default vals
 	BlipDefaultBatchSize = uint64(200)
+
 	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
+
+	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
+	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
+	BlipCBMobileReplication = "CBMobile_2"
+
 )
 
 // Represents one BLIP connection (socket) opened by a client.
@@ -90,7 +96,7 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	// Create a BLIP context:
-	blipContext := blip.NewContext()
+	blipContext := blip.NewContext(BlipCBMobileReplication)
 	blipContext.Logger = DefaultBlipLogger(blipContext.ID)
 	blipContext.LogMessages = base.LogEnabledExcludingLogStar("WS+")
 	blipContext.LogFrames = base.LogEnabledExcludingLogStar("WS++")
