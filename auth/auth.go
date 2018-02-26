@@ -18,7 +18,6 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
-	l "github.com/couchbase/sync_gateway/log"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -166,7 +165,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	if auth.channelComputer != nil {
 		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
 		if err != nil {
-			base.WarnR("channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", l.UD(princ), err)
+			base.Warn("channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", princ, err)
 			return err
 		}
 		if previousChannels != nil {
@@ -177,9 +176,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
-	base.LogToR("Access", "Computed channels for %q: %s",
-		l.UD(princ.Name()), l.UD(channels))
-
+	base.LogTo("Access", "Computed channels for %q: %s", princ.Name(), channels)
 	princ.SetPreviousChannels(nil)
 	princ.setChannels(channels)
 
@@ -193,8 +190,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		var err error
 		roles, err = auth.channelComputer.ComputeRolesForUser(user)
 		if err != nil {
-			base.WarnR("channelComputer.ComputeRolesForUser failed on user %s: %v",
-				l.UD(user.Name()), err)
+			base.Warn("channelComputer.ComputeRolesForUser failed on user %s: %v", user.Name(), err)
 			return err
 		}
 	}
@@ -206,11 +202,8 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles.Add(explicit)
 	}
 
-	base.LogToR("Access", "Computed roles for %q: %s",
-		l.UD(user.Name()), l.UD(roles))
-
+	base.LogTo("Access", "Computed roles for %q: %s", user.Name(), roles)
 	user.setRolesSince(roles)
-
 	return nil
 }
 
@@ -245,14 +238,14 @@ func (auth *Authenticator) Save(p Principal) error {
 			//FIX: Unregister old email address if any
 		}
 	}
-	base.LogToR("Auth", "Saved %s: %s", l.UD(p.DocID()), l.UD(p))
+	base.LogTo("Auth", "Saved %s: %s", p.DocID(), p)
 	return nil
 }
 
 // Invalidates the channel list of a user/role by saving its Channels() property as nil.
 func (auth *Authenticator) InvalidateChannels(p Principal) error {
 	if p != nil && p.Channels() != nil {
-		base.LogToR("Access", "Invalidate access of %q", l.UD(p.Name()))
+		base.LogTo("Access", "Invalidate access of %q", p.Name())
 		if auth.channelComputer != nil && !auth.channelComputer.UseGlobalSequence() {
 			p.SetPreviousChannels(p.Channels())
 		}
@@ -267,7 +260,7 @@ func (auth *Authenticator) InvalidateChannels(p Principal) error {
 // Invalidates the role list of a user by saving its Roles() property as nil.
 func (auth *Authenticator) InvalidateRoles(user User) error {
 	if user != nil && user.Channels() != nil {
-		base.LogToR("Access", "Invalidate roles of %q", l.UD(user.Name()))
+		base.LogTo("Access", "Invalidate roles of %q", user.Name())
 		user.setRolesSince(nil)
 		if err := auth.Save(user); err != nil {
 			return err
@@ -303,7 +296,7 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
 
-	base.LogToR("OIDC+", "AuthenticateJWT called with token: %s", l.UD(token))
+	base.LogTo("OIDC+", "AuthenticateJWT called with token: %s", token)
 
 	// Parse JWT (needed to determine issuer/provider)
 	jwt, err := jose.ParseJWT(token)
@@ -314,15 +307,15 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 
 	// Get client for issuer
 	issuer, audiences, err := GetJWTIssuer(jwt)
-	base.LogToR("OIDC+", "JWT issuer: %v, audiences: %v", l.UD(issuer), l.UD(audiences))
+	base.LogTo("OIDC+", "JWT issuer: %v, audiences: %v", issuer, audiences)
 	if err != nil {
 		base.LogTo("OIDC+", "Error getting JWT issuer: %v", err)
 		return nil, jose.JWT{}, err
 	}
 
-	base.LogToR("OIDC+", "Call GetProviderForIssuer w/ providers: %+v", l.UD(providers))
+	base.LogTo("OIDC+", "Call GetProviderForIssuer w/ providers: %+v", providers)
 	provider := providers.GetProviderForIssuer(issuer, audiences)
-	base.LogToR("OIDC+", "Provider for issuer: %+v", l.UD(provider))
+	base.LogTo("OIDC+", "Provider for issuer: %+v", provider)
 
 	if provider == nil {
 		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
@@ -364,19 +357,18 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 
 	// Extract identity from token
 	identity, identityErr := GetJWTIdentity(jwt)
-	base.LogToR("OIDC+", "JWT identity: %+v", l.UD(identity))
+	base.LogTo("OIDC+", "JWT identity: %+v", identity)
 	if identityErr != nil {
 		base.LogTo("OIDC+", "Error getting JWT identity. Error: %v", identityErr)
 		return nil, jwt, identityErr
 	}
 
 	username := GetOIDCUsername(provider, identity.ID)
-	base.LogToR("OIDC+", "OIDCUsername: %v", l.UD(username))
+	base.LogTo("OIDC+", "OIDCUsername: %v", username)
 
 	user, userErr := auth.GetUser(username)
 	if userErr != nil {
-		base.LogToR("OIDC+", "Failed to get OIDC User from %s.  Error: %v",
-			l.UD(username), userErr)
+		base.LogTo("OIDC+", "Failed to get OIDC User from %v.  Error: %v", username, userErr)
 		return nil, jwt, userErr
 	}
 
@@ -384,11 +376,11 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 	// external auth system)
 	if user != nil && identity.Email != "" {
 		if identity.Email != user.Email() {
-			base.LogToR("OIDC+", "Updating user email to: %s", l.UD(identity.Email))
+			base.LogTo("OIDC+", "Updating user email to: %v", identity.Email)
 			if err := user.SetEmail(identity.Email); err == nil {
 				auth.Save(user)
 			} else {
-				base.WarnR("Unable to set user email to %v for OIDC", l.UD(identity.Email))
+				base.Warn("Unable to set user email to %v for OIDC", identity.Email)
 			}
 		}
 	}
@@ -396,8 +388,7 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 	// Auto-registration.  This will normally be done when token is originally returned
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
 	if user == nil && provider.Register {
-		base.LogToR("OIDC+", "Registering new user: %s with email: %s",
-			l.UD(username), l.UD(identity.Email))
+		base.LogTo("OIDC+", "Registering new user: %v with email: %v", username, identity.Email)
 		var err error
 		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil {
