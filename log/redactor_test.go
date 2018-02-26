@@ -1,4 +1,4 @@
-package base
+package log
 
 import (
 	"math/big"
@@ -8,6 +8,9 @@ import (
 )
 
 func TestRedactHelper(t *testing.T) {
+	RedactUserData = true
+	defer func() { RedactUserData = false }()
+
 	ptr := UserData("hello")
 
 	var in = []interface{}{
@@ -19,10 +22,7 @@ func TestRedactHelper(t *testing.T) {
 		struct{}{},
 	}
 
-	RedactUserData = true
-	defer func() { RedactUserData = false }()
-
-	out := redact(in)
+	out := Redact(in)
 
 	// Since redact performs an in-place redaction,
 	// we'd expect the input slice to change too.
@@ -41,6 +41,9 @@ func TestRedactHelper(t *testing.T) {
 }
 
 func BenchmarkRedactHelper(b *testing.B) {
+	RedactUserData = true
+	defer func() { RedactUserData = false }()
+
 	var data = []interface{}{
 		UserData("alice"),
 		"bob",
@@ -49,11 +52,8 @@ func BenchmarkRedactHelper(b *testing.B) {
 		struct{}{},
 	}
 
-	RedactUserData = true
-	defer func() { RedactUserData = false }()
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		redact(data)
+		Redact(data)
 	}
 }

@@ -23,6 +23,7 @@ import (
 
 	"github.com/couchbase/clog"
 	"github.com/couchbase/goutils/logging"
+	l "github.com/couchbase/sync_gateway/log"
 	"github.com/natefinch/lumberjack"
 )
 
@@ -237,6 +238,19 @@ func SetLogLevel(level int) {
 	logLevel = level
 }
 
+func SetRedaction(redactionLevel l.RedactionLevel) {
+	Logf("Log redaction level: %s", redactionLevel)
+	switch redactionLevel {
+	case l.RedactFull:
+		l.RedactUserData = true
+	case l.RedactPartial:
+		l.RedactUserData = true
+	case l.RedactNone:
+	default:
+		l.RedactUserData = false
+	}
+}
+
 // Disables ANSI color in log output.
 func LogNoColor() {
 	// this is now the default state; see LogColor() below
@@ -440,7 +454,7 @@ func LogTo(key string, format string, args ...interface{}) {
 
 // LogToR redacts any arguments implementing the Redactor interface before calling LogTo
 func LogToR(key, format string, args ...interface{}) {
-	LogTo(key, format, redact(args)...)
+	LogTo(key, format, l.Redact(args)...)
 }
 
 func EnableLogKey(key string) {
@@ -491,7 +505,7 @@ func Logf(format string, args ...interface{}) {
 
 // LogfR redacts any arguments implementing the Redactor interface before calling Logf
 func LogfR(format string, args ...interface{}) {
-	Logf(format, redact(args)...)
+	Logf(format, l.Redact(args)...)
 }
 
 // If the error is not nil, logs its description and the name of the calling function.
@@ -522,7 +536,7 @@ func Warn(format string, args ...interface{}) {
 
 // WarnR redacts any arguments implementing the Redactor interface before calling Warn
 func WarnR(format string, args ...interface{}) {
-	Warn(format, redact(args)...)
+	Warn(format, l.Redact(args)...)
 }
 
 // Logs a highlighted message prefixed with "TEMP". This function is intended for
@@ -540,7 +554,7 @@ func LogPanic(format string, args ...interface{}) {
 
 // LogPanicR redacts any arguments implementing the Redactor interface before calling LogPanic
 func LogPanicR(format string, args ...interface{}) {
-	LogPanic(format, redact(args)...)
+	LogPanic(format, l.Redact(args)...)
 }
 
 // Logs a warning to the console, then exits the process.
@@ -551,7 +565,7 @@ func LogFatal(format string, args ...interface{}) {
 
 // LogFatalR redacts any arguments implementing the Redactor interface before calling LogFatal
 func LogFatalR(format string, args ...interface{}) {
-	LogFatal(format, redact(args)...)
+	LogFatal(format, l.Redact(args)...)
 }
 
 func logWithCaller(color string, prefix string, format string, args ...interface{}) {
