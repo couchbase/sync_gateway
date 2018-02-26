@@ -468,18 +468,18 @@ func (r *DCPLoggingReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64
 }
 
 func (r *DCPLoggingReceiver) SetBucketNotifyFn(notify sgbucket.BucketNotifyFn) {
-	LogTo("DCP", "SetBucketNotifyFn()")
+	LogTo("DCP+", "SetBucketNotifyFn()")
 	r.rec.SetBucketNotifyFn(notify)
 }
 
 func (r *DCPLoggingReceiver) GetBucketNotifyFn() sgbucket.BucketNotifyFn {
-	LogTo("DCP", "GetBucketNotifyFn()")
+	LogTo("DCP+", "GetBucketNotifyFn()")
 	return r.rec.GetBucketNotifyFn()
 }
 
 func (r *DCPLoggingReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	LogTo("DCP", "DataDelete:%d, %s, %d, %v", vbucketId, key, seq, req)
+	LogTo("DCP+", "DataDelete:%d, %s, %d, %v", vbucketId, key, seq, req)
 	return r.rec.DataDelete(vbucketId, key, seq, req)
 }
 
@@ -638,10 +638,6 @@ func (b *backfillStatus) init(start []uint64, end map[uint16]uint64, maxVbNo uin
 	b.snapStart = make([]uint64, maxVbNo)
 	b.snapEnd = make([]uint64, maxVbNo)
 	b.endSeqs = make([]uint64, maxVbNo)
-
-	if len(end) != int(maxVbNo) {
-		Warn("Invalid range provided for DCP backfill tracking - tracking disabled. len(start):%d len(end):%d", len(start), len(end))
-	}
 
 	// Calculate total sequences in backfill
 	b.expectedSequences = 0

@@ -128,6 +128,6 @@ There are also some extra flags you can pass, which you can see by running `./sg
 
 If `go` and/or `graphviz` is not installed on the machine where `sgcollect_info` is run, you can still render the raw profiles into a text or pdf formats with:
 
-. Modify `pprof_http_heap.log` to remove the top four header lines to avoid the error `pprof_http_heap.log: parsing profile: unrecognized profile format`
+. Modify `pprof_http_heap.log` to remove the top four header lines to avoid the error `pprof_http_heap.log: parsing profile: unrecognized profile format`.  For example: `sed -e '1,4d' pprof_http_heap.log > pprof_http_heap_noheader.log`
 . Pass the path to the **actual Sync Gateway binary** that was collected in the sgcollect_info zipfile.  Eg: `go tool pprof -top /path/to/sync_gateway modified_pprof_http_heap.log`
 
