@@ -1,4 +1,4 @@
-package log
+package base
 
 // Redactor provides an interface for log redaction.
 type Redactor interface {
