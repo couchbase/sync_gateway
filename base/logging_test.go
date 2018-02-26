@@ -15,7 +15,6 @@ import (
 	"log"
 	"testing"
 
-	l "github.com/couchbase/sync_gateway/log"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -35,8 +34,8 @@ func assertLogContains(t *testing.T, s string, f func()) {
 func TestRedactedLogFuncs(t *testing.T) {
 	username := UD("alice")
 
-	l.RedactUserData = true
-	defer func() { l.RedactUserData = false }()
+	RedactUserData = true
+	defer func() { RedactUserData = false }()
 	EnableLogKey("TEST")
 
 	assertLogContains(t, "TEST: alice", func() { LogTo("TEST", "%s", username) })
