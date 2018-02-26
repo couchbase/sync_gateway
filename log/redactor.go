@@ -1,4 +1,4 @@
-package base
+package log
 
 // Redactor provides an interface for log redaction.
 type Redactor interface {
@@ -7,9 +7,11 @@ type Redactor interface {
 	Redact() string
 }
 
-// redact performs an *in-place* redaction on the input slice, and returns it.
-// Warning: This has side-effects on the input slice!
-func redact(args []interface{}) []interface{} {
+// Redact performs an *in-place* redaction on the input slice, and returns it.
+// This should only be consumed by logging funcs. E.g. fmt.Printf(fmt, Redact(args))
+//
+// FIXME: Ideally this would be private, but we'd need to pull 'base/logging.go' into this package.
+func Redact(args []interface{}) []interface{} {
 	for i, v := range args {
 		if r, ok := v.(Redactor); ok {
 			args[i] = r.Redact()
