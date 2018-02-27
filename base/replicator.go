@@ -85,14 +85,6 @@ func (r *Replicator) StopReplications() error {
 
 // Starts a replication based on the provided replication config.
 func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParameters) (*Task, error) {
-	r.lock.Lock()
-
-	_, found := r._findReplication(parameters)
-	if found {
-		r.lock.Unlock()
-		return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
-	}
-
 	// Generate ID if blank for the new replication
 	if parameters.ReplicationId == "" {
 		parameters.ReplicationId = CreateUUID()
@@ -122,6 +114,14 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 }
 
 func (r *Replicator) runOneShotReplication(parameters sgreplicate.ReplicationParameters) (sgreplicate.SGReplication, error) {
+	r.lock.Lock()
+
+	_, found := r._findReplication(parameters)
+	if found {
+		r.lock.Unlock()
+		return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
+	}
+
 	replication := sgreplicate.StartOneShotReplication(parameters)
 	r._addReplication(replication, parameters)
 	r.lock.Unlock()
@@ -144,6 +144,14 @@ func (r *Replicator) runOneShotReplication(parameters sgreplicate.ReplicationPar
 }
 
 func (r *Replicator) runContinuousReplication(parameters sgreplicate.ReplicationParameters) (sgreplicate.SGReplication, error) {
+	r.lock.Lock()
+
+	_, found := r._findReplication(parameters)
+	if found {
+		r.lock.Unlock()
+		return nil, HTTPErrorf(http.StatusConflict, "Replication already active for specified parameters")
+	}
+
 	notificationChan := make(chan sgreplicate.ContinuousReplicationNotification)
 
 	factory := func(parameters sgreplicate.ReplicationParameters, notificationChan chan sgreplicate.ReplicationNotification) sgreplicate.Runnable {
