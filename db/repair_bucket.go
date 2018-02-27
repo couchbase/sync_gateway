@@ -3,7 +3,6 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-
 	"time"
 
 	"github.com/couchbase/go-couchbase"
