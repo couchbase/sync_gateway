@@ -122,10 +122,11 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 }
 
 func (r *Replicator) runOneShotReplication(parameters sgreplicate.ReplicationParameters) (sgreplicate.SGReplication, error) {
-
 	replication := sgreplicate.StartOneShotReplication(parameters)
 	r._addReplication(replication, parameters)
 	r.lock.Unlock()
+
+	LogTo("Replicate", "Started one-shot replication: %v", replication)
 
 	if parameters.Async {
 		go func() {
@@ -143,7 +144,6 @@ func (r *Replicator) runOneShotReplication(parameters sgreplicate.ReplicationPar
 }
 
 func (r *Replicator) runContinuousReplication(parameters sgreplicate.ReplicationParameters) (sgreplicate.SGReplication, error) {
-
 	notificationChan := make(chan sgreplicate.ContinuousReplicationNotification)
 
 	factory := func(parameters sgreplicate.ReplicationParameters, notificationChan chan sgreplicate.ReplicationNotification) sgreplicate.Runnable {
