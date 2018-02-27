@@ -31,7 +31,6 @@ const (
 	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
 	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
 	BlipCBMobileReplication = "CBMobile_2"
-
 )
 
 // Represents one BLIP connection (socket) opened by a client.
@@ -582,7 +581,10 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	if !found || !rfound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
-	body["_deleted"] = addRevisionParams.deleted()
+
+	if addRevisionParams.deleted() {
+		body["_deleted"] = true
+	}
 
 	// noconflicts flag from LiteCore
 	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev
