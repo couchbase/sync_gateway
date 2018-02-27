@@ -12,6 +12,7 @@ package db
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
@@ -25,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
-	"crypto/md5"
 )
 
 // Attachments shorter than this will be left in the JSON as base64 rather than being a separate
@@ -50,7 +50,7 @@ type DocAttachment struct {
 	Length      int    `json:"length,omitempty"`
 	Revpos      int    `json:"revpos,omitempty"`
 	Stub        bool   `json:"stub,omitempty"`
-	Data        []byte `json:-` // tell json marshal/unmarshal to ignore this field
+	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
 }
 
 // Given a CouchDB document body about to be stored in the database, goes through the _attachments
