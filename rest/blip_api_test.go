@@ -664,11 +664,12 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	assert.Equals(t, resp.Properties["Error-Code"], "")
 
 	// Get non-deleted rev
-	resultDoc, err := bt.GetDocAtRev("sendAndGetRev", "1-abc")
-	assertNoError(t, err, "Unexpected Error")
-	assert.False(t, resultDoc.IsRemoved())
-	_, ok := resultDoc["_deleted"]
-	assert.False(t, ok) // _deleted property should not be present (even if false)
+	response := bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=1-abc", "")
+	assertStatus(t, response, 200)
+	var responseBody RestDocument
+	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
+	_, ok := responseBody["_deleted"]
+	assert.False(t, ok)
 
 	// Tombstone the document
 	history := []string{"1-abc"}
@@ -678,11 +679,12 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	assert.Equals(t, resp.Properties["Error-Code"], "")
 
 	// Get the tombstoned document
-	resultDoc, err = bt.GetDocAtRev("sendAndGetRev", "2-bcd")
-	assertNoError(t, err, "Unexpected Error")
-	assert.False(t, resultDoc.IsRemoved())
-	deletedValue, deletedOk := resultDoc["_deleted"].(bool)
-	assert.True(t, deletedOk)
+	response = bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=2-bcd", "")
+	assertStatus(t, response, 200)
+	responseBody = RestDocument{}
+	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
+	deletedValue, deletedOK := responseBody["_deleted"].(bool)
+	assert.True(t, deletedOK)
 	assert.True(t, deletedValue)
 }
 
