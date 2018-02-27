@@ -22,7 +22,7 @@ func TestRedactHelper(t *testing.T) {
 		struct{}{},
 	}
 
-	out := Redact(in)
+	out := redact(in)
 
 	// Since redact performs an in-place redaction,
 	// we'd expect the input slice to change too.
@@ -40,6 +40,57 @@ func TestRedactHelper(t *testing.T) {
 	assert.Equals(t, out[5], struct{}{})
 }
 
+func TestSetRedaction(t *testing.T) {
+	// Hits the default case
+	SetRedaction(-1)
+	assert.Equals(t, RedactUserData, false)
+
+	SetRedaction(RedactFull)
+	assert.Equals(t, RedactUserData, true)
+
+	SetRedaction(RedactPartial)
+	assert.Equals(t, RedactUserData, true)
+
+	SetRedaction(RedactNone)
+	assert.Equals(t, RedactUserData, false)
+}
+
+func TestRedactionLevelMarshalText(t *testing.T) {
+	var level RedactionLevel
+	level = RedactNone
+	text, err := level.MarshalText()
+	assert.Equals(t, err, nil)
+	assert.Equals(t, string(text), "none")
+
+	level = RedactPartial
+	text, err = level.MarshalText()
+	assert.Equals(t, err, nil)
+	assert.Equals(t, string(text), "partial")
+
+	level = RedactFull
+	text, err = level.MarshalText()
+	assert.Equals(t, err, nil)
+	assert.Equals(t, string(text), "full")
+}
+
+func TestRedactionLevelUnmarshalText(t *testing.T) {
+	var level RedactionLevel
+	err := level.UnmarshalText([]byte("none"))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, level, RedactNone)
+
+	err = level.UnmarshalText([]byte("partial"))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, level, RedactPartial)
+
+	err = level.UnmarshalText([]byte("full"))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, level, RedactFull)
+
+	err = level.UnmarshalText([]byte("asdf"))
+	assert.Equals(t, err.Error(), "unrecognized level: asdf")
+}
+
 func BenchmarkRedactHelper(b *testing.B) {
 	RedactUserData = true
 	defer func() { RedactUserData = false }()
@@ -54,6 +105,6 @@ func BenchmarkRedactHelper(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Redact(data)
+		redact(data)
 	}
 }
