@@ -2220,7 +2220,18 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		case ViewQueryParamKey:
 			viewQuery.Key(optionValue)
 		case ViewQueryParamKeys:
-			viewQuery.Keys(optionValue.([]interface{}))
+			switch v := optionValue.(type) {
+			case []string:
+				emptyInterfaceKeys := []interface{}{}
+				for _, key := range v {
+					emptyInterfaceKeys = append(emptyInterfaceKeys, key)
+				}
+				viewQuery.Keys(emptyInterfaceKeys)
+			case []interface{}:
+				viewQuery.Keys(v)
+			default:
+				return fmt.Errorf("Unexpected type in ViewQueryParamKeys.  Got %+v with type: %T.", optionValue, optionValue)
+			}
 		case ViewQueryParamStartKey, ViewQueryParamEndKey, ViewQueryParamInclusiveEnd, ViewQueryParamStartKeyDocId, ViewQueryParamEndKeyDocId:
 			// These are dealt with outside of this case statement to build ranges
 		case ViewQueryParamIncludeDocs:
