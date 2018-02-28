@@ -640,6 +640,54 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 }
 
+// Test send and retrieval of a doc.
+//   Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
+func TestBlipSendAndGetRev(t *testing.T) {
+
+	// Setup
+	rt := RestTester{
+		noAdminParty: true,
+	}
+	btSpec := BlipTesterSpec{
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         &rt,
+	}
+	bt, err := NewBlipTesterFromSpec(btSpec)
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	// Send non-deleted rev
+	sent, _, resp, err := bt.SendRev("sendAndGetRev", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, resp.Properties["Error-Code"], "")
+
+	// Get non-deleted rev
+	response := bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=1-abc", "")
+	assertStatus(t, response, 200)
+	var responseBody RestDocument
+	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
+	_, ok := responseBody["_deleted"]
+	assert.False(t, ok)
+
+	// Tombstone the document
+	history := []string{"1-abc"}
+	sent, _, resp, err = bt.SendRevWithHistory("sendAndGetRev", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"deleted": "true"})
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, resp.Properties["Error-Code"], "")
+
+	// Get the tombstoned document
+	response = bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=2-bcd", "")
+	assertStatus(t, response, 200)
+	responseBody = RestDocument{}
+	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
+	deletedValue, deletedOK := responseBody["_deleted"].(bool)
+	assert.True(t, deletedOK)
+	assert.True(t, deletedValue)
+}
+
 func AssertChangeEquals(t *testing.T, change []interface{}, expectedChange ExpectedChange) {
 	if err := expectedChange.Equals(change); err != nil {
 		t.Errorf("Change %+v does not equal expected change: %+v.  Error: %v", change, expectedChange, err)
@@ -1178,10 +1226,10 @@ func TestGetRemovedDoc(t *testing.T) {
 	// The workaround uses a separate blipTester, and therefore a separate context.  It uses a different
 	// user to avoid an error when the NewBlipTesterFromSpec tries to create the user (eg, user1 already exists error)
 	btSpec2 := BlipTesterSpec{
-		connectingUsername: "user2",
-		connectingPassword: "1234",
-		connectingUserChannelGrants: []string{"user1"},  // so it can see user1's docs
-		restTester:         &rt,
+		connectingUsername:          "user2",
+		connectingPassword:          "1234",
+		connectingUserChannelGrants: []string{"user1"}, // so it can see user1's docs
+		restTester:                  &rt,
 	}
 	bt2, err := NewBlipTesterFromSpec(btSpec2)
 	assertNoError(t, err, "Unexpected error creating BlipTester")
