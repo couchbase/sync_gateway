@@ -3,11 +3,11 @@ package db
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
-	"time"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -152,6 +152,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 		vres, err := r.Bucket.View(DesignDocSyncHousekeeping(), ViewImport, options)
 		base.LogTo("CRUD", "RepairBucket() queried view and got %d results", len(vres.Rows))
 		if err != nil {
+			// TODO: Maybe we could retry if the view timed out (as seen in #3267)
 			return results, err
 		}
 
