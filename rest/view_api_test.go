@@ -20,7 +20,6 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"log"
 )
 
 func TestDesignDocs(t *testing.T) {
@@ -381,7 +380,6 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	assert.Equals(t, value, 99.0)
 }
 
-
 // Reproduces SG #3344
 func TestReproViewQueryIssue3344(t *testing.T) {
 
@@ -391,10 +389,9 @@ func TestReproViewQueryIssue3344(t *testing.T) {
 	// Admin view query:
 	viewUrlPath := "/db/_design/foo/_view/foo?keys=%5B%22env_1%22%5D"
 	response := rt.SendAdminRequest("GET", viewUrlPath, ``)
-	assert.True(t, response.Code > 399)  // Since the view doesn't exist, expect some sort of HTTP error
+	assert.True(t, response.Code > 399) // Since the view doesn't exist, expect some sort of HTTP error
 
 }
-
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 
