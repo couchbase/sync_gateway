@@ -937,9 +937,10 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	changeCache.CleanSkippedSequenceQueue()
 
 	// Validate that 3 is in the channel cache, 5 isn't
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 3})
 	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
 	assertNoError(t, err, "Get Changes returned error")
-	assertTrue(t, len(entries) == 1, fmt.Sprintf("Incorrect number of entries returned.  Expected %d, got %d.  Entries: %+v", 1, len(entries), entries))
+	assert.Equals(t, len(entries), 1)
 	assert.Equals(t, entries[0].DocID, "doc-3")
 
 }
