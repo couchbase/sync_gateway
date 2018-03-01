@@ -826,3 +826,21 @@ func ConvertBackQuotedStrings(data []byte) []byte {
 		return bytes
 	})
 }
+
+
+func ConvertToEmptyInterfaceSlice(i interface{}) (result []interface{}, err error) {
+
+	switch v := i.(type) {
+	case []string:
+		emptyInterfaceKeys := []interface{}{}
+		for _, key := range v {
+			emptyInterfaceKeys = append(emptyInterfaceKeys, key)
+		}
+		return emptyInterfaceKeys, nil
+	case []interface{}:
+		return v, nil
+	default:
+		return nil, fmt.Errorf("Unexpected type passed to ConvertToEmptyInterfaceSlice: %T", i)
+	}
+
+}
