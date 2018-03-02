@@ -380,16 +380,19 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	assert.Equals(t, value, 99.0)
 }
 
-// Reproduces SG #3344
-func TestReproViewQueryIssue3344(t *testing.T) {
-
+// Reproduces SG #3344.  Original issue only reproducible against Couchbase server (non-walrus)
+func TestViewQueryWithKeys(t *testing.T) {
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
+	// Create a view
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
+	assertStatus(t, response, 201)
+
 	// Admin view query:
-	viewUrlPath := "/db/_design/foo/_view/foo?keys=%5B%22env_1%22%5D"
-	response := rt.SendAdminRequest("GET", viewUrlPath, ``)
-	assert.True(t, response.Code > 399) // Since the view doesn't exist, expect some sort of HTTP error
+	viewUrlPath := "/db/_design/foo/_view/bar?keys=%5B%22env_1%22%5D"
+	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
+	assertStatus(t, response, 200) // Query string was parsed properly
 
 }
 
