@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -612,13 +613,30 @@ func WaitForViews(bucket base.Bucket) error {
 func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) error {
 	var vres interface{}
 	opts := map[string]interface{}{"stale": false, "key": fmt.Sprintf("view_%s_ready_check", viewName), "limit": 1}
+
+	// Not using standard retry loop here, because we want to retry indefinitely on view timeout (since view indexing could potentially take hours), and
+	// we don't need to sleep between attempts.  Using manual exponential backoff retry processing for non-timeout related errors, waits up to ~5 min
+	errRetryCount := 0
+	retrySleep := float64(100)
+	maxRetry := 15
 	for {
 		err := bucket.ViewCustom(ddocName, viewName, opts, &vres)
-		// Retry on timeout error, otherwise return
-		if err == nil || err != base.ErrViewTimeoutError {
-			return err
-		} else {
+		if err == nil {
+			return nil
+		}
+
+		// Retry on timeout or undefined view errors , otherwise return the error
+		if err == base.ErrViewTimeoutError {
 			base.Logf("Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, bucket.GetName())
+		} else {
+			// For any other error, retry up to maxRetry, to wait for view initialization on the server
+			errRetryCount++
+			if errRetryCount > maxRetry {
+				return err
+			}
+			base.Logf("Error waiting for view %q to be ready for bucket %q - retrying...(%d/%d)", viewName, bucket.GetName(), errRetryCount, maxRetry)
+			time.Sleep(time.Duration(retrySleep) * time.Millisecond)
+			retrySleep *= float64(1.5)
 		}
 	}
 
