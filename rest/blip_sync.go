@@ -300,9 +300,8 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		}
 	}()
 
-	// Don't send conflicting rev tree branches, just send the winning rev tree branch leaf revision + history.
-	// Otherwise, Couchbase Lite will non-deterministically choose an arbitrary branch as the winner and
-	// tombstone the other branch.  See LiteCore #437.
+	// Don't send conflicting rev tree branches, just send the winning revision + history, since
+	// CBL 2.0 (and blip_sync) don't support branched revision trees.  See LiteCore #437.
 	sendConflicts := false
 
 	bh.LogTo("Sync", "Sending changes since %v. User:%s", params.since(), bh.effectiveUsername)
