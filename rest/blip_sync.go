@@ -300,10 +300,14 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		}
 	}()
 
+	// Don't send conflicting rev tree branches, just send the winning revision + history, since
+	// CBL 2.0 (and blip_sync) don't support branched revision trees.  See LiteCore #437.
+	sendConflicts := false
+
 	bh.LogTo("Sync", "Sending changes since %v. User:%s", params.since(), bh.effectiveUsername)
 	options := db.ChangesOptions{
 		Since:      params.since(),
-		Conflicts:  true,
+		Conflicts:  sendConflicts,
 		Continuous: bh.continuous,
 		ActiveOnly: bh.activeOnly,
 		Terminator: bh.blipSyncContext.terminator,
