@@ -618,7 +618,7 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 	// we don't need to sleep between attempts.  Using manual exponential backoff retry processing for non-timeout related errors, waits up to ~5 min
 	errRetryCount := 0
 	retrySleep := float64(100)
-	maxRetry := 15
+	maxRetry := 18
 	for {
 		err := bucket.ViewCustom(ddocName, viewName, opts, &vres)
 		if err == nil {
