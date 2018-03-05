@@ -21,6 +21,8 @@ import urllib2
 import base64
 import mmap
 
+from cblogredaction import Redact_file
+
 class AltExitC(object):
     def __init__(self):
         self.list = []
@@ -56,6 +58,7 @@ AltExit = AltExitC()
 def log(message, end = '\n'):
     sys.stderr.write(message + end)
     sys.stderr.flush()
+
 
 class Task(object):
     privileged = False
@@ -256,16 +259,29 @@ class TaskRunner(object):
         elif self.verbosity >= 2:
             log('Skipping "%s" (%s): not for platform %s' % (task.description, command_to_print, sys.platform))
 
-    def zip(self, filename, log_type, node):
-        """Write all our logs to a zipfile"""
-        exe = exec_name("gozip")
+    def redact_and_zip(self, filename, log_type, salt, node):
+        files = []
+        for name, fp in self.files.iteritems():
+            fp.close()
+            r = Redact_file(fp.name, salt)
+            head, tail = os.path.split(fp.name)
+            files.append(head + "/redacted-" + tail)
 
         prefix = "%s_%s_%s" % (log_type, node, self.start_time)
+        self._zip_helper(prefix, filename, files)
 
+    def zip(self, filename, log_type, node):
         files = []
         for name, fp in self.files.iteritems():
             fp.close()
             files.append(fp.name)
+
+        prefix = "%s_%s_%s" % (log_type, node, self.start_time)
+        self._zip_helper(prefix, filename, files)
+
+    def _zip_helper(self, prefix, filename, files):
+        """Write all our logs to a zipfile"""
+        exe = exec_name("gozip")
 
         fallback = False
 
@@ -959,5 +975,3 @@ def exec_name(name):
     if sys.platform == 'win32':
         name += ".exe"
     return name
-
-
