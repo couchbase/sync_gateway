@@ -391,6 +391,35 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 
 }
 
+// Waits for view to be defined on the server.  Used to avoid view_undefined errors.
+func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		response := rt.SendAdminRequest("GET", viewURLPath, ``)
+
+		if response.Code == 200 {
+			return false, nil, nil
+		}
+
+		// Views unavailable, retry
+		if response.Code == 500 {
+			log.Printf("Error waiting for view to be available....will retry: %s", response.Body.Bytes())
+			return true, fmt.Errorf("500 error"), nil
+		}
+
+		// Unexpected error, return
+		return false, fmt.Errorf("Unexpected error response code while waiting for view available: %v", response.Code), nil
+
+	}
+
+	description := "Wait for view readiness"
+	sleeper := base.CreateSleeperFunc(200, 100)
+	err, _ = base.RetryLoop(description, worker, sleeper)
+
+	return err
+
+}
+
 func (rt *RestTester) WaitForDBOnline() (err error) {
 
 	maxTries := 20
@@ -923,7 +952,7 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
 	defer func() {
 		// Clean up all profile handlers that are registered as part of this test
-		delete(bt.blipContext.HandlerForProfile, "changes")  // a handler for this profile is registered in SubscribeToChanges
+		delete(bt.blipContext.HandlerForProfile, "changes") // a handler for this profile is registered in SubscribeToChanges
 	}()
 
 	collectedChanges := [][]interface{}{}
@@ -1004,7 +1033,6 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 		delete(bt.blipContext.HandlerForProfile, "changes")
 		delete(bt.blipContext.HandlerForProfile, "rev")
 	}()
-
 
 	// -------- Changes handler callback --------
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled

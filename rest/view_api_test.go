@@ -393,7 +393,9 @@ func TestViewQueryWithKeys(t *testing.T) {
 	// Create a view
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	assertStatus(t, response, 201)
+	assertNoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/bar"), "Error waiting for view availability")
 
+	// Create a doc
 	response = rt.SendAdminRequest("PUT", "/db/query_with_keys", `{"key":"channel_a", "value":99}`)
 	assertStatus(t, response, 201)
 
@@ -428,6 +430,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	// Create a view
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"composite_key_test": {"map": "function(doc) {emit([doc.key, doc.seq], doc.value);}"}}}`)
 	assertStatus(t, response, 201)
+	assertNoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/composite_key_test"), "Error waiting for view availability")
 
 	// Create a doc
 	response = rt.SendAdminRequest("PUT", "/db/doc_composite_key", `{"key":"channel_a", "seq":55, "value":99}`)
@@ -463,6 +466,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	// Create a view
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"int_key_test": {"map": "function(doc) {emit(doc.seq, doc.value);}"}}}`)
 	assertStatus(t, response, 201)
+	assertNoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/int_key_test"), "Error waiting for view availability")
 
 	// Create a doc
 	response = rt.SendAdminRequest("PUT", "/db/doc_int_key", `{"key":"channel_a", "seq":55, "value":99}`)
