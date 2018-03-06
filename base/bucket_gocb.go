@@ -2220,12 +2220,11 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		case ViewQueryParamKey:
 			viewQuery.Key(optionValue)
 		case ViewQueryParamKeys:
-			stringKeys := optionValue.([]string)
-			emptyInterfaceKeys := []interface{}{}
-			for _, key := range stringKeys {
-				emptyInterfaceKeys = append(emptyInterfaceKeys, key)
+			keys, err := ConvertToEmptyInterfaceSlice(optionValue)
+			if err != nil {
+				return err
 			}
-			viewQuery.Keys(emptyInterfaceKeys)
+			viewQuery.Keys(keys)
 		case ViewQueryParamStartKey, ViewQueryParamEndKey, ViewQueryParamInclusiveEnd, ViewQueryParamStartKeyDocId, ViewQueryParamEndKeyDocId:
 			// These are dealt with outside of this case statement to build ranges
 		case ViewQueryParamIncludeDocs:
