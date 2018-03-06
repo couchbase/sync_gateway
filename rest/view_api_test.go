@@ -382,6 +382,11 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 
 // Reproduces SG #3344.  Original issue only reproducible against Couchbase server (non-walrus)
 func TestViewQueryWithKeys(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support the 'keys' view parameter")
+	}
+
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
@@ -389,11 +394,97 @@ func TestViewQueryWithKeys(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	assertStatus(t, response, 201)
 
+	response = rt.SendAdminRequest("PUT", "/db/query_with_keys", `{"key":"channel_a", "value":99}`)
+	assertStatus(t, response, 201)
+
 	// Admin view query:
-	viewUrlPath := "/db/_design/foo/_view/bar?keys=%5B%22env_1%22%5D"
+	viewUrlPath := "/db/_design/foo/_view/bar?keys=%5B%22channel_a%22%5D&stale=false"
 	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
 	assertStatus(t, response, 200) // Query string was parsed properly
 
+	var result sgbucket.ViewResult
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 1)
+
+	// Ensure that query for non-existent keys returns no rows
+	viewUrlPath = "/db/_design/foo/_view/bar?keys=%5B%22channel_b%22%5D&stale=false"
+	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
+	assertStatus(t, response, 200) // Query string was parsed properly
+
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 0)
+
+}
+
+func TestViewQueryWithCompositeKeys(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support the 'keys' view parameter")
+	}
+
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	defer rt.Close()
+
+	// Create a view
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"composite_key_test": {"map": "function(doc) {emit([doc.key, doc.seq], doc.value);}"}}}`)
+	assertStatus(t, response, 201)
+
+	// Create a doc
+	response = rt.SendAdminRequest("PUT", "/db/doc_composite_key", `{"key":"channel_a", "seq":55, "value":99}`)
+	assertStatus(t, response, 201)
+
+	// Admin view query:
+	//   keys:[["channel_a", 55]]
+	viewUrlPath := "/db/_design/foo/_view/composite_key_test?keys=%5B%5B%22channel_a%22%2C%2055%5D%5D&stale=false"
+	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
+	assertStatus(t, response, 200)
+	var result sgbucket.ViewResult
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 1)
+
+	// Ensure that a query for non-existent key returns no rows
+	viewUrlPath = "/db/_design/foo/_view/composite_key_test?keys=%5B%5B%22channel_b%22%2C%2055%5D%5D&stale=false"
+	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
+	assertStatus(t, response, 200)
+
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 0)
+}
+
+func TestViewQueryWithIntKeys(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support the 'keys' view parameter")
+	}
+
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	defer rt.Close()
+
+	// Create a view
+	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"int_key_test": {"map": "function(doc) {emit(doc.seq, doc.value);}"}}}`)
+	assertStatus(t, response, 201)
+
+	// Create a doc
+	response = rt.SendAdminRequest("PUT", "/db/doc_int_key", `{"key":"channel_a", "seq":55, "value":99}`)
+	assertStatus(t, response, 201)
+
+	// Admin view query:
+	//   keys:[55,65]
+	viewUrlPath := "/db/_design/foo/_view/int_key_test?keys=%5B55,65%5D&stale=false"
+	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
+	assertStatus(t, response, 200)
+	var result sgbucket.ViewResult
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 1)
+
+	// Ensure that a query for non-existent key returns no rows
+	//   keys:[65,75]
+	viewUrlPath = "/db/_design/foo/_view/int_key_test?keys=%5B65,75%5D&stale=false"
+	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
+	assertStatus(t, response, 200)
+
+	json.Unmarshal(response.Body.Bytes(), &result)
+	assert.Equals(t, len(result.Rows), 0)
 }
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
