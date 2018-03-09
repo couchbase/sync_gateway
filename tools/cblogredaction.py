@@ -21,9 +21,10 @@ UD_TAG_REGEX = re.compile('(<ud>)(.+?)(</ud>)')
 
 
 class Redact_file(object):
-    def __init__(self, log, salt):
+    def __init__(self, log, salt, path):
         self.log = log
         self.salt = salt
+        self.path = path
         self._redact_file()
 
     def _redact_tag(self, match):
@@ -50,8 +51,8 @@ class Redact_file(object):
                 try:
                     total_redacted_tags = 0
                     warning_lines = 0
-                    head, tail = os.path.split(self.log)
-                    redacted_log = head + '/redacted-' + tail
+                    _, tail = os.path.split(self.log)
+                    redacted_log = os.path.join(self.path, 'redacted-' + tail)
                     if os.path.exists(redacted_log):
                         logging.error('{} - {} already exists, not redacting'.format(self.log, redacted_log))
                         return
@@ -77,6 +78,9 @@ class Redact_file(object):
                                  ' unmatched tags'.format(self.log, line_number, total_redacted_tags, warning_lines))
                 except IOError as e:
                     logging.error('{} - {}'.format(redacted_log, e.strerror))
+                except Exception, e:
+                    # Should not get here in a production environment, but this is useful for development
+                    logging.error('{} - Unexpected error: {}'.format(self.log, e.message))
         except IOError as e:
             logging.error('{} - {}'.format(self.log, e.strerror))
 
@@ -101,10 +105,13 @@ def _main():
                                                'directory.')
     opts.add_argument('log_files', nargs='+', metavar='File', help='path to the log file(s) to redact')
     salt_group = opts.add_mutually_exclusive_group(required=True)
-    salt_group.add_argument('-s', '--salt', type=str, metavar='String', help='the salt used to redact the logs')
+    salt_group.add_argument('-s', '--salt', type=str, metavar='<string>', help='the salt used to redact the logs')
     salt_group.add_argument('-g', '--generate-salt', action='store_true', dest='generate_salt',
                             help='automatically generates a salt that will be used to redact the logs')
-    opts.add_argument('-t', '--threads', type=int, metavar='Number', default=1, help='number of concurrent workers threads to use')
+    opts.add_argument('-t', '--threads', type=int, metavar='<num>', default=1,
+                      help='number of concurrent workers threads to use')
+    opts.add_argument('-o', '--output-dir', type=str, metavar='<path>', dest='output_dir', default='',
+                      help='the directory to place the redacted logs in')
     opts.add_argument('-v', '--verbose', action='count', help='increase output verbosity')
     args = opts.parse_args()
 
@@ -130,8 +137,8 @@ def _main():
 
     pool = Pool(args.threads, _init_worker_singal)
     # Creating a list of tuples because of the limitation of pool with multiple arguments
-    file_with_salt = [(log, args.salt) for log in args.log_files]
-    results = pool.map_async(redact_file_unpack, file_with_salt)
+    worker_args = [(log, args.salt, args.output_dir) for log in args.log_files]
+    results = pool.map_async(redact_file_unpack, worker_args)
     try:
         while not results.ready():
             time.sleep(1)
