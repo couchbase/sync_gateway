@@ -263,9 +263,9 @@ class TaskRunner(object):
         files = []
         for name, fp in self.files.iteritems():
             fp.close()
-            r = Redact_file(fp.name, salt)
             head, tail = os.path.split(fp.name)
-            files.append(head + "/redacted-" + tail)
+            r = Redact_file(fp.name, salt, head)
+            files.append(os.path.join(head, "redacted-" + tail))
 
         prefix = "%s_%s_%s" % (log_type, node, self.start_time)
         self._zip_helper(prefix, filename, files)
