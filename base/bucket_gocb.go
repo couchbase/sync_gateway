@@ -63,9 +63,9 @@ func init() {
 type CouchbaseBucketGoCB struct {
 	*gocb.Bucket               // the underlying gocb bucket
 	spec         BucketSpec    // keep a copy of the BucketSpec for DCP usage
-	singleOps    chan struct{} // Manages max concurrent single ops
-	bulkOps      chan struct{} // Manages max concurrent bulk ops
-	viewOps      chan struct{} // Manages max concurrent view ops
+	singleOps    chan struct{} // Manages max concurrent single ops (per kv node)
+	bulkOps      chan struct{} // Manages max concurrent bulk ops (per kv node)
+	viewOps      chan struct{} // Manages max concurrent view ops (per kv node)
 }
 
 type GoCBLogger struct{}
@@ -725,7 +725,7 @@ func isRecoverableGoCBError(err error) bool {
 // Then it means that the view request timed out, most likely due to the fact that it's a stale=false query and
 // it's rebuilding the index.  In that case, it's desirable to return a more informative error than the
 // underlying net/url.Error. See https://github.com/couchbase/sync_gateway/issues/2639
-func isGoCBViewTimeoutError(err error) bool {
+func isGoCBTimeoutError(err error) bool {
 
 	if err == nil {
 		return false
@@ -1849,7 +1849,7 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
 
 	// If it's a view timeout error, return an error message specific to that.
-	if isGoCBViewTimeoutError(err) {
+	if isGoCBTimeoutError(err) {
 		return viewResult, ErrViewTimeoutError
 	}
 
@@ -1922,7 +1922,7 @@ func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[strin
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
 
 	// If it's a view timeout error, return an error message specific to that.
-	if isGoCBViewTimeoutError(err) {
+	if isGoCBTimeoutError(err) {
 		return ErrViewTimeoutError
 	}
 
