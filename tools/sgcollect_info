@@ -72,7 +72,6 @@ USAGE = """usage: %prog [options] output_file.zip
 mydir = os.path.dirname(sys.argv[0])
 
 def create_option_parser():
-    
     parser = optparse.OptionParser(usage=USAGE, option_class=CbcollectInfoOptions)
     parser.add_option("-r", dest="root",
                       help="root directory - defaults to %s" % (mydir + "/.."),
@@ -114,7 +113,6 @@ def create_option_parser():
                       help="path to Sync Gateway config.  By default will try to discover via expvars")
     parser.add_option("--sync-gateway-executable", dest="sync_gateway_executable",
                       help="path to Sync Gateway executable.  By default will try to discover via expvars")
-    
     return parser
 
 def expvar_url(sg_url):
@@ -168,9 +166,9 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
     ]
 
     format_types = [
-        "dot",
-        "pdf",
-        "text",
+        # "dot",
+        # "pdf",
+        # "text",
         "raw",
     ]
 

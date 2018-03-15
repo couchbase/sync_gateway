@@ -36,6 +36,7 @@ class LogRedactor:
         try:
             with open(ifile, 'r') as inp:
                 with open(ofile, 'w+') as out:
+                    # Write redaction header
                     out.write(self.couchbase_log.do("RedactLevel"))
                     for line in inp:
                         out.write(processor.do(line))
