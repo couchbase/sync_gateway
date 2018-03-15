@@ -166,9 +166,9 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
     ]
 
     format_types = [
-        # "dot",
-        # "pdf",
-        # "text",
+        "dot",
+        "pdf",
+        "text",
         "raw",
     ]
 
