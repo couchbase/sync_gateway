@@ -9,12 +9,21 @@ import (
 
 const BucketQueryToken = "$_bucket" // Token used for bucket name replacement in query statements
 
-func (bucket *CouchbaseBucketGoCB) N1QLQuery(statement string, prepared bool, consistency gocb.ConsistencyMode, params map[string]interface{}) (gocb.QueryResults, error) {
-
-	n1qlQuery := gocb.NewN1qlQuery(statement)
-	n1qlQuery.AdHoc(!prepared)
-	n1qlQuery.Consistency(consistency)
-
+// Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
+// Params specified using the $param notation in the statement are intended to be used w/ N1QL prepared statements, and will be
+// passed through as params to n1ql.  e.g.:
+//   SELECT _sync.sequence FROM $_bucket WHERE _sync.sequence > $minSeq
+// https://developer.couchbase.com/documentation/server/current/sdk/go/n1ql-queries-with-sdk.html for additional details.
+// Will additionally replace all instances of BucketQueryToken($_bucket) in the statement
+// with the bucket name.  'bucket' should not be included in params.
+//
+// If adhoc=true, prepared statement handling will be disabled.  Should only be set to true for queries that can't be prepared, e.g.:
+//  SELECT _sync.channels.ABC.seq from $bucket
+func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, consistency gocb.ConsistencyMode, adhoc bool) (gocb.QueryResults, error) {
+	bucketStatement := strings.Replace(statement, BucketQueryToken, bucket.GetName(), -1)
+	n1qlQuery := gocb.NewN1qlQuery(bucketStatement)
+	n1qlQuery = n1qlQuery.AdHoc(adhoc)
+	n1qlQuery = n1qlQuery.Consistency(consistency)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, params)
 
 	if isGoCBTimeoutError(err) {
@@ -24,6 +33,7 @@ func (bucket *CouchbaseBucketGoCB) N1QLQuery(statement string, prepared bool, co
 	return results, err
 }
 
+// CreateIndex creates the specified index in the current bucket using on the specified index expression.
 func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression string, numReplica uint) error {
 
 	createStatement := fmt.Sprintf("CREATE INDEX %s ON %s(%s)", indexName, bucket.GetName(), expression)
@@ -46,6 +56,7 @@ func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression stri
 	return nil
 }
 
+// CreateIndex drops the specified index from the current bucket.
 func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
 	statement := fmt.Sprintf("DROP INDEX %s.%s", bucket.GetName(), indexName)
 	n1qlQuery := gocb.NewN1qlQuery(statement)
@@ -60,23 +71,6 @@ func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
 		return closeErr
 	}
 	return err
-}
-
-// Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
-// Params specified using the $param notation in the statement are intended to be used w/ N1QL prepared statements, and will be
-// passed through as params to n1ql.  e.g.:
-//   SELECT _sync.sequence FROM $_bucket WHERE _sync.sequence > $minSeq
-// https://developer.couchbase.com/documentation/server/current/sdk/go/n1ql-queries-with-sdk.html for additional details.
-// Will additionally replace all instances of BucketQueryToken($_bucket) in the statement
-// with the bucket name.  'bucket' should not be included in params.
-//
-// If adhoc=true, prepared statement handling will be disabled.  Should only be set to true for queries that can't be prepared, e.g.:
-//  SELECT _sync.channels.ABC.seq from $bucket
-func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, adhoc bool) (gocb.QueryResults, error) {
-	bucketStatement := strings.Replace(statement, BucketQueryToken, bucket.GetName(), -1)
-	n1qlQuery := gocb.NewN1qlQuery(bucketStatement)
-	n1qlQuery = n1qlQuery.AdHoc(adhoc)
-	return bucket.ExecuteN1qlQuery(n1qlQuery, params)
 }
 
 func QueryCloseErrors(closeError error) []error {

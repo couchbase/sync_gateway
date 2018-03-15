@@ -53,7 +53,7 @@ func TestN1qlQuery(t *testing.T) {
 	params := make(map[string]interface{})
 	params["minvalue"] = 2
 
-	queryResults, queryErr := bucket.Query(queryExpression, params, false)
+	queryResults, queryErr := bucket.Query(queryExpression, params, gocb.RequestPlus, false)
 	assertNoError(t, queryErr, "Error executing n1ql query")
 
 	// Struct to receive the query response (META().id, val)
@@ -79,7 +79,7 @@ func TestN1qlQuery(t *testing.T) {
 	params = make(map[string]interface{})
 	params["minvalue"] = 10
 
-	queryResults, queryErr = bucket.Query(queryExpression, params, false)
+	queryResults, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
 	assertNoError(t, queryErr, "Error executing n1ql query")
 
 	count = 0
@@ -139,25 +139,25 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	// Query with syntax error
 	queryExpression := "SELECT META().id, val WHERE val > $minvalue"
 	params := make(map[string]interface{})
-	_, queryErr := bucket.Query(queryExpression, params, false)
+	_, queryErr := bucket.Query(queryExpression, params, gocb.RequestPlus, false)
 	assertTrue(t, queryErr != nil, "Expected error for malformed n1ql query (syntax)")
 
 	// Query against non-existing bucket
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", "badBucket")
 	params = map[string]interface{}{"minvalue": 2}
-	_, queryErr = bucket.Query(queryExpression, params, false)
+	_, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
 	assertTrue(t, queryErr != nil, "Expected error for malformed n1ql query (no bucket)")
 
 	// Specify params for non-parameterized query (no error expected, ensure doesn't break)
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > 5", BucketQueryToken)
 	params = map[string]interface{}{"minvalue": 2}
-	_, queryErr = bucket.Query(queryExpression, params, false)
+	_, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
 	assertTrue(t, queryErr == nil, "Unexpected error for malformed n1ql query (extra params)")
 
 	// Omit params for parameterized query
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", BucketQueryToken)
 	params = make(map[string]interface{})
-	_, queryErr = bucket.Query(queryExpression, params, false)
+	_, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
 	assertTrue(t, queryErr != nil, "Expected error for malformed n1ql query (missing params)")
 
 }
