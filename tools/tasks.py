@@ -21,7 +21,34 @@ import urllib2
 import base64
 import mmap
 
-from cblogredaction import Redact_file
+from cbcollect_info import CouchbaseLogProcessor, RegularLogProcessor
+
+
+class LogRedactor:
+    def __init__(self, salt, tmpdir):
+        self.target_dir = os.path.join(tmpdir, "redacted")
+        os.makedirs(self.target_dir)
+
+        self.couchbase_log = CouchbaseLogProcessor(salt)
+        self.regular_log = RegularLogProcessor(salt)
+
+    def _process_file(self, ifile, ofile, processor):
+        try:
+            with open(ifile, 'r') as inp:
+                with open(ofile, 'w+') as out:
+                    out.write(self.couchbase_log.do("RedactLevel"))
+                    for line in inp:
+                        out.write(processor.do(line))
+        except IOError as e:
+            log("I/O error(%s): %s" % (e.errno, e.strerror))
+
+    def redact_file(self, name, ifile):
+        ofile = os.path.join(self.target_dir, name)
+        if ".log" in name:
+            self._process_file(ifile, ofile, self.regular_log)
+            return ofile
+        return ifile
+
 
 class AltExitC(object):
     def __init__(self):
@@ -261,11 +288,11 @@ class TaskRunner(object):
 
     def redact_and_zip(self, filename, log_type, salt, node):
         files = []
+        redactor = LogRedactor(salt, self.tmpdir)
+
         for name, fp in self.files.iteritems():
             fp.close()
-            head, tail = os.path.split(fp.name)
-            r = Redact_file(fp.name, salt, head)
-            files.append(os.path.join(head, "redacted-" + tail))
+            files.append(redactor.redact_file(name, fp.name))
 
         prefix = "%s_%s_%s" % (log_type, node, self.start_time)
         self._zip_helper(prefix, filename, files)
