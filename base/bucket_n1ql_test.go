@@ -19,7 +19,7 @@ func TestN1qlQuery(t *testing.T) {
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
-		t.Errorf("Requires gocb bucket")
+		t.Fatalf("Requires gocb bucket")
 	}
 
 	// Write a few docs to the bucket to query
@@ -107,7 +107,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
-		t.Errorf("Requires gocb bucket")
+		t.Fatalf("Requires gocb bucket")
 	}
 
 	// Write a few docs to the bucket to query
@@ -170,7 +170,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
-		t.Errorf("Requires gocb bucket")
+		t.Fatalf("Requires gocb bucket")
 	}
 
 	createExpression := "_sync.sequence"
@@ -188,11 +188,14 @@ func TestCreateAndDropIndex(t *testing.T) {
 
 func TestCreateAndDropIndexErrors(t *testing.T) {
 
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
 	testBucket := GetTestBucketOrPanic()
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
-		t.Errorf("Requires gocb bucket")
+		t.Fatalf("Requires gocb bucket")
 	}
 
 	// Malformed expression
