@@ -25,9 +25,12 @@ from cbcollect_info import CouchbaseLogProcessor, RegularLogProcessor
 
 
 class LogRedactor:
-    def __init__(self, salt, tmpdir):
+    def __init__(self, salt, tmpdir, blacklist=[]):
         self.target_dir = os.path.join(tmpdir, "redacted")
         os.makedirs(self.target_dir)
+
+        self.blacklist = blacklist
+        print('Redaction blacklist: {0}'.format(blacklist))
 
         self.couchbase_log = CouchbaseLogProcessor(salt)
         self.regular_log = RegularLogProcessor(salt)
@@ -45,10 +48,12 @@ class LogRedactor:
 
     def redact_file(self, name, ifile):
         ofile = os.path.join(self.target_dir, name)
-        if ".log" in name:
-            self._process_file(ifile, ofile, self.regular_log)
-            return ofile
-        return ifile
+        _, filename = os.path.split(name)
+        if any(s in filename for s in self.blacklist):
+            print('WARNING: Not redacting blacklisted file {0}'.format(filename))
+            return ifile
+        self._process_file(ifile, ofile, self.regular_log)
+        return ofile
 
 
 class AltExitC(object):
@@ -289,7 +294,15 @@ class TaskRunner(object):
 
     def redact_and_zip(self, filename, log_type, salt, node):
         files = []
-        redactor = LogRedactor(salt, self.tmpdir)
+        # We don't want to attempt to redact binary/pprof files, as this could result in corruption
+        blacklist = [
+            'profile.text',           'goroutine.text',           'heap.text',
+            'profile.raw',            'goroutine.raw',            'heap.raw',
+            'profile.dot',            'goroutine.dot',            'heap.dot',
+            'profile.pdf',            'goroutine.pdf',            'heap.pdf',
+            'pprof_http_profile.log', 'pprof_http_goroutine.log', 'pprof_http_heap.log'
+        ]
+        redactor = LogRedactor(salt, self.tmpdir, blacklist)
 
         for name, fp in self.files.iteritems():
             fp.close()
