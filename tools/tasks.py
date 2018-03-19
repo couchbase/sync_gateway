@@ -292,16 +292,8 @@ class TaskRunner(object):
         elif self.verbosity >= 2:
             log('Skipping "%s" (%s): not for platform %s' % (task.description, command_to_print, sys.platform))
 
-    def redact_and_zip(self, filename, log_type, salt, node):
+    def redact_and_zip(self, filename, log_type, salt, node, blacklist=[]):
         files = []
-        # We don't want to attempt to redact binary/pprof files, as this could result in corruption
-        blacklist = [
-            'profile.text',           'goroutine.text',           'heap.text',
-            'profile.raw',            'goroutine.raw',            'heap.raw',
-            'profile.dot',            'goroutine.dot',            'heap.dot',
-            'profile.pdf',            'goroutine.pdf',            'heap.pdf',
-            'pprof_http_profile.log', 'pprof_http_goroutine.log', 'pprof_http_heap.log'
-        ]
         redactor = LogRedactor(salt, self.tmpdir, blacklist)
 
         for name, fp in self.files.iteritems():
