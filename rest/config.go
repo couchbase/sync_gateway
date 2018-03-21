@@ -700,7 +700,7 @@ func SetMaxFileDescriptors(maxP *uint64) {
 	}
 	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
-		base.Warn("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		base.WarnR("Error setting MaxFileDescriptors to %d: %v", base.MD(maxFDs), err)
 	}
 }
 

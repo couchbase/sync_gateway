@@ -240,8 +240,8 @@ func (h *handler) handleChanges() error {
 			to = fmt.Sprintf("  (to %s)", h.user.Name())
 		}
 
-		base.LogTo("Changes+", "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
-			h.rq.URL, feed, options, filter, channelsArray, docIdsArray, to)
+		base.LogToR("Changes+", "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
+		 	base.MD(h.rq.URL), base.MD(feed), base.MD(options), base.MD(filter), base.UD(channelsArray), base.UD(docIdsArray), base.UD(to))
 
 	}
 
@@ -387,13 +387,13 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
-				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
+				base.LogToR("Heartbeat", "heartbeat written to _changes feed for request received %s", base.UD(h.currentEffectiveUserNameAsUser()))
 			case <-timeout:
 				message = "OK (timeout)"
 				forceClose = true
 				break loop
 			case <-closeNotify:
-				base.LogTo("Changes", "Connection lost from client: %v", h.currentEffectiveUserNameAsUser())
+				base.LogToR("Changes", "Connection lost from client: %v", base.UD(h.currentEffectiveUserNameAsUser()))
 				forceClose = true
 				break loop
 			case <-h.db.ExitChanges:
@@ -637,8 +637,8 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		h.logStatus(101, "Upgraded to WebSocket protocol")
 		defer func() {
 			if err := conn.Close(); err != nil {
-				base.Warn("WebSocket connection (#%03d) closed with error %v",
-					h.serialNumber, err)
+				base.WarnR("WebSocket connection (#%03d) closed with error %v",
+					base.MD(h.serialNumber), err)
 			}
 			base.LogTo("HTTP+", "#%03d:     --> WebSocket closed", h.serialNumber)
 		}()

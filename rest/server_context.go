@@ -115,7 +115,7 @@ func (sc *ServerContext) startReplicators() {
 
 		// Run single replication, cancel parameter will always be false
 		if _, err := sc.replicator.Replicate(params, false); err != nil {
-			base.Warn("Error starting replication %v: %v", params.ReplicationId, err)
+			base.WarnR("Error starting replication %v: %v", base.UD(params.ReplicationId), err)
 		}
 
 	}
@@ -411,8 +411,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
 
-		msg := fmt.Sprintf("%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
-		base.Warn(msg)
+		msg := fmt.Sprintf("%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline", base.MD(bucket), err)
+		base.WarnR(msg)
 
 		if dc := sc.databases_[dbName]; dc != nil {
 
@@ -596,7 +596,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			}
 
 			if dbcontext.RevsLimit < 100 {
-				base.Warn("Setting the revs_limit (%v) to less than 100 may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
+				base.WarnR("Setting the revs_limit (%v) to less than 100 may have unwanted results when documents are frequently updated. Please see documentation for details.", base.MD(dbcontext.RevsLimit))
 			}
 		} else {
 			if dbcontext.RevsLimit <= 0 {
@@ -624,8 +624,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// Install bucket-shadower if any:
 	if shadow := config.Shadow; shadow != nil {
 		if err := sc.startShadowing(dbcontext, shadow); err != nil {
-			base.Warn("Database %q: unable to connect to external bucket for shadowing: %v",
-				dbName, err)
+			base.WarnR("Database %q: unable to connect to external bucket for shadowing: %v",
+				base.UD(dbName), err)
 		}
 	}
 
@@ -783,7 +783,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		var err error
 		pattern, err = regexp.Compile(*shadow.Doc_id_regex)
 		if err != nil {
-			base.Warn("Invalid shadow doc_id_regex: %s", *shadow.Doc_id_regex)
+			base.WarnR("Invalid shadow doc_id_regex: %s", base.UD(*shadow.Doc_id_regex))
 			return err
 		}
 	}
@@ -1020,7 +1020,7 @@ func (sc *ServerContext) Database(name string) *db.DatabaseContext {
 // If guest user defined, but has no access to channels .. issue warning + tips to fix
 func emitAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext) {
 	for _, warning := range collectAccessRelatedWarnings(config, context) {
-		base.Warn("%v", warning)
+		base.WarnR("%v", warning)
 	}
 
 }

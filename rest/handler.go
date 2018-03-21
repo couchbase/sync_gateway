@@ -551,14 +551,14 @@ func (h *handler) disableResponseCompression() {
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeJSONStatus(status int, value interface{}) {
 	if !h.requestAccepts("application/json") {
-		base.Warn("Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
+		base.WarnR("Client won't accept JSON, only %s", base.MD(h.rq.Header.Get("Accept")))
 		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
 		return
 	}
 
 	jsonOut, err := json.Marshal(value)
 	if err != nil {
-		base.Warn("Couldn't serialize JSON for %v : %s", value, err)
+		base.WarnR("Couldn't serialize JSON for %v : %s", base.UD(value), err)
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
 		return
 	}
@@ -594,7 +594,7 @@ func (h *handler) writeText(value []byte) {
 
 func (h *handler) writeTextStatus(status int, value []byte) {
 	if !h.requestAccepts("text/plain") {
-		base.Warn("Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
+		base.WarnR("Client won't accept text/plain, only %s", base.MD(h.rq.Header.Get("Accept")))
 		h.writeStatus(http.StatusNotAcceptable, "only text/plain available")
 		return
 	}
@@ -618,7 +618,7 @@ func (h *handler) addJSON(value interface{}) {
 			base.LogTo("CRUD+", "Couldn't serialize document body, HTTP client closed connection")
 			h.writeStatus(http.StatusServiceUnavailable, "Couldn't serialize document body")
 		} else {
-			base.Warn("Couldn't serialize JSON for %v : %s", value, err)
+			base.WarnR("Couldn't serialize JSON for %v : %s", base.UD(value), err)
 			h.writeStatus(http.StatusInternalServerError, "Couldn't serialize document body")
 		}
 	}
