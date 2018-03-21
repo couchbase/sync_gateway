@@ -73,7 +73,7 @@ func (h *handler) handleDbOnline() error {
 
 	json.Unmarshal(body, &input)
 
-	base.LogTo("CRUD", "Taking Database : %v, online in %v seconds", h.db.Name, input.Delay)
+	base.LogToR("CRUD", "Taking Database : %v, online in %v seconds", base.UD(h.db.Name), base.MD(input.Delay))
 
 	timer := time.NewTimer(time.Duration(input.Delay) * time.Second)
 	go func() {
@@ -90,7 +90,7 @@ func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
 	if err = h.db.TakeDbOffline("ADMIN Request"); err != nil {
-		base.LogTo("CRUD", "Unable to take Database : %v, offline", h.db.Name)
+		base.LogToR("CRUD", "Unable to take Database : %v, offline", base.UD(h.db.Name))
 	}
 
 	return err
@@ -548,7 +548,7 @@ func (h *handler) handleIndex() error {
 // HTTP handler for /index/channel
 func (h *handler) handleIndexChannel() error {
 	channelName := h.PathVar("channel")
-	base.LogTo("HTTP", "Index channel %q", channelName)
+	base.LogToR("HTTP", "Index channel %q", base.UD(channelName))
 
 	channelStats, err := h.db.IndexChannelStats(channelName)
 
@@ -593,18 +593,18 @@ func (h *handler) handlePurge() error {
 
 	for key, value := range input {
 		//For each one validate that the revision list is set to ["*"], otherwise skip doc and log warning
-		base.LogTo("CRUD", "purging document = %v", key)
+		base.LogToR("CRUD", "purging document = %v", base.UD(key))
 
 		if revisionList, ok := value.([]interface{}); ok {
 
 			//There should only be a single revision entry of "*"
 			if len(revisionList) != 1 {
-				base.LogTo("CRUD", "Revision list for doc ID %v, should contain exactly one entry", key)
+				base.LogToR("CRUD", "Revision list for doc ID %v, should contain exactly one entry", base.UD(key))
 				continue //skip this entry its not valid
 			}
 
 			if revisionList[0] != "*" {
-				base.LogTo("CRUD", "Revision entry for doc ID %v, should be the '*' revison", key)
+				base.LogToR("CRUD", "Revision entry for doc ID %v, should be the '*' revison", base.UD(key))
 				continue //skip this entry its not valid
 			}
 
@@ -622,12 +622,12 @@ func (h *handler) handlePurge() error {
 				h.response.Write([]byte(s))
 
 			} else {
-				base.LogTo("CRUD", "Failed to purge document %v, err = %v", key, err)
+				base.LogToR("CRUD", "Failed to purge document %v, err = %v", base.UD(key), err)
 				continue //skip this entry its not valid
 			}
 
 		} else {
-			base.LogTo("CRUD", "Revision list for doc ID %v, is not an array, ", key)
+			base.LogToR("CRUD", "Revision list for doc ID %v, is not an array, ", base.UD(key))
 			continue //skip this entry its not valid
 		}
 	}
