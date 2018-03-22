@@ -1199,3 +1199,112 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.True(t, restDocument.IsRemoved())
 
 }
+
+
+// Reproduce problematic behavior described in SG #3222
+func TestMultipleContinuousChangesSubscription(t *testing.T) {
+
+	bt, err := NewBlipTester()
+	assertNoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
+	receivedChangesWg := sync.WaitGroup{}
+
+	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
+	lastReceivedSeq := float64(0)
+	var numbatchesReceived int32
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+
+		body, err := request.Body()
+
+		if string(body) != "null" {
+
+			atomic.AddInt32(&numbatchesReceived, 1)
+
+			// Expected changes body: [[1,"foo","1-abc"]]
+			changeListReceived := [][]interface{}{}
+			err = json.Unmarshal(body, &changeListReceived)
+			assertNoError(t, err, "Error unmarshalling changes received")
+
+			for _, change := range changeListReceived {
+
+				// The change should have three items in the array
+				// [1,"foo","1-abc"]
+				assert.Equals(t, len(change), 3)
+
+				// Make sure sequence numbers are monotonically increasing
+				receivedSeq := change[0].(float64)
+				assert.True(t, receivedSeq > lastReceivedSeq)
+				lastReceivedSeq = receivedSeq
+
+				// Verify doc id and rev id have expected vals
+				docId := change[1].(string)
+				assert.True(t, strings.HasPrefix(docId, "foo"))
+				assert.Equals(t, change[2], "1-abc") // Rev id of pushed rev
+
+				receivedChangesWg.Done()
+			}
+
+		} else {
+
+			receivedChangesWg.Done()
+
+		}
+
+		if !request.NoReply() {
+			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
+			response := request.Response()
+			emptyResponseVal := []interface{}{}
+			emptyResponseValBytes, err := json.Marshal(emptyResponseVal)
+			assertNoError(t, err, "Error marshalling response")
+			response.SetBody(emptyResponseValBytes)
+		}
+
+	}
+
+	// Increment waitgroup since just the act of subscribing to continuous changes will cause
+	// the callback changes handler to be invoked with an initial change w/ empty body, signaling that
+	// all of the changes have been sent (eg, there are no changes to send)
+	receivedChangesWg.Add(1)
+
+	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	// Subscribe 10 times, and each subscription should overwrite previous.
+	for i := 0; i < 1; i++ {
+		subChangesRequest := blip.NewRequest()
+		subChangesRequest.SetProfile("subChanges")
+		subChangesRequest.Properties["continuous"] = "true"
+		subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
+		subChangesRequest.SetCompressed(false)
+		sent := bt.sender.Send(subChangesRequest)
+		assert.True(t, sent)
+		subChangesResponse := subChangesRequest.Response()
+		assert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	}
+
+	//// Add a change: Send an unsolicited doc revision in a rev request
+	receivedChangesWg.Add(1)
+	_, _, revResponse, err := bt.SendRev(
+		"foo",
+		"1-abc",
+		[]byte(`{"key": "val"}`),
+		blip.Properties{},
+	)
+	assert.Equals(t, err, nil)
+
+	_, err = revResponse.Body()
+	assertNoError(t, err, "Error unmarshalling response body")
+
+	// Wait until all expected changes are received by change handler
+	// receivedChangesWg.Wait()
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*5)
+	assertNoError(t, timeoutErr, "Timed out waiting for all changes.")
+
+	// Wait for another change, should not receive one since only one of the subchanges subscriptions
+	// should be active.
+	receivedChangesWg.Add(1)
+	timeoutErr = WaitWithTimeout(&receivedChangesWg, time.Second*5)
+	assert.True(t, timeoutErr != nil)
+
+
+}
