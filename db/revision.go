@@ -111,8 +111,7 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) error {
 	base.LogTo("CRUD+", "Saving old revision %q / %q (%d bytes)", docid, revid, len(body))
 
-	// Set old revisions to expire after 5 minutes.  Future enhancement to make this a config
-	// setting might be appropriate.
+	// Set old revisions to expire after Options.OldRevExpirySeconds.  Defaults to 5 minutes.
 
 	// Setting the binary flag isn't sufficient to make N1QL ignore the doc - the binary flag is only used by the SDKs.
 	// To ensure it's not available via N1QL, need to prefix the raw bytes with non-JSON data.
