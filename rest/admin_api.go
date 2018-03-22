@@ -73,7 +73,7 @@ func (h *handler) handleDbOnline() error {
 
 	json.Unmarshal(body, &input)
 
-	base.LogToR("CRUD", "Taking Database : %v, online in %v seconds", base.UD(h.db.Name), base.MD(input.Delay))
+	base.LogToR("CRUD", "Taking Database : %v, online in %v seconds", base.UD(h.db.Name), input.Delay)
 
 	timer := time.NewTimer(time.Duration(input.Delay) * time.Second)
 	go func() {

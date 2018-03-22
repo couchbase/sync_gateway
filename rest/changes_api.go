@@ -241,7 +241,7 @@ func (h *handler) handleChanges() error {
 		}
 
 		base.LogToR("Changes+", "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
-		 	base.MD(h.rq.URL), base.MD(feed), base.MD(options), base.MD(filter), base.UD(channelsArray), base.UD(docIdsArray), base.UD(to))
+		 	h.rq.URL, feed, options, filter, base.UD(channelsArray), base.UD(docIdsArray), base.UD(to))
 
 	}
 
@@ -572,14 +572,14 @@ loop:
 		case <-heartbeat:
 			err = send(nil)
 			if h != nil {
-				base.LogTo("Heartbeat", "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
+				base.LogToR("Heartbeat", "heartbeat written to _changes feed for request received %s", base.UD(h.currentEffectiveUserNameAsUser()))
 			}
 		case <-timeout:
 			forceClose = true
 			break loop
 		case <-closeNotify:
 			if h != nil {
-				base.LogTo("Changes+", "Client connection lost: %v", h.currentEffectiveUserNameAsUser())
+				base.LogToR("Changes+", "Client connection lost: %v", base.UD(h.currentEffectiveUserNameAsUser()))
 			} else {
 				base.LogTo("Changes+", "Client connection lost")
 			}
@@ -638,7 +638,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		defer func() {
 			if err := conn.Close(); err != nil {
 				base.WarnR("WebSocket connection (#%03d) closed with error %v",
-					base.MD(h.serialNumber), err)
+					h.serialNumber, err)
 			}
 			base.LogTo("HTTP+", "#%03d:     --> WebSocket closed", h.serialNumber)
 		}()

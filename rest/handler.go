@@ -226,13 +226,12 @@ func (h *handler) logRequestLine() {
 	if !base.LogEnabled("HTTP") {
 		return
 	}
-	as := h.currentEffectiveUserNameAsUser()
 	proto := ""
 	if h.rq.ProtoMajor >= 2 {
 		proto = " HTTP/2"
 	}
 
-	base.LogTo("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.SanitizeRequestURL(h.rq.URL), proto, as)
+	base.LogToR("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.SanitizeRequestURL(h.rq.URL), proto, base.UD(h.currentEffectiveUserNameAsUser()))
 }
 
 
@@ -331,7 +330,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	if userName, password := h.getBasicAuth(); userName != "" {
 		h.user = context.Authenticator().AuthenticateUser(userName, password)
 		if h.user == nil {
-			base.Logf("HTTP auth failed for username=%q", userName)
+			base.LogfR("HTTP auth failed for username=%q", base.UD(userName))
 			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
 			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 		}
@@ -551,7 +550,7 @@ func (h *handler) disableResponseCompression() {
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeJSONStatus(status int, value interface{}) {
 	if !h.requestAccepts("application/json") {
-		base.WarnR("Client won't accept JSON, only %s", base.MD(h.rq.Header.Get("Accept")))
+		base.WarnR("Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
 		return
 	}
@@ -594,7 +593,7 @@ func (h *handler) writeText(value []byte) {
 
 func (h *handler) writeTextStatus(status int, value []byte) {
 	if !h.requestAccepts("text/plain") {
-		base.WarnR("Client won't accept text/plain, only %s", base.MD(h.rq.Header.Get("Accept")))
+		base.WarnR("Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only text/plain available")
 		return
 	}

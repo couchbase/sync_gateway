@@ -306,7 +306,7 @@ func (h *handler) handleRepair() error {
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
 	since := h.getIntQuery("since", 0)
-	base.LogTo("HTTP", "Dump channel %q", channelName)
+	base.LogTo("HTTP", "Dump channel %q", base.UD(channelName))
 
 	chanLog := h.db.GetChangeLog(channelName, since)
 	if chanLog == nil {
@@ -524,7 +524,7 @@ func (h *handler) handleBulkDocs() error {
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.Logf("\tBulkDocs: Doc %q --> %d %s (%v)", docid, code, msg, err)
+			base.Logf("\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
 			err = nil // wrote it to output already; not going to return it
 		} else {
 			status["rev"] = revid
@@ -550,7 +550,7 @@ func (h *handler) handleBulkDocs() error {
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.Logf("\tBulkDocs: Local Doc %q --> %d %s (%v)", docid, code, msg, err)
+			base.Logf("\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
 			err = nil
 		} else {
 			status["rev"] = revid

@@ -297,7 +297,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.WarnR("[%s] PANIC sending changes: %v\n%s", base.MD(bh.blipContext.ID), base.MD(panicked), debug.Stack())
+			base.WarnR("[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
@@ -380,7 +380,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.WarnR("[%s] PANIC handling 'changes' response: %v\n%s", base.MD(bh.blipContext.ID), base.MD(panicked), debug.Stack())
+			base.WarnR("[%s] PANIC handling 'changes' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
@@ -552,7 +552,7 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 		go func() {
 			defer func() {
 				if panicked := recover(); panicked != nil {
-					base.WarnR("[%s] PANIC handling 'sendRevision' response: %v\n%s", base.MD(bh.blipContext.ID), base.MD(panicked), debug.Stack())
+					base.WarnR("[%s] PANIC handling 'sendRevision' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 					bh.close()
 				}
 			}()
