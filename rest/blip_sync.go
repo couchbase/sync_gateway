@@ -31,7 +31,6 @@ const (
 	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
 	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
 	BlipCBMobileReplication = "CBMobile_2"
-
 )
 
 // Represents one BLIP connection (socket) opened by a client.
@@ -127,7 +126,7 @@ func (h *handler) handleBLIPSync() error {
 		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol. User:%s.", blipContext.ID, h.currentEffectiveUserName()))
 		defer func() {
 			conn.Close() // in case it wasn't closed already
-			ctx.LogToR("HTTP+", "#%03d:    --> BLIP+WebSocket connection closed", h.serialNumber	)
+			ctx.LogToR("HTTP+", "#%03d:    --> BLIP+WebSocket connection closed", h.serialNumber)
 		}()
 		defaultHandler(conn)
 	}
