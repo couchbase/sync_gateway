@@ -8,8 +8,7 @@ import (
 )
 
 func TestLogKeyConcurrency(t *testing.T) {
-	logKey := LogKey{flag: KEY_ACCESS | KEY_HTTP | KEY_REPLICATE}
-
+	logKey := LogKey{}
 	stop := make(chan struct{})
 
 	go func() {
@@ -27,7 +26,18 @@ func TestLogKeyConcurrency(t *testing.T) {
 		for {
 			select {
 			default:
-				logKey.Disable(KEY_ACCESS)
+				logKey.Disable(KEY_DCP)
+			case <-stop:
+				return
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			default:
+				logKey.Enabled(KEY_DCP)
 			case <-stop:
 				return
 			}

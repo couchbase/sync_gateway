@@ -51,30 +51,31 @@ var logKeyNames = map[uint32]string{
 
 // Enable will enable the given logKey in keyMask.
 func (keyMask *LogKey) Enable(logKey uint32) {
-	newVal := atomic.LoadUint32(&keyMask.flag) | logKey
-	atomic.StoreUint32(&keyMask.flag, newVal)
+	val := atomic.LoadUint32(&keyMask.flag)
+	atomic.CompareAndSwapUint32(&keyMask.flag, val, val|logKey)
 }
 
 // Disable will disable the given logKey in keyMask.
 func (keyMask *LogKey) Disable(logKey uint32) {
-	newVal := atomic.LoadUint32(&keyMask.flag) & ^logKey
-	atomic.StoreUint32(&keyMask.flag, newVal)
+	val := atomic.LoadUint32(&keyMask.flag)
+	atomic.CompareAndSwapUint32(&keyMask.flag, val, val & ^logKey)
 }
 
 // Enabled returns true if the given logKey, or KEY_ALL is enabled in keyMask.
-func (keyMask LogKey) Enabled(logKey uint32) bool {
+func (keyMask *LogKey) Enabled(logKey uint32) bool {
 	return keyMask.enabled(logKey, true)
 }
 
 // enabled returns true if the given logKey is enabled in keyMask, with an optional wildcard check.
-func (keyMask LogKey) enabled(logKey uint32, checkWildcard bool) bool {
-	return (checkWildcard && keyMask.flag&KEY_ALL != 0) ||
-		keyMask.flag&logKey != 0
+func (keyMask *LogKey) enabled(logKey uint32, checkWildcard bool) bool {
+	flag := atomic.LoadUint32(&keyMask.flag)
+	return (checkWildcard && flag&KEY_ALL != 0) ||
+		flag&logKey != 0
 }
 
 // ToLogKey takes a slice of case-sensitive log key names and will return a LogKey bitfield.
 func ToLogKey(keysStr []string) LogKey {
-	var logKeys = LogKey{flag: KEY_NONE}
+	var logKeys = LogKey{}
 	for _, name := range keysStr {
 		for logKey, logKeyName := range logKeyNames {
 			if logKeyName == name {
