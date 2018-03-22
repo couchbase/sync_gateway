@@ -1020,7 +1020,7 @@ func (sc *ServerContext) Database(name string) *db.DatabaseContext {
 // If guest user defined, but has no access to channels .. issue warning + tips to fix
 func emitAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext) {
 	for _, warning := range collectAccessRelatedWarnings(config, context) {
-		base.WarnR("%v", warning)
+		base.Warn("%v", warning)
 	}
 
 }
