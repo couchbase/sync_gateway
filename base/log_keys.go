@@ -73,6 +73,12 @@ func (keyMask *LogKey) enabled(logKey uint32, checkWildcard bool) bool {
 		flag&logKey != 0
 }
 
+// LogKeyName returns the string representation of a log key.
+func LogKeyName(logKey uint32) string {
+	// No lock required to read concurrently, as long as nobody writes to logKeyNames.
+	return logKeyNames[logKey]
+}
+
 // ToLogKey takes a slice of case-sensitive log key names and will return a LogKey bitfield.
 func ToLogKey(keysStr []string) LogKey {
 	var logKeys = LogKey{}
@@ -92,7 +98,7 @@ func (keyMask LogKey) EnabledLogKeys() []string {
 	for i := 0; i < len(logKeyNames); i++ {
 		logKey := uint32(1) << uint32(i)
 		if keyMask.enabled(logKey, false) {
-			logKeys = append(logKeys, logKeyNames[logKey])
+			logKeys = append(logKeys, LogKeyName(logKey))
 		}
 	}
 	return logKeys

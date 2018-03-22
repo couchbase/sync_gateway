@@ -78,17 +78,17 @@ func TestLogKeyNames(t *testing.T) {
 	keys = append(keys, "DCP")
 	logKeys = ToLogKey(keys)
 	assert.Equals(t, logKeys.flag, KEY_DCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{"DCP"})
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_DCP)})
 
 	keys = append(keys, "Access")
 	logKeys = ToLogKey(keys)
 	assert.Equals(t, logKeys.flag, KEY_ACCESS|KEY_DCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{"Access", "DCP"})
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_ACCESS), LogKeyName(KEY_DCP)})
 
 	keys = []string{"*", "DCP"}
 	logKeys = ToLogKey(keys)
 	assert.Equals(t, logKeys.flag, KEY_ALL|KEY_DCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{"*", "DCP"})
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_ALL), LogKeyName(KEY_DCP)})
 }
 
 func BenchmarkEnabledLogKeys(b *testing.B) {
