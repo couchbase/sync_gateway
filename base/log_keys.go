@@ -1,15 +1,21 @@
 package base
 
+import (
+	"sync/atomic"
+)
+
 // LogKey is a bitfield of log keys.
-type LogKey uint
+type LogKey struct {
+	flag uint32
+}
 
 // Values for log keys.
 const (
 	// KEY_NONE is shorthand for no log keys.
-	KEY_NONE LogKey = 0
+	KEY_NONE uint32 = 0
 
 	// KEY_ALL is a wildcard for all log keys.
-	KEY_ALL LogKey = 1 << iota
+	KEY_ALL uint32 = 1 << iota
 
 	KEY_ACCESS
 	KEY_ATTACH
@@ -26,7 +32,7 @@ const (
 	KEY_REPLICATE
 )
 
-var logKeyNames = map[LogKey]string{
+var logKeyNames = map[uint32]string{
 	KEY_ALL:       "*",
 	KEY_ACCESS:    "Access",
 	KEY_ATTACH:    "Attach",
@@ -44,29 +50,31 @@ var logKeyNames = map[LogKey]string{
 }
 
 // Enable will enable the given logKey in keyMask.
-func (keyMask *LogKey) Enable(logKey LogKey) {
-	*keyMask |= logKey
+func (keyMask *LogKey) Enable(logKey uint32) {
+	newVal := atomic.LoadUint32(&keyMask.flag) | logKey
+	atomic.StoreUint32(&keyMask.flag, newVal)
 }
 
 // Disable will disable the given logKey in keyMask.
-func (keyMask *LogKey) Disable(logKey LogKey) {
-	*keyMask &= ^logKey
+func (keyMask *LogKey) Disable(logKey uint32) {
+	newVal := atomic.LoadUint32(&keyMask.flag) & ^logKey
+	atomic.StoreUint32(&keyMask.flag, newVal)
 }
 
 // Enabled returns true if the given logKey, or KEY_ALL is enabled in keyMask.
-func (keyMask LogKey) Enabled(logKey LogKey) bool {
+func (keyMask LogKey) Enabled(logKey uint32) bool {
 	return keyMask.enabled(logKey, true)
 }
 
 // enabled returns true if the given logKey is enabled in keyMask, with an optional wildcard check.
-func (keyMask LogKey) enabled(logKey LogKey, checkWildcard bool) bool {
-	return (checkWildcard && keyMask&KEY_ALL != 0) ||
-		keyMask&logKey != 0
+func (keyMask LogKey) enabled(logKey uint32, checkWildcard bool) bool {
+	return (checkWildcard && keyMask.flag&KEY_ALL != 0) ||
+		keyMask.flag&logKey != 0
 }
 
 // ToLogKey takes a slice of case-sensitive log key names and will return a LogKey bitfield.
 func ToLogKey(keysStr []string) LogKey {
-	var logKeys = KEY_NONE
+	var logKeys = LogKey{flag: KEY_NONE}
 	for _, name := range keysStr {
 		for logKey, logKeyName := range logKeyNames {
 			if logKeyName == name {
@@ -81,7 +89,7 @@ func ToLogKey(keysStr []string) LogKey {
 func (keyMask LogKey) EnabledLogKeys() []string {
 	var logKeys = make([]string, 0, len(logKeyNames))
 	for i := 0; i < len(logKeyNames); i++ {
-		logKey := LogKey(1 << uint(i))
+		logKey := uint32(1) << uint32(i)
 		if keyMask.enabled(logKey, false) {
 			logKeys = append(logKeys, logKeyNames[logKey])
 		}
