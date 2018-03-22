@@ -96,7 +96,7 @@ func BenchmarkToLogKey(b *testing.B) {
 
 func BenchmarkLogKeyEnabled(b *testing.B) {
 	logKeys := LogKey{flag: KEY_CRUD | KEY_DCP | KEY_REPLICATE}
-	benchmarkLogKeyEnabled(b, "Wildcard", KEY_ALL, logKeys)
+	benchmarkLogKeyEnabled(b, "Wildcard", KEY_CACHE, LogKey{flag: KEY_ALL})
 	benchmarkLogKeyEnabled(b, "Hit", KEY_DCP, logKeys)
 	benchmarkLogKeyEnabled(b, "Miss", KEY_CACHE, logKeys)
 }
