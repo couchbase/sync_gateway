@@ -51,14 +51,22 @@ var logKeyNames = map[uint32]string{
 
 // Enable will enable the given logKey in keyMask.
 func (keyMask *LogKey) Enable(logKey uint32) {
-	val := atomic.LoadUint32(&keyMask.flag)
-	atomic.CompareAndSwapUint32(&keyMask.flag, val, val|logKey)
+	for {
+		val := atomic.LoadUint32(&keyMask.flag)
+		if atomic.CompareAndSwapUint32(&keyMask.flag, val, val|logKey) {
+			break
+		}
+	}
 }
 
 // Disable will disable the given logKey in keyMask.
 func (keyMask *LogKey) Disable(logKey uint32) {
-	val := atomic.LoadUint32(&keyMask.flag)
-	atomic.CompareAndSwapUint32(&keyMask.flag, val, val & ^logKey)
+	for {
+		val := atomic.LoadUint32(&keyMask.flag)
+		if atomic.CompareAndSwapUint32(&keyMask.flag, val, val & ^logKey) {
+			break
+		}
+	}
 }
 
 // Enabled returns true if the given logKey, or KEY_ALL is enabled in keyMask.
