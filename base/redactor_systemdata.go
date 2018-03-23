@@ -30,6 +30,6 @@ func SD(i interface{}) SystemData {
 		return SystemData(v.String())
 	default:
 		// Fall back to a slower but safe way of getting a string from any type.
-		return SystemData(fmt.Sprintf("%v", v))
+		return SystemData(fmt.Sprintf("%+v", v))
 	}
 }

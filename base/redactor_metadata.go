@@ -33,6 +33,6 @@ func MD(i interface{}) Metadata {
 		return Metadata(v.String())
 	default:
 		// Fall back to a slower but safe way of getting a string from any type.
-		return Metadata(fmt.Sprintf("%v", v))
+		return Metadata(fmt.Sprintf("%+v", v))
 	}
 }
