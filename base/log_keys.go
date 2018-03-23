@@ -73,7 +73,7 @@ func (keyMask *LogKey) enabled(logKey uint32, checkWildcard bool) bool {
 		flag&logKey != 0
 }
 
-// LogKeyName returns the string representation of a log key.
+// LogKeyName returns the string representation of a single log key.
 func LogKeyName(logKey uint32) string {
 	// No lock required to read concurrently, as long as nobody writes to logKeyNames.
 	return logKeyNames[logKey]

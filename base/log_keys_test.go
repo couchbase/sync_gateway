@@ -7,6 +7,56 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+func TestLogKey(t *testing.T) {
+	logKey := LogKey{flag: KEY_HTTP}
+	assert.True(t, logKey.Enabled(KEY_HTTP))
+
+	// Enable more log keys.
+	logKey.Enable(KEY_ACCESS | KEY_REPLICATE)
+	assert.True(t, logKey.Enabled(KEY_ACCESS))
+	assert.True(t, logKey.Enabled(KEY_REPLICATE))
+	assert.Equals(t, logKey.flag, KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
+
+	// Enable wildcard and check unset key is enabled.
+	logKey.Enable(KEY_ALL)
+	assert.True(t, logKey.Enabled(KEY_CACHE))
+	assert.Equals(t, logKey.flag, KEY_ALL|KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
+
+	// Disable wildcard and check that existing keys are still set.
+	logKey.Disable(KEY_ALL)
+	assert.False(t, logKey.Enabled(KEY_CACHE))
+	assert.Equals(t, logKey.flag, KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
+}
+
+func TestLogKeyNames(t *testing.T) {
+	name := LogKeyName(KEY_DCP)
+	assert.Equals(t, name, "DCP")
+
+	// Can't retrieve name of combined log keys.
+	name = LogKeyName(KEY_DCP | KEY_REPLICATE)
+	assert.Equals(t, name, "")
+
+	keys := []string{}
+	logKeys := ToLogKey(keys)
+	assert.Equals(t, logKeys.flag, KEY_NONE)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{})
+
+	keys = append(keys, "DCP")
+	logKeys = ToLogKey(keys)
+	assert.Equals(t, logKeys.flag, KEY_DCP)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_DCP)})
+
+	keys = append(keys, "Access")
+	logKeys = ToLogKey(keys)
+	assert.Equals(t, logKeys.flag, KEY_ACCESS|KEY_DCP)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_ACCESS), LogKeyName(KEY_DCP)})
+
+	keys = []string{"*", "DCP"}
+	logKeys = ToLogKey(keys)
+	assert.Equals(t, logKeys.flag, KEY_ALL|KEY_DCP)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_ALL), LogKeyName(KEY_DCP)})
+}
+
 func TestLogKeyConcurrency(t *testing.T) {
 	logKey := LogKey{}
 	stop := make(chan struct{})
@@ -48,53 +98,16 @@ func TestLogKeyConcurrency(t *testing.T) {
 	stop <- struct{}{}
 }
 
-func TestLogKey(t *testing.T) {
-	logKey := LogKey{flag: KEY_HTTP}
-	assert.True(t, logKey.Enabled(KEY_HTTP))
-
-	// Enable more log keys.
-	logKey.Enable(KEY_ACCESS | KEY_REPLICATE)
-	assert.True(t, logKey.Enabled(KEY_ACCESS))
-	assert.True(t, logKey.Enabled(KEY_REPLICATE))
-	assert.Equals(t, logKey.flag, KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
-
-	// Enable wildcard and check unset key is enabled.
-	logKey.Enable(KEY_ALL)
-	assert.True(t, logKey.Enabled(KEY_CACHE))
-	assert.Equals(t, logKey.flag, KEY_ALL|KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
-
-	// Disable wildcard and check that existing keys are still set.
-	logKey.Disable(KEY_ALL)
-	assert.False(t, logKey.Enabled(KEY_CACHE))
-	assert.Equals(t, logKey.flag, KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
-}
-
-func TestLogKeyNames(t *testing.T) {
-	keys := []string{}
-	logKeys := ToLogKey(keys)
-	assert.Equals(t, logKeys.flag, KEY_NONE)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{})
-
-	keys = append(keys, "DCP")
-	logKeys = ToLogKey(keys)
-	assert.Equals(t, logKeys.flag, KEY_DCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_DCP)})
-
-	keys = append(keys, "Access")
-	logKeys = ToLogKey(keys)
-	assert.Equals(t, logKeys.flag, KEY_ACCESS|KEY_DCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_ACCESS), LogKeyName(KEY_DCP)})
-
-	keys = []string{"*", "DCP"}
-	logKeys = ToLogKey(keys)
-	assert.Equals(t, logKeys.flag, KEY_ALL|KEY_DCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_ALL), LogKeyName(KEY_DCP)})
-}
-
 func BenchmarkEnabledLogKeys(b *testing.B) {
 	logKeys := LogKey{flag: KEY_CRUD | KEY_DCP | KEY_REPLICATE}
 	for i := 0; i < b.N; i++ {
 		_ = logKeys.EnabledLogKeys()
+	}
+}
+
+func BenchmarkLogKeyName(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = LogKeyName(KEY_DCP)
 	}
 }
 
