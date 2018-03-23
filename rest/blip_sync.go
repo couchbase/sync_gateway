@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"context"
+
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -31,7 +33,6 @@ const (
 	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
 	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
 	BlipCBMobileReplication = "CBMobile_2"
-
 )
 
 // Represents one BLIP connection (socket) opened by a client.
@@ -49,6 +50,8 @@ type blipSyncContext struct {
 	allowedAttachments  map[string]int
 	handlerSerialNumber uint64    // Each handler within a context gets a unique serial number for logging
 	terminator          chan bool // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
+	subChangesContext   context.Context
+	subChangesCancel    context.CancelFunc
 }
 
 type blipHandler struct {
@@ -244,6 +247,9 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
+	bh.lock.Lock()
+	defer bh.lock.Unlock()
+
 	subChangesParams, err := newSubChangesParams(
 		rq,
 		bh.blipSyncContext,
@@ -279,6 +285,13 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
 
+	// Is there an existing subChanges context?  If so, cancel it
+	if bh.subChangesCancel != nil {
+		bh.subChangesCancel()
+	}
+
+	bh.subChangesContext, bh.subChangesCancel = context.WithCancel(context.Background())
+
 	// Start asynchronous changes goroutine
 	go func() {
 		base.StatsExpvars.Add("subChanges_total", 1)
@@ -286,7 +299,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		defer base.StatsExpvars.Add("subChanges_active", -1)
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
-		bh.sendChanges(rq.Sender, subChangesParams)
+		bh.sendChanges(bh.subChangesContext, rq.Sender, subChangesParams)
 		bh.LogTo("SyncMsg+", "#%03d: Type:%s   --> Time:%v User:%s ", bh.serialNumber, rq.Profile(), time.Since(startTime), bh.effectiveUsername)
 	}()
 
@@ -294,7 +307,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 // Sends all changes since the given sequence
-func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams) {
+func (bh *blipHandler) sendChanges(ctx context.Context, sender *blip.Sender, params *subChangesParams) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warn("[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
@@ -308,6 +321,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		Continuous: bh.continuous,
 		ActiveOnly: bh.activeOnly,
 		Terminator: bh.blipSyncContext.terminator,
+		Ctx:        ctx,
 	}
 
 	channelSet := bh.channels

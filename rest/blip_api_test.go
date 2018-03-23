@@ -1202,6 +1202,9 @@ func TestGetRemovedDoc(t *testing.T) {
 
 
 // Reproduce problematic behavior described in SG #3222
+// - Create two subchanges subscriptions passing in same handler callback
+// - Add a doc
+// - Make sure that the handler is only called back _once_ as opposed to twice, which was observed before fix.
 func TestMultipleContinuousChangesSubscription(t *testing.T) {
 
 	bt, err := NewBlipTester()
@@ -1246,10 +1249,6 @@ func TestMultipleContinuousChangesSubscription(t *testing.T) {
 				receivedChangesWg.Done()
 			}
 
-		} else {
-
-			receivedChangesWg.Done()
-
 		}
 
 		if !request.NoReply() {
@@ -1263,14 +1262,9 @@ func TestMultipleContinuousChangesSubscription(t *testing.T) {
 
 	}
 
-	// Increment waitgroup since just the act of subscribing to continuous changes will cause
-	// the callback changes handler to be invoked with an initial change w/ empty body, signaling that
-	// all of the changes have been sent (eg, there are no changes to send)
-	receivedChangesWg.Add(1)
-
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	// Subscribe 10 times, and each subscription should overwrite previous.
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 2; i++ {
 		subChangesRequest := blip.NewRequest()
 		subChangesRequest.SetProfile("subChanges")
 		subChangesRequest.Properties["continuous"] = "true"

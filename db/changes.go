@@ -16,22 +16,25 @@ import (
 	"sort"
 	"time"
 
+	"context"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
 
 // Options for changes-feeds
 type ChangesOptions struct {
-	Since       SequenceID // sequence # to start _after_
-	Limit       int        // Max number of changes to return, if nonzero
-	Conflicts   bool       // Show all conflicting revision IDs, not just winning one?
-	IncludeDocs bool       // Include doc body of each change?
-	Wait        bool       // Wait for results, instead of immediately returning empty result?
-	Continuous  bool       // Run continuously until terminated?
-	Terminator  chan bool  // Caller can close this channel to terminate the feed
-	HeartbeatMs uint64     // How often to send a heartbeat to the client
-	TimeoutMs   uint64     // After this amount of time, close the longpoll connection
-	ActiveOnly  bool       // If true, only return information on non-deleted, non-removed revisions
+	Since       SequenceID      // sequence # to start _after_
+	Limit       int             // Max number of changes to return, if nonzero
+	Conflicts   bool            // Show all conflicting revision IDs, not just winning one?
+	IncludeDocs bool            // Include doc body of each change?
+	Wait        bool            // Wait for results, instead of immediately returning empty result?
+	Continuous  bool            // Run continuously until terminated?
+	Terminator  chan bool       // Caller can close this channel to terminate the feed
+	HeartbeatMs uint64          // How often to send a heartbeat to the client
+	TimeoutMs   uint64          // After this amount of time, close the longpoll connection
+	ActiveOnly  bool            // If true, only return information on non-deleted, non-removed revisions
+	Ctx         context.Context // Cancellation context.  Slight overlap with Terminator.
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
@@ -207,6 +210,9 @@ func (db *Database) changesFeed(channel string, options ChangesOptions, to strin
 			base.LogTo("Changes+", "Channel feed processing seq:%v in channel %s %s", seqID, channel, to)
 			select {
 			case <-options.Terminator:
+				base.LogTo("Changes+", "Terminating channel feed %s", to)
+				return
+			case <-options.Ctx.Done():
 				base.LogTo("Changes+", "Terminating channel feed %s", to)
 				return
 			case feed <- &change:
@@ -614,6 +620,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				select {
 				case <-options.Terminator:
+					return
+				case <-options.Ctx.Done():
 					return
 				case output <- minEntry:
 				}

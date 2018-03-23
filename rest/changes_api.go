@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"context"
 )
 
 // Minimum value of _changes?heartbeat property
@@ -280,6 +281,7 @@ func (h *handler) handleChanges() error {
 	defer h.db.ChangesClientStats.Decrement()
 
 	options.Terminator = make(chan bool)
+	options.Ctx = context.Background()
 
 	var err error
 	forceClose := false
@@ -591,6 +593,9 @@ loop:
 		case <-options.Terminator:
 			forceClose = true
 			break loop
+		case <-options.Ctx.Done():
+			forceClose = true
+			break loop
 		}
 		if err != nil {
 			if h != nil {
@@ -663,6 +668,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		//options.Terminator will be closed automatically when
 		//changes feed completes
 		wsoptions.Terminator = options.Terminator
+		wsoptions.Ctx = context.Background()
 
 		// Set up GZip compression
 		var writer *bytes.Buffer
