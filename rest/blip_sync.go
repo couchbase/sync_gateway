@@ -31,7 +31,6 @@ const (
 	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
 	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
 	BlipCBMobileReplication = "CBMobile_2"
-
 )
 
 // Represents one BLIP connection (socket) opened by a client.
@@ -49,7 +48,7 @@ type blipSyncContext struct {
 	allowedAttachments  map[string]int
 	handlerSerialNumber uint64    // Each handler within a context gets a unique serial number for logging
 	terminator          chan bool // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
-	hasContinuousSubChanges bool // Is there a continous subChanges subscription open?  Helps ensures that multiple cannot be open at same time.
+	hasOpenSubChanges   bool      // Is there a subChanges subscription already open?  Helps ensures that multiple cannot be open at same time.
 }
 
 type blipHandler struct {
@@ -248,8 +247,6 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	bh.lock.Lock()
 	defer bh.lock.Unlock()
 
-
-
 	subChangesParams, err := newSubChangesParams(
 		rq,
 		bh.blipSyncContext,
@@ -260,14 +257,12 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
 
-	// Ensure that only _one_ continuous subChanges subscription can be open on this blip connection.  SG #3222.
-	if subChangesParams.continuous() {
-		if bh.hasContinuousSubChanges {
-			return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one.")
-		} else {
-			bh.hasContinuousSubChanges = true;
-		}
+	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
+	if bh.hasOpenSubChanges {
+		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one.")
 	}
+
+	bh.hasOpenSubChanges = true
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
 		return base.HTTPErrorf(http.StatusBadRequest, "DocIDs filter not supported for continuous subChanges")
@@ -299,6 +294,9 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		base.StatsExpvars.Add("subChanges_total", 1)
 		base.StatsExpvars.Add("subChanges_active", 1)
 		defer base.StatsExpvars.Add("subChanges_active", -1)
+		defer func() {
+			bh.hasOpenSubChanges = false
+		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
 		bh.sendChanges(rq.Sender, subChangesParams)
