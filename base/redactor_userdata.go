@@ -41,6 +41,6 @@ func UD(i interface{}) UserData {
 		return UserData(v.String())
 	default:
 		// Fall back to a slower but safe way of getting a string from any type.
-		return UserData(fmt.Sprintf("%v", v))
+		return UserData(fmt.Sprintf("%+v", v))
 	}
 }
