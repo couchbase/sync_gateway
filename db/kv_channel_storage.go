@@ -142,7 +142,7 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (partitionUpdates []*b
 	clockUpdates := base.NewSequenceClockImpl()
 	for _, entry := range entries {
 		// Update the sequence in the appropriate cache block
-		base.LogTo("DIndex+", "Add to channel index [%s], vbNo=%d, isRemoval:%v", b.channelName, entry.VbNo, entry.IsRemoved())
+		base.LogToR("DIndex+", "Add to channel index [%s], vbNo=%d, isRemoval:%v", b.channelName, entry.VbNo, entry.IsRemoved())
 		blockKey := GenerateBlockKey(b.channelName, entry.Sequence, b.partitions.VbMap[entry.VbNo])
 		if _, ok := blockSets[blockKey]; !ok {
 			blockSets[blockKey] = make([]*LogEntry, 0)
@@ -699,7 +699,7 @@ func (b *BitFlagBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint64, inc
 
 	// Validate range against block bounds
 	if fromSeq > b.value.MaxSequence() || toSeq < b.value.MinSequence {
-		base.LogTo("DIndex+", "Invalid Range for block [%s] (from, to): (%d, %d).  MinSeq:%d", b.Key(), fromSeq, toSeq, b.value.MinSequence)
+		base.LogToR("DIndex+", "Invalid Range for block [%s] (from, to): (%d, %d).  MinSeq:%d", b.Key(), fromSeq, toSeq, b.value.MinSequence)
 		return entries, keySet
 	}
 
@@ -847,7 +847,7 @@ func (b *BitFlagBufferBlock) GetEntries(vbNo uint16, fromSeq uint64, toSeq uint6
 
 	// Validate range against block bounds
 	if fromSeq > b.maxSequence || toSeq < b.minSequence {
-		base.LogTo("DIndex+", "Invalid Range for block (from, to): (%d, %d).  MinSeq:%d", fromSeq, toSeq, b.minSequence)
+		base.LogToR("DIndex+", "Invalid Range for block (from, to): (%d, %d).  MinSeq:%d", fromSeq, toSeq, b.minSequence)
 		return entries, keySet
 	}
 

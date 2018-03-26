@@ -38,7 +38,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	entries := make(LogEntries, 0)
 	activeEntryCount := 0
 
-	base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)
+	base.LogToR("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, options.Since.SafeSequence()+1, endSeq, options.Limit)
 	// Loop for active-only and limit handling.
 	// The set of changes we get back from the view applies the limit, but includes both active and non-active entries.  When retrieving changes w/ activeOnly=true and a limit,
 	// this means we may need multiple view calls to get a total of [limit] active entries.
@@ -52,7 +52,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			if len(entries) > 0 {
 				break
 			}
-			base.LogTo("Cache", "    Got no rows from view for %q", channelName)
+			base.LogToR("Cache", "    Got no rows from view for %q", channelName)
 			return nil, nil
 		}
 
@@ -90,7 +90,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			}
 			// Otherwise update startkey and re-query
 			optMap["startkey"] = []interface{}{channelName, highSeq + 1}
-			base.LogTo("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, highSeq+1, endSeq, options.Limit)
+			base.LogToR("Cache", "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", channelName, highSeq+1, endSeq, options.Limit)
 		} else {
 			// If not active-only, we only need one iteration of the loop - the limit applied to the view query is sufficient
 			break
@@ -98,7 +98,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	}
 
 	if len(entries) > 0 {
-		base.LogTo("Cache", "    Got %d rows from view for %q: #%d ... #%d",
+		base.LogToR("Cache", "    Got %d rows from view for %q: #%d ... #%d",
 			len(entries), channelName, entries[0].Sequence, entries[len(entries)-1].Sequence)
 	}
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {

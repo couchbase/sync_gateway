@@ -30,7 +30,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
 		userVbNo = uint16(db.Bucket.VBHash(db.user.DocID()))
 	}
-	base.LogTo("Changes+", "Vector MultiChangesFeed(channels: %s, options: %+v) ... %s", chans, options, to)
+	base.LogToR("Changes+", "Vector MultiChangesFeed(channels: %s, options: %+v) ... %s", chans, options, to)
 
 	output := make(chan *ChangeEntry, 50)
 
@@ -41,7 +41,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		var lastHashedValue string
 		hashedEntryCount := 0
 		defer func() {
-			base.LogTo("Changes+", "MultiChangesFeed done %s", to)
+			base.LogToR("Changes+", "MultiChangesFeed done %s", to)
 			base.StatsExpvars.Add("vectorChanges_active", -1)
 			close(output)
 		}()
@@ -103,7 +103,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			if changeWaiter != nil {
 				changeWaiter.UpdateChannels(channelsSince)
 			}
-			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince.String(), to)
+			base.LogToR("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince.String(), to)
 
 			// postStableSeqsFound tracks whether we hit any sequences later than the stable sequence.  In this scenario the user
 			// may not get another wait notification, so we bypass wait loop processing.
@@ -196,7 +196,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 
 				// Send the entry, and repeat the loop:
-				base.LogTo("Changes+", "MultiChangesFeed sending %s %s", minEntry, to)
+				base.LogToR("Changes+", "MultiChangesFeed sending %s %s", minEntry, to)
 				select {
 				case <-options.Terminator:
 					return
@@ -226,7 +226,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
-			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
+			base.LogToR("Changes+", "MultiChangesFeed waiting... %s", to)
 			output <- nil
 
 		waitForChanges:
@@ -265,7 +265,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			}
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
-				base.LogTo("Changes+", "User not found during reload - terminating changes feed with entry %+v", change)
+				base.LogToR("Changes+", "User not found during reload - terminating changes feed with entry %+v", change)
 				output <- &change
 				return
 			}
@@ -282,7 +282,7 @@ func (db *Database) checkForUserUpdatesSince(userChangeCount uint64, changeWaite
 	// we can reload only when there's been a user change notification
 	if newCount > userChangeCount || !isContinuous {
 		var newChannels base.Set
-		base.LogTo("Changes+", "MultiChangesFeed reloading user %+v", db.user)
+		base.LogToR("Changes+", "MultiChangesFeed reloading user %+v", db.user)
 		userChangeCount = newCount
 
 		if db.user != nil {
@@ -300,7 +300,7 @@ func (db *Database) checkForUserUpdatesSince(userChangeCount uint64, changeWaite
 				}
 			}
 			if len(newChannels) > 0 {
-				base.LogTo("Changes+", "New channels found after user reload: %v", newChannels)
+				base.LogToR("Changes+", "New channels found after user reload: %v", newChannels)
 			}
 		}
 		return true, newCount, newChannels, nil
@@ -482,7 +482,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 	feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
 	hasPostChangesTriggers := false
 
-	base.LogTo("Changes+", "GotChannelSince... %v", channelsSince)
+	base.LogToR("Changes+", "GotChannelSince... %v", channelsSince)
 	for name, vbSeqAddedAt := range channelsSince {
 		seqAddedAt := vbSeqAddedAt.Sequence
 
@@ -502,7 +502,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 			vbAddedAt = *vbSeqAddedAt.VbNo
 		}
 
-		base.LogTo("Changes+", "Starting for channel... %s, %d.%d", name, vbAddedAt, seqAddedAt)
+		base.LogToR("Changes+", "Starting for channel... %s, %d.%d", name, vbAddedAt, seqAddedAt)
 		chanOpts := options
 
 		// Check whether requires backfill based on addedChannels in this _changes feed
@@ -534,7 +534,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 		// If backfill required and the triggering seq is after the stable sequence, skip this channel in this iteration
 		stableSeq := stableClock.GetSequence(vbAddedAt)
 		if backfillRequired && seqAddedAt > stableSeq {
-			base.LogTo("Changes+", "Trigger for channel [%s] is post-stable sequence - skipped for this iteration.  userVbNo:[%d] vbAddedAt:[%d] Seq:[%d] Stable seq:[%d]", name, userVbNo, vbAddedAt, seqAddedAt, stableSeq)
+			base.LogToR("Changes+", "Trigger for channel [%s] is post-stable sequence - skipped for this iteration.  userVbNo:[%d] vbAddedAt:[%d] Seq:[%d] Stable seq:[%d]", name, userVbNo, vbAddedAt, seqAddedAt, stableSeq)
 			hasPostChangesTriggers = true
 			continue
 		}
@@ -547,7 +547,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 				TriggeredBy:     seqAddedAt,
 				TriggeredByVbNo: vbAddedAt,
 			}
-			base.LogTo("Changes+", "Starting backfill for channel... %s, %+v", name, chanOpts.Since.Print())
+			base.LogToR("Changes+", "Starting backfill for channel... %s, %+v", name, chanOpts.Since.Print())
 		} else if backfillInProgress {
 			// Case 3.  Backfill in progress.
 			chanOpts.Since = SequenceID{
@@ -557,7 +557,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 				TriggeredByVbNo:  vbAddedAt,
 				TriggeredByClock: options.Since.TriggeredByClock,
 			}
-			base.LogTo("Changes+", "Backfill in progress for channel... %s, %+v", name, chanOpts.Since.Print())
+			base.LogToR("Changes+", "Backfill in progress for channel... %s, %+v", name, chanOpts.Since.Print())
 		} else if backfillInOtherChannel {
 			chanOpts.Since = SequenceID{
 				Clock: options.Since.TriggeredByClock, // Update Clock to TriggeredByClock if we're in other backfill
@@ -658,7 +658,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 		if err != nil {
 			return nil, err
 		}
-		base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
+		base.LogToR("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
 	case ChannelFeedType_ActiveBackfill:
 		// In-progress backfill for this channel
 		// Backfill position: (vb,seq) position in the backfill. e.g. [0,0] if we're just starting the backfill, [vb,seq] if we're midway through.
@@ -672,14 +672,14 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 		if err != nil {
 			return nil, err
 		}
-		base.LogTo("Changes+", "[changesFeed] Found %d backfill changes for channel %s", len(backfillLog), channel)
+		base.LogToR("Changes+", "[changesFeed] Found %d backfill changes for channel %s", len(backfillLog), channel)
 		// If we still have room, get non-backfill entries
 		if options.Limit == 0 || len(backfillLog) < options.Limit {
 			log, err = changeIndex.reader.GetChangesForRange(channel, backfillTo, nil, options.Limit, options.ActiveOnly)
 			if err != nil {
 				return nil, err
 			}
-			base.LogTo("Changes+", "[changesFeed] Found %d non-backfill changes for channel %s", len(log), channel)
+			base.LogToR("Changes+", "[changesFeed] Found %d non-backfill changes for channel %s", len(log), channel)
 		}
 	case ChannelFeedType_PendingBackfill:
 		// Pending backfill for this channel
@@ -729,7 +729,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 			for _, changeEntry := range pendingBackfillLog {
 				select {
 				case <-options.Terminator:
-					base.LogTo("Changes+", "Aborting changesFeed")
+					base.LogToR("Changes+", "Aborting changesFeed")
 					return
 				case feed <- changeEntry:
 				}
@@ -764,7 +764,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 					base.Warn("Error processing changes for channel %s: %v", channel, err)
 					return
 				}
-				base.LogTo("Changes+", "[changesFeed] Found %d non-backfill changes for channel %s", len(log), channel)
+				base.LogToR("Changes+", "[changesFeed] Found %d non-backfill changes for channel %s", len(log), channel)
 			}
 		}
 
@@ -781,7 +781,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 			change := makeChangeEntry(logEntry, seqID, channel)
 			select {
 			case <-options.Terminator:
-				base.LogTo("Changes+", "Aborting changesFeed")
+				base.LogToR("Changes+", "Aborting changesFeed")
 				return
 			case feed <- &change:
 			}
@@ -801,7 +801,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 
 			select {
 			case <-options.Terminator:
-				base.LogTo("Changes+", "Aborting changesFeed")
+				base.LogToR("Changes+", "Aborting changesFeed")
 				return
 			case feed <- &backfillCompleteEntry:
 			}
@@ -818,7 +818,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 			change := makeChangeEntry(logEntry, seqID, channel)
 			select {
 			case <-options.Terminator:
-				base.LogTo("Changes+", "Aborting changesFeed")
+				base.LogToR("Changes+", "Aborting changesFeed")
 				return
 			case feed <- &change:
 			}

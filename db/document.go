@@ -310,7 +310,7 @@ func (s *syncData) IsSGWrite(cas uint64) bool {
 func (doc *document) IsSGWrite() bool {
 	result := doc.syncData.IsSGWrite(doc.Cas)
 	if result == false {
-		base.LogTo("CRUD+", "Doc %s is not an SG write, based on cas. cas:%x syncCas:%q", doc.ID, doc.Cas, doc.syncData.Cas)
+		base.LogToR("CRUD+", "Doc %s is not an SG write, based on cas. cas:%x syncCas:%q", doc.ID, doc.Cas, doc.syncData.Cas)
 	}
 	return result
 }
@@ -562,7 +562,7 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 		}
 	}
 	if changed != nil {
-		base.LogTo("CRUD", "\tDoc %q in channels %q", doc.ID, newChannels)
+		base.LogToR("CRUD", "\tDoc %q in channels %q", doc.ID, newChannels)
 		changedChannels = channels.SetOf(changed...)
 	}
 	return
@@ -641,7 +641,7 @@ func (accessMap *UserAccessMap) updateAccess(doc *document, newAccess channels.A
 		if accessMap == &doc.RoleAccess {
 			what = "role"
 		}
-		base.LogTo("Access", "Doc %q grants %s access: %v", doc.ID, what, *accessMap)
+		base.LogToR("Access", "Doc %q grants %s access: %v", doc.ID, what, *accessMap)
 	}
 	return changedUsers
 }

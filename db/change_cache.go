@@ -115,7 +115,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 		c.options.ChannelCacheOptions = options.ChannelCacheOptions
 	}
 
-	base.LogTo("Cache", "Initializing changes cache with options %+v", c.options)
+	base.LogToR("Cache", "Initializing changes cache with options %+v", c.options)
 
 	if context.UseGlobalSequence() {
 		base.Logf("Initializing changes cache for database %s with sequence: %d", context.Name, c.initialSequence)
@@ -378,7 +378,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
 	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
-		base.LogTo("Import+", "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", docID)
+		base.LogToR("Import+", "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", docID)
 		return
 	}
 
@@ -393,7 +393,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
-			base.LogTo("Cache+", "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", docID, err)
+			base.LogToR("Cache+", "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", docID, err)
 		}
 		if err == base.ErrEmptyMetadata {
 			base.Warn("Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", event.Key, event.Opcode, event.DataType)
@@ -416,11 +416,11 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 				_, err := db.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
 				if err != nil {
 					if err == base.ErrImportCasFailure {
-						base.LogTo("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", docID)
+						base.LogToR("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", docID)
 					} else if err == base.ErrImportCancelledFilter {
 						// No logging required - filter info already logged during importDoc
 					} else {
-						base.LogTo("Import+", "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
+						base.LogToR("Import+", "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
 					}
 				}
 			}
@@ -432,7 +432,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		// No sync metadata found - check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
 		migratedDoc, _ := c.context.checkForUpgrade(docID)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
-			base.LogTo("Cache", "Found mobile xattr on document without _sync property - caching, assuming upgrade in progress.")
+			base.LogToR("Cache", "Found mobile xattr on document without _sync property - caching, assuming upgrade in progress.")
 			syncData = &migratedDoc.syncData
 		} else {
 			base.Warn("changeCache: Doc %q does not have valid sync data.", docID)
@@ -451,7 +451,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
-		base.LogTo("Cache", "Received unused #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
+		base.LogToR("Cache", "Received unused #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
 		change := &LogEntry{
 			Sequence:     seq,
 			TimeReceived: time.Now(),
@@ -474,7 +474,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		nextSeq := c.getNextSequence()
 		for _, seq := range syncData.RecentSequences {
 			if seq >= nextSeq && seq < currentSequence {
-				base.LogTo("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
+				base.LogToR("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
 					TimeReceived: time.Now(),
@@ -504,7 +504,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
 	}
-	base.LogTo("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
+	base.LogToR("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
 
 	changedChannels := c.processEntry(change)
 	changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
@@ -539,7 +539,7 @@ func (c *changeCache) processUnusedSequence(docID string) {
 		Sequence:     sequence,
 		TimeReceived: time.Now(),
 	}
-	base.LogTo("Cache", "Received #%d (unused sequence)", sequence)
+	base.LogToR("Cache", "Received #%d (unused sequence)", sequence)
 
 	// Since processEntry may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
@@ -578,7 +578,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		change.DocID = "_role/" + princ.Name()
 	}
 
-	base.LogTo("Cache", "Received #%d (%q)", change.Sequence, change.DocID)
+	base.LogToR("Cache", "Received #%d (%q)", change.Sequence, change.DocID)
 
 	changedChannels := c.processEntry(change)
 	if c.onChange != nil && len(changedChannels) > 0 {
@@ -597,7 +597,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	sequence := change.Sequence
 	nextSequence := c.nextSequence
 	if _, found := c.receivedSeqs[sequence]; found {
-		base.LogTo("Cache+", "  Ignoring duplicate of #%d", sequence)
+		base.LogToR("Cache+", "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
 	c.receivedSeqs[sequence] = struct{}{}
@@ -613,7 +613,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
-		base.LogTo("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
+		base.LogToR("Cache", "  Deferring #%d (%d now waiting for #%d...#%d)",
 			sequence, numPending, nextSequence, c.pendingLogs[0].Sequence-1)
 		changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
 		if numPending > c.options.CachePendingSeqMaxNum {
@@ -625,9 +625,9 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// Remove from skipped sequence queue
 		if !c.WasSkipped(sequence) {
 			// Error removing from skipped sequences
-			base.LogTo("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
+			base.LogToR("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
 		} else {
-			base.LogTo("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
+			base.LogToR("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
 			change.Skipped = true
 		}
 
@@ -658,7 +658,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	func() {
 		if change.Skipped {
 			c.lateSeqLock.Lock()
-			base.LogTo("Sequences", "Acquired late sequence lock for %d", change.Sequence)
+			base.LogToR("Sequences", "Acquired late sequence lock for %d", change.Sequence)
 			defer c.lateSeqLock.Unlock()
 		}
 
@@ -785,7 +785,7 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	c.skippedSeqLock.RLock()
 	defer c.skippedSeqLock.RUnlock()
 	if len(c.skippedSeqs) > 0 {
-		base.LogTo("Sequences", "get oldest, returning: %d", c.skippedSeqs[0].seq)
+		base.LogToR("Sequences", "get oldest, returning: %d", c.skippedSeqs[0].seq)
 		return c.skippedSeqs[0].seq
 	} else {
 		return uint64(0)

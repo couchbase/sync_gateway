@@ -520,7 +520,7 @@ func (db *Database) backupAncestorRevs(doc *document, revid string) error {
 	} else {
 		doc.removeRevisionBody(revid)
 	}
-	base.LogTo("CRUD+", "Backed up obsolete rev %q/%q", doc.ID, revid)
+	base.LogToR("CRUD+", "Backed up obsolete rev %q/%q", doc.ID, revid)
 	return nil
 }
 
@@ -628,7 +628,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		newRev := createRevID(generation, matchRev, body)
 		body["_rev"] = newRev
 		if err := doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
-			base.LogTo("CRUD", "Failed to add revision ID: %s, error: %v", newRev, err)
+			base.LogToR("CRUD", "Failed to add revision ID: %s, error: %v", newRev, err)
 			return nil, nil, nil, base.ErrRevTreeAddRevFailure
 		}
 
@@ -684,7 +684,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 			}
 		}
 		if currentRevIndex == 0 {
-			base.LogTo("CRUD+", "PutExistingRev(%q): No new revisions to add", docid)
+			base.LogToR("CRUD+", "PutExistingRev(%q): No new revisions to add", docid)
 			body["_rev"] = newRev                        // The _rev field is expected by some callers.  If missing, may cause problems for callers.
 			return nil, nil, nil, couchbase.UpdateCancel // No new revisions to add
 		}
@@ -744,7 +744,7 @@ func (db *Database) IsIllegalConflict(doc *document, parentRevID string, deleted
 
 	// If the parent isn't the current rev, reject as a conflict unless this is tombstoning an existing non-winning leaf
 	if !deleted {
-		base.LogTo("CRUD+", "Conflict - non-tombstone updates to non-winning revisions aren't valid when allow_conflicts=false")
+		base.LogToR("CRUD+", "Conflict - non-tombstone updates to non-winning revisions aren't valid when allow_conflicts=false")
 		return true
 	}
 
@@ -757,7 +757,7 @@ func (db *Database) IsIllegalConflict(doc *document, parentRevID string, deleted
 	}
 
 	// If we haven't found a valid conflict scenario by this point, flag as invalid
-	base.LogTo("CRUD+", "Conflict - tombstone updates to non-leaf or already tombstoned revisions aren't valid when allow_conflicts=false")
+	base.LogToR("CRUD+", "Conflict - tombstone updates to non-leaf or already tombstoned revisions aren't valid when allow_conflicts=false")
 	return true
 }
 
@@ -894,7 +894,7 @@ func (db *Database) updateAndReturnDoc(
 					// we previously allocated is unusable now. We have to allocate a new sequence
 					// instead, but we add the unused one(s) to the document so when the changeCache
 					// reads the doc it won't freak out over the break in the sequence numbering.
-					base.LogTo("Cache", "updateDoc %q: Unused sequence #%d", docid, docSequence)
+					base.LogToR("Cache", "updateDoc %q: Unused sequence #%d", docid, docSequence)
 					unusedSequences = append(unusedSequences, docSequence)
 				}
 
@@ -961,7 +961,7 @@ func (db *Database) updateAndReturnDoc(
 				// channels & access, for purposes of updating the doc:
 				var curBody Body
 				if curBody, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
-					base.LogTo("CRUD+", "updateDoc(%q): Rev %q causes %q to become current again",
+					base.LogToR("CRUD+", "updateDoc(%q): Rev %q causes %q to become current again",
 						docid, newRevID, doc.CurrentRev)
 					channelSet, access, roles, syncExpiry, oldBody, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
 
@@ -999,13 +999,13 @@ func (db *Database) updateAndReturnDoc(
 			}
 
 		} else {
-			base.LogTo("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
+			base.LogToR("CRUD+", "updateDoc(%q): Rev %q leaves %q still current",
 				docid, newRevID, prevCurrentRev)
 		}
 
 		// Prune old revision history to limit the number of revisions:
 		if pruned := doc.pruneRevisions(db.RevsLimit, doc.CurrentRev); pruned > 0 {
-			base.LogTo("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
+			base.LogToR("CRUD+", "updateDoc(%q): Pruned %d old revisions", docid, pruned)
 		}
 
 		doc.TimeSaved = time.Now()
@@ -1046,7 +1046,7 @@ func (db *Database) updateAndReturnDoc(
 
 			// Return the new raw document value for the bucket to store.
 			raw, err = json.Marshal(docOut)
-			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, doc.ID, doc.CurrentRev)
+			base.LogToR("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, doc.ID, doc.CurrentRev)
 
 			return raw, writeOpts, syncFuncExpiry, err
 		})
@@ -1085,14 +1085,14 @@ func (db *Database) updateAndReturnDoc(
 
 			// Return the new raw document value for the bucket to store.
 			raw, rawXattr, err = docOut.MarshalWithXattr()
-			base.LogTo("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", docOut.Sequence, docOut.ID, docOut.CurrentRev)
+			base.LogToR("CRUD+", "Saving doc (seq: #%d, id: %v rev: %v)", docOut.Sequence, docOut.ID, docOut.CurrentRev)
 			return raw, rawXattr, deleteDoc, syncFuncExpiry, err
 		})
 		if err != nil {
 			if err == base.ErrDocumentMigrated {
-				base.LogTo("CRUD+", "Migrated document %q to use xattr.", key)
+				base.LogToR("CRUD+", "Migrated document %q to use xattr.", key)
 			} else {
-				base.LogTo("CRUD+", "Did not update document %q w/ xattr: %v", key, err)
+				base.LogToR("CRUD+", "Did not update document %q w/ xattr: %v", key, err)
 			}
 		} else if docOut != nil {
 			docOut.Cas = casOut
@@ -1118,7 +1118,7 @@ func (db *Database) updateAndReturnDoc(
 		return nil, "", nil
 	} else if err == couchbase.ErrOverwritten {
 		// ErrOverwritten is ok; if a later revision got persisted, that's fine too
-		base.LogTo("CRUD+", "Note: Rev %q/%q was overwritten in RAM before becoming indexable",
+		base.LogToR("CRUD+", "Note: Rev %q/%q was overwritten in RAM before becoming indexable",
 			docid, newRevID)
 	} else if err != nil {
 		return nil, "", err
@@ -1147,11 +1147,11 @@ func (db *Database) updateAndReturnDoc(
 		}
 	} else {
 		//Revision has been pruned away so won't be added to cache
-		base.LogTo("CRUD", "doc %q / %q, has been pruned, it has not been inserted into the revision cache", docid, newRevID)
+		base.LogToR("CRUD", "doc %q / %q, has been pruned, it has not been inserted into the revision cache", docid, newRevID)
 	}
 
 	// Now that the document has successfully been stored, we can make other db changes:
-	base.LogTo("CRUD", "Stored doc %q / %q", docid, newRevID)
+	base.LogToR("CRUD", "Stored doc %q / %q", docid, newRevID)
 
 	// Remove any obsolete non-winning revision bodies
 	doc.deleteRemovedRevisionBodies(db.Bucket)
@@ -1167,7 +1167,7 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	if len(changedPrincipals) > 0 {
-		base.LogTo("Access", "Rev %q/%q invalidates channels of %s", docid, newRevID, changedPrincipals)
+		base.LogToR("Access", "Rev %q/%q invalidates channels of %s", docid, newRevID, changedPrincipals)
 		for _, changedAccessPrincipalName := range changedPrincipals {
 			db.invalUserOrRoleChannels(changedAccessPrincipalName)
 			// Check whether the active user needs to be recalculated.  Skip check if reload has already been identified
@@ -1178,14 +1178,14 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 				if isRole {
 					for roleName := range db.user.RoleNames() {
 						if roleName == changedPrincipalName {
-							base.LogTo("Access+", "Active user belongs to role %q with modified channel access - user %q will be reloaded.", roleName, db.user.Name())
+							base.LogToR("Access+", "Active user belongs to role %q with modified channel access - user %q will be reloaded.", roleName, db.user.Name())
 							reloadActiveUser = true
 							break
 						}
 					}
 				} else if db.user.Name() == changedPrincipalName {
 					// User matches
-					base.LogTo("Access+", "Channel set for active user has been modified - user %q will be reloaded.", db.user.Name())
+					base.LogToR("Access+", "Channel set for active user has been modified - user %q will be reloaded.", db.user.Name())
 					reloadActiveUser = true
 				}
 
@@ -1194,12 +1194,12 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 	}
 
 	if len(changedRoleUsers) > 0 {
-		base.LogTo("Access", "Rev %q/%q invalidates roles of %s", docid, newRevID, changedRoleUsers)
+		base.LogToR("Access", "Rev %q/%q invalidates roles of %s", docid, newRevID, changedRoleUsers)
 		for _, name := range changedRoleUsers {
 			db.invalUserRoles(name)
 			//If this is the current in memory db.user, reload to generate updated roles
 			if db.user != nil && db.user.Name() == name {
-				base.LogTo("Access+", "Role set for active user has been modified - user %q will be reloaded.", db.user.Name())
+				base.LogToR("Access+", "Role set for active user has been modified - user %q will be reloaded.", db.user.Name())
 				reloadActiveUser = true
 
 			}
@@ -1263,7 +1263,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 	expiry *uint32,
 	oldJson string,
 	err error) {
-	base.LogTo("CRUD+", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
+	base.LogToR("CRUD+", "Invoking sync on doc %q rev %s", doc.ID, body["_rev"])
 
 	// Get the parent revision, to pass to the sync function:
 	var oldJsonBytes []byte

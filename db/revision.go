@@ -95,7 +95,7 @@ const nonJSONPrefix = byte(1)
 func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
 	data, _, err := db.Bucket.GetRaw(oldRevisionKey(docid, revid))
 	if base.IsDocNotFoundError(err) {
-		base.LogTo("CRUD+", "No old revision %q / %q", docid, revid)
+		base.LogToR("CRUD+", "No old revision %q / %q", docid, revid)
 		err = base.HTTPErrorf(404, "missing")
 	}
 	if data != nil {
@@ -103,13 +103,13 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 		if len(data) > 0 && data[0] == nonJSONPrefix {
 			data = data[1:]
 		}
-		base.LogTo("CRUD+", "Got old revision %q / %q --> %d bytes", docid, revid, len(data))
+		base.LogToR("CRUD+", "Got old revision %q / %q --> %d bytes", docid, revid, len(data))
 	}
 	return data, err
 }
 
 func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) error {
-	base.LogTo("CRUD+", "Saving old revision %q / %q (%d bytes)", docid, revid, len(body))
+	base.LogToR("CRUD+", "Saving old revision %q / %q (%d bytes)", docid, revid, len(body))
 
 	// Set old revisions to expire after Options.OldRevExpirySeconds.  Defaults to 5 minutes.
 
@@ -124,7 +124,7 @@ func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) 
 
 // Currently only used by unit tests - deletes an archived old revision from the database
 func (db *Database) purgeOldRevisionJSON(docid string, revid string) error {
-	base.LogTo("CRUD+", "Purging old revision backup %q / %q ", docid, revid)
+	base.LogToR("CRUD+", "Purging old revision backup %q / %q ", docid, revid)
 	return db.Bucket.Delete(oldRevisionKey(docid, revid))
 }
 

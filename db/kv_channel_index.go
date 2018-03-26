@@ -77,7 +77,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	if unreadPollCount > kMaxUnreadPollCount {
 		// We've sent a notify, but had (kMaxUnreadPollCount) polls without anyone calling getChanges.
 		// Assume nobody is listening for updates - cancel polling for this channel
-		base.LogTo("DIndex+", "Cancelling polling for channel %s", k.channelName)
+		base.LogToR("DIndex+", "Cancelling polling for channel %s", k.channelName)
 		return false, true
 	}
 
@@ -113,7 +113,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	}
 
 	if hasPostStableChanges {
-		base.LogTo("DIndex+", "Channel %s has changes later than the stable sequence - will be updated in next polling cycle.", k.channelName)
+		base.LogToR("DIndex+", "Channel %s has changes later than the stable sequence - will be updated in next polling cycle.", k.channelName)
 	}
 	k.lastPolledPostStable = hasPostStableChanges
 
@@ -208,7 +208,7 @@ func (k *KvChannelIndex) GetChanges(sinceClock base.SequenceClock, toClock base.
 
 	// If requested clock is later than the channel clock, return empty
 	if sinceClock.AllAfter(chanClock) {
-		base.LogTo("ChannelIndex+", "requested clock is later than channel clock - no new changes to report")
+		base.LogToR("ChannelIndex+", "requested clock is later than channel clock - no new changes to report")
 		return results, nil
 	}
 
@@ -259,7 +259,7 @@ func (k *KvChannelIndex) loadChannelClock() (base.SequenceClock, error) {
 	key := GetChannelClockKey(k.channelName)
 	value, _, err := k.indexBucket.GetRaw(key)
 	if err != nil {
-		base.LogTo("DIndex+", "No existing channel clock for key %s:%v.  Using empty channel clock", key, err)
+		base.LogToR("DIndex+", "No existing channel clock for key %s:%v.  Using empty channel clock", key, err)
 		return chanClock, err
 	}
 	err = chanClock.Unmarshal(value)
@@ -281,7 +281,7 @@ func (k *KvChannelIndex) loadClock() {
 	}
 	data, cas, err := k.indexBucket.GetRaw(GetChannelClockKey(k.channelName))
 	if err != nil {
-		base.LogTo("DIndex+", "Unable to find existing channel clock for channel %s - treating as new", k.channelName)
+		base.LogToR("DIndex+", "Unable to find existing channel clock for channel %s - treating as new", k.channelName)
 	}
 	k.clock.Unmarshal(data)
 	k.clock.SetCas(cas)

@@ -64,7 +64,7 @@ func (s *Shadower) readTapFeed() {
 		switch event.Opcode {
 		case sgbucket.FeedOpBeginBackfill:
 			if vbucketsFilling == 0 {
-				base.LogTo("Shadow", "Reading history of external bucket")
+				base.LogToR("Shadow", "Reading history of external bucket")
 			}
 			vbucketsFilling++
 			//base.LogTo("Shadow", "Reading history of external bucket")
@@ -84,11 +84,11 @@ func (s *Shadower) readTapFeed() {
 			atomic.AddUint64(&s.pullCount, 1)
 		case sgbucket.FeedOpEndBackfill:
 			if vbucketsFilling--; vbucketsFilling == 0 {
-				base.LogTo("Shadow", "Caught up with history of external bucket")
+				base.LogToR("Shadow", "Caught up with history of external bucket")
 			}
 		}
 	}
-	base.LogTo("Shadow", "End of tap feed(?)")
+	base.LogToR("Shadow", "End of tap feed(?)")
 }
 
 // Gets an external document and applies it as a new revision to the managed document.
@@ -98,7 +98,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		body = Body{"_deleted": true}
 	} else {
 		if err := body.Unmarshal(value); err != nil {
-			base.LogTo("Shadow", "Doc %q is not JSON; skipping", key)
+			base.LogToR("Shadow", "Doc %q is not JSON; skipping", key)
 			return nil
 		}
 	}
@@ -114,7 +114,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		if doc.UpstreamCAS != nil && *doc.UpstreamCAS == cas {
 			return nil, nil, nil, couchbase.UpdateCancel // we already have this doc revision
 		}
-		base.LogTo("Shadow+", "Pulling %q, CAS=%x ... have UpstreamRev=%q, UpstreamCAS=%x", key, cas, doc.UpstreamRev, doc.UpstreamCAS)
+		base.LogToR("Shadow+", "Pulling %q, CAS=%x ... have UpstreamRev=%q, UpstreamCAS=%x", key, cas, doc.UpstreamRev, doc.UpstreamCAS)
 
 		// Compare this body to the current revision body to see if it's an echo:
 		parentRev := doc.UpstreamRev
@@ -139,11 +139,11 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 			if err = doc.History.addRevision(doc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion}); err != nil {
 				return nil, nil, nil, err
 			}
-			base.LogTo("Shadow", "Pulling %q, CAS=%x --> rev %q", key, cas, newRev)
+			base.LogToR("Shadow", "Pulling %q, CAS=%x --> rev %q", key, cas, newRev)
 		} else {
 			// We already have this rev; but don't cancel, because we do need to update the
 			// doc's UpstreamRev/UpstreamCAS fields.
-			base.LogTo("Shadow+", "Not pulling %q, CAS=%x (echo of rev %q)", key, cas, newRev)
+			base.LogToR("Shadow+", "Not pulling %q, CAS=%x (echo of rev %q)", key, cas, newRev)
 		}
 		return body, nil, nil, nil
 	})
@@ -164,10 +164,10 @@ func (s *Shadower) PushRevision(doc *document) {
 
 	var err error
 	if doc.Flags&channels.Deleted != 0 {
-		base.LogTo("Shadow", "Pushing %q, rev %q [deletion]", doc.ID, doc.CurrentRev)
+		base.LogToR("Shadow", "Pushing %q, rev %q [deletion]", doc.ID, doc.CurrentRev)
 		err = s.bucket.Delete(doc.ID)
 	} else {
-		base.LogTo("Shadow", "Pushing %q, rev %q", doc.ID, doc.CurrentRev)
+		base.LogToR("Shadow", "Pushing %q, rev %q", doc.ID, doc.CurrentRev)
 		body := doc.getRevisionBody(doc.CurrentRev, s.context.RevisionBodyLoader)
 		if body == nil {
 			base.Warn("Can't get rev %q.%q to push to external bucket", doc.ID, doc.CurrentRev)

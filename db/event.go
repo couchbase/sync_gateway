@@ -125,7 +125,7 @@ type JSEventFunction struct {
 
 func NewJSEventFunction(fnSource string) *JSEventFunction {
 
-	base.LogTo("Events", "Creating new JSEventFunction")
+	base.LogToR("Events", "Creating new JSEventFunction")
 	return &JSEventFunction{
 		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
 			func(fnSource string) (sgbucket.JSServerTask, error) {

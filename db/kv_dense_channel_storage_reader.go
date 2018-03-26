@@ -243,7 +243,7 @@ func (r *DensePartitionStorageReaderNonCaching) GetChanges(partitionRange base.P
 	// Initialize the block list to the starting range, then find the starting block for the partition range
 	blockList := r.GetBlockListForRange(partitionRange)
 	if blockList == nil {
-		base.LogTo("ChannelStorage+", "No block found for requested partition range.  channel:[%s] partition:[%d]", r.channelName, r.partitionNo)
+		base.LogToR("ChannelStorage+", "No block found for requested partition range.  channel:[%s] partition:[%d]", r.channelName, r.partitionNo)
 		return changes, nil
 	}
 	startIndex := 0
@@ -342,13 +342,13 @@ func (pr *DensePartitionStorageReader) GetChanges(partitionRange base.PartitionR
 		return nil, err
 	}
 	if cacheOk {
-		base.LogTo("Cache+", "Returning cached changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
+		base.LogToR("Cache+", "Returning cached changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
 		indexReaderGetChangesUseCached.Add(1)
 		return changes, nil
 	}
 
 	// Cache didn't cover the partition range - retrieve from the index
-	base.LogTo("Cache+", "Returning indexed changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
+	base.LogToR("Cache+", "Returning indexed changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
 	indexReaderGetChangesUseIndexed.Add(1)
 	return pr.getIndexedChanges(partitionRange)
 
@@ -367,7 +367,7 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 	} else {
 		pr.blockList.loadDenseBlockList()
 		for _, block := range pr.blockList.blocks {
-			base.LogTo("Cache+", "block valid from: %v", block.StartClock)
+			base.LogToR("Cache+", "block valid from: %v", block.StartClock)
 		}
 	}
 
@@ -392,7 +392,7 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 
 	// Reload the active block first
 	blockListEntry := pr.blockList.ActiveListEntry()
-	base.LogTo("Cache+", "Reloading active block: %s", blockListEntry.Key(pr.blockList))
+	base.LogToR("Cache+", "Reloading active block: %s", blockListEntry.Key(pr.blockList))
 	activeBlockKey := blockListEntry.Key(pr.blockList)
 	_, err := pr._loadAndCacheBlock(blockListEntry)
 	cacheKeySet[blockListEntry.Key(pr.blockList)] = true
@@ -415,13 +415,13 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 		if ok {
 			// If it's already in the cache, reload if it was the previous active block, or it's been flagged for reload
 			if blockKey == pr.activeCachedBlockKey || pr.pendingReload[blockKey] {
-				base.LogTo("Cache+", "Reloading older block: %s", blockListEntry.Key(pr.blockList))
+				base.LogToR("Cache+", "Reloading older block: %s", blockListEntry.Key(pr.blockList))
 				pr._loadAndCacheBlock(blockListEntry)
 				delete(pr.pendingReload, blockKey)
 			}
 		} else {
 			// Not in the cache - add it
-			base.LogTo("Cache+", "Adding older block to the cache: %s", blockListEntry.Key(pr.blockList))
+			base.LogToR("Cache+", "Adding older block to the cache: %s", blockListEntry.Key(pr.blockList))
 			pr._loadAndCacheBlock(blockListEntry)
 		}
 		cacheKeySet[blockKey] = true

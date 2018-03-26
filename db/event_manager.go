@@ -45,7 +45,7 @@ func (em *EventManager) Start(maxProcesses uint, waitTime int) {
 		em.waitTime = waitTime
 	}
 
-	base.LogTo("Events", "Starting event manager with max processes:%d, wait time:%d ms", maxProcesses, em.waitTime)
+	base.LogToR("Events", "Starting event manager with max processes:%d, wait time:%d ms", maxProcesses, em.waitTime)
 	// activeCountChannel limits the number of concurrent events being processed
 	em.activeCountChannel = make(chan bool, maxProcesses)
 
@@ -72,7 +72,7 @@ func (em *EventManager) ProcessEvent(event Event) {
 	// until all are finished
 	var wg sync.WaitGroup
 	for _, handler := range em.eventHandlers[event.EventType()] {
-		base.LogTo("Events+", "Event queue worker sending event %s to: %s", event.String(), handler)
+		base.LogToR("Events+", "Event queue worker sending event %s to: %s", event.String(), handler)
 		wg.Add(1)
 		go func(event Event, handler EventHandler) {
 			defer wg.Done()
@@ -89,7 +89,7 @@ func (em *EventManager) ProcessEvent(event Event) {
 func (em *EventManager) RegisterEventHandler(handler EventHandler, eventType EventType) {
 	em.eventHandlers[eventType] = append(em.eventHandlers[eventType], handler)
 	em.activeEventTypes[eventType] = true
-	base.LogTo("Events", "Registered event handler: %v, for event type %v", handler, eventType)
+	base.LogToR("Events", "Registered event handler: %v, for event type %v", handler, eventType)
 }
 
 // Checks whether a handler of the given type has been registered to the event manager.

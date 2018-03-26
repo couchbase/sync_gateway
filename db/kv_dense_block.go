@@ -132,7 +132,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
 
-		base.LogTo("ChannelStorage+", "Block (%s) full since len(d.value) %d > MaxBlockSize %d - returning entries as overflow.  #entries:[%d]",
+		base.LogToR("ChannelStorage+", "Block (%s) full since len(d.value) %d > MaxBlockSize %d - returning entries as overflow.  #entries:[%d]",
 			d, len(d.value), MaxBlockSize, len(entries))
 
 		return entries, pendingRemoval, nil, casFailure, nil
@@ -141,7 +141,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	overflow, pendingRemoval, updateClock, blockChanged, addError := d.addEntries(entries)
 	if addError != nil {
 		// Error adding entries - reset the block and return error
-		base.LogTo("ChannelStorage+", "Error adding entries to block. %v", err)
+		base.LogToR("ChannelStorage+", "Error adding entries to block. %v", err)
 		d.loadBlock(bucket)
 		return nil, nil, nil, casFailure, addError
 	}
@@ -153,12 +153,12 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	casOut, err := bucket.WriteCas(d.Key, 0, 0, d.cas, d.value, sgbucket.Raw)
 	if err != nil {
 		casFailure = true
-		base.LogTo("ChannelStorage+", "Block (%s) CAS error writing block to database. %v", d, err)
+		base.LogToR("ChannelStorage+", "Block (%s) CAS error writing block to database. %v", d, err)
 		return entries, []*LogEntry{}, nil, casFailure, nil
 	}
 
 	d.cas = casOut
-	base.LogTo("ChannelStorage+", "Successfully added set to block. key:[%s] #added:[%d] #overflow:[%d] #pendingRemoval:[%d]",
+	base.LogToR("ChannelStorage+", "Successfully added set to block. key:[%s] #added:[%d] #overflow:[%d] #pendingRemoval:[%d]",
 		d.Key, len(entries)-len(overflow), len(overflow), len(pendingRemoval))
 	return overflow, pendingRemoval, updateClock, casFailure, nil
 }
@@ -175,7 +175,7 @@ func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pend
 		if !blockFull {
 			changed, removalRequired, err := d.addEntry(entry)
 			if err != nil {
-				base.LogTo("ChannelStorage+", "Error adding entry to block.  key:[%s] error:%v", entry.DocID, err)
+				base.LogToR("ChannelStorage+", "Error adding entry to block.  key:[%s] error:%v", entry.DocID, err)
 				return nil, nil, nil, false, err
 			}
 			if changed {
@@ -218,7 +218,7 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (changed bool, removalRequired
 		// Ensure this entry hasn't already been written by another writer
 		clockSequence := d.getClock()[logEntry.VbNo]
 		if logEntry.Sequence <= clockSequence {
-			base.LogTo("ChannelStorage+", "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d] blockKey:[%s]",
+			base.LogToR("ChannelStorage+", "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d] blockKey:[%s]",
 				logEntry.DocID, logEntry.Sequence, clockSequence, d.Key)
 			return false, false, nil
 		}
@@ -302,12 +302,12 @@ func (d *DenseBlock) RemoveEntrySet(entries []*LogEntry, bucket base.Bucket) (pe
 		return d.value, nil
 	})
 	if writeErr != nil {
-		base.LogTo("ChannelStorage+", "Error writing block to database. %v", err)
+		base.LogToR("ChannelStorage+", "Error writing block to database. %v", err)
 		return entries, writeErr
 	}
 	d.cas = casOut
 	if len(pendingRemoval) != len(entries) {
-		base.LogTo("ChannelStorage+", "Successfully removed set from block. key:[%s] #removed:[%d] #pending:[%d]",
+		base.LogToR("ChannelStorage+", "Successfully removed set from block. key:[%s] #removed:[%d] #pending:[%d]",
 			d.Key, len(entries)-len(pendingRemoval), len(pendingRemoval))
 	}
 	return pendingRemoval, nil
@@ -340,12 +340,12 @@ func (d *DenseBlock) RollbackTo(rollbackVbNo uint16, rollbackSeq uint64, bucket 
 		return d.value, nil
 	})
 	if writeErr != nil {
-		base.LogTo("ChannelStorage+", "Error writing block to database. %v", err)
+		base.LogToR("ChannelStorage+", "Error writing block to database. %v", err)
 		return false, writeErr
 	}
 	d.cas = casOut
 	if numRemoved > 0 {
-		base.LogTo("ChannelStorage+", "Successfully removed entries from block during rollback. key:[%s] #removed:[%d] complete?:[%v]",
+		base.LogToR("ChannelStorage+", "Successfully removed entries from block during rollback. key:[%s] #removed:[%d] complete?:[%v]",
 			d.Key, numRemoved, rollbackComplete)
 	}
 	return rollbackComplete, nil

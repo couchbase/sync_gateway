@@ -246,7 +246,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
-		base.LogTo("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
+		base.LogToR("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
 
 		if err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
@@ -276,7 +276,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				err, _ := base.RetryLoop(description, worker, sleeper)
 
 				if err == nil {
-					base.LogTo("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", context.Name)
+					base.LogToR("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", context.Name)
 
 					// The 10 second wait was introduced because the bucket was not fully initialised
 					// after the return of the retry loop.
@@ -457,7 +457,7 @@ func (context *DatabaseContext) RestartListener() error {
 
 // Cache flush support.  Currently test-only - added for unit test access from rest package
 func (context *DatabaseContext) FlushChannelCache() {
-	base.LogTo("Cache", "Flushing channel cache")
+	base.LogToR("Cache", "Flushing channel cache")
 	context.changeCache.Clear()
 }
 
@@ -501,7 +501,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 		return nil
 	} else {
 		msg := "Unable to take Database offline, database must be in Online state"
-		base.LogTo("CRUD", msg)
+		base.LogToR("CRUD", msg)
 		return base.HTTPErrorf(http.StatusServiceUnavailable, msg)
 	}
 }
@@ -672,7 +672,7 @@ func (db *Database) DeleteAllDocs(docType string) error {
 	//FIX: Is there a way to do this in one operation?
 	base.Logf("Deleting %d %q documents of %q ...", len(vres.Rows), docType, db.Name)
 	for _, row := range vres.Rows {
-		base.LogTo("CRUD", "\tDeleting %q", row.ID)
+		base.LogToR("CRUD", "\tDeleting %q", row.ID)
 		if err := db.Bucket.Delete(row.ID); err != nil {
 			base.Warn("Error deleting %q: %v", row.ID, err)
 		}
@@ -693,7 +693,7 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 
 	for _, row := range vres.Rows {
 		docId := row.Value.(string)
-		base.LogTo("CRUD", "\tDeleting %q", docId)
+		base.LogToR("CRUD", "\tDeleting %q", docId)
 		if err := db.Bucket.Delete(docId); err != nil {
 			base.Warn("Error deleting %q: %v", row.ID, err)
 		}
@@ -730,7 +730,7 @@ func (db *Database) Compact() (int, error) {
 	purgeBody := Body{"_purged": true}
 	count := 0
 	for _, row := range vres.Rows {
-		base.LogTo("CRUD", "\tDeleting %q", row.ID)
+		base.LogToR("CRUD", "\tDeleting %q", row.ID)
 		// First, attempt to purge.
 		purgeErr := db.Purge(row.ID)
 		if purgeErr == nil {
@@ -852,12 +852,12 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 				if err = db.initializeSyncData(doc); err != nil {
 					return nil, false, nil, err
 				}
-				base.LogTo("CRUD", "\tImporting document %q --> rev %q", docid, doc.CurrentRev)
+				base.LogToR("CRUD", "\tImporting document %q --> rev %q", docid, doc.CurrentRev)
 			} else {
 				if !doCurrentDocs {
 					return nil, false, nil, couchbase.UpdateCancel
 				}
-				base.LogTo("CRUD", "\tRe-syncing document %q", docid)
+				base.LogToR("CRUD", "\tRe-syncing document %q", docid)
 			}
 
 			// Run the sync fn over each current/leaf revision, in case there are conflicts:
@@ -906,7 +906,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 					return nil, nil, deleteDoc, nil, err
 				}
 				if shouldUpdate {
-					base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
+					base.LogToR("Access", "Saving updated channels and access grants of %q", docid)
 					if updatedExpiry != nil {
 						updatedDoc.UpdateExpiry(*updatedExpiry)
 					}
@@ -932,7 +932,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 					return nil, nil, err
 				}
 				if shouldUpdate {
-					base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
+					base.LogToR("Access", "Saving updated channels and access grants of %q", docid)
 					if updatedExpiry != nil {
 						updatedDoc.UpdateExpiry(*updatedExpiry)
 					}

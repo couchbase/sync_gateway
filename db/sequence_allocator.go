@@ -118,6 +118,6 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
 	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
-	base.LogTo("CRUD+", "Released unused sequence #%d", sequence)
+	base.LogToR("CRUD+", "Released unused sequence #%d", sequence)
 	return err
 }
