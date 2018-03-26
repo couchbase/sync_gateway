@@ -48,7 +48,7 @@ type blipSyncContext struct {
 	allowedAttachments  map[string]int
 	handlerSerialNumber uint64    // Each handler within a context gets a unique serial number for logging
 	terminator          chan bool // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
-	hasOpenSubChanges   bool      // Is there a subChanges subscription already open?  Helps ensures that multiple cannot be open at same time.
+	hasActiveSubChanges bool      // Track whether there is a subChanges subscription currently active
 }
 
 type blipHandler struct {
@@ -258,11 +258,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
-	if bh.hasOpenSubChanges {
+	if bh.hasActiveSubChanges {
 		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one.")
 	}
 
-	bh.hasOpenSubChanges = true
+	bh.hasActiveSubChanges = true
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
 		return base.HTTPErrorf(http.StatusBadRequest, "DocIDs filter not supported for continuous subChanges")
@@ -295,7 +295,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		base.StatsExpvars.Add("subChanges_active", 1)
 		defer base.StatsExpvars.Add("subChanges_active", -1)
 		defer func() {
-			bh.hasOpenSubChanges = false
+			bh.hasActiveSubChanges = false
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
