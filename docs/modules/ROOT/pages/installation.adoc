@@ -1,0 +1,295 @@
+Installation
+~~~~~~~~~~~
+
+Select the platform you wish to install Sync Gateway on:
+
+Ubuntu
+^^^^^^
+
+Download Sync Gateway from the
+http://www.couchbase.com/nosql-databases/downloads#couchbase-mobile[Couchbase
+downloads page] or using the `wget`.
+
+....
+wget http://packages.couchbase.com/releases/couchbase-sync-gateway/2.0.0-beta2/couchbase-sync-gateway-community_2.0.0-beta2_x86_64.deb
+....
+
+Install sync_gateway with the dpkg package manager e.g:
+
+....
+dpkg -i couchbase-sync-gateway-community_2.0.0-beta2_x86_64.deb
+....
+
+When the installation is complete sync_gateway will be running as a
+service.
+
+....
+service sync_gateway start
+service sync_gateway stop
+....
+
+The config file and logs are located in `/home/sync_gateway`.
+
+*Note:* You can also run the *sync_gateway* binary directly from the
+command line. The binary is installed at
+`/opt/couchbase-sync-gateway/bin/sync_gateway`.
+
+Red Hat/CentOS
+^^^^^^^^^^^^^^
+
+Download Sync Gateway from the
+http://www.couchbase.com/nosql-databases/downloads#couchbase-mobile[Couchbase
+downloads page] or using the `wget`.
+
+....
+wget http://packages.couchbase.com/releases/couchbase-sync-gateway/2.0.0-beta2/couchbase-sync-gateway-community_2.0.0-beta2_x86_64.rpm
+....
+
+Install sync_gateway with the rpm package manager e.g:
+
+....
+rpm -i couchbase-sync-gateway-community_2.0.0-beta2_x86_64.rpm
+....
+
+When the installation is complete sync_gateway will be running as a
+service.
+
+On CentOS 5:
+
+....
+service sync_gateway start
+service sync_gateway stop
+....
+
+On CentOS 6:
+
+....
+initctl start sync_gateway
+initctl stop sync_gateway
+....
+
+*Note:* The `initctl restart sync_gateway` command does not work in
+CentOS 6. To restart Sync Gateway, the stop/start commands can be used
+instead.
+
+On CentOS 7:
+
+....
+systemctl start sync_gateway
+systemctl stop sync_gateway
+....
+
+The config file and logs are located in `/home/sync_gateway`.
+
+Debian
+^^^^^^
+
+Download Sync Gateway from the
+http://www.couchbase.com/nosql-databases/downloads#couchbase-mobile[Couchbase
+downloads page] or using the `wget`.
+
+....
+wget http://packages.couchbase.com/releases/couchbase-sync-gateway/2.0.0-beta2/couchbase-sync-gateway-community_2.0.0-beta2_x86_64.deb
+....
+
+Install sync_gateway with the dpkg package manager e.g:
+
+....
+dpkg -i couchbase-sync-gateway-community_2.0.0-beta2_x86_64.deb
+....
+
+When the installation is complete sync_gateway will be running as a
+service.
+
+....
+systemctl start sync_gateway
+systemctl stop sync_gateway
+....
+
+The config file and logs are located in `/home/sync_gateway`.
+
+Windows
+^^^^^^^
+
+Download Sync Gateway from the
+http://www.couchbase.com/nosql-databases/downloads#couchbase-mobile[Couchbase
+downloads page]. Open the installer and follow the instructions. If the
+installation was successful you will see the following.
+
+image:windows-installation-complete.png[image,width=400]
+
+Sync Gateway runs as a service (reachable on http://localhost:4985/). To
+stop/start the service, you can use the Services application (*Control
+Panel --> Admin Tools --> Services*).
+
+* The configuration file is located under *C:\Program
+Files\Couchbase\Sync Gateway\serviceconfig.json*.
+* Logs are located under *C:\Program Files\Couchbase\Sync
+Gateway\var\lib\couchbase\logs*.
+
+macOS
+^^^^^
+
+Download Sync Gateway from the
+http://www.couchbase.com/nosql-databases/downloads#couchbase-mobile[Couchbase
+downloads page] or using the `wget`.
+
+....
+wget http://packages.couchbase.com/releases/couchbase-sync-gateway/2.0.0-beta2/couchbase-sync-gateway-community_2.0.0-beta2_x86_64.tar.gz
+....
+
+Install sync_gateway by unpacking the tar.gz installer.
+
+....
+sudo tar -zxvf couchbase-sync-gateway-community_2.0.0-beta2_x86_64.tar.gz --directory /opt
+....
+
+Create the sync_gateway service.
+
+....
+$ sudo mkdir /Users/sync_gateway
+
+$ cd /opt/couchbase-sync-gateway/service
+
+$ sudo ./sync_gateway_service_install.sh
+....
+
+To restart sync_gateway (it will automatically start again).
+
+....
+$ sudo launchctl stop sync_gateway
+....
+
+To remove the service.
+
+....
+$ sudo launchctl unload /Library/LaunchDaemons/com.couchbase.mobile.sync_gateway.plist
+....
+
+The config file and logs are located in `/Users/sync_gateway`.
+
+Requirements
+^^^^^^^^^^^^
+
+[cols=",,,,",options="header",]
+|=======================================================================
+|Ubuntu |CentOS/RedHat |Debian |Windows |macOS
+|12, 14 |5, 6, 7 |8 |Windows 8, Windows 10, Windows Server 2012
+|Yosemite, El Capitan
+|=======================================================================
+
+Network configuration
+^^^^^^^^^^^^^^^^^^^^^
+
+Sync Gateway uses specific ports for communication with the outside
+world, mostly Couchbase Lite databases replicating to and from Sync
+Gateway. The following table lists the ports used for different types of
+Sync Gateway network communication:
+
+[cols=",",options="header",]
+|=======================================================================
+|Port |Description
+|4984 |Public port. External HTTP port used for replication with
+Couchbase Lite databases and other applications accessing the REST API
+on the Internet.
+
+|4985 |Admin port. Internal HTTP port for unrestricted access to the
+database and to run administrative tasks.
+|=======================================================================
+
+Once you have downloaded Sync Gateway on the distribution of your choice
+you are ready to install and start it as a service.
+
+Walrus mode
+^^^^^^^^^^^
+
+By default, Sync Gateway uses a built-in, in-memory server called
+"Walrus" that can withstand most prototyping use cases, extending
+support to at most one or two users. In a staging or production
+environment, you must connect each Sync Gateway instance to a Couchbase
+Server cluster.
+
+Connecting to Couchbase Server
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To connect Sync Gateway to Couchbase Server:
+
+* https://www.couchbase.com/nosql-databases/downloads[Download] and
+install Couchbase Server.
+* Open the Couchbase Server Admin Console on http://localhost:8091 and
+log on using your administrator credentials.
+* In the toolbar, select the *Data Buckets* tab and click the *Create
+New Data Bucket* button. image:../img/cb-create-bucket.png[image]
+* Provide a bucket name, for example *mobile_bucket*, and leave the
+other options to their defaults.
+* Specify the bucket name and Couchbase Server host name in the Sync
+Gateway configuration.
++
+....
+{
+    "log": ["*"],
+    "databases": {
+        "db": {
+            "server": "http://localhost:8091",
+            "bucket": "mobile_bucket",
+            "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } }
+        }
+    }
+}
+....
+
+Couchbase Server network configuration
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In a typical mobile deployment on premise or in the cloud (AWS, RedHat
+etc), the following ports must be opened on the host for Couchbase
+Server to operate correctly: 8091, 8092, 8093, 8094, 11207, 11210,
+11211, 18091, 18092, 18093. You must verify that any firewall
+configuration allows communication on the specified ports. If this is
+not done, the Couchbase Server node can experience difficulty joining a
+cluster. You can refer to the
+link:/documentation/server/current/install/install-ports.html[Couchbase
+Server Network Configuration] guide to see the full list of available
+ports and their associated services.
+
+Getting Started
+~~~~~~~~~~~~~~~
+
+Before installing Sync Gateway, you should have completed the Getting
+Started instructions for Couchbase Lite on the platform of
+link:../index.html[your choice] (iOS, Android, .NET, Xamarin, Java or
+PhoneGap). To begin synchronizing between Couchbase Lite and Sync
+Gateway follow the steps below:
+
+1.  Create a new file called *sync-gateway-config.json* with the
+following configuration.
++
+....
+{
+    "databases": {
+        "hello": {
+            "server": "walrus:",
+            "users": {"GUEST": {"disabled": false, "admin_channels": ["*"]}},
+            "sync": `function (doc, oldDoc) {
+                if (doc.sdk) {
+                    channel(doc.sdk);
+                }
+            }`
+        }
+    }
+}
+....
++
+This configuration file creates a database called `hello` and routes
+documents to different channels based on the document's `sdk` property,
+if it exists.
+2.  Start Sync Gateway from the command line.
++
+....
+~/Downloads/couchbase-sync-gateway/bin/sync_gateway ~/path/to/sync-gateway-config.json
+....
+3.  Run the application where Couchbase Lite is installed. You should
+then see the documents that were replicated on the admin UI at
+http://localhost:4985/_admin/.
+
+image:admin-ui-getting-started.png[image]
