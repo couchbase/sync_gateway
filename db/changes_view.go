@@ -46,7 +46,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 		vres := channelsViewResult{}
 		err := dbc.Bucket.ViewCustom(DesignDocSyncGateway(), ViewChannels, optMap, &vres)
 		if err != nil {
-			base.Logf("Error from 'channels' view: %v", err)
+			base.LogfR("Error from 'channels' view: %v", err)
 			return nil, err
 		} else if len(vres.Rows) == 0 {
 			if len(entries) > 0 {
@@ -102,7 +102,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			len(entries), channelName, entries[0].Sequence, entries[len(entries)-1].Sequence)
 	}
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
-		base.Logf("changes_view: Query took %v to return %d rows, options = %#v",
+		base.LogfR("changes_view: Query took %v to return %d rows, options = %#v",
 			elapsed, len(entries), optMap)
 	}
 	changeCacheExpvars.Add("view_queries", 1)

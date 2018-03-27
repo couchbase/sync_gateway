@@ -118,7 +118,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 	base.LogToR("Cache", "Initializing changes cache with options %+v", c.options)
 
 	if context.UseGlobalSequence() {
-		base.Logf("Initializing changes cache for database %s with sequence: %d", context.Name, c.initialSequence)
+		base.LogfR("Initializing changes cache for database %s with sequence: %d", context.Name, c.initialSequence)
 	}
 
 	heap.Init(&c.pendingLogs)
@@ -304,7 +304,7 @@ func (c *changeCache) waitForSequence(sequence uint64) {
 		nextSequence := c.nextSequence
 		c.lock.RUnlock()
 		if nextSequence >= sequence+1 {
-			base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
+			base.LogfR("waitForSequence(%d) took %d ms", sequence, i*100)
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -330,7 +330,7 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 			}
 			c.skippedSeqLock.RUnlock()
 			if !foundInMissing {
-				base.Logf("waitForSequence(%d) took %d ms", sequence, i*100)
+				base.LogfR("waitForSequence(%d) took %d ms", sequence, i*100)
 				return
 			}
 		}

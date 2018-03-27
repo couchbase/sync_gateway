@@ -301,7 +301,7 @@ func initializeViews(bucket base.Bucket) error {
 
 	// If not present, install design docs and views
 	if !ddocsExist {
-		base.Logf("Design docs for current view version (%s) do not exist - creating...", DesignDocVersion)
+		base.LogfR("Design docs for current view version (%s) do not exist - creating...", DesignDocVersion)
 		if err := installViews(bucket); err != nil {
 			return err
 		}
@@ -322,7 +322,7 @@ func checkExistingDDocs(bucket base.Bucket) bool {
 	sgHousekeepingDDocExists := getDDocErr == nil && result != nil
 
 	if sgDDocExists && sgHousekeepingDDocExists {
-		base.Logf("Design docs for current SG view version (%s) found.", DesignDocVersion)
+		base.LogfR("Design docs for current SG view version (%s) found.", DesignDocVersion)
 		return true
 	}
 
@@ -572,7 +572,7 @@ func installViews(bucket base.Bucket) error {
 		}
 	}
 
-	base.Logf("Design docs successfully created for view version %s.", DesignDocVersion)
+	base.LogfR("Design docs successfully created for view version %s.", DesignDocVersion)
 
 	return nil
 }
@@ -583,7 +583,7 @@ func WaitForViews(bucket base.Bucket) error {
 	views := []string{ViewChannels, ViewAccess, ViewRoleAccess}
 	viewErrors := make(chan error, len(views))
 
-	base.Logf("Verifying view availability for bucket %s...", bucket.GetName())
+	base.LogfR("Verifying view availability for bucket %s...", bucket.GetName())
 
 	for _, viewName := range views {
 		viewsWg.Add(1)
@@ -603,7 +603,7 @@ func WaitForViews(bucket base.Bucket) error {
 		return err
 	}
 
-	base.Logf("Views ready for bucket %s.", bucket.GetName())
+	base.LogfR("Views ready for bucket %s.", bucket.GetName())
 	return nil
 
 }
@@ -618,7 +618,7 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 		if err == nil || err != base.ErrViewTimeoutError {
 			return err
 		} else {
-			base.Logf("Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, bucket.GetName())
+			base.LogfR("Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, bucket.GetName())
 		}
 	}
 
