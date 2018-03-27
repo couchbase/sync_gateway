@@ -192,9 +192,9 @@ func (cp *ChangeLog) CopyRemovingEmptyEntries() *ChangeLog {
 }
 
 func (cp *ChangeLog) Dump() {
-	base.Logf("Since: %d\n", cp.Since)
+	base.LogfR("Since: %d\n", cp.Since)
 	for _, e := range cp.Entries {
-		base.Logf("    %5d %q %q %b\n", e.Sequence, e.DocID, e.RevID, e.Flags)
+		base.LogfR("    %5d %q %q %b\n", e.Sequence, base.UD(e.DocID), e.RevID, e.Flags)
 	}
 }
 
