@@ -294,7 +294,7 @@ func stripSyncProperty(row *sgbucket.ViewRow) {
 	}
 }
 
-func initializeViews(bucket base.Bucket) error {
+func InitializeViews(bucket base.Bucket) error {
 
 	// Check whether design docs are already present
 	ddocsExist := checkExistingDDocs(bucket)

@@ -39,6 +39,12 @@ func TestN1qlQuery(t *testing.T) {
 		t.Errorf("Error creating index: %s", err)
 	}
 
+	// Check index state
+	exists, state, stateErr := bucket.GetIndexMeta("testIndex_value")
+	assertNoError(t, stateErr, "Error validating index state")
+	assert.Equals(t, state, "online")
+	assert.Equals(t, exists, true)
+
 	// Defer index teardown
 	defer func() {
 		// Drop the index
@@ -96,6 +102,37 @@ func TestN1qlQuery(t *testing.T) {
 	assertNoError(t, queryCloseErr, "Unexpected error closing query results")
 	assert.Equals(t, count, 0)
 
+}
+
+// Test index state retrieval
+func TestIndexMeta(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	if !ok {
+		t.Fatalf("Requires gocb bucket")
+	}
+
+	// Check index state pre-creation
+	exists, meta, err := bucket.GetIndexMeta("testIndex_value")
+	assert.Equals(t, exists, false)
+	assertNoError(t, err, "Error getting meta for non-existent index")
+
+	indexExpression := "val"
+	err = bucket.CreateIndex("testIndex_value", indexExpression, 0)
+	if err != nil {
+		t.Errorf("Error creating index: %s", err)
+	}
+
+	// Check index state post-creation
+	exists, meta, err = bucket.GetIndexMeta("testIndex_value")
+	assert.Equals(t, exists, true)
+	assert.Equals(t, meta.State, "online")
+	assertNoError(t, err, "Error retrieving index state")
 }
 
 // Ensure that n1ql query errors are handled and returned (and don't result in panic etc)
@@ -220,6 +257,7 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 
 	// Drop non-existent index
 	err = bucket.DropIndex("testIndex_not_found")
+	log.Printf("non-existent drop error: %v %T", err, err)
 	if err == nil {
 		t.Errorf("Expected error attempting to drop non-existent index", err)
 	}
