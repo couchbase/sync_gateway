@@ -86,7 +86,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool
 
 func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *document, err error) {
 
-	base.LogToR("Import+", "Attempting to import doc %q...", docid)
+	base.LogToR("Import+", "Attempting to import doc %q...", base.UD(docid))
 
 	if existingDoc == nil {
 		return nil, fmt.Errorf("No existing doc present when attempting to import %s", docid)
@@ -151,14 +151,14 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// If this is a delete, and there is no xattr on the existing doc,
 		// we shouldn't import.  (SG purge arriving over DCP feed)
 		if isDelete && doc.CurrentRev == "" {
-			base.LogToR("Import+", "Import not required for delete mutation with no existing SG xattr (SG purge): %s", docid)
+			base.LogToR("Import+", "Import not required for delete mutation with no existing SG xattr (SG purge): %s", base.UD(docid))
 			return nil, nil, updatedExpiry, base.ErrImportCancelled
 		}
 
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
 		// Cancel import
 		if doc.IsSGWrite() {
-			base.LogToR("Import+", "During import, existing doc (%s) identified as SG write.  Canceling import.", docid)
+			base.LogToR("Import+", "During import, existing doc (%s) identified as SG write.  Canceling import.", base.UD(docid))
 			alreadyImportedDoc = doc
 			return nil, nil, updatedExpiry, base.ErrAlreadyImported
 		}
@@ -167,11 +167,11 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		if db.DatabaseContext.Options.ImportOptions.ImportFilter != nil {
 			shouldImport, err := db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(body)
 			if err != nil {
-				base.LogToR("Import+", "Error returned for doc %s while evaluating import function - will not be imported.", docid)
+				base.LogToR("Import+", "Error returned for doc %s while evaluating import function - will not be imported.", base.UD(docid))
 				return nil, nil, updatedExpiry, base.ErrImportCancelledFilter
 			}
 			if shouldImport == false {
-				base.LogToR("Import+", "Doc %s excluded by document import function - will not be imported.", docid)
+				base.LogToR("Import+", "Doc %s excluded by document import function - will not be imported.", base.UD(docid))
 				// TODO: If this document has a current revision (this is a document that was previously mobile-enabled), do additional opt-out processing
 				// pending https://github.com/couchbase/sync_gateway/issues/2750
 				return nil, nil, updatedExpiry, base.ErrImportCancelledFilter
@@ -200,7 +200,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// If the doc was already imported, we want to return the imported version
 		docOut = alreadyImportedDoc
 	case nil:
-		base.LogToR("Import+", "Imported %s (delete=%v) as rev %s", docid, isDelete, newRev)
+		base.LogToR("Import+", "Imported %s (delete=%v) as rev %s", base.UD(docid), isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.
 	case base.ErrImportCancelledFilter:
@@ -210,7 +210,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// Import was cancelled due to CAS failure.
 		return nil, err
 	default:
-		base.LogToR("Import", "Error importing doc %q: %v", docid, err)
+		base.LogToR("Import", "Error importing doc %q: %v", base.UD(docid), err)
 		return nil, err
 
 	}
@@ -231,7 +231,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 
 	// If no sync metadata is present, return for import handling
 	if !doc.HasValidSyncData(false) {
-		base.LogToR("Migrate", "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", docid, doc.Cas)
+		base.LogToR("Migrate", "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", base.UD(docid), doc.Cas)
 		return doc, true, nil
 	}
 
@@ -256,7 +256,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	casOut, writeErr := gocbBucket.WriteWithXattr(docid, KSyncXattrName, existingDoc.Expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
 	if writeErr == nil {
 		doc.Cas = casOut
-		base.LogToR("Migrate", "Successfully migrated doc %q", docid)
+		base.LogToR("Migrate", "Successfully migrated doc %q", base.UD(docid))
 		return doc, false, nil
 	}
 

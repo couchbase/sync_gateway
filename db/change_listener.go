@@ -88,7 +88,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 	default:
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
-		base.LogToR("Feed", "Using DCP feed for bucket: %q (based on feed_type specified in config file)", bucket.GetName())
+		base.LogToR("Feed", "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.UD(bucket.GetName()))
 		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent)
 	}
 }
@@ -162,7 +162,7 @@ func (listener *changeListener) Notify(keys base.Set) {
 		listener.keyCounts[key] = listener.counter
 	}
 	base.LogToR("Changes+", "Notifying that %q changed (keys=%q) count=%d",
-		listener.bucketName, keys, listener.counter)
+		base.UD(listener.bucketName), base.UD(keys), listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -201,7 +201,7 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	base.LogToR("Changes+", "No new changes to send to change listener.  Waiting for %q's count to pass %d",
-		listener.bucketName, counter)
+		base.UD(listener.bucketName), counter)
 
 	for {
 		curCounter := listener._currentCount(keys)

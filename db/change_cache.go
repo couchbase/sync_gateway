@@ -378,7 +378,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
 	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
-		base.LogToR("Import+", "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", docID)
+		base.LogToR("Import+", "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))
 		return
 	}
 
@@ -393,7 +393,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
-			base.LogToR("Cache+", "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", docID, err)
+			base.LogToR("Cache+", "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", base.UD(docID), err)
 		}
 		if err == base.ErrEmptyMetadata {
 			base.WarnR("Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", event.Key, event.Opcode, event.DataType)
@@ -416,11 +416,11 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 				_, err := db.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
 				if err != nil {
 					if err == base.ErrImportCasFailure {
-						base.LogToR("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", docID)
+						base.LogToR("Import+", "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))
 					} else if err == base.ErrImportCancelledFilter {
 						// No logging required - filter info already logged during importDoc
 					} else {
-						base.LogToR("Import+", "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", docID, err)
+						base.LogToR("Import+", "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", base.UD(docID), err)
 					}
 				}
 			}
@@ -435,7 +435,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 			base.LogToR("Cache", "Found mobile xattr on document without _sync property - caching, assuming upgrade in progress.")
 			syncData = &migratedDoc.syncData
 		} else {
-			base.WarnR("changeCache: Doc %q does not have valid sync data.", docID)
+			base.WarnR("changeCache: Doc %q does not have valid sync data.", base.UD(docID))
 			return
 		}
 	}
@@ -451,7 +451,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
-		base.LogToR("Cache", "Received unused #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
+		base.LogToR("Cache", "Received unused #%d for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 		change := &LogEntry{
 			Sequence:     seq,
 			TimeReceived: time.Now(),
@@ -474,7 +474,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		nextSeq := c.getNextSequence()
 		for _, seq := range syncData.RecentSequences {
 			if seq >= nextSeq && seq < currentSequence {
-				base.LogToR("Cache", "Received deduplicated #%d for (%q / %q)", seq, docID, syncData.CurrentRev)
+				base.LogToR("Cache", "Received deduplicated #%d for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
 					TimeReceived: time.Now(),
@@ -504,7 +504,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
 	}
-	base.LogToR("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), change.DocID, change.RevID)
+	base.LogToR("Cache", "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), base.UD(change.DocID), change.RevID)
 
 	changedChannels := c.processEntry(change)
 	changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
@@ -578,7 +578,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		change.DocID = "_role/" + princ.Name()
 	}
 
-	base.LogToR("Cache", "Received #%d (%q)", change.Sequence, change.DocID)
+	base.LogToR("Cache", "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
 	changedChannels := c.processEntry(change)
 	if c.onChange != nil && len(changedChannels) > 0 {
@@ -625,9 +625,9 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// Remove from skipped sequence queue
 		if !c.WasSkipped(sequence) {
 			// Error removing from skipped sequences
-			base.LogToR("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, change.DocID, change.RevID)
+			base.LogToR("Cache", "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, base.UD(change.DocID), change.RevID)
 		} else {
-			base.LogToR("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, change.DocID, change.RevID)
+			base.LogToR("Cache", "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, base.UD(change.DocID), change.RevID)
 			change.Skipped = true
 		}
 

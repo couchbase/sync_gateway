@@ -204,8 +204,8 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 					backupOrDryRunDocId, err = r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
 					if err != nil {
 						base.LogToR("CRUD", "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
-						base.LogToR("CRUD", "Original Doc before repair: %s", currentValue)
-						base.LogToR("CRUD", "Updated doc after repair: %s", updatedDoc)
+						base.LogToR("CRUD", "Original Doc before repair: %s", base.UD(currentValue))
+						base.LogToR("CRUD", "Updated doc after repair: %s", base.UD(updatedDoc))
 					}
 
 					result := RepairBucketResult{
@@ -237,9 +237,9 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 			if backupOrDryRunDocId != "" {
 				if r.DryRun {
-					base.LogToR("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+					base.LogToR("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
 				} else {
-					base.LogToR("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+					base.LogToR("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
 				}
 			}
 
@@ -280,7 +280,7 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 
 	//If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all
 	if int(r.RepairedFileTTL.Seconds()) == 0 {
-		base.LogToR("CRUD", "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", backupOrDryRunDocId)
+		base.LogToR("CRUD", "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", base.UD(backupOrDryRunDocId))
 		return backupOrDryRunDocId, nil
 	}
 
@@ -330,8 +330,8 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 // Repairs rev tree cycles (see SG issue #2847)
 func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
-	base.LogToR("CRUD+", "RepairJobRevTreeCycles() called with doc id: %v", docId)
-	defer base.LogToR("CRUD+", "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", docId, transformed, err)
+	base.LogToR("CRUD+", "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
+	defer base.LogToR("CRUD+", "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {

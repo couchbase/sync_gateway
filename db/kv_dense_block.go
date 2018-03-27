@@ -175,7 +175,7 @@ func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pend
 		if !blockFull {
 			changed, removalRequired, err := d.addEntry(entry)
 			if err != nil {
-				base.LogToR("ChannelStorage+", "Error adding entry to block.  key:[%s] error:%v", entry.DocID, err)
+				base.LogToR("ChannelStorage+", "Error adding entry to block.  key:[%s] error:%v", base.UD(entry.DocID), err)
 				return nil, nil, nil, false, err
 			}
 			if changed {
@@ -219,7 +219,7 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (changed bool, removalRequired
 		clockSequence := d.getClock()[logEntry.VbNo]
 		if logEntry.Sequence <= clockSequence {
 			base.LogToR("ChannelStorage+", "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d] blockKey:[%s]",
-				logEntry.DocID, logEntry.Sequence, clockSequence, d.Key)
+				base.UD(logEntry.DocID), logEntry.Sequence, clockSequence, base.UD(d.Key))
 			return false, false, nil
 		}
 

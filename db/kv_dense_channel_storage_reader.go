@@ -243,7 +243,7 @@ func (r *DensePartitionStorageReaderNonCaching) GetChanges(partitionRange base.P
 	// Initialize the block list to the starting range, then find the starting block for the partition range
 	blockList := r.GetBlockListForRange(partitionRange)
 	if blockList == nil {
-		base.LogToR("ChannelStorage+", "No block found for requested partition range.  channel:[%s] partition:[%d]", r.channelName, r.partitionNo)
+		base.LogToR("ChannelStorage+", "No block found for requested partition range.  channel:[%s] partition:[%d]", base.UD(r.channelName), r.partitionNo)
 		return changes, nil
 	}
 	startIndex := 0
@@ -342,13 +342,13 @@ func (pr *DensePartitionStorageReader) GetChanges(partitionRange base.PartitionR
 		return nil, err
 	}
 	if cacheOk {
-		base.LogToR("Cache+", "Returning cached changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
+		base.LogToR("Cache+", "Returning cached changes for channel:[%s], partition:[%d]", base.UD(pr.channelName), pr.partitionNo)
 		indexReaderGetChangesUseCached.Add(1)
 		return changes, nil
 	}
 
 	// Cache didn't cover the partition range - retrieve from the index
-	base.LogToR("Cache+", "Returning indexed changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
+	base.LogToR("Cache+", "Returning indexed changes for channel:[%s], partition:[%d]", base.UD(pr.channelName), pr.partitionNo)
 	indexReaderGetChangesUseIndexed.Add(1)
 	return pr.getIndexedChanges(partitionRange)
 

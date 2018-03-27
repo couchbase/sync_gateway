@@ -12,7 +12,7 @@ func (c *DatabaseContext) watchDocChanges() {
 	if c.mutationListener.DocChannel == nil {
 		return
 	}
-	base.LogTo("Shadow", "Watching doc changes...")
+	base.LogToR("Shadow", "Watching doc changes...")
 	for event := range c.mutationListener.DocChannel {
 		base.LogToR("Feed", "Got shadow event:%s", base.UD(event.Key))
 		doc, err := unmarshalDocument(string(event.Key), event.Value)
@@ -32,7 +32,7 @@ func (c *DatabaseContext) watchDocChanges() {
 
 // Adds sync metadata to a Couchbase document
 func (c *DatabaseContext) assimilate(docid string) {
-	base.LogToR("CRUD", "Importing new doc %q", docid)
+	base.LogToR("CRUD", "Importing new doc %q", base.UD(docid))
 	db := Database{DatabaseContext: c, user: nil}
 	_, err := db.updateDoc(docid, true, 0, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		if doc.HasValidSyncData(c.writeSequences()) {

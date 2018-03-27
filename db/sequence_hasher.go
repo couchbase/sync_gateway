@@ -189,7 +189,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 		}
 		_, err = base.WriteCasRaw(s.bucket, key, initialValue, existingClocks.cas, base.SecondsToCbsExpiry(int(s.hashExpiry)), func(value []byte) (updatedValue []byte, err error) {
 			// Note: The following is invoked upon cas failure - may be called multiple times
-			base.LogToR("DIndex+", "CAS fail - reapplying changes for hash storage for key: %s", key)
+			base.LogToR("DIndex+", "CAS fail - reapplying changes for hash storage for key: %s", base.UD(key))
 			var sClocks storedClocks
 			err = sClocks.Unmarshal(value)
 			if err != nil {
@@ -203,7 +203,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 			}
 			// Not found - add
 			sClocks.Sequences = append(sClocks.Sequences, clockValue)
-			base.LogToR("DIndex+", "Reattempting stored hash write for key %s:", key)
+			base.LogToR("DIndex+", "Reattempting stored hash write for key %s:", base.UD(key))
 			index = len(sClocks.Sequences) - 1
 			return sClocks.Marshal()
 		})

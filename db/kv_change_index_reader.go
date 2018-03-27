@@ -304,7 +304,7 @@ func (k *kvChangeIndexReader) GetChangesForRange(channelName string, sinceClock 
 	}
 	changes, err := reader.GetChanges(sinceClock, toClock, limit, activeOnly)
 	if err != nil {
-		base.LogToR("DIndex+", "No clock found for channel %s, assuming no entries in index", channelName)
+		base.LogToR("DIndex+", "No clock found for channel %s, assuming no entries in index", base.UD(channelName))
 		return nil, nil
 	}
 
@@ -318,10 +318,10 @@ func (k *kvChangeIndexReader) getOrCreateReader(channelName string) (*KvChannelI
 	if index == nil {
 		index, err = k.newChannelReader(channelName)
 		IndexExpvars.Add("getOrCreateReader_create", 1)
-		base.LogToR("DIndex+", "getOrCreateReader: Created new reader for channel %s", channelName)
+		base.LogToR("DIndex+", "getOrCreateReader: Created new reader for channel %s", base.UD(channelName))
 	} else {
 		IndexExpvars.Add("getOrCreateReader_get", 1)
-		base.LogToR("DIndex+", "getOrCreateReader: Using existing reader for channel %s", channelName)
+		base.LogToR("DIndex+", "getOrCreateReader: Using existing reader for channel %s", base.UD(channelName))
 	}
 	return index, err
 }

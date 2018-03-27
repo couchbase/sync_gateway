@@ -158,7 +158,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 		nextStartClock = l.activeBlock.getCumulativeClock()
 	}
 
-	base.LogToR("ChannelStorage+", "Adding block to list. channel:[%s] partition:[%d] index:[%d]", l.channelName, l.partition, nextIndex)
+	base.LogToR("ChannelStorage+", "Adding block to list. channel:[%s] partition:[%d] index:[%d]", base.UD(l.channelName), l.partition, nextIndex)
 
 	nextBlockKey := l.generateBlockKey(nextIndex)
 	block := NewDenseBlock(nextBlockKey, nextStartClock)
@@ -198,7 +198,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	}
 	l.activeCas = casOut
 	l.activeBlock = block
-	base.LogToR("ChannelStorage+", "Successfully added block to list. channel:[%s] partition:[%d] index:[%d] activeBlocks:[%d]", l.channelName, l.partition, nextIndex, len(l.blocks))
+	base.LogToR("ChannelStorage+", "Successfully added block to list. channel:[%s] partition:[%d] index:[%d] activeBlocks:[%d]", base.UD(l.channelName), l.partition, nextIndex, len(l.blocks))
 
 	return block, nil
 }
@@ -271,7 +271,7 @@ func (l *DenseBlockList) initDenseBlockList() error {
 	// If block list doesn't exist, add a block (which will initialize)
 	if !found {
 		l.activeCas = 0
-		base.LogToR("ChannelStorage+", "Creating new block list. channel:[%s] partition:[%d] cas:[%d]", l.channelName, l.partition, l.activeCas)
+		base.LogToR("ChannelStorage+", "Creating new block list. channel:[%s] partition:[%d] cas:[%d]", base.UD(l.channelName), l.partition, l.activeCas)
 		l.blocks = make([]DenseBlockListEntry, 0)
 		_, err = l.AddBlock()
 		if err != nil {
@@ -290,7 +290,7 @@ func (l *DenseBlockList) loadDenseBlockList() (found bool, err error) {
 		if base.IsKeyNotFoundError(l.indexBucket, readError) {
 			return false, nil
 		} else {
-			base.LogToR("ChannelStorage+", "Unexpected error attempting to retrieve active block list.  key:[%s] err:[%v]", l.activeKey, readError)
+			base.LogToR("ChannelStorage+", "Unexpected error attempting to retrieve active block list.  key:[%s] err:[%v]", base.UD(l.activeKey), readError)
 			return false, readError
 		}
 	}

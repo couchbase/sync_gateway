@@ -61,7 +61,7 @@ func newChannelCacheWithOptions(context *DatabaseContext, channelName string, va
 		cache.options.ChannelCacheAge = options.ChannelCacheAge
 	}
 
-	base.LogToR("Cache", "Initialized cache for channel %q with options: %+v", cache.channelName, cache.options)
+	base.LogToR("Cache", "Initialized cache for channel %q with options: %+v", base.UD(cache.channelName), cache.options)
 
 	return cache
 }
@@ -78,7 +78,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	defer c.lock.Unlock()
 
 	if c.wouldBeImmediatelyPruned(change) {
-		base.LogToR("Cache", "Not adding change #%d ==> channel %q, since it will be immediately pruned", change.Sequence, c.channelName)
+		base.LogToR("Cache", "Not adding change #%d ==> channel %q, since it will be immediately pruned", change.Sequence, base.UD(c.channelName))
 		return
 	}
 
@@ -90,7 +90,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		c._appendChange(&removalChange)
 	}
 	c._pruneCache()
-	base.LogToR("Cache", "    #%d ==> channel %q", change.Sequence, c.channelName)
+	base.LogToR("Cache", "    #%d ==> channel %q", change.Sequence, base.UD(c.channelName))
 }
 
 // If certain conditions are met, it's possible that this change will be added and then
@@ -130,7 +130,7 @@ func (c *channelCache) _pruneCache() {
 		pruned++
 	}
 	if pruned > 0 {
-		base.LogToR("Cache+", "Pruned %d old entries from channel %q", pruned, c.channelName)
+		base.LogToR("Cache+", "Pruned %d old entries from channel %q", pruned, base.UD(c.channelName))
 	}
 }
 
@@ -192,10 +192,10 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 || resultFromCache == nil {
 		base.LogToR("Cache", "getCachedChanges(%q, %s) --> %d changes valid from #%d",
-			c.channelName, options.Since.String(), numFromCache, cacheValidFrom)
+			base.UD(c.channelName), options.Since.String(), numFromCache, cacheValidFrom)
 	} else if resultFromCache == nil {
 		base.LogToR("Cache", "getCachedChanges(%q, %s) --> nothing cached",
-			c.channelName, options.Since.String())
+			base.UD(c.channelName), options.Since.String())
 	}
 	startSeq := options.Since.SafeSequence() + 1
 	if cacheValidFrom <= startSeq {
@@ -212,7 +212,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	cacheValidFrom, resultFromCache = c.getCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
 		base.LogToR("Cache", "2nd getCachedChanges(%q, %d) got %d more, valid from #%d!",
-			c.channelName, options.Since, len(resultFromCache)-numFromCache, cacheValidFrom)
+			base.UD(c.channelName), options.Since, len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
 		return resultFromCache, nil
@@ -244,7 +244,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		}
 		result = append(result, resultFromCache[0:n]...)
 	}
-	base.LogToR("Cache", "GetChangesInChannel(%q) --> %d rows", c.channelName, len(result))
+	base.LogToR("Cache", "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelName), len(result))
 	return result, nil
 }
 
@@ -364,7 +364,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 			c.logs = make(LogEntries, len(changes))
 			copy(c.logs, changes)
 			base.LogToR("Cache", "  Initialized cache of %q with %d entries from view (#%d--#%d)",
-				c.channelName, len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
+				base.UD(c.channelName), len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
 		}
 		c.validFrom = changesValidFrom
 		c.addDocIDs(changes)
@@ -396,7 +396,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 						newLog = append(newLog, log...)
 						c.logs = newLog
 						base.LogToR("Cache", "  Added %d entries from view (#%d--#%d) to cache of %q",
-							i, changes[0].Sequence, changes[i-1].Sequence, c.channelName)
+							i, changes[0].Sequence, changes[i-1].Sequence, base.UD(c.channelName))
 					}
 					base.LogToR("Cache+", " Backfill cache from view c.validFrom from %v -> %v",
 						c.validFrom, changesValidFrom)

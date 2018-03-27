@@ -72,7 +72,7 @@ func (em *EventManager) ProcessEvent(event Event) {
 	// until all are finished
 	var wg sync.WaitGroup
 	for _, handler := range em.eventHandlers[event.EventType()] {
-		base.LogToR("Events+", "Event queue worker sending event %s to: %s", event.String(), handler)
+		base.LogToR("Events+", "Event queue worker sending event %s to: %s", base.UD(event.String()), handler)
 		wg.Add(1)
 		go func(event Event, handler EventHandler) {
 			defer wg.Done()
