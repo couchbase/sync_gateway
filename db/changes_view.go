@@ -103,7 +103,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	}
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
 		base.LogfR("changes_view: Query took %v to return %d rows, options = %#v",
-			elapsed, len(entries), optMap)
+			elapsed, len(entries), base.UD(optMap))
 	}
 	changeCacheExpvars.Add("view_queries", 1)
 	return entries, nil

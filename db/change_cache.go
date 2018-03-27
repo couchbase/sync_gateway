@@ -118,7 +118,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, on
 	base.LogToR("Cache", "Initializing changes cache with options %+v", c.options)
 
 	if context.UseGlobalSequence() {
-		base.LogfR("Initializing changes cache for database %s with sequence: %d", context.Name, c.initialSequence)
+		base.LogfR("Initializing changes cache for database %s with sequence: %d", base.UD(context.Name), c.initialSequence)
 	}
 
 	heap.Init(&c.pendingLogs)

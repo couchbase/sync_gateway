@@ -670,7 +670,7 @@ func (db *Database) DeleteAllDocs(docType string) error {
 	}
 
 	//FIX: Is there a way to do this in one operation?
-	base.LogfR("Deleting %d %q documents of %q ...", len(vres.Rows), docType, db.Name)
+	base.LogfR("Deleting %d %q documents of %q ...", len(vres.Rows), base.UD(docType), base.UD(db.Name))
 	for _, row := range vres.Rows {
 		base.LogToR("CRUD", "\tDeleting %q", base.UD(row.ID))
 		if err := db.Bucket.Delete(row.ID); err != nil {
@@ -726,7 +726,7 @@ func (db *Database) Compact() (int, error) {
 		return 0, err
 	}
 
-	base.LogfR("Compacting %d purged tombstones from view for %s ...", len(vres.Rows), db.Name)
+	base.LogfR("Compacting %d purged tombstones from view for %s ...", len(vres.Rows), base.UD(db.Name))
 	purgeBody := Body{"_purged": true}
 	count := 0
 	for _, row := range vres.Rows {

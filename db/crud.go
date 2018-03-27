@@ -1284,7 +1284,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 			expiry = output.Expiry
 			err = output.Rejection
 			if err != nil {
-				base.LogfR("Sync fn rejected: new=%+v  old=%s --> %s", body, oldJson, err)
+				base.LogfR("Sync fn rejected: new=%+v  old=%s --> %s", base.UD(body), base.UD(oldJson), err)
 			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = base.HTTPErrorf(500, "Error in JS sync function")
 			}

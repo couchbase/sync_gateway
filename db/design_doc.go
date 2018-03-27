@@ -583,7 +583,7 @@ func WaitForViews(bucket base.Bucket) error {
 	views := []string{ViewChannels, ViewAccess, ViewRoleAccess}
 	viewErrors := make(chan error, len(views))
 
-	base.LogfR("Verifying view availability for bucket %s...", bucket.GetName())
+	base.LogfR("Verifying view availability for bucket %s...", base.UD(bucket.GetName()))
 
 	for _, viewName := range views {
 		viewsWg.Add(1)
@@ -603,7 +603,7 @@ func WaitForViews(bucket base.Bucket) error {
 		return err
 	}
 
-	base.LogfR("Views ready for bucket %s.", bucket.GetName())
+	base.LogfR("Views ready for bucket %s.", base.UD(bucket.GetName()))
 	return nil
 
 }
@@ -618,7 +618,7 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 		if err == nil || err != base.ErrViewTimeoutError {
 			return err
 		} else {
-			base.LogfR("Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, bucket.GetName())
+			base.LogfR("Timeout waiting for view %q to be ready for bucket %q - retrying...", viewName, base.UD(bucket.GetName()))
 		}
 	}
 
