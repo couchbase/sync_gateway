@@ -288,7 +288,7 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 			info.contentType, _ = meta["content_type"].(string)
 			info.data, err = decodeAttachment(meta["data"])
 			if info.data == nil {
-				base.WarnR("Couldn't decode attachment %q of doc %q: %v", name, body["_id"], err)
+				base.WarnR("Couldn't decode attachment %q of doc %q: %v", base.UD(name), base.UD(body["_id"]), err)
 				meta["stub"] = true
 				delete(meta, "data")
 			} else if len(info.data) > kMaxInlineAttachmentSize {

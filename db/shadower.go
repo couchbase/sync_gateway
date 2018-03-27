@@ -79,7 +79,7 @@ func (s *Shadower) readTapFeed() {
 			}
 			err := s.pullDocument(key, event.Value, isDeletion, event.Sequence, event.Flags)
 			if err != nil {
-				base.WarnR("Error applying change %q from external bucket: %v", key, err)
+				base.WarnR("Error applying change %q from external bucket: %v", base.UD(key), err)
 			}
 			atomic.AddUint64(&s.pullCount, 1)
 		case sgbucket.FeedOpEndBackfill:
@@ -176,6 +176,6 @@ func (s *Shadower) PushRevision(doc *document) {
 		err = s.bucket.Set(doc.ID, 0, body)
 	}
 	if err != nil {
-		base.WarnR("Error pushing rev of %q to external bucket: %v", doc.ID, err)
+		base.WarnR("Error pushing rev of %q to external bucket: %v", base.UD(doc.ID), err)
 	}
 }

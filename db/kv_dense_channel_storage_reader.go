@@ -54,12 +54,12 @@ func (ds *DenseStorageReader) UpdateCache(sinceClock base.SequenceClock, toClock
 			defer wg.Done()
 			reader := ds.getPartitionStorageReader(partitionNo)
 			if reader == nil {
-				base.WarnR("Expected to get reader for channel %s partition %d, based on changed range %v", ds.channelName, partitionNo, partitionRange)
+				base.WarnR("Expected to get reader for channel %s partition %d, based on changed range %v", base.UD(ds.channelName), partitionNo, partitionRange)
 				return
 			}
 			err := reader.UpdateCache(kCachedBlocksPerShard)
 			if err != nil {
-				base.WarnR("Unable to update cache for channel:[%s] partition:[%d] : %v", ds.channelName, partitionNo, err)
+				base.WarnR("Unable to update cache for channel:[%s] partition:[%d] : %v", base.UD(ds.channelName), partitionNo, err)
 				errCh <- err
 			}
 		}(uint16(partitionNo), partitionRange)
@@ -288,7 +288,7 @@ func (r *DensePartitionStorageReaderNonCaching) GetBlockListForRange(partitionRa
 	if partitionRange.SinceBefore(validFromClock) {
 		err := blockList.LoadPrevious()
 		if err != nil {
-			base.WarnR("Error loading previous block list - will not be included in set. channel:[%s] partition:[%d]", r.channelName, r.partitionNo)
+			base.WarnR("Error loading previous block list - will not be included in set. channel:[%s] partition:[%d]", base.UD(r.channelName), r.partitionNo)
 		}
 		validFromClock = blockList.ValidFrom()
 	}
@@ -384,7 +384,7 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 	}
 
 	if blockCount == 0 {
-		base.WarnR("Attempted to update reader cache for partition with no blocks. channel:[%s] partition:[%d]", pr.channelName, pr.partitionNo)
+		base.WarnR("Attempted to update reader cache for partition with no blocks. channel:[%s] partition:[%d]", base.UD(pr.channelName), pr.partitionNo)
 		return errors.New("No blocks found when updating partition cache")
 	}
 	// cacheKeySet tracks the blocks that should be in the cache - used for cache expiry, below

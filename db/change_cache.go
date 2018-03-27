@@ -264,7 +264,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 		// view will only have the * channel
 		doc, err := c.context.GetDocument(entry.DocID, DocUnmarshalNoHistory)
 		if err != nil {
-			base.WarnR("Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", entry.DocID, entry.Sequence)
+			base.WarnR("Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", base.UD(entry.DocID), entry.Sequence)
 			continue
 		}
 		entry.Channels = doc.Channels
@@ -396,7 +396,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 			base.LogToR("Cache+", "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", base.UD(docID), err)
 		}
 		if err == base.ErrEmptyMetadata {
-			base.WarnR("Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", event.Key, event.Opcode, event.DataType)
+			base.WarnR("Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
 		}
 		return
 	}
@@ -532,7 +532,7 @@ func (c *changeCache) processUnusedSequence(docID string) {
 	sequenceStr := strings.TrimPrefix(docID, UnusedSequenceKeyPrefix)
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
-		base.WarnR("Unable to identify sequence number for unused sequence notification with key: %s, error:", docID, err)
+		base.WarnR("Unable to identify sequence number for unused sequence notification with key: %s, error:", base.UD(docID), err)
 		return
 	}
 	change := &LogEntry{
@@ -556,7 +556,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	// have gaps in it, causing later sequences to get stuck in the queue.
 	princ, err := c.unmarshalPrincipal(docJSON, isUser)
 	if princ == nil {
-		base.WarnR("changeCache: Error unmarshaling doc %q: %v", docID, err)
+		base.WarnR("changeCache: Error unmarshaling doc %q: %v", base.UD(docID), err)
 		return
 	}
 	sequence := princ.Sequence()

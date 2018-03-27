@@ -119,7 +119,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 
 	// The clock has changed - load the changes and store in last polled
 	if err := k.updateLastPolled(stableClock, newChannelClock, changedPartitions); err != nil {
-		base.WarnR("Error updating last polled for channel %s: %v", k.channelName, err)
+		base.WarnR("Error updating last polled for channel %s: %v", base.UD(k.channelName), err)
 		return false, false
 	}
 
@@ -264,7 +264,7 @@ func (k *KvChannelIndex) loadChannelClock() (base.SequenceClock, error) {
 	}
 	err = chanClock.Unmarshal(value)
 	if err != nil {
-		base.WarnR("Error unmarshalling channel clock for channel %s, clock value %v", k.channelName, value)
+		base.WarnR("Error unmarshalling channel clock for channel %s, clock value %v", base.UD(k.channelName), value)
 	}
 	return chanClock, err
 }

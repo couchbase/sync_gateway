@@ -299,7 +299,7 @@ func (k *kvChangeIndexReader) GetChangesForRange(channelName string, sinceClock 
 
 	reader, err := k.getOrCreateReader(channelName)
 	if err != nil {
-		base.WarnR("Error obtaining channel reader (need partition index?) for channel %s", channelName)
+		base.WarnR("Error obtaining channel reader (need partition index?) for channel %s", base.UD(channelName))
 		return nil, err
 	}
 	changes, err := reader.GetChanges(sinceClock, toClock, limit, activeOnly)
@@ -406,7 +406,7 @@ func (k *kvChangeIndexReader) pollReaders() bool {
 				var err error
 				newChannelClock, err = base.NewSequenceClockForBytes(clockBytes)
 				if err != nil {
-					base.WarnR("Error unmarshalling channel clock - skipping polling for channel %s: %v", reader.channelName, err)
+					base.WarnR("Error unmarshalling channel clock - skipping polling for channel %s: %v", base.UD(reader.channelName), err)
 					return
 				}
 			}
@@ -498,7 +498,7 @@ func (k *kvChangeIndexReader) pollPrincipals() {
 			key := fmt.Sprintf(base.KPrincipalCountKeyFormat, principalID)
 			newCount, ok := bulkGetResults[key]
 			if !ok {
-				base.WarnR("Expected key not found in results when checking for principal updates, key:[%s]", key)
+				base.WarnR("Expected key not found in results when checking for principal updates, key:[%s]", base.UD(key))
 				continue
 			}
 			if newCount != currentCount {
@@ -514,7 +514,7 @@ func (k *kvChangeIndexReader) pollPrincipals() {
 			key := fmt.Sprintf(base.KPrincipalCountKeyFormat, principalID)
 			newCount, err := k.indexReadBucket.Incr(key, 0, 0, 0)
 			if err != nil {
-				base.WarnR("Principal polling encountered error getting overall count for key %s:%v", key, err)
+				base.WarnR("Principal polling encountered error getting overall count for key %s:%v", base.UD(key), err)
 				continue
 			}
 			if newCount != currentCount {

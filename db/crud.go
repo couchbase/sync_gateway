@@ -510,7 +510,7 @@ func (db *Database) backupAncestorRevs(doc *document, revid string) error {
 	// Store the JSON as a separate doc in the bucket:
 	if err := db.setOldRevisionJSON(doc.ID, revid, json); err != nil {
 		// This isn't fatal since we haven't lost any information; just warn about it.
-		base.WarnR("backupAncestorRevs failed: doc=%q rev=%q err=%v", doc.ID, revid, err)
+		base.WarnR("backupAncestorRevs failed: doc=%q rev=%q err=%v", base.UD(doc.ID), revid, err)
 		return err
 	}
 
@@ -973,7 +973,7 @@ func (db *Database) updateAndReturnDoc(
 				} else {
 					// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
 					base.WarnR("updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
-						"on it (err=%v)", docid, doc.CurrentRev, err)
+						"on it (err=%v)", base.UD(docid), doc.CurrentRev, err)
 					channelSet = nil
 					access = nil
 					roles = nil
@@ -1209,7 +1209,7 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 	if reloadActiveUser {
 		user, err := db.Authenticator().GetUser(db.user.Name())
 		if err != nil {
-			base.WarnR("Error reloading active db.user[%s], security information will not be recalculated until next authentication --> %+v", db.user.Name(), err)
+			base.WarnR("Error reloading active db.user[%s], security information will not be recalculated until next authentication --> %+v", base.UD(db.user.Name()), err)
 		} else {
 			db.user = user
 		}
@@ -1290,7 +1290,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 			}
 
 		} else {
-			base.WarnR("Sync fn exception: %+v; doc = %s", err, body)
+			base.WarnR("Sync fn exception: %+v; doc = %s", err, base.UD(body))
 			err = base.HTTPErrorf(500, "Exception in JS sync function")
 		}
 
@@ -1322,7 +1322,7 @@ func validateAccessMap(access channels.AccessMap) bool {
 	for name := range access {
 		principalName, _ := channels.AccessNameToPrincipalName(name)
 		if !auth.IsValidPrincipalName(principalName) {
-			base.WarnR("Invalid principal name %q in access() or role() call", principalName)
+			base.WarnR("Invalid principal name %q in access() or role() call", base.UD(principalName))
 			return false
 		}
 	}
@@ -1336,7 +1336,7 @@ func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
 	for _, roles := range roleAccess {
 		for rolename := range roles {
 			if !auth.IsValidPrincipalName(rolename) {
-				base.WarnR("Invalid role name %q in role() call", rolename)
+				base.WarnR("Invalid role name %q in role() call", base.UD(rolename))
 				return false
 			}
 		}
@@ -1485,7 +1485,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	doc, err := db.GetDocument(docid, DocUnmarshalSync)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
-			base.WarnR("RevDiff(%q) --> %T %v", docid, err, err)
+			base.WarnR("RevDiff(%q) --> %T %v", base.UD(docid), err, err)
 			// If something goes wrong getting the doc, treat it as though it's nonexistent.
 		}
 		missing = revids
@@ -1540,7 +1540,7 @@ func (db *Database) CheckProposedRev(docid string, revid string, parentRevID str
 	doc, err := db.GetDocument(docid, DocUnmarshalAll)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
-			base.WarnR("CheckProposedRev(%q) --> %T %v", docid, err, err)
+			base.WarnR("CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
 			return ProposedRev_Error
 		}
 		// Doc doesn't exist locally; adding it is OK (even if it has a history)

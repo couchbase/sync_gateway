@@ -499,7 +499,7 @@ func (doc *document) migrateRevisionBodies(bucket base.Bucket) error {
 			bodyKey := generateRevBodyKey(doc.ID, revID)
 			persistErr := doc.persistRevisionBody(bucket, bodyKey, revInfo.Body)
 			if persistErr != nil {
-				base.WarnR("Unable to store revision body for doc %s, rev %s externally: %v", doc.ID, revID, persistErr)
+				base.WarnR("Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
 				continue
 			}
 			revInfo.BodyKey = bodyKey
@@ -659,7 +659,7 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 	root := documentRoot{SyncData: &syncData{History: make(RevTree)}}
 	err := json.Unmarshal([]byte(data), &root)
 	if err != nil {
-		base.WarnR("Error unmarshaling doc %q: %s", doc.ID, err)
+		base.WarnR("Error unmarshaling doc %q: %s", base.UD(doc.ID), err)
 		return pkgerrors.Wrapf(err, "Failed to UnmarshalJSON() doc with id: %s", doc.ID)
 	}
 	if root.SyncData != nil {

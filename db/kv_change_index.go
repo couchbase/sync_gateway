@@ -177,7 +177,7 @@ func (k *kvChangeIndex) setIndexPartitionMap(partitionMap base.IndexPartitionMap
 
 func (k *kvChangeIndex) DocChanged(event sgbucket.FeedEvent) {
 	// no-op for reader
-	base.WarnR("DocChanged called in index reader for doc %s, will be ignored.", event.Key)
+	base.WarnR("DocChanged called in index reader for doc %s, will be ignored.", base.UD(event.Key))
 }
 
 // No-ops - pending refactoring of change_cache.go to remove usage (or deprecation of

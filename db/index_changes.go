@@ -72,7 +72,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				if err := db.ReloadUser(); err != nil {
 					change := makeErrorEntry("User not found during reload - terminating changes feed")
 					output <- &change
-					base.WarnR("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
+					base.WarnR("Error reloading user during changes initialization %q: %v", base.UD(db.user.Name()), err)
 					return
 				}
 			}
@@ -287,7 +287,7 @@ func (db *Database) checkForUserUpdatesSince(userChangeCount uint64, changeWaite
 
 		if db.user != nil {
 			if err := db.ReloadUser(); err != nil {
-				base.WarnR("Error reloading user %q: %v", db.user.Name(), err)
+				base.WarnR("Error reloading user %q: %v", base.UD(db.user.Name()), err)
 				return false, 0, nil, err
 			}
 			// check whether channels have changed
@@ -568,7 +568,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 
 		feed, err := db.vectorChangesFeed(name, chanOpts, secondaryTriggers[name], cumulativeClock, stableClock)
 		if err != nil {
-			base.WarnR("MultiChangesFeed got error reading changes feed %q: %v", name, err)
+			base.WarnR("MultiChangesFeed got error reading changes feed %q: %v", base.UD(name), err)
 			return feeds, false, err
 		}
 		feeds = append(feeds, feed)
@@ -753,7 +753,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 			// Get everything from zero to the cumulative clock as backfill
 			backfillLog, err = changeIndex.reader.GetChangesForRange(channel, base.NewSequenceClockImpl(), cumulativeClock, options.Limit, options.ActiveOnly)
 			if err != nil {
-				base.WarnR("Error processing backfill changes for channel %s: %v", channel, err)
+				base.WarnR("Error processing backfill changes for channel %s: %v", base.UD(channel), err)
 				return
 			}
 
@@ -761,7 +761,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 			if options.Limit == 0 || len(backfillLog) < options.Limit {
 				log, err = changeIndex.reader.GetChangesForRange(channel, cumulativeClock, stableClock, options.Limit, options.ActiveOnly)
 				if err != nil {
-					base.WarnR("Error processing changes for channel %s: %v", channel, err)
+					base.WarnR("Error processing changes for channel %s: %v", base.UD(channel), err)
 					return
 				}
 				base.LogToR("Changes+", "[changesFeed] Found %d non-backfill changes for channel %s", len(log), base.UD(channel))
