@@ -231,7 +231,7 @@ func (h *handler) logRequestLine() {
 		proto = " HTTP/2"
 	}
 
-	base.LogToR("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.SanitizeRequestURL(h.rq.URL), proto, base.UD(h.currentEffectiveUserNameAsUser()))
+	base.LogToR("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.UD(base.SanitizeRequestURL(h.rq.URL)), proto, base.UD(h.currentEffectiveUserNameAsUser()))
 }
 
 

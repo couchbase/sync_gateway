@@ -168,7 +168,7 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 	} else {
 		// Let's ask the config server if it knows this database:
-		base.LogfR("Asking config server %q about db %q...", *sc.config.ConfigServer, base.UD(name))
+		base.LogfR("Asking config server %q about db %q...", base.UD(*sc.config.ConfigServer), base.UD(name))
 		config, err := sc.getDbConfigFromServer(name)
 		if err != nil {
 			return nil, err
@@ -411,12 +411,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
 
-		msg := fmt.Sprintf("%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline", base.UD(bucket), err)
-		base.WarnR(msg)
+		msgFormatStr := "%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline"
+		base.WarnR(fmt.Sprintf(msgFormatStr, base.UD(bucket), err))
 
 		if dc := sc.databases_[dbName]; dc != nil {
 
-			err := dc.TakeDbOffline(msg)
+			err := dc.TakeDbOffline(fmt.Sprintf(msgFormatStr, "Bucket", err))
 			if err == nil {
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
