@@ -54,12 +54,12 @@ func (ds *DenseStorageReader) UpdateCache(sinceClock base.SequenceClock, toClock
 			defer wg.Done()
 			reader := ds.getPartitionStorageReader(partitionNo)
 			if reader == nil {
-				base.Warn("Expected to get reader for channel %s partition %d, based on changed range %v", ds.channelName, partitionNo, partitionRange)
+				base.WarnR("Expected to get reader for channel %s partition %d, based on changed range %v", ds.channelName, partitionNo, partitionRange)
 				return
 			}
 			err := reader.UpdateCache(kCachedBlocksPerShard)
 			if err != nil {
-				base.Warn("Unable to update cache for channel:[%s] partition:[%d] : %v", ds.channelName, partitionNo, err)
+				base.WarnR("Unable to update cache for channel:[%s] partition:[%d] : %v", ds.channelName, partitionNo, err)
 				errCh <- err
 			}
 		}(uint16(partitionNo), partitionRange)
@@ -288,7 +288,7 @@ func (r *DensePartitionStorageReaderNonCaching) GetBlockListForRange(partitionRa
 	if partitionRange.SinceBefore(validFromClock) {
 		err := blockList.LoadPrevious()
 		if err != nil {
-			base.Warn("Error loading previous block list - will not be included in set. channel:[%s] partition:[%d]", r.channelName, r.partitionNo)
+			base.WarnR("Error loading previous block list - will not be included in set. channel:[%s] partition:[%d]", r.channelName, r.partitionNo)
 		}
 		validFromClock = blockList.ValidFrom()
 	}
@@ -384,7 +384,7 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 	}
 
 	if blockCount == 0 {
-		base.Warn("Attempted to update reader cache for partition with no blocks. channel:[%s] partition:[%d]", pr.channelName, pr.partitionNo)
+		base.WarnR("Attempted to update reader cache for partition with no blocks. channel:[%s] partition:[%d]", pr.channelName, pr.partitionNo)
 		return errors.New("No blocks found when updating partition cache")
 	}
 	// cacheKeySet tracks the blocks that should be in the cache - used for cache expiry, below
@@ -475,7 +475,7 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange base.Part
 		blockKey := blockListEntry.Key(pr.blockList)
 		currBlock, ok := pr._getCachedBlock(blockKey)
 		if !ok {
-			base.Warn("Unexpected missing block from partition cache. blockKey:[%s] block startClock:[%s] cache validFrom:[%s]",
+			base.WarnR("Unexpected missing block from partition cache. blockKey:[%s] block startClock:[%s] cache validFrom:[%s]",
 				blockKey, blockListEntry.StartClock.String(), pr.validFrom.String())
 			return nil, false, nil
 		}
@@ -547,7 +547,7 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange base.Par
 
 		currBlock, err := pr.loadBlock(blockKey, blockListEntry.StartClock)
 		if err != nil {
-			base.Warn("Unexpected missing block from index. blockKey:[%s] err:[%v]",
+			base.WarnR("Unexpected missing block from index. blockKey:[%s] err:[%v]",
 				blockKey, err)
 			return nil, err
 		}

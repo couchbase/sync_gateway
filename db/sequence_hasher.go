@@ -193,7 +193,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 			var sClocks storedClocks
 			err = sClocks.Unmarshal(value)
 			if err != nil {
-				base.Warn("Error unmarshalling hash storage during update", err)
+				base.WarnR("Error unmarshalling hash storage during update", err)
 				return nil, err
 			}
 			exists, index = sClocks.Contains(clockValue)
@@ -260,7 +260,7 @@ func (s *sequenceHasher) GetClock(sequence string) (*base.SequenceClockImpl, err
 
 	clock = base.NewSequenceClockImpl()
 	if uint16(len(storedClocks.Sequences)) <= seqHash.collisionIndex {
-		base.Warn("Stored hash not found for sequence [%s] collision index [%d], #storedClocks:%d, returning zero clock", sequence, seqHash.collisionIndex, len(storedClocks.Sequences))
+		base.WarnR("Stored hash not found for sequence [%s] collision index [%d], #storedClocks:%d, returning zero clock", sequence, seqHash.collisionIndex, len(storedClocks.Sequences))
 	} else {
 		clock.Init(storedClocks.Sequences[seqHash.collisionIndex], seqHash.String())
 	}
@@ -360,7 +360,7 @@ func (s *sequenceHasher) loadClocks(hashValue uint64) (*storedClocks, error) {
 		return &stored, nil
 	}
 	if err = stored.Unmarshal(bytes); err != nil {
-		base.Warn("Error unmarshalling stored clocks for key [%s], returning zero sequence", key)
+		base.WarnR("Error unmarshalling stored clocks for key [%s], returning zero sequence", key)
 		return &stored, errors.New("Error unmarshalling stored clocks for key")
 	}
 	stored.cas = cas

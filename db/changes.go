@@ -100,7 +100,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		// Load doc body + metadata
 		doc, err := db.GetDocument(entry.ID, DocUnmarshalAll)
 		if err != nil {
-			base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
+			base.WarnR("Changes feed: error getting doc %q: %v", entry.ID, err)
 			return
 		}
 		db.AddDocInstanceToChangeEntry(entry, doc, options)
@@ -111,7 +111,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		var err error
 		doc.syncData, err = db.GetDocSyncData(entry.ID)
 		if err != nil {
-			base.Warn("Changes feed: error getting doc sync data %q: %v", entry.ID, err)
+			base.WarnR("Changes feed: error getting doc sync data %q: %v", entry.ID, err)
 			return
 		}
 		db.AddDocInstanceToChangeEntry(entry, doc, options)
@@ -121,7 +121,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		revID := entry.Changes[0]["rev"]
 		err := db.AddDocToChangeEntryUsingRevCache(entry, revID)
 		if err != nil {
-			base.Warn("Changes feed: error getting revision body for %q (%s): %v", entry.ID, revID, err)
+			base.WarnR("Changes feed: error getting revision body for %q (%s): %v", entry.ID, revID, err)
 		}
 	}
 
@@ -153,13 +153,13 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 	}
 	if options.IncludeDocs {
 		if doc.Body() == nil {
-			base.Warn("AddDocInstanceToChangeEntry called with options.IncludeDocs, but doc is missing Body")
+			base.WarnR("AddDocInstanceToChangeEntry called with options.IncludeDocs, but doc is missing Body")
 			return
 		}
 		var err error
 		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
 		if err != nil {
-			base.Warn("Changes feed: error getting doc %q/%q: %v", doc.ID, revID, err)
+			base.WarnR("Changes feed: error getting doc %q/%q: %v", doc.ID, revID, err)
 		}
 	}
 }
@@ -273,7 +273,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	}
 
 	if (options.Continuous || options.Wait) && options.Terminator == nil {
-		base.Warn("MultiChangesFeed: Terminator missing for Continuous/Wait mode")
+		base.WarnR("MultiChangesFeed: Terminator missing for Continuous/Wait mode")
 	}
 	if db.SequenceType == IntSequenceType {
 		base.LogToR("Changes+", "Int sequence multi changes feed...")
@@ -328,7 +328,7 @@ func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ch
 		if db.user != nil {
 			previousChannels = db.user.InheritedChannels()
 			if err := db.ReloadUser(); err != nil {
-				base.Warn("Error reloading user %q: %v", db.user.Name(), err)
+				base.WarnR("Error reloading user %q: %v", db.user.Name(), err)
 				return false, 0, nil, err
 			}
 			// check whether channels have changed
@@ -382,7 +382,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// included in the initial changes loop iteration, and (b) won't wake up the changeWaiter.
 			if db.user != nil {
 				if err := db.ReloadUser(); err != nil {
-					base.Warn("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
+					base.WarnR("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
 					change := makeErrorEntry("User not found during reload - terminating changes feed")
 					output <- &change
 					return
@@ -487,7 +487,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				feed, err := db.changesFeed(name, chanOpts, to)
 				if err != nil {
-					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
+					base.WarnR("MultiChangesFeed got error reading changes feed %q: %v", name, err)
 					change := makeErrorEntry("Error reading changes feed - terminating changes feed")
 					output <- &change
 					return
@@ -503,7 +503,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					if lateSequenceFeedHandler != nil {
 						latefeed, err := db.getLateFeed(lateSequenceFeedHandler)
 						if err != nil {
-							base.Warn("MultiChangesFeed got error reading late sequence feed %q: %v", name, err)
+							base.WarnR("MultiChangesFeed got error reading late sequence feed %q: %v", name, err)
 						} else {
 							// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
 							// when the user loses channel access

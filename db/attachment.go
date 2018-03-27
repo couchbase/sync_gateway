@@ -235,7 +235,7 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 
 	decoder := json.NewDecoder(input)
 	if err := decoder.Decode(into); err != nil {
-		base.Warn("Couldn't parse JSON in HTTP request: %v", err)
+		base.WarnR("Couldn't parse JSON in HTTP request: %v", err)
 		return base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
 	}
 	return nil
@@ -288,7 +288,7 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 			info.contentType, _ = meta["content_type"].(string)
 			info.data, err = decodeAttachment(meta["data"])
 			if info.data == nil {
-				base.Warn("Couldn't decode attachment %q of doc %q: %v", name, body["_id"], err)
+				base.WarnR("Couldn't decode attachment %q of doc %q: %v", name, body["_id"], err)
 				meta["stub"] = true
 				delete(meta, "data")
 			} else if len(info.data) > kMaxInlineAttachmentSize {

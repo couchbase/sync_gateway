@@ -314,7 +314,7 @@ func (i *ImportFilterFunction) EvaluateFunction(doc Body) (bool, error) {
 
 	result, err := i.Call(doc)
 	if err != nil {
-		base.Warn("Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", err)
+		base.WarnR("Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", err)
 		return false, err
 	}
 	switch result := result.(type) {
@@ -327,7 +327,7 @@ func (i *ImportFilterFunction) EvaluateFunction(doc Body) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.Warn("Import filter function returned non-boolean result %v Type: %T", result, result)
+		base.WarnR("Import filter function returned non-boolean result %v Type: %T", result, result)
 		return false, errors.New("Import filter function returned non-boolean value.")
 	}
 }

@@ -753,7 +753,7 @@ func encodeRevisions(revs []string) Body {
 		if i == 0 {
 			start = gen
 		} else if gen != start-i {
-			base.Warn("encodeRevisions found weird history %v", revs)
+			base.WarnR("encodeRevisions found weird history %v", revs)
 		}
 	}
 	return map[string]interface{}{"start": start, "ids": ids}

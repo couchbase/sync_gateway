@@ -61,7 +61,7 @@ func (d DenseBlockListEntry) String() string {
 
 func (e *DenseBlockListEntry) Key(parentList *DenseBlockList) string {
 	if parentList == nil {
-		base.Warn("Attempted to generate key without parent list")
+		base.WarnR("Attempted to generate key without parent list")
 		return ""
 	}
 	if e.key == "" {
@@ -80,7 +80,7 @@ func NewDenseBlockList(channelName string, partition uint16, indexBucket base.Bu
 	list.activeKey = list.generateActiveListKey()
 	err := list.initDenseBlockList()
 	if err != nil {
-		base.Warn("Error initializing dense block list:%v", err)
+		base.WarnR("Error initializing dense block list:%v", err)
 		return nil
 	}
 	return list
@@ -96,7 +96,7 @@ func NewDenseBlockListReader(channelName string, partition uint16, indexBucket b
 	list.activeKey = list.generateActiveListKey()
 	found, err := list.loadDenseBlockList()
 	if !found || err != nil {
-		base.Warn("Error initializing dense block list:  found:[%v] err:[%v]", found, err)
+		base.WarnR("Error initializing dense block list:  found:[%v] err:[%v]", found, err)
 		return nil
 	}
 	return list
@@ -265,7 +265,7 @@ func (l *DenseBlockList) initDenseBlockList() error {
 	// Load the existing block list
 	found, err := l.loadDenseBlockList()
 	if err != nil {
-		base.Warn("Dense block list load failed: %v", err)
+		base.WarnR("Dense block list load failed: %v", err)
 		return err
 	}
 	// If block list doesn't exist, add a block (which will initialize)

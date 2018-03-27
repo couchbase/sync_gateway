@@ -559,7 +559,7 @@ func installViews(bucket base.Bucket) error {
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			err = bucket.PutDDoc(designDocName, designDoc)
 			if err != nil {
-				base.Warn("Error installing Couchbase design doc: %v", err)
+				base.WarnR("Error installing Couchbase design doc: %v", err)
 			}
 			return err != nil, err, nil
 		}
@@ -641,7 +641,7 @@ func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool) (removedDesi
 			if !previewOnly {
 				removeDDocErr := bucket.DeleteDDoc(ddocName)
 				if removeDDocErr != nil && !IsMissingDDocError(removeDDocErr) {
-					base.Warn("Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
+					base.WarnR("Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
 					return removedDesignDocs, removeDDocErr
 				}
 				// Only include in list of removedDesignDocs if it was actually removed
@@ -652,7 +652,7 @@ func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool) (removedDesi
 				var result interface{}
 				existsDDocErr := bucket.GetDDoc(ddocName, &result)
 				if existsDDocErr != nil && !IsMissingDDocError(existsDDocErr) {
-					base.Warn("Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
+					base.WarnR("Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
 				}
 				// Only include in list of removedDesignDocs if it exists
 				if existsDDocErr == nil {

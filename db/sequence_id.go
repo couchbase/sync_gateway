@@ -198,18 +198,18 @@ func parseClockSequenceID(str string, sequenceHasher *sequenceHasher) (s Sequenc
 		// to the appropriate sequence properties.
 		sequenceComponents := strings.Split(components[1], ".")
 		if len(sequenceComponents) != 3 {
-			base.Warn("Unexpected sequence format - ignoring and relying on triggered by")
+			base.WarnR("Unexpected sequence format - ignoring and relying on triggered by")
 			return
 		} else {
 			triggeredBy64, err := strconv.ParseUint(sequenceComponents[0], 10, 16)
 			if err != nil {
-				base.Warn("Unable to convert triggered by vb %v to int.", sequenceComponents[0])
+				base.WarnR("Unable to convert triggered by vb %v to int.", sequenceComponents[0])
 			}
 			s.TriggeredByVbNo = uint16(triggeredBy64)
 
 			vb64, err := strconv.ParseUint(sequenceComponents[1], 10, 16)
 			if err != nil {
-				base.Warn("Unable to convert vb %v to int.", sequenceComponents[0])
+				base.WarnR("Unable to convert vb %v to int.", sequenceComponents[0])
 			}
 			s.vbNo = uint16(vb64)
 

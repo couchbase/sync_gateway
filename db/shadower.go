@@ -79,7 +79,7 @@ func (s *Shadower) readTapFeed() {
 			}
 			err := s.pullDocument(key, event.Value, isDeletion, event.Sequence, event.Flags)
 			if err != nil {
-				base.Warn("Error applying change %q from external bucket: %v", key, err)
+				base.WarnR("Error applying change %q from external bucket: %v", key, err)
 			}
 			atomic.AddUint64(&s.pullCount, 1)
 		case sgbucket.FeedOpEndBackfill:
@@ -133,7 +133,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 				// parent rev does not exist in the doc history
 				// set parentRev to "", this will create a  new conflicting
 				//branch in the revtree
-				base.Warn("Shadow: Adding revision as conflict branch, parent id %q is missing", parentRev)
+				base.WarnR("Shadow: Adding revision as conflict branch, parent id %q is missing", parentRev)
 				parentRev = ""
 			}
 			if err = doc.History.addRevision(doc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion}); err != nil {
@@ -170,12 +170,12 @@ func (s *Shadower) PushRevision(doc *document) {
 		base.LogToR("Shadow", "Pushing %q, rev %q", doc.ID, doc.CurrentRev)
 		body := doc.getRevisionBody(doc.CurrentRev, s.context.RevisionBodyLoader)
 		if body == nil {
-			base.Warn("Can't get rev %q.%q to push to external bucket", doc.ID, doc.CurrentRev)
+			base.WarnR("Can't get rev %q.%q to push to external bucket", doc.ID, doc.CurrentRev)
 			return
 		}
 		err = s.bucket.Set(doc.ID, 0, body)
 	}
 	if err != nil {
-		base.Warn("Error pushing rev of %q to external bucket: %v", doc.ID, err)
+		base.WarnR("Error pushing rev of %q to external bucket: %v", doc.ID, err)
 	}
 }

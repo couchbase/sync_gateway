@@ -240,9 +240,9 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 					found = append(found, entries[0])
 				} else {
 					if err != nil {
-						base.Warn("Error retrieving changes from view during skipped sequence check:", err)
+						base.WarnR("Error retrieving changes from view during skipped sequence check:", err)
 					}
-					base.Warn("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view.  If it's a valid sequence, it won't be replicated until Sync Gateway is restarted.", skippedSeq.seq)
+					base.WarnR("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view.  If it's a valid sequence, it won't be replicated until Sync Gateway is restarted.", skippedSeq.seq)
 				}
 				// Remove from skipped queue
 				deletes = append(deletes, skippedSeq.seq)
@@ -264,7 +264,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 		// view will only have the * channel
 		doc, err := c.context.GetDocument(entry.DocID, DocUnmarshalNoHistory)
 		if err != nil {
-			base.Warn("Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", entry.DocID, entry.Sequence)
+			base.WarnR("Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", entry.DocID, entry.Sequence)
 			continue
 		}
 		entry.Channels = doc.Channels
@@ -283,7 +283,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 	for _, sequence := range pendingDeletes {
 		err := c.RemoveSkipped(sequence)
 		if err != nil {
-			base.Warn("Error purging skipped sequence %d from skipped sequence queue", sequence)
+			base.WarnR("Error purging skipped sequence %d from skipped sequence queue", sequence)
 		} else {
 			dbExpvars.Add("abandoned_seqs", 1)
 		}
@@ -396,7 +396,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 			base.LogToR("Cache+", "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", docID, err)
 		}
 		if err == base.ErrEmptyMetadata {
-			base.Warn("Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", event.Key, event.Opcode, event.DataType)
+			base.WarnR("Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", event.Key, event.Opcode, event.DataType)
 		}
 		return
 	}
@@ -435,7 +435,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 			base.LogToR("Cache", "Found mobile xattr on document without _sync property - caching, assuming upgrade in progress.")
 			syncData = &migratedDoc.syncData
 		} else {
-			base.Warn("changeCache: Doc %q does not have valid sync data.", docID)
+			base.WarnR("changeCache: Doc %q does not have valid sync data.", docID)
 			return
 		}
 	}
@@ -532,7 +532,7 @@ func (c *changeCache) processUnusedSequence(docID string) {
 	sequenceStr := strings.TrimPrefix(docID, UnusedSequenceKeyPrefix)
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
-		base.Warn("Unable to identify sequence number for unused sequence notification with key: %s, error:", docID, err)
+		base.WarnR("Unable to identify sequence number for unused sequence notification with key: %s, error:", docID, err)
 		return
 	}
 	change := &LogEntry{
@@ -556,7 +556,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	// have gaps in it, causing later sequences to get stuck in the queue.
 	princ, err := c.unmarshalPrincipal(docJSON, isUser)
 	if princ == nil {
-		base.Warn("changeCache: Error unmarshaling doc %q: %v", docID, err)
+		base.WarnR("changeCache: Error unmarshaling doc %q: %v", docID, err)
 		return
 	}
 	sequence := princ.Sequence()

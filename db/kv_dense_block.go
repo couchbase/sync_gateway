@@ -420,7 +420,7 @@ func (d *DenseBlock) rollbackEntries(vbNo uint16, seq uint64) (numRemoved int, r
 func (d *DenseBlock) removeEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen uint16) {
 
 	if len(d.value) < int(oldEntryPos)+int(oldEntryLen) {
-		base.Warn(fmt.Sprintf("Attempted to remove entry in invalid block, len=%d, old entry pos=%d, old entry len=%d", len(d.value), oldEntryPos, oldEntryLen))
+		base.WarnR(fmt.Sprintf("Attempted to remove entry in invalid block, len=%d, old entry pos=%d, old entry len=%d", len(d.value), oldEntryPos, oldEntryLen))
 		return
 	}
 
@@ -483,7 +483,7 @@ func (d *DenseBlock) findEntry(vbNo uint16, seq uint64) (indexPos, entryPos uint
 	indexPos = DB_HEADER_LEN
 
 	if len(d.value) < int(indexEnd) {
-		base.Warn(fmt.Sprintf("Attempted to find entry to invalid block, len=%d", len(d.value)))
+		base.WarnR(fmt.Sprintf("Attempted to find entry to invalid block, len=%d", len(d.value)))
 		return 0, 0, 0
 	}
 	entryPos = indexEnd
@@ -511,7 +511,7 @@ func (d *DenseBlock) findEntry(vbNo uint16, seq uint64) (indexPos, entryPos uint
 func (d *DenseBlock) findEntryByKey(vbNo uint16, key []byte) (indexPos, entryPos uint32, entryLength uint16, seq uint64) {
 	indexEnd := DB_HEADER_LEN + INDEX_ENTRY_LEN*uint32(d.getEntryCount())
 	if len(d.value) < int(indexEnd) {
-		base.Warn(fmt.Sprintf("Attempted to find entry by key in invalid block, len=%d", len(d.value)))
+		base.WarnR(fmt.Sprintf("Attempted to find entry by key in invalid block, len=%d", len(d.value)))
 		return 0, 0, 0, 0
 	}
 	indexPos = DB_HEADER_LEN
@@ -544,7 +544,7 @@ func (d *DenseBlock) replaceEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen u
 	endOfIndex := DB_HEADER_LEN + uint32(INDEX_ENTRY_LEN)*uint32(d.getEntryCount())
 
 	if len(d.value) < int(endOfIndex) {
-		base.Warn(fmt.Sprintf("Attempted to replace entry in invalid block, len=%d", len(d.value)))
+		base.WarnR(fmt.Sprintf("Attempted to replace entry in invalid block, len=%d", len(d.value)))
 		return
 	}
 	// Replace index.
@@ -568,7 +568,7 @@ func (d *DenseBlock) incrEntryCount(amount uint16) (uint16, error) {
 
 	// Check for uint16 overflow
 	if count+amount < count {
-		base.Warn("Overflow incrementing entry count (%s): %d, %d", d.Key, count, amount)
+		base.WarnR("Overflow incrementing entry count (%s): %d, %d", d.Key, count, amount)
 		return 0, fmt.Errorf("Maximum block entry count exceeded")
 	}
 	d.setEntryCount(count + amount)
@@ -579,7 +579,7 @@ func (d *DenseBlock) incrEntryCount(amount uint16) (uint16, error) {
 func (d *DenseBlock) decrEntryCount(amount uint16) (uint16, error) {
 	count := d.getEntryCount()
 	if amount > count {
-		base.Warn("Cannot decrement entry count below zero (%s): %d, %d", d.Key, count, amount)
+		base.WarnR("Cannot decrement entry count below zero (%s): %d, %d", d.Key, count, amount)
 		return 0, fmt.Errorf("Can't decrement block entry count below zero")
 	}
 	d.setEntryCount(count - amount)

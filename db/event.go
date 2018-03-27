@@ -150,7 +150,7 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	}
 
 	if err != nil {
-		base.Warn("Error calling function - function processing aborted: %v", err)
+		base.WarnR("Error calling function - function processing aborted: %v", err)
 		return "", err
 	}
 
@@ -175,7 +175,7 @@ func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.Warn("Event validate function returned non-boolean result %v", result)
+		base.WarnR("Event validate function returned non-boolean result %v", result)
 		return false, errors.New("Validate function returned non-boolean value.")
 	}
 

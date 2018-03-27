@@ -147,7 +147,7 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 		shouldRetry = err != nil
 
 		if err == base.ErrFatalBucketConnection {
-			base.Warn("Fatal error connecting to bucket: %v.  Not retrying", err)
+			base.WarnR("Fatal error connecting to bucket: %v.  Not retrying", err)
 			shouldRetry = false
 		}
 
@@ -251,7 +251,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
 			msg := fmt.Sprintf("%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
-			base.Warn(msg)
+			base.WarnR(msg)
 			errTakeDbOffline := context.TakeDbOffline(msg)
 			if errTakeDbOffline == nil {
 
@@ -302,12 +302,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 		for name, provider := range options.OIDCOptions.Providers {
 			if provider.Issuer == "" || provider.ClientID == nil {
-				base.Warn("Issuer and ClientID required for OIDC Provider - skipping provider %q", name)
+				base.WarnR("Issuer and ClientID required for OIDC Provider - skipping provider %q", name)
 				continue
 			}
 
 			if provider.ValidationKey == nil {
-				base.Warn("Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", name)
+				base.WarnR("Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", name)
 			}
 
 			if strings.Contains(name, "_") {
@@ -315,7 +315,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			}
 			provider.Name = name
 			if _, ok := context.OIDCProviders[provider.Issuer]; ok {
-				base.Warn("Multiple OIDC providers defined for issuer %v", provider.Issuer)
+				base.WarnR("Multiple OIDC providers defined for issuer %v", provider.Issuer)
 				return nil, fmt.Errorf("Multiple OIDC providers defined for issuer %v", provider.Issuer)
 			}
 
@@ -353,7 +353,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if ok {
 			serverPurgeInterval, err := gocbBucket.GetMetadataPurgeInterval()
 			if err != nil {
-				base.Warn("Unable to retrieve server's metadata purge interval - will use default value. %s", err)
+				base.WarnR("Unable to retrieve server's metadata purge interval - will use default value. %s", err)
 			} else if serverPurgeInterval > 0 {
 				context.PurgeInterval = serverPurgeInterval
 			}
@@ -604,7 +604,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 	err := db.Bucket.ViewCustom(DesignDocSyncHousekeeping(), ViewAllDocs, opts, &vres)
 	if err != nil {
-		base.Warn("all_docs got error: %v", err)
+		base.WarnR("all_docs got error: %v", err)
 		return err
 	}
 
@@ -648,7 +648,7 @@ func (db *Database) queryAllDocs(reduce bool) (sgbucket.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
 	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 	if err != nil {
-		base.Warn("all_docs got error: %v", err)
+		base.WarnR("all_docs got error: %v", err)
 	}
 	return vres, err
 }
@@ -665,7 +665,7 @@ func (db *Database) DeleteAllDocs(docType string) error {
 	}
 	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewAllBits, opts)
 	if err != nil {
-		base.Warn("all_bits view returned %v", err)
+		base.WarnR("all_bits view returned %v", err)
 		return err
 	}
 
@@ -674,7 +674,7 @@ func (db *Database) DeleteAllDocs(docType string) error {
 	for _, row := range vres.Rows {
 		base.LogToR("CRUD", "\tDeleting %q", row.ID)
 		if err := db.Bucket.Delete(row.ID); err != nil {
-			base.Warn("Error deleting %q: %v", row.ID, err)
+			base.WarnR("Error deleting %q: %v", row.ID, err)
 		}
 	}
 	return nil
@@ -687,7 +687,7 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 	opts["endkey"] = userName
 	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewSessions, opts)
 	if err != nil {
-		base.Warn("sessions view returned %v", err)
+		base.WarnR("sessions view returned %v", err)
 		return err
 	}
 
@@ -695,7 +695,7 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 		docId := row.Value.(string)
 		base.LogToR("CRUD", "\tDeleting %q", docId)
 		if err := db.Bucket.Delete(docId); err != nil {
-			base.Warn("Error deleting %q: %v", row.ID, err)
+			base.WarnR("Error deleting %q: %v", row.ID, err)
 		}
 	}
 	return nil
@@ -722,7 +722,7 @@ func (db *Database) Compact() (int, error) {
 	opts["endkey"] = time.Now().Add(purgeIntervalDuration).Unix()
 	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewTombstones, opts)
 	if err != nil {
-		base.Warn("Tombstones view returned error during compact: %v", err)
+		base.WarnR("Tombstones view returned error during compact: %v", err)
 		return 0, err
 	}
 
@@ -739,15 +739,15 @@ func (db *Database) Compact() (int, error) {
 			// If key no longer exists, need to add and remove to trigger removal from view
 			_, addErr := db.Bucket.Add(row.ID, 0, purgeBody)
 			if addErr != nil {
-				base.Warn("Error compacting key %s (add) - tombstone will not be compacted.  %v", row.ID, addErr)
+				base.WarnR("Error compacting key %s (add) - tombstone will not be compacted.  %v", row.ID, addErr)
 				continue
 			}
 			if delErr := db.Bucket.Delete(row.ID); delErr != nil {
-				base.Warn("Error compacting key %s (delete) - tombstone will not be compacted.  %v", row.ID, delErr)
+				base.WarnR("Error compacting key %s (delete) - tombstone will not be compacted.  %v", row.ID, delErr)
 			}
 			count++
 		} else {
-			base.Warn("Error compacting key %s (purge) - tombstone will not be compacted.  %v", row.ID, purgeErr)
+			base.WarnR("Error compacting key %s (purge) - tombstone will not be compacted.  %v", row.ID, purgeErr)
 		}
 	}
 	return count, nil
@@ -773,7 +773,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		context.ChannelMapper = channels.NewChannelMapper(syncFun)
 	}
 	if err != nil {
-		base.Warn("Error setting sync function: %s", err)
+		base.WarnR("Error setting sync function: %s", err)
 		return
 	}
 
@@ -867,7 +867,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 				channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, rev.ID)
 				if err != nil {
 					// Probably the validator rejected the doc
-					base.Warn("Error calling sync() on doc %q: %v", docid, err)
+					base.WarnR("Error calling sync() on doc %q: %v", docid, err)
 					access = nil
 					channels = nil
 				}
@@ -946,7 +946,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		if err == nil {
 			changeCount++
 		} else if err != couchbase.UpdateCancel {
-			base.Warn("Error updating doc %q: %v", docid, err)
+			base.WarnR("Error updating doc %q: %v", docid, err)
 		}
 	}
 	base.LogfR("Finished re-running sync function; %d docs changed", changeCount)
@@ -969,7 +969,7 @@ func (db *Database) invalUserRoles(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
 		if err := authr.InvalidateRoles(user); err != nil {
-			base.Warn("Error invalidating roles for user %s: %v", username, err)
+			base.WarnR("Error invalidating roles for user %s: %v", username, err)
 		}
 	}
 }
@@ -978,7 +978,7 @@ func (db *Database) invalUserChannels(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
 		if err := authr.InvalidateChannels(user); err != nil {
-			base.Warn("Error invalidating channels for user %s: %v", username, err)
+			base.WarnR("Error invalidating channels for user %s: %v", username, err)
 		}
 	}
 }
@@ -987,7 +987,7 @@ func (db *Database) invalRoleChannels(rolename string) {
 	authr := db.Authenticator()
 	if role, _ := authr.GetRole(rolename); role != nil {
 		if err := authr.InvalidateChannels(role); err != nil {
-			base.Warn("Error invalidating channels for role %s: %v", rolename, err)
+			base.WarnR("Error invalidating channels for role %s: %v", rolename, err)
 		}
 	}
 }

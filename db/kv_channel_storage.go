@@ -113,12 +113,12 @@ func (b *BitFlagStorage) readIndexEntryInto(vbNo uint16, sequence uint64, entry 
 	key := getEntryKey(vbNo, sequence)
 	value, _, err := b.bucket.GetRaw(key)
 	if err != nil {
-		base.Warn("Error retrieving entry from bucket for sequence %d, key %s", sequence, key)
+		base.WarnR("Error retrieving entry from bucket for sequence %d, key %s", sequence, key)
 		return err
 	}
 	err = json.Unmarshal(value, entry)
 	if err != nil {
-		base.Warn("Error unmarshalling entry for sequence %d, key %s", sequence, key)
+		base.WarnR("Error unmarshalling entry for sequence %d, key %s", sequence, key)
 		return err
 	}
 	return nil
@@ -153,7 +153,7 @@ func (b *BitFlagStorage) AddEntrySet(entries []*LogEntry) (partitionUpdates []*b
 
 	err = b.writeBlockSetsWithCas(blockSets)
 	if err != nil {
-		base.Warn("Error writing blockSets with cas for block %s: %+v", blockSets, err)
+		base.WarnR("Error writing blockSets with cas for block %s: %+v", blockSets, err)
 		return partitionUpdates, err
 	}
 
@@ -271,7 +271,7 @@ func (b *BitFlagStorage) marshalBlock(entries []*LogEntry) ([]byte, IndexBlock, 
 	}
 	localValue, err := block.Marshal()
 	if err != nil {
-		base.Warn("Unable to marshal channel block - cancelling block update")
+		base.WarnR("Unable to marshal channel block - cancelling block update")
 		return nil, block, errors.New("Error marshalling channel block")
 	}
 	return localValue, block, nil
@@ -386,7 +386,7 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 	if err != nil {
 		// TODO FIX: if there's an error on a single block retrieval, differentiate between that
 		//  and an empty/non-existent block.  Requires identification of expected blocks by the cache.
-		base.Warn("Error doing bulk get:%v", err)
+		base.WarnR("Error doing bulk get:%v", err)
 	}
 
 	IndexExpvars.Add("bulkGet_bulkLoadBlocks", 1)
@@ -400,7 +400,7 @@ func (b *BitFlagStorage) bulkLoadBlocks(loadedBlocks map[string]IndexBlock) {
 			go func(key string, blockBytes []byte) {
 				defer wg.Done()
 				if err := loadedBlocks[key].Unmarshal(blockBytes); err != nil {
-					base.Warn("Error unmarshalling block into map")
+					base.WarnR("Error unmarshalling block into map")
 				}
 			}(key, blockBytes)
 		}
@@ -416,7 +416,7 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 
 	entries, err := b.bucket.GetBulkRaw(keySet)
 	if err != nil {
-		base.Warn("Error doing bulk get:%v", err)
+		base.WarnR("Error doing bulk get:%v", err)
 	}
 	IndexExpvars.Add("bulkGet_bulkLoadEntries", 1)
 	IndexExpvars.Add("bulkGet_bulkLoadEntriesCount", int64(len(keySet)))
@@ -439,12 +439,12 @@ func (b *BitFlagStorage) bulkLoadEntries(keySet []string, blockEntries []*LogEnt
 		entryKey := getEntryKey(entry.VbNo, entry.Sequence)
 		entryBytes, ok := entries[entryKey]
 		if !ok || entryBytes == nil {
-			base.Warn("Expected entry for %s in get bulk response - not found", entryKey)
+			base.WarnR("Expected entry for %s in get bulk response - not found", entryKey)
 			continue
 		}
 		removed := entry.IsRemoved()
 		if err := json.Unmarshal(entryBytes, entry); err != nil {
-			base.Warn("Error unmarshalling entry for key %s: %v", entryKey, err)
+			base.WarnR("Error unmarshalling entry for key %s: %v", entryKey, err)
 		}
 		if _, exists := currentVbDocIDs[entry.DocID]; !exists {
 			currentVbDocIDs[entry.DocID] = struct{}{}

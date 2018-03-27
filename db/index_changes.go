@@ -72,7 +72,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				if err := db.ReloadUser(); err != nil {
 					change := makeErrorEntry("User not found during reload - terminating changes feed")
 					output <- &change
-					base.Warn("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
+					base.WarnR("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
 					return
 				}
 			}
@@ -93,7 +93,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			// Get the last polled stable sequence.  We don't return anything later than stable sequence in each iteration
 			stableClock, err := db.changeCache.GetStableClock(true)
 			if err != nil {
-				base.Warn("MultiChangesFeed got error reading stable sequence: %v", err)
+				base.WarnR("MultiChangesFeed got error reading stable sequence: %v", err)
 				change := makeErrorEntry("Error reading stable sequence")
 				output <- &change
 				return
@@ -112,7 +112,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			// Build the channel feeds.
 			feeds, postStableSeqsFound, err := db.initializeChannelFeeds(channelsSince, secondaryTriggers, options, addedChannels, userVbNo, cumulativeClock, stableClock)
 			if err != nil {
-				base.Warn("Error building channel feeds: %v", err)
+				base.WarnR("Error building channel feeds: %v", err)
 				change := makeErrorEntry("Error building channel feeds")
 				output <- &change
 				return
@@ -188,7 +188,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					if minEntry.Seq.TriggeredByClock.GetHashedValue() == "" {
 						clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
 						if err != nil {
-							base.Warn("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
+							base.WarnR("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
 						} else {
 							minEntry.Seq.TriggeredByClock.SetHashedValue(clockHash)
 						}
@@ -287,7 +287,7 @@ func (db *Database) checkForUserUpdatesSince(userChangeCount uint64, changeWaite
 
 		if db.user != nil {
 			if err := db.ReloadUser(); err != nil {
-				base.Warn("Error reloading user %q: %v", db.user.Name(), err)
+				base.WarnR("Error reloading user %q: %v", db.user.Name(), err)
 				return false, 0, nil, err
 			}
 			// check whether channels have changed
@@ -460,7 +460,7 @@ func (db *Database) calculateHashWhenNeeded(options ChangesOptions, entry *Chang
 	if *hashedEntryCount == 0 || forceHash {
 		clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
 		if err != nil {
-			base.Warn("Error calculating hash for clock:%v", base.PrintClock(cumulativeClock))
+			base.WarnR("Error calculating hash for clock:%v", base.PrintClock(cumulativeClock))
 			return lastHashedValue
 		} else {
 			entry.Seq.Clock = base.NewSyncSequenceClock()
@@ -568,7 +568,7 @@ func (db *Database) initializeChannelFeeds(channelsSince channels.TimedSet, seco
 
 		feed, err := db.vectorChangesFeed(name, chanOpts, secondaryTriggers[name], cumulativeClock, stableClock)
 		if err != nil {
-			base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
+			base.WarnR("MultiChangesFeed got error reading changes feed %q: %v", name, err)
 			return feeds, false, err
 		}
 		feeds = append(feeds, feed)
@@ -745,7 +745,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 			options.Since.TriggeredByClock = base.NewSequenceClockImpl()
 			clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
 			if err != nil {
-				base.Warn("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
+				base.WarnR("Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
 				return
 			}
 			options.Since.TriggeredByClock.SetHashedValue(clockHash)
@@ -753,7 +753,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 			// Get everything from zero to the cumulative clock as backfill
 			backfillLog, err = changeIndex.reader.GetChangesForRange(channel, base.NewSequenceClockImpl(), cumulativeClock, options.Limit, options.ActiveOnly)
 			if err != nil {
-				base.Warn("Error processing backfill changes for channel %s: %v", channel, err)
+				base.WarnR("Error processing backfill changes for channel %s: %v", channel, err)
 				return
 			}
 
@@ -761,7 +761,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 			if options.Limit == 0 || len(backfillLog) < options.Limit {
 				log, err = changeIndex.reader.GetChangesForRange(channel, cumulativeClock, stableClock, options.Limit, options.ActiveOnly)
 				if err != nil {
-					base.Warn("Error processing changes for channel %s: %v", channel, err)
+					base.WarnR("Error processing changes for channel %s: %v", channel, err)
 					return
 				}
 				base.LogToR("Changes+", "[changesFeed] Found %d non-backfill changes for channel %s", len(log), channel)
