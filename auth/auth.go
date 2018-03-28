@@ -105,6 +105,8 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
+	// Doing a get as an update because if we do the get and we find that the user has been invalidated
+	// then we need to reload it.
 	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
