@@ -299,7 +299,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 2)
 
 	// Start wait for doc in ABC
-	waiter := db.tapListener.NewWaiterWithChannels(channels.SetOf("ABC"), nil)
+	waiter := db.mutationListener.NewWaiterWithChannels(channels.SetOf("ABC"), nil)
 
 	successChan := make(chan bool)
 	go func() {

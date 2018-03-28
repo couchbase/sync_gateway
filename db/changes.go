@@ -289,7 +289,7 @@ func (db *Database) startChangeWaiter(chans base.Set) *changeWaiter {
 	if db.user != nil {
 		waitChans = db.user.ExpandWildCardChannel(chans)
 	}
-	return db.tapListener.NewWaiterWithChannels(waitChans, db.user)
+	return db.mutationListener.NewWaiterWithChannels(waitChans, db.user)
 }
 
 func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, options ChangesOptions) ([]<-chan *ChangeEntry, []string) {

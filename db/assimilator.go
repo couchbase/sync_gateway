@@ -6,14 +6,14 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// A goroutine that watches the tapListener for documents that don't have
+// A goroutine that watches the mutationListener for documents that don't have
 // sync metadata, and calls assimilate() on them.
 func (c *DatabaseContext) watchDocChanges() {
-	if c.tapListener.DocChannel == nil {
+	if c.mutationListener.DocChannel == nil {
 		return
 	}
 	base.LogTo("Shadow", "Watching doc changes...")
-	for event := range c.tapListener.DocChannel {
+	for event := range c.mutationListener.DocChannel {
 		base.LogTo("Feed", "Got shadow event:%s", event.Key)
 		doc, err := unmarshalDocument(string(event.Key), event.Value)
 		if err == nil {

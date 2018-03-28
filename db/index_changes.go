@@ -313,7 +313,7 @@ func (db *Database) startChangeWaiterSince(chans base.Set, since base.SequenceCl
 	if db.user != nil {
 		waitChans = db.user.ExpandWildCardChannelSince(chans, since)
 	}
-	return db.tapListener.NewWaiterWithChannels(waitChans, db.user)
+	return db.mutationListener.NewWaiterWithChannels(waitChans, db.user)
 }
 
 // Gets the next sequence from the set of feeds, including handling for sequences appearing in multiple feeds.
