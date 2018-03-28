@@ -1467,7 +1467,7 @@ func (context *DatabaseContext) checkForUpgrade(key string) (*document, *sgbucke
 	if context.UseXattrs() {
 		return nil, nil
 	}
-	doc, rawDocument, err := context.GetDocWithXattr(key, DocUnmarshalCAS)
+	doc, rawDocument, err := context.GetDocWithXattr(key, DocUnmarshalNoHistory)
 	if err != nil || doc == nil || !doc.HasValidSyncData(context.writeSequences()) {
 		return nil, nil
 	}
