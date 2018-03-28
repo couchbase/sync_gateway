@@ -92,7 +92,7 @@ func (wh *Webhook) HandleEvent(event Event) {
 		// for DocumentChangeEvent, post document body
 		jsonOut, err := json.Marshal(event.Doc)
 		if err != nil {
-			base.WarnR("Error marshalling doc for webhook post")
+			base.WarnR("Error marshalling doc for webhook post: %v", err)
 			return
 		}
 		contentType = "application/json"

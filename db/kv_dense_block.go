@@ -219,7 +219,7 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (changed bool, removalRequired
 		clockSequence := d.getClock()[logEntry.VbNo]
 		if logEntry.Sequence <= clockSequence {
 			base.LogToR("ChannelStorage+", "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d] blockKey:[%s]",
-				base.UD(logEntry.DocID), logEntry.Sequence, clockSequence, base.UD(d.Key))
+				base.UD(logEntry.DocID), logEntry.Sequence, clockSequence, d.Key)
 			return false, false, nil
 		}
 

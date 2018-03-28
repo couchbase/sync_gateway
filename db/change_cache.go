@@ -240,7 +240,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 					found = append(found, entries[0])
 				} else {
 					if err != nil {
-						base.WarnR("Error retrieving changes from view during skipped sequence check:", err)
+						base.WarnR("Error retrieving changes from view during skipped sequence check: %v", err)
 					}
 					base.WarnR("Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view.  If it's a valid sequence, it won't be replicated until Sync Gateway is restarted.", skippedSeq.seq)
 				}

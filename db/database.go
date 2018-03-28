@@ -251,7 +251,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
 			msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
-			base.WarnR(fmt.Sprintf(msgFormat, base.UD(bucket), err))
+			base.WarnR(msgFormat, base.UD(bucket), err)
 			errTakeDbOffline := context.TakeDbOffline(fmt.Sprintf(msgFormat, "Bucket", err))
 			if errTakeDbOffline == nil {
 
