@@ -412,11 +412,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
 
 		msgFormatStr := "%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline"
-		base.WarnR(fmt.Sprintf(msgFormatStr, base.UD(bucket), err))
+		base.WarnR(msgFormatStr, base.UD(bucket), err)
 
 		if dc := sc.databases_[dbName]; dc != nil {
 
-			err := dc.TakeDbOffline(fmt.Sprintf(msgFormatStr, "Bucket", err))
+			err := dc.TakeDbOffline(fmt.Sprintf(msgFormatStr, bucket, err))
 			if err == nil {
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
