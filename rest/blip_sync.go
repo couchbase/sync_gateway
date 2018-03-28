@@ -31,7 +31,6 @@ const (
 	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
 	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
 	BlipCBMobileReplication = "CBMobile_2"
-
 )
 
 // Represents one BLIP connection (socket) opened by a client.
@@ -49,6 +48,7 @@ type blipSyncContext struct {
 	allowedAttachments  map[string]int
 	handlerSerialNumber uint64    // Each handler within a context gets a unique serial number for logging
 	terminator          chan bool // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
+	hasActiveSubChanges bool      // Track whether there is a subChanges subscription currently active
 }
 
 type blipHandler struct {
@@ -244,6 +244,9 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
+	bh.lock.Lock()
+	defer bh.lock.Unlock()
+
 	subChangesParams, err := newSubChangesParams(
 		rq,
 		bh.blipSyncContext,
@@ -253,6 +256,13 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
+
+	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
+	if bh.hasActiveSubChanges {
+		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one.")
+	}
+
+	bh.hasActiveSubChanges = true
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
 		return base.HTTPErrorf(http.StatusBadRequest, "DocIDs filter not supported for continuous subChanges")
@@ -284,6 +294,9 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		base.StatsExpvars.Add("subChanges_total", 1)
 		base.StatsExpvars.Add("subChanges_active", 1)
 		defer base.StatsExpvars.Add("subChanges_active", -1)
+		defer func() {
+			bh.hasActiveSubChanges = false
+		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
 		bh.sendChanges(rq.Sender, subChangesParams)

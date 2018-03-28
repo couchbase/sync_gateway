@@ -1199,3 +1199,66 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.True(t, restDocument.IsRemoved())
 
 }
+
+// Make sure that a client cannot open multiple subChanges subscriptions on a single blip context (SG #3222)
+//
+// - Open two continuous subChanges feeds, and asserts that it gets an error on the 2nd one.
+// - Open a one-off subChanges request, assert no error
+func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
+
+	bt, err := NewBlipTester()
+	assertNoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+		if !request.NoReply() {
+			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
+			response := request.Response()
+			emptyResponseVal := []interface{}{}
+			emptyResponseValBytes, err := json.Marshal(emptyResponseVal)
+			assertNoError(t, err, "Error marshalling response")
+			response.SetBody(emptyResponseValBytes)
+		}
+	}
+
+	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	subChangesRequest := blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "true"
+	subChangesRequest.SetCompressed(false)
+	sent := bt.sender.Send(subChangesRequest)
+	assert.True(t, sent)
+	subChangesResponse := subChangesRequest.Response()
+	assert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	errorCode := subChangesResponse.Properties["Error-Code"]
+	log.Printf("errorCode: %v", errorCode)
+	assert.True(t, errorCode == "")
+
+	// Send a second continuous subchanges request, expect an error
+	subChangesRequest2 := blip.NewRequest()
+	subChangesRequest2.SetProfile("subChanges")
+	subChangesRequest2.Properties["continuous"] = "true"
+	subChangesRequest2.SetCompressed(false)
+	sent2 := bt.sender.Send(subChangesRequest2)
+	assert.True(t, sent2)
+	subChangesResponse2 := subChangesRequest2.Response()
+	assert.Equals(t, subChangesResponse2.SerialNumber(), subChangesRequest2.SerialNumber())
+	errorCode2 := subChangesResponse2.Properties["Error-Code"]
+	log.Printf("errorCode2: %v", errorCode2)
+	assert.True(t, errorCode2 == "500")
+
+	// Send a thirst subChanges request, but this time continuous = false.  Should not return an error
+	subChangesRequest3 := blip.NewRequest()
+	subChangesRequest3.SetProfile("subChanges")
+	subChangesRequest3.Properties["continuous"] = "false"
+	subChangesRequest3.SetCompressed(false)
+	sent3 := bt.sender.Send(subChangesRequest3)
+	assert.True(t, sent3)
+	subChangesResponse3 := subChangesRequest3.Response()
+	assert.Equals(t, subChangesResponse3.SerialNumber(), subChangesRequest3.SerialNumber())
+	errorCode3 := subChangesResponse3.Properties["Error-Code"]
+	log.Printf("errorCode: %v", errorCode3)
+	assert.True(t, errorCode == "")
+
+
+}
