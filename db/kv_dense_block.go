@@ -132,7 +132,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
 
-		base.LogTo("ChannelStorage+", "Block (%s) full since len(d.value) %d > MaxBlockSize %d - returning entries as overflow.  #entries:[%d]",
+		base.LogToR("ChannelStorage+", "Block (%s) full since len(d.value) %d > MaxBlockSize %d - returning entries as overflow.  #entries:[%d]",
 			d, len(d.value), MaxBlockSize, len(entries))
 
 		return entries, pendingRemoval, nil, casFailure, nil
@@ -141,7 +141,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	overflow, pendingRemoval, updateClock, blockChanged, addError := d.addEntries(entries)
 	if addError != nil {
 		// Error adding entries - reset the block and return error
-		base.LogTo("ChannelStorage+", "Error adding entries to block. %v", err)
+		base.LogToR("ChannelStorage+", "Error adding entries to block. %v", err)
 		d.loadBlock(bucket)
 		return nil, nil, nil, casFailure, addError
 	}
@@ -153,12 +153,12 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	casOut, err := bucket.WriteCas(d.Key, 0, 0, d.cas, d.value, sgbucket.Raw)
 	if err != nil {
 		casFailure = true
-		base.LogTo("ChannelStorage+", "Block (%s) CAS error writing block to database. %v", d, err)
+		base.LogToR("ChannelStorage+", "Block (%s) CAS error writing block to database. %v", d, err)
 		return entries, []*LogEntry{}, nil, casFailure, nil
 	}
 
 	d.cas = casOut
-	base.LogTo("ChannelStorage+", "Successfully added set to block. key:[%s] #added:[%d] #overflow:[%d] #pendingRemoval:[%d]",
+	base.LogToR("ChannelStorage+", "Successfully added set to block. key:[%s] #added:[%d] #overflow:[%d] #pendingRemoval:[%d]",
 		d.Key, len(entries)-len(overflow), len(overflow), len(pendingRemoval))
 	return overflow, pendingRemoval, updateClock, casFailure, nil
 }
@@ -175,7 +175,7 @@ func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pend
 		if !blockFull {
 			changed, removalRequired, err := d.addEntry(entry)
 			if err != nil {
-				base.LogTo("ChannelStorage+", "Error adding entry to block.  key:[%s] error:%v", entry.DocID, err)
+				base.LogToR("ChannelStorage+", "Error adding entry to block.  key:[%s] error:%v", base.UD(entry.DocID), err)
 				return nil, nil, nil, false, err
 			}
 			if changed {
@@ -218,8 +218,8 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (changed bool, removalRequired
 		// Ensure this entry hasn't already been written by another writer
 		clockSequence := d.getClock()[logEntry.VbNo]
 		if logEntry.Sequence <= clockSequence {
-			base.LogTo("ChannelStorage+", "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d] blockKey:[%s]",
-				logEntry.DocID, logEntry.Sequence, clockSequence, d.Key)
+			base.LogToR("ChannelStorage+", "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d] blockKey:[%s]",
+				base.UD(logEntry.DocID), logEntry.Sequence, clockSequence, d.Key)
 			return false, false, nil
 		}
 
@@ -302,12 +302,12 @@ func (d *DenseBlock) RemoveEntrySet(entries []*LogEntry, bucket base.Bucket) (pe
 		return d.value, nil
 	})
 	if writeErr != nil {
-		base.LogTo("ChannelStorage+", "Error writing block to database. %v", err)
+		base.LogToR("ChannelStorage+", "Error writing block to database. %v", err)
 		return entries, writeErr
 	}
 	d.cas = casOut
 	if len(pendingRemoval) != len(entries) {
-		base.LogTo("ChannelStorage+", "Successfully removed set from block. key:[%s] #removed:[%d] #pending:[%d]",
+		base.LogToR("ChannelStorage+", "Successfully removed set from block. key:[%s] #removed:[%d] #pending:[%d]",
 			d.Key, len(entries)-len(pendingRemoval), len(pendingRemoval))
 	}
 	return pendingRemoval, nil
@@ -340,12 +340,12 @@ func (d *DenseBlock) RollbackTo(rollbackVbNo uint16, rollbackSeq uint64, bucket 
 		return d.value, nil
 	})
 	if writeErr != nil {
-		base.LogTo("ChannelStorage+", "Error writing block to database. %v", err)
+		base.LogToR("ChannelStorage+", "Error writing block to database. %v", err)
 		return false, writeErr
 	}
 	d.cas = casOut
 	if numRemoved > 0 {
-		base.LogTo("ChannelStorage+", "Successfully removed entries from block during rollback. key:[%s] #removed:[%d] complete?:[%v]",
+		base.LogToR("ChannelStorage+", "Successfully removed entries from block during rollback. key:[%s] #removed:[%d] complete?:[%v]",
 			d.Key, numRemoved, rollbackComplete)
 	}
 	return rollbackComplete, nil
@@ -420,7 +420,7 @@ func (d *DenseBlock) rollbackEntries(vbNo uint16, seq uint64) (numRemoved int, r
 func (d *DenseBlock) removeEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen uint16) {
 
 	if len(d.value) < int(oldEntryPos)+int(oldEntryLen) {
-		base.Warn(fmt.Sprintf("Attempted to remove entry in invalid block, len=%d, old entry pos=%d, old entry len=%d", len(d.value), oldEntryPos, oldEntryLen))
+		base.WarnR(fmt.Sprintf("Attempted to remove entry in invalid block, len=%d, old entry pos=%d, old entry len=%d", len(d.value), oldEntryPos, oldEntryLen))
 		return
 	}
 
@@ -483,7 +483,7 @@ func (d *DenseBlock) findEntry(vbNo uint16, seq uint64) (indexPos, entryPos uint
 	indexPos = DB_HEADER_LEN
 
 	if len(d.value) < int(indexEnd) {
-		base.Warn(fmt.Sprintf("Attempted to find entry to invalid block, len=%d", len(d.value)))
+		base.WarnR(fmt.Sprintf("Attempted to find entry to invalid block, len=%d", len(d.value)))
 		return 0, 0, 0
 	}
 	entryPos = indexEnd
@@ -511,7 +511,7 @@ func (d *DenseBlock) findEntry(vbNo uint16, seq uint64) (indexPos, entryPos uint
 func (d *DenseBlock) findEntryByKey(vbNo uint16, key []byte) (indexPos, entryPos uint32, entryLength uint16, seq uint64) {
 	indexEnd := DB_HEADER_LEN + INDEX_ENTRY_LEN*uint32(d.getEntryCount())
 	if len(d.value) < int(indexEnd) {
-		base.Warn(fmt.Sprintf("Attempted to find entry by key in invalid block, len=%d", len(d.value)))
+		base.WarnR(fmt.Sprintf("Attempted to find entry by key in invalid block, len=%d", len(d.value)))
 		return 0, 0, 0, 0
 	}
 	indexPos = DB_HEADER_LEN
@@ -544,7 +544,7 @@ func (d *DenseBlock) replaceEntry(oldIndexPos, oldEntryPos uint32, oldEntryLen u
 	endOfIndex := DB_HEADER_LEN + uint32(INDEX_ENTRY_LEN)*uint32(d.getEntryCount())
 
 	if len(d.value) < int(endOfIndex) {
-		base.Warn(fmt.Sprintf("Attempted to replace entry in invalid block, len=%d", len(d.value)))
+		base.WarnR(fmt.Sprintf("Attempted to replace entry in invalid block, len=%d", len(d.value)))
 		return
 	}
 	// Replace index.
@@ -568,7 +568,7 @@ func (d *DenseBlock) incrEntryCount(amount uint16) (uint16, error) {
 
 	// Check for uint16 overflow
 	if count+amount < count {
-		base.Warn("Overflow incrementing entry count (%s): %d, %d", d.Key, count, amount)
+		base.WarnR("Overflow incrementing entry count (%s): %d, %d", d.Key, count, amount)
 		return 0, fmt.Errorf("Maximum block entry count exceeded")
 	}
 	d.setEntryCount(count + amount)
@@ -579,7 +579,7 @@ func (d *DenseBlock) incrEntryCount(amount uint16) (uint16, error) {
 func (d *DenseBlock) decrEntryCount(amount uint16) (uint16, error) {
 	count := d.getEntryCount()
 	if amount > count {
-		base.Warn("Cannot decrement entry count below zero (%s): %d, %d", d.Key, count, amount)
+		base.WarnR("Cannot decrement entry count below zero (%s): %d, %d", d.Key, count, amount)
 		return 0, fmt.Errorf("Can't decrement block entry count below zero")
 	}
 	d.setEntryCount(count - amount)

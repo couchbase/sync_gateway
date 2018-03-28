@@ -147,7 +147,7 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 		shouldRetry = err != nil
 
 		if err == base.ErrFatalBucketConnection {
-			base.Warn("Fatal error connecting to bucket: %v.  Not retrying", err)
+			base.WarnR("Fatal error connecting to bucket: %v.  Not retrying", err)
 			shouldRetry = false
 		}
 
@@ -246,13 +246,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
-		base.LogTo("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
+		base.LogToR("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.UD(bucket.GetName()))
 
 		if err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
-			msg := fmt.Sprintf("%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
-			base.Warn(msg)
-			errTakeDbOffline := context.TakeDbOffline(msg)
+			msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
+			base.WarnR(msgFormat, base.UD(bucket), err)
+			errTakeDbOffline := context.TakeDbOffline(fmt.Sprintf(msgFormat, bucket, err))
 			if errTakeDbOffline == nil {
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
@@ -276,7 +276,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				err, _ := base.RetryLoop(description, worker, sleeper)
 
 				if err == nil {
-					base.LogTo("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", context.Name)
+					base.LogToR("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(context.Name))
 
 					// The 10 second wait was introduced because the bucket was not fully initialised
 					// after the return of the retry loop.
@@ -288,6 +288,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 					}
 				}
 			}
+
+			// If errTakeDbOffline is non-nil, it can be safely ignored because:
+			// - The only known error state for context.TakeDbOffline is if the current db state wasn't online
+			// - That code would hit an error if the dropped tap feed triggered TakeDbOffline, but the db was already non-online
+			// - In that case (some other event, potentially an admin action, took the DB offline), and so there is no reason to do the auto-reconnect processing
+
 
 			// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
 
@@ -302,12 +308,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 		for name, provider := range options.OIDCOptions.Providers {
 			if provider.Issuer == "" || provider.ClientID == nil {
-				base.Warn("Issuer and ClientID required for OIDC Provider - skipping provider %q", name)
+				base.WarnR("Issuer and ClientID required for OIDC Provider - skipping provider %q", base.UD(name))
 				continue
 			}
 
 			if provider.ValidationKey == nil {
-				base.Warn("Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", name)
+				base.WarnR("Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", base.UD(name))
 			}
 
 			if strings.Contains(name, "_") {
@@ -315,7 +321,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			}
 			provider.Name = name
 			if _, ok := context.OIDCProviders[provider.Issuer]; ok {
-				base.Warn("Multiple OIDC providers defined for issuer %v", provider.Issuer)
+				base.WarnR("Multiple OIDC providers defined for issuer %v", base.UD(provider.Issuer))
 				return nil, fmt.Errorf("Multiple OIDC providers defined for issuer %v", provider.Issuer)
 			}
 
@@ -353,12 +359,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if ok {
 			serverPurgeInterval, err := gocbBucket.GetMetadataPurgeInterval()
 			if err != nil {
-				base.Warn("Unable to retrieve server's metadata purge interval - will use default value. %s", err)
+				base.WarnR("Unable to retrieve server's metadata purge interval - will use default value. %s", err)
 			} else if serverPurgeInterval > 0 {
 				context.PurgeInterval = serverPurgeInterval
 			}
 		}
-		base.Logf("Using metadata purge interval of %.2f days for tombstone compaction.", float64(context.PurgeInterval)/24)
+		base.LogfR("Using metadata purge interval of %.2f days for tombstone compaction.", float64(context.PurgeInterval)/24)
 
 	}
 
@@ -457,7 +463,7 @@ func (context *DatabaseContext) RestartListener() error {
 
 // Cache flush support.  Currently test-only - added for unit test access from rest package
 func (context *DatabaseContext) FlushChannelCache() {
-	base.LogTo("Cache", "Flushing channel cache")
+	base.LogToR("Cache", "Flushing channel cache")
 	context.changeCache.Clear()
 }
 
@@ -501,7 +507,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 		return nil
 	} else {
 		msg := "Unable to take Database offline, database must be in Online state"
-		base.LogTo("CRUD", msg)
+		base.LogToR("CRUD", msg)
 		return base.HTTPErrorf(http.StatusServiceUnavailable, msg)
 	}
 }
@@ -604,7 +610,7 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 	err := db.Bucket.ViewCustom(DesignDocSyncHousekeeping(), ViewAllDocs, opts, &vres)
 	if err != nil {
-		base.Warn("all_docs got error: %v", err)
+		base.WarnR("all_docs got error: %v", err)
 		return err
 	}
 
@@ -648,7 +654,7 @@ func (db *Database) queryAllDocs(reduce bool) (sgbucket.ViewResult, error) {
 	opts := Body{"stale": false, "reduce": reduce}
 	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 	if err != nil {
-		base.Warn("all_docs got error: %v", err)
+		base.WarnR("all_docs got error: %v", err)
 	}
 	return vres, err
 }
@@ -665,16 +671,16 @@ func (db *Database) DeleteAllDocs(docType string) error {
 	}
 	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewAllBits, opts)
 	if err != nil {
-		base.Warn("all_bits view returned %v", err)
+		base.WarnR("all_bits view returned %v", err)
 		return err
 	}
 
 	//FIX: Is there a way to do this in one operation?
-	base.Logf("Deleting %d %q documents of %q ...", len(vres.Rows), docType, db.Name)
+	base.LogfR("Deleting %d %q documents of %q ...", len(vres.Rows), base.UD(docType), base.UD(db.Name))
 	for _, row := range vres.Rows {
-		base.LogTo("CRUD", "\tDeleting %q", row.ID)
+		base.LogToR("CRUD", "\tDeleting %q", base.UD(row.ID))
 		if err := db.Bucket.Delete(row.ID); err != nil {
-			base.Warn("Error deleting %q: %v", row.ID, err)
+			base.WarnR("Error deleting %q: %v", base.UD(row.ID), err)
 		}
 	}
 	return nil
@@ -687,15 +693,15 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 	opts["endkey"] = userName
 	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewSessions, opts)
 	if err != nil {
-		base.Warn("sessions view returned %v", err)
+		base.WarnR("sessions view returned %v", err)
 		return err
 	}
 
 	for _, row := range vres.Rows {
 		docId := row.Value.(string)
-		base.LogTo("CRUD", "\tDeleting %q", docId)
+		base.LogToR("CRUD", "\tDeleting %q", base.UD(docId))
 		if err := db.Bucket.Delete(docId); err != nil {
-			base.Warn("Error deleting %q: %v", row.ID, err)
+			base.WarnR("Error deleting %q: %v", base.UD(row.ID), err)
 		}
 	}
 	return nil
@@ -722,15 +728,15 @@ func (db *Database) Compact() (int, error) {
 	opts["endkey"] = time.Now().Add(purgeIntervalDuration).Unix()
 	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewTombstones, opts)
 	if err != nil {
-		base.Warn("Tombstones view returned error during compact: %v", err)
+		base.WarnR("Tombstones view returned error during compact: %v", err)
 		return 0, err
 	}
 
-	base.Logf("Compacting %d purged tombstones from view for %s ...", len(vres.Rows), db.Name)
+	base.LogfR("Compacting %d purged tombstones from view for %s ...", len(vres.Rows), base.UD(db.Name))
 	purgeBody := Body{"_purged": true}
 	count := 0
 	for _, row := range vres.Rows {
-		base.LogTo("CRUD", "\tDeleting %q", row.ID)
+		base.LogToR("CRUD", "\tDeleting %q", base.UD(row.ID))
 		// First, attempt to purge.
 		purgeErr := db.Purge(row.ID)
 		if purgeErr == nil {
@@ -739,15 +745,15 @@ func (db *Database) Compact() (int, error) {
 			// If key no longer exists, need to add and remove to trigger removal from view
 			_, addErr := db.Bucket.Add(row.ID, 0, purgeBody)
 			if addErr != nil {
-				base.Warn("Error compacting key %s (add) - tombstone will not be compacted.  %v", row.ID, addErr)
+				base.WarnR("Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(row.ID), addErr)
 				continue
 			}
 			if delErr := db.Bucket.Delete(row.ID); delErr != nil {
-				base.Warn("Error compacting key %s (delete) - tombstone will not be compacted.  %v", row.ID, delErr)
+				base.WarnR("Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(row.ID), delErr)
 			}
 			count++
 		} else {
-			base.Warn("Error compacting key %s (purge) - tombstone will not be compacted.  %v", row.ID, purgeErr)
+			base.WarnR("Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(row.ID), purgeErr)
 		}
 	}
 	return count, nil
@@ -773,7 +779,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		context.ChannelMapper = channels.NewChannelMapper(syncFun)
 	}
 	if err != nil {
-		base.Warn("Error setting sync function: %s", err)
+		base.WarnR("Error setting sync function: %s", err)
 		return
 	}
 
@@ -834,7 +840,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	defer db.changeCache.EnableChannelIndexing(true)
 	db.changeCache.Clear()
 
-	base.Logf("Re-running sync function on all %d documents...", len(vres.Rows))
+	base.LogfR("Re-running sync function on all %d documents...", len(vres.Rows))
 	changeCount := 0
 	for _, row := range vres.Rows {
 		rowKey := row.Key.([]interface{})
@@ -852,12 +858,12 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 				if err = db.initializeSyncData(doc); err != nil {
 					return nil, false, nil, err
 				}
-				base.LogTo("CRUD", "\tImporting document %q --> rev %q", docid, doc.CurrentRev)
+				base.LogToR("CRUD", "\tImporting document %q --> rev %q", base.UD(docid), doc.CurrentRev)
 			} else {
 				if !doCurrentDocs {
 					return nil, false, nil, couchbase.UpdateCancel
 				}
-				base.LogTo("CRUD", "\tRe-syncing document %q", docid)
+				base.LogToR("CRUD", "\tRe-syncing document %q", base.UD(docid))
 			}
 
 			// Run the sync fn over each current/leaf revision, in case there are conflicts:
@@ -867,7 +873,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 				channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, rev.ID)
 				if err != nil {
 					// Probably the validator rejected the doc
-					base.Warn("Error calling sync() on doc %q: %v", docid, err)
+					base.WarnR("Error calling sync() on doc %q: %v", base.UD(docid), err)
 					access = nil
 					channels = nil
 				}
@@ -906,7 +912,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 					return nil, nil, deleteDoc, nil, err
 				}
 				if shouldUpdate {
-					base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
+					base.LogToR("Access", "Saving updated channels and access grants of %q", base.UD(docid))
 					if updatedExpiry != nil {
 						updatedDoc.UpdateExpiry(*updatedExpiry)
 					}
@@ -932,7 +938,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 					return nil, nil, err
 				}
 				if shouldUpdate {
-					base.LogTo("Access", "Saving updated channels and access grants of %q", docid)
+					base.LogToR("Access", "Saving updated channels and access grants of %q", base.UD(docid))
 					if updatedExpiry != nil {
 						updatedDoc.UpdateExpiry(*updatedExpiry)
 					}
@@ -946,10 +952,10 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		if err == nil {
 			changeCount++
 		} else if err != couchbase.UpdateCancel {
-			base.Warn("Error updating doc %q: %v", docid, err)
+			base.WarnR("Error updating doc %q: %v", base.UD(docid), err)
 		}
 	}
-	base.Logf("Finished re-running sync function; %d docs changed", changeCount)
+	base.LogfR("Finished re-running sync function; %d docs changed", changeCount)
 
 	if changeCount > 0 {
 		// Now invalidate channel cache of all users/roles:
@@ -969,7 +975,7 @@ func (db *Database) invalUserRoles(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
 		if err := authr.InvalidateRoles(user); err != nil {
-			base.Warn("Error invalidating roles for user %s: %v", username, err)
+			base.WarnR("Error invalidating roles for user %s: %v", base.UD(username), err)
 		}
 	}
 }
@@ -978,7 +984,7 @@ func (db *Database) invalUserChannels(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
 		if err := authr.InvalidateChannels(user); err != nil {
-			base.Warn("Error invalidating channels for user %s: %v", username, err)
+			base.WarnR("Error invalidating channels for user %s: %v", base.UD(username), err)
 		}
 	}
 }
@@ -987,7 +993,7 @@ func (db *Database) invalRoleChannels(rolename string) {
 	authr := db.Authenticator()
 	if role, _ := authr.GetRole(rolename); role != nil {
 		if err := authr.InvalidateChannels(role); err != nil {
-			base.Warn("Error invalidating channels for role %s: %v", rolename, err)
+			base.WarnR("Error invalidating channels for role %s: %v", base.UD(rolename), err)
 		}
 	}
 }

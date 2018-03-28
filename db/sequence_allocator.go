@@ -40,7 +40,7 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 	dbExpvars.Add("sequence_gets", 1)
 	last, err := s.incrWithRetry("_sync:seq", 0)
 	if err != nil {
-		base.Warn("Error from Incr in lastSequence(): %v", err)
+		base.WarnR("Error from Incr in lastSequence(): %v", err)
 	}
 	return last, err
 }
@@ -65,7 +65,7 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 	dbExpvars.Add("sequence_reserves", 1)
 	max, err := s.incrWithRetry("_sync:seq", numToReserve)
 	if err != nil {
-		base.Warn("Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
+		base.WarnR("Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
 		return err
 	}
 	s.max = max
@@ -98,13 +98,13 @@ func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint
 		max, err = s.bucket.Incr(key, numToReserve, numToReserve, 0)
 		if err != nil {
 			retries++
-			base.Warn("Error from Incr in sequence allocator (%d) - attempt (%d/%d): %v", numToReserve, retries, kMaxIncrRetries, err)
+			base.WarnR("Error from Incr in sequence allocator (%d) - attempt (%d/%d): %v", numToReserve, retries, kMaxIncrRetries, err)
 			time.Sleep(10 * time.Millisecond)
 		} else {
 			return max, err
 		}
 	}
-	base.Warn("Too many unsuccessful Incr attempts in sequence allocator - giving up (%d): %v", numToReserve, err)
+	base.WarnR("Too many unsuccessful Incr attempts in sequence allocator - giving up (%d): %v", numToReserve, err)
 	// Note: 'err' should be non-nil here (from Incr response above) but as described on issue #1810, there are cases where the value
 	//       is nil by the time we log the warning above.  This seems most likely to be a race/scope issue with the callback processing
 	//       in the go-couchbase Incr/Do, and the sleep after the last attempt above.  Forcing the error to non-nil here to ensure we don't
@@ -118,6 +118,6 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
 	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
-	base.LogTo("CRUD+", "Released unused sequence #%d", sequence)
+	base.LogToR("CRUD+", "Released unused sequence #%d", sequence)
 	return err
 }

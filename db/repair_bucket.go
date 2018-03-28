@@ -132,8 +132,8 @@ This is how the view is iterated:
 */
 func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
-	base.LogTo("CRUD", "RepairBucket() invoked")
-	defer base.LogTo("CRUD", "RepairBucket() finished")
+	base.LogToR("CRUD", "RepairBucket() invoked")
+	defer base.LogToR("CRUD", "RepairBucket() finished")
 
 	startKey := ""
 	results = []RepairBucketResult{}
@@ -148,9 +148,9 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 		}
 		options["limit"] = r.ViewQueryPageSize
 
-		base.LogTo("CRUD", "RepairBucket() querying view with options: %+v", options)
+		base.LogToR("CRUD", "RepairBucket() querying view with options: %+v", options)
 		vres, err := r.Bucket.View(DesignDocSyncHousekeeping(), ViewImport, options)
-		base.LogTo("CRUD", "RepairBucket() queried view and got %d results", len(vres.Rows))
+		base.LogToR("CRUD", "RepairBucket() queried view and got %d results", len(vres.Rows))
 		if err != nil {
 			// TODO: Maybe we could retry if the view timed out (as seen in #3267)
 			return results, err
@@ -203,9 +203,9 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 					backupOrDryRunDocId, err = r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
 					if err != nil {
-						base.LogTo("CRUD", "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
-						base.LogTo("CRUD", "Original Doc before repair: %s", currentValue)
-						base.LogTo("CRUD", "Updated doc after repair: %s", updatedDoc)
+						base.LogToR("CRUD", "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
+						base.LogToR("CRUD", "Original Doc before repair: %s", base.UD(currentValue))
+						base.LogToR("CRUD", "Updated doc after repair: %s", base.UD(updatedDoc))
 					}
 
 					result := RepairBucketResult{
@@ -237,9 +237,9 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 			if backupOrDryRunDocId != "" {
 				if r.DryRun {
-					base.LogTo("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+					base.LogToR("CRUD", "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
 				} else {
-					base.LogTo("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", backupOrDryRunDocId)
+					base.LogToR("CRUD", "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
 				}
 			}
 
@@ -247,7 +247,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 		numDocsProcessed += numResultsProcessed
 
-		base.LogTo("CRUD", "RepairBucket() processed %d / %d", numDocsProcessed, vres.TotalRows)
+		base.LogToR("CRUD", "RepairBucket() processed %d / %d", numDocsProcessed, vres.TotalRows)
 
 		if numResultsProcessed == 0 {
 			// No point in going to the next page, since this page had 0 results.  See method comments.
@@ -280,7 +280,7 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 
 	//If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all
 	if int(r.RepairedFileTTL.Seconds()) == 0 {
-		base.LogTo("CRUD", "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", backupOrDryRunDocId)
+		base.LogToR("CRUD", "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", base.UD(backupOrDryRunDocId))
 		return backupOrDryRunDocId, nil
 	}
 
@@ -330,8 +330,8 @@ func (r RepairBucket) TransformBucketDoc(docId string, originalCBDoc []byte) (tr
 // Repairs rev tree cycles (see SG issue #2847)
 func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 
-	base.LogTo("CRUD+", "RepairJobRevTreeCycles() called with doc id: %v", docId)
-	defer base.LogTo("CRUD+", "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", docId, transformed, err)
+	base.LogToR("CRUD+", "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
+	defer base.LogToR("CRUD+", "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
 
 	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {

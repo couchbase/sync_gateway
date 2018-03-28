@@ -185,7 +185,7 @@ func (tree RevTree) RepairCycles() (err error) {
 		for {
 
 			if node.ParentGenGTENodeGen() {
-				base.LogTo("CRUD", "Node %+v detected to have invalid parent rev (parent generation larger than node generation).  Repairing by designating as a root node.", node)
+				base.LogToR("CRUD", "Node %+v detected to have invalid parent rev (parent generation larger than node generation).  Repairing by designating as a root node.", base.UD(node))
 				node.Parent = ""
 				break
 			}
@@ -753,7 +753,7 @@ func encodeRevisions(revs []string) Body {
 		if i == 0 {
 			start = gen
 		} else if gen != start-i {
-			base.Warn("encodeRevisions found weird history %v", revs)
+			base.WarnR("encodeRevisions found weird history %v", revs)
 		}
 	}
 	return map[string]interface{}{"start": start, "ids": ids}
