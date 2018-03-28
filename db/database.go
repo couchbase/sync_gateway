@@ -252,7 +252,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 			msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
 			base.WarnR(msgFormat, base.UD(bucket), err)
-			errTakeDbOffline := context.TakeDbOffline(fmt.Sprintf(msgFormat, "Bucket", err))
+			errTakeDbOffline := context.TakeDbOffline(fmt.Sprintf(msgFormat, bucket, err))
 			if errTakeDbOffline == nil {
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
@@ -288,6 +288,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 					}
 				}
 			}
+
+			// If errTakeDbOffline is non-nil, it can be safely ignored because:
+			// - The only known error state for context.TakeDbOffline is if the current db state wasn't online
+			// - That code would hit an error if the dropped tap feed triggered TakeDbOffline, but the db was already non-online
+			// - In that case (some other event, potentially an admin action, took the DB offline), and so there is no reason to do the auto-reconnect processing
+
 
 			// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
 
