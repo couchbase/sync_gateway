@@ -115,7 +115,7 @@ func (sc *ServerContext) startReplicators() {
 
 		// Run single replication, cancel parameter will always be false
 		if _, err := sc.replicator.Replicate(params, false); err != nil {
-			base.Warn("Error starting replication %v: %v", params.ReplicationId, err)
+			base.WarnR("Error starting replication %v: %v", base.UD(params.ReplicationId), err)
 		}
 
 	}
@@ -168,7 +168,7 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 	} else {
 		// Let's ask the config server if it knows this database:
-		base.Logf("Asking config server %q about db %q...", *sc.config.ConfigServer, name)
+		base.LogfR("Asking config server %q about db %q...", base.UD(*sc.config.ConfigServer), base.UD(name))
 		config, err := sc.getDbConfigFromServer(name)
 		if err != nil {
 			return nil, err
@@ -340,8 +340,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
-	base.Logf("Opening db /%s as bucket %q, pool %q, server <%s>",
-		dbName, bucketName, pool, server)
+	base.LogfR("Opening db /%s as bucket %q, pool %q, server <%s>",
+		base.UD(dbName), base.UD(bucketName), base.SD(pool), base.SD(server))
 
 	if err := db.ValidateDatabaseName(dbName); err != nil {
 		return nil, err
@@ -411,12 +411,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
 
-		msg := fmt.Sprintf("%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
-		base.Warn(msg)
+		msgFormatStr := "%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline"
+		base.WarnR(msgFormatStr, base.UD(bucket), err)
 
 		if dc := sc.databases_[dbName]; dc != nil {
 
-			err := dc.TakeDbOffline(msg)
+			err := dc.TakeDbOffline(fmt.Sprintf(msgFormatStr, bucket, err))
 			if err == nil {
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
@@ -440,7 +440,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				err, _ := base.RetryLoop(description, worker, sleeper)
 
 				if err == nil {
-					base.LogTo("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", dc.Name)
+					base.LogToR("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(dc.Name))
 
 					// The 10 second wait was introduced because the bucket was not fully initialised
 					// after the return of the retry loop.
@@ -596,7 +596,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			}
 
 			if dbcontext.RevsLimit < 100 {
-				base.Warn("Setting the revs_limit (%v) to less than 100 may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
+				base.WarnR("Setting the revs_limit (%v) to less than 100 may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
 			}
 		} else {
 			if dbcontext.RevsLimit <= 0 {
@@ -608,7 +608,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
 
 	if dbcontext.ChannelMapper == nil {
-		base.Logf("Using default sync function 'channel(doc.channels)' for database %q", dbName)
+		base.LogfR("Using default sync function 'channel(doc.channels)' for database %q", base.UD(dbName))
 	}
 
 	// Create default users & roles:
@@ -624,8 +624,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// Install bucket-shadower if any:
 	if shadow := config.Shadow; shadow != nil {
 		if err := sc.startShadowing(dbcontext, shadow); err != nil {
-			base.Warn("Database %q: unable to connect to external bucket for shadowing: %v",
-				dbName, err)
+			base.WarnR("Database %q: unable to connect to external bucket for shadowing: %v",
+				base.UD(dbName), err)
 		}
 	}
 
@@ -677,7 +677,7 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 		atomic.StoreUint32(&reloadedDb.State, db.DBOnline)
 
 	} else {
-		base.LogTo("CRUD", "Unable to take Database : %v online , database must be in Offline state", database.Name)
+		base.LogToR("CRUD", "Unable to take Database : %v online , database must be in Offline state", base.UD(database.Name))
 	}
 
 }
@@ -770,7 +770,7 @@ func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn
 		return err
 	}
 	// Sync function has changed:
-	base.Logf("**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", dbcontext.Name)
+	base.LogfR("**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.UD(dbcontext.Name))
 	return nil
 }
 
@@ -783,7 +783,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		var err error
 		pattern, err = regexp.Compile(*shadow.Doc_id_regex)
 		if err != nil {
-			base.Warn("Invalid shadow doc_id_regex: %s", *shadow.Doc_id_regex)
+			base.WarnR("Invalid shadow doc_id_regex: %s", base.UD(*shadow.Doc_id_regex))
 			return err
 		}
 	}
@@ -821,7 +821,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 	//Remove credentials from server URL before logging
 	url, err := couchbase.ParseURL(spec.Server)
 	if err == nil {
-		base.Logf("Database %q shadowing remote bucket %q, pool %q, server <%s:%s/%s>", dbcontext.Name, spec.BucketName, spec.PoolName, url.Scheme, url.Host, url.Path)
+		base.LogfR("Database %q shadowing remote bucket %q, pool %q, server <%s:%s/%s>", base.UD(dbcontext.Name), base.UD(spec.BucketName), spec.PoolName, url.Scheme, base.SD(url.Host), url.Path)
 	}
 	return nil
 }
@@ -839,7 +839,7 @@ func (sc *ServerContext) _removeDatabase(dbName string) bool {
 	if context == nil {
 		return false
 	}
-	base.Logf("Closing db /%s (bucket %q)", context.Name, context.Bucket.GetName())
+	base.LogfR("Closing db /%s (bucket %q)", base.UD(context.Name), base.UD(context.Bucket.GetName()))
 	context.Close()
 	delete(sc.databases_, dbName)
 	return true
@@ -890,7 +890,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 		if isGuest {
 			base.Log("    Reset guest user to config")
 		} else if createdPrincipal {
-			base.Logf("    Created %s %q", what, name)
+			base.LogfR("    Created %s %q", base.UD(what), base.UD(name))
 		}
 
 	}
@@ -952,8 +952,8 @@ func (sc *ServerContext) startStatsReporter() {
 			sc.reportStats()
 		}
 	}()
-	base.Logf("Will report server stats for %q every %v",
-		*sc.config.DeploymentID, interval)
+	base.LogfR("Will report server stats for %q every %v",
+		base.UD(*sc.config.DeploymentID), interval)
 }
 
 func (sc *ServerContext) stopStatsReporter() {
@@ -972,7 +972,7 @@ func (sc *ServerContext) reportStats() {
 	if stats == nil {
 		return // No activity
 	}
-	base.Logf("Reporting server stats to %s ...", kStatsReportURL)
+	base.LogfR("Reporting server stats to %s ...", base.SD(kStatsReportURL))
 	body, _ := json.Marshal(stats)
 	bodyReader := bytes.NewReader(body)
 	_, err := sc.HTTPClient.Post(kStatsReportURL, "application/json", bodyReader)

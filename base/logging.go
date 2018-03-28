@@ -424,7 +424,7 @@ func GetCallersName(depth int) string {
 
 // Partial interface for the SGLogger
 type SGLogger interface {
-	LogTo(key string, format string, args ...interface{})
+	LogToR(key string, format string, args ...interface{})
 }
 
 // Logs a message to the console, but only if the corresponding key is true in LogKeys.
