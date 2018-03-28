@@ -59,7 +59,7 @@ type DatabaseContext struct {
 	Bucket             base.Bucket             // Storage
 	BucketSpec         base.BucketSpec         // The BucketSpec
 	BucketLock         sync.RWMutex            // Control Access to the underlying bucket object
-	tapListener        changeListener          // Listens on server Tap feed -- TODO: change to mutationListener
+	mutationListener   changeListener          // Listens on server mutation feed (TAP or DCP)
 	sequences          *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
 	StartTime          time.Time               // Timestamp when context was instantiated
@@ -220,7 +220,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
 	onChange := func(changedChannels base.Set) {
-		context.tapListener.Notify(changedChannels)
+		context.mutationListener.Notify(changedChannels)
 	}
 
 	// Initialize the ChangeCache
@@ -236,7 +236,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	context.SetOnChangeCallback(context.changeCache.DocChanged)
 
 	// Initialize the tap Listener for notify handling
-	context.tapListener.Init(bucket.GetName())
+	context.mutationListener.Init(bucket.GetName())
 
 	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
 	feedMode := uint64(sgbucket.FeedNoBackfill)
@@ -248,7 +248,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.LogTo("Feed", "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", bucket.GetName())
 
-		if err = context.tapListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
+		if err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
 			msg := fmt.Sprintf("%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
 			base.Warn(msg)
@@ -396,7 +396,7 @@ func (context *DatabaseContext) CreateZeroSinceValue() SequenceID {
 }
 
 func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
-	context.tapListener.OnDocChanged = callback
+	context.mutationListener.OnDocChanged = callback
 }
 
 func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err error) {
@@ -418,14 +418,14 @@ func (context *DatabaseContext) UseGlobalSequence() bool {
 }
 
 func (context *DatabaseContext) TapListener() changeListener {
-	return context.tapListener
+	return context.mutationListener
 }
 
 func (context *DatabaseContext) Close() {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
-	context.tapListener.Stop()
+	context.mutationListener.Stop()
 	context.changeCache.Stop()
 	context.Shadower.Stop()
 	context.Bucket.Close()
@@ -440,16 +440,16 @@ func (context *DatabaseContext) IsClosed() bool {
 
 // For testing only!
 func (context *DatabaseContext) RestartListener() error {
-	context.tapListener.Stop()
+	context.mutationListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	context.tapListener.Init(context.Bucket.GetName())
+	context.mutationListener.Init(context.Bucket.GetName())
 	feedMode := uint64(sgbucket.FeedNoBackfill)
 	if context.UseXattrs() && context.autoImport {
 		feedMode = sgbucket.FeedResume
 	}
 
-	if err := context.tapListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil); err != nil {
+	if err := context.mutationListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil); err != nil {
 		return err
 	}
 	return nil
@@ -470,7 +470,7 @@ func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (remo
 // TODO: The underlying code (NotifyCheckForTermination) doesn't actually leverage the specific username - should be refactored
 //    to remove
 func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
-	context.tapListener.NotifyCheckForTermination(base.SetOf(auth.UserKeyPrefix + username))
+	context.mutationListener.NotifyCheckForTermination(base.SetOf(auth.UserKeyPrefix + username))
 }
 
 func (dc *DatabaseContext) TakeDbOffline(reason string) error {
