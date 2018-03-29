@@ -217,7 +217,7 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 		discoveryURL = strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
 	}
 
-	base.LogToR("OIDC+", "Fetching custom provider config from %s", discoveryURL)
+	base.LogToR("OIDC+", "Fetching custom provider config from %s", base.UD(discoveryURL))
 	req, err := http.NewRequest("GET", discoveryURL, nil)
 	if err != nil {
 		base.LogToR("OIDC+", "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
@@ -230,7 +230,7 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 	}
 	defer resp.Body.Close()
 	if err := json.NewDecoder(resp.Body).Decode(&customConfig); err != nil {
-		base.LogToR("OIDC+", "Error parsing body %s: %v", discoveryURL, err)
+		base.LogToR("OIDC+", "Error parsing body %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 

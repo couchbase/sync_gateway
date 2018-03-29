@@ -291,7 +291,7 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 
 // Authenticates a user based on a JWT token string and a set of providers.  Attempts to match the
 // issuer in the token with a provider.
-// Used to authenticate a JWT token coming from an insecure source (e.g. § request)
+// Used to authenticate a JWT token coming from an insecure source (e.g. client request)
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
