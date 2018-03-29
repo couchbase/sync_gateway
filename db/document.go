@@ -358,7 +358,7 @@ func (doc *document) getRevisionBody(revid string, loader RevLoaderFunc) Body {
 func (doc *document) getNonWinningRevisionBody(revid string, loader RevLoaderFunc) Body {
 	var body Body
 	bodyBytes, found := doc.History.getRevisionBody(revid, loader)
-	if !found {
+	if !found || len(bodyBytes) == 0 {
 		return nil
 	}
 
