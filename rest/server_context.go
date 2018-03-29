@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -474,7 +473,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	// Initialize GSI indexes
-	log.Printf("Initializing indexes?")
 	if !config.UseViews {
 		numReplicas := DefaultNumIndexReplicas
 		numHousekeepingReplicas := DefaultNumIndexReplicas
