@@ -1,6 +1,13 @@
 package base
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/couchbase/clog"
+)
+
+// RedactMetadata is a global toggle for system data redaction.
+var RedactMetadata = false
 
 // Metadata is a type which implements the Redactor interface for logging purposes of metadata.
 //
@@ -15,10 +22,13 @@ import "fmt"
 // - And other couchbase resource specific meta data
 type Metadata string
 
-// Redact is a stub which will eventaully tag or redact data in logs.
+// Redact tags the string with Metadata tags for post-processing.
 func (md Metadata) Redact() string {
-	// FIXME: Stub (#3370)
-	return string(md)
+	if !RedactMetadata {
+		return string(md)
+	}
+	return clog.Tag(clog.MetaData, string(md)).(string)
+
 }
 
 // Compile-time interface check.
