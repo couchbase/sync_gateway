@@ -28,8 +28,9 @@ const kBcryptCostFactor = bcrypt.DefaultCost
 type userImpl struct {
 	roleImpl // userImpl "inherits from" Role
 	userImplBody
-	auth  *Authenticator
-	roles []Role
+	auth   *Authenticator
+	roles  []Role
+	expiry uint32 // The expiry offset in seconds or UTC timestamp when this user will be auto-deleted.
 }
 
 // Marshalable data is stored in separate struct from userImpl,
@@ -142,6 +143,14 @@ func docIDForUser(username string) string {
 
 func (user *userImpl) DocID() string {
 	return docIDForUser(user.Name_)
+}
+
+func (user *userImpl) SetExpiry(expiry uint32) {
+	user.expiry = expiry
+}
+
+func (user *userImpl) GetExpiry() (expiry uint32) {
+	return user.expiry
 }
 
 // Key used in 'access' view (not same meaning as doc ID)

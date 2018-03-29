@@ -63,6 +63,12 @@ type Principal interface {
 	// the guest user, else 403.
 	UnauthError(message string) error
 
+	// Set the expiry of this Principal.  This value interpreted the same way it is for bucket.Set() and other bucket operations
+	SetExpiry(expiry uint32)
+
+	// Get expiry of this Principal
+	GetExpiry() (expiry uint32)
+
 	DocID() string
 	accessViewKey() string
 	validate() error
@@ -135,4 +141,7 @@ type User interface {
 	GetAddedChannels(channels ch.TimedSet) base.Set
 
 	setRolesSince(ch.TimedSet)
+
+
+
 }

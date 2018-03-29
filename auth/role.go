@@ -147,6 +147,15 @@ func (role *roleImpl) validate() error {
 	return role.ExplicitChannels_.Validate()
 }
 
+func (role *roleImpl) SetExpiry(expiry uint32) {
+	base.Warn("SetExpiry() called on role, but is not supported for roles")
+}
+
+func (role *roleImpl) GetExpiry() (expiry uint32) {
+	base.Warn("GetExpiry() called on role, but is not supported for roles.  Return default value of 0")
+	return uint32(0)
+}
+
 //////// CHANNEL AUTHORIZATION:
 
 func (role *roleImpl) UnauthError(message string) error {

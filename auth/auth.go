@@ -227,7 +227,7 @@ func (auth *Authenticator) Save(p Principal) error {
 		return err
 	}
 
-	if err := auth.bucket.Set(p.DocID(), 0, p); err != nil {
+	if err := auth.bucket.Set(p.DocID(), p.GetExpiry(), p); err != nil {
 		return err
 	}
 	if user, ok := p.(User); ok {

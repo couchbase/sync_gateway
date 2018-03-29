@@ -162,6 +162,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 
 	}
 
+	// Temp hack: set expiry
+	expiryOffsetSeconds := uint32(60)
+	user.SetExpiry(expiryOffsetSeconds)
+
 	// And finally save the Principal:
 	if changed {
 		// Update the persistent sequence number of this principal (only allocate a sequence when needed - issue #673):
