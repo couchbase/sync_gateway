@@ -7,14 +7,19 @@ import (
 	assert "github.com/couchbaselabs/go.assert"
 )
 
+const (
+	// This is intentionally brittle (hardcoded redaction tags)
+	// We'd probably want to know if this got changed by accident...
+	userDataPrefix = "<ud>"
+	userDataSuffix = "</ud>"
+)
+
 func TestUserDataRedact(t *testing.T) {
 	username := "alice"
 	userdata := UserData(username)
 
-	// This is intentionally brittle (hardcoded redaction tags)
-	// We'd probably want to know if this changed by accident...
 	RedactUserData = true
-	assert.Equals(t, userdata.Redact(), "<ud>"+username+"</ud>")
+	assert.Equals(t, userdata.Redact(), userDataPrefix+username+userDataSuffix)
 
 	RedactUserData = false
 	assert.Equals(t, userdata.Redact(), username)

@@ -1,6 +1,13 @@
 package base
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/couchbase/clog"
+)
+
+// RedactSystemData is a global toggle for system data redaction.
+var RedactSystemData = false
 
 // SystemData is a type which implements the Redactor interface for logging purposes of system data.
 //
@@ -12,10 +19,12 @@ import "fmt"
 // - DNS topology
 type SystemData string
 
-// Redact is a stub which will eventaully tag or redact data in logs.
+// Redact tags the string with SystemData tags for post-processing.
 func (sd SystemData) Redact() string {
-	// FIXME: Stub (#3370)
-	return string(sd)
+	if !RedactSystemData {
+		return string(sd)
+	}
+	return clog.Tag(clog.SystemData, string(sd)).(string)
 }
 
 // Compile-time interface check.

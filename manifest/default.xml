@@ -101,7 +101,7 @@
 
   <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="b0907c1dc06bfb60354416769e40bb07b4367d88"/>
 
-  <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="ef844635a21403c0a5115bfdbbfb416cc57dae51"/>
+  <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="dcae66272b24600ae0005fa06b511cfae8914d3d"/>
 
   <project name="go-httpclient" path="godeps/src/github.com/mreiferson/go-httpclient" remote="mreiferson" revision="63fe23f7434723dc904c901043af07931f293c47"/>
 
