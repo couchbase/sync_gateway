@@ -293,7 +293,7 @@ func TestSaveUsersWithExpiry(t *testing.T) {
 
 	time.Sleep(expiryOffset * 2)
 
-	// Expect an error trying to get the user, since they should be expired
+	// Verify that the user has been deleted since due to idle timeout expiry
 	user, err = auth.GetUser("testUser")
 	log.Printf("user: %+v.  err: %v", user, err)
 	assert.True(t, user == nil)
@@ -324,7 +324,13 @@ func TestUpdateUsersWithExpiry(t *testing.T) {
 	assert.Equals(t, err, nil)
 
 	for i := 0; i < 10; i++ {
+
 		time.Sleep(time.Millisecond * 500)
+
+		user, err = auth.GetUser("testUser")
+		assert.True(t, user != nil)
+		assert.True(t, err == nil)
+
 		// Update user which should extend expiry
 		user.SetPassword(fmt.Sprintf("password-%d", i))
 		err := auth.Save(user)
@@ -363,12 +369,19 @@ func TestGetUsersWithExpiry(t *testing.T) {
 	assert.Equals(t, err, nil)
 
 	for i := 0; i < 10; i++ {
+
 		time.Sleep(time.Millisecond * 500)
+
+		user, err = auth.GetUser("testUser")
+		assert.True(t, user != nil)
+		assert.True(t, err == nil)
+
 		// Update user which should extend expiry
 		getUserResult, getUserErr := auth.GetUser(testUsername)
 		assert.True(t, getUserResult != nil)
 		assert.Equals(t, getUserResult.Name(), user.Name())
 		assert.True(t, getUserErr == nil)
+
 	}
 
 	// Make sure the user hasn't expired, since their expiry should be renewed
