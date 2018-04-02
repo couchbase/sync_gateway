@@ -66,9 +66,11 @@ type Principal interface {
 
 	// Set the inactivity expiry offset of this Principal.  This represents the largest period of inactivity allowed
 	// by this user before it will be automatically deleted via Couchbase Server expiry value on the backing user doc.
+	// If set to 0, then the user will never be deleted due to inactivity.
 	SetInactivityExpiryOffset(offset time.Duration)
 
-	// Get inactivity expiry offset of this Principal.
+	// Get inactivity expiry offset of this Principal.  For users that have an unlimited inactivity (permament users),
+	// this value will be 0.
 	GetInactivityExpiryOffset() (offset time.Duration)
 
 	DocID() string

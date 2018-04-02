@@ -229,10 +229,29 @@ func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	return auth.GetUser(info.Username)
 }
 
-// Calculate the new principal expiry as an absolute unix timestamp by doing the following:
+// Calculate the new principal expiry.
+//
+// If the offset is less than 30 days, then use the offset
+// value itself, since Couchbase Server will interpret anything less than 30 days as an offset
+// per https://developer.couchbase.com/documentation/server/3.x/admin/Concepts/concept-docExpiration.html
+//
+// Otherwise if it is greater than or equal to 30 days, calculate the absolute time by:
 // - Find the current time
 // - Add the idle expiry offset from the principal
+//
+// NOTE: the latter approach is sensitive to clock skew between the machine running Sync Gateway and the
+// machine running Couchbase Server.
 func calculateNewPrincipalExpiry(p Principal) uint32 {
+
+	// Special case for users that never expire
+	if p.GetInactivityExpiryOffset().Seconds() <= 0 {
+		return 0
+	}
+
+	if p.GetInactivityExpiryOffset() < time.Hour * 24 * 30 {
+		return uint32(p.GetInactivityExpiryOffset().Seconds())
+	}
+
 	return uint32(time.Now().Unix()) + uint32(p.GetInactivityExpiryOffset().Seconds())
 }
 
