@@ -20,6 +20,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"time"
 )
 
 const kBcryptCostFactor = bcrypt.DefaultCost
@@ -28,8 +29,9 @@ const kBcryptCostFactor = bcrypt.DefaultCost
 type userImpl struct {
 	roleImpl // userImpl "inherits from" Role
 	userImplBody
-	auth  *Authenticator
-	roles []Role
+	auth                   *Authenticator
+	roles                  []Role
+	inactivityExpiryOffset time.Duration // The expiry offset in seconds or UTC timestamp when this user will be auto-deleted.
 }
 
 // Marshalable data is stored in separate struct from userImpl,
@@ -142,6 +144,14 @@ func docIDForUser(username string) string {
 
 func (user *userImpl) DocID() string {
 	return docIDForUser(user.Name_)
+}
+
+func (user *userImpl) SetInactivityExpiryOffset(inactivityExpiryOffset time.Duration) {
+	user.inactivityExpiryOffset = inactivityExpiryOffset
+}
+
+func (user *userImpl) GetInactivityExpiryOffset() (inactivityExpiryOffset time.Duration) {
+	return user.inactivityExpiryOffset
 }
 
 // Key used in 'access' view (not same meaning as doc ID)

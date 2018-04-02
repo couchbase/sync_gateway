@@ -15,6 +15,9 @@ import (
 	"log"
 	"testing"
 
+	"fmt"
+	"time"
+
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
@@ -269,6 +272,189 @@ func TestSaveUsers(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.DeepEquals(t, user2, user)
 }
+
+// Create a user with an expiry
+// Wait until the expiry expires and the user is removed
+// Try to get the user, assert they have been removed
+func TestSaveUsersWithExpiry(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+	auth := NewAuthenticator(gTestBucket.Bucket, nil)
+	user, _ := auth.NewUser("testUser", "password", ch.SetOf("test"))
+	expiryOffset := time.Second * time.Duration(1)
+	user.SetInactivityExpiryOffset(expiryOffset)
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	time.Sleep(expiryOffset * 2)
+
+	// Verify that the user has been deleted since due to idle timeout expiry
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user == nil)
+	assert.True(t, err == nil)
+
+}
+
+// Create a user with an expiry
+// Before expiry expires, update the user (which should extend the expiry)
+// Wait until original expiry expires
+// Try to get the user, make sure they still exist
+func TestUpdateUsersWithExpiry(t *testing.T) {
+
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+	auth := NewAuthenticator(gTestBucket.Bucket, nil)
+	user, _ := auth.NewUser("testUser", "password", ch.SetOf("test"))
+	expiryOffsetSeconds := time.Second
+	user.SetInactivityExpiryOffset(expiryOffsetSeconds)
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	for i := 0; i < 10; i++ {
+
+		time.Sleep(time.Millisecond * 500)
+
+		user, err = auth.GetUser("testUser")
+		assert.True(t, user != nil)
+		assert.True(t, err == nil)
+
+		// Update user which should extend expiry
+		user.SetPassword(fmt.Sprintf("password-%d", i))
+		err := auth.Save(user)
+		assert.Equals(t, err, nil)
+	}
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
+// Create a user with an expiry
+// Before expiry expires, get the user (which should extend the expiry)
+// Wait until original expiry expires
+// Try to get the user, make sure they still exist
+func TestGetUsersWithExpiry(t *testing.T) {
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	auth := NewAuthenticator(gTestBucket.Bucket, nil)
+	testUsername := "testUser"
+	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
+	expiryOffsetSeconds := time.Second
+	user.SetInactivityExpiryOffset(expiryOffsetSeconds)
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	for i := 0; i < 10; i++ {
+
+		time.Sleep(time.Millisecond * 500)
+
+		user, err = auth.GetUser("testUser")
+		assert.True(t, user != nil)
+		assert.True(t, err == nil)
+
+		// Update user which should extend expiry
+		getUserResult, getUserErr := auth.GetUser(testUsername)
+		assert.True(t, getUserResult != nil)
+		assert.Equals(t, getUserResult.Name(), user.Name())
+		assert.True(t, getUserErr == nil)
+
+	}
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
+
+// Create a user with an expiry > 30 days
+// Make sure user is not immediately deleted
+//
+// Test motivation: if SG naively tries to use expiry offset, will be unix timestamp that will cause immediate deletion
+func TestUserExpiryLargeExpiry(t *testing.T) {
+
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	auth := NewAuthenticator(gTestBucket.Bucket, nil)
+	testUsername := "testUser"
+	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
+	expiryOffsetSeconds := time.Second * time.Duration(60 * 60 * 24 * 60)  // 60 days
+	user.SetInactivityExpiryOffset(expiryOffsetSeconds)
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
+// Create user with no expiry
+// Wait for a while and make sure the user hasn't been deleted
+func TestUserExpiryPermanentUser(t *testing.T) {
+
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	auth := NewAuthenticator(gTestBucket.Bucket, nil)
+	testUsername := "testUser"
+	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	time.Sleep(time.Second * 2)
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
 
 func TestSaveRoles(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()

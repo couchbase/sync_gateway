@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
+	"time"
 )
 
 /** Manages user authentication for a database. */
@@ -91,6 +92,13 @@ func (auth *Authenticator) GetUser(name string) (User, error) {
 		}
 	}
 	princ.(*userImpl).auth = auth
+
+	// Hack to update the expiry value
+	// TODO: it's much more efficient to update the expiry as part of the getPrincipal() call
+	if updateExpiryErr := auth.Save(princ); updateExpiryErr != nil {
+		return princ.(User), updateExpiryErr
+	}
+
 	return princ.(User), err
 }
 
@@ -105,6 +113,8 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
+	// Doing a get as an update because if we do the get and we find that the user has been invalidated
+	// then we need to reload it.
 	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
@@ -219,13 +229,39 @@ func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	return auth.GetUser(info.Username)
 }
 
+// Calculate the new principal expiry.
+//
+// If the offset is less than 30 days, then use the offset
+// value itself, since Couchbase Server will interpret anything less than 30 days as an offset
+// per https://developer.couchbase.com/documentation/server/3.x/admin/Concepts/concept-docExpiration.html
+//
+// Otherwise if it is greater than or equal to 30 days, calculate the absolute time by:
+// - Find the current time
+// - Add the idle expiry offset from the principal
+//
+// NOTE: the latter approach is sensitive to clock skew between the machine running Sync Gateway and the
+// machine running Couchbase Server.
+func calculateNewPrincipalExpiry(p Principal) uint32 {
+
+	// Special case for users that never expire
+	if p.GetInactivityExpiryOffset().Seconds() <= 0 {
+		return 0
+	}
+
+	if p.GetInactivityExpiryOffset() < time.Hour * 24 * 30 {
+		return uint32(p.GetInactivityExpiryOffset().Seconds())
+	}
+
+	return uint32(time.Now().Unix()) + uint32(p.GetInactivityExpiryOffset().Seconds())
+}
+
 // Saves the information for a user/role.
 func (auth *Authenticator) Save(p Principal) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
 
-	if err := auth.bucket.Set(p.DocID(), 0, p); err != nil {
+	if err := auth.bucket.Set(p.DocID(), calculateNewPrincipalExpiry(p), p); err != nil {
 		return err
 	}
 	if user, ok := p.(User); ok {

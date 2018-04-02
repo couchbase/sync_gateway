@@ -1373,6 +1373,7 @@ func (bucket CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, c
 
 }
 
+// Update that has the ability to do a retry loop, which can handles retries on CAS failures.
 func (bucket CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
 
 	for {

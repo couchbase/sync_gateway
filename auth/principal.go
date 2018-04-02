@@ -12,6 +12,7 @@ package auth
 import (
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"time"
 )
 
 // A Principal is an abstract object that can have access to channels.
@@ -62,6 +63,15 @@ type Principal interface {
 	// Returns an appropriate HTTPError for unauthorized access -- a 401 if the receiver is
 	// the guest user, else 403.
 	UnauthError(message string) error
+
+	// Set the inactivity expiry offset of this Principal.  This represents the largest period of inactivity allowed
+	// by this user before it will be automatically deleted via Couchbase Server expiry value on the backing user doc.
+	// If set to 0, then the user will never be deleted due to inactivity.
+	SetInactivityExpiryOffset(offset time.Duration)
+
+	// Get inactivity expiry offset of this Principal.  For users that have an unlimited inactivity (permament users),
+	// this value will be 0.
+	GetInactivityExpiryOffset() (offset time.Duration)
 
 	DocID() string
 	accessViewKey() string
@@ -135,4 +145,7 @@ type User interface {
 	GetAddedChannels(channels ch.TimedSet) base.Set
 
 	setRolesSince(ch.TimedSet)
+
+
+
 }

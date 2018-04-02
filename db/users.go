@@ -6,6 +6,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"time"
 )
 
 // Struct that configures settings of a User/Role, for UpdatePrincipal.
@@ -161,6 +162,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		}
 
 	}
+
+	// Temp hack: set expiry
+	expiryOffsetSeconds := time.Second * time.Duration(60)
+	user.SetInactivityExpiryOffset(expiryOffsetSeconds)
 
 	// And finally save the Principal:
 	if changed {
