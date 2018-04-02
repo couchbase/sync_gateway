@@ -17,6 +17,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"time"
 )
 
 /** A group that users can belong to, with associated channel permisisons. */
@@ -147,13 +148,13 @@ func (role *roleImpl) validate() error {
 	return role.ExplicitChannels_.Validate()
 }
 
-func (role *roleImpl) SetExpiry(expiry uint32) {
-	base.Warn("SetExpiry() called on role, but is not supported for roles")
+func (role *roleImpl) SetInactivityExpiryOffset(ignored time.Duration) {
+	base.Warn("SetInactivityExpiryOffset() called on role, but is not supported for roles")
 }
 
-func (role *roleImpl) GetExpiry() (expiry uint32) {
-	base.Warn("GetExpiry() called on role, but is not supported for roles.  Return default value of 0")
-	return uint32(0)
+func (role *roleImpl) GetInactivityExpiryOffset() (ignored time.Duration) {
+	base.Warn("GetInactivityExpiryOffset() called on role, but is not supported for roles.  Return default value of 0")
+	return time.Duration(0)
 }
 
 //////// CHANNEL AUTHORIZATION:

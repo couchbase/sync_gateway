@@ -286,12 +286,12 @@ func TestSaveUsersWithExpiry(t *testing.T) {
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	user, _ := auth.NewUser("testUser", "password", ch.SetOf("test"))
-	expiryOffsetSeconds := uint32(1)
-	user.SetExpiry(expiryOffsetSeconds)
+	expiryOffset := time.Second * time.Duration(1)
+	user.SetInactivityExpiryOffset(expiryOffset)
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 
-	time.Sleep(time.Second * 2)
+	time.Sleep(expiryOffset * 2)
 
 	// Expect an error trying to get the user, since they should be expired
 	user, err = auth.GetUser("testUser")
@@ -318,8 +318,8 @@ func TestUpdateUsersWithExpiry(t *testing.T) {
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	user, _ := auth.NewUser("testUser", "password", ch.SetOf("test"))
-	expiryOffsetSeconds := uint32(1)
-	user.SetExpiry(expiryOffsetSeconds)
+	expiryOffsetSeconds := time.Second
+	user.SetInactivityExpiryOffset(expiryOffsetSeconds)
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 
@@ -357,8 +357,8 @@ func TestGetUsersWithExpiry(t *testing.T) {
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	testUsername := "testUser"
 	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
-	expiryOffsetSeconds := uint32(1)
-	user.SetExpiry(expiryOffsetSeconds)
+	expiryOffsetSeconds := time.Second
+	user.SetInactivityExpiryOffset(expiryOffsetSeconds)
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 
@@ -399,8 +399,8 @@ func TestUserExpiryLargeExpiry(t *testing.T) {
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	testUsername := "testUser"
 	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
-	expiryOffsetSeconds := uint32(60 * 60 * 24 * 60)  // 60 days
-	user.SetExpiry(expiryOffsetSeconds)
+	expiryOffsetSeconds := time.Second * time.Duration(60 * 60 * 24 * 60)  // 60 days
+	user.SetInactivityExpiryOffset(expiryOffsetSeconds)
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 

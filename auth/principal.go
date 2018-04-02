@@ -12,6 +12,7 @@ package auth
 import (
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"time"
 )
 
 // A Principal is an abstract object that can have access to channels.
@@ -63,11 +64,12 @@ type Principal interface {
 	// the guest user, else 403.
 	UnauthError(message string) error
 
-	// Set the expiry of this Principal.  This value interpreted the same way it is for bucket.Set() and other bucket operations
-	SetExpiry(expiry uint32)
+	// Set the inactivity expiry offset of this Principal.  This represents the largest period of inactivity allowed
+	// by this user before it will be automatically deleted via Couchbase Server expiry value on the backing user doc.
+	SetInactivityExpiryOffset(offset time.Duration)
 
-	// Get expiry of this Principal
-	GetExpiry() (expiry uint32)
+	// Get inactivity expiry offset of this Principal.
+	GetInactivityExpiryOffset() (offset time.Duration)
 
 	DocID() string
 	accessViewKey() string

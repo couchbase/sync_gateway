@@ -19,6 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
+	"time"
 )
 
 /** Manages user authentication for a database. */
@@ -228,13 +229,20 @@ func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	return auth.GetUser(info.Username)
 }
 
+// Calculate the new principal expiry as an absolute unix timestamp by doing the following:
+// - Find the current time
+// - Add the idle expiry offset from the principal
+func calculateNewPrincipalExpiry(p Principal) uint32 {
+	return uint32(time.Now().Unix()) + uint32(p.GetInactivityExpiryOffset().Seconds())
+}
+
 // Saves the information for a user/role.
 func (auth *Authenticator) Save(p Principal) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
 
-	if err := auth.bucket.Set(p.DocID(), p.GetExpiry(), p); err != nil {
+	if err := auth.bucket.Set(p.DocID(), calculateNewPrincipalExpiry(p), p); err != nil {
 		return err
 	}
 	if user, ok := p.(User); ok {
