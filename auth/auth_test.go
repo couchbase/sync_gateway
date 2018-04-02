@@ -15,11 +15,12 @@ import (
 	"log"
 	"testing"
 
+	"fmt"
+	"time"
+
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
-	"time"
-	"fmt"
 )
 
 func canSeeAllChannels(princ Principal, channels base.Set) bool {
@@ -330,7 +331,7 @@ func TestUpdateUsersWithExpiry(t *testing.T) {
 		assert.Equals(t, err, nil)
 	}
 
-	// Expect an error trying to get the user, since they should be expired
+	// Make sure the user hasn't expired, since their expiry should be renewed
 	user, err = auth.GetUser("testUser")
 	log.Printf("user: %+v.  err: %v", user, err)
 	assert.True(t, user != nil)
@@ -338,6 +339,45 @@ func TestUpdateUsersWithExpiry(t *testing.T) {
 
 }
 
+// Create a user with an expiry
+// Before expiry expires, get the user (which should extend the expiry)
+// Wait until original expiry expires
+// Try to get the user, make sure they still exist
+func TestGetUsersWithExpiry(t *testing.T) {
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	auth := NewAuthenticator(gTestBucket.Bucket, nil)
+	testUsername := "testUser"
+	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
+	expiryOffsetSeconds := uint32(1)
+	user.SetExpiry(expiryOffsetSeconds)
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	for i := 0; i < 10; i++ {
+		time.Sleep(time.Millisecond * 500)
+		// Update user which should extend expiry
+		getUserResult, getUserErr := auth.GetUser(testUsername)
+		assert.True(t, getUserResult != nil)
+		assert.Equals(t, getUserResult.Name(), user.Name())
+		assert.True(t, getUserErr == nil)
+	}
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
 
 func TestSaveRoles(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
