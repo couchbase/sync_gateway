@@ -91,6 +91,13 @@ func (auth *Authenticator) GetUser(name string) (User, error) {
 		}
 	}
 	princ.(*userImpl).auth = auth
+
+	// Hack to update the expiry value
+	// TODO: it's much more efficient to update the expiry as part of the getPrincipal() call
+	if updateExpiryErr := auth.Save(princ); updateExpiryErr != nil {
+		return princ.(User), updateExpiryErr
+	}
+
 	return princ.(User), err
 }
 
