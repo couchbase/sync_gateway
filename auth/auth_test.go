@@ -379,6 +379,70 @@ func TestGetUsersWithExpiry(t *testing.T) {
 
 }
 
+
+// Create a user with an expiry > 30 days
+// Make sure user is not immediately deleted
+//
+// Test motivation: if SG naively tries to use expiry offset, will be unix timestamp that will cause immediate deletion
+func TestUserExpiryLargeExpiry(t *testing.T) {
+
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	auth := NewAuthenticator(gTestBucket.Bucket, nil)
+	testUsername := "testUser"
+	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
+	expiryOffsetSeconds := uint32(60 * 60 * 24 * 60)  // 60 days
+	user.SetExpiry(expiryOffsetSeconds)
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
+// Create user with no expiry
+// Wait for a while and make sure the user hasn't been deleted
+func TestUserExpiryPermanentUser(t *testing.T) {
+
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	auth := NewAuthenticator(gTestBucket.Bucket, nil)
+	testUsername := "testUser"
+	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	time.Sleep(time.Second * 2)
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
+
 func TestSaveRoles(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
