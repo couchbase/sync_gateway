@@ -201,6 +201,7 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 		return nil
 	}
 
+	// Get the existing checkpoint
 	value, err := bh.db.GetSpecial("local", docID)
 	if err != nil {
 		return err
@@ -208,6 +209,25 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	if value == nil {
 		return base.HTTPErrorf(http.StatusNotFound, http.StatusText(http.StatusNotFound))
 	}
+
+	// Bump the timestamp and make sure the username is set in the existing checkpoint, save it back to DB
+	value["username"] = bh.effectiveUsername  // TODO: throw an error if these are different
+	value["unix_timestamp"] = time.Now().Unix()
+	_, err = bh.db.PutSpecial("local", docID, value)
+	if err != nil {
+		return err
+	}
+
+	// Get the existing checkpoint again and return it
+	// TODO: make more efficient
+	value, err = bh.db.GetSpecial("local", docID)
+	if err != nil {
+		return err
+	}
+	if value == nil {
+		return base.HTTPErrorf(http.StatusNotFound, http.StatusText(http.StatusNotFound))
+	}
+
 	response.Properties["rev"] = value["_rev"].(string)
 	delete(value, "_rev")
 	delete(value, "_id")
@@ -231,6 +251,9 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	if revID := setCheckpointParams.rev(); revID != "" {
 		checkpoint["_rev"] = revID
 	}
+	checkpoint["username"] = bh.effectiveUsername
+	checkpoint["unix_timestamp"] = time.Now().Unix()
+
 	revID, err := bh.db.PutSpecial("local", docID, checkpoint)
 	if err != nil {
 		return err
