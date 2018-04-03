@@ -117,6 +117,10 @@ func (entry *LogEntry) SetRemoved() {
 	entry.Flags |= channels.Removed
 }
 
+func (entry *LogEntry) SetDeleted() {
+	entry.Flags |= channels.Deleted
+}
+
 func (c ChannelIndexOptions) ValidateOrPanic() {
 	if c.NumShards == 0 {
 		base.LogPanic("The number of shards must be greater than 0")

@@ -100,6 +100,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.AllowConflicts = &boolVal
 		}
 
+		// Use views when testing with a non-couchbase server
+		numReplicas := uint(0)
+		rt.DatabaseConfig.UseViews = base.TestUseViews()
+		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
+
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 		if err != nil {
 			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
@@ -138,6 +143,7 @@ func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
 			Bucket: &bucketName},
 		Name:               "db",
 		AllowEmptyPassword: true,
+		UseViews:           true, // walrus only supports views
 	})
 
 	if err != nil {

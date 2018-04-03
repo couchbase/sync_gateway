@@ -147,6 +147,12 @@ func (b *LoggingBucket) ViewCustom(ddoc, name string, params map[string]interfac
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
 
+func (b *LoggingBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "ViewCustom(%q, %q, ...) [%v]", ddoc, name, time.Since(start)) }()
+	return b.bucket.ViewQuery(ddoc, name, params)
+}
+
 func (b *LoggingBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 	start := time.Now()
 	defer func() { LogTo("Bucket", "SetBulk(%q, ...) --> %v [%v]", entries, err, time.Since(start)) }()

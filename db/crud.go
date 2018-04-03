@@ -1358,25 +1358,29 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
+
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
 		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
 	}
 
-	var vres struct {
-		Rows []struct {
-			Value channels.TimedSet
-		}
+	results, err := context.QueryAccess(key)
+	if err != nil {
+		base.WarnR("QueryAccess returned error: %v", err)
+		return nil, err
 	}
 
-	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewAccess, opts, &vres); verr != nil {
-		return nil, verr
-	}
+	var accessRow QueryAccessRow
 	channelSet := channels.TimedSet{}
-	for _, row := range vres.Rows {
-		channelSet.Add(row.Value)
+	for results.Next(&accessRow) {
+		channelSet.Add(accessRow.Value)
 	}
+
+	closeErr := results.Close()
+	if closeErr != nil {
+		return nil, closeErr
+	}
+
 	return channelSet, nil
 }
 
@@ -1419,26 +1423,23 @@ func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.Ti
 // Recomputes the set of roles a User has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (channels.TimedSet, error) {
-	var vres struct {
-		Rows []struct {
-			Value channels.TimedSet
-		}
+	results, err := context.QueryRoleAccess(user.Name())
+	if err != nil {
+		return nil, err
 	}
 
-	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewRoleAccess, opts, &vres); verr != nil {
-		return nil, verr
-	}
 	// Merge the TimedSets from the view result:
-	var result channels.TimedSet
-	for _, row := range vres.Rows {
-		if result == nil {
-			result = row.Value
-		} else {
-			result.Add(row.Value)
-		}
+	roleChannelSet := channels.TimedSet{}
+	var roleAccessRow QueryAccessRow
+	for results.Next(&roleAccessRow) {
+		roleChannelSet.Add(roleAccessRow.Value)
 	}
-	return result, nil
+	closeErr := results.Close()
+	if closeErr != nil {
+		return nil, closeErr
+	}
+
+	return roleChannelSet, nil
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.

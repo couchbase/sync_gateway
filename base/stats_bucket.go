@@ -216,6 +216,10 @@ func (b *StatsBucket) ViewCustom(ddoc, name string, params map[string]interface{
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
 
+func (b *StatsBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+	return b.bucket.ViewQuery(ddoc, name, params)
+}
+
 func (b *StatsBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 	defer b.docWrite(len(entries), 0)
 	return b.bucket.SetBulk(entries)

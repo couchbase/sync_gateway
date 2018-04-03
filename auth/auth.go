@@ -119,6 +119,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if princ.Channels() == nil {
 			// Channel list has been invalidated by a doc update -- rebuild it:
 			if err := auth.rebuildChannels(princ); err != nil {
+				base.WarnR("RebuildChannels returned error: %v", err)
 				return nil, nil, err
 			}
 			changed = true
@@ -126,6 +127,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if user, ok := princ.(User); ok {
 			if user.RoleNames() == nil {
 				if err := auth.rebuildRoles(user); err != nil {
+					base.WarnR("RebuildRoles returned error: %v", err)
 					return nil, nil, err
 				}
 				changed = true

@@ -466,14 +466,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
-	// TODO: disable based on config.UseViews once all view functionality has been replaced
-	viewErr := db.InitializeViews(bucket)
-	if viewErr != nil {
-		return nil, viewErr
+	// If using a walrus bucket, force use of views
+	useViews := config.UseViews
+	if !useViews && spec.IsWalrusBucket() {
+		base.Warn("Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in your database config to avoid this warning.")
+		useViews = true
 	}
 
-	// Initialize GSI indexes
-	if !config.UseViews {
+	// Initialize Views or GSI indexes
+	if !useViews {
 		numReplicas := DefaultNumIndexReplicas
 		numHousekeepingReplicas := DefaultNumIndexReplicas
 		if config.NumIndexReplicas != nil {
@@ -486,6 +487,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas, numHousekeepingReplicas)
 		if indexErr != nil {
 			return nil, indexErr
+		}
+	} else {
+		viewErr := db.InitializeViews(bucket)
+		if viewErr != nil {
+			return nil, viewErr
 		}
 	}
 
@@ -596,6 +602,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		SessionCookieName:         config.SessionCookieName,
 		AllowConflicts:            config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
+		UseViews:                  useViews,
 	}
 
 	// Create the DB Context

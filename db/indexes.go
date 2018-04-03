@@ -13,36 +13,76 @@ import (
 const (
 	indexNameFormat = "sg_%s_%s%d" // Name, xattrs, version.  e.g. "sg_channels_x1"
 	syncToken       = "$sync"      // Sync token, used for xattr/non-xattr handling in n1ql statements
-	syncNoXattr     = "_sync"      // Replacement for $sync token for non-xattr indexes
+	SyncDocWildcard = `\\_sync:%`  // N1ql-encoded wildcard expression matching sync gateway's system documents
 )
 
-var syncXattr = fmt.Sprintf("meta(%s).xattrs._sync", base.BucketQueryToken) // Replacement for $sync token for xattr indexes
+var syncNoXattr = fmt.Sprintf("`%s`._sync", base.BucketQueryToken)
+var syncXattr = "meta().xattrs._sync"
+var syncXattrQuery = fmt.Sprintf("meta(`%s`).xattrs._sync", base.BucketQueryToken) // Replacement for $sync token for xattr queries
 
 type SGIndexType int
 
 const (
 	IndexAccess SGIndexType = iota
+	IndexRoleAccess
 	IndexChannels
+	IndexAllDocs
+	IndexTombstones
+	IndexSyncDocs
 	indexTypeCount // Used for iteration
+)
+
+type SGIndexFlags uint8
+
+const (
+	IdxFlagXattrOnly       = SGIndexFlags(1 << iota) // Index should only be created when running w/ xattrs=true
+	IdxFlagIndexTombstones                           // When xattrs=true, index should be created with {“retain_deleted_xattr”:true} in order to index tombstones
 )
 
 var (
 	// Simple index names - input to indexNameFormat
 	indexNames = map[SGIndexType]string{
-		IndexAccess:   "access",
-		IndexChannels: "channels",
+		IndexAccess:     "access",
+		IndexRoleAccess: "roleAccess",
+		IndexChannels:   "channels",
+		IndexAllDocs:    "allDocs",
+		IndexTombstones: "tombstones",
+		IndexSyncDocs:   "syncDocs",
 	}
 
 	// Index versions - must be incremented when index definition changes
 	indexVersions = map[SGIndexType]int{
-		IndexAccess:   1,
-		IndexChannels: 1,
+		IndexAccess:     1,
+		IndexRoleAccess: 1,
+		IndexChannels:   1,
+		IndexAllDocs:    1,
+		IndexTombstones: 1,
+		IndexSyncDocs:   1,
 	}
 
-	// Statements used to create index
-	createStatements = map[SGIndexType]string{
-		IndexAccess:   "ALL (ARRAY (op.name) FOR op IN OBJECT_PAIRS($sync.access) END)",
-		IndexChannels: "ALL (ARRAY [op.name, LEAST($sync.sequence,op.val.seq), op.val.seq] FOR op IN OBJECT_PAIRS($sync.channels) END), $sync.rev, $sync.sequence",
+	// Expressions used to create index.
+	// See https://issues.couchbase.com/browse/MB-28728 for details on IFMISSING handling in IndexChannels
+	indexExpressions = map[SGIndexType]string{
+		IndexAccess:     "ALL (ARRAY (op.name) FOR op IN OBJECT_PAIRS($sync.access) END)",
+		IndexRoleAccess: "ALL (ARRAY (op.name) FOR op IN OBJECT_PAIRS($sync.role_access) END)",
+		IndexChannels:   "ALL (ARRAY [op.name, LEAST($sync.sequence,op.val.seq), IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)] FOR op IN OBJECT_PAIRS($sync.channels) END), $sync.rev, $sync.sequence, $sync.flags",
+		IndexAllDocs:    "META().id, $sync.sequence, $sync.rev, $sync.flags, $sync.deleted",
+		IndexTombstones: "$sync.tombstoned_at",
+		IndexSyncDocs:   "META().id",
+	}
+
+	indexFilterExpressions = map[SGIndexType]string{
+		IndexAllDocs:  fmt.Sprintf("META().id NOT LIKE '%s'", SyncDocWildcard),
+		IndexSyncDocs: fmt.Sprintf("META().id LIKE '%s'", SyncDocWildcard),
+	}
+
+	// Index flags - used to identify any custom handling
+	indexFlags = map[SGIndexType]SGIndexFlags{
+		IndexAccess:     IdxFlagIndexTombstones,
+		IndexRoleAccess: IdxFlagIndexTombstones,
+		IndexChannels:   IdxFlagIndexTombstones,
+		IndexAllDocs:    IdxFlagIndexTombstones,
+		IndexTombstones: IdxFlagXattrOnly | IdxFlagIndexTombstones,
 	}
 
 	// Queries used to check readiness on startup.  Only required for critical indexes.
@@ -51,10 +91,14 @@ var (
 		 			   FROM %s 
 		 			   WHERE ANY op in OBJECT_PAIRS($sync.access) SATISFIES op.name = 'foo' end 
 		 			   LIMIT 1`,
-		IndexChannels: `SELECT  [op.name, LEAST($sync.sequence, op.val.seq),op.val.rev][1] AS sequence
+		IndexRoleAccess: `SELECT $sync.role_access.foo as val 
+		 			       FROM %s 
+		 			       WHERE ANY op in OBJECT_PAIRS($sync.role_access) SATISFIES op.name = 'foo' end 
+		 			       LIMIT 1`,
+		IndexChannels: `SELECT  [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)][1] AS sequence
 		                 FROM %s
 		                 UNNEST OBJECT_PAIRS($sync.channels) AS op
-		                 WHERE [op.name, LEAST($sync.sequence, op.val.seq),op.val.rev]  BETWEEN  ["foo", 0] AND ["foo", 1]
+		                 WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)]  BETWEEN  ["foo", 0] AND ["foo", 1]
 		                 ORDER BY sequence
 		                 LIMIT 1`,
 	}
@@ -67,15 +111,17 @@ func init() {
 	sgIndexes = make(map[SGIndexType]SGIndex, indexTypeCount)
 	for i := SGIndexType(0); i < indexTypeCount; i++ {
 		sgIndex := SGIndex{
-			simpleName:      indexNames[i],
-			version:         indexVersions[i],
-			createStatement: createStatements[i],
+			simpleName:       indexNames[i],
+			version:          indexVersions[i],
+			expression:       indexExpressions[i],
+			filterExpression: indexFilterExpressions[i],
+			flags:            indexFlags[i],
 		}
 		// If a readiness query is specified for this index, mark the index as required and add to SGIndex
 		readinessQuery, ok := readinessQueries[i]
 		if ok {
 			sgIndex.required = true
-			sgIndex.readinessQuery = readinessQuery
+			sgIndex.readinessQuery = fmt.Sprintf(readinessQuery, base.BucketQueryToken)
 		}
 
 		sgIndexes[i] = sgIndex
@@ -84,12 +130,14 @@ func init() {
 
 // SGIndex is used to manage the set of constants associated with each index definition
 type SGIndex struct {
-	simpleName       string // Simplified index name (used to build fullIndexName)
-	createStatement  string // Statement used to create index
-	version          int    // Index version.  Must be incremented any time the index definition changes
-	previousVersions []int  // Previous versions of the index that will be removed during post_upgrade cleanup
-	required         bool   // Whether SG blocks on startup until this index is ready
-	readinessQuery   string // Query used to determine view readiness
+	simpleName       string       // Simplified index name (used to build fullIndexName)
+	expression       string       // Expression used to create index
+	filterExpression string       // (Optional) Filter expression used to create index
+	version          int          // Index version.  Must be incremented any time the index definition changes
+	previousVersions []int        // Previous versions of the index that will be removed during post_upgrade cleanup
+	required         bool         // Whether SG blocks on startup until this index is ready
+	readinessQuery   string       // Query used to determine view readiness
+	flags            SGIndexFlags // Additional index options
 }
 
 func (i *SGIndex) fullIndexName(useXattrs bool) string {
@@ -104,8 +152,20 @@ func (i *SGIndex) indexNameForVersion(version int, useXattrs bool) string {
 	return fmt.Sprintf(indexNameFormat, i.simpleName, xattrsToken, version)
 }
 
+func (i *SGIndex) shouldIndexTombstones() bool {
+	return i.flags&IdxFlagIndexTombstones != 0
+}
+
+func (i *SGIndex) isXattrOnly() bool {
+	return i.flags&IdxFlagXattrOnly != 0
+}
+
 // Creates index associated with specified SGIndex if not already present
 func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs bool, numReplica uint) error {
+
+	if i.isXattrOnly() && !useXattrs {
+		return nil
+	}
 
 	indexName := i.fullIndexName(useXattrs)
 
@@ -118,7 +178,16 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	}
 
 	// Create index
-	createStatement := replaceSyncTokens(i.createStatement, useXattrs)
+	indexExpression := replaceSyncTokensIndex(i.expression, useXattrs)
+	filterExpression := replaceSyncTokensIndex(i.filterExpression, useXattrs)
+
+	var options *base.N1qlIndexOptions
+	if numReplica > 0 || (useXattrs && i.shouldIndexTombstones()) {
+		options = &base.N1qlIndexOptions{
+			NumReplica:      numReplica,
+			IndexTombstones: i.shouldIndexTombstones(),
+		}
+	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
 		11, //MaxNumRetries approx 10 seconds total retry duration
@@ -127,7 +196,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 
 	//start a retry loop to create index,
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		err = bucket.CreateIndex(indexName, createStatement, numReplica)
+		err = bucket.CreateIndex(indexName, indexExpression, filterExpression, options)
 		if err != nil {
 			base.Warn("Error creating index %s: %v - will retry.", indexName, err)
 		}
@@ -141,12 +210,14 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		return pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
 	}
 
-	return nil
-
+	// Wait for created index to come online
+	return bucket.WaitForIndexOnline(indexName)
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
 func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, numHousekeepingReplicas uint) error {
+
+	base.Logf("Initializing indexes with numReplicas: %d", numReplicas)
 
 	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
 	if !ok {
@@ -175,9 +246,10 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 			indexesWg.Add(1)
 			go func(index SGIndex) {
 				defer indexesWg.Done()
-				queryStatement := replaceSyncTokens(index.readinessQuery, useXattrs)
+				queryStatement := replaceSyncTokensQuery(index.readinessQuery, useXattrs)
 				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
 				if queryErr != nil {
+					base.Warn("Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
 				}
 			}(sgIndex)
@@ -195,16 +267,19 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 	return nil
 }
 
-// Issues adhoc consistency=request_plus query to determine if specified is ready.  Retries on timeout.
+// Issues adhoc consistency=request_plus query to determine if specified is ready.  Retries indefinitely on timeout, backoff retry on indexer error.
 func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryStatement string) error {
 
 	for {
 		_, err := bucket.Query(queryStatement, nil, gocb.RequestPlus, true)
 		// Retry on timeout error, otherwise return
-		if err == nil || err != base.ErrViewTimeoutError {
-			return err
-		} else {
+		if err == nil {
+			return nil
+		}
+		if err == base.ErrViewTimeoutError {
 			base.Logf("Timeout waiting for index %q to be ready for bucket %q - retrying...", indexName, bucket.GetName())
+		} else {
+			return err
 		}
 	}
 
@@ -217,7 +292,7 @@ func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool)
 
 	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
 	if !ok {
-		base.Warn("Cannot remove obsolete indexes for non-gocb bucket.")
+		base.Warn("Cannot remove obsolete indexes for non-gocb bucket - skipping.")
 		return
 	}
 
@@ -274,10 +349,19 @@ func removeObsoleteIndex(bucket *base.CouchbaseBucketGoCB, indexName string, pre
 
 }
 
-// Replace sync tokens ($sync) in the provided statement with the appropriate token, depending on whether xattrs should be used.
-func replaceSyncTokens(statement string, useXattrs bool) string {
+// Replace sync tokens ($sync) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
+func replaceSyncTokensIndex(statement string, useXattrs bool) string {
 	if useXattrs {
 		return strings.Replace(statement, syncToken, syncXattr, -1)
+	} else {
+		return strings.Replace(statement, syncToken, syncNoXattr, -1)
+	}
+}
+
+// Replace sync tokens ($sync) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
+func replaceSyncTokensQuery(statement string, useXattrs bool) string {
+	if useXattrs {
+		return strings.Replace(statement, syncToken, syncXattrQuery, -1)
 	} else {
 		return strings.Replace(statement, syncToken, syncNoXattr, -1)
 	}

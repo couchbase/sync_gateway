@@ -126,6 +126,7 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 		dbcOptions.EnableXattr = true
 	}
 
+	dbcOptions.UseViews = base.TestUseViews()
 }
 
 func tearDownTestDB(t testing.TB, db *Database) {
@@ -1085,16 +1086,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 	assertHTTPError(t, err, 500)
 }
 
-func TestAccessFunction(t *testing.T) {
-
-	/*
-		var logKeys = map[string]bool {
-			"CRUD": true,
-			"Access": true,
-		}
-
-		base.UpdateLogKeys(logKeys, true)
-	*/
+func TestAccessFunctionDb(t *testing.T) {
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
@@ -1162,7 +1154,7 @@ func DisableTestAccessFunctionWithVbuckets(t *testing.T) {
 
 	user, err = authenticator.GetUser("bernard")
 	assertNoError(t, err, "GetUser")
-	expected := channels.TimedSetFromString("ABC:5.1,Netflix:1,!:1")
+	expected := channels.TimedSetFromString(fmt.Sprintf("ABC:%d.1,Netflix:1,!:1", testBucket.VBHash("doc1")))
 	assert.DeepEquals(t, user.Channels(), expected)
 
 	body = Body{"users": []string{"bernard"}, "userChannels": []string{"NBC"}}
@@ -1172,7 +1164,7 @@ func DisableTestAccessFunctionWithVbuckets(t *testing.T) {
 
 	user, err = authenticator.GetUser("bernard")
 	assertNoError(t, err, "GetUser")
-	expected = channels.TimedSetFromString("ABC:5.1,NBC:12.1,Netflix:1,!:1")
+	expected = channels.TimedSetFromString(fmt.Sprintf("ABC:%d.1,NBC:%d.1,Netflix:1,!:1", testBucket.VBHash("doc1"), testBucket.VBHash("doc2")))
 	assert.DeepEquals(t, user.Channels(), expected)
 
 	// Have another doc assign a new channel, and one of the previously present channels
@@ -1183,7 +1175,7 @@ func DisableTestAccessFunctionWithVbuckets(t *testing.T) {
 
 	user, err = authenticator.GetUser("bernard")
 	assertNoError(t, err, "GetUser")
-	expected = channels.TimedSetFromString("ABC:5.1,NBC:12.1,PBS:11.1,Netflix:1,!:1")
+	expected = channels.TimedSetFromString(fmt.Sprintf("ABC:%d.1,NBC:%d.1,PBS:%d.1,Netflix:1,!:1", testBucket.VBHash("doc1"), testBucket.VBHash("doc2"), testBucket.VBHash("doc3")))
 	assert.DeepEquals(t, user.Channels(), expected)
 
 }
@@ -1521,40 +1513,11 @@ func TestConcurrentImport(t *testing.T) {
 	wg.Wait()
 }
 
-func TestQueryAllDocs(t *testing.T) {
-
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
-
-	viewResult, err := db.queryAllDocs(false)
-	assert.True(t, err == nil)
-	initialTotalRows := viewResult.TotalRows
-	assert.True(t, len(viewResult.Rows) == initialTotalRows)
-
-	// add some docs
-	docId := base.CreateUUID()
-	_, err = db.Put(docId, Body{"val": "one"})
-	if err != nil {
-		log.Printf("error putting doc: %v", err)
-	}
-	assert.True(t, err == nil)
-
-	// Workaround race condition where queryAllDocs doesn't return the doc we just added
-	// TODO: Since this is doing a stale=false query in queryAllDocs, is this even needed?  I believe it
-	// TODO: is needed because there might be a race between the write and when it's indexed.
-	// TODO: convert this to be event based when receiving an event over the mutation feed
-	time.Sleep(time.Second * 1)
-
-	// query all docs, should get one more doc
-	viewResult, err = db.queryAllDocs(false)
-	assert.True(t, err == nil)
-	log.Printf("viewResult.TotalRows: %v", viewResult.TotalRows)
-	assert.True(t, viewResult.TotalRows == (initialTotalRows+1))
-
-}
-
 func TestViewCustom(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test may not pass under non-walrus, if views aren't enabled, as ViewAllDocs won't exist")
+	}
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
@@ -1569,9 +1532,9 @@ func TestViewCustom(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Workaround race condition where queryAllDocs doesn't return the doc we just added
-	// TODO: Since this is doing a stale=false query in queryAllDocs, is this even needed?  I believe it
-	// TODO: is needed because there might be a race between the write and when it's indexed.
-	// TODO: convert this to be event based when receiving an event over the mutation feed
+	// TODO: stale=false will guarantee no race when using a couchbase bucket, but this test
+	// may hit something related to https://github.com/couchbaselabs/walrus/issues/18.  Can remove sleep when
+	// that gets fixed
 	time.Sleep(time.Second * 1)
 
 	// query all docs using ViewCustom query.
