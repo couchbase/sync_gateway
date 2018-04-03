@@ -651,6 +651,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		base.LogfR("Using default sync function 'channel(doc.channels)' for database %q", base.UD(dbName))
 	}
 
+	if config.UserInactivityTTLDays != nil {
+		dbcontext.UserInactivityTTLDays = *config.UserInactivityTTLDays
+	}
+
 	// Create default users & roles:
 	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
 		return nil, pkgerrors.Wrapf(err, "Error installing principals for role")
@@ -693,6 +697,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
 		}
 	}
+
+
 
 	return dbcontext, nil
 }

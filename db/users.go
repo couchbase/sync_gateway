@@ -88,6 +88,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 	var user auth.User
 	authenticator := dbc.Authenticator()
 	if isUser {
+		// May trigger
 		user, err = authenticator.GetUser(*newInfo.Name)
 		princ = user
 	} else {
@@ -97,6 +98,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		return
 	}
 
+	// Making the changes to the user
 	changed := false
 	replaced = (princ != nil)
 	if !replaced {
@@ -185,7 +187,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 				user.SetExplicitRoles(updatedRoles)
 			}
 		}
-		err = authenticator.Save(princ)
+		err = authenticator.Save(princ) // TODO: should this be cas safe?
 	}
 	return
 }

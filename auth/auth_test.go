@@ -15,6 +15,9 @@ import (
 	"log"
 	"testing"
 
+	"fmt"
+	"time"
+
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
@@ -116,6 +119,9 @@ func TestSerializeUser(t *testing.T) {
 
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
+
+
+
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	user, _ := auth.NewUser("me", "letmein", ch.SetOf("me", "public"))
 	user.SetEmail("foo@example.com")
@@ -270,6 +276,263 @@ func TestSaveUsers(t *testing.T) {
 	assert.DeepEquals(t, user2, user)
 }
 
+// Create a user with an expiry
+// Wait until the expiry expires and the user is removed
+// Try to get the user, assert they have been removed
+func TestSaveUsersWithExpiry(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	expiryOffset := time.Second * time.Duration(1)
+	authOptions := &AuthenticatorOptions{
+		InactivityExpiryOffset: expiryOffset,
+	}
+	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
+	user, _ := auth.NewUser("testUser", "password", ch.SetOf("test"))
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	time.Sleep(expiryOffset * 2)
+
+	// Verify that the user has been deleted since due to idle timeout expiry
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user == nil)
+	assert.True(t, err == nil)
+
+}
+
+// Create a user with an expiry
+// Before expiry expires, update the user (which should extend the expiry)
+// Wait until original expiry expires
+// Try to get the user, make sure they still exist
+func TestUpdateUsersWithExpiry(t *testing.T) {
+
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	expiryOffset := time.Second
+	authOptions := &AuthenticatorOptions{
+		InactivityExpiryOffset: expiryOffset,
+	}
+	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
+	user, _ := auth.NewUser("testUser", "password", ch.SetOf("test"))
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	for i := 0; i < 10; i++ {
+
+		time.Sleep(time.Millisecond * 500)
+
+		user, err = auth.GetUser("testUser")
+		assert.True(t, user != nil)
+		assert.True(t, err == nil)
+
+		// Update user which should extend expiry
+		user.SetPassword(fmt.Sprintf("password-%d", i))
+		err := auth.Save(user)
+		assert.Equals(t, err, nil)
+	}
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
+// Create a user with an expiry
+// Before expiry expires, get the user (which should extend the expiry)
+// Wait until original expiry expires
+// Try to get the user, make sure they still exist
+func TestGetUsersWithExpiry(t *testing.T) {
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	authOptions := &AuthenticatorOptions{
+		InactivityExpiryOffset: time.Second,
+	}
+	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
+	testUsername := "testUser"
+	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
+
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	for i := 0; i < 10; i++ {
+
+		time.Sleep(time.Millisecond * 500)
+
+		// Just getting the user should extend expiry
+		user, err = auth.GetUser("testUser")
+		assert.True(t, user != nil)
+		assert.True(t, err == nil)
+
+
+	}
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
+
+// Create a user with an expiry > 30 days
+// Make sure user is not immediately deleted
+//
+// Test motivation: if SG naively tries to use expiry offset, will be unix timestamp that will cause immediate deletion
+func TestUserExpiryLargeExpiry(t *testing.T) {
+
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	expiryOffset := time.Second * time.Duration(60 * 60 * 24 * 60)  // 60 days
+	authOptions := &AuthenticatorOptions{
+		InactivityExpiryOffset: expiryOffset,
+	}
+	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
+	testUsername := "testUser"
+	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
+
+
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
+// Create user with no expiry
+// Wait for a while and make sure the user hasn't been deleted
+func TestUserExpiryPermanentUser(t *testing.T) {
+
+	base.EnableLogKey("DCP")
+	base.EnableLogKey("CRUD+")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	auth := NewAuthenticator(gTestBucket.Bucket, nil)
+	testUsername := "testUser"
+	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	time.Sleep(time.Second * 2)
+
+	// Make sure the user hasn't expired, since their expiry should be renewed
+	user, err = auth.GetUser("testUser")
+	log.Printf("user: %+v.  err: %v", user, err)
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
+// Verifies the CAS retry behavior in getPrincipal() and bucket.Update().
+// The motiviation of this test was to increase code coverage in those two functions
+// so that they can be safely changed for the User TTL changes.
+func TestUserExpiryCASRetry(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since the walrus bucket doesn't invoke test callback")
+	}
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+
+	authOptions := &AuthenticatorOptions{
+		InactivityExpiryOffset: time.Second * time.Duration(60 * 60 * 24 * 60),  // 60 days
+	}
+	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
+
+	// Add a user
+	testUsername := "testUser"
+	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
+
+	err := auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	//// Modify the user by setting disabled = true
+	user.SetDisabled(true)
+	err = auth.Save(user)
+	assert.Equals(t, err, nil)
+
+	// This will force the next GetUser() to update the user doc
+	err = auth.InvalidateChannels(user)
+	assert.True(t, err == nil)
+
+	// Trigger a CAS failure/retry by removing the doc expiry.  This will be called back during the
+	// GoCB bucket update() invocation between the Get and the Set operation.
+	testCallbackInvoked := false
+	testCallback := func() {
+		if testCallbackInvoked {
+			// only want to invoke once
+			return
+		}
+		// Update the user doc directly by setting the expiry to expire in 1 second
+		if err := auth.bucket.Set(user.DocID(), 1, user); err != nil {
+			t.Fatalf("Error trying to trigger a CAS failure.  Bucket.Set() error: %v", err)
+		}
+		testCallbackInvoked = true
+	}
+	gTestBucket.Bucket.SetTestCallback(testCallback)
+
+	// Get the user, and make sure the user has the modifications
+	user, err = auth.GetUser("testUser")
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+	assert.True(t, user.Disabled() == true)
+
+	// Wait for 2 seconds to give it a chance to expire, which would be the case if the
+	// bucket.Set() in the testCallback above wasn't correctly overwritten by the call to GetUser().
+	time.Sleep(time.Second * 2)
+
+	// Make sure the user hasn't expired
+	user, err = auth.GetUser("testUser")
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
+
+}
+
+
 func TestSaveRoles(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
@@ -314,7 +577,10 @@ func TestRebuildUserChannels(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 	computer := mockComputer{channels: ch.AtSequence(ch.SetOf("derived1", "derived2"), 1)}
-	auth := NewAuthenticator(gTestBucket.Bucket, &computer)
+	authOptions := &AuthenticatorOptions{
+		ChannelComputer: &computer,
+	}
+	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
 	user, _ := auth.NewUser("testUser", "password", ch.SetOf("explicit1"))
 	user.setChannels(nil)
 	err := auth.Save(user)
@@ -330,7 +596,10 @@ func TestRebuildRoleChannels(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 	computer := mockComputer{roleChannels: ch.AtSequence(ch.SetOf("derived1", "derived2"), 1)}
-	auth := NewAuthenticator(gTestBucket.Bucket, &computer)
+	authOptions := &AuthenticatorOptions{
+		ChannelComputer: &computer,
+	}
+	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
 	role, _ := auth.NewRole("testRole", ch.SetOf("explicit1"))
 	err := auth.InvalidateChannels(role)
 	assert.Equals(t, err, nil)
@@ -345,7 +614,10 @@ func TestRebuildChannelsError(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 	computer := mockComputer{}
-	auth := NewAuthenticator(gTestBucket.Bucket, &computer)
+	authOptions := &AuthenticatorOptions{
+		ChannelComputer: &computer,
+	}
+	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
 	role, err := auth.NewRole("testRole2", ch.SetOf("explicit1"))
 	assert.Equals(t, err, nil)
 	assert.Equals(t, auth.InvalidateChannels(role), nil)
@@ -362,7 +634,10 @@ func TestRebuildUserRoles(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
-	auth := NewAuthenticator(gTestBucket.Bucket, &computer)
+	authOptions := &AuthenticatorOptions{
+		ChannelComputer: &computer,
+	}
+	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
 	user, _ := auth.NewUser("testUser", "letmein", nil)
 	user.SetExplicitRoles(ch.TimedSet{"role3": ch.NewVbSimpleSequence(1), "role1": ch.NewVbSimpleSequence(1)})
 	err := auth.InvalidateRoles(user)
@@ -569,7 +844,10 @@ func TestFilterToAvailableSince(t *testing.T) {
 
 			sinceClock := NewTestingClockAtSequence(100)
 			computer := mockComputer{channels: tc.syncGrantChannels, roles: tc.syncGrantRoles, roleChannels: tc.syncGrantRoleChannels}
-			auth := NewAuthenticator(gTestBucket.Bucket, &computer)
+			authOptions := &AuthenticatorOptions{
+				ChannelComputer: &computer,
+			}
+			auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
 
 			// Set up roles, user
 			role, _ := auth.NewRole("ROLE_1", nil)

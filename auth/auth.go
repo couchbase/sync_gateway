@@ -19,6 +19,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
+	"time"
+	"github.com/couchbase/sg-bucket"
 )
 
 /** Manages user authentication for a database. */
@@ -26,6 +28,10 @@ type Authenticator struct {
 	bucket            base.Bucket
 	channelComputer   ChannelComputer
 	sessionCookieName string // Custom per-database session cookie name
+
+	// The expiry offset after which users updated by this authenticator will be auto-deleted.
+	// This is expressed as a time duration since it's an offset value rather than an absolute timestamp.
+	inactivityExpiryOffset time.Duration
 }
 
 // Interface for deriving the set of channels and roles a User/Role has access to.
@@ -40,13 +46,23 @@ type userByEmailInfo struct {
 	Username string
 }
 
+// Required parameters when creating a new authenticator
+type AuthenticatorOptions struct {
+	ChannelComputer ChannelComputer
+	InactivityExpiryOffset time.Duration
+}
+
 // Creates a new Authenticator that stores user info in the given Bucket.
-func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer) *Authenticator {
-	return &Authenticator{
+func NewAuthenticator(bucket base.Bucket, options *AuthenticatorOptions) *Authenticator {
+	authenticator := &Authenticator{
 		bucket:            bucket,
-		channelComputer:   channelComputer,
 		sessionCookieName: DefaultCookieName,
 	}
+	if options != nil {
+		authenticator.channelComputer = options.ChannelComputer
+		authenticator.inactivityExpiryOffset = options.InactivityExpiryOffset
+	}
+	return authenticator
 }
 
 func (auth *Authenticator) SessionCookieName() string {
@@ -75,7 +91,7 @@ func (auth *Authenticator) GetPrincipal(name string, isUser bool) (Principal, er
 	return auth.GetRole(name)
 }
 
-// Looks up the information for a user.
+// Looks up the information for a user.  Possibly updates user.
 // If the username is "" it will return the default (guest) User object, not nil.
 // By default the guest User has access to everything, i.e. Admin Party! This can
 // be changed by altering its list of channels and saving the changes via SetUser.
@@ -91,6 +107,7 @@ func (auth *Authenticator) GetUser(name string) (User, error) {
 		}
 	}
 	princ.(*userImpl).auth = auth
+
 	return princ.(User), err
 }
 
@@ -105,22 +122,31 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
-	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+	// Get the expiry value for this principal, if any.
+	exp := base.DurationToCbsExpiry(auth.inactivityExpiryOffset)
+
+	// - 90% of the time this is just a GetAndTouch().  The touch is needed to update the expiry for user TTL behavior.
+	// - 10% of the time this also does an update because the user has been invalidated and the channels/roles need to be
+	//   recalculated and rewritten to the bucket.
+	err := auth.bucket.WriteUpdateAndTouch(docID, exp, func(currentValue []byte) ([]byte, sgbucket.WriteOptions, *uint32, error) {
+
+		var writeOpts sgbucket.WriteOptions
+
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
-			return nil, nil, couchbase.UpdateCancel
+			return nil, writeOpts, nil, couchbase.UpdateCancel
 		}
 		princ = factory()
 		if err := json.Unmarshal(currentValue, princ); err != nil {
-			return nil, nil, pkgerrors.Wrapf(err, "Error calling json.Unmarshal() for doc ID: %s in getPrincipal()", docID)
+			return nil, writeOpts, nil, pkgerrors.Wrapf(err, "Error calling json.Unmarshal() for doc ID: %s in getPrincipal()", docID)
 		}
 		changed := false
 		if princ.Channels() == nil {
 			// Channel list has been invalidated by a doc update -- rebuild it:
 			if err := auth.rebuildChannels(princ); err != nil {
 				base.WarnR("RebuildChannels returned error: %v", err)
-				return nil, nil, err
+				return nil, writeOpts, nil, err
 			}
 			changed = true
 		}
@@ -128,7 +154,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			if user.RoleNames() == nil {
 				if err := auth.rebuildRoles(user); err != nil {
 					base.WarnR("RebuildRoles returned error: %v", err)
-					return nil, nil, err
+					return nil, writeOpts, nil, err
 				}
 				changed = true
 			}
@@ -137,10 +163,10 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if changed {
 			// Save the updated doc:
 			updatedBytes, marshalErr := json.Marshal(princ)
-			return updatedBytes, nil, pkgerrors.Wrapf(marshalErr, "Error calling json.Marshal() for doc ID: %s in getPrincipal()", docID)
+			return updatedBytes, writeOpts, nil, pkgerrors.Wrapf(marshalErr, "Error calling json.Marshal() for doc ID: %s in getPrincipal()", docID)
 		} else {
 			// Principal is valid, so stop the update
-			return nil, nil, couchbase.UpdateCancel
+			return nil, writeOpts, nil, couchbase.UpdateCancel
 		}
 	})
 
@@ -221,15 +247,40 @@ func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	return auth.GetUser(info.Username)
 }
 
+
+
+
+// TODO: use existing function in util or somewhere in codebase
+func calculateNewPrincipalExpiryFromOffset(inactivityExpiryOffset time.Duration) uint32 {
+
+	// Special case for users that never expire
+	if inactivityExpiryOffset <= 0 {
+		return 0
+	}
+
+	if inactivityExpiryOffset < time.Hour * 24 * 30 {
+		return uint32(inactivityExpiryOffset.Seconds())
+	}
+
+	return uint32(time.Now().Unix()) + uint32(inactivityExpiryOffset.Seconds())
+}
+
 // Saves the information for a user/role.
 func (auth *Authenticator) Save(p Principal) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
 
-	if err := auth.bucket.Set(p.DocID(), 0, p); err != nil {
+	// Calculate the expiry for the principal doc id.  For users that are permanent, this will be 0 (no expiry).
+	// For users that can expire due to inactivity, it will be set to the current time + the inactivity expiry interval.
+	expiry := calculateNewPrincipalExpiryFromOffset(auth.inactivityExpiryOffset)
+
+	if err := auth.bucket.Set(p.DocID(), expiry, p); err != nil {  // TODO: should this be cas safe?
 		return err
 	}
+
+	// Adds a mapping between email and user id for later lookup
+	// TODO: could this just be a n1ql query?
 	if user, ok := p.(User); ok {
 		if user.Email() != "" {
 			info := userByEmailInfo{user.Name()}

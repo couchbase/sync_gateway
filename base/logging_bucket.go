@@ -92,6 +92,11 @@ func (b *LoggingBucket) WriteUpdate(k string, exp uint32, callback sgbucket.Writ
 	defer func() { LogTo("Bucket", "WriteUpdate(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
+func (b *LoggingBucket) WriteUpdateAndTouch(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "WriteUpdateAndTouch(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
+	return b.bucket.WriteUpdateAndTouch(k, exp, callback)
+}
 
 func (b *LoggingBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 	start := time.Now()
@@ -205,4 +210,12 @@ func (b *LoggingBucket) UUID() (string, error) {
 
 func (b *LoggingBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 	return b.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
+}
+
+func (b *LoggingBucket) SetTestCallback(fn sgbucket.TestCallbackFn) {
+	b.bucket.SetTestCallback(fn)
+}
+
+func (b *LoggingBucket) GetTestCallback() (fn sgbucket.TestCallbackFn) {
+	return b.bucket.GetTestCallback()
 }

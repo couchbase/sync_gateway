@@ -263,7 +263,10 @@ func TestGetDeleted(t *testing.T) {
 	assert.Equals(t, doc.syncData.CurrentRev, rev2id)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticatorOptions := &auth.AuthenticatorOptions{
+		ChannelComputer: db,
+	}
+	authenticator := auth.NewAuthenticator(db.Bucket, authenticatorOptions)
 	db.user, err = authenticator.GetUser("")
 	assertNoError(t, err, "GetUser")
 	db.user.SetExplicitChannels(nil)
@@ -328,7 +331,10 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assertNoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticatorOptions := &auth.AuthenticatorOptions{
+		ChannelComputer: db,
+	}
+	authenticator := auth.NewAuthenticator(db.Bucket, authenticatorOptions)
 	db.user, err = authenticator.GetUser("")
 	assertNoError(t, err, "GetUser")
 
@@ -1092,7 +1098,10 @@ func TestAccessFunctionDb(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticatorOptions := &auth.AuthenticatorOptions{
+		ChannelComputer: db,
+	}
+	authenticator := auth.NewAuthenticator(db.Bucket, authenticatorOptions)
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
@@ -1139,7 +1148,10 @@ func DisableTestAccessFunctionWithVbuckets(t *testing.T) {
 
 	db.SequenceType = ClockSequenceType
 
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticatorOptions := &auth.AuthenticatorOptions{
+		ChannelComputer: db,
+	}
+	authenticator := auth.NewAuthenticator(db.Bucket, authenticatorOptions)
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
@@ -1219,7 +1231,10 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assert.True(t, strings.Contains(retrievedView.Map, "emit()"))
 	assert.NotEquals(t, retrievedView.Map, mapFunction) // SG should wrap the map function, so they shouldn't be equal
 
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticatorOptions := &auth.AuthenticatorOptions{
+		ChannelComputer: db,
+	}
+	authenticator := auth.NewAuthenticator(db.Bucket, authenticatorOptions)
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
