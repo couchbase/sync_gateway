@@ -45,29 +45,29 @@ func TestSetRedaction(t *testing.T) {
 	SetRedaction(-1)
 	assert.Equals(t, RedactUserData, false)
 
-	SetRedaction(RedactFull)
+	SetRedaction(REDACT_FULL)
 	assert.Equals(t, RedactUserData, true)
 
-	SetRedaction(RedactPartial)
+	SetRedaction(REDACT_PARTIAL)
 	assert.Equals(t, RedactUserData, true)
 
-	SetRedaction(RedactNone)
+	SetRedaction(REDACT_NONE)
 	assert.Equals(t, RedactUserData, false)
 }
 
 func TestRedactionLevelMarshalText(t *testing.T) {
 	var level RedactionLevel
-	level = RedactNone
+	level = REDACT_NONE
 	text, err := level.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "none")
 
-	level = RedactPartial
+	level = REDACT_PARTIAL
 	text, err = level.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "partial")
 
-	level = RedactFull
+	level = REDACT_FULL
 	text, err = level.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "full")
@@ -77,15 +77,15 @@ func TestRedactionLevelUnmarshalText(t *testing.T) {
 	var level RedactionLevel
 	err := level.UnmarshalText([]byte("none"))
 	assert.Equals(t, err, nil)
-	assert.Equals(t, level, RedactNone)
+	assert.Equals(t, level, REDACT_NONE)
 
 	err = level.UnmarshalText([]byte("partial"))
 	assert.Equals(t, err, nil)
-	assert.Equals(t, level, RedactPartial)
+	assert.Equals(t, level, REDACT_PARTIAL)
 
 	err = level.UnmarshalText([]byte("full"))
 	assert.Equals(t, err, nil)
-	assert.Equals(t, level, RedactFull)
+	assert.Equals(t, level, REDACT_FULL)
 
 	err = level.UnmarshalText([]byte("asdf"))
 	assert.Equals(t, err.Error(), "unrecognized level: asdf")
