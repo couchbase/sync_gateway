@@ -331,7 +331,9 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		h.user = context.Authenticator().AuthenticateUser(userName, password)
 		if h.user == nil {
 			base.LogfR("HTTP auth failed for username=%q", base.UD(userName))
-			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+			if h.server.config.SendWWWAuthenticateHeader == nil || *h.server.config.SendWWWAuthenticateHeader {
+				h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+			}
 			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 		}
 		return nil
@@ -350,7 +352,9 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		return err
 	}
 	if h.privs == regularPrivs && h.user.Disabled() {
-		h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+		if h.server.config.SendWWWAuthenticateHeader == nil || *h.server.config.SendWWWAuthenticateHeader {
+			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+		}
 		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
 	}
 

@@ -80,6 +80,7 @@ type ServerConfig struct {
 	MaxIncomingConnections         *int                     `json:",omitempty"`            // Max # of incoming HTTP connections to accept
 	MaxFileDescriptors             *uint64                  `json:",omitempty"`            // Max # of open file descriptors (RLIMIT_NOFILE)
 	CompressResponses              *bool                    `json:",omitempty"`            // If false, disables compression of HTTP responses
+	SendWWWAuthenticateHeader      *bool                    `json:",omitempty"`            // If false, disables setting of 'WWW-Authenticate' header in 401 responses
 	Databases                      DbConfigMap              `json:",omitempty"`            // Pre-configured databases, mapped by name
 	Replications                   []*ReplicationConfig     `json:",omitempty"`
 	MaxHeartbeat                   uint64                   `json:",omitempty"`                        // Max heartbeat value for _changes request (seconds)
