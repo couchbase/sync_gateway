@@ -97,6 +97,11 @@ func testBucket() base.TestBucket {
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
+
+	err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0, 0)
+	if err != nil {
+		log.Printf("Unable to initialize GSI indexes for test:%v", err)
+	}
 	return testBucket
 }
 

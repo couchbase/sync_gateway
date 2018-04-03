@@ -243,7 +243,8 @@ func (sc *ServerContext) HasIndexWriters() bool {
 type PostUpgradeResult map[string]PostUpgradeDatabaseResult
 
 type PostUpgradeDatabaseResult struct {
-	RemovedDDocs []string `json:"removed_design_docs"`
+	RemovedDDocs   []string `json:"removed_design_docs"`
+	RemovedIndexes []string `json:"removed_indexes"`
 }
 
 // PostUpgrade performs post-upgrade processing for each database
@@ -259,8 +260,16 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 		if err != nil {
 			return nil, err
 		}
+
+		// Index cleanup
+		removedIndexes, err := database.RemoveObsoleteIndexes(preview)
+		if err != nil {
+			return nil, err
+		}
+
 		postUpgradeResults[name] = PostUpgradeDatabaseResult{
-			RemovedDDocs: removedDDocs,
+			RemovedDDocs:   removedDDocs,
+			RemovedIndexes: removedIndexes,
 		}
 	}
 	return postUpgradeResults, nil
@@ -455,6 +464,29 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	if err != nil {
 		return nil, err
+	}
+
+	// TODO: disable based on config.UseViews once all view functionality has been replaced
+	viewErr := db.InitializeViews(bucket)
+	if viewErr != nil {
+		return nil, viewErr
+	}
+
+	// Initialize GSI indexes
+	if !config.UseViews {
+		numReplicas := DefaultNumIndexReplicas
+		numHousekeepingReplicas := DefaultNumIndexReplicas
+		if config.NumIndexReplicas != nil {
+			numReplicas = *config.NumIndexReplicas
+		}
+		if config.NumIndexReplicasHousekeeping != nil {
+			numHousekeepingReplicas = *config.NumIndexReplicasHousekeeping
+		}
+
+		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas, numHousekeepingReplicas)
+		if indexErr != nil {
+			return nil, indexErr
+		}
 	}
 
 	// Channel index definition, if present
