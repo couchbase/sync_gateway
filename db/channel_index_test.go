@@ -209,7 +209,7 @@ func (c *channelIndexTest) readIndexBulk() error {
 	for i := 0; i < c.numVbuckets; i++ {
 		keys[i] = c.getIndexDocName(i)
 	}
-	couchbaseBucket, ok := c.indexBucket.(base.CouchbaseBucket)
+	couchbaseBucket, ok := c.indexBucket.(*base.CouchbaseBucket)
 	if !ok {
 		log.Printf("Unable to convert to couchbase bucket")
 		return errors.New("Unable to convert to couchbase bucket")
