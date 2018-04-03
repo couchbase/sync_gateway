@@ -257,7 +257,6 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 
 	// Drop non-existent index
 	err = bucket.DropIndex("testIndex_not_found")
-	log.Printf("non-existent drop error: %v %T", err, err)
 	if err == nil {
 		t.Errorf("Expected error attempting to drop non-existent index")
 	}
