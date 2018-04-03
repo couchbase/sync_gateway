@@ -1126,7 +1126,8 @@ func TestAccessFunction(t *testing.T) {
 	assert.DeepEquals(t, user.InheritedChannels(), expected)
 }
 
-func TestAccessFunctionWithVbuckets(t *testing.T) {
+// Disabled until https://github.com/couchbase/sync_gateway/issues/3413 is fixed
+func DisableTestAccessFunctionWithVbuckets(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test only works with a Couchbase server")
