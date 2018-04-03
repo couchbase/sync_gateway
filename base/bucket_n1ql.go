@@ -104,10 +104,7 @@ func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
 //   [5000] GSI index testIndex_not_found not found.
 // Stuck with doing a string compare to differentiate between 'not found' and other errors
 func IsIndexNotFoundError(err error) bool {
-	if strings.Contains(err.Error(), "not found") {
-		return true
-	}
-	return false
+	return strings.Contains(err.Error(), "not found")
 }
 
 func QueryCloseErrors(closeError error) []error {

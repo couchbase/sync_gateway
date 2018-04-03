@@ -221,58 +221,55 @@ func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool)
 		return
 	}
 
-	removedIndexes = make([]string, 0)
+	// Build set of candidates for cleanup
+	removalCandidates := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
-		// Remove current version, opposite xattr setting, if present
-		indexName := sgIndex.fullIndexName(!useXattrs)
-		removedIndexes, err = removeObsoleteIndex(gocbBucket, removedIndexes, indexName, previewOnly)
-		if err != nil {
-			return removedIndexes, err
-		}
-
-		// Remove older versions, both xattr and non-xattr, if present
+		// Current version, opposite xattr setting
+		removalCandidates = append(removalCandidates, sgIndex.fullIndexName(!useXattrs))
+		// Older versions, both xattr and non-xattr
 		for _, prevVersion := range sgIndex.previousVersions {
-			xattrIndexName := sgIndex.indexNameForVersion(prevVersion, true)
-			removedIndexes, err = removeObsoleteIndex(gocbBucket, removedIndexes, xattrIndexName, previewOnly)
-			if err != nil {
-				return removedIndexes, err
-			}
-			nonXattrIndexName := sgIndex.indexNameForVersion(prevVersion, false)
-			removedIndexes, err = removeObsoleteIndex(gocbBucket, removedIndexes, nonXattrIndexName, previewOnly)
-			if err != nil {
-				return removedIndexes, err
-			}
+			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, true))
+			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, false))
 		}
 	}
+
+	// Attempt removal of candidates, adding to set of removedIndexes when found
+	removedIndexes = make([]string, 0)
+	for _, indexName := range removalCandidates {
+		removed, removeError := removeObsoleteIndex(gocbBucket, indexName, previewOnly)
+		if removeError != nil {
+			return removedIndexes, removeError
+		}
+		if removed {
+			removedIndexes = append(removedIndexes, indexName)
+		}
+	}
+
 	return removedIndexes, nil
 }
 
 // Removes an obsolete index from the database.  In preview mode, checks for existence of the index only.
-func removeObsoleteIndex(bucket *base.CouchbaseBucketGoCB, removedIndexes []string, indexName string, previewOnly bool) (removedIndexesOut []string, err error) {
+func removeObsoleteIndex(bucket *base.CouchbaseBucketGoCB, indexName string, previewOnly bool) (removed bool, err error) {
 
 	if previewOnly {
 		// Check for index existence
 		exists, _, getMetaErr := bucket.GetIndexMeta(indexName)
 		if getMetaErr != nil {
-			return removedIndexes, getMetaErr
+			return false, getMetaErr
 		}
-		if exists {
-			removedIndexes = append(removedIndexes, indexName)
-		}
-		return removedIndexes, nil
+		return exists, nil
 	} else {
 		err = bucket.DropIndex(indexName)
 		// If no error, add to set of removed indexes and return
 		if err == nil {
-			removedIndexes = append(removedIndexes, indexName)
-			return removedIndexes, nil
+			return true, nil
 		}
 		// If not found, no action required
 		if base.IsIndexNotFoundError(err) {
-			return removedIndexes, nil
+			return false, nil
 		}
 		// Unrecoverable error
-		return removedIndexes, err
+		return false, err
 	}
 
 }

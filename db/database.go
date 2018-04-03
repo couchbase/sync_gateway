@@ -161,15 +161,12 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
 	err, ibucket := base.RetryLoop(description, worker, sleeper)
-
 	if err != nil {
-		err = base.HTTPErrorf(http.StatusBadGateway,
+		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			" Unable to connect to Couchbase Server (connection refused). Please ensure it is running and reachable at the configured host and port.  Detailed error: %s", err)
-	} else {
-		bucket = ibucket.(base.Bucket)
 	}
 
-	return
+	return ibucket.(base.Bucket), nil
 }
 
 // Function type for something that calls NewDatabaseContext and wants a callback when the DB is detected
