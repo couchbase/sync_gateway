@@ -227,7 +227,7 @@ func init() {
 	logNoTime = false
 }
 
-func LogLevel() int {
+func GetLogLevel() int {
 	return logLevel
 }
 
