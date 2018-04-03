@@ -162,7 +162,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 }
 
-func (bucket CouchbaseBucketGoCB) GetBucketCredentials() (username, password string) {
+func (bucket *CouchbaseBucketGoCB) GetBucketCredentials() (username, password string) {
 
 	if bucket.spec.Auth != nil {
 		username, password, _ = bucket.spec.Auth.GetCredentials()
@@ -172,7 +172,7 @@ func (bucket CouchbaseBucketGoCB) GetBucketCredentials() (username, password str
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
-func (bucket CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
+func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 
 	var err error
 
@@ -198,7 +198,7 @@ func (bucket CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 // Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
 // that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
 // bucket and server purge intervals).
-func (bucket CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error) {
+func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error) {
 
 	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
 	var purgeResponse struct {
@@ -239,11 +239,11 @@ func (bucket CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error)
 	return purgeIntervalHours, nil
 }
 
-func (bucket CouchbaseBucketGoCB) GetName() string {
+func (bucket *CouchbaseBucketGoCB) GetName() string {
 	return bucket.spec.BucketName
 }
 
-func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err error) {
 
 	var returnVal []byte
 	cas, err = bucket.Get(k, &returnVal)
@@ -255,7 +255,7 @@ func (bucket CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err e
 
 }
 
-func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err error) {
 
 	bucket.singleOps <- struct{}{}
 	gocbExpvars.Add("SingleOps", 1)
@@ -291,7 +291,7 @@ func (bucket CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err
 
 // Retry up to the retry limit, then return.  Does not retry items if they had CAS failures,
 // and it's up to the caller to handle those.
-func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+func (bucket *CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 
 	// Create the RetryWorker for BulkSet op
 	worker := bucket.newSetBulkRetryWorker(entries)
@@ -304,7 +304,7 @@ func (bucket CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (err
 
 }
 
-func (bucket CouchbaseBucketGoCB) newSetBulkRetryWorker(entries []*sgbucket.BulkSetEntry) RetryWorker {
+func (bucket *CouchbaseBucketGoCB) newSetBulkRetryWorker(entries []*sgbucket.BulkSetEntry) RetryWorker {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
@@ -340,7 +340,7 @@ func (bucket CouchbaseBucketGoCB) newSetBulkRetryWorker(entries []*sgbucket.Bulk
 
 }
 
-func (bucket CouchbaseBucketGoCB) processBulkSetEntriesBatch(entries []*sgbucket.BulkSetEntry) (error, []*sgbucket.BulkSetEntry) {
+func (bucket *CouchbaseBucketGoCB) processBulkSetEntriesBatch(entries []*sgbucket.BulkSetEntry) (error, []*sgbucket.BulkSetEntry) {
 
 	retryEntries := []*sgbucket.BulkSetEntry{}
 	var items []gocb.BulkOp
@@ -405,7 +405,7 @@ func (bucket CouchbaseBucketGoCB) processBulkSetEntriesBatch(entries []*sgbucket
 // If there are errors on individual keys -- aside from "not found" errors -- such as
 // QueueOverflow errors that can be retried successfully, they will be retried
 // with a backoff loop.
-func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
+func (bucket *CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
 	gocbExpvars.Add("GetBulkRaw", 1)
 	gocbExpvars.Add("GetBulkRaw_totalKeys", int64(len(keys)))
@@ -443,7 +443,7 @@ func (bucket CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, 
 // If there are errors on individual keys -- aside from "not found" errors -- such as
 // QueueOverflow errors that can be retried successfully, they will be retried
 // with a backoff loop.
-func (bucket CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]uint64, error) {
+func (bucket *CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]uint64, error) {
 
 	gocbExpvars.Add("GetBulkRaw", 1)
 	gocbExpvars.Add("GetBulkRaw_totalKeys", int64(len(keys)))
@@ -470,7 +470,7 @@ func (bucket CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]uin
 
 }
 
-func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryWorker {
+func (bucket *CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryWorker {
 
 	// resultAccumulator scoped in closure, will accumulate results across multiple worker invocations
 	resultAccumulator := make(map[string][]byte, len(keys))
@@ -510,7 +510,7 @@ func (bucket CouchbaseBucketGoCB) newGetBulkRawRetryWorker(keys []string) RetryW
 
 }
 
-func (bucket CouchbaseBucketGoCB) newGetBulkCountersRetryWorker(keys []string) RetryWorker {
+func (bucket *CouchbaseBucketGoCB) newGetBulkCountersRetryWorker(keys []string) RetryWorker {
 
 	// resultAccumulator scoped in closure, will accumulate results across multiple worker invocations
 	resultAccumulator := make(map[string]uint64, len(keys))
@@ -550,7 +550,7 @@ func (bucket CouchbaseBucketGoCB) newGetBulkCountersRetryWorker(keys []string) R
 
 }
 
-func (bucket CouchbaseBucketGoCB) processGetRawBatch(keys []string, resultAccumulator map[string][]byte, retryKeys []string) error {
+func (bucket *CouchbaseBucketGoCB) processGetRawBatch(keys []string, resultAccumulator map[string][]byte, retryKeys []string) error {
 
 	var items []gocb.BulkOp
 	for _, key := range keys {
@@ -590,7 +590,7 @@ func (bucket CouchbaseBucketGoCB) processGetRawBatch(keys []string, resultAccumu
 	return nil
 }
 
-func (bucket CouchbaseBucketGoCB) processGetCountersBatch(keys []string, resultAccumulator map[string]uint64, retryKeys []string) error {
+func (bucket *CouchbaseBucketGoCB) processGetCountersBatch(keys []string, resultAccumulator map[string]uint64, retryKeys []string) error {
 
 	var items []gocb.BulkOp
 	for _, key := range keys {
@@ -756,7 +756,7 @@ func mapContains(mapInstance map[string]interface{}, key string) bool {
 	return ok
 }
 
-func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
 
 	bucket.singleOps <- struct{}{}
 	gocbExpvars.Add("SingleOps", 1)
@@ -799,7 +799,7 @@ func (bucket CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []byt
 
 }
 
-func (bucket CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (added bool, err error) {
+func (bucket *CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
@@ -828,7 +828,7 @@ func (bucket CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (adde
 // GoCB AddRaw writes as BinaryDocument, which results in the document having the
 // binary doc common flag set.  Callers that want to write JSON documents as raw bytes should
 // pass v as []byte to the stanard bucket.Add
-func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
+func (bucket *CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
@@ -855,12 +855,12 @@ func (bucket CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added 
 
 }
 
-func (bucket CouchbaseBucketGoCB) Append(k string, data []byte) error {
+func (bucket *CouchbaseBucketGoCB) Append(k string, data []byte) error {
 	_, err := bucket.Bucket.Append(k, string(data))
 	return err
 }
 
-func (bucket CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) error {
+func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -884,7 +884,7 @@ func (bucket CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) error
 
 }
 
-func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp uint32, v []byte) error {
+func (bucket *CouchbaseBucketGoCB) SetRaw(k string, exp uint32, v []byte) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -907,7 +907,7 @@ func (bucket CouchbaseBucketGoCB) SetRaw(k string, exp uint32, v []byte) error {
 	return err
 }
 
-func (bucket CouchbaseBucketGoCB) Delete(k string) error {
+func (bucket *CouchbaseBucketGoCB) Delete(k string) error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
@@ -925,7 +925,7 @@ func (bucket CouchbaseBucketGoCB) Delete(k string) error {
 
 }
 
-func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, err error) {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -956,12 +956,12 @@ func (bucket CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, e
 
 }
 
-func (bucket CouchbaseBucketGoCB) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
+func (bucket *CouchbaseBucketGoCB) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
 	LogPanic("Unimplemented method: Write()")
 	return nil
 }
 
-func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -1016,7 +1016,7 @@ func (bucket CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas 
 }
 
 // CAS-safe write of a document and it's associated named xattr
-func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
@@ -1095,7 +1095,7 @@ func (bucket CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, e
 }
 
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
-func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
@@ -1153,7 +1153,7 @@ func (bucket CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uin
 }
 
 // Retrieve a document and it's associated named xattr
-func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv interface{}, xv interface{}) (cas uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv interface{}, xv interface{}) (cas uint64, err error) {
 
 	// Until we get a fix for https://issues.couchbase.com/browse/MB-23522, need to disable the singleOp handling because of the potential for a nested call to bucket.Get
 	/*
@@ -1240,7 +1240,7 @@ func (bucket CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv int
 // Expected errors:
 //    - Temporary server overloaded errors, in which case the caller should retry
 //    - If the doc is in the the NoDoc and NoXattr state, it will return a KeyNotFound error
-func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
+func (bucket *CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
 
 	// Delegate to internal method that can take a testing-related callback
 	return bucket.deleteWithXattrInternal(k, xattrKey, nil)
@@ -1251,7 +1251,7 @@ func (bucket CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) err
 // to simulate the doc having changed state (artifiically injected race condition)
 type deleteWithXattrRaceInjection func(bucket CouchbaseBucketGoCB, k string, xattrKey string)
 
-func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
+func (bucket *CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -1282,7 +1282,7 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 
 		// Invoke the testing related callback.  This is a no-op in non-test contexts.
 		if callback != nil {
-			callback(bucket, k, xattrKey)
+			callback(*bucket, k, xattrKey)
 		}
 
 		// KeyNotFound indicates there is no doc body.  Try to delete only the xattr.
@@ -1292,7 +1292,7 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 
 		// Invoke the testing related callback.  This is a no-op in non-test contexts.
 		if callback != nil {
-			callback(bucket, k, xattrKey)
+			callback(*bucket, k, xattrKey)
 		}
 
 		// KeyNotFound indicates there is no XATTR.  Try to delete only the body.
@@ -1307,7 +1307,7 @@ func (bucket CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey str
 
 }
 
-func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
+func (bucket *CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
 
 	//  Do get w/ xattr in order to get cas
 	var retrievedVal map[string]interface{}
@@ -1345,7 +1345,7 @@ func (bucket CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string, 
 
 }
 
-func (bucket CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
+func (bucket *CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
 
 	//  Do get in order to get cas
 	var retrievedVal map[string]interface{}
@@ -1373,7 +1373,7 @@ func (bucket CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, c
 
 }
 
-func (bucket CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
+func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
 
 	for {
 
@@ -1434,7 +1434,7 @@ func (bucket CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket
 
 }
 
-func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
+func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
 
 	for {
 		var value []byte
@@ -1509,7 +1509,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sgb
 
 // WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
 // failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
-func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	var value []byte
 	var xattrValue []byte
@@ -1584,7 +1584,7 @@ func (bucket CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string
 
 // Single attempt to update a document and xattr.  Setting isDelete=true and value=nil will delete the document body.  Both
 // update types (UpdateXattr, WriteCasWithXattr) include recoverable error retry.
-func (bucket CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
 	// If this is a tombstone, we want to delete the document and update the xattr
 	if isDelete {
 		return bucket.UpdateXattr(k, xattrKey, exp, cas, xattrValue, deleteBody)
@@ -1598,7 +1598,7 @@ func (bucket CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp 
 //
 // - If amt is 0 and the atomic counter for that key exists, this is treated as a GET operation that returns the current value.
 // - If amt is 0 but the key does not exist, then it will return 0
-func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
+func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 
 	// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first
 	// attempt a simple get, which gocb will transcode to uint64.  The call to Get includes its own
@@ -1645,7 +1645,7 @@ func (bucket CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (u
 
 }
 
-func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) error {
+func (bucket *CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) error {
 
 	bucketManager, err := bucket.getBucketManager()
 	if err != nil {
@@ -1690,7 +1690,7 @@ func (bucket CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) erro
 }
 
 // Get bucket manager.  Relies on existing auth settings for bucket.
-func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
+func (bucket *CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error) {
 
 	username, password := bucket.GetBucketCredentials()
 
@@ -1701,7 +1701,7 @@ func (bucket CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, error
 	return manager, nil
 }
 
-func (bucket CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
+func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
 
 	// Convert whatever we got in the value empty interface into a sgbucket.DesignDoc
 	var sgDesignDoc sgbucket.DesignDoc
@@ -1749,7 +1749,7 @@ type XattrEnabledDesignDoc struct {
 //      see https://issues.couchbase.com/browse/MB-24616
 // This design doc property isn't exposed via the SDK (it's an internal-only property), so we need to
 // jump through some hoops to created the design doc.  Follows same approach used internally by gocb.
-func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
+func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
 
 	xattrEnabledDesignDoc := XattrEnabledDesignDoc{
 		DesignDocument:         ddoc,
@@ -1804,13 +1804,13 @@ func (bucket CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument
 
 }
 
-func (bucket CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
+func (bucket *CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
 	return pkgerrors.Cause(err) == gocb.ErrKeyNotFound
 }
 
 // Check if this is a SubDocPathNotFound error
 // Pending question to see if there is an easier way: https://forums.couchbase.com/t/checking-for-errsubdocpathnotfound-errors/13492
-func (bucket CouchbaseBucketGoCB) IsSubDocPathNotFound(err error) bool {
+func (bucket *CouchbaseBucketGoCB) IsSubDocPathNotFound(err error) bool {
 
 	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
 	if ok {
@@ -1819,7 +1819,7 @@ func (bucket CouchbaseBucketGoCB) IsSubDocPathNotFound(err error) bool {
 	return false
 }
 
-func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
+func (bucket *CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
 
 	manager, err := bucket.getBucketManager()
 	if err != nil {
@@ -1830,7 +1830,7 @@ func (bucket CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
 
 }
 
-func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
+func (bucket *CouchbaseBucketGoCB) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 
 	// Block until there is an available concurrent view op, release on function exit
 	bucket.waitForAvailViewOp()
@@ -1907,7 +1907,7 @@ func (bucket CouchbaseBucketGoCB) View(ddoc, name string, params map[string]inte
 
 }
 
-func (bucket CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
+func (bucket *CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
 
 	bucket.waitForAvailViewOp()
 	defer bucket.releaseViewOp()
@@ -2012,7 +2012,7 @@ func getTotalRows(goCbViewResult gocb.ViewResults) int {
 
 // This is a "better-than-nothing" version of Refresh().
 // See https://forums.couchbase.com/t/equivalent-of-go-couchbase-bucket-refresh/12498/2
-func (bucket CouchbaseBucketGoCB) Refresh() error {
+func (bucket *CouchbaseBucketGoCB) Refresh() error {
 
 	// If it's possible to call GetCouchbaseBucketGoCB without error, consider it "refreshed" and return a nil error which will cause the reconnect
 	// loop to stop.  otherwise, return an error which will cause it to keep retrying
@@ -2027,7 +2027,7 @@ func (bucket CouchbaseBucketGoCB) Refresh() error {
 }
 
 // GoCB (and Server 5.0.0) don't support the TapFeed. For legacy support (bucket shadowing), start a DCP feed and stream over a single channel
-func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
+func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 
 	LogTo("DCP", "Using DCP to generate TAP-like stream")
 	// Create the feed channel that will be passed back to the caller
@@ -2050,11 +2050,11 @@ func (bucket CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sgb
 	return feed, err
 }
 
-func (bucket CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
 	return StartDCPFeed(bucket, bucket.spec, args, callback)
 }
 
-func (bucket CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
+func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
 	stats, seqErr := bucket.Stats("vbucket-seqno")
 	if seqErr != nil {
@@ -2065,16 +2065,16 @@ func (bucket CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqN
 
 }
 
-func (bucket CouchbaseBucketGoCB) Dump() {
+func (bucket *CouchbaseBucketGoCB) Dump() {
 	Warn("CouchbaseBucketGoCB: Unimplemented method: Dump()")
 }
 
-func (bucket CouchbaseBucketGoCB) VBHash(docID string) uint32 {
+func (bucket *CouchbaseBucketGoCB) VBHash(docID string) uint32 {
 	numVbuckets := bucket.Bucket.IoRouter().NumVbuckets()
 	return VBHash(docID, numVbuckets)
 }
 
-func (bucket CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
+func (bucket *CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 
 	if bucket.Bucket.IoRouter() != nil {
 		return uint16(bucket.Bucket.IoRouter().NumVbuckets()), nil
@@ -2082,7 +2082,7 @@ func (bucket CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 	return 0, fmt.Errorf("Unable to determine vbucket count")
 }
 
-func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+func (bucket *CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
 
 	if versionString == "" {
 		stats, err := bucket.Bucket.Stats("")
@@ -2101,18 +2101,18 @@ func (bucket CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor 
 
 }
 
-func (bucket CouchbaseBucketGoCB) UUID() (string, error) {
+func (bucket *CouchbaseBucketGoCB) UUID() (string, error) {
 	return bucket.Bucket.IoRouter().BucketUUID(), nil
 }
 
-func (bucket CouchbaseBucketGoCB) Close() {
+func (bucket *CouchbaseBucketGoCB) Close() {
 	if err := bucket.Bucket.Close(); err != nil {
 		Warn("Error closing GoCB bucket: %v.", err)
 		return
 	}
 }
 
-func (bucket CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
+func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
 
 	bucket.singleOps <- struct{}{}
 	gocbExpvars.Add("SingleOps", 1)
@@ -2143,7 +2143,7 @@ func (bucket CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint3
 
 }
 
-func (bucket CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaError error) {
+func (bucket *CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaError error) {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		expirySingleAttempt, err := bucket.getExpirySingleAttempt(k)
@@ -2174,7 +2174,7 @@ func (bucket CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaErr
 // expects binary documents to be wrapped in BinaryDocument (this supports writing JSON as raw bytes).
 // The default goCB transcoder doesn't require additional formatting (assumes all incoming []byte should
 // be stored as binary docs.)
-func (bucket CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{} {
+func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{} {
 	if bucket.spec.CouchbaseDriver == GoCBCustomSGTranscoder {
 		return BinaryDocument(input)
 	} else {
@@ -2334,12 +2334,12 @@ func asStale(value interface{}) gocb.StaleMode {
 }
 
 // This prevents Sync Gateway from having too many outstanding concurrent view queries against Couchbase Server
-func (bucket CouchbaseBucketGoCB) waitForAvailViewOp() {
+func (bucket *CouchbaseBucketGoCB) waitForAvailViewOp() {
 	bucket.viewOps <- struct{}{}
 	gocbExpvars.Add("ViewOps", 1)
 }
 
-func (bucket CouchbaseBucketGoCB) releaseViewOp() {
+func (bucket *CouchbaseBucketGoCB) releaseViewOp() {
 	<-bucket.viewOps
 	gocbExpvars.Add("ViewOps", -1)
 }

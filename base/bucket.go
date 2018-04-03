@@ -151,53 +151,53 @@ func (feed *couchbaseFeedImpl) WriteEvents() chan<- sgbucket.FeedEvent {
 	return feed.events
 }
 
-func (bucket CouchbaseBucket) GetName() string {
+func (bucket *CouchbaseBucket) GetName() string {
 	return bucket.Name
 }
 
-func (bucket CouchbaseBucket) Add(k string, exp uint32, v interface{}) (added bool, err error) {
+func (bucket *CouchbaseBucket) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	return bucket.Bucket.Add(k, int(exp), v)
 }
 
-func (bucket CouchbaseBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
+func (bucket *CouchbaseBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	return bucket.Bucket.Add(k, int(exp), v)
 }
 
-func (bucket CouchbaseBucket) Get(k string, v interface{}) (cas uint64, err error) {
+func (bucket *CouchbaseBucket) Get(k string, v interface{}) (cas uint64, err error) {
 	err = bucket.Bucket.Gets(k, v, &cas)
 	return cas, err
 }
 
-func (bucket CouchbaseBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
+func (bucket *CouchbaseBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 	v, _, cas, err = bucket.Bucket.GetsRaw(k)
 	return v, cas, err
 }
 
-func (bucket CouchbaseBucket) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
+func (bucket *CouchbaseBucket) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
 	return bucket.Bucket.GetAndTouchRaw(k, int(exp))
 }
 
-func (bucket CouchbaseBucket) Set(k string, exp uint32, v interface{}) error {
+func (bucket *CouchbaseBucket) Set(k string, exp uint32, v interface{}) error {
 	return bucket.Bucket.Set(k, int(exp), v)
 }
 
-func (bucket CouchbaseBucket) SetRaw(k string, exp uint32, v []byte) error {
+func (bucket *CouchbaseBucket) SetRaw(k string, exp uint32, v []byte) error {
 	return bucket.Bucket.SetRaw(k, int(exp), v)
 }
 
-func (bucket CouchbaseBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
+func (bucket *CouchbaseBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 	return bucket.Bucket.Incr(k, amt, def, int(exp))
 }
 
-func (bucket CouchbaseBucket) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) (err error) {
+func (bucket *CouchbaseBucket) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) (err error) {
 	return bucket.Bucket.Write(k, flags, int(exp), v, couchbase.WriteOptions(opt))
 }
 
-func (bucket CouchbaseBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
+func (bucket *CouchbaseBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
 	return bucket.Bucket.WriteCas(k, flags, int(exp), cas, v, couchbase.WriteOptions(opt))
 }
 
-func (bucket CouchbaseBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
+func (bucket *CouchbaseBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
 	cbCallback := func(current []byte) (updated []byte, err error) {
 		updated, _, err = callback(current)
 		return updated, err
@@ -205,31 +205,31 @@ func (bucket CouchbaseBucket) Update(k string, exp uint32, callback sgbucket.Upd
 	return bucket.Bucket.Update(k, int(exp), cbCallback)
 }
 
-func (bucket CouchbaseBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
+func (bucket *CouchbaseBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
 	Warn("CouchbaseBucket doesn't support cas-safe removal - handling as simple delete")
 	return 0, bucket.Bucket.Delete(k)
 
 }
-func (bucket CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+func (bucket *CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 	panic("SetBulk not implemented")
 }
 
-func (bucket CouchbaseBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+func (bucket *CouchbaseBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 	Warn("WriteCasWithXattr not implemented by CouchbaseBucket")
 	return 0, errors.New("WriteCasWithXattr not implemented by CouchbaseBucket")
 }
 
-func (bucket CouchbaseBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
+func (bucket *CouchbaseBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
 	Warn("GetWithXattr not implemented by CouchbaseBucket")
 	return 0, errors.New("GetWithXattr not implemented by CouchbaseBucket")
 }
 
-func (bucket CouchbaseBucket) DeleteWithXattr(k string, xattr string) error {
+func (bucket *CouchbaseBucket) DeleteWithXattr(k string, xattr string) error {
 	Warn("DeleteWithXattr not implemented by CouchbaseBucket")
 	return errors.New("DeleteWithXattr not implemented by CouchbaseBucket")
 }
 
-func (bucket CouchbaseBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
+func (bucket *CouchbaseBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
 	cbCallback := func(current []byte) (updated []byte, opt couchbase.WriteOptions, err error) {
 		updated, walrusOpt, _, err := callback(current)
 		opt = couchbase.WriteOptions(walrusOpt)
@@ -238,12 +238,12 @@ func (bucket CouchbaseBucket) WriteUpdate(k string, exp uint32, callback sgbucke
 	return bucket.Bucket.WriteUpdate(k, int(exp), cbCallback)
 }
 
-func (bucket CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (bucket *CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	Warn("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 	return 0, errors.New("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 }
 
-func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
+func (bucket *CouchbaseBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 
 	//Query view in retry loop backing off double the delay each time
 	worker := func() (shouldRetry bool, err error, value interface{}) {
@@ -273,7 +273,7 @@ func (bucket CouchbaseBucket) View(ddoc, name string, params map[string]interfac
 	return vres, err
 }
 
-func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
+func (bucket *CouchbaseBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 
 	cbArgs := memcached.TapArguments{
 		Backfill: args.Backfill,
@@ -304,13 +304,13 @@ func (bucket CouchbaseBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucke
 	return &tapFeed, nil
 }
 
-func (bucket CouchbaseBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+func (bucket *CouchbaseBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
 	return StartDCPFeed(bucket, bucket.spec, args, callback)
 }
 
 // Goes out to the bucket and gets the high sequence number for all vbuckets and returns
 // a map of UUIDS and a map of high sequence numbers (map from vbno -> seq)
-func (bucket CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
+func (bucket *CouchbaseBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
 	stats := bucket.Bucket.GetStats("vbucket-seqno")
 	if len(stats) == 0 {
@@ -361,7 +361,7 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 
 }
 
-func (bucket CouchbaseBucket) GetMaxVbno() (uint16, error) {
+func (bucket *CouchbaseBucket) GetMaxVbno() (uint16, error) {
 
 	var maxVbno uint16
 	vbsMap := bucket.Bucket.VBServerMap()
@@ -373,11 +373,11 @@ func (bucket CouchbaseBucket) GetMaxVbno() (uint16, error) {
 	return maxVbno, nil
 }
 
-func (bucket CouchbaseBucket) Dump() {
+func (bucket *CouchbaseBucket) Dump() {
 	Warn("Dump not implemented for couchbaseBucket")
 }
 
-func (bucket CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+func (bucket *CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
 
 	if versionString == "" {
 		stats := bucket.Bucket.GetStats("")
@@ -431,7 +431,7 @@ func (bucket *CouchbaseBucket) ErrorIfPostCBServerMajorVersion(lastMajorVersionA
 	return nil
 }
 
-func (bucket CouchbaseBucket) UUID() (string, error) {
+func (bucket *CouchbaseBucket) UUID() (string, error) {
 	return bucket.Bucket.UUID, nil
 }
 
@@ -622,7 +622,7 @@ func IsKeyNotFoundError(bucket Bucket, err error) bool {
 	}
 
 	switch bucket.(type) {
-	case CouchbaseBucket:
+	case *CouchbaseBucket:
 		if strings.Contains(unwrappedErr.Error(), "Not found") {
 			return true
 		}
