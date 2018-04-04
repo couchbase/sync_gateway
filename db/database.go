@@ -82,21 +82,22 @@ type DatabaseContext struct {
 }
 
 type DatabaseContextOptions struct {
-	CacheOptions          *CacheOptions
-	IndexOptions          *ChannelIndexOptions
-	SequenceHashOptions   *SequenceHashOptions
-	RevisionCacheCapacity uint32
-	OldRevExpirySeconds   uint32
-	AdminInterface        *string
-	UnsupportedOptions    UnsupportedOptions
-	TrackDocs             bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
-	OIDCOptions           *auth.OIDCOptions
-	DBOnlineCallback      DBOnlineCallback // Callback function to take the DB back online
-	ImportOptions         ImportOptions
-	EnableXattr           bool   // Use xattr for _sync
-	LocalDocExpirySecs    uint32 // The _local doc expiry time in seconds
-	SessionCookieName     string // Pass-through DbConfig.SessionCookieName
-	AllowConflicts        *bool  // False forbids creating conflicts
+	CacheOptions               *CacheOptions
+	IndexOptions               *ChannelIndexOptions
+	SequenceHashOptions        *SequenceHashOptions
+	RevisionCacheCapacity      uint32
+	OldRevExpirySeconds        uint32
+	AdminInterface             *string
+	UnsupportedOptions         UnsupportedOptions
+	TrackDocs                  bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
+	OIDCOptions                *auth.OIDCOptions
+	DBOnlineCallback           DBOnlineCallback // Callback function to take the DB back online
+	ImportOptions              ImportOptions
+	EnableXattr                bool   // Use xattr for _sync
+	LocalDocExpirySecs         uint32 // The _local doc expiry time in seconds
+	SessionCookieName          string // Pass-through DbConfig.SessionCookieName
+	AllowConflicts             *bool  // False forbids creating conflicts
+	SendWWWAuthenticateHeader  *bool  // False disables setting of 'WWW-Authenticate' header
 }
 
 type OidcTestProviderOptions struct {

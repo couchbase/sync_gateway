@@ -548,21 +548,22 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	contextOptions := db.DatabaseContextOptions{
-		CacheOptions:          &cacheOptions,
-		IndexOptions:          channelIndexOptions,
-		SequenceHashOptions:   sequenceHashOptions,
-		RevisionCacheCapacity: revCacheSize,
-		OldRevExpirySeconds:   oldRevExpirySeconds,
-		LocalDocExpirySecs:    localDocExpirySecs,
-		AdminInterface:        sc.config.AdminInterface,
-		UnsupportedOptions:    config.Unsupported,
-		TrackDocs:             trackDocs,
-		OIDCOptions:           config.OIDCConfig,
-		DBOnlineCallback:      dbOnlineCallback,
-		ImportOptions:         importOptions,
-		EnableXattr:           config.UseXattrs(),
-		SessionCookieName:     config.SessionCookieName,
-		AllowConflicts:        config.ConflictsAllowed(),
+		CacheOptions:              &cacheOptions,
+		IndexOptions:              channelIndexOptions,
+		SequenceHashOptions:       sequenceHashOptions,
+		RevisionCacheCapacity:     revCacheSize,
+		OldRevExpirySeconds:       oldRevExpirySeconds,
+		LocalDocExpirySecs:        localDocExpirySecs,
+		AdminInterface:            sc.config.AdminInterface,
+		UnsupportedOptions:        config.Unsupported,
+		TrackDocs:                 trackDocs,
+		OIDCOptions:               config.OIDCConfig,
+		DBOnlineCallback:          dbOnlineCallback,
+		ImportOptions:             importOptions,
+		EnableXattr:               config.UseXattrs(),
+		SessionCookieName:         config.SessionCookieName,
+		AllowConflicts:            config.ConflictsAllowed(),
+		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 	}
 
 	// Create the DB Context
