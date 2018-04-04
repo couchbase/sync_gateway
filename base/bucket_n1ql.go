@@ -9,6 +9,10 @@ import (
 
 const BucketQueryToken = "$_bucket" // Token used for bucket name replacement in query statements
 
+type IndexMetadata struct {
+	State string // Index state (e.g. 'online')
+}
+
 // Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
 // Params specified using the $param notation in the statement are intended to be used w/ N1QL prepared statements, and will be
 // passed through as params to n1ql.  e.g.:
@@ -24,6 +28,8 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 	n1qlQuery := gocb.NewN1qlQuery(bucketStatement)
 	n1qlQuery = n1qlQuery.AdHoc(adhoc)
 	n1qlQuery = n1qlQuery.Consistency(consistency)
+
+	LogTo("Index+", "Attempting to query index using statement: [%s]", bucketStatement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, params)
 
 	if isGoCBTimeoutError(err) {
@@ -42,6 +48,7 @@ func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression stri
 		createStatement = fmt.Sprintf("%s with {num_replica:%d}", createStatement, numReplica)
 	}
 
+	LogTo("Index+", "Attempting to create index using statement: [%s]", createStatement)
 	n1qlQuery := gocb.NewN1qlQuery(createStatement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
 	if err != nil {
@@ -54,6 +61,26 @@ func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression stri
 	}
 
 	return nil
+}
+
+func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, meta *IndexMetadata, err error) {
+	statement := fmt.Sprintf("SELECT state from system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, bucket.GetName())
+	n1qlQuery := gocb.NewN1qlQuery(statement)
+	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	if err != nil {
+		return false, nil, err
+	}
+
+	indexMeta := &IndexMetadata{}
+	err = results.One(indexMeta)
+	if err != nil {
+		if err == gocb.ErrNoResults {
+			return false, nil, nil
+		} else {
+			return true, nil, err
+		}
+	}
+	return true, indexMeta, nil
 }
 
 // CreateIndex drops the specified index from the current bucket.
@@ -71,6 +98,13 @@ func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
 		return closeErr
 	}
 	return err
+}
+
+// Index not found errors (returned by DropIndex) don't have a specific N1QL error code - they are of the form:
+//   [5000] GSI index testIndex_not_found not found.
+// Stuck with doing a string compare to differentiate between 'not found' and other errors
+func IsIndexNotFoundError(err error) bool {
+	return strings.Contains(err.Error(), "not found")
 }
 
 func QueryCloseErrors(closeError error) []error {

@@ -162,15 +162,12 @@ func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bu
 
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
 	err, ibucket := base.RetryLoop(description, worker, sleeper)
-
 	if err != nil {
-		err = base.HTTPErrorf(http.StatusBadGateway,
+		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			" Unable to connect to Couchbase Server (connection refused). Please ensure it is running and reachable at the configured host and port.  Detailed error: %s", err)
-	} else {
-		bucket, _ := ibucket.(base.Bucket)
-		err = initializeViews(bucket)
 	}
-	return
+
+	return ibucket.(base.Bucket), nil
 }
 
 // Function type for something that calls NewDatabaseContext and wants a callback when the DB is detected
@@ -471,6 +468,11 @@ func (context *DatabaseContext) FlushChannelCache() {
 // Removes previous versions of Sync Gateway's design docs found on the server
 func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
 	return removeObsoleteDesignDocs(context.Bucket, previewOnly)
+}
+
+// Removes previous versions of Sync Gateway's design docs found on the server
+func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removedIndexes []string, err error) {
+	return removeObsoleteIndexes(context.Bucket, previewOnly, context.UseXattrs())
 }
 
 // Trigger terminate check handling for connected continuous replications.
