@@ -632,8 +632,6 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 	switch baseBucket := baseBucket.(type) {
 	case *CouchbaseBucketGoCB:
 		return *baseBucket, nil
-	case CouchbaseBucketGoCB:
-		return baseBucket, nil
 	default:
 		return CouchbaseBucketGoCB{}, fmt.Errorf("baseBucket %v was not a CouchbaseBucketGoCB.  Was type: %T", baseBucket, baseBucket)
 	}
@@ -650,11 +648,6 @@ func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []strin
 
 	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints.  Note that incoming bucket may be CouchbaseBucketGoCB or *CouchbaseBucketGoCB.
 	switch typedBucket := bucket.(type) {
-	case CouchbaseBucketGoCB:
-		if typedBucket.IoRouter() != nil {
-			mgmtEps := typedBucket.IoRouter().MgmtEps()
-			return mgmtEps, nil
-		}
 	case *CouchbaseBucketGoCB:
 		if typedBucket.IoRouter() != nil {
 			mgmtEps := typedBucket.IoRouter().MgmtEps()
