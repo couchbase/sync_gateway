@@ -42,7 +42,7 @@ func TestN1qlQuery(t *testing.T) {
 	// Check index state
 	exists, state, stateErr := bucket.GetIndexMeta("testIndex_value")
 	assertNoError(t, stateErr, "Error validating index state")
-	assert.Equals(t, state, "online")
+	assert.Equals(t, state.State, "online")
 	assert.Equals(t, exists, true)
 
 	// Defer index teardown
