@@ -88,7 +88,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 	default:
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
-		base.LogTo("Feed", "Using DCP feed for bucket: %q (based on feed_type specified in config file)", bucket.GetName())
+		base.LogToR("Feed", "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.UD(bucket.GetName()))
 		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent)
 	}
 }
@@ -129,7 +129,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 // Stops a changeListener. Any pending Wait() calls will immediately return false.
 func (listener *changeListener) Stop() {
 
-	base.LogTo("Changes+", "changeListener.Stop() called")
+	base.LogToR("Changes+", "changeListener.Stop() called")
 
 	if listener.terminator != nil {
 		close(listener.terminator)
@@ -161,8 +161,8 @@ func (listener *changeListener) Notify(keys base.Set) {
 	for key := range keys {
 		listener.keyCounts[key] = listener.counter
 	}
-	base.LogTo("Changes+", "Notifying that %q changed (keys=%q) count=%d",
-		listener.bucketName, keys, listener.counter)
+	base.LogToR("Changes+", "Notifying that %q changed (keys=%q) count=%d",
+		base.UD(listener.bucketName), base.UD(keys), listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -182,7 +182,7 @@ func (listener *changeListener) NotifyCheckForTermination(keys base.Set) {
 		listener.terminateCheckCounter = 0
 	}
 
-	base.LogTo("Changes+", "Notifying to check for _changes feed termination")
+	base.LogToR("Changes+", "Notifying to check for _changes feed termination")
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -191,7 +191,7 @@ func (listener *changeListener) notifyStopping() {
 	listener.tapNotifier.L.Lock()
 	listener.counter = 0
 	listener.keyCounts = map[string]uint64{}
-	base.LogTo("Changes+", "Notifying that changeListener is stopping")
+	base.LogToR("Changes+", "Notifying that changeListener is stopping")
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -200,8 +200,8 @@ func (listener *changeListener) notifyStopping() {
 func (listener *changeListener) Wait(keys []string, counter uint64, terminateCheckCounter uint64) (uint64, uint64) {
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
-	base.LogTo("Changes+", "No new changes to send to change listener.  Waiting for %q's count to pass %d",
-		listener.bucketName, counter)
+	base.LogToR("Changes+", "No new changes to send to change listener.  Waiting for %q's count to pass %d",
+		base.UD(listener.bucketName), counter)
 
 	for {
 		curCounter := listener._currentCount(keys)

@@ -161,9 +161,12 @@ func TestXattrSGTombstone(t *testing.T) {
 }
 
 // Test cas failure during WriteUpdate, triggering import of SDK write.
-// Disabled, as test depends on artificial latency in PutDoc to reliably hit the CAS failure on the SG write.  Scenario fully covered
-// by functional test.
-func DisableTestXattrImportOnCasFailure(t *testing.T) {
+func TestXattrImportOnCasFailure(t *testing.T) {
+
+	// TODO: Disabled, as test depends on artificial latency in PutDoc to
+	// reliably hit the CAS failure on the SG write.
+	// Scenario fully covered by functional test.
+	t.Skip("WARNING: TEST DISABLED")
 
 	SkipImportTestsIfNotEnabled(t)
 

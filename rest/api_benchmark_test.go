@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/goutils/logging"
@@ -92,6 +93,72 @@ func BenchmarkReadOps_Get(b *testing.B) {
 					getResponse = rt.SendAdminRequest("GET", bm.URI, "")
 				} else {
 					getResponse = rt.Send(requestByUser("GET", bm.URI, "", bm.asUser))
+				}
+				b.StopTimer()
+				if getResponse.Code != 200 {
+					log.Printf("Unexpected response: %s", getResponse)
+				}
+				b.StartTimer()
+			}
+		})
+	}
+}
+
+// Benchmark 100% rev cache miss scenario
+func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
+
+	initBenchmarkLogging()
+	var rt RestTester
+	defer PurgeDoc(rt, "doc1k")
+
+	// Get database handle
+	rtDatabase := rt.GetDatabase()
+	revCacheSize := rtDatabase.Options.RevisionCacheCapacity
+
+	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
+	numDocs := int(revCacheSize + 1)
+	var revid string
+	for i := 0; i < numDocs; i++ {
+		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/doc1k_%d", i), doc1k_putDoc)
+		// revid will be the same for all docs
+		if i == 0 {
+			var body db.Body
+			json.Unmarshal(response.Body.Bytes(), &body)
+			revid = body["rev"].(string)
+		}
+	}
+
+	// Create user
+	username := "user1"
+	rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
+
+	getBenchmarks := []struct {
+		name   string
+		URI    string
+		asUser string
+	}{
+		{"Admin_Simple", "/db/doc1k", ""},
+		{"Admin_WithRev", fmt.Sprintf("/db/doc1k?rev=%s", revid), ""},
+		{"Admin_OpenRevsAll", fmt.Sprintf("/db/doc1k?open_revs=all&rev=%s", revid), ""},
+		{"User_Simple", "/db/doc1k", username},
+		{"User_WithRev", fmt.Sprintf("/db/doc1k?rev=%s", revid), username},
+		{"User_OpenRevsAll", fmt.Sprintf("/db/doc1k?open_revs=all&rev=%s", revid), username},
+	}
+
+	for _, bm := range getBenchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			var getResponse *TestResponse
+			rtDatabase.FlushRevisionCache()
+			for i := 0; i < b.N; i++ {
+				// update key in URI
+				docNum := i % numDocs
+				newDocID := fmt.Sprintf("doc1k_%d", docNum)
+				docURI := strings.Replace(bm.URI, "doc1k", newDocID, 1)
+
+				if bm.asUser == "" {
+					getResponse = rt.SendAdminRequest("GET", docURI, "")
+				} else {
+					getResponse = rt.Send(requestByUser("GET", docURI, "", bm.asUser))
 				}
 				b.StopTimer()
 				if getResponse.Code != 200 {

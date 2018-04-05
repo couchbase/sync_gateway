@@ -12,6 +12,7 @@ package db
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
@@ -25,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
-	"crypto/md5"
 )
 
 // Attachments shorter than this will be left in the JSON as base64 rather than being a separate
@@ -50,7 +50,7 @@ type DocAttachment struct {
 	Length      int    `json:"length,omitempty"`
 	Revpos      int    `json:"revpos,omitempty"`
 	Stub        bool   `json:"stub,omitempty"`
-	Data        []byte `json:-` // tell json marshal/unmarshal to ignore this field
+	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
 }
 
 // Given a CouchDB document body about to be stored in the database, goes through the _attachments
@@ -195,7 +195,7 @@ func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 	key := AttachmentKey(Sha1DigestKey(attachment))
 	_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
 	if err == nil {
-		base.LogTo("Attach", "\tAdded attachment %q", key)
+		base.LogToR("Attach", "\tAdded attachment %q", base.UD(key))
 	}
 	return key, err
 }
@@ -204,7 +204,7 @@ func (db *Database) setAttachments(attachments AttachmentData) error {
 	for key, data := range attachments {
 		_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, data)
 		if err == nil {
-			base.LogTo("Attach", "\tAdded attachment %q", key)
+			base.LogToR("Attach", "\tAdded attachment %q", base.UD(key))
 		} else {
 			return err
 		}
@@ -235,7 +235,7 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 
 	decoder := json.NewDecoder(input)
 	if err := decoder.Decode(into); err != nil {
-		base.Warn("Couldn't parse JSON in HTTP request: %v", err)
+		base.WarnR("Couldn't parse JSON in HTTP request: %v", err)
 		return base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
 	}
 	return nil
@@ -288,7 +288,7 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 			info.contentType, _ = meta["content_type"].(string)
 			info.data, err = decodeAttachment(meta["data"])
 			if info.data == nil {
-				base.Warn("Couldn't decode attachment %q of doc %q: %v", name, body["_id"], err)
+				base.WarnR("Couldn't decode attachment %q of doc %q: %v", base.UD(name), base.UD(body["_id"]), err)
 				meta["stub"] = true
 				delete(meta, "data")
 			} else if len(info.data) > kMaxInlineAttachmentSize {

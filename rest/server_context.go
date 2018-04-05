@@ -115,7 +115,7 @@ func (sc *ServerContext) startReplicators() {
 
 		// Run single replication, cancel parameter will always be false
 		if _, err := sc.replicator.Replicate(params, false); err != nil {
-			base.Warn("Error starting replication: %v", err)
+			base.WarnR("Error starting replication %v: %v", base.UD(params.ReplicationId), err)
 		}
 
 	}
@@ -168,7 +168,7 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 	} else {
 		// Let's ask the config server if it knows this database:
-		base.Logf("Asking config server %q about db %q...", *sc.config.ConfigServer, name)
+		base.LogfR("Asking config server %q about db %q...", base.UD(*sc.config.ConfigServer), base.UD(name))
 		config, err := sc.getDbConfigFromServer(name)
 		if err != nil {
 			return nil, err
@@ -243,7 +243,8 @@ func (sc *ServerContext) HasIndexWriters() bool {
 type PostUpgradeResult map[string]PostUpgradeDatabaseResult
 
 type PostUpgradeDatabaseResult struct {
-	RemovedDDocs []string `json:"removed_design_docs"`
+	RemovedDDocs   []string `json:"removed_design_docs"`
+	RemovedIndexes []string `json:"removed_indexes"`
 }
 
 // PostUpgrade performs post-upgrade processing for each database
@@ -259,8 +260,16 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 		if err != nil {
 			return nil, err
 		}
+
+		// Index cleanup
+		removedIndexes, err := database.RemoveObsoleteIndexes(preview)
+		if err != nil {
+			return nil, err
+		}
+
 		postUpgradeResults[name] = PostUpgradeDatabaseResult{
-			RemovedDDocs: removedDDocs,
+			RemovedDDocs:   removedDDocs,
+			RemovedIndexes: removedIndexes,
 		}
 	}
 	return postUpgradeResults, nil
@@ -340,8 +349,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
-	base.Logf("Opening db /%s as bucket %q, pool %q, server <%s>",
-		dbName, bucketName, pool, server)
+	base.LogfR("Opening db /%s as bucket %q, pool %q, server <%s>",
+		base.UD(dbName), base.UD(bucketName), base.SD(pool), base.SD(server))
 
 	if err := db.ValidateDatabaseName(dbName); err != nil {
 		return nil, err
@@ -411,12 +420,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
 
-		msg := fmt.Sprintf("%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline", bucket, err)
-		base.Warn(msg)
+		msgFormatStr := "%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline"
+		base.WarnR(msgFormatStr, base.UD(bucket), err)
 
 		if dc := sc.databases_[dbName]; dc != nil {
 
-			err := dc.TakeDbOffline(msg)
+			err := dc.TakeDbOffline(fmt.Sprintf(msgFormatStr, bucket, err))
 			if err == nil {
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
@@ -440,7 +449,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				err, _ := base.RetryLoop(description, worker, sleeper)
 
 				if err == nil {
-					base.LogTo("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", dc.Name)
+					base.LogToR("CRUD", "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(dc.Name))
 
 					// The 10 second wait was introduced because the bucket was not fully initialised
 					// after the return of the retry loop.
@@ -455,6 +464,29 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	if err != nil {
 		return nil, err
+	}
+
+	// TODO: disable based on config.UseViews once all view functionality has been replaced
+	viewErr := db.InitializeViews(bucket)
+	if viewErr != nil {
+		return nil, viewErr
+	}
+
+	// Initialize GSI indexes
+	if !config.UseViews {
+		numReplicas := DefaultNumIndexReplicas
+		numHousekeepingReplicas := DefaultNumIndexReplicas
+		if config.NumIndexReplicas != nil {
+			numReplicas = *config.NumIndexReplicas
+		}
+		if config.NumIndexReplicasHousekeeping != nil {
+			numHousekeepingReplicas = *config.NumIndexReplicasHousekeeping
+		}
+
+		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas, numHousekeepingReplicas)
+		if indexErr != nil {
+			return nil, indexErr
+		}
 	}
 
 	// Channel index definition, if present
@@ -548,21 +580,22 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	contextOptions := db.DatabaseContextOptions{
-		CacheOptions:          &cacheOptions,
-		IndexOptions:          channelIndexOptions,
-		SequenceHashOptions:   sequenceHashOptions,
-		RevisionCacheCapacity: revCacheSize,
-		OldRevExpirySeconds:   oldRevExpirySeconds,
-		LocalDocExpirySecs:    localDocExpirySecs,
-		AdminInterface:        sc.config.AdminInterface,
-		UnsupportedOptions:    config.Unsupported,
-		TrackDocs:             trackDocs,
-		OIDCOptions:           config.OIDCConfig,
-		DBOnlineCallback:      dbOnlineCallback,
-		ImportOptions:         importOptions,
-		EnableXattr:           config.UseXattrs(),
-		SessionCookieName:     config.SessionCookieName,
-		AllowConflicts:        config.ConflictsAllowed(),
+		CacheOptions:              &cacheOptions,
+		IndexOptions:              channelIndexOptions,
+		SequenceHashOptions:       sequenceHashOptions,
+		RevisionCacheCapacity:     revCacheSize,
+		OldRevExpirySeconds:       oldRevExpirySeconds,
+		LocalDocExpirySecs:        localDocExpirySecs,
+		AdminInterface:            sc.config.AdminInterface,
+		UnsupportedOptions:        config.Unsupported,
+		TrackDocs:                 trackDocs,
+		OIDCOptions:               config.OIDCConfig,
+		DBOnlineCallback:          dbOnlineCallback,
+		ImportOptions:             importOptions,
+		EnableXattr:               config.UseXattrs(),
+		SessionCookieName:         config.SessionCookieName,
+		AllowConflicts:            config.ConflictsAllowed(),
+		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 	}
 
 	// Create the DB Context
@@ -596,7 +629,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			}
 
 			if dbcontext.RevsLimit < 100 {
-				base.Warn("Setting the revs_limit (%v) to less than 100 may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
+				base.WarnR("Setting the revs_limit (%v) to less than 100 may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
 			}
 		} else {
 			if dbcontext.RevsLimit <= 0 {
@@ -608,7 +641,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
 
 	if dbcontext.ChannelMapper == nil {
-		base.Logf("Using default sync function 'channel(doc.channels)' for database %q", dbName)
+		base.LogfR("Using default sync function 'channel(doc.channels)' for database %q", base.UD(dbName))
 	}
 
 	// Create default users & roles:
@@ -624,8 +657,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// Install bucket-shadower if any:
 	if shadow := config.Shadow; shadow != nil {
 		if err := sc.startShadowing(dbcontext, shadow); err != nil {
-			base.Warn("Database %q: unable to connect to external bucket for shadowing: %v",
-				dbName, err)
+			base.WarnR("Database %q: unable to connect to external bucket for shadowing: %v",
+				base.UD(dbName), err)
 		}
 	}
 
@@ -677,7 +710,7 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 		atomic.StoreUint32(&reloadedDb.State, db.DBOnline)
 
 	} else {
-		base.LogTo("CRUD", "Unable to take Database : %v online , database must be in Offline state", database.Name)
+		base.LogToR("CRUD", "Unable to take Database : %v online , database must be in Offline state", base.UD(database.Name))
 	}
 
 }
@@ -770,7 +803,7 @@ func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn
 		return err
 	}
 	// Sync function has changed:
-	base.Logf("**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", dbcontext.Name)
+	base.LogfR("**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.UD(dbcontext.Name))
 	return nil
 }
 
@@ -783,7 +816,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 		var err error
 		pattern, err = regexp.Compile(*shadow.Doc_id_regex)
 		if err != nil {
-			base.Warn("Invalid shadow doc_id_regex: %s", *shadow.Doc_id_regex)
+			base.WarnR("Invalid shadow doc_id_regex: %s", base.UD(*shadow.Doc_id_regex))
 			return err
 		}
 	}
@@ -821,7 +854,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 	//Remove credentials from server URL before logging
 	url, err := couchbase.ParseURL(spec.Server)
 	if err == nil {
-		base.Logf("Database %q shadowing remote bucket %q, pool %q, server <%s:%s/%s>", dbcontext.Name, spec.BucketName, spec.PoolName, url.Scheme, url.Host, url.Path)
+		base.LogfR("Database %q shadowing remote bucket %q, pool %q, server <%s:%s/%s>", base.UD(dbcontext.Name), base.UD(spec.BucketName), spec.PoolName, url.Scheme, base.SD(url.Host), url.Path)
 	}
 	return nil
 }
@@ -839,7 +872,7 @@ func (sc *ServerContext) _removeDatabase(dbName string) bool {
 	if context == nil {
 		return false
 	}
-	base.Logf("Closing db /%s (bucket %q)", context.Name, context.Bucket.GetName())
+	base.LogfR("Closing db /%s (bucket %q)", base.UD(context.Name), base.UD(context.Bucket.GetName()))
 	context.Close()
 	delete(sc.databases_, dbName)
 	return true
@@ -890,7 +923,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 		if isGuest {
 			base.Log("    Reset guest user to config")
 		} else if createdPrincipal {
-			base.Logf("    Created %s %q", what, name)
+			base.LogfR("    Created %s %q", base.UD(what), base.UD(name))
 		}
 
 	}
@@ -952,8 +985,8 @@ func (sc *ServerContext) startStatsReporter() {
 			sc.reportStats()
 		}
 	}()
-	base.Logf("Will report server stats for %q every %v",
-		*sc.config.DeploymentID, interval)
+	base.LogfR("Will report server stats for %q every %v",
+		base.UD(*sc.config.DeploymentID), interval)
 }
 
 func (sc *ServerContext) stopStatsReporter() {
@@ -972,7 +1005,7 @@ func (sc *ServerContext) reportStats() {
 	if stats == nil {
 		return // No activity
 	}
-	base.Logf("Reporting server stats to %s ...", kStatsReportURL)
+	base.LogfR("Reporting server stats to %s ...", base.SD(kStatsReportURL))
 	body, _ := json.Marshal(stats)
 	bodyReader := bytes.NewReader(body)
 	_, err := sc.HTTPClient.Post(kStatsReportURL, "application/json", bodyReader)
@@ -1012,68 +1045,4 @@ func (sc *ServerContext) Database(name string) *db.DatabaseContext {
 		panic(fmt.Sprintf("Unexpected error getting db %q: %v", name, err))
 	}
 	return db
-}
-
-///////// ACCESS WARNINGS
-
-// If no users defined (config or bucket), issue a warning + give tips to fix
-// If guest user defined, but has no access to channels .. issue warning + tips to fix
-func emitAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext) {
-	for _, warning := range collectAccessRelatedWarnings(config, context) {
-		base.Warn("%v", warning)
-	}
-
-}
-
-func collectAccessRelatedWarnings(config *DbConfig, context *db.DatabaseContext) []string {
-
-	currentDb, err := db.GetDatabase(context, nil)
-	if err != nil {
-		base.Warn("Could not get database, skipping access related warnings")
-	}
-
-	numUsersInDb := 0
-	// If no users defined in config, and no users were returned from the view, add warning.
-	// NOTE: currently ignoring the fact that the config could contain only disabled=true users.
-	if len(config.Users) == 0 {
-
-		// There are no users in the config, but there might be users in the db.  Find out
-		// by querying the "view principals" view which will return users and roles.  We only want to
-		// find out if there is at least one user (or role) defined, so set stale=ok and limit == 1 to minimize
-		// performance hit of query.
-		viewOptions := db.Body{
-			"limit": 1,
-		}
-		vres, err := currentDb.Bucket.View(db.DesignDocSyncGateway(), db.ViewPrincipals, viewOptions)
-		if err != nil {
-			base.Warn("Error trying to query ViewPrincipals: %v", err)
-			return []string{}
-		}
-
-		numUsersInDb = len(vres.Rows)
-
-		if len(vres.Rows) == 0 {
-			noUsersWarning := fmt.Sprintf("No users have been defined in the '%v' database, which means that you will not be able to get useful data out of the sync gateway over the standard port.  FIX: define users in the configuration json or via the REST API on the admin port, and grant users to channels via the admin_channels parameter.", currentDb.Name)
-
-			return []string{noUsersWarning}
-
-		}
-
-	}
-
-	// If the GUEST user is the *only* user defined, but it is disabled or has no access to channels, add warning
-	guestUser, ok := config.Users[base.GuestUsername]
-	if ok == true {
-		// Do we have any other users?  If so, we're done.
-		if len(config.Users) > 1 || numUsersInDb > 1 {
-			return []string{}
-		}
-		if guestUser.Disabled == true || len(guestUser.ExplicitChannels) == 0 {
-			noGuestChannelsWarning := fmt.Sprintf("The GUEST user is the only user defined in the '%v' database, but is either disabled or has no access to any channels.  This means that you will not be able to get useful data out of the sync gateway over the standard port.  FIX: enable and/or grant access to the GUEST user to channels via the admin_channels parameter.", currentDb.Name)
-			return []string{noGuestChannelsWarning}
-		}
-	}
-
-	return []string{}
-
 }

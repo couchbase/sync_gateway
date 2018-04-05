@@ -100,7 +100,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		// Load doc body + metadata
 		doc, err := db.GetDocument(entry.ID, DocUnmarshalAll)
 		if err != nil {
-			base.Warn("Changes feed: error getting doc %q: %v", entry.ID, err)
+			base.WarnR("Changes feed: error getting doc %q: %v", base.UD(entry.ID), err)
 			return
 		}
 		db.AddDocInstanceToChangeEntry(entry, doc, options)
@@ -111,7 +111,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		var err error
 		doc.syncData, err = db.GetDocSyncData(entry.ID)
 		if err != nil {
-			base.Warn("Changes feed: error getting doc sync data %q: %v", entry.ID, err)
+			base.WarnR("Changes feed: error getting doc sync data %q: %v", base.UD(entry.ID), err)
 			return
 		}
 		db.AddDocInstanceToChangeEntry(entry, doc, options)
@@ -121,7 +121,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		revID := entry.Changes[0]["rev"]
 		err := db.AddDocToChangeEntryUsingRevCache(entry, revID)
 		if err != nil {
-			base.Warn("Changes feed: error getting revision body for %q (%s): %v", entry.ID, revID, err)
+			base.WarnR("Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)
 		}
 	}
 
@@ -153,13 +153,13 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 	}
 	if options.IncludeDocs {
 		if doc.Body() == nil {
-			base.Warn("AddDocInstanceToChangeEntry called with options.IncludeDocs, but doc is missing Body")
+			base.WarnR("AddDocInstanceToChangeEntry called with options.IncludeDocs, but doc is missing Body")
 			return
 		}
 		var err error
 		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
 		if err != nil {
-			base.Warn("Changes feed: error getting doc %q/%q: %v", doc.ID, revID, err)
+			base.WarnR("Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
 		}
 	}
 }
@@ -169,7 +169,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 func (db *Database) changesFeed(channel string, options ChangesOptions, to string) (<-chan *ChangeEntry, error) {
 	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChanges(channel, options)
-	base.LogTo("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), channel)
+	base.LogToR("Changes+", "[changesFeed] Found %d changes for channel %s", len(log), base.UD(channel))
 	if err != nil {
 		return nil, err
 	}
@@ -204,10 +204,10 @@ func (db *Database) changesFeed(channel string, options ChangesOptions, to strin
 
 			change := makeChangeEntry(logEntry, seqID, channel)
 
-			base.LogTo("Changes+", "Channel feed processing seq:%v in channel %s %s", seqID, channel, to)
+			base.LogToR("Changes+", "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(channel), base.UD(to))
 			select {
 			case <-options.Terminator:
-				base.LogTo("Changes+", "Terminating channel feed %s", to)
+				base.LogToR("Changes+", "Terminating channel feed %s", base.UD(to))
 				return
 			case feed <- &change:
 			}
@@ -273,13 +273,13 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	}
 
 	if (options.Continuous || options.Wait) && options.Terminator == nil {
-		base.Warn("MultiChangesFeed: Terminator missing for Continuous/Wait mode")
+		base.WarnR("MultiChangesFeed: Terminator missing for Continuous/Wait mode")
 	}
 	if db.SequenceType == IntSequenceType {
-		base.LogTo("Changes+", "Int sequence multi changes feed...")
+		base.LogToR("Changes+", "Int sequence multi changes feed...")
 		return db.SimpleMultiChangesFeed(chans, options)
 	} else {
-		base.LogTo("Changes+", "Vector multi changes feed...")
+		base.LogToR("Changes+", "Vector multi changes feed...")
 		return db.VectorMultiChangesFeed(chans, options)
 	}
 }
@@ -289,7 +289,7 @@ func (db *Database) startChangeWaiter(chans base.Set) *changeWaiter {
 	if db.user != nil {
 		waitChans = db.user.ExpandWildCardChannel(chans)
 	}
-	return db.tapListener.NewWaiterWithChannels(waitChans, db.user)
+	return db.mutationListener.NewWaiterWithChannels(waitChans, db.user)
 }
 
 func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, options ChangesOptions) ([]<-chan *ChangeEntry, []string) {
@@ -322,19 +322,19 @@ func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ch
 	if newCount > userChangeCount || !isContinuous {
 		var previousChannels channels.TimedSet
 		var newChannels base.Set
-		base.LogTo("Changes+", "MultiChangesFeed reloading user %+v", db.user)
+		base.LogToR("Changes+", "MultiChangesFeed reloading user %+v", base.UD(db.user))
 		userChangeCount = newCount
 
 		if db.user != nil {
 			previousChannels = db.user.InheritedChannels()
 			if err := db.ReloadUser(); err != nil {
-				base.Warn("Error reloading user %q: %v", db.user.Name(), err)
+				base.WarnR("Error reloading user %q: %v", base.UD(db.user.Name()), err)
 				return false, 0, nil, err
 			}
 			// check whether channels have changed
 			newChannels = db.user.GetAddedChannels(previousChannels)
 			if len(newChannels) > 0 {
-				base.LogTo("Changes+", "New channels found after user reload: %v", newChannels)
+				base.LogToR("Changes+", "New channels found after user reload: %v", base.UD(newChannels))
 			}
 		}
 		return true, newCount, newChannels, nil
@@ -349,7 +349,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
 	}
 
-	base.LogTo("Changes", "MultiChangesFeed(channels: %s, options: %+v) ... %s", chans, options, to)
+	base.LogToR("Changes", "MultiChangesFeed(channels: %s, options: %+v) ... %s", base.UD(chans), options, base.UD(to))
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
@@ -357,7 +357,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		base.StatsExpvars.Add("simpleChanges_total", 1)
 		base.StatsExpvars.Add("simpleChanges_active", 1)
 		defer func() {
-			base.LogTo("Changes", "MultiChangesFeed done %s", to)
+			base.LogToR("Changes", "MultiChangesFeed done %s", base.UD(to))
 			base.StatsExpvars.Add("simpleChanges_active", -1)
 			close(output)
 		}()
@@ -382,7 +382,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// included in the initial changes loop iteration, and (b) won't wake up the changeWaiter.
 			if db.user != nil {
 				if err := db.ReloadUser(); err != nil {
-					base.Warn("Error reloading user during changes initialization %q: %v", db.user.Name(), err)
+					base.WarnR("Error reloading user during changes initialization %q: %v", base.UD(db.user.Name()), err)
 					change := makeErrorEntry("User not found during reload - terminating changes feed")
 					output <- &change
 					return
@@ -414,7 +414,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			if changeWaiter != nil {
 				changeWaiter.UpdateChannels(channelsSince)
 			}
-			base.LogTo("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", channelsSince.String(), to)
+			base.LogToR("Changes+", "MultiChangesFeed: channels expand to %#v ... %s", base.UD(channelsSince.String()), base.UD(to))
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 			// skipped sequences in a future iteration or request.
@@ -468,7 +468,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				// Backfill required when seqAddedAt is before current sequence
 				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && seqAddedAt <= currentCachedSequence
 				if seqAddedAt > currentCachedSequence {
-					base.LogTo("Changes+", "Grant for channel [%s] is after the current sequence - skipped for this iteration.  Grant:[%d] Current:[%d] %s", name, seqAddedAt, currentCachedSequence, to)
+					base.LogToR("Changes+", "Grant for channel [%s] is after the current sequence - skipped for this iteration.  Grant:[%d] Current:[%d] %s", base.UD(name), seqAddedAt, currentCachedSequence, base.UD(to))
 					deferredBackfill = true
 					continue
 				}
@@ -487,7 +487,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				feed, err := db.changesFeed(name, chanOpts, to)
 				if err != nil {
-					base.Warn("MultiChangesFeed got error reading changes feed %q: %v", name, err)
+					base.WarnR("MultiChangesFeed got error reading changes feed %q: %v", base.UD(name), err)
 					change := makeErrorEntry("Error reading changes feed - terminating changes feed")
 					output <- &change
 					return
@@ -503,7 +503,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					if lateSequenceFeedHandler != nil {
 						latefeed, err := db.getLateFeed(lateSequenceFeedHandler)
 						if err != nil {
-							base.Warn("MultiChangesFeed got error reading late sequence feed %q: %v", name, err)
+							base.WarnR("MultiChangesFeed got error reading late sequence feed %q: %v", base.UD(name), err)
 						} else {
 							// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
 							// when the user loses channel access
@@ -588,7 +588,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Don't send any entries later than the cached sequence at the start of this iteration
 				if currentCachedSequence < minEntry.Seq.Seq {
-					base.LogTo("Changes+", "Found sequence later than stable sequence: stable:[%d] entry:[%d] (%s)", currentCachedSequence, minEntry.Seq.Seq, minEntry.ID)
+					base.LogToR("Changes+", "Found sequence later than stable sequence: stable:[%d] entry:[%d] (%s)", currentCachedSequence, minEntry.Seq.Seq, base.UD(minEntry.ID))
 					postStableSeqsFound = true
 					continue
 				}
@@ -610,7 +610,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				minEntry.Seq.LowSeq = lowSequence
 
 				// Send the entry, and repeat the loop:
-				base.LogTo("Changes+", "MultiChangesFeed sending %+v %s", minEntry, to)
+				base.LogToR("Changes+", "MultiChangesFeed sending %+v %s", base.UD(minEntry), base.UD(to))
 
 				select {
 				case <-options.Terminator:
@@ -634,7 +634,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
-			base.LogTo("Changes+", "MultiChangesFeed waiting... %s", to)
+			base.LogToR("Changes+", "MultiChangesFeed waiting... %s", base.UD(to))
 			output <- nil
 
 		waitForChanges:
@@ -679,7 +679,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			userChanged, userCounter, addedChannels, err = db.checkForUserUpdates(userCounter, changeWaiter, options.Continuous)
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
-				base.LogTo("Changes+", "User not found during reload - terminating changes feed with entry %+v", change)
+				base.LogToR("Changes+", "User not found during reload - terminating changes feed with entry %+v", base.UD(change))
 				output <- &change
 				return
 			}
@@ -727,7 +727,7 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntr
 
 // Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForSequence(sequence uint64) (err error) {
-	base.LogTo("Debug", "Waiting for sequence: %d", sequence)
+	base.LogToR("Debug", "Waiting for sequence: %d", sequence)
 	if err == nil {
 		context.changeCache.waitForSequenceID(SequenceID{Seq: sequence})
 	}
@@ -736,7 +736,7 @@ func (context *DatabaseContext) WaitForSequence(sequence uint64) (err error) {
 
 // Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64) (err error) {
-	base.LogTo("Debug", "Waiting for sequence: %d", sequence)
+	base.LogToR("Debug", "Waiting for sequence: %d", sequence)
 	if err == nil {
 		context.changeCache.waitForSequenceWithMissing(sequence)
 	}
@@ -746,7 +746,7 @@ func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64) (err
 // Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForPendingChanges() (err error) {
 	lastSequence, err := context.LastSequence()
-	base.LogTo("Debug", "Waiting for sequence: %d", lastSequence)
+	base.LogToR("Debug", "Waiting for sequence: %d", lastSequence)
 	if err == nil {
 		context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence})
 	}
@@ -836,7 +836,7 @@ func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []str
 		// Fetch the document body and other metadata that lives with it:
 		populatedDoc, body, err := db.GetDocAndActiveRev(docid)
 		if err != nil {
-			base.LogTo("Changes", "Unable to get changes for docID %v, caused by %v", docid, err)
+			base.LogToR("Changes", "Unable to get changes for docID %v, caused by %v", base.UD(docid), err)
 			return nil
 		}
 

@@ -44,6 +44,9 @@ const (
 
 	// Default value of ServerConfig.MaxFileDescriptors
 	DefaultMaxFileDescriptors uint64 = 5000
+
+	// Default number of index replicas
+	DefaultNumIndexReplicas = uint(1)
 )
 
 type SyncGatewayRunMode uint8
@@ -113,29 +116,33 @@ func (c ClusterConfig) CBGTEnabled() bool {
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
 	BucketConfig
-	Name                 string                         `json:"name,omitempty"`                        // Database name in REST API (stored as key in JSON)
-	Sync                 *string                        `json:"sync,omitempty"`                        // Sync function defines which users can see which data
-	Users                map[string]*db.PrincipalConfig `json:"users,omitempty"`                       // Initial user accounts
-	Roles                map[string]*db.PrincipalConfig `json:"roles,omitempty"`                       // Initial roles
-	RevsLimit            *uint32                        `json:"revs_limit,omitempty"`                  // Max depth a document's revision tree can grow to
-	ImportDocs           interface{}                    `json:"import_docs,omitempty"`                 // false, true, or "continuous"
-	ImportFilter         *string                        `json:"import_filter,omitempty"`               // Filter function (import)
-	Shadow               *ShadowConfig                  `json:"shadow,omitempty"`                      // External bucket to shadow
-	EventHandlers        interface{}                    `json:"event_handlers,omitempty"`              // Event handlers (webhook)
-	FeedType             string                         `json:"feed_type,omitempty"`                   // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
-	AllowEmptyPassword   bool                           `json:"allow_empty_password,omitempty"`        // Allow empty passwords?  Defaults to false
-	CacheConfig          *CacheConfig                   `json:"cache,omitempty"`                       // Cache settings
-	ChannelIndex         *ChannelIndexConfig            `json:"channel_index,omitempty"`               // Channel index settings
-	RevCacheSize         *uint32                        `json:"rev_cache_size,omitempty"`              // Maximum number of revisions to store in the revision cache
-	StartOffline         bool                           `json:"offline,omitempty"`                     // start the DB in the offline state, defaults to false
-	Unsupported          db.UnsupportedOptions          `json:"unsupported,omitempty"`                 // Config for unsupported features
-	OIDCConfig           *auth.OIDCOptions              `json:"oidc,omitempty"`                        // Config properties for OpenID Connect authentication
-	OldRevExpirySeconds  *uint32                        `json:"old_rev_expiry_seconds,omitempty"`      // The number of seconds before old revs are removed from CBS bucket
-	ViewQueryTimeoutSecs *uint32                        `json:"view_query_timeout_secs,omitempty"`     // The view query timeout in seconds
-	LocalDocExpirySecs   *uint32                        `json:"local_doc_expiry_secs,omitempty"`       // The _local doc expiry time in seconds
-	EnableXattrs         *bool                          `json:"enable_shared_bucket_access,omitempty"` // Whether to use extended attributes to store _sync metadata
-	SessionCookieName    string                         `json:"session_cookie_name"`                   // Custom per-database session cookie name
-	AllowConflicts       *bool                          `json:"allow_conflicts,omitempty"`             // False forbids creating conflicts
+	Name                         string                         `json:"name,omitempty"`                         // Database name in REST API (stored as key in JSON)
+	Sync                         *string                        `json:"sync,omitempty"`                         // Sync function defines which users can see which data
+	Users                        map[string]*db.PrincipalConfig `json:"users,omitempty"`                        // Initial user accounts
+	Roles                        map[string]*db.PrincipalConfig `json:"roles,omitempty"`                        // Initial roles
+	RevsLimit                    *uint32                        `json:"revs_limit,omitempty"`                   // Max depth a document's revision tree can grow to
+	ImportDocs                   interface{}                    `json:"import_docs,omitempty"`                  // false, true, or "continuous"
+	ImportFilter                 *string                        `json:"import_filter,omitempty"`                // Filter function (import)
+	Shadow                       *ShadowConfig                  `json:"shadow,omitempty"`                       // External bucket to shadow
+	EventHandlers                interface{}                    `json:"event_handlers,omitempty"`               // Event handlers (webhook)
+	FeedType                     string                         `json:"feed_type,omitempty"`                    // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	AllowEmptyPassword           bool                           `json:"allow_empty_password,omitempty"`         // Allow empty passwords?  Defaults to false
+	CacheConfig                  *CacheConfig                   `json:"cache,omitempty"`                        // Cache settings
+	ChannelIndex                 *ChannelIndexConfig            `json:"channel_index,omitempty"`                // Channel index settings
+	RevCacheSize                 *uint32                        `json:"rev_cache_size,omitempty"`               // Maximum number of revisions to store in the revision cache
+	StartOffline                 bool                           `json:"offline,omitempty"`                      // start the DB in the offline state, defaults to false
+	Unsupported                  db.UnsupportedOptions          `json:"unsupported,omitempty"`                  // Config for unsupported features
+	OIDCConfig                   *auth.OIDCOptions              `json:"oidc,omitempty"`                         // Config properties for OpenID Connect authentication
+	OldRevExpirySeconds          *uint32                        `json:"old_rev_expiry_seconds,omitempty"`       // The number of seconds before old revs are removed from CBS bucket
+	ViewQueryTimeoutSecs         *uint32                        `json:"view_query_timeout_secs,omitempty"`      // The view query timeout in seconds
+	LocalDocExpirySecs           *uint32                        `json:"local_doc_expiry_secs,omitempty"`        // The _local doc expiry time in seconds
+	EnableXattrs                 *bool                          `json:"enable_shared_bucket_access,omitempty"`  // Whether to use extended attributes to store _sync metadata
+	SessionCookieName            string                         `json:"session_cookie_name"`                    // Custom per-database session cookie name
+	AllowConflicts               *bool                          `json:"allow_conflicts,omitempty"`              // False forbids creating conflicts
+	NumIndexReplicas             *uint                          `json:"num_index_replicas"`                     // Number of GSI index replicas used for core indexes
+	NumIndexReplicasHousekeeping *uint                          `json:"num_index_replicas_housekeeping"`        // Number of GSI index replicas used for housekeeping indexes
+	UseViews                     bool                           `json:"use_views"`                              // Force use of views instead of GSI
+	SendWWWAuthenticateHeader    *bool                          `json:"send_www_authenticate_header,omitempty"` // If false, disables setting of 'WWW-Authenticate' header in 401 responses
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -591,13 +598,13 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 			filename := flag.Arg(i)
 			c, err := ReadServerConfig(runMode, filename)
 			if err != nil {
-				base.LogFatal("Error reading config file %s: %v", filename, err)
+				base.LogFatalR("Error reading config file %s: %v", base.UD(filename), err)
 			}
 			if config == nil {
 				config = c
 			} else {
 				if err := config.MergeWith(c); err != nil {
-					base.LogFatal("Error reading config file %s: %v", filename, err)
+					base.LogFatalR("Error reading config file %s: %v", base.UD(filename), err)
 				}
 			}
 		}
@@ -700,7 +707,7 @@ func SetMaxFileDescriptors(maxP *uint64) {
 	}
 	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
-		base.Warn("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		base.WarnR("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
 	}
 }
 
@@ -725,7 +732,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		http2Enabled,
 	)
 	if err != nil {
-		base.LogFatal("Failed to start HTTP server on %s: %v", addr, err)
+		base.LogFatalR("Failed to start HTTP server on %s: %v", base.UD(addr), err)
 	}
 }
 
@@ -778,13 +785,13 @@ func RunServer(config *ServerConfig) {
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.LogFatal("Error opening database %s: %v", dbConfig.Name, err)
+			base.LogFatalR("Error opening database %s: %v", base.UD(dbConfig.Name), err)
 		}
 	}
 
 	if config.ProfileInterface != nil {
 		//runtime.MemProfileRate = 10 * 1024
-		base.Logf("Starting profile server on %s", *config.ProfileInterface)
+		base.LogfR("Starting profile server on %s", base.UD(*config.ProfileInterface))
 		go func() {
 			http.ListenAndServe(*config.ProfileInterface, nil)
 		}()
@@ -792,10 +799,10 @@ func RunServer(config *ServerConfig) {
 
 	go sc.PostStartup()
 
-	base.Logf("Starting admin server on %s", *config.AdminInterface)
+	base.LogfR("Starting admin server on %s", base.UD(*config.AdminInterface))
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
 
-	base.Logf("Starting server on %s ...", *config.Interface)
+	base.LogfR("Starting server on %s ...", base.UD(*config.Interface))
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 

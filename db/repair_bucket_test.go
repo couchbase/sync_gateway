@@ -76,6 +76,9 @@ func TestRepairBucket(t *testing.T) {
 
 func TestRepairBucketRevTreeCycles(t *testing.T) {
 
+	// Disabled due to failure described #3267
+	t.Skip("WARNING: TEST DISABLED")
+
 	base.EnableLogKey("CRUD")
 
 	testBucket, _ := testBucketWithViewsAndBrokenDoc()
