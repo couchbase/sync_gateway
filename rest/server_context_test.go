@@ -13,13 +13,9 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"testing"
-	"time"
 
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -151,122 +147,4 @@ func NewMockClient() *MockClient {
 func (client *MockClient) RespondToGET(url string, response *http.Response) {
 	tripper := client.Transport.(*mockTripper)
 	tripper.getURLs[url] = response
-}
-
-// If no users are defined, expect a warning
-func TestCollectAccessWarningsNoUsers(t *testing.T) {
-
-	sc := NewServerContext(&ServerConfig{})
-	defer sc.Close()
-
-	dbServer := "walrus:"
-	dbConfig := &DbConfig{
-		BucketConfig: BucketConfig{Server: &dbServer},
-		Name:         "db",
-	}
-	_, err := sc.AddDatabaseFromConfig(dbConfig)
-	if err != nil {
-		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
-	}
-	dbContext := sc.Database("db")
-	warnings := collectAccessRelatedWarnings(dbConfig, dbContext)
-	assert.True(t, len(warnings) > 0)
-
-}
-
-// If a guest user is defined but has no channels, expect a warning
-func TestCollectAccessWarningsGuestNoChans(t *testing.T) {
-
-	sc := NewServerContext(&ServerConfig{})
-	defer sc.Close()
-
-	dbServer := "walrus:"
-	dbConfig := &DbConfig{
-		BucketConfig: BucketConfig{Server: &dbServer},
-		Name:         "db",
-		Users: map[string]*db.PrincipalConfig{
-			base.GuestUsername: {
-				Disabled: false,
-			},
-		},
-	}
-	_, err := sc.AddDatabaseFromConfig(dbConfig)
-	if err != nil {
-		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
-	}
-	dbContext := sc.Database("db")
-	warnings := collectAccessRelatedWarnings(dbConfig, dbContext)
-	assert.True(t, len(warnings) > 0)
-
-}
-
-// If a guest user and has channels, expect no warnings
-func TestCollectAccessWarningsGuestWithChans(t *testing.T) {
-
-	sc := NewServerContext(&ServerConfig{})
-	defer sc.Close()
-
-	dbServer := "walrus:"
-	dbConfig := &DbConfig{
-		BucketConfig: BucketConfig{Server: &dbServer},
-		Name:         "db",
-		Users: map[string]*db.PrincipalConfig{
-			base.GuestUsername: {
-				Disabled:         false,
-				ExplicitChannels: base.SetFromArray([]string{"*"}),
-			},
-		},
-	}
-	_, err := sc.AddDatabaseFromConfig(dbConfig)
-	if err != nil {
-		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
-	}
-	dbContext := sc.Database("db")
-	warnings := collectAccessRelatedWarnings(dbConfig, dbContext)
-	assert.Equals(t, len(warnings), 0)
-
-}
-
-// As long as there is one user in the db, there should be no warnings
-func TestCollectAccessWarningsUsersInDb(t *testing.T) {
-
-	sc := NewServerContext(&ServerConfig{})
-	defer sc.Close()
-
-	dbServer := "walrus:"
-	dbConfig := &DbConfig{
-		BucketConfig: BucketConfig{Server: &dbServer},
-		Name:         "db",
-	}
-	_, err := sc.AddDatabaseFromConfig(dbConfig)
-	if err != nil {
-		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
-	}
-	dbContext := sc.Database("db")
-
-	password := "bar"
-	// create user
-	spec := map[string]*db.PrincipalConfig{
-		"foo": {
-			Password:         &password,
-			Disabled:         false,
-			ExplicitChannels: base.SetFromArray([]string{"*"}),
-		},
-	}
-
-	// add a user to the db
-	err = sc.installPrincipals(dbContext, spec, "user")
-	assertNoError(t, err, "Error installing principal")
-
-	var warnings []string
-	for i := 1; i <= 10; i++ {
-		log.Printf("View attempt %d/10", i)
-		warnings = collectAccessRelatedWarnings(dbConfig, dbContext)
-		if len(warnings) == 0 {
-			break
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	assert.Equals(t, len(warnings), 0)
-
 }

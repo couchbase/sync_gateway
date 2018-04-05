@@ -54,12 +54,12 @@ func (ds *DenseStorageReader) UpdateCache(sinceClock base.SequenceClock, toClock
 			defer wg.Done()
 			reader := ds.getPartitionStorageReader(partitionNo)
 			if reader == nil {
-				base.Warn("Expected to get reader for channel %s partition %d, based on changed range %v", ds.channelName, partitionNo, partitionRange)
+				base.WarnR("Expected to get reader for channel %s partition %d, based on changed range %v", base.UD(ds.channelName), partitionNo, partitionRange)
 				return
 			}
 			err := reader.UpdateCache(kCachedBlocksPerShard)
 			if err != nil {
-				base.Warn("Unable to update cache for channel:[%s] partition:[%d] : %v", ds.channelName, partitionNo, err)
+				base.WarnR("Unable to update cache for channel:[%s] partition:[%d] : %v", base.UD(ds.channelName), partitionNo, err)
 				errCh <- err
 			}
 		}(uint16(partitionNo), partitionRange)
@@ -243,7 +243,7 @@ func (r *DensePartitionStorageReaderNonCaching) GetChanges(partitionRange base.P
 	// Initialize the block list to the starting range, then find the starting block for the partition range
 	blockList := r.GetBlockListForRange(partitionRange)
 	if blockList == nil {
-		base.LogTo("ChannelStorage+", "No block found for requested partition range.  channel:[%s] partition:[%d]", r.channelName, r.partitionNo)
+		base.LogToR("ChannelStorage+", "No block found for requested partition range.  channel:[%s] partition:[%d]", base.UD(r.channelName), r.partitionNo)
 		return changes, nil
 	}
 	startIndex := 0
@@ -288,7 +288,7 @@ func (r *DensePartitionStorageReaderNonCaching) GetBlockListForRange(partitionRa
 	if partitionRange.SinceBefore(validFromClock) {
 		err := blockList.LoadPrevious()
 		if err != nil {
-			base.Warn("Error loading previous block list - will not be included in set. channel:[%s] partition:[%d]", r.channelName, r.partitionNo)
+			base.WarnR("Error loading previous block list - will not be included in set. channel:[%s] partition:[%d]", base.UD(r.channelName), r.partitionNo)
 		}
 		validFromClock = blockList.ValidFrom()
 	}
@@ -342,13 +342,13 @@ func (pr *DensePartitionStorageReader) GetChanges(partitionRange base.PartitionR
 		return nil, err
 	}
 	if cacheOk {
-		base.LogTo("Cache+", "Returning cached changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
+		base.LogToR("Cache+", "Returning cached changes for channel:[%s], partition:[%d]", base.UD(pr.channelName), pr.partitionNo)
 		indexReaderGetChangesUseCached.Add(1)
 		return changes, nil
 	}
 
 	// Cache didn't cover the partition range - retrieve from the index
-	base.LogTo("Cache+", "Returning indexed changes for channel:[%s], partition:[%d]", pr.channelName, pr.partitionNo)
+	base.LogToR("Cache+", "Returning indexed changes for channel:[%s], partition:[%d]", base.UD(pr.channelName), pr.partitionNo)
 	indexReaderGetChangesUseIndexed.Add(1)
 	return pr.getIndexedChanges(partitionRange)
 
@@ -367,7 +367,7 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 	} else {
 		pr.blockList.loadDenseBlockList()
 		for _, block := range pr.blockList.blocks {
-			base.LogTo("Cache+", "block valid from: %v", block.StartClock)
+			base.LogToR("Cache+", "block valid from: %v", block.StartClock)
 		}
 	}
 
@@ -384,7 +384,7 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 	}
 
 	if blockCount == 0 {
-		base.Warn("Attempted to update reader cache for partition with no blocks. channel:[%s] partition:[%d]", pr.channelName, pr.partitionNo)
+		base.WarnR("Attempted to update reader cache for partition with no blocks. channel:[%s] partition:[%d]", base.UD(pr.channelName), pr.partitionNo)
 		return errors.New("No blocks found when updating partition cache")
 	}
 	// cacheKeySet tracks the blocks that should be in the cache - used for cache expiry, below
@@ -392,7 +392,7 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 
 	// Reload the active block first
 	blockListEntry := pr.blockList.ActiveListEntry()
-	base.LogTo("Cache+", "Reloading active block: %s", blockListEntry.Key(pr.blockList))
+	base.LogToR("Cache+", "Reloading active block: %s", blockListEntry.Key(pr.blockList))
 	activeBlockKey := blockListEntry.Key(pr.blockList)
 	_, err := pr._loadAndCacheBlock(blockListEntry)
 	cacheKeySet[blockListEntry.Key(pr.blockList)] = true
@@ -415,13 +415,13 @@ func (pr *DensePartitionStorageReader) UpdateCache(numBlocks int) error {
 		if ok {
 			// If it's already in the cache, reload if it was the previous active block, or it's been flagged for reload
 			if blockKey == pr.activeCachedBlockKey || pr.pendingReload[blockKey] {
-				base.LogTo("Cache+", "Reloading older block: %s", blockListEntry.Key(pr.blockList))
+				base.LogToR("Cache+", "Reloading older block: %s", blockListEntry.Key(pr.blockList))
 				pr._loadAndCacheBlock(blockListEntry)
 				delete(pr.pendingReload, blockKey)
 			}
 		} else {
 			// Not in the cache - add it
-			base.LogTo("Cache+", "Adding older block to the cache: %s", blockListEntry.Key(pr.blockList))
+			base.LogToR("Cache+", "Adding older block to the cache: %s", blockListEntry.Key(pr.blockList))
 			pr._loadAndCacheBlock(blockListEntry)
 		}
 		cacheKeySet[blockKey] = true
@@ -475,7 +475,7 @@ func (pr *DensePartitionStorageReader) getCachedChanges(partitionRange base.Part
 		blockKey := blockListEntry.Key(pr.blockList)
 		currBlock, ok := pr._getCachedBlock(blockKey)
 		if !ok {
-			base.Warn("Unexpected missing block from partition cache. blockKey:[%s] block startClock:[%s] cache validFrom:[%s]",
+			base.WarnR("Unexpected missing block from partition cache. blockKey:[%s] block startClock:[%s] cache validFrom:[%s]",
 				blockKey, blockListEntry.StartClock.String(), pr.validFrom.String())
 			return nil, false, nil
 		}
@@ -547,7 +547,7 @@ func (pr *DensePartitionStorageReader) getIndexedChanges(partitionRange base.Par
 
 		currBlock, err := pr.loadBlock(blockKey, blockListEntry.StartClock)
 		if err != nil {
-			base.Warn("Unexpected missing block from index. blockKey:[%s] err:[%v]",
+			base.WarnR("Unexpected missing block from index. blockKey:[%s] err:[%v]",
 				blockKey, err)
 			return nil, err
 		}

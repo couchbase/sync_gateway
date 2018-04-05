@@ -170,9 +170,11 @@ func TestViewQueryUserAccess(t *testing.T) {
 	assertStatus(t, userResponse, 403)
 }
 
-//Waiting for a fix for couchbaselabs/Walrus #13
-//Currently fails against walrus bucket as '_sync' property will exist in doc object if it is emmitted in the map function
-func failingTestViewQueryMultipleViews(t *testing.T) {
+func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
+	// TODO: Waiting for a fix for couchbaselabs/Walrus #13
+	// Currently fails against walrus bucket as '_sync' property will exist in doc object if it is emmitted in the map function
+	t.Skip("WARNING: TEST DISABLED")
+
 	var rt RestTester
 	defer rt.Close()
 

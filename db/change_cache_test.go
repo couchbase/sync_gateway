@@ -299,7 +299,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 2)
 
 	// Start wait for doc in ABC
-	waiter := db.tapListener.NewWaiterWithChannels(channels.SetOf("ABC"), nil)
+	waiter := db.mutationListener.NewWaiterWithChannels(channels.SetOf("ABC"), nil)
 
 	successChan := make(chan bool)
 	go func() {
@@ -700,8 +700,9 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	close(options.Terminator)
 }
 
-// Disabled until https://github.com/couchbase/sync_gateway/issues/3056 is fixed.
-func DisableTestLowSequenceHandlingNoDuplicates(t *testing.T) {
+func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
+	// TODO: Disabled until https://github.com/couchbase/sync_gateway/issues/3056 is fixed.
+	t.Skip("WARNING: TEST DISABLED")
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -797,9 +798,10 @@ func DisableTestLowSequenceHandlingNoDuplicates(t *testing.T) {
 // lines at the start of changesFeed() in changes.go to simulate slow processing:
 //	    base.LogTo("Sequences", "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
 //	    time.Sleep(100 * time.Millisecond)
-
-// Test current fails intermittently on concurrent access to var changes.  Disabling for now - should be refactored.
-func FailingTestChannelRace(t *testing.T) {
+func TestChannelRace(t *testing.T) {
+	// TODO: Test current fails intermittently on concurrent access to var changes.
+	// Disabling for now - should be refactored.
+	t.Skip("WARNING: TEST DISABLED")
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -935,9 +937,10 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	changeCache.CleanSkippedSequenceQueue()
 
 	// Validate that 3 is in the channel cache, 5 isn't
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 3})
 	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
 	assertNoError(t, err, "Get Changes returned error")
-	assertTrue(t, len(entries) == 1, fmt.Sprintf("Incorrect number of entries returned.  Expected %d, got %d.  Entries: %+v", 1, len(entries), entries))
+	assert.Equals(t, len(entries), 1)
 	assert.Equals(t, entries[0].DocID, "doc-3")
 
 }

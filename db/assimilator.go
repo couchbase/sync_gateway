@@ -6,15 +6,15 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// A goroutine that watches the tapListener for documents that don't have
+// A goroutine that watches the mutationListener for documents that don't have
 // sync metadata, and calls assimilate() on them.
 func (c *DatabaseContext) watchDocChanges() {
-	if c.tapListener.DocChannel == nil {
+	if c.mutationListener.DocChannel == nil {
 		return
 	}
-	base.LogTo("Shadow", "Watching doc changes...")
-	for event := range c.tapListener.DocChannel {
-		base.LogTo("Feed", "Got shadow event:%s", event.Key)
+	base.LogToR("Shadow", "Watching doc changes...")
+	for event := range c.mutationListener.DocChannel {
+		base.LogToR("Feed", "Got shadow event:%s", base.UD(event.Key))
 		doc, err := unmarshalDocument(string(event.Key), event.Value)
 		if err == nil {
 			if doc.HasValidSyncData(c.writeSequences()) {
@@ -32,7 +32,7 @@ func (c *DatabaseContext) watchDocChanges() {
 
 // Adds sync metadata to a Couchbase document
 func (c *DatabaseContext) assimilate(docid string) {
-	base.LogTo("CRUD", "Importing new doc %q", docid)
+	base.LogToR("CRUD", "Importing new doc %q", base.UD(docid))
 	db := Database{DatabaseContext: c, user: nil}
 	_, err := db.updateDoc(docid, true, 0, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		if doc.HasValidSyncData(c.writeSequences()) {
@@ -44,6 +44,6 @@ func (c *DatabaseContext) assimilate(docid string) {
 		return doc.Body(), nil, nil, nil
 	})
 	if err != nil && err != couchbase.UpdateCancel {
-		base.Warn("Failed to import new doc %q: %v", docid, err)
+		base.WarnR("Failed to import new doc %q: %v", base.UD(docid), err)
 	}
 }

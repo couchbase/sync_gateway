@@ -97,6 +97,11 @@ func testBucket() base.TestBucket {
 	if err != nil {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
+
+	err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0, 0)
+	if err != nil {
+		log.Printf("Unable to initialize GSI indexes for test:%v", err)
+	}
 	return testBucket
 }
 
@@ -1126,7 +1131,13 @@ func TestAccessFunction(t *testing.T) {
 	assert.DeepEquals(t, user.InheritedChannels(), expected)
 }
 
-func CouchbaseTestAccessFunctionWithVbuckets(t *testing.T) {
+// Disabled until https://github.com/couchbase/sync_gateway/issues/3413 is fixed
+func DisableTestAccessFunctionWithVbuckets(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test only works with a Couchbase server")
+	}
+
 	//base.LogKeys["CRUD"] = true
 	//base.LogKeys["Access"] = true
 
@@ -1249,7 +1260,7 @@ func TestLegacyImport(t *testing.T) {
 
 	// Now they're visible:
 	doc, err = db.GetDocument("alreadyHere1", DocUnmarshalAll)
-	base.Logf("doc = %+v", doc)
+	base.LogfR("doc = %+v", doc)
 	assert.True(t, doc != nil)
 	assertNoError(t, err, "can't get doc")
 }
@@ -1480,7 +1491,11 @@ func TestChannelView(t *testing.T) {
 
 //////// XATTR specific tests.  These tests current require setting DefaultUseXattrs=true, and must be run against a Couchbase bucket
 
-func CouchbaseTestConcurrentImport(t *testing.T) {
+func TestConcurrentImport(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("Test only works with a Couchbase server and XATTRS")
+	}
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()

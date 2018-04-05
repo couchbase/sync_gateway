@@ -68,7 +68,7 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	redirectURLString = ""
 
 	providerName := h.getQuery("provider")
-	base.LogTo("OIDC", "Getting provider for name %v", providerName)
+	base.LogToR("OIDC", "Getting provider for name %v", base.UD(providerName))
 	provider, err := h.getOIDCProvider(providerName)
 	if err != nil || provider == nil {
 		return redirectURLString, err

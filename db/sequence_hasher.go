@@ -189,11 +189,11 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 		}
 		_, err = base.WriteCasRaw(s.bucket, key, initialValue, existingClocks.cas, base.SecondsToCbsExpiry(int(s.hashExpiry)), func(value []byte) (updatedValue []byte, err error) {
 			// Note: The following is invoked upon cas failure - may be called multiple times
-			base.LogTo("DIndex+", "CAS fail - reapplying changes for hash storage for key: %s", key)
+			base.LogToR("DIndex+", "CAS fail - reapplying changes for hash storage for key: %s", base.UD(key))
 			var sClocks storedClocks
 			err = sClocks.Unmarshal(value)
 			if err != nil {
-				base.Warn("Error unmarshalling hash storage during update", err)
+				base.WarnR("Error unmarshalling hash storage during update", err)
 				return nil, err
 			}
 			exists, index = sClocks.Contains(clockValue)
@@ -203,7 +203,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 			}
 			// Not found - add
 			sClocks.Sequences = append(sClocks.Sequences, clockValue)
-			base.LogTo("DIndex+", "Reattempting stored hash write for key %s:", key)
+			base.LogToR("DIndex+", "Reattempting stored hash write for key %s:", base.UD(key))
 			index = len(sClocks.Sequences) - 1
 			return sClocks.Marshal()
 		})
@@ -260,7 +260,7 @@ func (s *sequenceHasher) GetClock(sequence string) (*base.SequenceClockImpl, err
 
 	clock = base.NewSequenceClockImpl()
 	if uint16(len(storedClocks.Sequences)) <= seqHash.collisionIndex {
-		base.Warn("Stored hash not found for sequence [%s] collision index [%d], #storedClocks:%d, returning zero clock", sequence, seqHash.collisionIndex, len(storedClocks.Sequences))
+		base.WarnR("Stored hash not found for sequence [%s] collision index [%d], #storedClocks:%d, returning zero clock", sequence, seqHash.collisionIndex, len(storedClocks.Sequences))
 	} else {
 		clock.Init(storedClocks.Sequences[seqHash.collisionIndex], seqHash.String())
 	}
@@ -360,7 +360,7 @@ func (s *sequenceHasher) loadClocks(hashValue uint64) (*storedClocks, error) {
 		return &stored, nil
 	}
 	if err = stored.Unmarshal(bytes); err != nil {
-		base.Warn("Error unmarshalling stored clocks for key [%s], returning zero sequence", key)
+		base.WarnR("Error unmarshalling stored clocks for key [%s], returning zero sequence", key)
 		return &stored, errors.New("Error unmarshalling stored clocks for key")
 	}
 	stored.cas = cas
