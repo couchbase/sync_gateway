@@ -97,10 +97,19 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 // key to determine handling, based on whether the incoming mutation is an internal Sync Gateway document.
 func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 	requiresCheckpointPersistence := true
+
+
+	base.LogTo("DCP+", "Feed event with value: %s", string(event.Value))
+
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
 		if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 			strings.HasPrefix(key, auth.RoleKeyPrefix) { // SG users and roles
+
+			// TODO: here or maybe even further out, we want to ignore docs if their subdoc CAS
+			// TODO: is still the same as their actual doc CAS.  How will it get the subdoc CAS?
+			// TODO: will it be in event.Value?
+
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
