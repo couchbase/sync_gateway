@@ -994,6 +994,7 @@ func (db *Database) updateAndReturnDoc(
 					// If this update affects user/role access privileges, make sure the write blocks till
 					// the new value is indexable, otherwise when a User/Role updates (using a view) it
 					// might not incorporate the effects of this change.
+					// TODO: rip this out because it's CB4 and above
 					writeOpts |= sgbucket.Indexable
 				}
 			}

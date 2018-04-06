@@ -1467,6 +1467,9 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateAndTouch(k string, exp uint32, cal
 
 func (bucket *CouchbaseBucketGoCB) writeUpdateAndMaybeTouch(k string, exp uint32, touch bool, callback sgbucket.WriteUpdateFunc) error {
 
+	// TODO: touch is incompat w/ persist options, return an error
+	// TODO: (then we can switch to the subdoc ops for the non-dura operations)
+
 	for {
 		var value []byte
 		var err error

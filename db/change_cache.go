@@ -559,6 +559,14 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		base.WarnR("changeCache: Error unmarshaling doc %q: %v", base.UD(docID), err)
 		return
 	}
+
+	// TODO: do cas comparison, and conditionally call listener.Notify().  Will need pass the CAS value from the DCP event.
+	// Maybe push dcp event all the way down here.
+
+
+
+
+
 	sequence := princ.Sequence()
 	c.lock.RLock()
 	initialSequence := c.initialSequence

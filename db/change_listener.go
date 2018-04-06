@@ -113,7 +113,9 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
-			listener.Notify(base.SetOf(key))
+			listener.Notify(base.SetOf(key))  // TODO: push this down to processPrincipal.  NOtify got pushed down for regular docs.
+
+
 		} else if strings.HasPrefix(key, UnusedSequenceKeyPrefix) { // SG unused sequence marker docs
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
