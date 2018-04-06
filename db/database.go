@@ -576,6 +576,9 @@ type ForEachDocIDOptions struct {
 
 type ForEachDocIDFunc func(id IDAndRev, channels []string) bool
 
+
+
+
 // Iterates over all documents in the database, calling the callback function on each
 func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
 
@@ -583,6 +586,12 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 	if err != nil {
 		return err
 	}
+
+	return db.forEachDocIDResults(callback, resultsOpts, results)
+
+}
+
+func (db *Database) forEachDocIDResults(callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions, results sgbucket.QueryResultIterator) error {
 
 	count := uint64(0)
 	for {
@@ -630,7 +639,9 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 
 	}
 	return results.Close()
+
 }
+
 
 type principalsViewRow struct {
 	Key   string // principal name
