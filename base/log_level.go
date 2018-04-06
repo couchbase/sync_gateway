@@ -2,6 +2,7 @@ package base
 
 import (
 	"errors"
+	"fmt"
 	"sync/atomic"
 )
 
@@ -21,18 +22,17 @@ const (
 	LEVEL_DEBUG
 )
 
-var (
-	logLevelNames = []string{"none", "error", "warn", "info", "debug"}
-
-	ErrInvalidLogLevel = errors.New("invalid log level")
-)
+var logLevelNames = []string{"none", "error", "warn", "info", "debug"}
 
 func (l *LogLevel) Set(newLevel LogLevel) {
 	atomic.StoreUint32((*uint32)(l), uint32(newLevel))
 }
 
-// Enabled returns true if the log key is enabled.
+// Enabled returns true if the log level is enabled.
 func (l *LogLevel) Enabled(logLevel LogLevel) bool {
+	if l == nil {
+		return false
+	}
 	return atomic.LoadUint32((*uint32)(l)) >= uint32(logLevel)
 }
 
@@ -44,7 +44,7 @@ func LogLevelName(logLevel LogLevel) string {
 
 func (l *LogLevel) MarshalText() (text []byte, err error) {
 	if l == nil {
-		return nil, ErrInvalidLogLevel
+		return nil, errors.New("invalid log level")
 	}
 	return []byte(LogLevelName(*l)), nil
 }
@@ -56,5 +56,5 @@ func (l *LogLevel) UnmarshalText(text []byte) error {
 			return nil
 		}
 	}
-	return ErrInvalidLogLevel
+	return fmt.Errorf("unrecognized log level: %q (valid options: %v)", string(text), logLevelNames)
 }
