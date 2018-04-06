@@ -149,7 +149,7 @@ func (b *LoggingBucket) ViewCustom(ddoc, name string, params map[string]interfac
 
 func (b *LoggingBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 	start := time.Now()
-	defer func() { LogTo("Bucket", "ViewCustom(%q, %q, ...) [%v]", ddoc, name, time.Since(start)) }()
+	defer func() { LogTo("Bucket", "ViewQuery(%q, %q, ...) [%v]", ddoc, name, time.Since(start)) }()
 	return b.bucket.ViewQuery(ddoc, name, params)
 }
 

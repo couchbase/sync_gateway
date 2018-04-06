@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const BucketQueryToken = "$_bucket" // Token used for bucket name replacement in query statements
-const MaxQueryRetries = 30
+const MaxQueryRetries = 30          // Maximum query retries on indexer error
+const IndexStateOnline = "online"   // bucket state value, as returned by SELECT FROM system:indexes
 
 // IndexOptions used to build the 'with' clause
 type N1qlIndexOptions struct {
@@ -70,7 +72,11 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 	return nil, err
 }
 
-// CreateIndex creates the specified index in the current bucket using on the specified index expression.
+// CreateIndex issues a CREATE INDEX query in the current bucket, using the form:
+//   CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
+// Sample usage with resulting statement:
+//     CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
+//   CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
 func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
 
 	createStatement := fmt.Sprintf("CREATE INDEX %s ON %s(%s)", indexName, bucket.GetName(), expression)
@@ -107,12 +113,11 @@ func (bucket *CouchbaseBucketGoCB) createIndex(createStatement string, options *
 	n1qlQuery := gocb.NewN1qlQuery(createStatement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
 	if err != nil && !IsRecoverableCreateIndexError(err) {
-		Warn("Error creating index with statement: %s, error:%v", createStatement, err)
-		return err
+		return pkgerrors.Wrapf(err, "Error creating index with statement: %s", createStatement)
 	}
 
 	if IsRecoverableCreateIndexError(err) {
-		Warn("Recoverable error creating index with statement: %s, error:%v", createStatement, err)
+		LogTo("Query", "Recoverable error creating index with statement: %s, error:%v", createStatement, err)
 		return nil
 	}
 
@@ -129,7 +134,7 @@ func (bucket *CouchbaseBucketGoCB) WaitForIndexOnline(indexName string) error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		exists, indexMeta, getMetaErr := bucket.GetIndexMeta(indexName)
-		if exists && indexMeta.State == "online" {
+		if exists && indexMeta.State == IndexStateOnline {
 			return false, nil, nil
 		}
 		return true, getMetaErr, nil

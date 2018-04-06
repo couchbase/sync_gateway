@@ -34,6 +34,7 @@ func nextChannelViewEntry(results sgbucket.QueryResultIterator) (*LogEntry, bool
 		return nil, false
 	}
 
+	// Channels view uses composite Key of the form [channelName, sequence]
 	entry := &LogEntry{
 		Sequence:     uint64(viewRow.Key[1].(float64)),
 		DocID:        viewRow.ID,
@@ -111,11 +112,12 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			} else {
 				entry, found = nextChannelQueryEntry(queryResults)
 			}
+
 			if !found {
 				break
-			} else {
-				queryRowCount++
 			}
+
+			queryRowCount++
 
 			// If active-only, track the number of non-removal, non-deleted revisions we've seen in the view results
 			// for limit calculation below.
@@ -138,7 +140,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			if len(entries) > 0 {
 				break
 			}
-			base.LogTo("Cache", "    Got no rows from query for %q", channelName)
+			base.LogToR("Cache", "    Got no rows from query for channel:%q", base.UD(channelName))
 			return nil, nil
 		}
 

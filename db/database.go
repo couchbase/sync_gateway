@@ -584,6 +584,13 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 		return err
 	}
 
+	db.processForEachDocIDResults(callback, resultsOpts.Limit, results)
+	return results.Close()
+}
+
+// Iterate over the results of an AllDocs query, performing ForEachDocID handling for each row
+func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) {
+
 	count := uint64(0)
 	for {
 		var queryRow AllDocsIndexQueryRow
@@ -624,12 +631,11 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 		}
 		//We have to apply limit check after callback has been called
 		//to account for rows that are not in the current users channels
-		if resultsOpts.Limit > 0 && count == resultsOpts.Limit {
+		if limit > 0 && count == limit {
 			break
 		}
 
 	}
-	return results.Close()
 }
 
 type principalsViewRow struct {
@@ -649,6 +655,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 	var principalName string
 	users = []string{}
 	roles = []string{}
+	lenUserKeyPrefix := len(auth.UserKeyPrefix)
 	for {
 		if db.Options.UseViews {
 			var viewRow principalsViewRow
@@ -664,11 +671,11 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 			if !found {
 				break
 			}
-			if len(queryRow.Id) < 11 {
+			if len(queryRow.Id) < lenUserKeyPrefix {
 				continue
 			}
-			isUser = queryRow.Id[0:11] == "_sync:user:"
-			principalName = queryRow.Id[11:]
+			isUser = queryRow.Id[0:lenUserKeyPrefix] == auth.UserKeyPrefix
+			principalName = queryRow.Id[lenUserKeyPrefix:]
 		}
 
 		if principalName != "" {

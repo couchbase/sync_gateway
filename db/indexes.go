@@ -12,10 +12,17 @@ import (
 
 const (
 	indexNameFormat = "sg_%s_%s%d" // Name, xattrs, version.  e.g. "sg_channels_x1"
-	syncToken       = "$sync"      // Sync token, used for xattr/non-xattr handling in n1ql statements
-	SyncDocWildcard = `\\_sync:%`  // N1ql-encoded wildcard expression matching sync gateway's system documents
+	syncToken       = "$sync"      // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
+
+	// N1ql-encoded wildcard expression matching the '_sync:' prefix used for all sync gateway's system documents.
+	// Need to escape the underscore in '_sync' to prevent it being treated as a N1QL wildcard
+	SyncDocWildcard = `\\_sync:%`
 )
 
+// Index and query definitions use syncToken ($sync) to represent the location of sync gateway's metadata.
+// When running with xattrs, that gets replaced with META().xattrs._sync (or META(bucketname).xattrs._sync for query).
+// When running w/out xattrs, it's just replaced by the doc path `bucketname`._sync
+// This gets replaced before the statement is sent to N1QL by the replaceSyncTokens methods.
 var syncNoXattr = fmt.Sprintf("`%s`._sync", base.BucketQueryToken)
 var syncXattr = "meta().xattrs._sync"
 var syncXattrQuery = fmt.Sprintf("meta(`%s`).xattrs._sync", base.BucketQueryToken) // Replacement for $sync token for xattr queries
@@ -65,7 +72,8 @@ var (
 	indexExpressions = map[SGIndexType]string{
 		IndexAccess:     "ALL (ARRAY (op.name) FOR op IN OBJECT_PAIRS($sync.access) END)",
 		IndexRoleAccess: "ALL (ARRAY (op.name) FOR op IN OBJECT_PAIRS($sync.role_access) END)",
-		IndexChannels:   "ALL (ARRAY [op.name, LEAST($sync.sequence,op.val.seq), IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)] FOR op IN OBJECT_PAIRS($sync.channels) END), $sync.rev, $sync.sequence, $sync.flags",
+		IndexChannels: "ALL (ARRAY [op.name, LEAST($sync.sequence,op.val.seq), IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)] FOR op IN OBJECT_PAIRS($sync.channels) END), " +
+			"$sync.rev, $sync.sequence, $sync.flags",
 		IndexAllDocs:    "META().id, $sync.sequence, $sync.rev, $sync.flags, $sync.deleted",
 		IndexTombstones: "$sync.tombstoned_at",
 		IndexSyncDocs:   "META().id",
@@ -182,6 +190,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	filterExpression := replaceSyncTokensIndex(i.filterExpression, useXattrs)
 
 	var options *base.N1qlIndexOptions
+	// We want to pass nil options unless one or more of the WITH elements are required
 	if numReplica > 0 || (useXattrs && i.shouldIndexTombstones()) {
 		options = &base.N1qlIndexOptions{
 			NumReplica:      numReplica,
@@ -246,12 +255,14 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 			indexesWg.Add(1)
 			go func(index SGIndex) {
 				defer indexesWg.Done()
+				base.LogTo("Query+", "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
 				queryStatement := replaceSyncTokensQuery(index.readinessQuery, useXattrs)
 				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
 				if queryErr != nil {
 					base.Warn("Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
 				}
+				base.LogTo("Query+", "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
 			}(sgIndex)
 		}
 	}
@@ -277,7 +288,7 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 			return nil
 		}
 		if err == base.ErrViewTimeoutError {
-			base.Logf("Timeout waiting for index %q to be ready for bucket %q - retrying...", indexName, bucket.GetName())
+			base.Logf("Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
 		} else {
 			return err
 		}

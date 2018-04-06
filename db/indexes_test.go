@@ -15,6 +15,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	}
 
 	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// We have one xattr-only index - adjust expected indexes accordingly
@@ -23,13 +24,13 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 		expectedIndexes--
 	}
 
-	// Validate that removeObsoleteIndexes is a no-op for the default case
-	removedIndexes, removeErr := removeObsoleteIndexes(testBucket.Bucket, true, db.UseXattrs())
+	// We don't know the current state of the bucket (may already have xattrs enabled), so run
+	// an initial cleanup to remove existing obsolete indexes
+	removedIndexes, removeErr := removeObsoleteIndexes(testBucket.Bucket, false, db.UseXattrs())
 	log.Printf("removedIndexes: %+v", removedIndexes)
-	assert.Equals(t, len(removedIndexes), 0)
-	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
+	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	// Running w/ opposite xattrs flag should preview removal of the currently deployed indexes
+	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
 	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, true, !db.UseXattrs())
 	assert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
@@ -53,6 +54,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	}
 
 	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	// Validate that removeObsoleteIndexes is a no-op for the default case
@@ -63,6 +65,11 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 
 	// Hack sgIndexes to simulate new version of indexes
 	accessIndex := sgIndexes[IndexAccess]
+	restoreIndex := sgIndexes[IndexAccess]
+	defer func() {
+		sgIndexes[IndexAccess] = restoreIndex
+	}()
+
 	accessIndex.version = 2
 	accessIndex.previousVersions = []int{1}
 	sgIndexes[IndexAccess] = accessIndex
