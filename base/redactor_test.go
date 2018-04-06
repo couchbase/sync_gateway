@@ -88,7 +88,7 @@ func TestRedactionLevelUnmarshalText(t *testing.T) {
 	assert.Equals(t, level, RedactFull)
 
 	err = level.UnmarshalText([]byte("asdf"))
-	assert.Equals(t, err.Error(), "unrecognized level: asdf")
+	assert.Equals(t, err.Error(), "unrecognized redaction level: \"asdf\"")
 }
 
 func BenchmarkRedactHelper(b *testing.B) {
