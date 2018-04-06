@@ -17,20 +17,26 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	db, testBucket := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 
+	// We have one xattr-only index - adjust expected indexes accordingly
+	expectedIndexes := int(indexTypeCount)
+	if !db.UseXattrs() {
+		expectedIndexes--
+	}
+
 	// Validate that removeObsoleteIndexes is a no-op for the default case
 	removedIndexes, removeErr := removeObsoleteIndexes(testBucket.Bucket, true, db.UseXattrs())
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.Equals(t, len(removedIndexes), 0)
 	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
 
-	// Running w/ opposite xattrs flag should preview removal of the inverse indexes
+	// Running w/ opposite xattrs flag should preview removal of the currently deployed indexes
 	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, true, !db.UseXattrs())
-	assert.Equals(t, len(removedIndexes), int(indexTypeCount))
+	assert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
 	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, false, !db.UseXattrs())
-	assert.Equals(t, len(removedIndexes), int(indexTypeCount))
+	assert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone

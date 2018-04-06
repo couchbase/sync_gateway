@@ -38,7 +38,7 @@ func TestN1qlQuery(t *testing.T) {
 	}
 
 	indexExpression := "val"
-	err := bucket.CreateIndex("testIndex_value", indexExpression, 0)
+	err := bucket.CreateIndex("testIndex_value", indexExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
 	}
