@@ -1,6 +1,8 @@
 package base
 
 import (
+	"errors"
+	"strings"
 	"sync/atomic"
 )
 
@@ -10,10 +12,10 @@ type LogKey uint32
 // Values for log keys.
 const (
 	// KEY_NONE is shorthand for no log keys.
-	KEY_NONE LogKey = 0
+	KEY_NONE LogKey = 1 << iota
 
 	// KEY_ALL is a wildcard for all log keys.
-	KEY_ALL LogKey = 1 << iota
+	KEY_ALL
 
 	KEY_ACCESS
 	KEY_ATTACH
@@ -32,6 +34,7 @@ const (
 
 var (
 	logKeyNames = map[LogKey]string{
+		KEY_NONE:      "",
 		KEY_ALL:       "*",
 		KEY_ACCESS:    "Access",
 		KEY_ATTACH:    "Attach",
@@ -64,16 +67,46 @@ func (keyMask *LogKey) Disable(logKey LogKey) {
 	atomic.StoreUint32((*uint32)(keyMask), val & ^uint32(logKey))
 }
 
-// Enabled returns true if the given logKey, or KEY_ALL is enabled in keyMask.
+// Enabled returns true if the given logKey is enabled in keyMask.
+// Always returns true if KEY_ALL is enabled in keyMask.
+// Always returns false if KEY_NONE is enabled in keyMask.
 func (keyMask *LogKey) Enabled(logKey LogKey) bool {
 	return keyMask.enabled(logKey, true)
 }
 
 // enabled returns true if the given logKey is enabled in keyMask, with an optional wildcard check.
-func (keyMask *LogKey) enabled(logKey LogKey, checkWildcard bool) bool {
+func (keyMask *LogKey) enabled(logKey LogKey, checkWildcards bool) bool {
+	if keyMask == nil {
+		return false
+	}
+
 	flag := atomic.LoadUint32((*uint32)(keyMask))
-	return (checkWildcard && flag&uint32(KEY_ALL) != 0) ||
-		flag&uint32(logKey) != 0
+
+	if checkWildcards {
+		// If KEY_NONE is set, return false for everything.
+		if flag&uint32(KEY_NONE) != 0 {
+			return false
+		}
+		// If KEY_ALL is set, return true for everything.
+		if flag&uint32(KEY_ALL) != 0 {
+			return true
+		}
+	}
+
+	return flag&uint32(logKey) != 0
+}
+
+func (keyMask *LogKey) MarshalText() ([]byte, error) {
+	if keyMask == nil {
+		return nil, errors.New("invalid log key")
+	}
+	return []byte(LogKeyName(*keyMask)), nil
+}
+
+func (keyMask *LogKey) UnmarshalText(text []byte) error {
+	keys := strings.Split(string(text), ",")
+	atomic.StoreUint32((*uint32)(keyMask), uint32(ToLogKey(keys)))
+	return nil
 }
 
 // LogKeyName returns the string representation of a single log key.
@@ -82,24 +115,32 @@ func LogKeyName(logKey LogKey) string {
 	return logKeyNames[logKey]
 }
 
-// ToLogKey takes a slice of case-sensitive log key names and will return a LogKey bitfield.
-func ToLogKey(keysStr []string) LogKey {
-	var logKeys LogKey
-	for _, name := range keysStr {
-		if logKey, ok := logKeyNamesInverse[name]; ok {
-			logKeys.Enable(logKey)
-		}
-	}
-	return logKeys
-}
-
 // EnabledLogKeys returns a slice of enabled log key names.
-func (keyMask LogKey) EnabledLogKeys() []string {
+func (keyMask *LogKey) EnabledLogKeys() []string {
+	if keyMask == nil {
+		return []string{}
+	}
 	var logKeys = make([]string, 0, len(logKeyNames))
 	for i := 0; i < len(logKeyNames); i++ {
 		logKey := LogKey(1) << uint32(i)
 		if keyMask.enabled(logKey, false) {
 			logKeys = append(logKeys, LogKeyName(logKey))
+		}
+	}
+	return logKeys
+}
+
+// ToLogKey takes a slice of case-sensitive log key names and will return a LogKey bitfield.
+func ToLogKey(keysStr []string) LogKey {
+	var logKeys LogKey
+	for _, name := range keysStr {
+		// Ignore "+" in log keys (for backwards compatibility)
+		name := strings.Replace(name, "+", "", -1)
+
+		if logKey, ok := logKeyNamesInverse[name]; ok {
+			logKeys.Enable(logKey)
+		} else {
+			Warnf(KEY_ALL, "Invalid log key: %v", name)
 		}
 	}
 	return logKeys

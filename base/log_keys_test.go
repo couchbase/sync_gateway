@@ -8,6 +8,9 @@ import (
 )
 
 func TestLogKey(t *testing.T) {
+	var logKeysPtr *LogKey
+	assert.False(t, logKeysPtr.Enabled(KEY_HTTP))
+
 	logKeys := KEY_HTTP
 	assert.True(t, logKeys.Enabled(KEY_HTTP))
 
@@ -22,8 +25,16 @@ func TestLogKey(t *testing.T) {
 	assert.True(t, logKeys.Enabled(KEY_CACHE))
 	assert.Equals(t, logKeys, KEY_ALL|KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
 
+	// Enable KEY_NONE and check keys are disabled.
+	logKeys.Enable(KEY_NONE)
+	assert.False(t, logKeys.Enabled(KEY_ALL))
+	assert.False(t, logKeys.Enabled(KEY_CACHE))
+	assert.Equals(t, logKeys, KEY_NONE|KEY_ALL|KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
+	logKeys.Disable(KEY_NONE)
+
 	// Disable wildcard and check that existing keys are still set.
 	logKeys.Disable(KEY_ALL)
+	assert.True(t, logKeys.Enabled(KEY_ACCESS))
 	assert.False(t, logKeys.Enabled(KEY_CACHE))
 	assert.Equals(t, logKeys, KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
 }
@@ -38,7 +49,7 @@ func TestLogKeyNames(t *testing.T) {
 
 	keys := []string{}
 	logKeys := ToLogKey(keys)
-	assert.Equals(t, logKeys, KEY_NONE)
+	assert.Equals(t, logKeys, LogKey(0))
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{})
 
 	keys = append(keys, "DCP")
@@ -55,6 +66,33 @@ func TestLogKeyNames(t *testing.T) {
 	logKeys = ToLogKey(keys)
 	assert.Equals(t, logKeys, KEY_ALL|KEY_DCP)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_ALL), LogKeyName(KEY_DCP)})
+
+	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
+	keys = []string{"DCP", "HTTP+", "InvalidLogKey"}
+	logKeys = ToLogKey(keys)
+	assert.Equals(t, logKeys, KEY_DCP|KEY_HTTP)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_DCP), LogKeyName(KEY_HTTP)})
+}
+
+func TestLogKeyText(t *testing.T) {
+	var logKeysPtr *LogKey
+	text, err := logKeysPtr.MarshalText()
+	assert.Equals(t, err.Error(), "invalid log key")
+
+	var logKeys LogKey
+	text = []byte("DCP,HTTP+,InvalidLogKey")
+	err = logKeys.UnmarshalText(text)
+
+	assert.Equals(t, err, nil)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_DCP), LogKeyName(KEY_HTTP)})
+
+	text = []byte("DCP")
+	err = logKeys.UnmarshalText(text)
+	assert.Equals(t, err, nil)
+
+	text, err = logKeys.MarshalText()
+	assert.Equals(t, err, nil)
+	assert.Equals(t, string(text), "DCP")
 }
 
 func TestLogKeyConcurrency(t *testing.T) {
