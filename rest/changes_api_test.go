@@ -55,7 +55,8 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 		syncFnPtr = &it.SyncFn
 	}
 
-	// TODO: this should be able to use either a Walrus or a Couchbase bucket
+	// TODO: this should be able to use either a Walrus or a Couchbase bucket.
+	//       When supported, set dbConfig.UseViews conditionally
 
 	serverName := "walrus:"
 	//serverName := "http://localhost:8091"
@@ -74,6 +75,7 @@ func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 		Name:     "db",
 		Sync:     syncFnPtr,
 		FeedType: feedType,
+		UseViews: true, // walrus only supports views
 	}
 
 	if useBucketIndex {
@@ -1403,7 +1405,75 @@ func TestChangesViewBackfill(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
 	}
-	changesJSON := `{"since":0}`
+	changesJSON := `{"since":0, "limit":50}`
+	changes.Results = nil
+	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 5)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	queryCount := base.GetExpvarAsString("syncGateway_changeCache", "view_queries")
+	log.Printf("After initial changes request, query count is :%s", queryCount)
+
+	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
+	changes.Results = nil
+	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 5)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	// Validate that there haven't been any more view queries
+	assert.Equals(t, base.GetExpvarAsString("syncGateway_changeCache", "view_queries"), queryCount)
+
+}
+
+// Tests view backfill and validates that results are prepended to cache
+func TestChangesViewBackfillStarChannel(t *testing.T) {
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true, "Changes+":true, "Cache":true, "Cache+":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("*"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put several documents
+	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/doc3", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	testDb := rt.ServerContext().Database("db")
+	testDb.WaitForSequence(3)
+
+	// Flush the channel cache
+	testDb.FlushChannelCache()
+
+	// Add a few more docs (to increment the channel cache's validFrom)
+	response = rt.SendAdminRequest("PUT", "/db/doc4", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	response = rt.SendAdminRequest("PUT", "/db/doc5", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	testDb.WaitForSequence(5)
+
+	// Issue a since=0 changes request.  Validate that there's a view-based backfill
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	changesJSON := `{"since":0, "limit":50}`
 	changes.Results = nil
 	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)

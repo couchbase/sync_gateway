@@ -157,6 +157,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	}
 
 	bucket.Bucket.SetViewTimeout(bucket.spec.GetViewQueryTimeout())
+	bucket.Bucket.SetN1qlTimeout(bucket.spec.GetViewQueryTimeout())
 
 	return bucket, err
 
@@ -1998,6 +1999,34 @@ func (bucket *CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[stri
 	}
 
 	return nil
+}
+
+func (bucket CouchbaseBucketGoCB) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+
+	bucket.waitForAvailViewOp()
+	defer bucket.releaseViewOp()
+
+	viewQuery := gocb.NewViewQuery(ddoc, name)
+
+	// convert params map to these params
+	if err := applyViewQueryOptions(viewQuery, params); err != nil {
+		return nil, err
+	}
+
+	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
+
+	// If it's a view timeout error, return an error message specific to that.
+	if isGoCBTimeoutError(err) {
+		return nil, ErrViewTimeoutError
+	}
+
+	// If it's any other error, return it as-is
+	if err != nil {
+		return nil, pkgerrors.Wrapf(err, "Unexpected error querying design doc %q, view %q with params:%+v", ddoc, name, params)
+	}
+
+	return goCbViewResult, nil
+
 }
 
 func getTotalRows(goCbViewResult gocb.ViewResults) int {

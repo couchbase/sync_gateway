@@ -50,7 +50,9 @@ func testBucketWithViewsAndBrokenDoc() (tBucket base.TestBucket, numDocs int) {
 }
 
 func TestRepairBucket(t *testing.T) {
-
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against walrus (requires views)")
+	}
 	base.EnableLogKey("CRUD")
 
 	testBucket, numDocs := testBucketWithViewsAndBrokenDoc()
@@ -78,6 +80,10 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	// Disabled due to failure described #3267
 	t.Skip("WARNING: TEST DISABLED")
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against walrus (requires views)")
+	}
 
 	base.EnableLogKey("CRUD")
 
@@ -125,7 +131,9 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 // Make sure docs not modified during dry run
 func TestRepairBucketDryRun(t *testing.T) {
-
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against walrus (requires views)")
+	}
 	base.EnableLogKey("CRUD")
 
 	testBucket, _ := testBucketWithViewsAndBrokenDoc()

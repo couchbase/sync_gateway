@@ -273,6 +273,11 @@ func (bucket *CouchbaseBucket) View(ddoc, name string, params map[string]interfa
 	return vres, err
 }
 
+func (bucket *CouchbaseBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+	result, err := bucket.View(ddoc, name, params)
+	return &result, err
+}
+
 func (bucket *CouchbaseBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 
 	cbArgs := memcached.TapArguments{

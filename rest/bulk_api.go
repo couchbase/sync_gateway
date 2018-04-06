@@ -262,7 +262,7 @@ func (h *handler) handleDump() error {
 // HTTP handler for _repair
 func (h *handler) handleRepair() error {
 
-	// TODO: If repair is re-enabled, it may need to be modified to support xattrs
+	// TODO: If repair is re-enabled, it may need to be modified to support xattrs and GSI
 	if true == true {
 		return errors.New("_repair endpoint disabled")
 	}

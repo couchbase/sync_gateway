@@ -127,6 +127,16 @@ func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{
 	return err
 }
 
+func (b *LeakyBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+	iterator, err := b.bucket.ViewQuery(ddoc, name, params)
+
+	if b.config.FirstTimeViewCustomPartialError {
+		b.config.FirstTimeViewCustomPartialError = !b.config.FirstTimeViewCustomPartialError
+		err = ErrPartialViewErrors
+	}
+	return iterator, err
+}
+
 func (b *LeakyBucket) GetMaxVbno() (uint16, error) {
 	return b.bucket.GetMaxVbno()
 }

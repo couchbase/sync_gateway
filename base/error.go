@@ -34,6 +34,7 @@ const (
 	emptyMetadata         = sgErrorCode(0x08)
 	casFailureShouldRetry = sgErrorCode(0x09)
 	errPartialViewErrors  = sgErrorCode(0x10)
+	indexerError          = sgErrorCode(0x11)
 )
 
 type SGError struct {
@@ -51,6 +52,7 @@ var (
 	ErrFatalBucketConnection = &SGError{fatalBucketConnection}
 	ErrEmptyMetadata         = &SGError{emptyMetadata}
 	ErrCasFailureShouldRetry = &SGError{casFailureShouldRetry}
+	ErrIndexerError          = &SGError{indexerError}
 
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.
@@ -72,13 +74,15 @@ func (e SGError) Error() string {
 	case revTreeAddRevFailure:
 		return "Failure adding Rev to RevTree"
 	case viewTimeoutError:
-		return "Timeout performing ViewQuery - could indicate that views are still reindexing"
+		return "Timeout performing Query"
 	case fatalBucketConnection:
 		return "Fatal error connecting to bucket"
 	case emptyMetadata:
 		return "Empty Sync Gateway metadata"
 	case errPartialViewErrors:
 		return "Partial errors in view"
+	case indexerError:
+		return "Indexer error"
 	default:
 		return "Unknown error"
 	}

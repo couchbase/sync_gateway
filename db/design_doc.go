@@ -17,7 +17,7 @@ import (
 // ViewVersion should be incremented every time any view definition changes.
 // Currently both Sync Gateway design docs share the same view version, but this is
 // subject to change if the update schedule diverges
-const DesignDocVersion = "2.0"
+const DesignDocVersion = "2.1"
 const DesignDocFormat = "%s_%s" // Design doc prefix, view version
 
 // DesignDocPreviousVersions defines the set of versions included during removal of obsolete
@@ -35,10 +35,8 @@ const (
 	ViewAccessVbSeq                 = "access_vbseq"
 	ViewRoleAccess                  = "role_access"
 	ViewRoleAccessVbSeq             = "role_access_vbseq"
-	ViewAllBits                     = "all_bits"
 	ViewAllDocs                     = "all_docs"
 	ViewImport                      = "import"
-	ViewOldRevs                     = "old_revs"
 	ViewSessions                    = "sessions"
 	ViewTombstones                  = "tombstones"
 )
@@ -342,11 +340,6 @@ func installViews(bucket base.Bucket) error {
 		                    }
 		                     `, KSyncXattrName, KSyncXattrName)
 
-	// View for finding every Couchbase doc (used when deleting a database)
-	// Key is docid; value is null
-	allbits_map := `function (doc, meta) {
-                      emit(meta.id, null); }`
-
 	// View for _all_docs
 	// Key is docid; value is [revid, sequence]
 	alldocs_map := `function (doc, meta) {
@@ -372,12 +365,6 @@ func installViews(bucket base.Bucket) error {
                        var exists = (sync !== undefined);
                        emit([exists, meta.id], null); } }`
 	import_map = fmt.Sprintf(import_map, syncData)
-
-	// View for compaction -- finds all revision docs
-	// Key and value are ignored.
-	oldrevs_map := `function (doc, meta) {
-                     if (meta.id.substring(0,10) == "_sync:rev:")
-	                     emit("",null); }`
 
 	// Sessions view - used for session delete
 	// Key is username; value is docid
@@ -536,10 +523,8 @@ func installViews(bucket base.Bucket) error {
 
 	designDocMap[DesignDocSyncHousekeeping()] = sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
-			ViewAllBits:    sgbucket.ViewDef{Map: allbits_map},
 			ViewAllDocs:    sgbucket.ViewDef{Map: alldocs_map, Reduce: "_count"},
 			ViewImport:     sgbucket.ViewDef{Map: import_map, Reduce: "_count"},
-			ViewOldRevs:    sgbucket.ViewDef{Map: oldrevs_map, Reduce: "_count"},
 			ViewSessions:   sgbucket.ViewDef{Map: sessions_map},
 			ViewTombstones: sgbucket.ViewDef{Map: tombstones_map},
 		},

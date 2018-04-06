@@ -153,7 +153,6 @@ func (h *handler) handleGetDB() error {
 		"purge_seq":            0,     // TODO: Should track this value
 		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
 		"state":                runState,
-		//"doc_count":          h.db.DocCount(), // Removed: too expensive to compute (#278)
 	}
 	h.writeJSON(response)
 	return nil

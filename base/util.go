@@ -458,6 +458,27 @@ func CreateSleeperFunc(maxNumAttempts, timeToSleepMs int) RetrySleeper {
 
 }
 
+// Create a RetrySleeper that will double the retry time on every iteration, with each sleep not exceeding maxSleepPerRetryMs.
+func CreateMaxDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int, maxSleepPerRetryMs int) RetrySleeper {
+
+	timeToSleepMs := initialTimeToSleepMs
+
+	sleeper := func(numAttempts int) (bool, int) {
+		if numAttempts > maxNumAttempts {
+			return false, -1
+		}
+		if numAttempts > 1 {
+			timeToSleepMs *= 2
+			if timeToSleepMs > maxSleepPerRetryMs {
+				timeToSleepMs = maxSleepPerRetryMs
+			}
+		}
+		return true, timeToSleepMs
+	}
+	return sleeper
+
+}
+
 // SortedUint64Slice attaches the methods of sort.Interface to []uint64, sorting in increasing order.
 type SortedUint64Slice []uint64
 

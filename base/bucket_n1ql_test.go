@@ -9,6 +9,10 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+var testN1qlOptions = &N1qlIndexOptions{
+	NumReplica: 0,
+}
+
 func TestN1qlQuery(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {
@@ -34,7 +38,7 @@ func TestN1qlQuery(t *testing.T) {
 	}
 
 	indexExpression := "val"
-	err := bucket.CreateIndex("testIndex_value", indexExpression, 0)
+	err := bucket.CreateIndex("testIndex_value", indexExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
 	}
@@ -53,6 +57,9 @@ func TestN1qlQuery(t *testing.T) {
 			t.Errorf("Error dropping index: %s", err)
 		}
 	}()
+
+	readyErr := bucket.WaitForIndexOnline("testIndex_value")
+	assertNoError(t, readyErr, "Error validating index online")
 
 	// Query the index
 	queryExpression := fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", BucketQueryToken)
@@ -104,6 +111,79 @@ func TestN1qlQuery(t *testing.T) {
 
 }
 
+func TestN1qlFilterExpression(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	if !ok {
+		t.Fatalf("Requires gocb bucket")
+	}
+
+	// Write a few docs to the bucket to query
+	for i := 0; i < 5; i++ {
+		key := fmt.Sprintf("doc%d", i)
+		body := fmt.Sprintf(`{"val": %d}`, i)
+		added, err := bucket.AddRaw(key, 0, []byte(body))
+		if err != nil {
+			t.Errorf("Error adding doc for TestIndexFilterExpression: %v", err)
+		}
+		assertTrue(t, added, "AddRaw returned added=false, expected true")
+	}
+
+	indexExpression := "val"
+	filterExpression := "val < 3"
+	err := bucket.CreateIndex("testIndex_filtered_value", indexExpression, filterExpression, testN1qlOptions)
+	if err != nil {
+		t.Errorf("Error creating index: %s", err)
+	}
+
+	// Wait for index readiness
+	readyErr := bucket.WaitForIndexOnline("testIndex_filtered_value")
+	assertNoError(t, readyErr, "Error validating index online")
+
+	// Defer index teardown
+	defer func() {
+		// Drop the index
+		err = bucket.DropIndex("testIndex_filtered_value")
+		if err != nil {
+			t.Errorf("Error dropping index: %s", err)
+		}
+	}()
+
+	// Query the index
+	queryExpression := fmt.Sprintf("SELECT META().id, val FROM %s WHERE %s AND META().id = 'doc1'", BucketQueryToken, filterExpression)
+	queryResults, queryErr := bucket.Query(queryExpression, nil, gocb.RequestPlus, false)
+	assertNoError(t, queryErr, "Error executing n1ql query")
+
+	// Struct to receive the query response (META().id, val)
+	var queryResult struct {
+		Id  string
+		Val int
+	}
+	var queryCloseErr error
+	var count int
+
+	// Iterate over results - validate values and count to ensure $minvalue is being applied correctly
+	for {
+		ok := queryResults.Next(&queryResult)
+		if !ok {
+			queryCloseErr = queryResults.Close()
+			assertNoError(t, queryCloseErr, "Error closing queryResults")
+			break
+		}
+		assertTrue(t, queryResult.Val < 3, "Query returned unexpected result")
+		assert.Equals(t, queryResult.Id, "doc1")
+		count++
+	}
+	assert.Equals(t, count, 1)
+
+}
+
 // Test index state retrieval
 func TestIndexMeta(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
@@ -123,10 +203,22 @@ func TestIndexMeta(t *testing.T) {
 	assertNoError(t, err, "Error getting meta for non-existent index")
 
 	indexExpression := "val"
-	err = bucket.CreateIndex("testIndex_value", indexExpression, 0)
+	err = bucket.CreateIndex("testIndex_value", indexExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
 	}
+
+	readyErr := bucket.WaitForIndexOnline("testIndex_value")
+	assertNoError(t, readyErr, "Error validating index online")
+
+	// Defer index teardown
+	defer func() {
+		// Drop the index
+		err = bucket.DropIndex("testIndex_value")
+		if err != nil {
+			t.Errorf("Error dropping index: %s", err)
+		}
+	}()
 
 	// Check index state post-creation
 	exists, meta, err = bucket.GetIndexMeta("testIndex_value")
@@ -159,15 +251,18 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	}
 
 	indexExpression := "val"
-	err := bucket.CreateIndex("testIndex_value", indexExpression, 0)
+	err := bucket.CreateIndex("testIndex_value_malformed", indexExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
 	}
 
+	readyErr := bucket.WaitForIndexOnline("testIndex_value_malformed")
+	assertNoError(t, readyErr, "Error validating index online")
+
 	// Defer index teardown
 	defer func() {
 		// Drop the index
-		err = bucket.DropIndex("testIndex_value")
+		err = bucket.DropIndex("testIndex_value_malformed")
 		if err != nil {
 			t.Errorf("Error dropping index: %s", err)
 		}
@@ -211,10 +306,13 @@ func TestCreateAndDropIndex(t *testing.T) {
 	}
 
 	createExpression := "_sync.sequence"
-	err := bucket.CreateIndex("testIndex_sequence", createExpression, 0)
+	err := bucket.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
 	}
+
+	readyErr := bucket.WaitForIndexOnline("testIndex_sequence")
+	assertNoError(t, readyErr, "Error validating index online")
 
 	// Drop the index
 	err = bucket.DropIndex("testIndex_sequence")
@@ -237,20 +335,20 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 
 	// Malformed expression
 	createExpression := "_sync sequence"
-	err := bucket.CreateIndex("testIndex_malformed", createExpression, 0)
+	err := bucket.CreateIndex("testIndex_malformed", createExpression, "", testN1qlOptions)
 	if err == nil {
 		t.Errorf("Expected error for malformed index expression")
 	}
 
 	// Create index
 	createExpression = "_sync.sequence"
-	err = bucket.CreateIndex("testIndex_sequence", createExpression, 0)
+	err = bucket.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
 	}
 
 	// Attempt to recreate duplicate index
-	err = bucket.CreateIndex("testIndex_sequence", createExpression, 0)
+	err = bucket.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
 	if err == nil {
 		t.Errorf("Expected error attempting to recreate already existing index")
 	}

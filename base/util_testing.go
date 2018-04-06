@@ -33,7 +33,7 @@ func init() {
 }
 
 type TestBucket struct {
-	Bucket Bucket
+	Bucket
 }
 
 func (tb TestBucket) Close() {
@@ -183,6 +183,17 @@ func TestUseXattrs() bool {
 	}
 	// Otherwise fallback to hardcoded default
 	return DefaultUseXattrs
+}
+
+// Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
+func TestUseCouchbaseServer() bool {
+	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
+	return strings.ToLower(backingStore) == strings.ToLower(TestEnvBackingStoreCouchbase)
+}
+
+// Use views for walrus testing
+func TestUseViews() bool {
+	return !TestUseCouchbaseServer()
 }
 
 type TestAuthenticator struct {

@@ -82,22 +82,23 @@ type DatabaseContext struct {
 }
 
 type DatabaseContextOptions struct {
-	CacheOptions               *CacheOptions
-	IndexOptions               *ChannelIndexOptions
-	SequenceHashOptions        *SequenceHashOptions
-	RevisionCacheCapacity      uint32
-	OldRevExpirySeconds        uint32
-	AdminInterface             *string
-	UnsupportedOptions         UnsupportedOptions
-	TrackDocs                  bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
-	OIDCOptions                *auth.OIDCOptions
-	DBOnlineCallback           DBOnlineCallback // Callback function to take the DB back online
-	ImportOptions              ImportOptions
-	EnableXattr                bool   // Use xattr for _sync
-	LocalDocExpirySecs         uint32 // The _local doc expiry time in seconds
-	SessionCookieName          string // Pass-through DbConfig.SessionCookieName
-	AllowConflicts             *bool  // False forbids creating conflicts
-	SendWWWAuthenticateHeader  *bool  // False disables setting of 'WWW-Authenticate' header
+	CacheOptions              *CacheOptions
+	IndexOptions              *ChannelIndexOptions
+	SequenceHashOptions       *SequenceHashOptions
+	RevisionCacheCapacity     uint32
+	OldRevExpirySeconds       uint32
+	AdminInterface            *string
+	UnsupportedOptions        UnsupportedOptions
+	TrackDocs                 bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
+	OIDCOptions               *auth.OIDCOptions
+	DBOnlineCallback          DBOnlineCallback // Callback function to take the DB back online
+	ImportOptions             ImportOptions
+	EnableXattr               bool   // Use xattr for _sync
+	LocalDocExpirySecs        uint32 // The _local doc expiry time in seconds
+	SessionCookieName         string // Pass-through DbConfig.SessionCookieName
+	AllowConflicts            *bool  // False forbids creating conflicts
+	SendWWWAuthenticateHeader *bool  // False disables setting of 'WWW-Authenticate' header
+	UseViews                  bool   // Force use of views
 }
 
 type OidcTestProviderOptions struct {
@@ -291,7 +292,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			// - The only known error state for context.TakeDbOffline is if the current db state wasn't online
 			// - That code would hit an error if the dropped tap feed triggered TakeDbOffline, but the db was already non-online
 			// - In that case (some other event, potentially an admin action, took the DB offline), and so there is no reason to do the auto-reconnect processing
-
 
 			// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
 
@@ -561,18 +561,6 @@ func (db *Database) ReloadUser() error {
 
 //////// ALL DOCUMENTS:
 
-// The number of documents in the database.
-func (db *Database) DocCount() int {
-	vres, err := db.queryAllDocs(true)
-	if err != nil {
-		return -1
-	}
-	if len(vres.Rows) == 0 {
-		return 0
-	}
-	return int(vres.Rows[0].Value.(float64))
-}
-
 type IDAndRev struct {
 	DocID    string
 	RevID    string
@@ -590,131 +578,147 @@ type ForEachDocIDFunc func(id IDAndRev, channels []string) bool
 
 // Iterates over all documents in the database, calling the callback function on each
 func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
-	type viewRow struct {
-		Key   string
-		Value struct {
-			RevID    string   `json:"r"`
-			Sequence uint64   `json:"s"`
-			Channels []string `json:"c"`
-		}
-	}
-	var vres struct {
-		Rows []viewRow
-	}
-	opts := Body{"stale": false, "reduce": false}
 
-	if resultsOpts.Startkey != "" {
-		opts["startkey"] = resultsOpts.Startkey
-	}
-
-	if resultsOpts.Endkey != "" {
-		opts["endkey"] = resultsOpts.Endkey
-	}
-
-	err := db.Bucket.ViewCustom(DesignDocSyncHousekeeping(), ViewAllDocs, opts, &vres)
+	results, err := db.QueryAllDocs(resultsOpts.Startkey, resultsOpts.Endkey)
 	if err != nil {
-		base.WarnR("all_docs got error: %v", err)
 		return err
 	}
 
+	db.processForEachDocIDResults(callback, resultsOpts.Limit, results)
+	return results.Close()
+}
+
+// Iterate over the results of an AllDocs query, performing ForEachDocID handling for each row
+func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) {
+
 	count := uint64(0)
-	for _, row := range vres.Rows {
-		if callback(IDAndRev{row.Key, row.Value.RevID, row.Value.Sequence}, row.Value.Channels) {
+	for {
+		var queryRow AllDocsIndexQueryRow
+		var found bool
+		var docid, revid string
+		var seq uint64
+		var channels []string
+		if db.Options.UseViews {
+			var viewRow AllDocsViewQueryRow
+			found = results.Next(&viewRow)
+			if found {
+				docid = viewRow.Key
+				revid = viewRow.Value.RevID
+				seq = viewRow.Value.Sequence
+				channels = viewRow.Value.Channels
+			}
+		} else {
+			found = results.Next(&queryRow)
+			if found {
+				docid = queryRow.Id
+				revid = queryRow.RevID
+				seq = queryRow.Sequence
+				channels = make([]string, 0)
+				// Query returns all channels, but we only want to return active channels
+				for channelName, removal := range queryRow.Channels {
+					if removal == nil {
+						channels = append(channels, channelName)
+					}
+				}
+			}
+		}
+		if !found {
+			break
+		}
+
+		if callback(IDAndRev{docid, revid, seq}, channels) {
 			count++
 		}
 		//We have to apply limit check after callback has been called
 		//to account for rows that are not in the current users channels
-		if resultsOpts.Limit > 0 && count == resultsOpts.Limit {
+		if limit > 0 && count == limit {
 			break
 		}
-	}
 
-	return nil
+	}
+}
+
+type principalsViewRow struct {
+	Key   string // principal name
+	Value bool   // 'isUser' flag
 }
 
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
-	vres, err := db.Bucket.View(DesignDocSyncGateway(), ViewPrincipals, Body{"stale": false})
+
+	results, err := db.QueryPrincipals()
 	if err != nil {
-		return
+		return nil, nil, err
 	}
+
+	var isUser bool
+	var principalName string
 	users = []string{}
 	roles = []string{}
-	for _, row := range vres.Rows {
-		name := row.Key.(string)
-		if name != "" {
-			if row.Value.(bool) {
-				users = append(users, name)
+	lenUserKeyPrefix := len(auth.UserKeyPrefix)
+	for {
+		if db.Options.UseViews {
+			var viewRow principalsViewRow
+			found := results.Next(&viewRow)
+			if !found {
+				break
+			}
+			isUser = viewRow.Value
+			principalName = viewRow.Key
+		} else {
+			var queryRow QueryIdRow
+			found := results.Next(&queryRow)
+			if !found {
+				break
+			}
+			if len(queryRow.Id) < lenUserKeyPrefix {
+				continue
+			}
+			isUser = queryRow.Id[0:lenUserKeyPrefix] == auth.UserKeyPrefix
+			principalName = queryRow.Id[lenUserKeyPrefix:]
+		}
+
+		if principalName != "" {
+			if isUser {
+				users = append(users, principalName)
 			} else {
-				roles = append(roles, name)
+				roles = append(roles, principalName)
 			}
 		}
 	}
-	return
-}
-
-func (db *Database) queryAllDocs(reduce bool) (sgbucket.ViewResult, error) {
-	opts := Body{"stale": false, "reduce": reduce}
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewAllDocs, opts)
-	if err != nil {
-		base.WarnR("all_docs got error: %v", err)
+	closeErr := results.Close()
+	if closeErr != nil {
+		return nil, nil, closeErr
 	}
-	return vres, err
+
+	return users, roles, nil
 }
 
 //////// HOUSEKEEPING:
 
-// Deletes all documents in the database
-func (db *Database) DeleteAllDocs(docType string) error {
-	opts := Body{"stale": false}
-	if docType != "" {
-		opts["startkey"] = "_sync:" + docType + ":"
-		opts["endkey"] = "_sync:" + docType + "~"
-		opts["inclusive_end"] = false
-	}
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewAllBits, opts)
-	if err != nil {
-		base.WarnR("all_bits view returned %v", err)
-		return err
-	}
-
-	//FIX: Is there a way to do this in one operation?
-	base.LogfR("Deleting %d %q documents of %q ...", len(vres.Rows), base.UD(docType), base.UD(db.Name))
-	for _, row := range vres.Rows {
-		base.LogToR("CRUD", "\tDeleting %q", base.UD(row.ID))
-		if err := db.Bucket.Delete(row.ID); err != nil {
-			base.WarnR("Error deleting %q: %v", base.UD(row.ID), err)
-		}
-	}
-	return nil
-}
-
 // Deletes all session documents for a user
 func (db *DatabaseContext) DeleteUserSessions(userName string) error {
-	opts := Body{"stale": false}
-	opts["startkey"] = userName
-	opts["endkey"] = userName
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewSessions, opts)
+
+	results, err := db.QuerySessions(userName)
 	if err != nil {
-		base.WarnR("sessions view returned %v", err)
 		return err
 	}
 
-	for _, row := range vres.Rows {
-		docId := row.Value.(string)
-		base.LogToR("CRUD", "\tDeleting %q", base.UD(docId))
-		if err := db.Bucket.Delete(docId); err != nil {
-			base.WarnR("Error deleting %q: %v", base.UD(row.ID), err)
+	var sessionsRow QueryIdRow
+	for results.Next(&sessionsRow) {
+		base.LogToR("CRUD", "\tDeleting %q", sessionsRow.Id)
+		if err := db.Bucket.Delete(sessionsRow.Id); err != nil {
+			base.WarnR("Error deleting %q: %v", sessionsRow.Id, err)
 		}
 	}
-	return nil
+	return results.Close()
 }
 
-// Trigger tombstone compaction from views.  Several Sync Gateway views index server tombstones (deleted documents with an xattr).
+// Trigger tombstone compaction from view and/or GSI indexes.  Several Sync Gateway indexes server tombstones (deleted documents with an xattr).
 // There currently isn't a mechanism for server to remove these docs from the index when the tombstone is purged by the server during
 // metadata purge, because metadata purge doesn't trigger a DCP event.
 // When compact is run, Sync Gateway initiates a normal delete operation for the document and xattr (a Sync Gateway purge).  This triggers
-// removal of the document from the view index.  In the event that the document has already been purged by server, we need to recreate and delete
+// removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
 func (db *Database) Compact() (int, error) {
 
@@ -724,39 +728,37 @@ func (db *Database) Compact() (int, error) {
 	}
 
 	// Trigger view compaction for all tombstoned documents older than the purge interval
-	opts := Body{}
-	opts["stale"] = "ok"
-	opts["startkey"] = 1
 	purgeIntervalDuration := time.Duration(-db.PurgeInterval) * time.Hour
-	opts["endkey"] = time.Now().Add(purgeIntervalDuration).Unix()
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewTombstones, opts)
+	purgeOlderThan := time.Now().Add(purgeIntervalDuration)
+	results, err := db.QueryTombstones(purgeOlderThan)
 	if err != nil {
-		base.WarnR("Tombstones view returned error during compact: %v", err)
 		return 0, err
 	}
 
-	base.LogfR("Compacting %d purged tombstones from view for %s ...", len(vres.Rows), base.UD(db.Name))
+	base.LogfR("Compacting purged tombstones for %s ...", base.UD(db.Name))
 	purgeBody := Body{"_purged": true}
 	count := 0
-	for _, row := range vres.Rows {
-		base.LogToR("CRUD", "\tDeleting %q", base.UD(row.ID))
+
+	var tombstonesRow QueryIdRow
+	for results.Next(&tombstonesRow) {
+		base.LogToR("CRUD", "\tDeleting %q", tombstonesRow.Id)
 		// First, attempt to purge.
-		purgeErr := db.Purge(row.ID)
+		purgeErr := db.Purge(tombstonesRow.Id)
 		if purgeErr == nil {
 			count++
 		} else if base.IsKeyNotFoundError(db.Bucket, purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
-			_, addErr := db.Bucket.Add(row.ID, 0, purgeBody)
+			_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 			if addErr != nil {
-				base.WarnR("Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(row.ID), addErr)
+				base.WarnR("Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
 				continue
 			}
-			if delErr := db.Bucket.Delete(row.ID); delErr != nil {
-				base.WarnR("Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(row.ID), delErr)
+			if delErr := db.Bucket.Delete(tombstonesRow.Id); delErr != nil {
+				base.WarnR("Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
 			}
 			count++
 		} else {
-			base.WarnR("Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(row.ID), purgeErr)
+			base.WarnR("Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
 		}
 	}
 	return count, nil
@@ -817,22 +819,24 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 // and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
 // To be used when the JavaScript sync function changes.
 func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) (int, error) {
+
+	if doCurrentDocs && doImportDocs {
+		return 0, errors.New("UpdateAllDocChannels doesn't support processing both current and imports in one request.")
+	}
+
+	if !doCurrentDocs && !doImportDocs {
+		return 0, nil
+	}
+
 	if doCurrentDocs {
 		base.Log("Recomputing document channels...")
 	}
+
 	if doImportDocs {
 		base.Log("Importing documents...")
-	} else if !doCurrentDocs {
-		return 0, nil // no-op if neither option is set
 	}
-	options := Body{"stale": false, "reduce": false}
-	if !doCurrentDocs {
-		options["endkey"] = []interface{}{true}
-		options["inclusive_end"] = false
-	} else if !doImportDocs {
-		options["startkey"] = []interface{}{true}
-	}
-	vres, err := db.Bucket.View(DesignDocSyncHousekeeping(), ViewImport, options)
+
+	results, err := db.QueryImport(doCurrentDocs)
 	if err != nil {
 		return 0, err
 	}
@@ -843,13 +847,16 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	defer db.changeCache.EnableChannelIndexing(true)
 	db.changeCache.Clear()
 
-	base.LogfR("Re-running sync function on all %d documents...", len(vres.Rows))
+	base.LogfR("Re-running sync function on all documents...")
 	changeCount := 0
-	for _, row := range vres.Rows {
-		rowKey := row.Key.([]interface{})
-		docid := rowKey[1].(string)
+	docCount := 0
+
+	var importRow QueryIdRow
+	for results.Next(&importRow) {
+		docid := importRow.Id
 		key := realDocID(docid)
 
+		docCount++
 		documentUpdateFunc := func(doc *document) (updatedDoc *document, shouldUpdate bool, updatedExpiry *uint32, err error) {
 			imported := false
 			if !doc.HasValidSyncData(db.writeSequences()) {
@@ -958,7 +965,14 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 			base.WarnR("Error updating doc %q: %v", base.UD(docid), err)
 		}
 	}
-	base.LogfR("Finished re-running sync function; %d docs changed", changeCount)
+
+	// Close query results
+	closeErr := results.Close()
+	if closeErr != nil {
+		return 0, closeErr
+	}
+
+	base.LogfR("Finished re-running sync function; %d/%d docs changed", changeCount, docCount)
 
 	if changeCount > 0 {
 		// Now invalidate channel cache of all users/roles:

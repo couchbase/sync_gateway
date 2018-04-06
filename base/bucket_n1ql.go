@@ -1,13 +1,25 @@
 package base
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/couchbase/gocb"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const BucketQueryToken = "$_bucket" // Token used for bucket name replacement in query statements
+const MaxQueryRetries = 30          // Maximum query retries on indexer error
+const IndexStateOnline = "online"   // bucket state value, as returned by SELECT FROM system:indexes
+
+// IndexOptions used to build the 'with' clause
+type N1qlIndexOptions struct {
+	NumReplica      uint `json:"num_replica,omitempty"`          // Number of replicas
+	IndexTombstones bool `json:"retain_deleted_xattr,omitempty"` // Whether system xattrs on tombstones should be indexed
+	DeferBuild      bool `json:"defer_build,omitempty"`          // Whether to defer initial build of index (requires a subsequent BUILD INDEX invocation)
+}
 
 type IndexMetadata struct {
 	State string // Index state (e.g. 'online')
@@ -23,36 +35,90 @@ type IndexMetadata struct {
 //
 // If adhoc=true, prepared statement handling will be disabled.  Should only be set to true for queries that can't be prepared, e.g.:
 //  SELECT _sync.channels.ABC.seq from $bucket
-func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, consistency gocb.ConsistencyMode, adhoc bool) (gocb.QueryResults, error) {
+//
+// Query retries on Indexer Errors, as these are normally transient
+func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, consistency gocb.ConsistencyMode, adhoc bool) (results gocb.QueryResults, err error) {
 	bucketStatement := strings.Replace(statement, BucketQueryToken, bucket.GetName(), -1)
 	n1qlQuery := gocb.NewN1qlQuery(bucketStatement)
 	n1qlQuery = n1qlQuery.AdHoc(adhoc)
 	n1qlQuery = n1qlQuery.Consistency(consistency)
 
-	LogTo("Index+", "Attempting to query index using statement: [%s]", bucketStatement)
-	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, params)
+	waitTime := 10 * time.Millisecond
+	for i := 1; i <= MaxQueryRetries; i++ {
+		queryResults, queryErr := bucket.ExecuteN1qlQuery(n1qlQuery, params)
+		if queryErr == nil {
+			return queryResults, queryErr
+		}
 
-	if isGoCBTimeoutError(err) {
-		return results, ErrViewTimeoutError
+		// Timeout error - return named error
+		if isGoCBTimeoutError(queryErr) {
+			return queryResults, ErrViewTimeoutError
+		}
+
+		// Non-retry error - return
+		if !isIndexerError(queryErr) {
+			Warn("Error when querying index using statement: [%s]", bucketStatement)
+			return queryResults, queryErr
+		}
+
+		// Indexer error - wait then retry
+		err = queryErr
+		Warn("Indexer error during query - retry %d/%d", i, MaxQueryRetries)
+		time.Sleep(waitTime)
+		waitTime = time.Duration(waitTime * 2)
 	}
 
-	return results, err
+	Warn("Exceeded max retries for query when querying index using statement: [%s], err:%v", bucketStatement, err)
+	return nil, err
 }
 
-// CreateIndex creates the specified index in the current bucket using on the specified index expression.
-func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression string, numReplica uint) error {
+// CreateIndex issues a CREATE INDEX query in the current bucket, using the form:
+//   CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
+// Sample usage with resulting statement:
+//     CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
+//   CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
+func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
 
 	createStatement := fmt.Sprintf("CREATE INDEX %s ON %s(%s)", indexName, bucket.GetName(), expression)
 
-	if numReplica > 0 {
-		createStatement = fmt.Sprintf("%s with {num_replica:%d}", createStatement, numReplica)
+	// Add filter expression, when present
+	if filterExpression != "" {
+		createStatement = fmt.Sprintf("%s WHERE %s", createStatement, filterExpression)
+	}
+
+	// Replace any BucketQueryToken references in the index expression
+	createStatement = strings.Replace(createStatement, BucketQueryToken, bucket.GetName(), -1)
+
+	return bucket.createIndex(createStatement, options)
+}
+
+// CreateIndex creates the specified index in the current bucket using on the specified index expression.
+func (bucket *CouchbaseBucketGoCB) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
+
+	createStatement := fmt.Sprintf("CREATE PRIMARY INDEX %s ON %s", indexName, bucket.GetName())
+	return bucket.createIndex(createStatement, options)
+}
+
+func (bucket *CouchbaseBucketGoCB) createIndex(createStatement string, options *N1qlIndexOptions) error {
+
+	if options != nil {
+		withClause, marshalErr := json.Marshal(options)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		createStatement = fmt.Sprintf(`%s with %s`, createStatement, withClause)
 	}
 
 	LogTo("Index+", "Attempting to create index using statement: [%s]", createStatement)
 	n1qlQuery := gocb.NewN1qlQuery(createStatement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
-	if err != nil {
-		return err
+	if err != nil && !IsRecoverableCreateIndexError(err) {
+		return pkgerrors.Wrapf(err, "Error creating index with statement: %s", createStatement)
+	}
+
+	if IsRecoverableCreateIndexError(err) {
+		LogTo("Query", "Recoverable error creating index with statement: %s, error:%v", createStatement, err)
+		return nil
 	}
 
 	closeErr := results.Close()
@@ -61,6 +127,24 @@ func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression stri
 	}
 
 	return nil
+}
+
+// Waits for index state to be online.  Waits no longer than provided timeout
+func (bucket *CouchbaseBucketGoCB) WaitForIndexOnline(indexName string) error {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		exists, indexMeta, getMetaErr := bucket.GetIndexMeta(indexName)
+		if exists && indexMeta.State == IndexStateOnline {
+			return false, nil, nil
+		}
+		return true, getMetaErr, nil
+	}
+
+	// Kick off retry loop
+	description := fmt.Sprintf("GetIndexMeta for index %s", indexName)
+	err, _ := RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+
+	return err
 }
 
 func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, meta *IndexMetadata, err error) {
@@ -105,6 +189,29 @@ func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
 // Stuck with doing a string compare to differentiate between 'not found' and other errors
 func IsIndexNotFoundError(err error) bool {
 	return strings.Contains(err.Error(), "not found")
+}
+
+// 'Bucket in Recovery' type errors are of the form:
+// error:[5000] GSI CreateIndex() - cause: Encountered transient error.  Index creation will be retried in background.  Error: Index testIndex_value will retry building in the background for reason: Bucket test_data_bucket In Recovery.
+func IsRecoverableCreateIndexError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "Index creation will be retried in background")
+}
+
+// Check for transient indexer errors (can be retried)
+func isIndexerError(err error) bool {
+
+	if err == nil {
+		return false
+	}
+
+	if strings.Contains(err.Error(), "Indexer rollback") {
+		return true
+	}
+
+	return false
 }
 
 func QueryCloseErrors(closeError error) []error {
