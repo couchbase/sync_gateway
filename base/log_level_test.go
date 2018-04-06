@@ -8,6 +8,12 @@ import (
 )
 
 func TestLogLevel(t *testing.T) {
+	var logLevelPtr *LogLevel
+	assert.False(t, logLevelPtr.Enabled(LEVEL_DEBUG))
+	assert.False(t, logLevelPtr.Enabled(LEVEL_INFO))
+	assert.False(t, logLevelPtr.Enabled(LEVEL_WARN))
+	assert.False(t, logLevelPtr.Enabled(LEVEL_ERROR))
+
 	logLevel := LEVEL_NONE
 	assert.False(t, logLevel.Enabled(LEVEL_DEBUG))
 	assert.False(t, logLevel.Enabled(LEVEL_INFO))
@@ -36,30 +42,51 @@ func TestLogLevelNames(t *testing.T) {
 }
 
 func TestLogLevelText(t *testing.T) {
+	var logLevelPtr *LogLevel
+	text, err := logLevelPtr.MarshalText()
+	assert.Equals(t, err.Error(), "invalid log level")
+	err = logLevelPtr.UnmarshalText(text)
+	assert.NotEquals(t, err, nil)
+
 	var logLevel LogLevel
-	text, err := logLevel.MarshalText()
+	text, err = logLevel.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "none")
+	err = logLevel.UnmarshalText(text)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, logLevel, LEVEL_NONE)
 
 	logLevel.Set(LEVEL_DEBUG)
 	text, err = logLevel.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "debug")
+	err = logLevel.UnmarshalText(text)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, logLevel, LEVEL_DEBUG)
 
 	logLevel.Set(LEVEL_INFO)
 	text, err = logLevel.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "info")
+	err = logLevel.UnmarshalText(text)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, logLevel, LEVEL_INFO)
 
 	logLevel.Set(LEVEL_WARN)
 	text, err = logLevel.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "warn")
+	err = logLevel.UnmarshalText(text)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, logLevel, LEVEL_WARN)
 
 	logLevel.Set(LEVEL_ERROR)
 	text, err = logLevel.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "error")
+	err = logLevel.UnmarshalText(text)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, logLevel, LEVEL_ERROR)
 }
 
 func TestLogLevelConcurrency(t *testing.T) {
