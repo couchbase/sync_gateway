@@ -11,8 +11,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-var defaultLogFilePath = "logs" // default to a logs directory relative to binary
-
 const (
 	errorMinAge = 180
 	warnMinAge  = 90
