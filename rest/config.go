@@ -72,7 +72,7 @@ type ServerConfig struct {
 	CORS                           *CORSConfig              `json:",omitempty"`            // Configuration for allowing CORS
 	DeprecatedLog                  []string                 `json:"log,omitempty"`         // Log keywords to enable
 	DeprecatedLogFilePath          *string                  `json:"logFilePath,omitempty"` // Path to log file, if missing write to stderr
-	Logging                        *base.LoggingConfigMap   `json:",omitempty"`            // Configuration for logging with optional log file rotation
+	Logging                        *base.LoggingConfig      `json:",omitempty"`            // Configuration for logging with optional log file rotation
 	Pretty                         bool                     `json:",omitempty"`            // Pretty-print JSON responses?
 	DeploymentID                   *string                  `json:",omitempty"`            // Optional customer/deployment ID for stats reporting
 	StatsReportInterval            *float64                 `json:",omitempty"`            // Optional stats report interval (0 to disable)
@@ -507,28 +507,27 @@ func (config *ServerConfig) setupAndValidateDatabases() error {
 }
 
 func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
-	//If a logging config exists, it must contain a single
-	// appender named "default"
+
 	if config.Logging == nil {
-		if config.DeprecatedLogFilePath != nil {
-			base.UpdateLogger(*config.DeprecatedLogFilePath)
-		}
-	} else {
-		if len(*config.Logging) != 1 || ((*config.Logging)["default"] == nil) {
-			return fmt.Errorf("The logging section must define a single \"default\" appender")
-		}
-		// Validate the default appender configuration
-		if defaultLogger := (*config.Logging)["default"]; defaultLogger != nil {
-			if err := defaultLogger.ValidateLogAppender(); err != nil {
-				return err
-			}
-			base.CreateRollingLogger(defaultLogger)
-		}
+		config.Logging = &base.LoggingConfig{}
 	}
 
-	base.EnableLogKey("HTTP")
-	if verbose {
-		base.EnableLogKey("HTTP+")
+	// Fall back to the old LogFilePath option
+	if config.Logging.LogFilePath == "" && config.DeprecatedLogFilePath != nil {
+		config.Logging.LogFilePath = *config.DeprecatedLogFilePath
+	}
+
+	// Fall back to the old Log option
+	if config.Logging.Console.LogKeys == nil && len(config.DeprecatedLog) > 0 {
+		config.Logging.Console.LogKeys = config.DeprecatedLog
+	}
+
+	if config.Logging != nil {
+		base.SetRedaction(config.Logging.RedactionLevel)
+
+		if err := base.InitLogging(config.Logging); err != nil {
+			return err
+		}
 	}
 
 	return nil

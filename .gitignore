@@ -8,6 +8,7 @@
 \#*\#
 /bin
 /pkg
+/logs
 
 service/sg-windows/sg-windows
 service/sg-windows/sg-accel-service
