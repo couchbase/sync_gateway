@@ -20,8 +20,7 @@ import urlparse
 import urllib2
 import base64
 import mmap
-
-from cbcollect_info import CouchbaseLogProcessor, RegularLogProcessor
+import hashlib
 
 
 class LogRedactor:
@@ -54,6 +53,31 @@ class LogRedactor:
             return ifile
         self._process_file(ifile, ofile, self.regular_log)
         return ofile
+
+
+class CouchbaseLogProcessor:
+    def __init__(self, salt):
+        self.salt = salt
+
+    def do(self, line):
+        if "RedactLevel" in line:
+            return 'RedactLevel:partial,HashOfSalt:%s\n' \
+                % hashlib.sha1(self.salt).hexdigest()
+        else:
+            return line
+
+
+class RegularLogProcessor:
+    def __init__(self, salt):
+        self.salt = salt
+        self.rex = re.compile('(<ud>)(.+?)(</ud>)')
+
+    def _hash(self, match):
+        h = hashlib.sha1(self.salt + match.group(2)).hexdigest()
+        return match.group(1) + h + match.group(3)
+
+    def do(self, line):
+        return self.rex.sub(self._hash, line)
 
 
 class AltExitC(object):
