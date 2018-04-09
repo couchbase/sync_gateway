@@ -38,7 +38,7 @@ func SetMaxFileDescriptors(requestedSoftFDLimit uint64) (uint64, error) {
 	err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limits)
 
 	if err == nil {
-		Logf("Configured process to allow %d open file descriptors", recommendedSoftFDLimit)
+		LogfR("Configured process to allow %d open file descriptors", recommendedSoftFDLimit)
 	}
 
 	return recommendedSoftFDLimit, err
@@ -70,14 +70,14 @@ func getSoftFDLimit(requestedSoftFDLimit uint64, limit syscall.Rlimit) (requires
 	// Is the user requesting something that is less than the existing soft limit?
 	if requestedSoftFDLimit < currentSoftFdLimit {
 		// yep, and there is no point in doing so, so return false for requiresUpdate.
-		Logf("requestedSoftFDLimit < currentSoftFdLimit (%v < %v) no action needed", requestedSoftFDLimit, currentSoftFdLimit)
+		LogfR("requestedSoftFDLimit < currentSoftFdLimit (%v < %v) no action needed", requestedSoftFDLimit, currentSoftFdLimit)
 		return false, currentSoftFdLimit
 	}
 
 	// Is the user requesting something higher than the existing hard limit?
 	if requestedSoftFDLimit >= currentHardFdLimit {
 		// yes, so just use the hard limit
-		Logf("requestedSoftFDLimit >= currentHardFdLimit (%v >= %v) capping at %v", requestedSoftFDLimit, currentHardFdLimit, currentHardFdLimit)
+		LogfR("requestedSoftFDLimit >= currentHardFdLimit (%v >= %v) capping at %v", requestedSoftFDLimit, currentHardFdLimit, currentHardFdLimit)
 		return true, currentHardFdLimit
 	}
 

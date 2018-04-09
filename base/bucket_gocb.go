@@ -73,11 +73,11 @@ type GoCBLogger struct{}
 func (l GoCBLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocbcore.LogError:
-		LogError(fmt.Errorf(format, v))
+		LogErrorR(fmt.Errorf(format, v))
 	case gocbcore.LogWarn:
-		Warn(format, v)
+		WarnR(format, v)
 	default:
-		LogTo("gocb", format, v)
+		LogToR("gocb", format, v)
 	}
 	return nil
 }
@@ -115,7 +115,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		})
 		// If RBAC authentication fails, revert to non-RBAC authentication by including the password to OpenBucket
 		if authErr != nil {
-			Warn("RBAC authentication against bucket %s as user %s failed - will re-attempt w/ bucketname, password", spec.BucketName, user)
+			WarnR("RBAC authentication against bucket %s as user %s failed - will re-attempt w/ bucketname, password", MD(spec.BucketName), UD(user))
 			password = pass
 		}
 	}
@@ -227,7 +227,7 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 	}
 
 	if resp.StatusCode == http.StatusForbidden {
-		Warn("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", uri)
+		WarnR("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -577,7 +577,7 @@ func (bucket *CouchbaseBucketGoCB) processGetRawBatch(keys []string, resultAccum
 			if ok {
 				resultAccumulator[getOp.Key] = *byteValue
 			} else {
-				Warn("Skipping GetBulkRaw result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
+				WarnR("Skipping GetBulkRaw result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
 			}
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
@@ -617,7 +617,7 @@ func (bucket *CouchbaseBucketGoCB) processGetCountersBatch(keys []string, result
 			if ok {
 				resultAccumulator[getOp.Key] = *intValue
 			} else {
-				Warn("Skipping GetBulkCounter result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
+				WarnR("Skipping GetBulkCounter result - unable to cast to []byte.  Type: %v", reflect.TypeOf(getOp.Value))
 			}
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
@@ -634,11 +634,11 @@ func (bucket *CouchbaseBucketGoCB) processGetCountersBatch(keys []string, result
 func createBatchesEntries(batchSize uint, entries []*sgbucket.BulkSetEntry) [][]*sgbucket.BulkSetEntry {
 	// boundary checking
 	if len(entries) == 0 {
-		Warn("createBatchesEnrties called with empty entries")
+		WarnR("createBatchesEnrties called with empty entries")
 		return [][]*sgbucket.BulkSetEntry{}
 	}
 	if batchSize == 0 {
-		Warn("createBatchesEntries called with invalid batchSize")
+		WarnR("createBatchesEntries called with invalid batchSize")
 		result := [][]*sgbucket.BulkSetEntry{}
 		return append(result, entries)
 	}
@@ -668,11 +668,11 @@ func createBatchesKeys(batchSize uint, keys []string) [][]string {
 
 	// boundary checking
 	if len(keys) == 0 {
-		Warn("createBatchesKeys called with empty keys")
+		WarnR("createBatchesKeys called with empty keys")
 		return [][]string{}
 	}
 	if batchSize == 0 {
-		Warn("createBatchesKeys called with invalid batchSize")
+		WarnR("createBatchesKeys called with invalid batchSize")
 		result := [][]string{}
 		return append(result, keys)
 	}
@@ -958,7 +958,7 @@ func (bucket *CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, 
 }
 
 func (bucket *CouchbaseBucketGoCB) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
-	LogPanic("Unimplemented method: Write()")
+	LogPanicR("Unimplemented method: Write()")
 	return nil
 }
 
@@ -971,12 +971,12 @@ func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas
 
 	// we only support the sgbucket.Raw WriteOption at this point
 	if opt != 0 && opt != sgbucket.Raw {
-		LogPanic("WriteOption must be empty or sgbucket.Raw")
+		LogPanicR("WriteOption must be empty or sgbucket.Raw")
 	}
 
 	// also, flags must be 0, since that is not supported by gocb
 	if flags != 0 {
-		LogPanic("flags must be 0")
+		LogPanicR("flags must be 0")
 	}
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
@@ -1128,7 +1128,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		if removeErr != nil {
 			shouldRetry = isRecoverableGoCBError(removeErr)
 			if !shouldRetry {
-				Warn("Unrecoverable error attempting to update xattr for key:%s cas:%d deleteBody:%v error:%v", k, cas, deleteBody, removeErr)
+				WarnR("Unrecoverable error attempting to update xattr for key:%s cas:%d deleteBody:%v error:%v", UD(k), cas, deleteBody, removeErr)
 			}
 			return shouldRetry, removeErr, uint64(0)
 		}
@@ -1183,12 +1183,12 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 			// Attempt to retrieve the document body, if present
 			docContentErr := res.Content("", rv)
 			if docContentErr != nil {
-				LogTo("CRUD+", "No document body found for key=%s, xattrKey=%s: %v", k, xattrKey, docContentErr)
+				LogToR("CRUD+", "No document body found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), docContentErr)
 			}
 			// Attempt to retrieve the xattr, if present
 			xattrContentErr := res.Content(xattrKey, xv)
 			if xattrContentErr != nil {
-				LogTo("CRUD+", "No xattr content found for key=%s, xattrKey=%s: %v", k, xattrKey, xattrContentErr)
+				LogToR("CRUD+", "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
@@ -1260,7 +1260,7 @@ func (bucket *CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey st
 	}()
 	gocbExpvars.Add("Delete", 1)
 
-	LogTo("CRUD+", "DeleteWithXattr called with key: %v xattrKey: %v", k, xattrKey)
+	LogToR("CRUD+", "DeleteWithXattr called with key: %v xattrKey: %v", UD(k), UD(xattrKey))
 
 	// Try to delete body and xattrs in single op
 	// NOTE: ongoing discussion w/ KV Engine team on whether this should handle cases where the body
@@ -1274,7 +1274,7 @@ func (bucket *CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey st
 	// If no error, or it was just a ErrSubDocSuccessDeleted error, we're done.
 	// ErrSubDocSuccessDeleted is a "success error" that means "operation was on a tombstoned document"
 	if mutateErr == nil || mutateErr == gocbcore.ErrSubDocSuccessDeleted {
-		LogTo("CRUD+", "No error or ErrSubDocSuccessDeleted.  We're done.")
+		LogToR("CRUD+", "No error or ErrSubDocSuccessDeleted.  We're done.")
 		return nil
 	}
 
@@ -1535,7 +1535,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 			if err != nil {
 				if !bucket.IsKeyNotFoundError(err) {
 					// Unexpected error, cancel writeupdate
-					LogTo("CRUD+", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", k, xattrKey, err)
+					LogToR("CRUD+", "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), err)
 					return emptyCas, err
 				}
 				// Key not found - initialize cas and values
@@ -1796,7 +1796,7 @@ func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocumen
 		}
 		err = resp.Body.Close()
 		if err != nil {
-			LogFatal("Failed to close socket (%s)", err)
+			LogFatalR("Failed to close socket (%s)", err)
 		}
 		return fmt.Errorf("Client error: %s", string(data))
 	}
@@ -2033,7 +2033,7 @@ func getTotalRows(goCbViewResult gocb.ViewResults) int {
 	viewResultMetrics, gotTotalRows := goCbViewResult.(gocb.ViewResultMetrics)
 	if !gotTotalRows {
 		// Should never happen
-		Warn("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
+		WarnR("Unable to type assert goCbViewResult -> gocb.ViewResultMetrics.  The total rows count will be missing.")
 		return -1
 	}
 	return viewResultMetrics.TotalRows()
@@ -2058,7 +2058,7 @@ func (bucket *CouchbaseBucketGoCB) Refresh() error {
 // GoCB (and Server 5.0.0) don't support the TapFeed. For legacy support (bucket shadowing), start a DCP feed and stream over a single channel
 func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
 
-	LogTo("DCP", "Using DCP to generate TAP-like stream")
+	LogToR("DCP", "Using DCP to generate TAP-like stream")
 	// Create the feed channel that will be passed back to the caller
 	eventFeed := make(chan sgbucket.FeedEvent, 10)
 	terminator := make(chan bool)
@@ -2095,7 +2095,7 @@ func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeq
 }
 
 func (bucket *CouchbaseBucketGoCB) Dump() {
-	Warn("CouchbaseBucketGoCB: Unimplemented method: Dump()")
+	WarnR("CouchbaseBucketGoCB: Unimplemented method: Dump()")
 }
 
 func (bucket *CouchbaseBucketGoCB) VBHash(docID string) uint32 {
@@ -2136,7 +2136,7 @@ func (bucket *CouchbaseBucketGoCB) UUID() (string, error) {
 
 func (bucket *CouchbaseBucketGoCB) Close() {
 	if err := bucket.Bucket.Close(); err != nil {
-		Warn("Error closing GoCB bucket: %v.", err)
+		WarnR("Error closing GoCB bucket: %v.", err)
 		return
 	}
 }
@@ -2225,7 +2225,7 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		case ViewQueryParamLimit:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				Warn(fmt.Sprintf("%v", err))
+				WarnR("ViewQueryParamLimit error: %v", err)
 			}
 			viewQuery.Limit(uintVal)
 		case ViewQueryParamDescending:
@@ -2235,7 +2235,7 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		case ViewQueryParamSkip:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				Warn(fmt.Sprintf("%v", err))
+				WarnR("ViewQueryParamSkip error: %v", err)
 			}
 			viewQuery.Skip(uintVal)
 		case ViewQueryParamGroup:
@@ -2243,7 +2243,7 @@ func applyViewQueryOptions(viewQuery *gocb.ViewQuery, params map[string]interfac
 		case ViewQueryParamGroupLevel:
 			uintVal, err := normalizeIntToUint(optionValue)
 			if err != nil {
-				Warn(fmt.Sprintf("%v", err))
+				WarnR("ViewQueryParamGroupLevel error: %v", err)
 			}
 			viewQuery.GroupLevel(uintVal)
 		case ViewQueryParamKey:
@@ -2315,14 +2315,14 @@ func asBool(value interface{}) bool {
 	case string:
 		parsedVal, err := strconv.ParseBool(typeValue)
 		if err != nil {
-			Warn("asBool called with unknown value: %v.  defaulting to false", typeValue)
+			WarnR("asBool called with unknown value: %v.  defaulting to false", typeValue)
 			return false
 		}
 		return parsedVal
 	case bool:
 		return typeValue
 	default:
-		Warn("asBool called with unknown type: %T.  defaulting to false", typeValue)
+		WarnR("asBool called with unknown type: %T.  defaulting to false", typeValue)
 		return false
 	}
 
@@ -2340,7 +2340,7 @@ func asStale(value interface{}) gocb.StaleMode {
 		}
 		parsedVal, err := strconv.ParseBool(typeValue)
 		if err != nil {
-			Warn("asStale called with unknown value: %v.  defaulting to stale=false", typeValue)
+			WarnR("asStale called with unknown value: %v.  defaulting to stale=false", typeValue)
 			return gocb.Before
 		}
 		if parsedVal {
@@ -2355,7 +2355,7 @@ func asStale(value interface{}) gocb.StaleMode {
 			return gocb.Before
 		}
 	default:
-		Warn("asBool called with unknown type: %T.  defaulting to false", typeValue)
+		WarnR("asBool called with unknown type: %T.  defaulting to false", typeValue)
 		return gocb.Before
 	}
 

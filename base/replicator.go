@@ -70,11 +70,11 @@ func (r *Replicator) StopReplications() error {
 	defer r.lock.Unlock()
 
 	for id, rep := range r.replications {
-		LogTo("Replicate", "Stopping replication %s", id)
+		LogToR("Replicate", "Stopping replication %s", UD(id))
 		if err := rep.Stop(); err != nil {
-			Warn("Error stopping replication %s.  It's possible that the replication was already stopped and this can be safely ignored. Error: %v.", id, err)
+			WarnR("Error stopping replication %s.  It's possible that the replication was already stopped and this can be safely ignored. Error: %v.", id, err)
 		}
-		LogTo("Replicate", "Stopped replication %s", id)
+		LogToR("Replicate", "Stopped replication %s", UD(id))
 	}
 
 	r.replications = make(map[string]sgreplicate.SGReplication)
@@ -90,7 +90,7 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 		parameters.ReplicationId = CreateUUID()
 	}
 
-	LogTo("Replicate", "Creating replication with parameters %+v", parameters)
+	LogToR("Replicate", "Creating replication with parameters %v", UD(parameters))
 
 	var (
 		replication sgreplicate.SGReplication
@@ -126,13 +126,13 @@ func (r *Replicator) runOneShotReplication(parameters sgreplicate.ReplicationPar
 	r._addReplication(replication, parameters)
 	r.lock.Unlock()
 
-	LogTo("Replicate", "Started one-shot replication: %v", replication)
+	LogToR("Replicate", "Started one-shot replication: %v", UD(replication))
 
 	if parameters.Async {
 		go func() {
 			defer r.removeReplication(parameters.ReplicationId)
 			if _, err := replication.WaitUntilDone(); err != nil {
-				Warn("async one-shot replication %s failed: %v", parameters.ReplicationId, err)
+				WarnR("async one-shot replication %s failed: %v", UD(parameters.ReplicationId), err)
 			}
 		}()
 		return replication, nil
@@ -163,7 +163,7 @@ func (r *Replicator) runContinuousReplication(parameters sgreplicate.Replication
 	r._addReplication(replication, parameters)
 	r.lock.Unlock()
 
-	LogTo("Replicate", "Started continuous replication: %v", replication)
+	LogToR("Replicate", "Started continuous replication: %v", UD(replication))
 
 	// Start goroutine to monitor notification channel, to remove the replication if it's terminated internally by sg-replicate
 	go func(rep sgreplicate.SGReplication, notificationChan chan sgreplicate.ContinuousReplicationNotification) {
@@ -173,10 +173,10 @@ func (r *Replicator) runContinuousReplication(parameters sgreplicate.Replication
 			select {
 			case notification, ok := <-notificationChan:
 				if !ok {
-					LogTo("Replicate", "Replication %s was terminated.", parameters.ReplicationId)
+					LogToR("Replicate", "Replication %s was terminated.", UD(parameters.ReplicationId))
 					return
 				}
-				LogTo("Replicate+", "Got notification %v", notification)
+				LogToR("Replicate+", "Got notification %v", notification)
 			}
 		}
 	}(replication, notificationChan)
