@@ -21,8 +21,9 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
-	"gopkg.in/couchbase/gocbcore.v7"
 	pkgerrors "github.com/pkg/errors"
+	"gopkg.in/couchbase/gocbcore.v7"
+	"time"
 )
 
 // NOTE: most of these tests are disabled by default and have been renamed to Couchbase*
@@ -464,8 +465,6 @@ func TestIncrCounter(t *testing.T) {
 		t.Errorf("Error incrementing value for existing counter")
 	}
 	assert.Equals(t, retrieval, uint64(2))
-
-
 
 }
 
@@ -1098,6 +1097,64 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 	assert.Equals(t, retrievedVal["counter"], float64(2))
 	assert.Equals(t, retrievedXattr["seq"], float64(2))
+
+}
+
+// Verify that it's possible to do subdoc "CAS expansion" in a top level field of a document,
+// as opposed to an XATTR.
+func TestSubDocFieldCasExpansion(t *testing.T) {
+
+	SkipXattrTestsIfNotEnabled(t) // since this needs subdoc API
+
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+	key := "testDoc"
+	docVal := map[string]string{
+		"foo": "bar",
+	}
+
+	updateCasPath := "updateCas"
+
+	//// Create a document and stamp one of the fields with the CAS value of the doc
+	_, err := bucket.Bucket.MutateInEx(key, gocb.SubdocDocFlagMkDoc, 0, 0).
+		UpsertEx("", docVal, gocb.SubdocFlagNone).                            // Update the document body
+		UpsertEx(updateCasPath, "${Mutation.CAS}", gocb.SubdocFlagUseMacros). // Stamp the cas
+		Execute()
+
+	if err != nil {
+		log.Printf("Error writing doc: %v", err)
+	} else {
+		log.Printf("doc written!")
+	}
+
+	key = "testDoc2"
+
+	time.Sleep(time.Second * 2)  // avoid "network error"
+
+	// Test fails with: err: invalid xattr flag combination
+
+	// -------- Reverse order of UpsertEx
+
+	_, err = bucket.Bucket.MutateInEx(key, gocb.SubdocDocFlagMkDoc, 0, 0).
+		UpsertEx(updateCasPath, "${Mutation.CAS}", gocb.SubdocFlagUseMacros). // Stamp the cas
+		UpsertEx("", docVal, gocb.SubdocFlagNone).                            // Update the document body
+		Execute()
+
+	if err != nil {
+		log.Printf("Error writing doc: %v", err)
+	} else {
+		log.Printf("doc written!")
+	}
+
+
+	// Test fails with: err: invalid xattr flag combination
 
 }
 
