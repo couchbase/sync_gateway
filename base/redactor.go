@@ -27,19 +27,19 @@ func redact(args []interface{}) []interface{} {
 type RedactionLevel int
 
 const (
-	RedactNone RedactionLevel = iota
-	RedactPartial
-	RedactFull
+	REDACT_NONE RedactionLevel = iota
+	REDACT_PARTIAL
+	REDACT_FULL
 )
 
 func SetRedaction(redactionLevel RedactionLevel) {
 	Logf("Log redaction level: %s", redactionLevel)
 	switch redactionLevel {
-	case RedactFull:
+	case REDACT_FULL:
 		RedactUserData = true
-	case RedactPartial:
+	case REDACT_PARTIAL:
 		RedactUserData = true
-	case RedactNone:
+	case REDACT_NONE:
 		RedactUserData = false
 	default:
 		RedactUserData = false
@@ -49,11 +49,11 @@ func SetRedaction(redactionLevel RedactionLevel) {
 // String returns a lower-case ASCII representation of the log redaction level.
 func (l RedactionLevel) String() string {
 	switch l {
-	case RedactNone:
+	case REDACT_NONE:
 		return "none"
-	case RedactPartial:
+	case REDACT_PARTIAL:
 		return "partial"
-	case RedactFull:
+	case REDACT_FULL:
 		return "full"
 	default:
 		return fmt.Sprintf("RedactionLevel(%d)", l)
@@ -72,11 +72,11 @@ func (l *RedactionLevel) MarshalText() ([]byte, error) {
 func (l *RedactionLevel) UnmarshalText(text []byte) error {
 	switch strings.ToLower(string(text)) {
 	case "none":
-		*l = RedactNone
+		*l = REDACT_NONE
 	case "partial":
-		*l = RedactPartial
+		*l = REDACT_PARTIAL
 	case "full":
-		*l = RedactFull
+		*l = REDACT_FULL
 	default:
 		return fmt.Errorf("unrecognized level: %v", string(text))
 	}
