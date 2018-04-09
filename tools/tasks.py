@@ -297,7 +297,6 @@ class TaskRunner(object):
         redactor = LogRedactor(salt, self.tmpdir, blacklist)
 
         for name, fp in self.files.iteritems():
-            fp.close()
             files.append(redactor.redact_file(name, fp.name))
 
         prefix = "%s_%s_%s" % (log_type, node, self.start_time)
@@ -306,11 +305,14 @@ class TaskRunner(object):
     def zip(self, filename, log_type, node):
         files = []
         for name, fp in self.files.iteritems():
-            fp.close()
             files.append(fp.name)
 
         prefix = "%s_%s_%s" % (log_type, node, self.start_time)
         self._zip_helper(prefix, filename, files)
+
+    def close_all_files(self):
+        for name, fp in self.files.iteritems():
+            fp.close()
 
     def _zip_helper(self, prefix, filename, files):
         """Write all our logs to a zipfile"""

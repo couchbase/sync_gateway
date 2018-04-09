@@ -680,6 +680,8 @@ def main():
     )
     runner.run(cmd_line_args_task)
 
+    runner.close_all_files()
+
     # Build redacted zip file
     if options.redact_level != "none":
         # We don't want to attempt to redact binary/pprof files, as this could result in corruption
