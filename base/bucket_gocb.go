@@ -73,7 +73,7 @@ type GoCBLogger struct{}
 func (l GoCBLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocbcore.LogError:
-		LogErrorR(fmt.Errorf(format, v))
+		LogError(fmt.Errorf(format, v))
 	case gocbcore.LogWarn:
 		WarnR(format, v)
 	default:
