@@ -233,7 +233,7 @@ func (h *handler) handleAllDocs() error {
 // HTTP handler for _dump
 func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
-	base.LogTo("HTTP", "Dump view %q", viewName)
+	base.Infof(base.KEY_HTTP, "Dump view %q", viewName)
 	opts := db.Body{"stale": false, "reduce": false}
 	result, err := h.db.Bucket.View(db.DesignDocSyncGateway(), viewName, opts)
 	if err != nil {
@@ -267,7 +267,7 @@ func (h *handler) handleRepair() error {
 		return errors.New("_repair endpoint disabled")
 	}
 
-	base.LogTo("HTTP", "Repair bucket")
+	base.Infof(base.KEY_HTTP, "Repair bucket")
 
 	// Todo: is this actually needed or does something else in the handler do it?  I can't find that..
 	defer h.requestBody.Close()
@@ -306,7 +306,7 @@ func (h *handler) handleRepair() error {
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
 	since := h.getIntQuery("since", 0)
-	base.LogToR("HTTP", "Dump channel %q", base.UD(channelName))
+	base.Infof(base.KEY_HTTP, "Dump channel %q", base.UD(channelName))
 
 	chanLog := h.db.GetChangeLog(channelName, since)
 	if chanLog == nil {

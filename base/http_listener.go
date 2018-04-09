@@ -30,7 +30,7 @@ func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *s
 			protocolsEnabled = []string{"h2", "http/1.1"}
 		}
 		config.NextProtos = protocolsEnabled
-		LogToR("HTTP", "Protocols enabled: %v on %v", config.NextProtos, SD(addr))
+		Infof(KeyHTTP, "Protocols enabled: %v on %v", config.NextProtos, SD(addr))
 		config.Certificates = make([]tls.Certificate, 1)
 		var err error
 		config.Certificates[0], err = tls.LoadX509KeyPair(*certFile, *keyFile)

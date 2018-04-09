@@ -533,7 +533,7 @@ func (h *handler) getRoles() error {
 
 // HTTP handler for /index
 func (h *handler) handleIndex() error {
-	base.LogTo("HTTP", "Index")
+	base.Infof(base.KEY_HTTP, "Index")
 
 	indexStats, err := h.db.IndexStats()
 
@@ -548,7 +548,7 @@ func (h *handler) handleIndex() error {
 // HTTP handler for /index/channel
 func (h *handler) handleIndexChannel() error {
 	channelName := h.PathVar("channel")
-	base.LogToR("HTTP", "Index channel %q", base.UD(channelName))
+	base.Infof(base.KEY_HTTP, "Index channel %q", base.UD(channelName))
 
 	channelStats, err := h.db.IndexChannelStats(channelName)
 
@@ -562,7 +562,7 @@ func (h *handler) handleIndexChannel() error {
 
 // HTTP handler for /index/channels
 func (h *handler) handleIndexAllChannels() error {
-	base.LogTo("HTTP", "Index channels")
+	base.Infof(base.KEY_HTTP, "Index channels")
 
 	channelStats, err := h.db.IndexAllChannelStats()
 

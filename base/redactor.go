@@ -33,7 +33,7 @@ const (
 )
 
 func SetRedaction(redactionLevel RedactionLevel) {
-	LogfR("Log redaction level: %s", redactionLevel)
+	Infof(KeyAll, "Log redaction level: %s", redactionLevel)
 	switch redactionLevel {
 	case RedactFull:
 		RedactUserData = true

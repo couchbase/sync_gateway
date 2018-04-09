@@ -231,9 +231,8 @@ func (h *handler) logRequestLine() {
 		proto = " HTTP/2"
 	}
 
-	base.LogToR("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.UD(base.SanitizeRequestURL(h.rq.URL)), proto, base.UD(h.currentEffectiveUserNameAsUser()))
+	base.Infof(base.KEY_HTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.UD(base.SanitizeRequestURL(h.rq.URL)), proto, base.UD(h.currentEffectiveUserNameAsUser()))
 }
-
 
 func (h *handler) logRequestBody() {
 
@@ -267,13 +266,15 @@ func (h *handler) logDuration(realTime bool) {
 		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
 	}
 
-	logKey := "HTTP+"
 	if h.status >= 300 {
-		logKey = "HTTP"
+		base.Warnf(base.KEY_HTTP, "#%03d:     --> %d %s  (%.1f ms)",
+			h.serialNumber, h.status, h.statusMessage,
+			float64(duration)/float64(time.Millisecond))
+	} else {
+		base.Infof(base.KEY_HTTP, "#%03d:     --> %d %s  (%.1f ms)",
+			h.serialNumber, h.status, h.statusMessage,
+			float64(duration)/float64(time.Millisecond))
 	}
-	base.LogTo(logKey, "#%03d:     --> %d %s  (%.1f ms)",
-		h.serialNumber, h.status, h.statusMessage,
-		float64(duration)/float64(time.Millisecond))
 }
 
 // logStatusWithDuration will log the request status and the duration of the request.
@@ -510,7 +511,6 @@ func (h *handler) getBearerToken() string {
 	}
 	return ""
 }
-
 
 func (h *handler) currentEffectiveUserName() string {
 	var effectiveName string

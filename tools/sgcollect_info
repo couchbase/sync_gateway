@@ -259,6 +259,7 @@ def make_collect_logs_tasks(zip_dir, sg_url):
         "/home/sync_gateway/logs",  
         "/var/log/sg_accel",
         "/var/log/sync_gateway",
+        "/opt/sync_gateway/var/lib/sync_gateway/logs",
         "/Users/sync_gateway/logs",
         "/Users/sg_accel/logs",
         R'C:\Program Files (x86)\Couchbase\var\lib\couchbase\logs'

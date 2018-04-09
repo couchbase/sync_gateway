@@ -760,7 +760,8 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
 	if err := config.setupAndValidateLogging(*verbose); err != nil {
-		base.LogFatal("Error setting up logging %v", err)
+		base.Errorf(base.KEY_ALL, "Error setting up logging: %v", err)
+		os.Exit(1)
 	}
 
 	//return config
@@ -836,7 +837,25 @@ func (config *ServerConfig) NumIndexWriters() int {
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
 
-	base.Logf("==== %s ====", base.LongVersionString)
+	base.Broadcastf("==== %s ====", base.LongVersionString)
+
+	// TODO: Remove test logs
+	base.Debugf(base.KEY_ALL, "Logging test (%s)", "all")
+	base.Infof(base.KEY_ALL, "Logging test (%s)", "all")
+	base.Warnf(base.KEY_ALL, "Logging test (%s)", "all")
+	base.Errorf(base.KEY_ALL, "Logging test (%s)", "all")
+	base.Debugf(base.KEY_NONE, "Logging test (%s)", "none")
+	base.Infof(base.KEY_NONE, "Logging test (%s)", "none")
+	base.Warnf(base.KEY_NONE, "Logging test (%s)", "none")
+	base.Errorf(base.KEY_NONE, "Logging test (%s)", "none")
+	base.Debugf(base.KEY_HTTP, "Logging test (%s)", "http")
+	base.Infof(base.KEY_HTTP, "Logging test (%s)", "http")
+	base.Warnf(base.KEY_HTTP, "Logging test (%s)", "http")
+	base.Errorf(base.KEY_HTTP, "Logging test (%s)", "http")
+	base.Debugf(base.KEY_DCP, "Logging test (%s)", "dcp")
+	base.Infof(base.KEY_DCP, "Logging test (%s)", "dcp")
+	base.Warnf(base.KEY_DCP, "Logging test (%s)", "dcp")
+	base.Errorf(base.KEY_DCP, "Logging test (%s)", "dcp")
 
 	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
 		cpus := runtime.NumCPU()
