@@ -288,43 +288,65 @@ func TestChangeListenerPostUserTTL(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-
-	authenticatorOptions := &auth.AuthenticatorOptions{
-		ChannelComputer:        db,
-		InactivityExpiryOffset: time.Second * 10,  // Set user TTL to non-zero value, although the exact value shouldn't matter
+	// Repeat this test with different authenticator options:
+	// - No User TTL
+	// - User TTL
+	authOptionsCases := []*auth.AuthenticatorOptions{
+		&auth.AuthenticatorOptions{
+			ChannelComputer:        db,  // No User TTL
+		},
+		&auth.AuthenticatorOptions{
+			ChannelComputer:        db,
+			InactivityExpiryOffset: time.Second * 10,  // Set user TTL to non-zero value, although the exact value shouldn't matter
+		},
 	}
-	authenticator := auth.NewAuthenticator(db.Bucket, authenticatorOptions)
-	user, _ := authenticator.NewUser("testUser", "password", base.SetOf("test"))
 
-	// Create a new change listener that is listening for changes to the user doc
-	waiter := db.mutationListener.NewWaiterWithChannels(base.Set{}, user)
+	for i, authOptions := range authOptionsCases {
 
-	// Keep track of how many times the change listener was woken up
-	changeListenerWokenUpCount := 1
+		t.Run(fmt.Sprintf("AuthOptions-%d", i), func(t *testing.T) {
 
-	// Kick off goroutine which counts how many times this change listener is woken up
-	go func() {
-		for {
-			waiter.Wait()
-			changeListenerWokenUpCount += 1
-		}
-	}()
+			username := fmt.Sprintf("testUser%d", i)
 
-	// Save the user, which should cause the change waiter to get woken up once
-	err := authenticator.Save(user)
-	assert.Equals(t, err, nil)
+			authenticator := auth.NewAuthenticator(db.Bucket, authOptions)
+			user, _ := authenticator.NewUser(username, "password", base.SetOf("test"))
 
-	// Call GetUser() which will end up calling GetAndTouch(), which will generate DCP events that
-	// should be ignored and therefore *not* wake up change listeners.
-	user, err = authenticator.GetUser("testUser")
-	assert.True(t, user != nil)
-	assert.True(t, err == nil)
+			// Create a new change listener that is listening for changes to the user doc
+			waiter := db.mutationListener.NewWaiterWithChannels(base.Set{}, user)
 
-	// This should allow plenty of time for change listeners to get woken up by calls triggered by GetUser()
-	time.Sleep(time.Second * 2)
+			// Keep track of how many times the change listener was woken up
+			changeListenerWokenUpCount := 1
 
-	// Should only have been woken up *once*, when the user was saved
-	assert.Equals(t, changeListenerWokenUpCount, 1)
+			// Kick off goroutine which counts how many times this change listener is woken up
+			go func() {
+				for {
+					waiter.Wait()
+					changeListenerWokenUpCount += 1
+				}
+			}()
+
+			// Save the user, which should cause the change waiter to get woken up once
+			err := authenticator.Save(user)
+			assert.Equals(t, err, nil)
+
+			// Call GetUser() which will end up calling GetAndTouch(), which will generate DCP events that
+			// should be ignored and therefore *not* wake up change listeners.
+			user, err = authenticator.GetUser(username)
+			assert.True(t, user != nil)
+			assert.True(t, err == nil)
+
+			// This should allow plenty of time for change listeners to get woken up by calls triggered by GetUser()
+			time.Sleep(time.Second * 2)
+
+			// Should only have been woken up *once*, when the user was saved
+			assert.Equals(t, changeListenerWokenUpCount, 1)
+
+
+
+		})
+	}
+
+
+
 
 }
 
