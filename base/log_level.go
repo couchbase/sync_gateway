@@ -10,16 +10,16 @@ import (
 type LogLevel uint32
 
 const (
-	// LEVEL_NONE disables all logging
-	LEVEL_NONE LogLevel = iota
-	// LEVEL_ERROR enables only error logging.
-	LEVEL_ERROR
-	// LEVEL_WARN enables warn, and error logging.
-	LEVEL_WARN
-	// LEVEL_INFO enables info, warn, and error logging.
-	LEVEL_INFO
-	// LEVEL_DEBUG enables all logging.
-	LEVEL_DEBUG
+	// LevelNone disables all logging
+	LevelNone LogLevel = iota
+	// LevelError enables only error logging.
+	LevelError
+	// LevelWarn enables warn, and error logging.
+	LevelWarn
+	// LevelInfo enables info, warn, and error logging.
+	LevelInfo
+	// LevelDebug enables all logging.
+	LevelDebug
 )
 
 var logLevelNames = []string{"none", "error", "warn", "info", "debug"}

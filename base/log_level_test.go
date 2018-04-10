@@ -9,36 +9,36 @@ import (
 
 func TestLogLevel(t *testing.T) {
 	var logLevelPtr *LogLevel
-	assert.False(t, logLevelPtr.Enabled(LEVEL_DEBUG))
-	assert.False(t, logLevelPtr.Enabled(LEVEL_INFO))
-	assert.False(t, logLevelPtr.Enabled(LEVEL_WARN))
-	assert.False(t, logLevelPtr.Enabled(LEVEL_ERROR))
+	assert.False(t, logLevelPtr.Enabled(LevelDebug))
+	assert.False(t, logLevelPtr.Enabled(LevelInfo))
+	assert.False(t, logLevelPtr.Enabled(LevelWarn))
+	assert.False(t, logLevelPtr.Enabled(LevelError))
 
-	logLevel := LEVEL_NONE
-	assert.False(t, logLevel.Enabled(LEVEL_DEBUG))
-	assert.False(t, logLevel.Enabled(LEVEL_INFO))
-	assert.False(t, logLevel.Enabled(LEVEL_WARN))
-	assert.False(t, logLevel.Enabled(LEVEL_ERROR))
+	logLevel := LevelNone
+	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelInfo))
+	assert.False(t, logLevel.Enabled(LevelWarn))
+	assert.False(t, logLevel.Enabled(LevelError))
 
-	logLevel.Set(LEVEL_INFO)
-	assert.False(t, logLevel.Enabled(LEVEL_DEBUG))
-	assert.True(t, logLevel.Enabled(LEVEL_INFO))
-	assert.True(t, logLevel.Enabled(LEVEL_WARN))
-	assert.True(t, logLevel.Enabled(LEVEL_ERROR))
+	logLevel.Set(LevelInfo)
+	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.True(t, logLevel.Enabled(LevelInfo))
+	assert.True(t, logLevel.Enabled(LevelWarn))
+	assert.True(t, logLevel.Enabled(LevelError))
 
-	logLevel.Set(LEVEL_WARN)
-	assert.False(t, logLevel.Enabled(LEVEL_DEBUG))
-	assert.False(t, logLevel.Enabled(LEVEL_INFO))
-	assert.True(t, logLevel.Enabled(LEVEL_WARN))
-	assert.True(t, logLevel.Enabled(LEVEL_ERROR))
+	logLevel.Set(LevelWarn)
+	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelInfo))
+	assert.True(t, logLevel.Enabled(LevelWarn))
+	assert.True(t, logLevel.Enabled(LevelError))
 }
 
 func TestLogLevelNames(t *testing.T) {
-	assert.Equals(t, LogLevelName(LEVEL_NONE), "none")
-	assert.Equals(t, LogLevelName(LEVEL_DEBUG), "debug")
-	assert.Equals(t, LogLevelName(LEVEL_INFO), "info")
-	assert.Equals(t, LogLevelName(LEVEL_WARN), "warn")
-	assert.Equals(t, LogLevelName(LEVEL_ERROR), "error")
+	assert.Equals(t, LogLevelName(LevelNone), "none")
+	assert.Equals(t, LogLevelName(LevelError), "error")
+	assert.Equals(t, LogLevelName(LevelInfo), "info")
+	assert.Equals(t, LogLevelName(LevelWarn), "warn")
+	assert.Equals(t, LogLevelName(LevelDebug), "debug")
 }
 
 func TestLogLevelText(t *testing.T) {
@@ -54,50 +54,50 @@ func TestLogLevelText(t *testing.T) {
 	assert.Equals(t, string(text), "none")
 	err = logLevel.UnmarshalText(text)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, logLevel, LEVEL_NONE)
+	assert.Equals(t, logLevel, LevelNone)
 
-	logLevel.Set(LEVEL_DEBUG)
+	logLevel.Set(LevelDebug)
 	text, err = logLevel.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "debug")
 	err = logLevel.UnmarshalText(text)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, logLevel, LEVEL_DEBUG)
+	assert.Equals(t, logLevel, LevelDebug)
 
-	logLevel.Set(LEVEL_INFO)
+	logLevel.Set(LevelInfo)
 	text, err = logLevel.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "info")
 	err = logLevel.UnmarshalText(text)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, logLevel, LEVEL_INFO)
+	assert.Equals(t, logLevel, LevelInfo)
 
-	logLevel.Set(LEVEL_WARN)
+	logLevel.Set(LevelWarn)
 	text, err = logLevel.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "warn")
 	err = logLevel.UnmarshalText(text)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, logLevel, LEVEL_WARN)
+	assert.Equals(t, logLevel, LevelWarn)
 
-	logLevel.Set(LEVEL_ERROR)
+	logLevel.Set(LevelError)
 	text, err = logLevel.MarshalText()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, string(text), "error")
 	err = logLevel.UnmarshalText(text)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, logLevel, LEVEL_ERROR)
+	assert.Equals(t, logLevel, LevelError)
 }
 
 func TestLogLevelConcurrency(t *testing.T) {
-	logLevel := LEVEL_WARN
+	logLevel := LevelWarn
 	stop := make(chan struct{})
 
 	go func() {
 		for {
 			select {
 			default:
-				logLevel.Set(LEVEL_ERROR)
+				logLevel.Set(LevelError)
 			case <-stop:
 				return
 			}
@@ -108,7 +108,7 @@ func TestLogLevelConcurrency(t *testing.T) {
 		for {
 			select {
 			default:
-				logLevel.Set(LEVEL_DEBUG)
+				logLevel.Set(LevelDebug)
 			case <-stop:
 				return
 			}
@@ -119,7 +119,7 @@ func TestLogLevelConcurrency(t *testing.T) {
 		for {
 			select {
 			default:
-				_ = logLevel.Enabled(LEVEL_WARN)
+				_ = logLevel.Enabled(LevelWarn)
 			case <-stop:
 				return
 			}
@@ -132,14 +132,14 @@ func TestLogLevelConcurrency(t *testing.T) {
 
 func BenchmarkLogLevelName(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_ = LogLevelName(LEVEL_WARN)
+		_ = LogLevelName(LevelWarn)
 	}
 }
 
 func BenchmarkLogLevelEnabled(b *testing.B) {
-	logLevel := LEVEL_INFO
-	benchmarkLogLevelEnabled(b, "Hit", LEVEL_ERROR, logLevel)
-	benchmarkLogLevelEnabled(b, "Miss", LEVEL_DEBUG, logLevel)
+	logLevel := LevelInfo
+	benchmarkLogLevelEnabled(b, "Hit", LevelError, logLevel)
+	benchmarkLogLevelEnabled(b, "Miss", LevelDebug, logLevel)
 }
 
 func benchmarkLogLevelEnabled(b *testing.B, name string, l LogLevel, logLevel LogLevel) {
