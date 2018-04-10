@@ -276,6 +276,58 @@ func TestGetDeleted(t *testing.T) {
 	assert.DeepEquals(t, body, expectedResult)
 }
 
+
+// Make sure that after the User TTL changes, change listeners do not
+// get spurious events triggered by GetAndTouch() every time authenticator.GetUser() is invoked
+func TestChangeListenerPostUserTTL(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
+	}
+
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+
+	// type assert this from ChangeIndex interface -> concrete changeCache implementation
+	changeCacheImpl := db.changeCache.(*changeCache)
+
+	changeCacheImpl.onChange = func(keys base.Set) {
+		log.Printf("onChange callback called with: %v", keys)
+	}
+
+	// Try again but with a user who doesn't have access to this revision (see #179)
+	authenticatorOptions := &auth.AuthenticatorOptions{
+		ChannelComputer: db,
+		InactivityExpiryOffset: time.Second * 10,
+	}
+	authenticator := auth.NewAuthenticator(db.Bucket, authenticatorOptions)
+	user, _ := authenticator.NewUser("testUser", "password", base.SetOf("test"))
+	err := authenticator.Save(user)
+	assert.Equals(t, err, nil)
+
+
+	for i := 0; i < 10; i++ {
+
+		time.Sleep(time.Millisecond * 500)
+
+		user, err = authenticator.GetUser("testUser")
+		assert.True(t, user != nil)
+		assert.True(t, err == nil)
+
+		// Update user which should extend expiry
+		user.SetPassword(fmt.Sprintf("password-%d", i))
+		err := authenticator.Save(user)
+		assert.Equals(t, err, nil)
+
+	}
+
+
+
+}
+
+
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemovedAsUser(t *testing.T) {
 
