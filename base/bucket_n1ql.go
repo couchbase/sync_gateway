@@ -79,7 +79,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 //   CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
 func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
 
-	createStatement := fmt.Sprintf("CREATE INDEX %s ON %s(%s)", indexName, bucket.GetName(), expression)
+	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON `%s`(%s)", indexName, bucket.GetName(), expression)
 
 	// Add filter expression, when present
 	if filterExpression != "" {
