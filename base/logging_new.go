@@ -8,11 +8,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-const (
-	// RFC3339 + 3 digit milli
-	timestampFormat = "2006-01-02T15:04:05.000Z07:00"
-)
-
 var (
 	ErrInvalidLogFilePath   = errors.New("invalid LogFilePath")
 	ErrInvalidLoggingMaxAge = errors.New("invalid MaxAge")
@@ -111,7 +106,7 @@ func Broadcastf(format string, args ...interface{}) {
 
 // addPrefixes will modify the format string to add timestamps, log level, and other common prefixes.
 func addPrefixes(format string, logLevel LogLevel, logKey LogKey) string {
-	timestampPrefix := time.Now().Format(timestampFormat) + " "
+	timestampPrefix := time.Now().Format(ISO8601Format) + " "
 
 	var logLevelPrefix string
 	if logLevel > LevelNone {
