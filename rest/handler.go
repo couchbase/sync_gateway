@@ -231,7 +231,7 @@ func (h *handler) logRequestLine() {
 		proto = " HTTP/2"
 	}
 
-	base.Infof(base.KEY_HTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.UD(base.SanitizeRequestURL(h.rq.URL)), proto, base.UD(h.currentEffectiveUserNameAsUser()))
+	base.Infof(base.KeyHTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.UD(base.SanitizeRequestURL(h.rq.URL)), proto, base.UD(h.currentEffectiveUserNameAsUser()))
 }
 
 func (h *handler) logRequestBody() {
@@ -267,11 +267,11 @@ func (h *handler) logDuration(realTime bool) {
 	}
 
 	if h.status >= 300 {
-		base.Warnf(base.KEY_HTTP, "#%03d:     --> %d %s  (%.1f ms)",
+		base.Warnf(base.KeyHTTP, "#%03d:     --> %d %s  (%.1f ms)",
 			h.serialNumber, h.status, h.statusMessage,
 			float64(duration)/float64(time.Millisecond))
 	} else {
-		base.Infof(base.KEY_HTTP, "#%03d:     --> %d %s  (%.1f ms)",
+		base.Infof(base.KeyHTTP, "#%03d:     --> %d %s  (%.1f ms)",
 			h.serialNumber, h.status, h.statusMessage,
 			float64(duration)/float64(time.Millisecond))
 	}

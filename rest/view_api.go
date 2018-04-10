@@ -100,7 +100,7 @@ func (h *handler) handleView() error {
 		}
 	}
 
-	base.Infof(base.KEY_HTTP, "JSON view %q/%q - opts %v", base.UD(ddocName), base.UD(viewName), base.UD(opts))
+	base.Infof(base.KeyHTTP, "JSON view %q/%q - opts %v", base.UD(ddocName), base.UD(viewName), base.UD(opts))
 
 	result, err := h.db.QueryDesignDoc(ddocName, viewName, opts)
 	if err != nil {

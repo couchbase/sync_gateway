@@ -178,7 +178,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
-	base.Infof(base.KEY_ACCESS, "Computed channels for %q: %s", base.UD(princ.Name()), base.UD(channels))
+	base.Infof(base.KeyAccess, "Computed channels for %q: %s", base.UD(princ.Name()), base.UD(channels))
 	princ.SetPreviousChannels(nil)
 	princ.setChannels(channels)
 
@@ -240,7 +240,7 @@ func (auth *Authenticator) Save(p Principal) error {
 			//FIX: Unregister old email address if any
 		}
 	}
-	base.Infof(base.KEY_AUTH, "Saved %s: %s", base.UD(p.DocID()), base.UD(p))
+	base.Infof(base.KeyAuth, "Saved %s: %s", base.UD(p.DocID()), base.UD(p))
 	return nil
 }
 
