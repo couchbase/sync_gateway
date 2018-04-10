@@ -12,10 +12,9 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"testing"
-
-	"fmt"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -119,8 +118,6 @@ func TestSerializeUser(t *testing.T) {
 
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
-
-
 
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	user, _ := auth.NewUser("me", "letmein", ch.SetOf("me", "public"))
@@ -388,7 +385,6 @@ func TestGetUsersWithExpiry(t *testing.T) {
 		assert.True(t, user != nil)
 		assert.True(t, err == nil)
 
-
 	}
 
 	// Make sure the user hasn't expired, since their expiry should be renewed
@@ -398,7 +394,6 @@ func TestGetUsersWithExpiry(t *testing.T) {
 	assert.True(t, err == nil)
 
 }
-
 
 // Create a user with an expiry > 30 days
 // Make sure user is not immediately deleted
@@ -416,14 +411,13 @@ func TestUserExpiryLargeExpiry(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 
-	expiryOffset := time.Second * time.Duration(60 * 60 * 24 * 60)  // 60 days
+	expiryOffset := time.Second * time.Duration(60*60*24*60) // 60 days
 	authOptions := &AuthenticatorOptions{
 		InactivityExpiryOffset: expiryOffset,
 	}
 	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
 	testUsername := "testUser"
 	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
-
 
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
@@ -479,7 +473,7 @@ func TestUserExpiryCASRetry(t *testing.T) {
 	defer gTestBucket.Close()
 
 	authOptions := &AuthenticatorOptions{
-		InactivityExpiryOffset: time.Second * time.Duration(60 * 60 * 24 * 60),  // 60 days
+		InactivityExpiryOffset: time.Second * time.Duration(60*60*24*60), // 60 days
 	}
 	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
 
@@ -531,7 +525,6 @@ func TestUserExpiryCASRetry(t *testing.T) {
 	assert.True(t, err == nil)
 
 }
-
 
 func TestSaveRoles(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()

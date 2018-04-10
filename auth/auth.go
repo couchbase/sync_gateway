@@ -286,14 +286,13 @@ func (auth *Authenticator) Save(p Principal) error {
 
 	// Calculate the expiry for the principal doc id.  For users that are permanent, this will be 0 (no expiry).
 	// For users that can expire due to inactivity, it will be set to the current time + the inactivity expiry interval.
-	// TODO: always send absolute value, since server will use it's current time for offsets.
 	absExpiryOrZero := calculateNewPrincipalExpiryFromOffset(auth.inactivityExpiryOffset)
 
 	// Save the expiry value into the body so that it can later be compared when receiving a DCP event to
 	// differentiate between "actual updates" and user TTL GetAndTouch events that should be ignored
 	p.SetLastUpdateExpiry(absExpiryOrZero)
 
-	if err := auth.bucket.Set(p.DocID(), absExpiryOrZero, p); err != nil { // TODO: should this be cas safe?
+	if err := auth.bucket.Set(p.DocID(), absExpiryOrZero, p); err != nil {
 		return err
 	}
 
