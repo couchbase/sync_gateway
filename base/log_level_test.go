@@ -143,15 +143,20 @@ func BenchmarkLogLevelName(b *testing.B) {
 }
 
 func BenchmarkLogLevelEnabled(b *testing.B) {
-	logLevel := LevelInfo
-	benchmarkLogLevelEnabled(b, "Hit", LevelError, logLevel)
-	benchmarkLogLevelEnabled(b, "Miss", LevelDebug, logLevel)
-}
+	var tests = []struct {
+		Name         string
+		TestLogLevel LogLevel
+		SetLogLevel  LogLevel
+	}{
+		{"Hit", LevelError, LevelInfo},
+		{"Miss", LevelDebug, LevelInfo},
+	}
 
-func benchmarkLogLevelEnabled(b *testing.B, name string, l LogLevel, logLevel LogLevel) {
-	b.Run(name, func(bn *testing.B) {
-		for i := 0; i < bn.N; i++ {
-			logLevel.Enabled(l)
-		}
-	})
+	for _, t := range tests {
+		b.Run(t.Name, func(bn *testing.B) {
+			for i := 0; i < bn.N; i++ {
+				t.SetLogLevel.Enabled(t.TestLogLevel)
+			}
+		})
+	}
 }
