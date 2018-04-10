@@ -354,19 +354,17 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 // Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.
+// This method does not directly access any state of c, so it doesn't lock
 func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
+
 	entryTime := time.Now()
 	docID := string(event.Key)
 	docJSON := event.Value
 	changedChannelsCombined := base.Set{}
 
-	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc?
-	if strings.HasPrefix(docID, auth.UserKeyPrefix) {
-		c.processPrincipalDoc(docID, docJSON, true, event.Expiry)
-		return
-	} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
-		c.processPrincipalDoc(docID, docJSON, false, event.Expiry)
+	if strings.HasPrefix(docID, auth.UserKeyPrefix) || strings.HasPrefix(docID, auth.RoleKeyPrefix) {
+		c.processPrincipalDoc(event)
 		return
 	}
 
@@ -550,8 +548,11 @@ func (c *changeCache) processUnusedSequence(docID string) {
 
 }
 
-// TODO: maybe just pass whole DCP Event + isUser (or calc'd from event)
-func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool, expiry uint32) {
+func (c *changeCache) processPrincipalDoc(event sgbucket.FeedEvent) {
+
+	docID := string(event.Key)
+	isUser := strings.HasPrefix(docID, auth.UserKeyPrefix)
+	docJSON := event.Value
 
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
@@ -562,7 +563,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		return
 	}
 
-	if princ.GetLastUpdateExpiry() != expiry {
+	if isUser && princ.GetLastUpdateExpiry() != event.Expiry {
 		// Looks like this is a GetAndTouch change that only changed the expiry, since otherwise
 		// the user's UpdateExpiry field would have been updated to match the doc expiry.
 		// Ignore this DCP event completely.

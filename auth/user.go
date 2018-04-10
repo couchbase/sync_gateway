@@ -193,11 +193,11 @@ func (user *userImpl) SetExplicitRoles(roles ch.TimedSet) {
 }
 
 
-func (user *userImpl) SetUpdateExpiry(exp uint32) {
+func (user *userImpl) SetLastUpdateExpiry(exp uint32) {
 	user.UpdateExpiry_ = exp
 }
 
-func (user *userImpl) GetUpdateExpiry() (exp uint32) {
+func (user *userImpl) GetLastUpdateExpiry() (exp uint32) {
 	return user.UpdateExpiry_
 }
 

@@ -295,42 +295,36 @@ func TestChangeListenerPostUserTTL(t *testing.T) {
 	}
 	authenticator := auth.NewAuthenticator(db.Bucket, authenticatorOptions)
 	user, _ := authenticator.NewUser("testUser", "password", base.SetOf("test"))
-	err := authenticator.Save(user)
-	assert.Equals(t, err, nil)
 
 	// Create a new change listener that is listening for changes to the user doc
 	waiter := db.mutationListener.NewWaiterWithChannels(base.Set{}, user)
 
-	// Keep track of whether the change listener was woken up
-	changeListenerWokeUp := false
+	// Keep track of how many times the change listener was woken up
+	changeListenerWokenUpCount := 1
 
+	// Kick off goroutine which counts how many times this change listener is woken up
 	go func() {
-
-		select {
-		case <-waiter.WaitAsync():
-			// Read the counter from the channel returned by WaitAsync().  If anything is sent on that channel,
-			// it means that the waiter woke up.
-			changeListenerWokeUp = true
-		case <-time.After(time.Second * 2):
-			// Give it a few seconds, which should be more than enough time for the waiter to get woken up
-			log.Printf("The waiter didn't wake up, this is good ")
-
+		for {
+			waiter.Wait()
+			changeListenerWokenUpCount += 1
 		}
-
 	}()
 
+	// Save the user, which should cause the change waiter to get woken up once
+	err := authenticator.Save(user)
+	assert.Equals(t, err, nil)
 
 	// Call GetUser() which will end up calling GetAndTouch(), which will generate DCP events that
-	// should *not* wake up change listeners.
-	for i := 0; i < 100; i++ {
+	// should be ignored and therefore *not* wake up change listeners.
+	user, err = authenticator.GetUser("testUser")
+	assert.True(t, user != nil)
+	assert.True(t, err == nil)
 
-		user, err = authenticator.GetUser("testUser")
-		assert.True(t, user != nil)
-		assert.True(t, err == nil)
+	// This should allow plenty of time for change listeners to get woken up by calls triggered by GetUser()
+	time.Sleep(time.Second * 2)
 
-	}
-
-	assert.False(t, changeListenerWokeUp)
+	// Should only have been woken up *once*, when the user was saved
+	assert.Equals(t, changeListenerWokenUpCount, 1)
 
 }
 
