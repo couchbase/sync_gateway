@@ -51,6 +51,7 @@ func TestLogLevel(t *testing.T) {
 func TestLogLevelNames(t *testing.T) {
 	// Ensure number of level constants, and names match.
 	assert.Equals(t, len(logLevelNames), int(levelCount))
+	assert.Equals(t, len(logLevelNamesPrint), int(levelCount))
 
 	assert.Equals(t, LogLevelName(LevelNone), "none")
 	assert.Equals(t, LogLevelName(LevelError), "error")

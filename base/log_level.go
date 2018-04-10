@@ -24,7 +24,10 @@ const (
 	levelCount
 )
 
-var logLevelNames = []string{"none", "error", "warn", "info", "debug"}
+var (
+	logLevelNames      = []string{"none", "error", "warn", "info", "debug"}
+	logLevelNamesPrint = []string{"NON", "ERR", "WRN", "INF", "DBG"}
+)
 
 func (l *LogLevel) Set(newLevel LogLevel) {
 	atomic.StoreUint32((*uint32)(l), uint32(newLevel))
@@ -38,12 +41,20 @@ func (l *LogLevel) Enabled(logLevel LogLevel) bool {
 	return atomic.LoadUint32((*uint32)(l)) >= uint32(logLevel)
 }
 
-// LogLevelName returns the string representation of a log level.
+// LogLevelName returns the string representation of a log level (e.g. "debug" or "warn")
 func LogLevelName(logLevel LogLevel) string {
 	if int(logLevel) >= len(logLevelNames) {
 		return ""
 	}
 	return logLevelNames[logLevel]
+}
+
+// logLevelNamePrint returns the string value to print for a log level (e.g. "DBG" or "WRN")
+func logLevelNamePrint(logLevel LogLevel) string {
+	if int(logLevel) >= len(logLevelNames) {
+		return ""
+	}
+	return logLevelNamesPrint[logLevel]
 }
 
 func (l *LogLevel) MarshalText() (text []byte, err error) {
