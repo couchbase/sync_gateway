@@ -35,8 +35,8 @@ import (
 )
 
 const (
-	kMaxDeltaTtl         = 60 * 60 * 24 * 30
-	kMaxDeltaTtlDuration = 60 * 60 * 24 * 30 * time.Second
+	MaxDeltaTtl         = 60 * 60 * 24 * 30
+	MaxDeltaTtlDuration = 60 * 60 * 24 * 30 * time.Second
 )
 
 func GenerateRandomSecret() string {
@@ -230,7 +230,7 @@ func IsPowerOfTwo(n uint16) bool {
 //This function takes a ttl as a Duration and returns an int
 //formatted as required by CBS expiry processing
 func DurationToCbsExpiry(ttl time.Duration) uint32 {
-	if ttl <= kMaxDeltaTtlDuration {
+	if ttl <= MaxDeltaTtlDuration {
 		return uint32(ttl.Seconds())
 	} else {
 		return uint32(time.Now().Add(ttl).Unix())
@@ -245,7 +245,7 @@ func SecondsToCbsExpiry(ttl int) uint32 {
 
 //This function takes a CBS expiry and returns as a time
 func CbsExpiryToTime(expiry uint32) time.Time {
-	if expiry <= kMaxDeltaTtl {
+	if expiry <= MaxDeltaTtl {
 		return time.Now().Add(time.Duration(expiry) * time.Second)
 	} else {
 		return time.Unix(int64(expiry), 0)

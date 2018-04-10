@@ -63,6 +63,10 @@ type Principal interface {
 	// the guest user, else 403.
 	UnauthError(message string) error
 
+	SetUpdateExpiry(exp uint32)
+
+	GetUpdateExpiry() (exp uint32)
+
 	DocID() string
 	accessViewKey() string
 	validate() error

@@ -21,6 +21,7 @@ import (
 	pkgerrors "github.com/pkg/errors"
 	"time"
 	"github.com/couchbase/sg-bucket"
+	"golang.org/x/tools/go/gcimporter15/testdata"
 )
 
 /** Manages user authentication for a database. */
@@ -122,13 +123,14 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
-	// Get the expiry value for this principal, if any.
-	exp := base.DurationToCbsExpiry(auth.inactivityExpiryOffset)
+	// Calculate the expiry for the principal doc id.  For users that are permanent, this will be 0 (no expiry).
+	// For users that can expire due to inactivity, it will be set to the current time + the inactivity expiry interval.
+	absExpiry, cbExpiry := calculateNewPrincipalExpiryFromOffset(auth.inactivityExpiryOffset)
 
 	// - 90% of the time this is just a GetAndTouch().  The touch is needed to update the expiry for user TTL behavior.
 	// - 10% of the time this also does an update because the user has been invalidated and the channels/roles need to be
 	//   recalculated and rewritten to the bucket.
-	err := auth.bucket.WriteUpdateAndTouch(docID, exp, func(currentValue []byte) ([]byte, sgbucket.WriteOptions, *uint32, error) {
+	err := auth.bucket.WriteUpdateAndTouch(docID, cbExpiry, func(currentValue []byte) ([]byte, sgbucket.WriteOptions, *uint32, error) {
 
 		var writeOpts sgbucket.WriteOptions
 
@@ -161,6 +163,11 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		}
 
 		if changed {
+
+			// Save the expiry value into the body so that it can later be compared when receiving a DCP event to
+			// differentiate between "actual updates" and user TTL GetAndTouch events that should be ignored
+			princ.SetUpdateExpiry(absExpiry)
+
 			// Save the updated doc:
 			updatedBytes, marshalErr := json.Marshal(princ)
 			return updatedBytes, writeOpts, nil, pkgerrors.Wrapf(marshalErr, "Error calling json.Marshal() for doc ID: %s in getPrincipal()", docID)
@@ -248,21 +255,27 @@ func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 }
 
 
-
-
 // TODO: use existing function in util or somewhere in codebase
-func calculateNewPrincipalExpiryFromOffset(inactivityExpiryOffset time.Duration) uint32 {
+func calculateNewPrincipalExpiryFromOffset(inactivityExpiryOffset time.Duration) (absExpiry, cbExpiry uint32)  {
+
+	nowUnixTS := time.Now().Unix()
 
 	// Special case for users that never expire
 	if inactivityExpiryOffset <= 0 {
-		return 0
+		return uint32(nowUnixTS), 0
 	}
 
-	if inactivityExpiryOffset < time.Hour * 24 * 30 {
-		return uint32(inactivityExpiryOffset.Seconds())
+	absExpiry = uint32(nowUnixTS) + uint32(inactivityExpiryOffset.Seconds())
+
+	if inactivityExpiryOffset < base.MaxDeltaTtl {
+		cbExpiry = uint32(inactivityExpiryOffset.Seconds())
+	} else {
+		cbExpiry = absExpiry
 	}
 
-	return uint32(time.Now().Unix()) + uint32(inactivityExpiryOffset.Seconds())
+	return absExpiry, cbExpiry
+
+
 }
 
 // Saves the information for a user/role.
@@ -273,9 +286,13 @@ func (auth *Authenticator) Save(p Principal) error {
 
 	// Calculate the expiry for the principal doc id.  For users that are permanent, this will be 0 (no expiry).
 	// For users that can expire due to inactivity, it will be set to the current time + the inactivity expiry interval.
-	expiry := calculateNewPrincipalExpiryFromOffset(auth.inactivityExpiryOffset)
+	absExpiry, cbExpiry := calculateNewPrincipalExpiryFromOffset(auth.inactivityExpiryOffset)
 
-	if err := auth.bucket.Set(p.DocID(), expiry, p); err != nil {  // TODO: should this be cas safe?
+	// Save the expiry value into the body so that it can later be compared when receiving a DCP event to
+	// differentiate between "actual updates" and user TTL GetAndTouch events that should be ignored
+	p.SetUpdateExpiry(absExpiry)
+
+	if err := auth.bucket.Set(p.DocID(), cbExpiry, p); err != nil {  // TODO: should this be cas safe?
 		return err
 	}
 

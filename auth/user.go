@@ -42,6 +42,11 @@ type userImplBody struct {
 	ExplicitRoles_   ch.TimedSet `json:"explicit_roles,omitempty"`
 	RolesSince_      ch.TimedSet `json:"rolesSince"`
 
+	// The expiry value when the user was last updated.  This is used to differentiate between
+	// DCP events that are just "GetAndTouch" noise vs DCP events which represent actual changes.
+	// The value is an absolute UNIX epoch timestamp (seconds since Jan 1, 1970).  TODO: verify this
+	UpdateExpiry_ uint32 `json:"update_expiry,omitempty"`
+
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
 }
 
@@ -186,6 +191,17 @@ func (user *userImpl) SetExplicitRoles(roles ch.TimedSet) {
 	user.ExplicitRoles_ = roles
 	user.setRolesSince(nil) // invalidate persistent cache of role names
 }
+
+
+func (user *userImpl) SetUpdateExpiry(exp uint32) {
+	user.UpdateExpiry_ = exp
+}
+
+func (user *userImpl) GetUpdateExpiry() (exp uint32) {
+	return user.UpdateExpiry_
+}
+
+
 
 // Returns true if the given password is correct for this user, and the account isn't disabled.
 func (user *userImpl) Authenticate(password string) bool {

@@ -288,7 +288,7 @@ func TestSaveUsersWithExpiry(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 
-	expiryOffset := time.Second * time.Duration(1)
+	expiryOffset := time.Second * time.Duration(1000)
 	authOptions := &AuthenticatorOptions{
 		InactivityExpiryOffset: expiryOffset,
 	}
