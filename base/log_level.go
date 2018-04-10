@@ -50,10 +50,17 @@ func (l *LogLevel) MarshalText() (text []byte, err error) {
 	if l == nil {
 		return nil, errors.New("invalid log level")
 	}
-	return []byte(LogLevelName(*l)), nil
+	name := LogLevelName(*l)
+	if name == "" {
+		return nil, fmt.Errorf("unrecognized log level: %v (valid range: %d-%d)", *l, 0, levelCount-1)
+	}
+	return []byte(name), nil
 }
 
 func (l *LogLevel) UnmarshalText(text []byte) error {
+	if l == nil {
+		return errors.New("invalid log level")
+	}
 	for i, name := range logLevelNames {
 		if name == string(text) {
 			l.Set(LogLevel(i))

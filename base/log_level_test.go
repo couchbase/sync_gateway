@@ -1,6 +1,7 @@
 package base
 
 import (
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -48,51 +49,36 @@ func TestLogLevelNames(t *testing.T) {
 }
 
 func TestLogLevelText(t *testing.T) {
+	for i := LogLevel(0); i < levelCount; i++ {
+		t.Run(fmt.Sprintf("LogLevel: %v", i), func(ts *testing.T) {
+			text, err := i.MarshalText()
+			assert.Equals(ts, err, nil)
+			assert.Equals(ts, string(text), LogLevelName(i))
+
+			var logLevel LogLevel
+			err = logLevel.UnmarshalText(text)
+			assert.Equals(ts, err, nil)
+			assert.Equals(ts, logLevel, i)
+		})
+	}
+
+	// nil pointer recievers
 	var logLevelPtr *LogLevel
-	text, err := logLevelPtr.MarshalText()
+	_, err := logLevelPtr.MarshalText()
 	assert.Equals(t, err.Error(), "invalid log level")
-	err = logLevelPtr.UnmarshalText(text)
+	err = logLevelPtr.UnmarshalText([]byte("none"))
+	assert.Equals(t, err.Error(), "invalid log level")
+
+	// Invalid values
+	var logLevel = LogLevel(math.MaxUint32)
+	text, err := logLevel.MarshalText()
 	assert.NotEquals(t, err, nil)
+	assert.Equals(t, string(text), "")
 
-	var logLevel LogLevel
-	text, err = logLevel.MarshalText()
-	assert.Equals(t, err, nil)
-	assert.Equals(t, string(text), "none")
-	err = logLevel.UnmarshalText(text)
-	assert.Equals(t, err, nil)
+	logLevel = LevelNone
+	err = logLevel.UnmarshalText([]byte(""))
+	assert.NotEquals(t, err, nil)
 	assert.Equals(t, logLevel, LevelNone)
-
-	logLevel.Set(LevelDebug)
-	text, err = logLevel.MarshalText()
-	assert.Equals(t, err, nil)
-	assert.Equals(t, string(text), "debug")
-	err = logLevel.UnmarshalText(text)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, logLevel, LevelDebug)
-
-	logLevel.Set(LevelInfo)
-	text, err = logLevel.MarshalText()
-	assert.Equals(t, err, nil)
-	assert.Equals(t, string(text), "info")
-	err = logLevel.UnmarshalText(text)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, logLevel, LevelInfo)
-
-	logLevel.Set(LevelWarn)
-	text, err = logLevel.MarshalText()
-	assert.Equals(t, err, nil)
-	assert.Equals(t, string(text), "warn")
-	err = logLevel.UnmarshalText(text)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, logLevel, LevelWarn)
-
-	logLevel.Set(LevelError)
-	text, err = logLevel.MarshalText()
-	assert.Equals(t, err, nil)
-	assert.Equals(t, string(text), "error")
-	err = logLevel.UnmarshalText(text)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, logLevel, LevelError)
 }
 
 func TestLogLevelConcurrency(t *testing.T) {
