@@ -589,17 +589,19 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 	base.LogToR("Cache", "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
-
-	// TODO: coalesce this onChange() callback for changedChannels and docId (append to end of changedChannels)
+	// Process this entry which will buffer it into the change cache and returned the set of changed channels.
 	changedChannels := c.processEntry(change)
-	if c.onChange != nil && len(changedChannels) > 0 {
-		c.onChange(changedChannels)
+
+	// Add the user doc id to the set of changedChannels to get a set of all changed items to callback c.Onchange() with
+	changedItems := changedChannels.Union(base.SetOf(docID))
+
+	// Invoke the onChange() callback.
+	// This needs to be done after processEntry() is called to give a chance for the sequence for the principal
+	// doc to get buffered.  Otherwise change listeners will wake up and not see any new changes and go back to waiting.
+	if c.onChange != nil {
+		c.onChange(changedItems)
 	}
 
-	// Notify the listener that the principal doc changed
-	if c.onChange != nil {
-		c.onChange(base.SetOf(docID))
-	}
 }
 
 // Handles a newly-arrived LogEntry.
