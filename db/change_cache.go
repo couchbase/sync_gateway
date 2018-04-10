@@ -550,6 +550,7 @@ func (c *changeCache) processUnusedSequence(docID string) {
 
 }
 
+// TODO: maybe just pass whole DCP Event + isUser (or calc'd from event)
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool, expiry uint32) {
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
@@ -566,12 +567,6 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		// Ignore this DCP event completely.
 		return
 	}
-
-	// Notify the listener that the user doc changed
-	if c.onChange != nil {
-		c.onChange(base.SetOf(docID))
-	}
-
 
 	sequence := princ.Sequence()
 	c.lock.RLock()
@@ -594,9 +589,16 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 	base.LogToR("Cache", "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
+
+	// TODO: coalesce this onChange() callback for changedChannels and docId (append to end of changedChannels)
 	changedChannels := c.processEntry(change)
 	if c.onChange != nil && len(changedChannels) > 0 {
 		c.onChange(changedChannels)
+	}
+
+	// Notify the listener that the principal doc changed
+	if c.onChange != nil {
+		c.onChange(base.SetOf(docID))
 	}
 }
 

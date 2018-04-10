@@ -284,6 +284,7 @@ func (auth *Authenticator) Save(p Principal) error {
 
 	// Calculate the expiry for the principal doc id.  For users that are permanent, this will be 0 (no expiry).
 	// For users that can expire due to inactivity, it will be set to the current time + the inactivity expiry interval.
+	// TODO: always send absolute value, since server will use it's current time for offsets.
 	absExpiry, cbExpiry := calculateNewPrincipalExpiryFromOffset(auth.inactivityExpiryOffset)
 
 	// Save the expiry value into the body so that it can later be compared when receiving a DCP event to
