@@ -90,7 +90,7 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 		parameters.ReplicationId = CreateUUID()
 	}
 
-	LogToR("Replicate", "Creating replication with parameters %v", UD(parameters))
+	LogToR("Replicate", "Creating replication with parameters %s", UD(parameters))
 
 	var (
 		replication sgreplicate.SGReplication
