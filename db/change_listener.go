@@ -98,26 +98,13 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 	requiresCheckpointPersistence := true
 
-
-	base.LogTo("DCP+", "Feed event with value: %s", string(event.Value))
-
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
 		if strings.HasPrefix(key, auth.UserKeyPrefix) ||
 			strings.HasPrefix(key, auth.RoleKeyPrefix) { // SG users and roles
-
-			// TODO: here or maybe even further out, we want to ignore docs if their subdoc CAS
-			// TODO: is still the same as their actual doc CAS.  How will it get the subdoc CAS?
-			// TODO: will it be in event.Value?
-
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
-
-			// TEMP enable
-			// listener.Notify(base.SetOf(key))  // TODO: push this down to processPrincipal.  NOtify got pushed down for regular docs.
-
-
 		} else if strings.HasPrefix(key, UnusedSequenceKeyPrefix) { // SG unused sequence marker docs
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)

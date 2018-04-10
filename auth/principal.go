@@ -63,8 +63,15 @@ type Principal interface {
 	// the guest user, else 403.
 	UnauthError(message string) error
 
+	// Set the absolute unix timestamp of the doc expiry value when this principal doc was last updated.
+	// This is used to differentiate between real updates and GetAndTouch() updates for User TTL purposes,
+	// which cause spurious events on the DCP feed.  If this is set to 0, then it indicates that the
+	// doc never expires, which will be the case when User TTL isn't active.
 	SetLastUpdateExpiry(exp uint32)
 
+	// Get the doc expiry value, which will either be the absolute unix timestamp of the doc expiry value
+	// when it was last updated, or 0 which indicates that it's either never been updated, or that the doc
+	// never expires.
 	GetLastUpdateExpiry() (exp uint32)
 
 	DocID() string

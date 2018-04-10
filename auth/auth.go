@@ -125,12 +125,12 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 
 	// Calculate the expiry for the principal doc id.  For users that are permanent, this will be 0 (no expiry).
 	// For users that can expire due to inactivity, it will be set to the current time + the inactivity expiry interval.
-	absExpiry, cbExpiry := calculateNewPrincipalExpiryFromOffset(auth.inactivityExpiryOffset)
+	absExpiryOrZero := calculateNewPrincipalExpiryFromOffset(auth.inactivityExpiryOffset)
 
-	// - 90% of the time this is just a GetAndTouch().  The touch is needed to update the expiry for user TTL behavior.
-	// - 10% of the time this also does an update because the user has been invalidated and the channels/roles need to be
+	// - Most of the time this is just a GetAndTouch().  The touch is needed to update the expiry for user TTL behavior.
+	// - Sometimes this also does an update because the user has been invalidated and the channels/roles need to be
 	//   recalculated and rewritten to the bucket.
-	err := auth.bucket.WriteUpdateAndTouch(docID, cbExpiry, func(currentValue []byte) ([]byte, sgbucket.WriteOptions, *uint32, error) {
+	err := auth.bucket.WriteUpdateAndTouch(docID, absExpiryOrZero, func(currentValue []byte) ([]byte, sgbucket.WriteOptions, *uint32, error) {
 
 		var writeOpts sgbucket.WriteOptions
 
@@ -166,7 +166,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 
 			// Save the expiry value into the body so that it can later be compared when receiving a DCP event to
 			// differentiate between "actual updates" and user TTL GetAndTouch events that should be ignored
-			princ.SetLastUpdateExpiry(absExpiry)
+			princ.SetLastUpdateExpiry(absExpiryOrZero)
 
 			// Save the updated doc:
 			updatedBytes, marshalErr := json.Marshal(princ)
@@ -254,25 +254,27 @@ func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	return auth.GetUser(info.Username)
 }
 
-// TODO: use existing function in util or somewhere in codebase
-func calculateNewPrincipalExpiryFromOffset(inactivityExpiryOffset time.Duration) (absExpiry, cbExpiry uint32) {
+// Get the expiry value based on the offset parameter:
+//
+// - If the offset is 0, return 0 to indicate that the principal doc should never expire
+// - Otherwise, calculate the absolute expiry value.
+//
+// The reason the absolute expiry value must be used is because the expiry value on the DCP event might be compared with
+// the expiry value stored in user.GetLastUpdateExpiry().  If the a relative offset value was used, then the values
+// wouldn't match because it would be using the clock on the Couchbase server node to calculate the expiry, which
+// would not match the absolute value returned from this method and stored into user.SetLastUpdateExpiry()
+func calculateNewPrincipalExpiryFromOffset(inactivityExpiryOffset time.Duration) (absExpiryOrZero uint32) {
 
 	nowUnixTS := time.Now().Unix()
 
 	// Special case for users that never expire
 	if inactivityExpiryOffset <= 0 {
-		return uint32(nowUnixTS), 0
+		return 0
 	}
 
-	absExpiry = uint32(nowUnixTS) + uint32(inactivityExpiryOffset.Seconds())
+	absExpiryOrZero = uint32(nowUnixTS) + uint32(inactivityExpiryOffset.Seconds())
 
-	if inactivityExpiryOffset < base.MaxDeltaTtl {
-		cbExpiry = uint32(inactivityExpiryOffset.Seconds())
-	} else {
-		cbExpiry = absExpiry
-	}
-
-	return absExpiry, cbExpiry
+	return absExpiryOrZero
 
 }
 
@@ -285,13 +287,13 @@ func (auth *Authenticator) Save(p Principal) error {
 	// Calculate the expiry for the principal doc id.  For users that are permanent, this will be 0 (no expiry).
 	// For users that can expire due to inactivity, it will be set to the current time + the inactivity expiry interval.
 	// TODO: always send absolute value, since server will use it's current time for offsets.
-	absExpiry, cbExpiry := calculateNewPrincipalExpiryFromOffset(auth.inactivityExpiryOffset)
+	absExpiryOrZero := calculateNewPrincipalExpiryFromOffset(auth.inactivityExpiryOffset)
 
 	// Save the expiry value into the body so that it can later be compared when receiving a DCP event to
 	// differentiate between "actual updates" and user TTL GetAndTouch events that should be ignored
-	p.SetLastUpdateExpiry(absExpiry)
+	p.SetLastUpdateExpiry(absExpiryOrZero)
 
-	if err := auth.bucket.Set(p.DocID(), cbExpiry, p); err != nil { // TODO: should this be cas safe?
+	if err := auth.bucket.Set(p.DocID(), absExpiryOrZero, p); err != nil { // TODO: should this be cas safe?
 		return err
 	}
 
