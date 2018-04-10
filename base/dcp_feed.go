@@ -250,7 +250,7 @@ func (r *DCPReceiver) GetMetaData(vbucketId uint16) (
 // RollbackEx should be called by cbdatasource - Rollback required to maintain the interface.  In the event
 // it's called, logs warning and does a hard reset on metadata for the vbucket
 func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
-	WarnR("DCP Rollback request.  Expected RollbackEx call - resetting vbucket %s to 0.", MD(vbucketId))
+	WarnR("DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
 	dcpExpvars.Add("rollback_count", 1)
 	r.updateSeq(vbucketId, 0, false)
 	r.SetMetaData(vbucketId, nil)
@@ -260,7 +260,7 @@ func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 
 // RollbackEx includes the vbucketUUID needed to reset the metadata correctly
 func (r *DCPReceiver) RollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64) error {
-	WarnR("DCP RollbackEx request - rolling back DCP feed for: vbucketId: %s, rollbackSeq: %x.", MD(vbucketId), rollbackSeq)
+	WarnR("DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 
 	dcpExpvars.Add("rollback_count", 1)
 	r.updateSeq(vbucketId, rollbackSeq, false)
@@ -345,7 +345,7 @@ func makeVbucketMetadataForSequence(vbucketUUID uint64, sequence uint64) []byte 
 //         - Is a relatively infrequent operation (occurs when vbuckets are initially assigned to an accel node)
 func (r *DCPReceiver) persistCheckpoint(vbNo uint16, value []byte) error {
 	dcpExpvars.Add("persistCheckpoint_count", 1)
-	LogToR("DCP+", "Persisting checkpoint for vbno %s", MD(vbNo))
+	LogToR("DCP+", "Persisting checkpoint for vbno %d", vbNo)
 	return r.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo), 0, value)
 }
 
@@ -392,7 +392,7 @@ func (r *DCPReceiver) initMetadata(maxVbNo uint16) {
 	for i := uint16(0); i < maxVbNo; i++ {
 		metadata, snapStart, snapEnd, err := r.loadCheckpoint(i)
 		if err != nil {
-			WarnR("Unexpected error attempting to load DCP checkpoint for vbucket %s.  Will restart DCP for that vbucket from zero.  Error: %v", MD(i), err)
+			WarnR("Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", i, err)
 			r.meta[i] = []byte{}
 			r.seqs[i] = 0
 		} else {
@@ -405,11 +405,11 @@ func (r *DCPReceiver) initMetadata(maxVbNo uint16) {
 			}
 			// If we have a backfill sequence later than the DCP checkpoint's snapStart, start from there
 			if partialBackfillSequence > snapStart {
-				LogToR("DCP", "Restarting vb %s using backfill sequence %d ([%d-%d])", MD(i), partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
+				LogToR("DCP", "Restarting vb %d using backfill sequence %d ([%d-%d])", i, partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
 				r.seqs[i] = partialBackfillSequence
 				r.meta[i] = makeVbucketMetadata(r.vbuuids[i], partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
 			} else {
-				LogToR("DCP", "Restarting vb %s using metadata sequence %d  (backfill %d not in [%d-%d])", MD(i), snapStart, partialBackfillSequence, snapStart, snapEnd)
+				LogToR("DCP", "Restarting vb %d using metadata sequence %d  (backfill %d not in [%d-%d])", i, snapStart, partialBackfillSequence, snapStart, snapEnd)
 			}
 		}
 	}
@@ -463,7 +463,7 @@ func (r *DCPLoggingReceiver) OnError(err error) {
 
 func (r *DCPLoggingReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	LogToR("DCP+", "DataUpdate:%s, %s, %d, %v", MD(vbucketId), UD(key), seq, req)
+	LogToR("DCP+", "DataUpdate:%d, %s, %d, %v", vbucketId, UD(key), seq, req)
 	return r.rec.DataUpdate(vbucketId, key, seq, req)
 }
 
@@ -479,30 +479,30 @@ func (r *DCPLoggingReceiver) GetBucketNotifyFn() sgbucket.BucketNotifyFn {
 
 func (r *DCPLoggingReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	LogToR("DCP+", "DataDelete:%s, %s, %d, %v", MD(vbucketId), UD(key), seq, req)
+	LogToR("DCP+", "DataDelete:%d, %s, %d, %v", vbucketId, UD(key), seq, req)
 	return r.rec.DataDelete(vbucketId, key, seq, req)
 }
 
 func (r *DCPLoggingReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
-	LogToR("DCP", "Rollback:%s, %d", MD(vbucketId), rollbackSeq)
+	LogToR("DCP", "Rollback:%d, %d", vbucketId, rollbackSeq)
 	return r.rec.Rollback(vbucketId, rollbackSeq)
 }
 
 func (r *DCPLoggingReceiver) SetMetaData(vbucketId uint16, value []byte) error {
 
-	LogToR("DCP+", "SetMetaData:%s, %s", MD(vbucketId), value)
+	LogToR("DCP+", "SetMetaData:%d, %s", vbucketId, value)
 	return r.rec.SetMetaData(vbucketId, value)
 }
 
 func (r *DCPLoggingReceiver) GetMetaData(vbucketId uint16) (
 	value []byte, lastSeq uint64, err error) {
-	LogToR("DCP+", "GetMetaData:%s", MD(vbucketId))
+	LogToR("DCP+", "GetMetaData:%d", vbucketId)
 	return r.rec.GetMetaData(vbucketId)
 }
 
 func (r *DCPLoggingReceiver) SnapshotStart(vbucketId uint16,
 	snapStart, snapEnd uint64, snapType uint32) error {
-	LogToR("DCP+", "SnapshotStart:%s, %d, %d, %d", MD(vbucketId), snapStart, snapEnd, snapType)
+	LogToR("DCP+", "SnapshotStart:%d, %d, %d, %d", vbucketId, snapStart, snapEnd, snapType)
 	return r.rec.SnapshotStart(vbucketId, snapStart, snapEnd, snapType)
 }
 
