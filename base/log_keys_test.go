@@ -25,18 +25,17 @@ func TestLogKey(t *testing.T) {
 	assert.True(t, logKeys.Enabled(KeyCache))
 	assert.Equals(t, logKeys, KeyAll|KeyAccess|KeyHTTP|KeyReplicate)
 
-	// Enable KEY_NONE and check keys are disabled.
-	logKeys.Enable(KeyNone)
-	assert.False(t, logKeys.Enabled(KeyAll))
-	assert.False(t, logKeys.Enabled(KeyCache))
-	assert.Equals(t, logKeys, KeyNone|KeyAll|KeyAccess|KeyHTTP|KeyReplicate)
-	logKeys.Disable(KeyNone)
-
 	// Disable wildcard and check that existing keys are still set.
 	logKeys.Disable(KeyAll)
 	assert.True(t, logKeys.Enabled(KeyAccess))
 	assert.False(t, logKeys.Enabled(KeyCache))
 	assert.Equals(t, logKeys, KeyAccess|KeyHTTP|KeyReplicate)
+
+	// Set KeyNone and check keys are disabled.
+	logKeys = KeyNone
+	assert.False(t, logKeys.Enabled(KeyAll))
+	assert.False(t, logKeys.Enabled(KeyCache))
+	assert.Equals(t, logKeys, KeyNone)
 }
 
 func TestLogKeyNames(t *testing.T) {

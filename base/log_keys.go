@@ -11,10 +11,10 @@ type LogKey uint32
 // Values for log keys.
 const (
 	// KeyNone is shorthand for no log keys.
-	KeyNone LogKey = 1 << iota
+	KeyNone LogKey = 0
 
 	// KeyAll is a wildcard for all log keys.
-	KeyAll
+	KeyAll LogKey = 1 << iota
 
 	KeyAccess
 	KeyAttach
@@ -67,8 +67,7 @@ func (keyMask *LogKey) Disable(logKey LogKey) {
 }
 
 // Enabled returns true if the given logKey is enabled in keyMask.
-// Always returns true if KEY_ALL is enabled in keyMask.
-// Always returns false if KEY_NONE is enabled in keyMask.
+// Always returns true if KeyAll is enabled in keyMask.
 func (keyMask *LogKey) Enabled(logKey LogKey) bool {
 	return keyMask.enabled(logKey, true)
 }
@@ -81,15 +80,9 @@ func (keyMask *LogKey) enabled(logKey LogKey, checkWildcards bool) bool {
 
 	flag := atomic.LoadUint32((*uint32)(keyMask))
 
-	if checkWildcards {
-		// If KEY_NONE is set, return false for everything.
-		if flag&uint32(KeyNone) != 0 {
-			return false
-		}
-		// If KEY_ALL is set, return true for everything.
-		if flag&uint32(KeyAll) != 0 {
-			return true
-		}
+	// If KeyAll is set, return true for everything.
+	if checkWildcards && flag&uint32(KeyAll) != 0 {
+		return true
 	}
 
 	return flag&uint32(logKey) != 0
