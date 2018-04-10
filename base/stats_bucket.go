@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"time"
 )
 
 // A wrapper around a Bucket that tracks bucket usage statistics as basic read/write counts.  Doesn't break
@@ -185,6 +186,13 @@ func (b *StatsBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, p
 	defer b.docWrite(1, -1)
 	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, callback)
 }
+
+func (b *StatsBucket) WriteUpdateAndTouch(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
+	start := time.Now()
+	defer func() { LogTo("Bucket", "WriteUpdateAndTouch(%q, %d, ...) --> %v [%v]", k, exp, err, time.Since(start)) }()
+	return b.bucket.WriteUpdateAndTouch(k, exp, callback)
+}
+
 func (b *StatsBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
 	cas, err = b.bucket.GetWithXattr(k, xattr, rv, xv)
 	if vBytes, ok := rv.([]byte); ok {
