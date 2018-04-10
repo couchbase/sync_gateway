@@ -10,44 +10,44 @@ type LogKey uint32
 
 // Values for log keys.
 const (
-	// KEY_NONE is shorthand for no log keys.
-	KEY_NONE LogKey = 1 << iota
+	// KeyNone is shorthand for no log keys.
+	KeyNone LogKey = 1 << iota
 
-	// KEY_ALL is a wildcard for all log keys.
-	KEY_ALL
+	// KeyAll is a wildcard for all log keys.
+	KeyAll
 
-	KEY_ACCESS
-	KEY_ATTACH
-	KEY_AUTH
-	KEY_BUCKET
-	KEY_CACHE
-	KEY_CHANGES
-	KEY_CRUD
-	KEY_DCP
-	KEY_EVENTS
-	KEY_FEED
-	KEY_HTTP
-	KEY_IMPORT
-	KEY_REPLICATE
+	KeyAccess
+	KeyAttach
+	KeyAuth
+	KeyBucket
+	KeyCache
+	KeyChanges
+	KeyCRUD
+	KeyDCP
+	KeyEvents
+	KeyFeed
+	KeyHTTP
+	KeyImport
+	KeyReplicate
 )
 
 var (
 	logKeyNames = map[LogKey]string{
-		KEY_NONE:      "",
-		KEY_ALL:       "*",
-		KEY_ACCESS:    "Access",
-		KEY_ATTACH:    "Attach",
-		KEY_AUTH:      "Auth",
-		KEY_BUCKET:    "Bucket",
-		KEY_CACHE:     "Cache",
-		KEY_CHANGES:   "Changes",
-		KEY_CRUD:      "CRUD",
-		KEY_DCP:       "DCP",
-		KEY_EVENTS:    "Events",
-		KEY_FEED:      "Feed",
-		KEY_HTTP:      "HTTP",
-		KEY_IMPORT:    "Import",
-		KEY_REPLICATE: "Replicate",
+		KeyNone:      "",
+		KeyAll:       "*",
+		KeyAccess:    "Access",
+		KeyAttach:    "Attach",
+		KeyAuth:      "Auth",
+		KeyBucket:    "Bucket",
+		KeyCache:     "Cache",
+		KeyChanges:   "Changes",
+		KeyCRUD:      "CRUD",
+		KeyDCP:       "DCP",
+		KeyEvents:    "Events",
+		KeyFeed:      "Feed",
+		KeyHTTP:      "HTTP",
+		KeyImport:    "Import",
+		KeyReplicate: "Replicate",
 	}
 
 	// Inverse of the map above. Optimisation for string -> LogKey lookups in ToLogKey
@@ -83,11 +83,11 @@ func (keyMask *LogKey) enabled(logKey LogKey, checkWildcards bool) bool {
 
 	if checkWildcards {
 		// If KEY_NONE is set, return false for everything.
-		if flag&uint32(KEY_NONE) != 0 {
+		if flag&uint32(KeyNone) != 0 {
 			return false
 		}
 		// If KEY_ALL is set, return true for everything.
-		if flag&uint32(KEY_ALL) != 0 {
+		if flag&uint32(KeyAll) != 0 {
 			return true
 		}
 	}
@@ -126,7 +126,7 @@ func ToLogKey(keysStr []string) LogKey {
 		if logKey, ok := logKeyNamesInverse[name]; ok {
 			logKeys.Enable(logKey)
 		} else {
-			Warnf(KEY_ALL, "Invalid log key: %v", name)
+			Warnf(KeyAll, "Invalid log key: %v", name)
 		}
 	}
 	return logKeys

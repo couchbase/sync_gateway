@@ -9,42 +9,42 @@ import (
 
 func TestLogKey(t *testing.T) {
 	var logKeysPtr *LogKey
-	assert.False(t, logKeysPtr.Enabled(KEY_HTTP))
+	assert.False(t, logKeysPtr.Enabled(KeyHTTP))
 
-	logKeys := KEY_HTTP
-	assert.True(t, logKeys.Enabled(KEY_HTTP))
+	logKeys := KeyHTTP
+	assert.True(t, logKeys.Enabled(KeyHTTP))
 
 	// Enable more log keys.
-	logKeys.Enable(KEY_ACCESS | KEY_REPLICATE)
-	assert.True(t, logKeys.Enabled(KEY_ACCESS))
-	assert.True(t, logKeys.Enabled(KEY_REPLICATE))
-	assert.Equals(t, logKeys, KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
+	logKeys.Enable(KeyAccess | KeyReplicate)
+	assert.True(t, logKeys.Enabled(KeyAccess))
+	assert.True(t, logKeys.Enabled(KeyReplicate))
+	assert.Equals(t, logKeys, KeyAccess|KeyHTTP|KeyReplicate)
 
 	// Enable wildcard and check unset key is enabled.
-	logKeys.Enable(KEY_ALL)
-	assert.True(t, logKeys.Enabled(KEY_CACHE))
-	assert.Equals(t, logKeys, KEY_ALL|KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
+	logKeys.Enable(KeyAll)
+	assert.True(t, logKeys.Enabled(KeyCache))
+	assert.Equals(t, logKeys, KeyAll|KeyAccess|KeyHTTP|KeyReplicate)
 
 	// Enable KEY_NONE and check keys are disabled.
-	logKeys.Enable(KEY_NONE)
-	assert.False(t, logKeys.Enabled(KEY_ALL))
-	assert.False(t, logKeys.Enabled(KEY_CACHE))
-	assert.Equals(t, logKeys, KEY_NONE|KEY_ALL|KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
-	logKeys.Disable(KEY_NONE)
+	logKeys.Enable(KeyNone)
+	assert.False(t, logKeys.Enabled(KeyAll))
+	assert.False(t, logKeys.Enabled(KeyCache))
+	assert.Equals(t, logKeys, KeyNone|KeyAll|KeyAccess|KeyHTTP|KeyReplicate)
+	logKeys.Disable(KeyNone)
 
 	// Disable wildcard and check that existing keys are still set.
-	logKeys.Disable(KEY_ALL)
-	assert.True(t, logKeys.Enabled(KEY_ACCESS))
-	assert.False(t, logKeys.Enabled(KEY_CACHE))
-	assert.Equals(t, logKeys, KEY_ACCESS|KEY_HTTP|KEY_REPLICATE)
+	logKeys.Disable(KeyAll)
+	assert.True(t, logKeys.Enabled(KeyAccess))
+	assert.False(t, logKeys.Enabled(KeyCache))
+	assert.Equals(t, logKeys, KeyAccess|KeyHTTP|KeyReplicate)
 }
 
 func TestLogKeyNames(t *testing.T) {
-	name := LogKeyName(KEY_DCP)
+	name := LogKeyName(KeyDCP)
 	assert.Equals(t, name, "DCP")
 
 	// Can't retrieve name of combined log keys.
-	name = LogKeyName(KEY_DCP | KEY_REPLICATE)
+	name = LogKeyName(KeyDCP | KeyReplicate)
 	assert.Equals(t, name, "")
 
 	keys := []string{}
@@ -54,24 +54,24 @@ func TestLogKeyNames(t *testing.T) {
 
 	keys = append(keys, "DCP")
 	logKeys = ToLogKey(keys)
-	assert.Equals(t, logKeys, KEY_DCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_DCP)})
+	assert.Equals(t, logKeys, KeyDCP)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KeyDCP)})
 
 	keys = append(keys, "Access")
 	logKeys = ToLogKey(keys)
-	assert.Equals(t, logKeys, KEY_ACCESS|KEY_DCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_ACCESS), LogKeyName(KEY_DCP)})
+	assert.Equals(t, logKeys, KeyAccess|KeyDCP)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KeyAccess), LogKeyName(KeyDCP)})
 
 	keys = []string{"*", "DCP"}
 	logKeys = ToLogKey(keys)
-	assert.Equals(t, logKeys, KEY_ALL|KEY_DCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_ALL), LogKeyName(KEY_DCP)})
+	assert.Equals(t, logKeys, KeyAll|KeyDCP)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KeyAll), LogKeyName(KeyDCP)})
 
 	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
 	keys = []string{"DCP", "HTTP+", "InvalidLogKey"}
 	logKeys = ToLogKey(keys)
-	assert.Equals(t, logKeys, KEY_DCP|KEY_HTTP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_DCP), LogKeyName(KEY_HTTP)})
+	assert.Equals(t, logKeys, KeyDCP|KeyHTTP)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KeyDCP), LogKeyName(KeyHTTP)})
 }
 
 // This test has no assertions, but will flag any data races when run under `-race`.
@@ -83,7 +83,7 @@ func TestLogKeyConcurrency(t *testing.T) {
 		for {
 			select {
 			default:
-				logKey.Enable(KEY_DCP)
+				logKey.Enable(KeyDCP)
 			case <-stop:
 				return
 			}
@@ -94,7 +94,7 @@ func TestLogKeyConcurrency(t *testing.T) {
 		for {
 			select {
 			default:
-				logKey.Disable(KEY_DCP)
+				logKey.Disable(KeyDCP)
 			case <-stop:
 				return
 			}
@@ -105,7 +105,7 @@ func TestLogKeyConcurrency(t *testing.T) {
 		for {
 			select {
 			default:
-				logKey.Enabled(KEY_DCP)
+				logKey.Enabled(KeyDCP)
 			case <-stop:
 				return
 			}
@@ -117,30 +117,30 @@ func TestLogKeyConcurrency(t *testing.T) {
 }
 
 func BenchmarkLogKeyEnabled(b *testing.B) {
-	logKeys := KEY_CRUD | KEY_DCP | KEY_REPLICATE
-	benchmarkLogKeyEnabled(b, "Wildcard", KEY_CACHE, KEY_ALL)
-	benchmarkLogKeyEnabled(b, "Hit", KEY_DCP, logKeys)
-	benchmarkLogKeyEnabled(b, "Miss", KEY_CACHE, logKeys)
+	logKeys := KeyCRUD | KeyDCP | KeyReplicate
+	benchmarkLogKeyEnabled(b, "Wildcard", KeyCache, KeyAll)
+	benchmarkLogKeyEnabled(b, "Hit", KeyDCP, logKeys)
+	benchmarkLogKeyEnabled(b, "Miss", KeyCache, logKeys)
 }
 
 func BenchmarkToggleLogKeys(b *testing.B) {
 	b.Run("Enable", func(bn *testing.B) {
-		logKeys := KEY_CRUD | KEY_DCP | KEY_REPLICATE
+		logKeys := KeyCRUD | KeyDCP | KeyReplicate
 		for i := 0; i < bn.N; i++ {
-			logKeys.Enable(KEY_HTTP)
+			logKeys.Enable(KeyHTTP)
 		}
 	})
 	b.Run("Disable", func(bn *testing.B) {
-		logKeys := KEY_CRUD | KEY_DCP | KEY_REPLICATE
+		logKeys := KeyCRUD | KeyDCP | KeyReplicate
 		for i := 0; i < bn.N; i++ {
-			logKeys.Disable(KEY_DCP)
+			logKeys.Disable(KeyDCP)
 		}
 	})
 }
 
 func BenchmarkLogKeyName(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_ = LogKeyName(KEY_DCP)
+		_ = LogKeyName(KeyDCP)
 	}
 }
 
@@ -151,7 +151,7 @@ func BenchmarkToLogKey(b *testing.B) {
 }
 
 func BenchmarkEnabledLogKeys(b *testing.B) {
-	logKeys := KEY_CRUD | KEY_DCP | KEY_REPLICATE
+	logKeys := KeyCRUD | KeyDCP | KeyReplicate
 	for i := 0; i < b.N; i++ {
 		_ = logKeys.EnabledLogKeys()
 	}

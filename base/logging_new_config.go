@@ -68,15 +68,15 @@ func (c *LoggingConfig) init() error {
 	// Use values from the old "default" config for unset values (for backwards compatibility)
 	if c.DeprecatedDefaultLog != nil {
 		if c.LogFilePath == "" && c.DeprecatedDefaultLog.LogFilePath != nil {
-			Warnf(KEY_ALL, "Using deprecated config option: logging.default.logFilePath. Use logging.logFilePath instead.")
+			Warnf(KeyAll, "Using deprecated config option: logging.default.logFilePath. Use logging.logFilePath instead.")
 			c.LogFilePath = *c.DeprecatedDefaultLog.LogFilePath
 		}
 		if len(c.Console.LogKeys) == 0 && len(c.DeprecatedDefaultLog.LogKeys) > 0 {
-			Warnf(KEY_ALL, "Using deprecated config option: logging.default.logKeys. Use logging.console.logKeys instead.")
+			Warnf(KeyAll, "Using deprecated config option: logging.default.logKeys. Use logging.console.logKeys instead.")
 			c.Console.LogKeys = c.DeprecatedDefaultLog.LogKeys
 		}
 		if c.Console.LogLevel == nil && c.DeprecatedDefaultLog.LogLevel != 0 {
-			Warnf(KEY_ALL, "Using deprecated config option: logging.default.logLevel. Use logging.console.logLevel instead.")
+			Warnf(KeyAll, "Using deprecated config option: logging.default.logLevel. Use logging.console.logLevel instead.")
 			newLogLevel := LevelError
 			switch c.DeprecatedDefaultLog.LogLevel {
 			case DebugLevel:
@@ -140,7 +140,7 @@ func (lcc *LogConsoleConfig) init() error {
 	}
 
 	// HTTP log key is always on
-	newKeys := KEY_HTTP
+	newKeys := KeyHTTP
 	if len(lcc.LogKeys) > 0 {
 		newKeys.Enable(ToLogKey(lcc.LogKeys))
 	}
@@ -230,7 +230,7 @@ func (lcc *LogConsoleConfig) shouldLog(logLevel LogLevel, logKey LogKey) bool {
 		lcc.logger != nil &&
 		lcc.LogLevel.Enabled(logLevel) &&
 		// if logging at KEY_ALL, allow it unless KEY_NONE is set
-		((logKey == KEY_ALL && !lcc.logKey.Enabled(KEY_NONE)) ||
+		((logKey == KeyAll && !lcc.logKey.Enabled(KeyNone)) ||
 			// Otherwise check the given log key is enabled
 			lcc.logKey.Enabled(logKey))
 }

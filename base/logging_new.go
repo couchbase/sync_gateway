@@ -19,7 +19,7 @@ var (
 
 	// We'll initilise a default consoleLogger so we can still log stuff before/during parsing logging configs.
 	defaultLogLevel = LevelInfo
-	defaultLogKey   = KEY_ALL
+	defaultLogKey   = KeyAll
 	consoleLogger   = LogConsoleConfig{
 		LogLevel:     &defaultLogLevel,
 		logKey:       &defaultLogKey,
@@ -52,7 +52,7 @@ func Debugf(logKey LogKey, format string, args ...interface{}) {
 
 func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
 	// exit early for things we know won't get logged
-	if logKey <= KEY_NONE || logLevel <= LevelNone {
+	if logKey <= KeyNone || logLevel <= LevelNone {
 		return
 	}
 
@@ -91,7 +91,7 @@ func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 // Broadcastf will print the same log to ALL outputs, ignoring logLevel and logKey settings.
 // This can be useful for printing an indicator of app restarts, version numbers, etc. but MUST be used sparingly.
 func Broadcastf(format string, args ...interface{}) {
-	format = addPrefixes(format, LevelNone, KEY_NONE)
+	format = addPrefixes(format, LevelNone, KeyNone)
 	if consoleLogger.logger != nil {
 		consoleLogger.logger.Printf(color(format, LevelNone), args...)
 	}
@@ -119,7 +119,7 @@ func addPrefixes(format string, logLevel LogLevel, logKey LogKey) string {
 	}
 
 	var logKeyPrefix string
-	if logKey > KEY_NONE && logKey != KEY_ALL {
+	if logKey > KeyNone && logKey != KeyAll {
 		logKeyName := LogKeyName(logKey)
 		// Append "+" to logKeys at debug level (for backwards compatibility)
 		if logLevel == LevelDebug {
