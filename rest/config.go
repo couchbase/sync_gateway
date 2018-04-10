@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -512,25 +513,106 @@ func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
 		config.Logging = &base.LoggingConfig{}
 	}
 
+	if err := config.deprecatedConfigLoggingFallback(verbose); err != nil {
+		return err
+	}
+
+	base.SetRedaction(config.Logging.RedactionLevel)
+
+	return base.InitLogging(config.Logging)
+}
+
+// deprecatedConfigLoggingFallback will parse the ServerConfig and try to
+// use older logging config options for backwards compatibility.
+func (config *ServerConfig) deprecatedConfigLoggingFallback(verbose bool) error {
+
+	if config.Logging.DeprecatedDefaultLog != nil {
+		// Fall back to the old logging.["default"].LogFilePath option
+		if config.Logging.LogFilePath == "" && config.Logging.DeprecatedDefaultLog.LogFilePath != nil {
+			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogFilePath. Use logging.logFilePath instead.")
+			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
+			config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
+		}
+
+		// Fall back to the old logging.["default"].LogKeys option
+		if len(config.Logging.Console.LogKeys) == 0 && len(config.Logging.DeprecatedDefaultLog.LogKeys) > 0 {
+			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogKeys. Use logging.console.logKeys instead.")
+			config.Logging.Console.LogKeys = config.Logging.DeprecatedDefaultLog.LogKeys
+		}
+
+		// Fall back to the old logging.["default"].LogLevel option
+		if config.Logging.Console.LogLevel == nil && config.Logging.DeprecatedDefaultLog.LogLevel != 0 {
+			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogLevel. Use logging.console.logLevel instead.")
+			config.Logging.Console.LogLevel = toNewLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
+		}
+	}
+
 	// Fall back to the old LogFilePath option
 	if config.Logging.LogFilePath == "" && config.DeprecatedLogFilePath != nil {
+		base.Warnf(base.KeyAll, "Using deprecated config option: logFilePath. Use logging.logFilePath instead.")
 		config.Logging.LogFilePath = *config.DeprecatedLogFilePath
 	}
 
 	// Fall back to the old Log option
 	if config.Logging.Console.LogKeys == nil && len(config.DeprecatedLog) > 0 {
+		base.Warnf(base.KeyAll, "Using deprecated config option: log. Use logging.console.logKeys instead.")
 		config.Logging.Console.LogKeys = config.DeprecatedLog
 	}
 
-	if config.Logging != nil {
-		base.SetRedaction(config.Logging.RedactionLevel)
+	if config.Logging.DeprecatedDefaultLog == nil {
+		config.Logging.DeprecatedDefaultLog = &base.LogAppenderConfig{}
+	}
 
-		if err := base.InitLogging(config.Logging); err != nil {
-			return err
-		}
+	// Set old LogKeys config setting for backwards compatibility.
+	// TODO: Remove when old logging is stripped out.
+	config.Logging.DeprecatedDefaultLog.LogKeys = config.Logging.Console.LogKeys
+
+	// Set old LogFilePath config setting for backwards compatibility.
+	// TODO: Remove when old logging is stripped out.
+	config.Logging.DeprecatedDefaultLog.LogLevel = *toDeprecatedLogLevel(*config.Logging.Console.LogLevel)
+
+	defaultLogger := config.Logging.DeprecatedDefaultLog
+	if err := defaultLogger.ValidateLogAppender(); err != nil {
+		return err
+	}
+	base.CreateRollingLogger(defaultLogger)
+
+	base.EnableLogKey("HTTP")
+	if verbose {
+		base.EnableLogKey("HTTP+")
 	}
 
 	return nil
+}
+
+func toDeprecatedLogLevel(logLevel base.LogLevel) *base.Level {
+	var deprecatedLogLevel base.Level
+	switch logLevel {
+	case base.LevelDebug:
+		deprecatedLogLevel = base.DebugLevel
+	case base.LevelInfo:
+		deprecatedLogLevel = base.InfoLevel
+	case base.LevelWarn:
+		deprecatedLogLevel = base.WarnLevel
+	case base.LevelError:
+		deprecatedLogLevel = base.ErrorLevel
+	}
+	return &deprecatedLogLevel
+}
+
+func toNewLogLevel(deprecatedLogLevel base.Level) *base.LogLevel {
+	var newLogLevel base.LogLevel
+	switch deprecatedLogLevel {
+	case base.DebugLevel:
+		newLogLevel.Set(base.LevelDebug)
+	case base.InfoLevel:
+		newLogLevel.Set(base.LevelInfo)
+	case base.WarnLevel:
+		newLogLevel.Set(base.LevelWarn)
+	case base.ErrorLevel:
+		newLogLevel.Set(base.LevelError)
+	}
+	return &newLogLevel
 }
 
 func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {

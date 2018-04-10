@@ -651,7 +651,6 @@ func CreateRollingLogger(logConfig *LogAppenderConfig) {
 	if logConfig != nil {
 		SetLogLevel(logConfig.LogLevel.sgLevel())
 		ParseLogFlags(logConfig.LogKeys)
-		SetRedaction(logConfig.RedactionLevel)
 
 		if logConfig.LogFilePath == nil {
 			return

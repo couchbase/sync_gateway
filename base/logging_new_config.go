@@ -65,31 +65,6 @@ func (c *LoggingConfig) init() error {
 		return errors.New("invalid LoggingConfig")
 	}
 
-	// Use values from the old "default" config for unset values (for backwards compatibility)
-	if c.DeprecatedDefaultLog != nil {
-		if c.LogFilePath == "" && c.DeprecatedDefaultLog.LogFilePath != nil {
-			Warnf(KeyAll, "Using deprecated config option: logging.default.logFilePath. Use logging.logFilePath instead.")
-			c.LogFilePath = *c.DeprecatedDefaultLog.LogFilePath
-		}
-		if len(c.Console.LogKeys) == 0 && len(c.DeprecatedDefaultLog.LogKeys) > 0 {
-			Warnf(KeyAll, "Using deprecated config option: logging.default.logKeys. Use logging.console.logKeys instead.")
-			c.Console.LogKeys = c.DeprecatedDefaultLog.LogKeys
-		}
-		if c.Console.LogLevel == nil && c.DeprecatedDefaultLog.LogLevel != 0 {
-			Warnf(KeyAll, "Using deprecated config option: logging.default.logLevel. Use logging.console.logLevel instead.")
-			newLogLevel := LevelError
-			switch c.DeprecatedDefaultLog.LogLevel {
-			case DebugLevel:
-				newLogLevel.Set(LevelDebug)
-			case InfoLevel:
-				newLogLevel.Set(LevelInfo)
-			case WarnLevel:
-				newLogLevel.Set(LevelWarn)
-			}
-			c.Console.LogLevel = &newLogLevel
-		}
-	}
-
 	if err := validateLogFilePath(&c.LogFilePath); err != nil {
 		return err
 	}
