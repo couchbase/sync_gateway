@@ -298,26 +298,31 @@ func TestChangeListenerPostUserTTL(t *testing.T) {
 	err := authenticator.Save(user)
 	assert.Equals(t, err, nil)
 
+	// Create a new change listener that is listening for changes to the user doc
 	waiter := db.mutationListener.NewWaiterWithChannels(base.Set{}, user)
 
-	waiterWokeUp := false
+	// Keep track of whether the change listener was woken up
+	changeListenerWokeUp := false
 
 	go func() {
 
 		select {
 		case <-waiter.WaitAsync():
-			waiterWokeUp = true
+			// Read the counter from the channel returned by WaitAsync().  If anything is sent on that channel,
+			// it means that the waiter woke up.
+			changeListenerWokeUp = true
 		case <-time.After(time.Second * 2):
-			// timeout
+			// Give it a few seconds, which should be more than enough time for the waiter to get woken up
 			log.Printf("The waiter didn't wake up, this is good ")
 
 		}
 
 	}()
 
-	for i := 0; i < 100; i++ {
 
-		// time.Sleep(time.Millisecond * 500)
+	// Call GetUser() which will end up calling GetAndTouch(), which will generate DCP events that
+	// should *not* wake up change listeners.
+	for i := 0; i < 100; i++ {
 
 		user, err = authenticator.GetUser("testUser")
 		assert.True(t, user != nil)
@@ -325,7 +330,7 @@ func TestChangeListenerPostUserTTL(t *testing.T) {
 
 	}
 
-	assert.False(t, waiterWokeUp)
+	assert.False(t, changeListenerWokeUp)
 
 }
 
