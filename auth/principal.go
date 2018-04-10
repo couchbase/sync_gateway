@@ -63,10 +63,9 @@ type Principal interface {
 	// the guest user, else 403.
 	UnauthError(message string) error
 
-	// TODO: LastUpdateExpiry
-	SetUpdateExpiry(exp uint32)
+	SetLastUpdateExpiry(exp uint32)
 
-	GetUpdateExpiry() (exp uint32)
+	GetLastUpdateExpiry() (exp uint32)
 
 	DocID() string
 	accessViewKey() string

@@ -552,6 +552,7 @@ func (c *changeCache) processUnusedSequence(docID string) {
 
 // TODO: maybe just pass whole DCP Event + isUser (or calc'd from event)
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool, expiry uint32) {
+
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
 	// have gaps in it, causing later sequences to get stuck in the queue.
@@ -561,7 +562,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		return
 	}
 
-	if princ.GetUpdateExpiry() != expiry {
+	if princ.GetLastUpdateExpiry() != expiry {
 		// Looks like this is a GetAndTouch change that only changed the expiry, since otherwise
 		// the user's UpdateExpiry field would have been updated to match the doc expiry.
 		// Ignore this DCP event completely.

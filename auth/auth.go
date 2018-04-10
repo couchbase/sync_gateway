@@ -166,7 +166,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 
 			// Save the expiry value into the body so that it can later be compared when receiving a DCP event to
 			// differentiate between "actual updates" and user TTL GetAndTouch events that should be ignored
-			princ.SetUpdateExpiry(absExpiry)
+			princ.SetLastUpdateExpiry(absExpiry)
 
 			// Save the updated doc:
 			updatedBytes, marshalErr := json.Marshal(princ)
@@ -289,7 +289,7 @@ func (auth *Authenticator) Save(p Principal) error {
 
 	// Save the expiry value into the body so that it can later be compared when receiving a DCP event to
 	// differentiate between "actual updates" and user TTL GetAndTouch events that should be ignored
-	p.SetUpdateExpiry(absExpiry)
+	p.SetLastUpdateExpiry(absExpiry)
 
 	if err := auth.bucket.Set(p.DocID(), cbExpiry, p); err != nil { // TODO: should this be cas safe?
 		return err
