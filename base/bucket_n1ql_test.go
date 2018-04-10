@@ -321,6 +321,33 @@ func TestCreateAndDropIndex(t *testing.T) {
 	}
 }
 
+func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	if !ok {
+		t.Fatalf("Requires gocb bucket")
+	}
+
+	createExpression := "_sync.sequence"
+	err := bucket.CreateIndex("testIndex-sequence", createExpression, "", testN1qlOptions)
+	if err != nil {
+		t.Errorf("Error creating index: %s", err)
+	}
+
+	readyErr := bucket.WaitForIndexOnline("testIndex-sequence")
+	assertNoError(t, readyErr, "Error validating index online")
+
+	// Drop the index
+	err = bucket.DropIndex("testIndex-sequence")
+	if err != nil {
+		t.Errorf("Error dropping index: %s", err)
+	}
+}
+
 func TestCreateAndDropIndexErrors(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {
