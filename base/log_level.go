@@ -56,7 +56,7 @@ func (l *LogLevel) MarshalText() (text []byte, err error) {
 func (l *LogLevel) UnmarshalText(text []byte) error {
 	for i, name := range logLevelNames {
 		if name == string(text) {
-			*l = LogLevel(i)
+			l.Set(LogLevel(i))
 			return nil
 		}
 	}
