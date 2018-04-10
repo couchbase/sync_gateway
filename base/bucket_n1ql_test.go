@@ -333,16 +333,16 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 	}
 
 	createExpression := "_sync.sequence"
-	err := bucket.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
+	err := bucket.CreateIndex("testIndex-sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
 	}
 
-	readyErr := bucket.WaitForIndexOnline("testIndex_sequence")
+	readyErr := bucket.WaitForIndexOnline("testIndex-sequence")
 	assertNoError(t, readyErr, "Error validating index online")
 
 	// Drop the index
-	err = bucket.DropIndex("testIndex_sequence")
+	err = bucket.DropIndex("testIndex-sequence")
 	if err != nil {
 		t.Errorf("Error dropping index: %s", err)
 	}

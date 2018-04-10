@@ -169,7 +169,7 @@ func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, 
 
 // CreateIndex drops the specified index from the current bucket.
 func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
-	statement := fmt.Sprintf("DROP INDEX %s.%s", bucket.GetName(), indexName)
+	statement := fmt.Sprintf("DROP INDEX `%s`.`%s`", bucket.GetName(), indexName)
 	n1qlQuery := gocb.NewN1qlQuery(statement)
 
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
