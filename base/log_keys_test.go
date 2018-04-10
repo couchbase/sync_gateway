@@ -74,27 +74,7 @@ func TestLogKeyNames(t *testing.T) {
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_DCP), LogKeyName(KEY_HTTP)})
 }
 
-func TestLogKeyText(t *testing.T) {
-	var logKeysPtr *LogKey
-	text, err := logKeysPtr.MarshalText()
-	assert.Equals(t, err.Error(), "invalid log key")
-
-	var logKeys LogKey
-	text = []byte("DCP,HTTP+,InvalidLogKey")
-	err = logKeys.UnmarshalText(text)
-
-	assert.Equals(t, err, nil)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KEY_DCP), LogKeyName(KEY_HTTP)})
-
-	text = []byte("DCP")
-	err = logKeys.UnmarshalText(text)
-	assert.Equals(t, err, nil)
-
-	text, err = logKeys.MarshalText()
-	assert.Equals(t, err, nil)
-	assert.Equals(t, string(text), "DCP")
-}
-
+// This test has no assertions, but will flag any data races when run under `-race`.
 func TestLogKeyConcurrency(t *testing.T) {
 	var logKey LogKey
 	stop := make(chan struct{})

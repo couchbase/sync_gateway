@@ -1,7 +1,6 @@
 package base
 
 import (
-	"errors"
 	"strings"
 	"sync/atomic"
 )
@@ -94,19 +93,6 @@ func (keyMask *LogKey) enabled(logKey LogKey, checkWildcards bool) bool {
 	}
 
 	return flag&uint32(logKey) != 0
-}
-
-func (keyMask *LogKey) MarshalText() ([]byte, error) {
-	if keyMask == nil {
-		return nil, errors.New("invalid log key")
-	}
-	return []byte(LogKeyName(*keyMask)), nil
-}
-
-func (keyMask *LogKey) UnmarshalText(text []byte) error {
-	keys := strings.Split(string(text), ",")
-	atomic.StoreUint32((*uint32)(keyMask), uint32(ToLogKey(keys)))
-	return nil
 }
 
 // LogKeyName returns the string representation of a single log key.
