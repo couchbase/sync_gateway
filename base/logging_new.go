@@ -9,10 +9,12 @@ import (
 )
 
 var (
-	ErrInvalidLogFilePath   = errors.New("invalid LogFilePath")
-	ErrInvalidLoggingMaxAge = errors.New("invalid MaxAge")
+	ErrInvalidLogFilePath   = errors.New("Invalid LogFilePath")
+	ErrInvalidLoggingMaxAge = errors.New("Invalid MaxAge")
 
 	// We'll initilise a default consoleLogger so we can still log stuff before/during parsing logging configs.
+	// This maintains consistent formatting (timestamps, levels, etc) in the output,
+	// and allows a single set of logging functions to be used, rather than fmt.Printf()
 	defaultLogLevel = LevelInfo
 	defaultLogKey   = KeyAll
 	consoleLogger   = LogConsoleConfig{
@@ -46,38 +48,47 @@ func Debugf(logKey LogKey, format string, args ...interface{}) {
 }
 
 func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
-	// exit early for things we know won't get logged
-	if logKey <= KeyNone || logLevel <= LevelNone {
+	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
+	shouldLogError := errorLogger.shouldLog()
+	shouldLogWarn := warnLogger.shouldLog()
+	shouldLogInfo := infoLogger.shouldLog()
+	shouldLogDebug := debugLogger.shouldLog()
+
+	shouldLog := shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug
+
+	// exit early if we aren't going to log anything
+	if !shouldLog || logLevel <= LevelNone {
 		return
 	}
 
+	// Prepend timestamp, level, log key
 	format = addPrefixes(format, logLevel, logKey)
 
 	// Perform log redaction, if necessary.
 	args = redact(args)
 
-	if consoleLogger.shouldLog(logLevel, logKey) {
+	if shouldLogConsole {
 		consoleLogger.logger.Printf(color(format, logLevel), args...)
 	}
 
 	switch logLevel {
 	case LevelError:
-		if errorLogger.shouldLog() {
+		if shouldLogError {
 			errorLogger.logger.Printf(format, args...)
 		}
 		fallthrough
 	case LevelWarn:
-		if warnLogger.shouldLog() {
+		if shouldLogWarn {
 			warnLogger.logger.Printf(format, args...)
 		}
 		fallthrough
 	case LevelInfo:
-		if infoLogger.shouldLog() {
+		if shouldLogInfo {
 			infoLogger.logger.Printf(format, args...)
 		}
 		fallthrough
 	case LevelDebug:
-		if debugLogger.shouldLog() {
+		if shouldLogDebug {
 			debugLogger.logger.Printf(format, args...)
 		}
 	}
