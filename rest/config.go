@@ -519,7 +519,7 @@ func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
 
 	base.SetRedaction(config.Logging.RedactionLevel)
 
-	return base.InitLogging(config.Logging)
+	return config.Logging.Init()
 }
 
 // deprecatedConfigLoggingFallback will parse the ServerConfig and try to

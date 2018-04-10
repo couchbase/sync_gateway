@@ -19,15 +19,13 @@ const (
 )
 
 type LoggingConfig struct {
-	LogFilePath    string         `json:",omitempty"` // Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
-	RedactionLevel RedactionLevel `json:",omitempty"`
-
-	Console LogConsoleConfig `json:",omitempty"` // Console Output
-
-	Error LogFileConfig `json:",omitempty"` // Error log file output
-	Warn  LogFileConfig `json:",omitempty"` // Warn log file output
-	Info  LogFileConfig `json:",omitempty"` // Info log file output
-	Debug LogFileConfig `json:",omitempty"` // Debug log file output
+	LogFilePath    string           `json:",omitempty"` // Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
+	RedactionLevel RedactionLevel   `json:",omitempty"`
+	Console        LogConsoleConfig `json:",omitempty"` // Console Output
+	Error          LogFileConfig    `json:",omitempty"` // Error log file output
+	Warn           LogFileConfig    `json:",omitempty"` // Warn log file output
+	Info           LogFileConfig    `json:",omitempty"` // Info log file output
+	Debug          LogFileConfig    `json:",omitempty"` // Debug log file output
 
 	DeprecatedDefaultLog *LogAppenderConfig `json:"default,omitempty"` // Deprecated "default" logging option.
 }
@@ -43,8 +41,8 @@ type LogConsoleConfig struct {
 }
 
 type LogFileConfig struct {
-	Enabled  *bool              `json:",omitempty"` // Toggle for this log output
-	Rotation *logRotationConfig `json:",omitempty"` // Log rotation settings
+	Enabled  *bool             `json:",omitempty"` // Toggle for this log output
+	Rotation logRotationConfig `json:",omitempty"` // Log rotation settings
 
 	output io.Writer
 	logger *log.Logger
@@ -56,11 +54,7 @@ type logRotationConfig struct {
 	LocalTime bool `json:",omitempty"` // If true, it uses the computer's local time to format the backup timestamp.
 }
 
-func InitLogging(c *LoggingConfig) error {
-	return c.init()
-}
-
-func (c *LoggingConfig) init() error {
+func (c *LoggingConfig) Init() error {
 	if c == nil {
 		return errors.New("invalid LoggingConfig")
 	}
@@ -127,9 +121,6 @@ func (lcc *LogConsoleConfig) init() error {
 func (lfc *LogFileConfig) init(level LogLevel, logFilePath string, minAge int) error {
 	if lfc == nil {
 		return errors.New("invalid LogFileConfig")
-	}
-	if lfc.Rotation == nil {
-		lfc.Rotation = &logRotationConfig{}
 	}
 
 	// set default enabled based on level
