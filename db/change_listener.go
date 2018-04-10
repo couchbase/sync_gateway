@@ -318,6 +318,25 @@ func (waiter *changeWaiter) Wait() uint32 {
 	}
 }
 
+// Like Wait(), but returns a channel instead of an int
+func (waiter *changeWaiter) WaitAsync() <-chan uint32 {
+
+	response := make(chan uint32)
+
+	go func() {
+
+		// Close the channel since we're done with it as soon as this function is finished
+		defer close(response)
+
+		// Call waiter.Wait() and send the result down the response channel
+		response <- waiter.Wait()
+
+	}()
+
+	return response
+
+}
+
 // Returns the current counter value for the waiter's user (and roles).
 // If this value changes, it means the user or roles have been updated.
 func (waiter *changeWaiter) CurrentUserCount() uint64 {
