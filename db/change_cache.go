@@ -363,10 +363,10 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc?
 	if strings.HasPrefix(docID, auth.UserKeyPrefix) {
-		c.processPrincipalDoc(docID, docJSON, true)
+		c.processPrincipalDoc(docID, docJSON, true, event.Expiry)
 		return
 	} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
-		c.processPrincipalDoc(docID, docJSON, false)
+		c.processPrincipalDoc(docID, docJSON, false, event.Expiry)
 		return
 	}
 
@@ -550,7 +550,7 @@ func (c *changeCache) processUnusedSequence(docID string) {
 
 }
 
-func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
+func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool, expiry uint32) {
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
 	// have gaps in it, causing later sequences to get stuck in the queue.
@@ -560,11 +560,17 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		return
 	}
 
-	// TODO: do cas comparison, and conditionally call listener.Notify().  Will need pass the CAS value from the DCP event.
-	// Maybe push dcp event all the way down here.
+	if princ.GetUpdateExpiry() != expiry {
+		// Looks like this is a GetAndTouch change that only changed the expiry, since otherwise
+		// the user's UpdateExpiry field would have been updated to match the doc expiry.
+		// Ignore this DCP event completely.
+		return
+	}
 
-
-
+	// Notify the listener that the user doc changed
+	if c.onChange != nil {
+		c.onChange(base.SetOf(docID))
+	}
 
 
 	sequence := princ.Sequence()

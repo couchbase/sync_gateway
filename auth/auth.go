@@ -13,15 +13,15 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"time"
+
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
-	"time"
-	"github.com/couchbase/sg-bucket"
-	"golang.org/x/tools/go/gcimporter15/testdata"
 )
 
 /** Manages user authentication for a database. */
@@ -49,7 +49,7 @@ type userByEmailInfo struct {
 
 // Required parameters when creating a new authenticator
 type AuthenticatorOptions struct {
-	ChannelComputer ChannelComputer
+	ChannelComputer        ChannelComputer
 	InactivityExpiryOffset time.Duration
 }
 
@@ -254,9 +254,8 @@ func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	return auth.GetUser(info.Username)
 }
 
-
 // TODO: use existing function in util or somewhere in codebase
-func calculateNewPrincipalExpiryFromOffset(inactivityExpiryOffset time.Duration) (absExpiry, cbExpiry uint32)  {
+func calculateNewPrincipalExpiryFromOffset(inactivityExpiryOffset time.Duration) (absExpiry, cbExpiry uint32) {
 
 	nowUnixTS := time.Now().Unix()
 
@@ -275,7 +274,6 @@ func calculateNewPrincipalExpiryFromOffset(inactivityExpiryOffset time.Duration)
 
 	return absExpiry, cbExpiry
 
-
 }
 
 // Saves the information for a user/role.
@@ -292,7 +290,7 @@ func (auth *Authenticator) Save(p Principal) error {
 	// differentiate between "actual updates" and user TTL GetAndTouch events that should be ignored
 	p.SetUpdateExpiry(absExpiry)
 
-	if err := auth.bucket.Set(p.DocID(), cbExpiry, p); err != nil {  // TODO: should this be cas safe?
+	if err := auth.bucket.Set(p.DocID(), cbExpiry, p); err != nil { // TODO: should this be cas safe?
 		return err
 	}
 
