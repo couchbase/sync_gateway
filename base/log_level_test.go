@@ -1,6 +1,7 @@
 package base
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -34,11 +35,16 @@ func TestLogLevel(t *testing.T) {
 }
 
 func TestLogLevelNames(t *testing.T) {
+	// Ensure number of level constants, and names match.
+	assert.Equals(t, len(logLevelNames), int(levelCount))
+
 	assert.Equals(t, LogLevelName(LevelNone), "none")
 	assert.Equals(t, LogLevelName(LevelError), "error")
 	assert.Equals(t, LogLevelName(LevelInfo), "info")
 	assert.Equals(t, LogLevelName(LevelWarn), "warn")
 	assert.Equals(t, LogLevelName(LevelDebug), "debug")
+
+	assert.Equals(t, LogLevelName(math.MaxUint32), "")
 }
 
 func TestLogLevelText(t *testing.T) {

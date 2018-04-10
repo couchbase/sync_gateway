@@ -20,6 +20,8 @@ const (
 	LevelInfo
 	// LevelDebug enables all logging.
 	LevelDebug
+
+	levelCount
 )
 
 var logLevelNames = []string{"none", "error", "warn", "info", "debug"}
@@ -38,7 +40,9 @@ func (l *LogLevel) Enabled(logLevel LogLevel) bool {
 
 // LogLevelName returns the string representation of a log level.
 func LogLevelName(logLevel LogLevel) string {
-	// No lock required to read concurrently, as long as nobody writes to logLevelNames.
+	if int(logLevel) >= len(logLevelNames) {
+		return ""
+	}
 	return logLevelNames[logLevel]
 }
 
