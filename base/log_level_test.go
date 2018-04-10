@@ -9,30 +9,43 @@ import (
 	assert "github.com/couchbaselabs/go.assert"
 )
 
+// Tests the cascading behaviour of log levels.
 func TestLogLevel(t *testing.T) {
 	var logLevelPtr *LogLevel
-	assert.False(t, logLevelPtr.Enabled(LevelDebug))
-	assert.False(t, logLevelPtr.Enabled(LevelInfo))
-	assert.False(t, logLevelPtr.Enabled(LevelWarn))
 	assert.False(t, logLevelPtr.Enabled(LevelError))
+	assert.False(t, logLevelPtr.Enabled(LevelWarn))
+	assert.False(t, logLevelPtr.Enabled(LevelInfo))
+	assert.False(t, logLevelPtr.Enabled(LevelDebug))
 
 	logLevel := LevelNone
-	assert.False(t, logLevel.Enabled(LevelDebug))
-	assert.False(t, logLevel.Enabled(LevelInfo))
-	assert.False(t, logLevel.Enabled(LevelWarn))
 	assert.False(t, logLevel.Enabled(LevelError))
-
-	logLevel.Set(LevelInfo)
+	assert.False(t, logLevel.Enabled(LevelWarn))
+	assert.False(t, logLevel.Enabled(LevelInfo))
 	assert.False(t, logLevel.Enabled(LevelDebug))
-	assert.True(t, logLevel.Enabled(LevelInfo))
-	assert.True(t, logLevel.Enabled(LevelWarn))
+
+	logLevel.Set(LevelError)
 	assert.True(t, logLevel.Enabled(LevelError))
+	assert.False(t, logLevel.Enabled(LevelWarn))
+	assert.False(t, logLevel.Enabled(LevelInfo))
+	assert.False(t, logLevel.Enabled(LevelDebug))
 
 	logLevel.Set(LevelWarn)
-	assert.False(t, logLevel.Enabled(LevelDebug))
-	assert.False(t, logLevel.Enabled(LevelInfo))
-	assert.True(t, logLevel.Enabled(LevelWarn))
 	assert.True(t, logLevel.Enabled(LevelError))
+	assert.True(t, logLevel.Enabled(LevelWarn))
+	assert.False(t, logLevel.Enabled(LevelInfo))
+	assert.False(t, logLevel.Enabled(LevelDebug))
+
+	logLevel.Set(LevelInfo)
+	assert.True(t, logLevel.Enabled(LevelError))
+	assert.True(t, logLevel.Enabled(LevelWarn))
+	assert.True(t, logLevel.Enabled(LevelInfo))
+	assert.False(t, logLevel.Enabled(LevelDebug))
+
+	logLevel.Set(LevelDebug)
+	assert.True(t, logLevel.Enabled(LevelError))
+	assert.True(t, logLevel.Enabled(LevelWarn))
+	assert.True(t, logLevel.Enabled(LevelInfo))
+	assert.True(t, logLevel.Enabled(LevelDebug))
 }
 
 func TestLogLevelNames(t *testing.T) {
@@ -45,6 +58,7 @@ func TestLogLevelNames(t *testing.T) {
 	assert.Equals(t, LogLevelName(LevelWarn), "warn")
 	assert.Equals(t, LogLevelName(LevelDebug), "debug")
 
+	// Test out of bounds log level
 	assert.Equals(t, LogLevelName(math.MaxUint32), "")
 }
 
@@ -81,6 +95,7 @@ func TestLogLevelText(t *testing.T) {
 	assert.Equals(t, logLevel, LevelNone)
 }
 
+// This test has no assertions, but will flag any data races when run under `-race`.
 func TestLogLevelConcurrency(t *testing.T) {
 	logLevel := LevelWarn
 	stop := make(chan struct{})
