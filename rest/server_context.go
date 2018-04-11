@@ -328,7 +328,6 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
-	// Connect to the bucket and add the database:
 	spec = base.BucketSpec{
 		Server:               server,
 		PoolName:             pool,
@@ -349,23 +348,17 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 // existing DatabaseContext or an error based on the useExisting flag.
 func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
 
-	server := "http://localhost:8091"
-	pool := "default"
-	bucketName := config.Name
 	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds
 
-	if config.Server != nil {
-		server = *config.Server
+	// Connect to the bucket and add the database:
+	spec, err := GetBucketSpec(config)
+	if err != nil {
+		return nil, err
 	}
-	if config.Pool != nil {
-		pool = *config.Pool
-	}
-	if config.Bucket != nil {
-		bucketName = *config.Bucket
-	}
+
 	dbName := config.Name
 	if dbName == "" {
-		dbName = bucketName
+		dbName = spec.BucketName
 	}
 
 	if config.OldRevExpirySeconds != nil && *config.OldRevExpirySeconds >= 0 {
@@ -387,7 +380,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	base.Infof(base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
-		base.UD(dbName), base.UD(bucketName), base.SD(pool), base.SD(server))
+		base.UD(dbName), base.UD(spec.BucketName), base.SD(spec.PoolName), base.SD(spec.Server))
 
 	if err := db.ValidateDatabaseName(dbName); err != nil {
 		return nil, err
@@ -432,11 +425,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	}
 
-	// Connect to the bucket and add the database:
-	spec, err := GetBucketSpec(config)
-	if err != nil {
-		return nil, err
-	}
+
 
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
 
