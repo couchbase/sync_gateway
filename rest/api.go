@@ -134,6 +134,8 @@ func (h *handler) handleFlush() error {
 
 	}
 
+	return nil 
+
 }
 
 func (h *handler) handleResync() error {
