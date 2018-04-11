@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
+	"math/rand"
 )
 
 func canSeeAllChannels(princ Principal, channels base.Set) bool {
@@ -285,7 +286,6 @@ func TestSaveUsersWithExpiry(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 
-
 	username := "testUser"
 	expiryOffset := time.Second
 	authOptions := &AuthenticatorOptions{
@@ -296,25 +296,24 @@ func TestSaveUsersWithExpiry(t *testing.T) {
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 
-
-	gocbBucket := gTestBucket.Bucket.(*base.CouchbaseBucketGoCB)
-	getExpiry, getExpiryErr := gocbBucket.GetExpiry(user.DocID())
-	assert.True(t, getExpiryErr == nil)
-
+	getExpiry := getUserDocMetaExpiry(t, gTestBucket.Bucket, user.DocID())
 	expiresAt := time.Unix(int64(getExpiry), 0)
 	delta := time.Until(expiresAt)
 
 	// This should be approximately 1 second, but to allow for a lot of clock skew, set to 10 seconds
-	assert.True(t, delta < (time.Second * 10))
-
+	assert.True(t, delta < (time.Second*10))
 
 }
 
+
+type Operation func()
+
 // Create a user with an expiry
-// Before expiry expires, update the user (which should extend the expiry)
-// Wait until original expiry expires
-// Try to get the user, make sure they still exist
-func TestUpdateUsersWithExpiry(t *testing.T) {
+// Before expiry expires, perform an op that should extend the expiry, such as:
+// - Get the user
+// - Update the user
+// And verify that the expiry is indeed extended
+func TestExtendUserExpiryViaOperations(t *testing.T) {
 
 	base.EnableLogKey("DCP")
 	base.EnableLogKey("CRUD+")
@@ -326,54 +325,8 @@ func TestUpdateUsersWithExpiry(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 
-	expiryOffset := time.Second
 	authOptions := &AuthenticatorOptions{
-		InactivityExpiryOffset: expiryOffset,
-	}
-	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
-	user, _ := auth.NewUser("testUser", "password", ch.SetOf("test"))
-	err := auth.Save(user)
-	assert.Equals(t, err, nil)
-
-	for i := 0; i < 10; i++ {
-
-		time.Sleep(time.Millisecond * 500)
-
-		user, err = auth.GetUser("testUser")
-		assert.True(t, user != nil)
-		assert.True(t, err == nil)
-
-		// Update user which should extend expiry
-		user.SetPassword(fmt.Sprintf("password-%d", i))
-		err := auth.Save(user)
-		assert.Equals(t, err, nil)
-	}
-
-	// Make sure the user hasn't expired, since their expiry should be renewed
-	user, err = auth.GetUser("testUser")
-	log.Printf("user: %+v.  err: %v", user, err)
-	assert.True(t, user != nil)
-	assert.True(t, err == nil)
-
-}
-
-// Create a user with an expiry
-// Before expiry expires, get the user (which should extend the expiry)
-// Wait until original expiry expires
-// Try to get the user, make sure they still exist
-func TestGetUsersWithExpiry(t *testing.T) {
-	base.EnableLogKey("DCP")
-	base.EnableLogKey("CRUD+")
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server, since walrus doesn't support doc expiry")
-	}
-
-	gTestBucket := base.GetTestBucketOrPanic()
-	defer gTestBucket.Close()
-
-	authOptions := &AuthenticatorOptions{
-		InactivityExpiryOffset: time.Second,
+		InactivityExpiryOffset: time.Second * time.Duration(60*60*24), // one day
 	}
 	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
 	testUsername := "testUser"
@@ -382,22 +335,49 @@ func TestGetUsersWithExpiry(t *testing.T) {
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 
-	for i := 0; i < 10; i++ {
+	// At this point, the doc metadata expiry should be identical to the inline LastUpdateExpiry value
+	docMetaExpiry := getUserDocMetaExpiry(t, gTestBucket.Bucket, user.DocID())
+	userFromBucket := &userImpl{}
+	_, err = gTestBucket.Bucket.Get(user.DocID(), &userFromBucket)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, userFromBucket.GetLastUpdateExpiry(), docMetaExpiry)
 
-		time.Sleep(time.Millisecond * 500)
-
-		// Just getting the user should extend expiry
+	// A slice of operations which should all cause the User TTL expiry to get extended
+	opsThatExtendUserTTL := []Operation{}
+	opsThatExtendUserTTL = append(opsThatExtendUserTTL, func() {
 		user, err = auth.GetUser("testUser")
 		assert.True(t, user != nil)
 		assert.True(t, err == nil)
+	})
+	opsThatExtendUserTTL = append(opsThatExtendUserTTL, func() {
+		s1 := rand.NewSource(time.Now().UnixNano())
+		r1 := rand.New(s1)
+		user.SetPassword(fmt.Sprintf("password-%d", r1.Intn(100)))
+		err := auth.Save(user)
+		assert.Equals(t, err, nil)
+
+	})
+
+	// Ensure that after every "GetUser()" that the user TTL expiry is extended
+	for i := 0; i < len(opsThatExtendUserTTL); i++ {
+
+		// Get current expiry
+		docMetaExpiry := getUserDocMetaExpiry(t, gTestBucket.Bucket, user.DocID())
+
+		// Must wait a bit, otherwise the GetAndTouch() will be a no-op
+		time.Sleep(time.Second * 2)
+
+		// Get the next op and execute it
+		op := opsThatExtendUserTTL[i]
+		op()
+
+		// Get updated expiry
+		updatedDocMetaExpiry := getUserDocMetaExpiry(t, gTestBucket.Bucket, user.DocID())
+
+		// Make sure the expiry has been increased
+		assert.True(t, updatedDocMetaExpiry > docMetaExpiry)
 
 	}
-
-	// Make sure the user hasn't expired, since their expiry should be renewed
-	user, err = auth.GetUser("testUser")
-	log.Printf("user: %+v.  err: %v", user, err)
-	assert.True(t, user != nil)
-	assert.True(t, err == nil)
 
 }
 
@@ -417,22 +397,27 @@ func TestUserExpiryLargeExpiry(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 
+	// Create an authenticator
 	expiryOffset := time.Second * time.Duration(60*60*24*60) // 60 days
 	authOptions := &AuthenticatorOptions{
 		InactivityExpiryOffset: expiryOffset,
 	}
 	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
+
+	// Create a user
 	testUsername := "testUser"
 	user, _ := auth.NewUser(testUsername, "password", ch.SetOf("test"))
-
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 
-	// Make sure the user hasn't expired, since their expiry should be renewed
-	user, err = auth.GetUser("testUser")
-	log.Printf("user: %+v.  err: %v", user, err)
-	assert.True(t, user != nil)
-	assert.True(t, err == nil)
+	// Assert that doc meta expiry value is in the right ballpark, and > 59 days
+	docMetaExpiry := getUserDocMetaExpiry(t, gTestBucket.Bucket, user.DocID())
+	expiresAt := time.Unix(int64(docMetaExpiry), 0)
+	deltaUntilExpires := time.Until(expiresAt)
+	sixtyDays := base.MaxDeltaTtlDuration * time.Duration(2)
+	oneDay := time.Second * time.Duration(60*60*24)
+	fiftyNineDays := sixtyDays - oneDay
+	assert.True(t, deltaUntilExpires > fiftyNineDays)
 
 }
 
@@ -456,13 +441,10 @@ func TestUserExpiryPermanentUser(t *testing.T) {
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 
-	time.Sleep(time.Second * 2)
+	// Make sure the expiry value is 0 (never expires)
+	getExpiry := getUserDocMetaExpiry(t, gTestBucket.Bucket, user.DocID())
+	assert.True(t, getExpiry == 0)
 
-	// Make sure the user hasn't expired, since their expiry should be renewed
-	user, err = auth.GetUser("testUser")
-	log.Printf("user: %+v.  err: %v", user, err)
-	assert.True(t, user != nil)
-	assert.True(t, err == nil)
 
 }
 
@@ -523,25 +505,32 @@ func TestUserExpiryCASRetry(t *testing.T) {
 	assert.True(t, err == nil)
 	assert.True(t, user.Disabled() == true)
 
-	// Make sure the test callback was invoked
+	// Make sure the test callback was actually invoked
 	assert.True(t, testCallbackInvoked)
 
-	gocbBucket := gTestBucket.Bucket.(*base.CouchbaseBucketGoCB)
-	getExpiry, getExpiryErr := gocbBucket.GetExpiry(user.DocID())
-	assert.True(t, getExpiryErr == nil)
+	// Get the expiry value on the bucket doc
+	getExpiry := getUserDocMetaExpiry(t, gTestBucket.Bucket, user.DocID())
 
+	// Assert that the expiry value is the expected value.
+	// Just makes sure it's in the right ballbark within a 1 day margin of error.
 	expiresAt := time.Unix(int64(getExpiry), 0)
-	delta := time.Until(expiresAt)
-
+	deltaUntilExpires := time.Until(expiresAt)
 	oneDay := time.Second * time.Duration(60*60*24)
 	fiftyNineDays := sixtyDays - oneDay
 	sixtyOneDays := sixtyDays + oneDay
+	assert.True(t, deltaUntilExpires > fiftyNineDays)
+	assert.True(t, deltaUntilExpires < sixtyOneDays)
 
-	// Make sure that the expiry is in the right ballbark within a 1 day
-	// margin of error
-	assert.True(t, delta > fiftyNineDays)
-	assert.True(t, delta < sixtyOneDays)
+}
 
+func getUserDocMetaExpiry(t *testing.T, bucket base.Bucket, userDocId string) uint32 {
+	// Get the expiry value on the bucket doc
+	gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
+	getExpiry, getExpiryErr := gocbBucket.GetExpiry(userDocId)
+	if getExpiryErr != nil {
+		assert.True(t, getExpiryErr == nil)
+	}
+	return getExpiry
 }
 
 func TestSaveRoles(t *testing.T) {
