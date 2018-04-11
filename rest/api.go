@@ -93,6 +93,7 @@ func (h *handler) handleFlush() error {
 		if err != nil {
 			return err
 		}
+		defer tempBucketForFlush.Close() // Close the temporary connection to the bucket that was just for purposes of flushing it
 
 		// Flush the bucket (assuming it conforms to sgbucket.DeleteableBucket interface
 		if tempBucketForFlush, ok := tempBucketForFlush.(sgbucket.DeleteableBucket); ok {
@@ -105,8 +106,6 @@ func (h *handler) handleFlush() error {
 
 		}
 
-		// Close the temporary connection to the bucket that was just for purposes of flushing it
-		tempBucketForFlush.Close()
 
 		// Re-open database and add to Sync Gateway
 		_, err2 := h.server.AddDatabaseFromConfig(config)

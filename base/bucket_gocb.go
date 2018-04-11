@@ -2165,8 +2165,8 @@ func (bucket *CouchbaseBucketGoCB) CloseAndDelete() error {
 		err = bucketManager.Flush()
 		if err != nil {
 			Warn("Error flushing bucket: %v  Will retry.", err)
+			shouldRetry = true
 		}
-		shouldRetry = (err != nil) // retry (until max attempts) if there was an error
 		return shouldRetry, err, nil
 	}
 
