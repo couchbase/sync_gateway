@@ -176,10 +176,10 @@ func TestUseXattrs() bool {
 	useXattrs := os.Getenv(TestEnvSyncGatewayUseXattrs)
 	switch {
 	case strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue):
-		Log(fmt.Sprintf("Using xattrs: strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue).  |%v| == |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue)))
+		LogfR("Using xattrs: strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue).  |%v| == |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue))
 		return true
 	default:
-		Log(fmt.Sprintf("NOT Using xattrs: strings.ToLower(useXattrs) != strings.ToLower(TestEnvSyncGatewayTrue).  |%v| != |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue)))
+		LogfR("NOT Using xattrs: strings.ToLower(useXattrs) != strings.ToLower(TestEnvSyncGatewayTrue).  |%v| != |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue))
 	}
 	// Otherwise fallback to hardcoded default
 	return DefaultUseXattrs
@@ -327,7 +327,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = tbm.BucketManager.Flush()
 		if err != nil {
-			Warn("Error flushing bucket: %v  Will retry.", err)
+			WarnR("Error flushing bucket: %v  Will retry.", err)
 		}
 		shouldRetry = (err != nil) // retry (until max attempts) if there was an error
 		return shouldRetry, err, nil
@@ -357,7 +357,7 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 		}
 
 		// Still items left, wait a little bit and try again
-		Warn("TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
+		WarnR("TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
 		time.Sleep(time.Millisecond * 500)
 
 		numTries += 1

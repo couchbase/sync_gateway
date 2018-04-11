@@ -57,7 +57,7 @@ func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 		return GoCB // NOTE: should work against against both GoCouchbase and GoCB
 	default:
 		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
-		Warn("Unexpected bucket type: %v", bucketType)
+		WarnR("Unexpected bucket type: %v", bucketType)
 		return GoCB
 	}
 
@@ -206,7 +206,7 @@ func (bucket *CouchbaseBucket) Update(k string, exp uint32, callback sgbucket.Up
 }
 
 func (bucket *CouchbaseBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
-	Warn("CouchbaseBucket doesn't support cas-safe removal - handling as simple delete")
+	WarnR("CouchbaseBucket doesn't support cas-safe removal - handling as simple delete")
 	return 0, bucket.Bucket.Delete(k)
 
 }
@@ -215,17 +215,17 @@ func (bucket *CouchbaseBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err er
 }
 
 func (bucket *CouchbaseBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
-	Warn("WriteCasWithXattr not implemented by CouchbaseBucket")
+	WarnR("WriteCasWithXattr not implemented by CouchbaseBucket")
 	return 0, errors.New("WriteCasWithXattr not implemented by CouchbaseBucket")
 }
 
 func (bucket *CouchbaseBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
-	Warn("GetWithXattr not implemented by CouchbaseBucket")
+	WarnR("GetWithXattr not implemented by CouchbaseBucket")
 	return 0, errors.New("GetWithXattr not implemented by CouchbaseBucket")
 }
 
 func (bucket *CouchbaseBucket) DeleteWithXattr(k string, xattr string) error {
-	Warn("DeleteWithXattr not implemented by CouchbaseBucket")
+	WarnR("DeleteWithXattr not implemented by CouchbaseBucket")
 	return errors.New("DeleteWithXattr not implemented by CouchbaseBucket")
 }
 
@@ -239,7 +239,7 @@ func (bucket *CouchbaseBucket) WriteUpdate(k string, exp uint32, callback sgbuck
 }
 
 func (bucket *CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
-	Warn("WriteUpdateWithXattr not implemented by CouchbaseBucket")
+	WarnR("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 	return 0, errors.New("WriteUpdateWithXattr not implemented by CouchbaseBucket")
 }
 
@@ -379,7 +379,7 @@ func (bucket *CouchbaseBucket) GetMaxVbno() (uint16, error) {
 }
 
 func (bucket *CouchbaseBucket) Dump() {
-	Warn("Dump not implemented for couchbaseBucket")
+	WarnR("Dump not implemented for couchbaseBucket")
 }
 
 func (bucket *CouchbaseBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
@@ -430,7 +430,7 @@ func (bucket *CouchbaseBucket) ErrorIfPostCBServerMajorVersion(lastMajorVersionA
 	}
 
 	if major > lastMajorVersionAllowed {
-		Warn("Couchbase Server major version is %v, which is later than %v", major, lastMajorVersionAllowed)
+		WarnR("Couchbase Server major version is %v, which is later than %v", major, lastMajorVersionAllowed)
 		return ErrFatalBucketConnection
 	}
 	return nil
@@ -473,7 +473,7 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 
 	// Start bucket updater - see SG issue 1011
 	cbbucket.RunBucketUpdater(func(bucket string, err error) {
-		Warn("Bucket Updater for bucket %s returned error: %v", bucket, err)
+		WarnR("Bucket Updater for bucket %s returned error: %v", MD(bucket), err)
 
 		if callback != nil {
 			callback(bucket, err)
@@ -485,7 +485,7 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 
 func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
-		Logf("Opening Walrus database %s on <%s>", spec.BucketName, spec.Server)
+		LogfR("Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(LogEnabled("Walrus"))
 		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
@@ -494,17 +494,16 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		}
 	} else {
 
-		suffix := ""
+		username := ""
 		if spec.Auth != nil {
-			username, _, _ := spec.Auth.GetCredentials()
-			suffix = fmt.Sprintf(" as user %q", username)
+			username, _, _ = spec.Auth.GetCredentials()
 		}
-		Logf("%v Opening Couchbase database %s on <%s>%s", spec.CouchbaseDriver, spec.BucketName, spec.Server, suffix)
+		LogfR("%v Opening Couchbase database %s on <%s>%s as user %q", spec.CouchbaseDriver, MD(spec.BucketName), SD(spec.Server), UD(username))
 
 		switch spec.CouchbaseDriver {
 		case GoCB, GoCBCustomSGTranscoder:
 			if strings.ToLower(spec.FeedType) == TapFeedType {
-				Warn("Cannot use TAP feed in conjunction with GoCB driver, reverting to go-couchbase")
+				WarnR("Cannot use TAP feed in conjunction with GoCB driver, reverting to go-couchbase")
 				bucket, err = GetCouchbaseBucket(spec, callback)
 			} else {
 				bucket, err = GetCouchbaseBucketGoCB(spec)
@@ -518,7 +517,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 		if err != nil {
 			if pkgerrors.Cause(err) == gocb.ErrAuthError {
-				Warn("Unable to authenticate"+suffix+": %v", err)
+				WarnR("Unable to authenticate as user %q: %v", UD(username), err)
 				return nil, ErrFatalBucketConnection
 			}
 			return nil, err
@@ -532,7 +531,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 				return nil, errServerVersion
 			}
 			if majorVersion < 5 {
-				Warn("If using XATTRS, Couchbase Server version must be >= 5.0.  Major Version: %v", majorVersion)
+				WarnR("If using XATTRS, Couchbase Server version must be >= 5.0.  Major Version: %v", majorVersion)
 				return nil, ErrFatalBucketConnection
 			}
 		}
@@ -559,12 +558,12 @@ func WriteCasJSON(bucket Bucket, key string, value interface{}, cas uint64, exp 
 		var currentValue interface{}
 		cas, err := bucket.Get(key, &currentValue)
 		if err != nil {
-			Warn("WriteCasJSON got error when calling Get:", err)
+			WarnR("WriteCasJSON got error when calling Get: %v", err)
 			return 0, err
 		}
 		updatedValue, err := callback(currentValue)
 		if err != nil {
-			Warn("WriteCasJSON got error when calling callback:", err)
+			WarnR("WriteCasJSON got error when calling callback: %v", err)
 			return 0, err
 		}
 		if updatedValue == nil {
@@ -593,12 +592,12 @@ func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp uint32
 	for {
 		currentValue, cas, err := bucket.GetRaw(key)
 		if err != nil {
-			Warn("WriteCasRaw got error when calling GetRaw:", err)
+			WarnR("WriteCasRaw got error when calling GetRaw: %v", err)
 			return 0, err
 		}
 		currentValue, err = callback(currentValue)
 		if err != nil {
-			Warn("WriteCasRaw got error when calling callback:", err)
+			WarnR("WriteCasRaw got error when calling callback: %v", err)
 			return 0, err
 		}
 		if len(currentValue) == 0 {

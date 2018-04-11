@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -540,7 +541,7 @@ func (s *IndexablePartitionClock) Update(clock PartitionClock, allowRollback boo
 			s.PartitionClock.SetSequence(vb, seq)
 			changed = true
 		} else if seq < currentSequence {
-			Warn("Ignored update of sequence clock for vb:[%d] existing:[%d] update:[%d]", vb, currentSequence, seq)
+			WarnR("Ignored update of sequence clock for vb:[%d] existing:[%d] update:[%d]", vb, currentSequence, seq)
 		}
 	}
 	return changed
