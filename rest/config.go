@@ -123,6 +123,7 @@ type DbConfig struct {
 	RevsLimit                    *uint32                        `json:"revs_limit,omitempty"`                   // Max depth a document's revision tree can grow to
 	ImportDocs                   interface{}                    `json:"import_docs,omitempty"`                  // false, true, or "continuous"
 	ImportFilter                 *string                        `json:"import_filter,omitempty"`                // Filter function (import)
+	Shadow                       *ShadowConfig                  `json:"shadow,omitempty"`                       // This is where the ShadowConfig used to be.  If found, it should throw an error
 	EventHandlers                interface{}                    `json:"event_handlers,omitempty"`               // Event handlers (webhook)
 	FeedType                     string                         `json:"feed_type,omitempty"`                    // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword           bool                           `json:"allow_empty_password,omitempty"`         // Allow empty passwords?  Defaults to false
@@ -247,6 +248,10 @@ func (dbConfig *DbConfig) setup(name string) error {
 		url.User = nil
 		urlStr := url.String()
 		dbConfig.Server = &urlStr
+	}
+
+	if dbConfig.Shadow != nil {
+		return fmt.Errorf("Bucket shadowing configuration has been moved to the 'deprecated' section of the config.  Please update your config and retry")
 	}
 
 	if dbConfig.Deprecated.Shadow != nil {
@@ -489,7 +494,11 @@ func ReadServerConfigFromFile(runMode SyncGatewayRunMode, path string) (*ServerC
 
 func (config *ServerConfig) setupAndValidateDatabases() error {
 	for name, dbConfig := range config.Databases {
-		dbConfig.setup(name)
+
+		if err := dbConfig.setup(name); err != nil {
+			return err
+		}
+
 		if err := config.validateDbConfig(dbConfig); err != nil {
 			return err
 		}
