@@ -66,7 +66,7 @@ func (h *handler) handleVacuum() error {
 func (h *handler) handleFlush() error {
 
 
-	// Otherwise, if it can be flushed, then flush it
+	// If it can be flushed, then flush it
 	if _, ok := h.db.Bucket.(sgbucket.FlushableBucket); ok {
 
 		// If it's not a walrus bucket, don't allow flush unless the unsupported config is set
