@@ -1375,27 +1375,15 @@ func (bucket *CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, 
 
 }
 
-
-func (bucket *CouchbaseBucketGoCB) UpdateAndTouch(k string, exp uint32, callback sgbucket.UpdateFunc) error {
-	return bucket.updateAndMaybeTouch(k, exp, true, callback)
-}
-
-// TODO: deprecate Update() in favor of WriteUpdate()
-func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
-	return bucket.updateAndMaybeTouch(k, exp, false, callback)
-
-}
-
 // Update that has the ability to do a retry loop, which can handles retries on CAS failures.
-func (bucket *CouchbaseBucketGoCB) updateAndMaybeTouch(k string, exp uint32, doTouch bool, callback sgbucket.UpdateFunc) error {
+// TODO: consolidate Update() and WriteUpdate().  It appears that the persist/indexable options for WriteUpdate() are no longer needed.
+func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
 
 	for {
 
 		var value []byte
 		var err error
 		var callbackExpiry *uint32
-
-		// TODO: bucket interface needs SetTestCallback()
 
 		// Load the existing value.
 		// NOTE: ignore error and assume it's a "key not found" error.  If it's a more
@@ -1467,9 +1455,6 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateAndTouch(k string, exp uint32, cal
 
 func (bucket *CouchbaseBucketGoCB) writeUpdateAndMaybeTouch(k string, exp uint32, touch bool, callback sgbucket.WriteUpdateFunc) error {
 
-	// TODO: touch is incompat w/ persist options, return an error
-	// TODO: (then we can switch to the subdoc ops for the non-dura operations)
-
 	for {
 		var value []byte
 		var err error
@@ -1492,6 +1477,13 @@ func (bucket *CouchbaseBucketGoCB) writeUpdateAndMaybeTouch(k string, exp uint32
 				return err
 			}
 			cas = 0 // Key not found error
+		}
+
+		// If the tests have set a testing related callback, then invoke it here.
+		// This is useful for tests that need to update the document "mid-invocation" to trigger CAS retries.
+		testCallBack := bucket.GetTestCallback()
+		if testCallBack != nil {
+			testCallBack()
 		}
 
 		// Invoke callback to get updated value

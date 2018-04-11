@@ -523,6 +523,9 @@ func TestUserExpiryCASRetry(t *testing.T) {
 	assert.True(t, err == nil)
 	assert.True(t, user.Disabled() == true)
 
+	// Make sure the test callback was invoked
+	assert.True(t, testCallbackInvoked)
+
 	gocbBucket := gTestBucket.Bucket.(*base.CouchbaseBucketGoCB)
 	getExpiry, getExpiryErr := gocbBucket.GetExpiry(user.DocID())
 	assert.True(t, getExpiryErr == nil)
