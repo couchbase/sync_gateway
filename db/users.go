@@ -187,7 +187,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 				user.SetExplicitRoles(updatedRoles)
 			}
 		}
-		err = authenticator.Save(princ) // TODO: should this be cas safe?
+		err = authenticator.Save(princ)
 	}
 	return
 }

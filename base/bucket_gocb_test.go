@@ -1100,64 +1100,6 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 }
 
-// Verify that it's possible to do subdoc "CAS expansion" in a top level field of a document,
-// as opposed to an XATTR.
-func TestSubDocFieldCasExpansion(t *testing.T) {
-
-	SkipXattrTestsIfNotEnabled(t) // since this needs subdoc API
-
-	testBucket := GetTestBucketOrPanic()
-	defer testBucket.Close()
-
-	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
-	if !ok {
-		log.Printf("Can't cast to bucket")
-		return
-	}
-
-	key := "testDoc"
-	docVal := map[string]string{
-		"foo": "bar",
-	}
-
-	updateCasPath := "updateCas"
-
-	//// Create a document and stamp one of the fields with the CAS value of the doc
-	_, err := bucket.Bucket.MutateInEx(key, gocb.SubdocDocFlagMkDoc, 0, 0).
-		UpsertEx("", docVal, gocb.SubdocFlagNone).                            // Update the document body
-		UpsertEx(updateCasPath, "${Mutation.CAS}", gocb.SubdocFlagUseMacros). // Stamp the cas
-		Execute()
-
-	if err != nil {
-		log.Printf("Error writing doc: %v", err)
-	} else {
-		log.Printf("doc written!")
-	}
-
-	key = "testDoc2"
-
-	time.Sleep(time.Second * 2)  // avoid "network error"
-
-	// Test fails with: err: invalid xattr flag combination
-
-	// -------- Reverse order of UpsertEx
-
-	_, err = bucket.Bucket.MutateInEx(key, gocb.SubdocDocFlagMkDoc, 0, 0).
-		UpsertEx(updateCasPath, "${Mutation.CAS}", gocb.SubdocFlagUseMacros). // Stamp the cas
-		UpsertEx("", docVal, gocb.SubdocFlagNone).                            // Update the document body
-		Execute()
-
-	if err != nil {
-		log.Printf("Error writing doc: %v", err)
-	} else {
-		log.Printf("doc written!")
-	}
-
-
-	// Test fails with: err: invalid xattr flag combination
-
-}
-
 // TestXattrDeleteDocument.  Delete document that has a system xattr.  System XATTR should be retained and retrievable.
 func TestXattrDeleteDocument(t *testing.T) {
 
