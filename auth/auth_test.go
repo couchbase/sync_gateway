@@ -285,22 +285,28 @@ func TestSaveUsersWithExpiry(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 
-	expiryOffset := time.Second * time.Duration(1000)
+
+	username := "testUser"
+	expiryOffset := time.Second
 	authOptions := &AuthenticatorOptions{
 		InactivityExpiryOffset: expiryOffset,
 	}
 	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
-	user, _ := auth.NewUser("testUser", "password", ch.SetOf("test"))
+	user, _ := auth.NewUser(username, "password", ch.SetOf("test"))
 	err := auth.Save(user)
 	assert.Equals(t, err, nil)
 
-	time.Sleep(expiryOffset * 2)
 
-	// Verify that the user has been deleted since due to idle timeout expiry
-	user, err = auth.GetUser("testUser")
-	log.Printf("user: %+v.  err: %v", user, err)
-	assert.True(t, user == nil)
-	assert.True(t, err == nil)
+	gocbBucket := gTestBucket.Bucket.(*base.CouchbaseBucketGoCB)
+	getExpiry, getExpiryErr := gocbBucket.GetExpiry(user.DocID())
+	assert.True(t, getExpiryErr == nil)
+
+	expiresAt := time.Unix(int64(getExpiry), 0)
+	delta := time.Until(expiresAt)
+
+	// This should be approximately 1 second, but to allow for a lot of clock skew, set to 10 seconds
+	assert.True(t, delta < (time.Second * 10))
+
 
 }
 
