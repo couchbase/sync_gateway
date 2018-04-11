@@ -543,7 +543,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback(verbose bool) error 
 		// Fall back to the old logging.["default"].LogLevel option
 		if config.Logging.Console.LogLevel == nil && config.Logging.DeprecatedDefaultLog.LogLevel != 0 {
 			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogLevel. Use logging.console.logLevel instead.")
-			config.Logging.Console.LogLevel = toNewLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
+			config.Logging.Console.LogLevel = base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
 		}
 	}
 
@@ -569,7 +569,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback(verbose bool) error 
 
 	// Set old LogFilePath config setting for backwards compatibility.
 	// TODO: Remove when old logging is stripped out.
-	config.Logging.DeprecatedDefaultLog.LogLevel = *toDeprecatedLogLevel(*config.Logging.Console.LogLevel)
+	config.Logging.DeprecatedDefaultLog.LogLevel = *base.ToDeprecatedLogLevel(*config.Logging.Console.LogLevel)
 
 	defaultLogger := config.Logging.DeprecatedDefaultLog
 	if err := defaultLogger.ValidateLogAppender(); err != nil {
@@ -583,36 +583,6 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback(verbose bool) error 
 	}
 
 	return nil
-}
-
-func toDeprecatedLogLevel(logLevel base.LogLevel) *base.Level {
-	var deprecatedLogLevel base.Level
-	switch logLevel {
-	case base.LevelDebug:
-		deprecatedLogLevel = base.DebugLevel
-	case base.LevelInfo:
-		deprecatedLogLevel = base.InfoLevel
-	case base.LevelWarn:
-		deprecatedLogLevel = base.WarnLevel
-	case base.LevelError:
-		deprecatedLogLevel = base.ErrorLevel
-	}
-	return &deprecatedLogLevel
-}
-
-func toNewLogLevel(deprecatedLogLevel base.Level) *base.LogLevel {
-	var newLogLevel base.LogLevel
-	switch deprecatedLogLevel {
-	case base.DebugLevel:
-		newLogLevel.Set(base.LevelDebug)
-	case base.InfoLevel:
-		newLogLevel.Set(base.LevelInfo)
-	case base.WarnLevel:
-		newLogLevel.Set(base.LevelWarn)
-	case base.ErrorLevel:
-		newLogLevel.Set(base.LevelError)
-	}
-	return &newLogLevel
 }
 
 func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {

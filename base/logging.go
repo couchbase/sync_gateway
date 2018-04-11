@@ -235,6 +235,42 @@ func SetLogLevel(level int) {
 	logLock.Lock()
 	defer logLock.Unlock()
 	logLevel = level
+
+	// Set logging level in the new API too.
+	newLevel := ToLogLevel(Level(level))
+	consoleLogger.LogLevel.Set(*newLevel)
+}
+
+// For transforming a new log level to the old type.
+func ToDeprecatedLogLevel(logLevel LogLevel) *Level {
+	var deprecatedLogLevel Level
+	switch logLevel {
+	case LevelDebug:
+		deprecatedLogLevel = DebugLevel
+	case LevelInfo:
+		deprecatedLogLevel = InfoLevel
+	case LevelWarn:
+		deprecatedLogLevel = WarnLevel
+	case LevelError:
+		deprecatedLogLevel = ErrorLevel
+	}
+	return &deprecatedLogLevel
+}
+
+// For transforming an old log level to the new type.
+func ToLogLevel(deprecatedLogLevel Level) *LogLevel {
+	var newLogLevel LogLevel
+	switch deprecatedLogLevel {
+	case DebugLevel:
+		newLogLevel.Set(LevelDebug)
+	case InfoLevel:
+		newLogLevel.Set(LevelInfo)
+	case WarnLevel:
+		newLogLevel.Set(LevelWarn)
+	case ErrorLevel:
+		newLogLevel.Set(LevelError)
+	}
+	return &newLogLevel
 }
 
 // Disables ANSI color in log output.
