@@ -65,12 +65,14 @@ func (h *handler) handleVacuum() error {
 
 func (h *handler) handleFlush() error {
 
-	if _, ok := h.db.Bucket.(sgbucket.DeleteableBucket); ok {
+
+	// Otherwise, if it can be flushed, then flush it
+	if _, ok := h.db.Bucket.(sgbucket.FlushableBucket); ok {
 
 		// If it's not a walrus bucket, don't allow flush unless the unsupported config is set
 		if !h.db.BucketSpec.IsWalrusBucket() {
 			if !h.db.DatabaseContext.AllowFlushNonCouchbaseBuckets() {
-				msg := "Flush not allowed on Couchbase buckets.  You must explicitly enable the ability to flush " +
+				msg := "Flush not allowed on Couchbase buckets by default.  You must explicitly enable the ability to flush " +
 					"Couchbase buckets via the Unsupported option: api_endpoints/enable_couchbase_bucket_flush"
 				return fmt.Errorf(msg)
 			}
@@ -96,16 +98,15 @@ func (h *handler) handleFlush() error {
 		defer tempBucketForFlush.Close() // Close the temporary connection to the bucket that was just for purposes of flushing it
 
 		// Flush the bucket (assuming it conforms to sgbucket.DeleteableBucket interface
-		if tempBucketForFlush, ok := tempBucketForFlush.(sgbucket.DeleteableBucket); ok {
+		if tempBucketForFlush, ok := tempBucketForFlush.(sgbucket.FlushableBucket); ok {
 
 			// Flush
-			err := tempBucketForFlush.CloseAndDelete()
+			err := tempBucketForFlush.Flush()
 			if err != nil {
 				return err
 			}
 
 		}
-
 
 		// Re-open database and add to Sync Gateway
 		_, err2 := h.server.AddDatabaseFromConfig(config)
@@ -113,11 +114,26 @@ func (h *handler) handleFlush() error {
 			return err2
 		}
 
+	} else if bucket, ok := h.db.Bucket.(sgbucket.DeleteableBucket); ok {
+
+		// If it's not flushable, but it's deletable, then delete it
+
+		name := h.db.Name
+		config := h.server.GetDatabaseConfig(name)
+		h.server.RemoveDatabase(name)
+		err := bucket.CloseAndDelete()
+		_, err2 := h.server.AddDatabaseFromConfig(config)
+		if err == nil {
+			err = err2
+		}
+		return err
+
 	} else {
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket does not support flush")
+
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket does not support flush or delete")
+
 	}
 
-	return nil
 }
 
 func (h *handler) handleResync() error {

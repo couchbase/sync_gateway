@@ -2152,9 +2152,8 @@ func (bucket *CouchbaseBucketGoCB) Close() {
 }
 
 
-// This flushes the bucket but doesn't actually close the bucket, despite the name CloseAndDelete(),
-// which is based on the sgbucket.DeleteableBucket interface.
-func (bucket *CouchbaseBucketGoCB) CloseAndDelete() error {
+// This flushes the bucket.
+func (bucket *CouchbaseBucketGoCB) Flush() error {
 
 	bucketManager, err := bucket.getBucketManager()
 	if err != nil {
