@@ -347,7 +347,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	}
 
-	// watchDocChanges is used for bucket shadowing and legacy import - not required when running w/ xattrs.
+	// watchDocChanges is used for bucket shadowing
 	if !context.UseXattrs() {
 		go context.watchDocChanges()
 	} else {

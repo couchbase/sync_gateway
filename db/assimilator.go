@@ -1,8 +1,6 @@
 package db
 
 import (
-	"github.com/couchbase/go-couchbase"
-
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -21,29 +19,8 @@ func (c *DatabaseContext) watchDocChanges() {
 				if c.Shadower != nil {
 					c.Shadower.PushRevision(doc)
 				}
-			} else {
-				if c.autoImport {
-					go c.assimilate(doc.ID)
-				}
 			}
 		}
 	}
 }
 
-// Adds sync metadata to a Couchbase document
-func (c *DatabaseContext) assimilate(docid string) {
-	base.Infof(base.KeyCRUD, "Importing new doc %q", base.UD(docid))
-	db := Database{DatabaseContext: c, user: nil}
-	_, err := db.updateDoc(docid, true, 0, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
-		if doc.HasValidSyncData(c.writeSequences()) {
-			return nil, nil, nil, couchbase.UpdateCancel // someone beat me to it
-		}
-		if err := db.initializeSyncData(doc); err != nil {
-			return nil, nil, nil, err
-		}
-		return doc.Body(), nil, nil, nil
-	})
-	if err != nil && err != couchbase.UpdateCancel {
-		base.Warnf(base.KeyAll, "Failed to import new doc %q: %v", base.UD(docid), err)
-	}
-}

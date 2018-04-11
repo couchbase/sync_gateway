@@ -358,14 +358,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	var importDocs, autoImport bool
 	switch config.ImportDocs {
-	case nil, false:
-	case true:
-		importDocs = true
+	case nil:
 	case "continuous":
 		importDocs = true
 		autoImport = true
 	default:
-		return nil, fmt.Errorf("Unrecognized value for ImportDocs: %#v", config.ImportDocs)
+		return nil, fmt.Errorf("Unrecognized value for ImportDocs: %#v.  Must be set to 'continous' or omitted", config.ImportDocs)
 	}
 
 	importOptions := db.ImportOptions{}

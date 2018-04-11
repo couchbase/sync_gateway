@@ -122,7 +122,7 @@ type DbConfig struct {
 	Users                        map[string]*db.PrincipalConfig `json:"users,omitempty"`                        // Initial user accounts
 	Roles                        map[string]*db.PrincipalConfig `json:"roles,omitempty"`                        // Initial roles
 	RevsLimit                    *uint32                        `json:"revs_limit,omitempty"`                   // Max depth a document's revision tree can grow to
-	ImportDocs                   interface{}                    `json:"import_docs,omitempty"`                  // false, true, or "continuous"
+	ImportDocs                   interface{}                    `json:"import_docs,omitempty"`                  // The only valid value if this is provided is "continuous".  Xattrs must be enabled.
 	ImportFilter                 *string                        `json:"import_filter,omitempty"`                // Filter function (import)
 	Shadow                       *ShadowConfig                  `json:"shadow,omitempty"`                       // This is where the ShadowConfig used to be.  If found, it should throw an error
 	EventHandlers                interface{}                    `json:"event_handlers,omitempty"`               // Event handlers (webhook)
