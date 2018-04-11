@@ -393,6 +393,13 @@ func GetLogKeys() map[string]bool {
 	for k, v := range LogKeys {
 		keys[k] = v
 	}
+
+	// Fetch keys from the new logging API too and merge the result.
+	newLogKeys := consoleLogger.logKey.EnabledLogKeys()
+	for _, v := range newLogKeys {
+		keys[v] = true
+	}
+
 	return keys
 }
 
@@ -401,9 +408,21 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 	defer logLock.Unlock()
 	if replace {
 		LogKeys = map[string]bool{}
+		noLogKey := KeyNone
+		consoleLogger.logKey = &noLogKey
 	}
 
 	ParseLogFlagsMap(keys)
+
+	// Set keys in the new logging API too.
+	newLogKeys := make([]string, 0, len(keys))
+	for k, v := range keys {
+		if v {
+			newLogKeys = append(newLogKeys, k)
+		}
+	}
+	consoleLogger.logKey.Enable(ToLogKey(newLogKeys))
+
 }
 
 // Returns a string identifying a function on the call stack.
