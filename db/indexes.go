@@ -194,7 +194,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	if numReplica > 0 || (useXattrs && i.shouldIndexTombstones()) {
 		options = &base.N1qlIndexOptions{
 			NumReplica:      numReplica,
-			IndexTombstones: i.shouldIndexTombstones(),
+			IndexTombstones: useXattrs && i.shouldIndexTombstones(),
 		}
 	}
 
