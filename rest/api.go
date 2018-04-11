@@ -134,7 +134,7 @@ func (h *handler) handleFlush() error {
 
 	}
 
-	return nil 
+	return nil
 
 }
 
