@@ -478,8 +478,10 @@ func TestUserExpiryCASRetry(t *testing.T) {
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
 
+	sixtyDays := base.MaxDeltaTtlDuration * time.Duration(2)
+
 	authOptions := &AuthenticatorOptions{
-		InactivityExpiryOffset: time.Second * time.Duration(60*60*24*60), // 60 days
+		InactivityExpiryOffset: sixtyDays, // 60 days
 	}
 	auth := NewAuthenticator(gTestBucket.Bucket, authOptions)
 
@@ -521,14 +523,21 @@ func TestUserExpiryCASRetry(t *testing.T) {
 	assert.True(t, err == nil)
 	assert.True(t, user.Disabled() == true)
 
-	// Wait for 2 seconds to give it a chance to expire, which would be the case if the
-	// bucket.Set() in the testCallback above wasn't correctly overwritten by the call to GetUser().
-	time.Sleep(time.Second * 2)
+	gocbBucket := gTestBucket.Bucket.(*base.CouchbaseBucketGoCB)
+	getExpiry, getExpiryErr := gocbBucket.GetExpiry(user.DocID())
+	assert.True(t, getExpiryErr == nil)
 
-	// Make sure the user hasn't expired
-	user, err = auth.GetUser("testUser")
-	assert.True(t, user != nil)
-	assert.True(t, err == nil)
+	expiresAt := time.Unix(int64(getExpiry), 0)
+	delta := time.Until(expiresAt)
+
+	oneDay := time.Second * time.Duration(60*60*24)
+	fiftyNineDays := sixtyDays - oneDay
+	sixtyOneDays := sixtyDays + oneDay
+
+	// Make sure that the expiry is in the right ballbark within a 1 day
+	// margin of error
+	assert.True(t, delta > fiftyNineDays)
+	assert.True(t, delta < sixtyOneDays)
 
 }
 
