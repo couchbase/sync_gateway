@@ -235,10 +235,6 @@ func SetLogLevel(level int) {
 	logLock.Lock()
 	defer logLock.Unlock()
 	logLevel = level
-
-	// Set logging level in the new API too.
-	newLevel := ToLogLevel(Level(level))
-	consoleLogger.LogLevel.Set(*newLevel)
 }
 
 // For transforming a new log level to the old type.
@@ -429,13 +425,6 @@ func GetLogKeys() map[string]bool {
 	for k, v := range LogKeys {
 		keys[k] = v
 	}
-
-	// Fetch keys from the new logging API too and merge the result.
-	newLogKeys := consoleLogger.logKey.EnabledLogKeys()
-	for _, v := range newLogKeys {
-		keys[v] = true
-	}
-
 	return keys
 }
 
@@ -449,16 +438,6 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 	}
 
 	ParseLogFlagsMap(keys)
-
-	// Set keys in the new logging API too.
-	newLogKeys := make([]string, 0, len(keys))
-	for k, v := range keys {
-		if v {
-			newLogKeys = append(newLogKeys, k)
-		}
-	}
-	consoleLogger.logKey.Enable(ToLogKey(newLogKeys))
-
 }
 
 // Returns a string identifying a function on the call stack.
