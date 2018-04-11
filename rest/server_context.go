@@ -576,7 +576,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// Enable doc tracking if needed for autoImport or shadowing.  Only supported for non-xattr configurations
 	trackDocs := false
 	if !config.UseXattrs() {
-		trackDocs = autoImport || config.Shadow != nil
+		trackDocs = autoImport || config.Deprecated.Shadow != nil
 	}
 
 	// Create a callback function that will be invoked if the database goes offline and comes
@@ -662,7 +662,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	//emitAccessRelatedWarnings(config, dbcontext)
 
 	// Install bucket-shadower if any:
-	if shadow := config.Shadow; shadow != nil {
+	if shadow := config.Deprecated.Shadow; shadow != nil {
 		if err := sc.startShadowing(dbcontext, shadow); err != nil {
 			base.WarnR("Database %q: unable to connect to external bucket for shadowing: %v",
 				base.UD(dbName), err)
