@@ -70,14 +70,14 @@ func getSoftFDLimit(requestedSoftFDLimit uint64, limit syscall.Rlimit) (requires
 	// Is the user requesting something that is less than the existing soft limit?
 	if requestedSoftFDLimit < currentSoftFdLimit {
 		// yep, and there is no point in doing so, so return false for requiresUpdate.
-		LogfR("requestedSoftFDLimit < currentSoftFdLimit (%v < %v) no action needed", requestedSoftFDLimit, currentSoftFdLimit)
+		Infof(KeyAll, "requestedSoftFDLimit < currentSoftFdLimit (%v < %v) no action needed", requestedSoftFDLimit, currentSoftFdLimit)
 		return false, currentSoftFdLimit
 	}
 
 	// Is the user requesting something higher than the existing hard limit?
 	if requestedSoftFDLimit >= currentHardFdLimit {
 		// yes, so just use the hard limit
-		LogfR("requestedSoftFDLimit >= currentHardFdLimit (%v >= %v) capping at %v", requestedSoftFDLimit, currentHardFdLimit, currentHardFdLimit)
+		Infof(KeyAll, "requestedSoftFDLimit >= currentHardFdLimit (%v >= %v) capping at %v", requestedSoftFDLimit, currentHardFdLimit, currentHardFdLimit)
 		return true, currentHardFdLimit
 	}
 

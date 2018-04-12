@@ -117,7 +117,7 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	ctx.blipContext.FatalErrorHandler = func(err error) {
-		ctx.LogToR("HTTP", "#%03d:     --> BLIP+WebSocket connection error: %v", h.serialNumber, err)
+		ctx.Logf(base.LevelInfo, base.KeyHTTP, "#%03d:     --> BLIP+WebSocket connection error: %v", h.serialNumber, err)
 	}
 
 	// Create a BLIP WebSocket handler and have it handle the request:
@@ -127,7 +127,7 @@ func (h *handler) handleBLIPSync() error {
 		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol. User:%s.", blipContext.ID, h.currentEffectiveUserName()))
 		defer func() {
 			conn.Close() // in case it wasn't closed already
-			ctx.LogToR("HTTP+", "#%03d:    --> BLIP+WebSocket connection closed", h.serialNumber)
+			ctx.Logf(base.LevelDebug, base.KeyHTTP, "#%03d:    --> BLIP+WebSocket connection closed", h.serialNumber)
 		}()
 		defaultHandler(conn)
 	}
@@ -157,12 +157,12 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
 			}
-			ctx.LogToR("SyncMsg", "#%03d: Type:%s   --> %d %s Time:%v User:%s", handler.serialNumber, profile, status, msg, time.Since(startTime), base.UD(ctx.effectiveUsername))
+			ctx.Logf(base.LevelInfo, base.KeySyncMsg, "#%03d: Type:%s   --> %d %s Time:%v User:%s", handler.serialNumber, profile, status, msg, time.Since(startTime), base.UD(ctx.effectiveUsername))
 		} else {
 
 			// Log the fact that the handler has finished, except for the "subChanges" special case which does it's own termination related logging
 			if profile != "subChanges" {
-				ctx.LogToR("SyncMsg+", "#%03d: Type:%s   --> OK Time:%v User:%s ", handler.serialNumber, profile, time.Since(startTime), base.UD(ctx.effectiveUsername))
+				ctx.Logf(base.LevelDebug, base.KeySyncMsg, "#%03d: Type:%s   --> OK Time:%v User:%s ", handler.serialNumber, profile, time.Since(startTime), base.UD(ctx.effectiveUsername))
 			}
 		}
 	}
@@ -177,14 +177,26 @@ func (ctx *blipSyncContext) close() {
 
 // Handler for unknown requests
 func (ctx *blipSyncContext) notFound(rq *blip.Message) {
-	ctx.LogToR("Sync", "%s Type:%q User:%s", rq, rq.Profile(), base.UD(ctx.effectiveUsername))
-	ctx.LogToR("Sync", "%s    --> 404 Unknown profile. User:%s", rq, base.UD(ctx.effectiveUsername))
+	ctx.Logf(base.LevelInfo, base.KeySync, "%s Type:%q User:%s", rq, rq.Profile(), base.UD(ctx.effectiveUsername))
+	ctx.Logf(base.LevelInfo, base.KeySync, "%s    --> 404 Unknown profile. User:%s", rq, base.UD(ctx.effectiveUsername))
 	blip.Unhandled(rq)
 }
 
-func (ctx *blipSyncContext) LogToR(key string, format string, args ...interface{}) {
+func (ctx *blipSyncContext) Logf(logLevel base.LogLevel, logKey base.LogKey, format string, args ...interface{}) {
 	formatWithContextID, paramsWithContextID := base.PrependContextID(ctx.blipContext.ID, format, args...)
-	base.Infof(base.ToLogKey([]string{key}), formatWithContextID, paramsWithContextID...)
+	switch logLevel {
+	case base.LevelError:
+		base.Errorf(logKey, formatWithContextID, paramsWithContextID...)
+		fallthrough
+	case base.LevelWarn:
+		base.Warnf(logKey, formatWithContextID, paramsWithContextID...)
+		fallthrough
+	case base.LevelInfo:
+		base.Infof(logKey, formatWithContextID, paramsWithContextID...)
+		fallthrough
+	case base.LevelDebug:
+		base.Debugf(logKey, formatWithContextID, paramsWithContextID...)
+	}
 }
 
 //////// CHECKPOINTS
@@ -300,7 +312,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
 		bh.sendChanges(rq.Sender, subChangesParams)
-		bh.LogToR("SyncMsg+", "#%03d: Type:%s   --> Time:%v User:%s ", bh.serialNumber, rq.Profile(), time.Since(startTime), base.UD(bh.effectiveUsername))
+		bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%03d: Type:%s   --> Time:%v User:%s ", bh.serialNumber, rq.Profile(), time.Since(startTime), base.UD(bh.effectiveUsername))
 	}()
 
 	return nil
@@ -318,7 +330,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 	// CBL 2.0 (and blip_sync) don't support branched revision trees.  See LiteCore #437.
 	sendConflicts := false
 
-	bh.LogToR("Sync", "Sending changes since %v. User:%s", params.since(), base.UD(bh.effectiveUsername))
+	bh.Logf(base.LevelInfo, base.KeySync, "Sending changes since %v. User:%s", params.since(), base.UD(bh.effectiveUsername))
 
 	options := db.ChangesOptions{
 		Since:      params.since(),
@@ -343,7 +355,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 	}
 
 	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
-		bh.LogToR("Sync+", "    Sending %d changes. User:%s", len(changes), base.UD(bh.effectiveUsername))
+		bh.Logf(base.LevelDebug, base.KeySync, "    Sending %d changes. User:%s", len(changes), base.UD(bh.effectiveUsername))
 		for _, change := range changes {
 
 			if !strings.HasPrefix(change.ID, "_") {
@@ -388,9 +400,9 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	}
 	if len(changeArray) > 0 {
 		sequence := changeArray[0][0].(db.SequenceID)
-		bh.LogToR("Sync", "Sent %d changes to client, from seq %s.  User:%s", len(changeArray), sequence.String(), base.UD(bh.effectiveUsername))
+		bh.Logf(base.LevelInfo, base.KeySync, "Sent %d changes to client, from seq %s.  User:%s", len(changeArray), sequence.String(), base.UD(bh.effectiveUsername))
 	} else {
-		bh.LogToR("Sync", "Sent all changes to client. User:%s", base.UD(bh.effectiveUsername))
+		bh.Logf(base.LevelInfo, base.KeySync, "Sent all changes to client. User:%s", base.UD(bh.effectiveUsername))
 	}
 }
 
@@ -404,7 +416,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 
 	var answer []interface{}
 	if err := response.ReadJSONBody(&answer); err != nil {
-		bh.LogToR("Sync", "Invalid response to 'changes' message: %s -- %s.  User:%s", response, err, base.UD(bh.effectiveUsername))
+		bh.Logf(base.LevelInfo, base.KeySync, "Invalid response to 'changes' message: %s -- %s.  User:%s", response, err, base.UD(bh.effectiveUsername))
 		return
 	}
 
@@ -433,7 +445,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 				if revID, ok := rev.(string); ok {
 					knownRevs[revID] = true
 				} else {
-					bh.LogToR("Sync", "Invalid response to 'changes' message.  User:%s", base.UD(bh.effectiveUsername))
+					bh.Logf(base.LevelInfo, base.KeySync, "Invalid response to 'changes' message.  User:%s", base.UD(bh.effectiveUsername))
 					return
 				}
 			}
@@ -528,7 +540,7 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 
 // Pushes a revision body to the client
 func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
-	bh.LogToR("Sync+", "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
+	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
 		base.Warnf(base.KeyAll, "[%s] blipHandler can't get doc %q/%s: %v", bh.blipContext.ID, base.UD(docID), revID, err)
@@ -656,7 +668,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	if err != nil {
 		return err
 	}
-	bh.LogToR("Sync+", "Sending attachment with digest=%q (%dkb) User:%s", digest, len(attachment)/1024, base.UD(bh.effectiveUsername))
+	bh.Logf(base.LevelDebug, base.KeySync, "Sending attachment with digest=%q (%dkb) User:%s", digest, len(attachment)/1024, base.UD(bh.effectiveUsername))
 	response := rq.Response()
 	response.SetBody(attachment)
 	response.SetCompressed(rq.Properties["compress"] == "true")
@@ -673,7 +685,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				// security purposes I do need the client to _prove_ it has the data, otherwise if
 				// it knew the digest it could acquire the data by uploading a document with the
 				// claimed attachment, then downloading it.
-				bh.LogToR("Sync+", "    Verifying attachment %q (digest %s).  User:%s", base.UD(name), digest, base.UD(bh.effectiveUsername))
+				bh.Logf(base.LevelDebug, base.KeySync, "    Verifying attachment %q (digest %s).  User:%s", base.UD(name), digest, base.UD(bh.effectiveUsername))
 				nonce, proof := db.GenerateProofOfAttachment(knownData)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{"Profile": "proveAttachment", "digest": digest}
@@ -682,13 +694,13 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				if body, err := outrq.Response().Body(); err != nil {
 					return nil, err
 				} else if string(body) != proof {
-					bh.LogToR("Sync+", "Error: Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q.  User:%s", digest, base.MD(nonce), base.MD(proof), base.MD(body), base.UD(bh.effectiveUsername))
+					bh.Logf(base.LevelDebug, base.KeySync, "Error: Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q.  User:%s", digest, base.MD(nonce), base.MD(proof), base.MD(body), base.UD(bh.effectiveUsername))
 					return nil, base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
 				}
 				return nil, nil
 			} else {
 				// If I don't have the attachment, I will request it from the client:
-				bh.LogToR("Sync+", "    Asking for attachment %q (digest %s). User:%s", base.UD(name), digest, base.UD(bh.effectiveUsername))
+				bh.Logf(base.LevelDebug, base.KeySync, "    Asking for attachment %q (digest %s). User:%s", base.UD(name), digest, base.UD(bh.effectiveUsername))
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{"Profile": "getAttachment", "digest": digest}
 				if isCompressible(name, meta) {
@@ -772,7 +784,7 @@ func isCompressible(filename string, meta map[string]interface{}) bool {
 }
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
-	bh.LogToR("SyncMsg", "#%03d: Type:%s %s User:%s", bh.serialNumber, profile, endpoint, base.UD(bh.effectiveUsername))
+	bh.Logf(base.LevelInfo, base.KeySyncMsg, "#%03d: Type:%s %s User:%s", bh.serialNumber, profile, endpoint, base.UD(bh.effectiveUsername))
 }
 
 func DefaultBlipLogger(contextID string) blip.LogFn {

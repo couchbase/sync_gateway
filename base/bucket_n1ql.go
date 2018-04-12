@@ -57,18 +57,18 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 
 		// Non-retry error - return
 		if !isIndexerError(queryErr) {
-			WarnR("Error when querying index using statement: [%s]", UD(bucketStatement))
+			Warnf(KeyAll, "Error when querying index using statement: [%s]", UD(bucketStatement))
 			return queryResults, queryErr
 		}
 
 		// Indexer error - wait then retry
 		err = queryErr
-		WarnR("Indexer error during query - retry %d/%d", i, MaxQueryRetries)
+		Warnf(KeyAll, "Indexer error during query - retry %d/%d", i, MaxQueryRetries)
 		time.Sleep(waitTime)
 		waitTime = time.Duration(waitTime * 2)
 	}
 
-	WarnR("Exceeded max retries for query when querying index using statement: [%s], err:%v", UD(bucketStatement), err)
+	Warnf(KeyAll, "Exceeded max retries for query when querying index using statement: [%s], err:%v", UD(bucketStatement), err)
 	return nil, err
 }
 
@@ -109,7 +109,7 @@ func (bucket *CouchbaseBucketGoCB) createIndex(createStatement string, options *
 		createStatement = fmt.Sprintf(`%s with %s`, createStatement, withClause)
 	}
 
-	LogToR("Index+", "Attempting to create index using statement: [%s]", UD(createStatement))
+	Debugf(KeyIndex, "Attempting to create index using statement: [%s]", UD(createStatement))
 	n1qlQuery := gocb.NewN1qlQuery(createStatement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
 	if err != nil && !IsRecoverableCreateIndexError(err) {
@@ -117,7 +117,7 @@ func (bucket *CouchbaseBucketGoCB) createIndex(createStatement string, options *
 	}
 
 	if IsRecoverableCreateIndexError(err) {
-		LogToR("Query", "Recoverable error creating index with statement: %s, error:%v", UD(createStatement), err)
+		Infof(KeyQuery, "Recoverable error creating index with statement: %s, error:%v", UD(createStatement), err)
 		return nil
 	}
 

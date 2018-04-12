@@ -1366,8 +1366,14 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 
 }
 
-type StdIoLogger struct{}
+type TestLogger struct {
+	T *testing.T
+}
 
-func (s StdIoLogger) LogToR(key string, format string, args ...interface{}) {
-	base.LogTo(key, format, args...)
+func (l TestLogger) Logf(logLevel base.LogLevel, logKey base.LogKey, format string, args ...interface{}) {
+	l.T.Logf(
+		base.LogLevelName(logLevel)+" "+
+			base.LogKeyName(logKey)+": "+
+			format, args...,
+	)
 }

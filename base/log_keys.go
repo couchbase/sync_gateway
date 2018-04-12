@@ -33,11 +33,15 @@ const (
 	KeyHeartbeat
 	KeyHTTP
 	KeyImport
+	KeyIndex
 	KeyMigrate
 	KeyOIDC
+	KeyQuery
 	KeyReplicate
 	KeySequences
 	KeyShadow
+	KeySync
+	KeySyncMsg
 )
 
 var (
@@ -61,11 +65,15 @@ var (
 		KeyHeartbeat:      "Heartbeat",
 		KeyHTTP:           "HTTP",
 		KeyImport:         "Import",
+		KeyIndex:          "Index",
 		KeyMigrate:        "Migrate",
 		KeyOIDC:           "OIDC",
+		KeyQuery:          "Query",
 		KeyReplicate:      "Replicate",
 		KeySequences:      "Sequences",
 		KeyShadow:         "Shadow",
+		KeySync:           "Sync",
+		KeySyncMsg:        "SyncMsg",
 	}
 
 	// Inverse of the map above. Optimisation for string -> LogKey lookups in ToLogKey
@@ -88,6 +96,11 @@ func (keyMask *LogKey) Disable(logKey LogKey) {
 // Always returns true if KeyAll is enabled in keyMask.
 func (keyMask *LogKey) Enabled(logKey LogKey) bool {
 	return keyMask.enabled(logKey, true)
+}
+
+// Enabled returns true if the given logKey is enabled in keyMask.
+func (keyMask *LogKey) EnabledExcludingWildcard(logKey LogKey) bool {
+	return keyMask.enabled(logKey, false)
 }
 
 // enabled returns true if the given logKey is enabled in keyMask, with an optional wildcard check.

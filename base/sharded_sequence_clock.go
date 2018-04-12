@@ -233,7 +233,7 @@ func (s *ShardedClock) write() (err error) {
 				casOut, err := s.bucket.WriteCas(p.Key, 0, 0, p.cas, value, sgbucket.Raw)
 
 				if err != nil {
-					WarnR("Error writing sharded clock partition key: %v.  Error: %v, p.cas: %v, casOut: %v", UD(p.Key), err, p.cas, casOut)
+					Warnf(KeyAll, "Error writing sharded clock partition key: %v.  Error: %v, p.cas: %v, casOut: %v", UD(p.Key), err, p.cas, casOut)
 					shardedClockExpvars.Add("partition_cas_failures", 1)
 					return
 				}
@@ -258,8 +258,8 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 
 	newCounter, err := s.bucket.Incr(s.countKey, 0, 0, 0)
 	if err != nil {
-		WarnR("Error getting count for %s:%v", s.countKey, err)
-		LogToR("DIndex+", "Error getting count:%v", err)
+		Warnf(KeyAll, "Error getting count for %s:%v", s.countKey, err)
+		Debugf(KeyDIndex, "Error getting count:%v", err)
 		return false, err
 	}
 	if newCounter == s.counter {
@@ -269,7 +269,7 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 
 	resultsMap, err := s.bucket.GetBulkRaw(s.partitionKeys)
 	if err != nil {
-		WarnR("Error retrieving partition keys:%v", err)
+		Warnf(KeyAll, "Error retrieving partition keys:%v", err)
 		return false, err
 	}
 	for key, partitionBytes := range resultsMap {
@@ -342,7 +342,7 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 				// Note: The following is invoked upon cas failure - may be called multiple times
 				err = p.Unmarshal(value)
 				if err != nil {
-					WarnR("Error unmarshalling clock during update", err)
+					Warnf(KeyAll, "Error unmarshalling clock during update", err)
 					return nil, err
 				}
 				// Reapply sequences to partition
@@ -352,7 +352,7 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 				return p.Marshal()
 			})
 			if err != nil {
-				WarnR("Error writing sharded clock partition [%d]:%v", UD(p.Key), err)
+				Warnf(KeyAll, "Error writing sharded clock partition [%d]:%v", UD(p.Key), err)
 				shardedClockExpvars.Add("partition_cas_failures", 1)
 				return
 			}

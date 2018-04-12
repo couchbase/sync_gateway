@@ -72,7 +72,7 @@ func TestSubChangesSince(t *testing.T) {
 
 	subChangesParams, err := newSubChangesParams(
 		rq,
-		StdIoLogger{},
+		TestLogger{},
 		zeroSinceVal,
 		testDb.ParseSequenceID,
 	)
