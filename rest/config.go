@@ -123,7 +123,7 @@ type DbConfig struct {
 	RevsLimit                    *uint32                        `json:"revs_limit,omitempty"`                   // Max depth a document's revision tree can grow to
 	ImportDocs                   interface{}                    `json:"import_docs,omitempty"`                  // false, true, or "continuous"
 	ImportFilter                 *string                        `json:"import_filter,omitempty"`                // Filter function (import)
-	Shadow                       *ShadowConfig                  `json:"shadow,omitempty"`                       // External bucket to shadow
+	Shadow                       *ShadowConfig                  `json:"shadow,omitempty"`                       // This is where the ShadowConfig used to be.  If found, it should throw an error
 	EventHandlers                interface{}                    `json:"event_handlers,omitempty"`               // Event handlers (webhook)
 	FeedType                     string                         `json:"feed_type,omitempty"`                    // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword           bool                           `json:"allow_empty_password,omitempty"`         // Allow empty passwords?  Defaults to false
@@ -132,6 +132,7 @@ type DbConfig struct {
 	RevCacheSize                 *uint32                        `json:"rev_cache_size,omitempty"`               // Maximum number of revisions to store in the revision cache
 	StartOffline                 bool                           `json:"offline,omitempty"`                      // start the DB in the offline state, defaults to false
 	Unsupported                  db.UnsupportedOptions          `json:"unsupported,omitempty"`                  // Config for unsupported features
+	Deprecated                   DeprecatedOptions              `json:"deprecated,omitempty"`                   // Config for Deprecated features
 	OIDCConfig                   *auth.OIDCOptions              `json:"oidc,omitempty"`                         // Config properties for OpenID Connect authentication
 	OldRevExpirySeconds          *uint32                        `json:"old_rev_expiry_seconds,omitempty"`       // The number of seconds before old revs are removed from CBS bucket
 	ViewQueryTimeoutSecs         *uint32                        `json:"view_query_timeout_secs,omitempty"`      // The view query timeout in seconds
@@ -143,6 +144,10 @@ type DbConfig struct {
 	NumIndexReplicasHousekeeping *uint                          `json:"num_index_replicas_housekeeping"`        // Number of GSI index replicas used for housekeeping indexes
 	UseViews                     bool                           `json:"use_views"`                              // Force use of views instead of GSI
 	SendWWWAuthenticateHeader    *bool                          `json:"send_www_authenticate_header,omitempty"` // If false, disables setting of 'WWW-Authenticate' header in 401 responses
+}
+
+type DeprecatedOptions struct {
+	Shadow *ShadowConfig `json:"shadow,omitempty"` // External bucket to shadow
 }
 
 type DbConfigMap map[string]*DbConfig
@@ -246,20 +251,24 @@ func (dbConfig *DbConfig) setup(name string) error {
 	}
 
 	if dbConfig.Shadow != nil {
-		url, err = url.Parse(*dbConfig.Shadow.Server)
+		return fmt.Errorf("Bucket shadowing configuration has been moved to the 'deprecated' section of the config.  Please update your config and retry")
+	}
+
+	if dbConfig.Deprecated.Shadow != nil {
+		url, err = url.Parse(*dbConfig.Deprecated.Shadow.Server)
 		if err == nil && url.User != nil {
-			// Remove credentials from shadow URL and put them into the DbConfig.Shadow.Username and .Password:
-			if dbConfig.Shadow.Username == "" {
-				dbConfig.Shadow.Username = url.User.Username()
+			// Remove credentials from shadow URL and put them into the dbConfig.Deprecated.Shadow.Username and .Password:
+			if dbConfig.Deprecated.Shadow.Username == "" {
+				dbConfig.Deprecated.Shadow.Username = url.User.Username()
 			}
-			if dbConfig.Shadow.Password == "" {
+			if dbConfig.Deprecated.Shadow.Password == "" {
 				if password, exists := url.User.Password(); exists {
-					dbConfig.Shadow.Password = password
+					dbConfig.Deprecated.Shadow.Password = password
 				}
 			}
 			url.User = nil
 			urlStr := url.String()
-			dbConfig.Shadow.Server = &urlStr
+			dbConfig.Deprecated.Shadow.Server = &urlStr
 		}
 	}
 
@@ -360,7 +369,7 @@ func (dbConfig *DbConfig) validateSgAccelDbConfig() error {
 
 func (dbConfig *DbConfig) verifyNoDistributedIndexAndBucketShadowing() error {
 	// Don't allow Distributed Index and Bucket Shadowing to co-exist
-	if dbConfig.ChannelIndex != nil && dbConfig.Shadow != nil {
+	if dbConfig.ChannelIndex != nil && dbConfig.Deprecated.Shadow != nil {
 		return fmt.Errorf("Using Sync Gateway Accel with Bucket Shadowing is not supported")
 	}
 	return nil
@@ -485,7 +494,11 @@ func ReadServerConfigFromFile(runMode SyncGatewayRunMode, path string) (*ServerC
 
 func (config *ServerConfig) setupAndValidateDatabases() error {
 	for name, dbConfig := range config.Databases {
-		dbConfig.setup(name)
+
+		if err := dbConfig.setup(name); err != nil {
+			return err
+		}
+
 		if err := config.validateDbConfig(dbConfig); err != nil {
 			return err
 		}
