@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"path/filepath"
 
 	"github.com/natefinch/lumberjack"
@@ -14,6 +13,10 @@ import (
 var (
 	ErrInvalidLogFilePath   = errors.New("Invalid LogFilePath")
 	ErrInvalidLoggingMaxAge = errors.New("Invalid MaxAge")
+
+	maxAgeLimit             = 9999 // days
+	defaultMaxSize          = 200  // megabytes
+	defaultMaxAgeMultiplier = 2    // e.g. 90 minimum == 180 default maxAge
 )
 
 type FileLogger struct {
@@ -60,49 +63,30 @@ func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int
 		return errors.New("nil LogFileConfig")
 	}
 
-	// set default enabled based on level
 	if lfc.Enabled == nil {
-		// enable for all levels except debug
+		// enable for all levels except debug by default
 		lfc.Enabled = BoolPtr(level != LevelDebug)
 	}
 
 	if lfc.Rotation.MaxSize == nil {
-		defaultMaxSize := 200
 		lfc.Rotation.MaxSize = &defaultMaxSize
 	}
 
 	if lfc.Rotation.MaxAge == nil {
-		// Default to double the minAge
-		defaultMaxAge := minAge * 2
+		defaultMaxAge := minAge * defaultMaxAgeMultiplier
 		lfc.Rotation.MaxAge = &defaultMaxAge
 	} else if *lfc.Rotation.MaxAge < minAge {
 		return fmt.Errorf("MaxAge for %s was set to %d which is below the minimum of %d", LogLevelName(level), *lfc.Rotation.MaxAge, minAge)
+	} else if *lfc.Rotation.MaxAge > maxAgeLimit {
+		return fmt.Errorf("MaxAge for %s was set to %d which is above the maximum of %d", LogLevelName(level), *lfc.Rotation.MaxAge, maxAgeLimit)
 	}
 
-	lfc.Output = newLumberjackOutput(
-		filepath.Join(filepath.FromSlash(logFilePath), "sg_"+LogLevelName(level)+".log"),
-		*lfc.Rotation.MaxSize,
-		*lfc.Rotation.MaxAge,
-	)
-
-	return nil
-}
-
-func validateLogFilePath(logFilePath *string) error {
-	if logFilePath == nil || *logFilePath == "" {
-		*logFilePath = defaultLogFilePath
-	}
-
-	err := os.MkdirAll(*logFilePath, 0700)
-	if err != nil {
-		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
-	}
-
-	// Ensure LogFilePath is a directory. Lumberjack will check permissions when it opens the logfile.
-	if f, err := os.Stat(*logFilePath); err != nil {
-		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
-	} else if !f.IsDir() {
-		return errors.Wrap(ErrInvalidLogFilePath, "not a directory")
+	if lfc.Output == nil {
+		lfc.Output = newLumberjackOutput(
+			filepath.Join(filepath.FromSlash(logFilePath), "sg_"+LogLevelName(level)+".log"),
+			*lfc.Rotation.MaxSize,
+			*lfc.Rotation.MaxAge,
+		)
 	}
 
 	return nil

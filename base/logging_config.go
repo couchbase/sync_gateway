@@ -1,6 +1,8 @@
 package base
 
 import (
+	"os"
+
 	"github.com/pkg/errors"
 )
 
@@ -56,6 +58,26 @@ func (c *LoggingConfig) Init() error {
 	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, c.LogFilePath, debugMinAge)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func validateLogFilePath(logFilePath *string) error {
+	if logFilePath == nil || *logFilePath == "" {
+		*logFilePath = defaultLogFilePath
+	}
+
+	err := os.MkdirAll(*logFilePath, 0700)
+	if err != nil {
+		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
+	}
+
+	// Ensure LogFilePath is a directory. Lumberjack will check permissions when it opens the logfile.
+	if f, err := os.Stat(*logFilePath); err != nil {
+		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
+	} else if !f.IsDir() {
+		return errors.Wrap(ErrInvalidLogFilePath, "not a directory")
 	}
 
 	return nil
