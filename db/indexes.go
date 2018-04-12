@@ -160,8 +160,10 @@ func (i *SGIndex) indexNameForVersion(version int, useXattrs bool) string {
 	return fmt.Sprintf(indexNameFormat, i.simpleName, xattrsToken, version)
 }
 
-func (i *SGIndex) shouldIndexTombstones() bool {
-	return i.flags&IdxFlagIndexTombstones != 0
+// Tombstone indexing is required for indexes that need to index the _sync xattrs even when the document
+// body has been deleted (i.e. SG tombstones)
+func (i *SGIndex) shouldIndexTombstones(useXattrs bool) bool {
+	return (i.flags&IdxFlagIndexTombstones != 0 && useXattrs)
 }
 
 func (i *SGIndex) isXattrOnly() bool {
@@ -191,10 +193,10 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 
 	var options *base.N1qlIndexOptions
 	// We want to pass nil options unless one or more of the WITH elements are required
-	if numReplica > 0 || (useXattrs && i.shouldIndexTombstones()) {
+	if numReplica > 0 || i.shouldIndexTombstones(useXattrs) {
 		options = &base.N1qlIndexOptions{
 			NumReplica:      numReplica,
-			IndexTombstones: i.shouldIndexTombstones(),
+			IndexTombstones: i.shouldIndexTombstones(useXattrs),
 		}
 	}
 
