@@ -305,7 +305,7 @@ func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool)
 
 	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
 	if !ok {
-		base.Warn("Cannot remove obsolete indexes for non-gocb bucket - skipping.")
+		base.Warnf(base.KeyAll, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
 		return
 	}
 

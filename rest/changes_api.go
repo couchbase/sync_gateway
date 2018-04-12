@@ -360,7 +360,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		if ok {
 			closeNotify = cn.CloseNotify()
 		} else {
-			base.LogTo("Changes", "simple changes cannot get Close Notifier from ResponseWriter")
+			base.Infof(base.KeyChanges, "simple changes cannot get Close Notifier from ResponseWriter")
 		}
 
 		encoder := json.NewEncoder(h.response)
