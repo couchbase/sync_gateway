@@ -346,7 +346,7 @@ func (h *handler) handleSetLogging() error {
 		return nil
 	}
 	if h.getQuery("level") != "" {
-		base.SetLogLevel(int(getRestrictedIntQuery(h.getQueryValues(), "level", uint64(base.LogLevel()), 1, 3, false)))
+		base.SetLogLevel(int(getRestrictedIntQuery(h.getQueryValues(), "level", uint64(base.GetLogLevel()), 1, 3, false)))
 		if len(body) == 0 {
 			return nil // empty body is OK if request is just setting the log level
 		}
