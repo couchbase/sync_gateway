@@ -14,11 +14,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -58,6 +56,7 @@ type syncData struct {
 	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
 	Expiry          *time.Time          `json:"exp,omitempty"`           // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
 	Cas             string              `json:"cas"`                     // String representation of a cas value, populated via macro expansion
+	Crc32c          string              `json:"value_crc32c"`            // String representation of crc32c hash of doc body, populated via macro expansion
 	TombstonedAt    int64               `json:"tombstoned_at,omitempty"` // Time the document was tombstoned.  Used for view compaction
 
 	// Fields used by bucket-shadowing:
@@ -293,26 +292,62 @@ func (s *syncData) GetSyncCas() uint64 {
 		return 0
 	}
 
-	casBytes, err := hex.DecodeString(strings.TrimPrefix(s.Cas, "0x"))
-	if err != nil || len(casBytes) != 8 {
-		// Invalid cas - return zero
-		return 0
-	}
-
-	return binary.LittleEndian.Uint64(casBytes[0:8])
+	return base.HexCasToUint64(s.Cas)
 }
 
-// Checks whether the specified cas matches the cas value in the sync metadata.
-func (s *syncData) IsSGWrite(cas uint64) bool {
-	return cas == s.GetSyncCas()
+// syncData.IsSGWrite - used during feed-based import
+func (s *syncData) IsSGWrite(cas uint64, rawBody []byte) bool {
+	// If cas matches, it was a SG write
+	if cas == s.GetSyncCas() {
+		return true
+	}
+
+	// If crc32c hash of body matches value stored in SG metadata, SG metadata is still valid
+	if base.Crc32cHashString(rawBody) == s.Crc32c {
+		importExpvars.Add("crc32c_match_count", 1)
+		return true
+	} else {
+		importExpvars.Add("crc32c_mismatch_count", 1)
+	}
+
+	return false
 }
 
-func (doc *document) IsSGWrite() bool {
-	result := doc.syncData.IsSGWrite(doc.Cas)
-	if result == false {
-		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.syncData.Cas)
+// doc.IsSGWrite - used during on-demand import.  Doesn't invoke syncData.IsSGWrite so that we
+// can complete the inexpensive cas check before the (potential) doc marshalling.
+func (doc *document) IsSGWrite(rawBody []byte) bool {
+
+	// If the raw body is available, use syncData.IsSGWrite
+	if rawBody != nil && len(rawBody) > 0 {
+		if doc.syncData.IsSGWrite(doc.Cas, rawBody) {
+			return true
+		} else {
+			base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.syncData.Cas)
+			return false
+		}
 	}
-	return result
+
+	// If raw body isn't available, first do the inexpensive cas check
+	if doc.Cas == doc.syncData.GetSyncCas() {
+		return true
+	}
+
+	importExpvars.Add("crc32c_doc_unmarshal_count", 1)
+	// Since raw body isn't available, marshal from the document to perform body hash comparison
+	docBody, err := doc.MarshalBody()
+	if err != nil {
+		base.Warnf(base.KeyAll, "Unable to marshal doc body during SG write check for doc %s.  Error: %v", base.UD(doc.ID), err)
+		return false
+	}
+	if base.Crc32cHashString(docBody) == doc.syncData.Crc32c {
+		importExpvars.Add("crc32c_match_count", 1)
+		return true
+	} else {
+		importExpvars.Add("crc32c_mismatch_count", 1)
+	}
+
+	base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.syncData.Cas)
+	return false
 }
 
 func (doc *document) hasFlag(flag uint8) bool {
