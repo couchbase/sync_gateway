@@ -29,6 +29,7 @@ const (
 	KeyDIndex
 	KeyEvents
 	KeyFeed
+	KeyGoCB
 	KeyHeartbeat
 	KeyHTTP
 	KeyImport
@@ -56,6 +57,7 @@ var (
 		KeyDIndex:         "DIndex",
 		KeyEvents:         "Events",
 		KeyFeed:           "Feed",
+		KeyGoCB:           "gocb",
 		KeyHeartbeat:      "Heartbeat",
 		KeyHTTP:           "HTTP",
 		KeyImport:         "Import",

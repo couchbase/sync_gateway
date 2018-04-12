@@ -839,6 +839,10 @@ func RunServer(config *ServerConfig) {
 
 	base.Broadcastf("==== %s ====", base.LongVersionString)
 
+	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKeys())
+	base.Infof(base.KeyAll, "Console LogLevel: %v", base.ConsoleLogLevel())
+	base.Infof(base.KeyAll, "Log Redaction Level: %s", config.Logging.RedactionLevel)
+
 	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
 		cpus := runtime.NumCPU()
 		if cpus > 1 {

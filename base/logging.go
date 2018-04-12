@@ -334,7 +334,7 @@ func ParseLogFlags(flags []string) {
 
 	ParseLogFlagsMap(keyMap)
 	logLock.Unlock()
-	Logf("Enabling logging: %s", flags)
+	Infof(KeyAll, "Enabling logging: %s", flags)
 }
 
 // Parses a map of log keys and enabled bool, probably coming from a argv flags.
@@ -940,4 +940,14 @@ func colorEnabled() bool {
 // or if the debugLogger is enabled.
 func LogDebugEnabled() bool {
 	return consoleLogger.shouldLog(LevelDebug, KeyAll) || debugLogger.shouldLog()
+}
+
+// ConsoleLogLevel returns the enabled console log level.
+func ConsoleLogLevel() string {
+	return LogLevelName(*consoleLogger.LogLevel)
+}
+
+// ConsoleLogKeys returns the enabled console log keys.
+func ConsoleLogKeys() []string {
+	return consoleLogger.LogKey.EnabledLogKeys()
 }
