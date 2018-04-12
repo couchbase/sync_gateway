@@ -433,8 +433,6 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 	defer logLock.Unlock()
 	if replace {
 		LogKeys = map[string]bool{}
-		noLogKey := KeyNone
-		consoleLogger.logKey = &noLogKey
 	}
 
 	ParseLogFlagsMap(keys)
@@ -794,23 +792,16 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 // *************************************************************************
 
 var (
-	ErrInvalidLogFilePath   = errors.New("Invalid LogFilePath")
-	ErrInvalidLoggingMaxAge = errors.New("Invalid MaxAge")
+	consoleLogger                                    *ConsoleLogger
+	debugLogger, infoLogger, warnLogger, errorLogger *FileLogger
+)
 
+func init() {
 	// We'll initilise a default consoleLogger so we can still log stuff before/during parsing logging configs.
 	// This maintains consistent formatting (timestamps, levels, etc) in the output,
 	// and allows a single set of logging functions to be used, rather than fmt.Printf()
-	defaultLogLevel = LevelInfo
-	defaultLogKey   = KeyAll
-	consoleLogger   = LogConsoleConfig{
-		LogLevel:     &defaultLogLevel,
-		logKey:       &defaultLogKey,
-		logger:       log.New(os.Stderr, "", 0),
-		ColorEnabled: true,
-	}
-
-	debugLogger, infoLogger, warnLogger, errorLogger LogFileConfig
-)
+	consoleLogger = newConsoleLoggerOrPanic(ConsoleLoggerConfig{})
+}
 
 // Errorf logs the given formatted string and args to the error log level and given log key.
 func Errorf(logKey LogKey, format string, args ...interface{}) {
