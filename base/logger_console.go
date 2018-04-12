@@ -9,8 +9,9 @@ import (
 )
 
 type ConsoleLogger struct {
-	LogLevel *LogLevel
-	LogKey   *LogKey
+	LogLevel     *LogLevel
+	LogKey       *LogKey
+	ColorEnabled bool
 
 	logger *log.Logger
 }
@@ -33,9 +34,10 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	logKey := ToLogKey(config.LogKeys)
 
 	return &ConsoleLogger{
-		LogKey:   &logKey,
-		LogLevel: config.LogLevel,
-		logger:   log.New(config.Output, "", 0),
+		LogLevel:     config.LogLevel,
+		LogKey:       &logKey,
+		ColorEnabled: config.ColorEnabled,
+		logger:       log.New(config.Output, "", 0),
 	}, nil
 }
 
