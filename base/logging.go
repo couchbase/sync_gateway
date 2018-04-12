@@ -470,11 +470,6 @@ func LogTo(key string, format string, args ...interface{}) {
 	}
 }
 
-// LogToR redacts any arguments implementing the Redactor interface before calling LogTo
-func LogToR(key, format string, args ...interface{}) {
-	LogTo(key, format, redact(args)...)
-}
-
 func EnableLogKey(key string) {
 	logLock.Lock()
 	defer logLock.Unlock()
@@ -521,11 +516,6 @@ func Logf(format string, args ...interface{}) {
 	}
 }
 
-// LogfR redacts any arguments implementing the Redactor interface before calling Logf
-func LogfR(format string, args ...interface{}) {
-	Logf(format, redact(args)...)
-}
-
 // If the error is not nil, logs its description and the name of the calling function.
 // Returns the input error for easy chaining.
 func LogError(err error) error {
@@ -552,11 +542,6 @@ func Warn(format string, args ...interface{}) {
 	}
 }
 
-// WarnR redacts any arguments implementing the Redactor interface before calling Warn
-func WarnR(format string, args ...interface{}) {
-	Warn(format, redact(args)...)
-}
-
 // Logs a highlighted message prefixed with "TEMP". This function is intended for
 // temporary logging calls added during development and not to be checked in, hence its
 // distinctive name (which is visible and easy to search for before committing.)
@@ -570,20 +555,10 @@ func LogPanic(format string, args ...interface{}) {
 	panic(fmt.Sprintf(format, args...))
 }
 
-// LogPanicR redacts any arguments implementing the Redactor interface before calling LogPanic
-func LogPanicR(format string, args ...interface{}) {
-	LogPanic(format, redact(args)...)
-}
-
 // Logs a warning to the console, then exits the process.
 func LogFatal(format string, args ...interface{}) {
 	logWithCaller(fgRed, "FATAL", format, args...)
 	os.Exit(1)
-}
-
-// LogFatalR redacts any arguments implementing the Redactor interface before calling LogFatal
-func LogFatalR(format string, args ...interface{}) {
-	LogFatal(format, redact(args)...)
 }
 
 func logWithCaller(color string, prefix string, format string, args ...interface{}) {
