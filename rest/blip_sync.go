@@ -184,7 +184,7 @@ func (ctx *blipSyncContext) notFound(rq *blip.Message) {
 
 func (ctx *blipSyncContext) LogToR(key string, format string, args ...interface{}) {
 	formatWithContextID, paramsWithContextID := base.PrependContextID(ctx.blipContext.ID, format, args...)
-	base.LogToR(key, formatWithContextID, paramsWithContextID...)
+	base.Infof(base.ToLogKey([]string{key}), formatWithContextID, paramsWithContextID...)
 }
 
 //////// CHECKPOINTS
@@ -310,7 +310,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.WarnR("[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
+			base.Warnf(base.KeyAll, "[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
@@ -398,7 +398,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.WarnR("[%s] PANIC handling 'changes' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
+			base.Warnf(base.KeyAll, "[%s] PANIC handling 'changes' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
@@ -531,7 +531,7 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 	bh.LogToR("Sync+", "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
-		base.WarnR("[%s] blipHandler can't get doc %q/%s: %v", bh.blipContext.ID, base.UD(docID), revID, err)
+		base.Warnf(base.KeyAll, "[%s] blipHandler can't get doc %q/%s: %v", bh.blipContext.ID, base.UD(docID), revID, err)
 		return
 	}
 
@@ -570,7 +570,7 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 		go func() {
 			defer func() {
 				if panicked := recover(); panicked != nil {
-					base.WarnR("[%s] PANIC handling 'sendRevision' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
+					base.Warnf(base.KeyAll, "[%s] PANIC handling 'sendRevision' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 					bh.close()
 				}
 			}()

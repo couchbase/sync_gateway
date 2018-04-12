@@ -524,7 +524,7 @@ func (h *handler) handleBulkDocs() error {
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.LogfR("\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
+			base.Infof(base.KeyAll, "\tBulkDocs: Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
 			err = nil // wrote it to output already; not going to return it
 		} else {
 			status["rev"] = revid
@@ -550,7 +550,7 @@ func (h *handler) handleBulkDocs() error {
 			status["status"] = code
 			status["error"] = base.CouchHTTPErrorName(code)
 			status["reason"] = msg
-			base.LogfR("\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
+			base.Infof(base.KeyAll, "\tBulkDocs: Local Doc %q --> %d %s (%v)", base.UD(docid), code, msg, err)
 			err = nil
 		} else {
 			status["rev"] = revid

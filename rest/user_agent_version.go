@@ -39,7 +39,7 @@ func (uav *UserAgentVersion) parse() {
 	// Compile regex
 	re1, err := regexp.Compile(regex)
 	if err != nil {
-		base.WarnR("Error compiling regex: %v.  Err: %v", regex, err)
+		base.Warnf(base.KeyAll, "Error compiling regex: %v.  Err: %v", regex, err)
 		return
 	}
 

@@ -664,13 +664,13 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 			filename := flag.Arg(i)
 			c, err := ReadServerConfig(runMode, filename)
 			if err != nil {
-				base.LogFatalR("Error reading config file %s: %v", base.UD(filename), err)
+				base.Errorf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
 			}
 			if config == nil {
 				config = c
 			} else {
 				if err := config.MergeWith(c); err != nil {
-					base.LogFatalR("Error reading config file %s: %v", base.UD(filename), err)
+					base.Errorf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
 				}
 			}
 		}
@@ -774,7 +774,7 @@ func SetMaxFileDescriptors(maxP *uint64) {
 	}
 	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
-		base.WarnR("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		base.Warnf(base.KeyAll, "Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
 	}
 }
 
@@ -799,7 +799,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		http2Enabled,
 	)
 	if err != nil {
-		base.LogFatalR("Failed to start HTTP server on %s: %v", base.UD(addr), err)
+		base.Errorf(base.KeyAll, "Failed to start HTTP server on %s: %v", base.UD(addr), err)
 	}
 }
 
@@ -870,13 +870,13 @@ func RunServer(config *ServerConfig) {
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.LogFatalR("Error opening database %s: %v", base.UD(dbConfig.Name), err)
+			base.Errorf(base.KeyAll, "Error opening database %s: %v", base.UD(dbConfig.Name), err)
 		}
 	}
 
 	if config.ProfileInterface != nil {
 		//runtime.MemProfileRate = 10 * 1024
-		base.LogfR("Starting profile server on %s", base.UD(*config.ProfileInterface))
+		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(*config.ProfileInterface))
 		go func() {
 			http.ListenAndServe(*config.ProfileInterface, nil)
 		}()
@@ -884,10 +884,10 @@ func RunServer(config *ServerConfig) {
 
 	go sc.PostStartup()
 
-	base.LogfR("Starting admin server on %s", base.UD(*config.AdminInterface))
+	base.Infof(base.KeyAll, "Starting admin server on %s", base.UD(*config.AdminInterface))
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
 
-	base.LogfR("Starting server on %s ...", base.UD(*config.Interface))
+	base.Infof(base.KeyAll, "Starting server on %s ...", base.UD(*config.Interface))
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 

@@ -22,32 +22,48 @@ const (
 	KeyBucket
 	KeyCache
 	KeyChanges
+	KeyChannelIndex
+	KeyChannelStorage
 	KeyCRUD
 	KeyDCP
+	KeyDIndex
 	KeyEvents
 	KeyFeed
+	KeyHeartbeat
 	KeyHTTP
 	KeyImport
+	KeyMigrate
+	KeyOIDC
 	KeyReplicate
+	KeySequences
+	KeyShadow
 )
 
 var (
 	logKeyNames = map[LogKey]string{
-		KeyNone:      "",
-		KeyAll:       "*",
-		KeyAccess:    "Access",
-		KeyAttach:    "Attach",
-		KeyAuth:      "Auth",
-		KeyBucket:    "Bucket",
-		KeyCache:     "Cache",
-		KeyChanges:   "Changes",
-		KeyCRUD:      "CRUD",
-		KeyDCP:       "DCP",
-		KeyEvents:    "Events",
-		KeyFeed:      "Feed",
-		KeyHTTP:      "HTTP",
-		KeyImport:    "Import",
-		KeyReplicate: "Replicate",
+		KeyNone:           "",
+		KeyAll:            "*",
+		KeyAccess:         "Access",
+		KeyAttach:         "Attach",
+		KeyAuth:           "Auth",
+		KeyBucket:         "Bucket",
+		KeyCache:          "Cache",
+		KeyChanges:        "Changes",
+		KeyChannelIndex:   "ChannelIndex",
+		KeyChannelStorage: "ChannelStorage",
+		KeyCRUD:           "CRUD",
+		KeyDCP:            "DCP",
+		KeyDIndex:         "DIndex",
+		KeyEvents:         "Events",
+		KeyFeed:           "Feed",
+		KeyHeartbeat:      "Heartbeat",
+		KeyHTTP:           "HTTP",
+		KeyImport:         "Import",
+		KeyMigrate:        "Migrate",
+		KeyOIDC:           "OIDC",
+		KeyReplicate:      "Replicate",
+		KeySequences:      "Sequences",
+		KeyShadow:         "Shadow",
 	}
 
 	// Inverse of the map above. Optimisation for string -> LogKey lookups in ToLogKey

@@ -105,7 +105,7 @@ func (doc *document) Body() Body {
 	if doc._body == nil && doc.rawBody != nil {
 		err := json.Unmarshal(doc.rawBody, &doc._body)
 		if err != nil {
-			base.WarnR("Unable to unmarshal document body from raw body : %s", err)
+			base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
 			return nil
 		}
 		doc.rawBody = nil
@@ -310,7 +310,7 @@ func (s *syncData) IsSGWrite(cas uint64) bool {
 func (doc *document) IsSGWrite() bool {
 	result := doc.syncData.IsSGWrite(doc.Cas)
 	if result == false {
-		base.LogToR("CRUD+", "Doc %s is not an SG write, based on cas. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.syncData.Cas)
+		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.syncData.Cas)
 	}
 	return result
 }
@@ -363,7 +363,7 @@ func (doc *document) getNonWinningRevisionBody(revid string, loader RevLoaderFun
 	}
 
 	if err := json.Unmarshal(bodyBytes, &body); err != nil {
-		base.WarnR("Unexpected error parsing body of rev %q: %v", revid, err)
+		base.Warnf(base.KeyAll, "Unexpected error parsing body of rev %q: %v", revid, err)
 		return nil
 	}
 	return body
@@ -376,7 +376,7 @@ func (doc *document) getRevisionBodyJSON(revid string, loader RevLoaderFunc) []b
 		var marshalErr error
 		bodyJSON, marshalErr = json.Marshal(doc._body)
 		if marshalErr != nil {
-			base.WarnR("Marshal error when retrieving active current revision body: %v", marshalErr)
+			base.Warnf(base.KeyAll, "Marshal error when retrieving active current revision body: %v", marshalErr)
 		}
 	} else {
 		bodyJSON, _ = doc.History.getRevisionBody(revid, loader)
@@ -476,7 +476,7 @@ func (doc *document) deleteRemovedRevisionBodies(bucket base.Bucket) {
 	for _, revBodyKey := range doc.removedRevisionBodyKeys {
 		deleteErr := bucket.Delete(revBodyKey)
 		if deleteErr != nil {
-			base.WarnR("Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
+			base.Warnf(base.KeyAll, "Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
 		}
 	}
 	doc.removedRevisionBodyKeys = map[string]string{}
@@ -499,7 +499,7 @@ func (doc *document) migrateRevisionBodies(bucket base.Bucket) error {
 			bodyKey := generateRevBodyKey(doc.ID, revID)
 			persistErr := doc.persistRevisionBody(bucket, bodyKey, revInfo.Body)
 			if persistErr != nil {
-				base.WarnR("Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
+				base.Warnf(base.KeyAll, "Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
 				continue
 			}
 			revInfo.BodyKey = bodyKey
@@ -562,7 +562,7 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 		}
 	}
 	if changed != nil {
-		base.LogToR("CRUD", "\tDoc %q in channels %q", base.UD(doc.ID), base.UD(newChannels))
+		base.Infof(base.KeyCRUD, "\tDoc %q in channels %q", base.UD(doc.ID), base.UD(newChannels))
 		changedChannels = channels.SetOf(changed...)
 	}
 	return
@@ -641,7 +641,7 @@ func (accessMap *UserAccessMap) updateAccess(doc *document, newAccess channels.A
 		if accessMap == &doc.RoleAccess {
 			what = "role"
 		}
-		base.LogToR("Access", "Doc %q grants %s access: %v", base.UD(doc.ID), what, base.UD(*accessMap))
+		base.Infof(base.KeyAccess, "Doc %q grants %s access: %v", base.UD(doc.ID), what, base.UD(*accessMap))
 	}
 	return changedUsers
 }
@@ -659,7 +659,7 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 	root := documentRoot{SyncData: &syncData{History: make(RevTree)}}
 	err := json.Unmarshal([]byte(data), &root)
 	if err != nil {
-		base.WarnR("Error unmarshaling doc %q: %s", base.UD(doc.ID), err)
+		base.Warnf(base.KeyAll, "Error unmarshaling doc %q: %s", base.UD(doc.ID), err)
 		return pkgerrors.Wrapf(err, "Failed to UnmarshalJSON() doc with id: %s", doc.ID)
 	}
 	if root.SyncData != nil {
@@ -691,7 +691,7 @@ func (doc *document) MarshalJSON() ([]byte, error) {
 // lazy unmarshalling as needed.
 func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
-		base.WarnR("Attempted to unmarshal document without ID set")
+		base.Warnf(base.KeyAll, "Attempted to unmarshal document without ID set")
 		return errors.New("Document was unmarshalled without ID set")
 	}
 

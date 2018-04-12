@@ -38,7 +38,7 @@ func SetMaxFileDescriptors(requestedSoftFDLimit uint64) (uint64, error) {
 	err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limits)
 
 	if err == nil {
-		LogfR("Configured process to allow %d open file descriptors", recommendedSoftFDLimit)
+		Infof(KeyAll, "Configured process to allow %d open file descriptors", recommendedSoftFDLimit)
 	}
 
 	return recommendedSoftFDLimit, err

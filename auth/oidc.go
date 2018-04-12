@@ -68,19 +68,19 @@ func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 }
 
 func (opm OIDCProviderMap) GetProviderForIssuer(issuer string, audiences []string) *OIDCProvider {
-	base.LogToR("OIDC+", "GetProviderForIssuer with issuer: %v, audiences: %+v", base.UD(issuer), base.UD(audiences))
+	base.Debugf(base.KeyOIDC, "GetProviderForIssuer with issuer: %v, audiences: %+v", base.UD(issuer), base.UD(audiences))
 	for _, provider := range opm {
 		if provider.Issuer == issuer && provider.ClientID != nil {
 			// Iterate over the audiences looking for a match
 			for _, aud := range audiences {
 				if *provider.ClientID == aud {
-					base.LogToR("OIDC+", "Provider matches, returning")
+					base.Debugf(base.KeyOIDC, "Provider matches, returning")
 					return provider
 				}
 			}
 		}
 	}
-	base.LogToR("OIDC+", "No provider match found")
+	base.Debugf(base.KeyOIDC, "No provider match found")
 	return nil
 }
 
@@ -98,7 +98,7 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *oid
 			}
 		}
 		if err = op.InitOIDCClient(); err != nil {
-			base.WarnR("Unable to initialize OIDC client: %v", err)
+			base.Warnf(base.KeyAll, "Unable to initialize OIDC client: %v", err)
 		}
 	})
 
@@ -116,7 +116,7 @@ func (op *OIDCProvider) InitUserPrefix() error {
 
 	issuerURL, err := url.ParseRequestURI(op.Issuer)
 	if err != nil {
-		base.WarnR("Unable to parse issuer URI when initializing user prefix - using provider name")
+		base.Warnf(base.KeyAll, "Unable to parse issuer URI when initializing user prefix - using provider name")
 		op.UserPrefix = op.Name
 		return nil
 	}
@@ -139,7 +139,7 @@ func (op *OIDCProvider) InitOIDCClient() error {
 
 	config, shouldSyncConfig, err := op.DiscoverConfig()
 	if err != nil || config == nil {
-		base.WarnR("Error during OIDC discovery - unable to initialize client: %v", err)
+		base.Warnf(base.KeyAll, "Error during OIDC discovery - unable to initialize client: %v", err)
 		return err
 	}
 
@@ -169,7 +169,7 @@ func (op *OIDCProvider) InitOIDCClient() error {
 
 	// Start process for ongoing sync of the provider config
 	if shouldSyncConfig {
-		base.LogToR("OIDC", "Not synchronizing provider config for issuer %s...", base.UD(op.Issuer))
+		base.Infof(base.KeyOIDC, "Not synchronizing provider config for issuer %s...", base.UD(op.Issuer))
 		op.OIDCClient.SyncProviderConfig(op.Issuer)
 	}
 
@@ -199,7 +199,7 @@ func (op *OIDCProvider) DiscoverConfig() (config *oidc.ProviderConfig, shouldSyn
 				shouldSync = true
 				break
 			}
-			base.LogToR("OIDC+", "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
+			base.Debugf(base.KeyOIDC, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
 				base.UD(op.Issuer), i, maxRetryAttempts, err)
 			time.Sleep(500 * time.Millisecond)
 		}
@@ -217,27 +217,27 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 		discoveryURL = strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
 	}
 
-	base.LogToR("OIDC+", "Fetching custom provider config from %s", base.UD(discoveryURL))
+	base.Debugf(base.KeyOIDC, "Fetching custom provider config from %s", base.UD(discoveryURL))
 	req, err := http.NewRequest("GET", discoveryURL, nil)
 	if err != nil {
-		base.LogToR("OIDC+", "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
+		base.Debugf(base.KeyOIDC, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		base.LogToR("OIDC+", "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
+		base.Debugf(base.KeyOIDC, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if err := json.NewDecoder(resp.Body).Decode(&customConfig); err != nil {
-		base.LogToR("OIDC+", "Error parsing body %s: %v", base.UD(discoveryURL), err)
+		base.Debugf(base.KeyOIDC, "Error parsing body %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 
 	var oidcConfig oidc.ProviderConfig
 	oidcConfig, err = customConfig.AsProviderConfig()
 	if err != nil {
-		base.LogToR("OIDC+", "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
+		base.Debugf(base.KeyOIDC, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 
@@ -251,7 +251,7 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 		oidcConfig.ExpiresAt = time.Now().UTC().Add(ttl)
 	}
 
-	base.LogToR("OIDC+", "Returning config: %v", base.UD(oidcConfig))
+	base.Debugf(base.KeyOIDC, "Returning config: %v", base.UD(oidcConfig))
 	return &oidcConfig, nil
 
 }

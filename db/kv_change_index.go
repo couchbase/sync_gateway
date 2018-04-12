@@ -177,7 +177,7 @@ func (k *kvChangeIndex) setIndexPartitionMap(partitionMap base.IndexPartitionMap
 
 func (k *kvChangeIndex) DocChanged(event sgbucket.FeedEvent) {
 	// no-op for reader
-	base.WarnR("DocChanged called in index reader for doc %s, will be ignored.", base.UD(event.Key))
+	base.Warnf(base.KeyAll, "DocChanged called in index reader for doc %s, will be ignored.", base.UD(event.Key))
 }
 
 // No-ops - pending refactoring of change_cache.go to remove usage (or deprecation of
@@ -249,7 +249,7 @@ func byteToUint64(input []byte) uint64 {
 	var result uint64
 	err := binary.Read(readBuffer, binary.LittleEndian, &result)
 	if err != nil {
-		base.WarnR("byteToUint64 error:%v", err)
+		base.Warnf(base.KeyAll, "byteToUint64 error:%v", err)
 	}
 	return result
 }
