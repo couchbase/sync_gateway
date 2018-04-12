@@ -839,24 +839,6 @@ func RunServer(config *ServerConfig) {
 
 	base.Broadcastf("==== %s ====", base.LongVersionString)
 
-	// TODO: Remove test logs
-	base.Debugf(base.KeyAll, "Logging test (%s)", "all")
-	base.Infof(base.KeyAll, "Logging test (%s)", "all")
-	base.Warnf(base.KeyAll, "Logging test (%s)", "all")
-	base.Errorf(base.KeyAll, "Logging test (%s)", "all")
-	base.Debugf(base.KeyNone, "Logging test (%s)", "none")
-	base.Infof(base.KeyNone, "Logging test (%s)", "none")
-	base.Warnf(base.KeyNone, "Logging test (%s)", "none")
-	base.Errorf(base.KeyNone, "Logging test (%s)", "none")
-	base.Debugf(base.KeyHTTP, "Logging test (%s)", "http")
-	base.Infof(base.KeyHTTP, "Logging test (%s)", "http")
-	base.Warnf(base.KeyHTTP, "Logging test (%s)", "http")
-	base.Errorf(base.KeyHTTP, "Logging test (%s)", "http")
-	base.Debugf(base.KeyDCP, "Logging test (%s)", "dcp")
-	base.Infof(base.KeyDCP, "Logging test (%s)", "dcp")
-	base.Warnf(base.KeyDCP, "Logging test (%s)", "dcp")
-	base.Errorf(base.KeyDCP, "Logging test (%s)", "dcp")
-
 	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
 		cpus := runtime.NumCPU()
 		if cpus > 1 {
