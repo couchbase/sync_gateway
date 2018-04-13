@@ -2,6 +2,7 @@ package base
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/pkg/errors"
 )
@@ -65,7 +66,7 @@ func (c *LoggingConfig) Init() error {
 
 func validateLogFilePath(logFilePath *string) error {
 	if logFilePath == nil || *logFilePath == "" {
-		*logFilePath = defaultLogFilePath
+		*logFilePath = defaultLogFilePath()
 	}
 
 	err := os.MkdirAll(*logFilePath, 0700)
@@ -81,4 +82,29 @@ func validateLogFilePath(logFilePath *string) error {
 	}
 
 	return nil
+}
+
+// defaultLogFilePath returns an absolute path to place log files into.
+func defaultLogFilePath() string {
+	// get path to the running executable
+	path, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+
+	// get directory of the running executable
+	path = filepath.Dir(path)
+
+	// append var/lib/sync_gateway/logs
+	logFilePath := filepath.Join(
+		path, "var", "lib", "sync_gateway", "logs",
+	)
+
+	// convert to absolute path if required
+	logFilePath, err = filepath.Abs(logFilePath)
+	if err != nil {
+		panic(err)
+	}
+
+	return logFilePath
 }
