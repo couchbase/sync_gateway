@@ -43,7 +43,7 @@ const (
 	KeySync
 	KeySyncMsg
 	KeyWebSocket
-	KeyWebSocketMsg
+	KeyWebSocketFrame
 )
 
 var (
@@ -77,7 +77,7 @@ var (
 		KeySync:           "Sync",
 		KeySyncMsg:        "SyncMsg",
 		KeyWebSocket:      "WS",
-		KeyWebSocketMsg:   "WS+", // backwards compatibility for WS++ logkey
+		KeyWebSocketFrame: "WS+", // backwards compatibility for WS++ logkey
 	}
 
 	// Inverse of the map above. Optimisation for string -> LogKey lookups in ToLogKey

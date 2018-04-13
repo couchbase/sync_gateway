@@ -99,7 +99,7 @@ func (h *handler) handleBLIPSync() error {
 	blipContext := blip.NewContext(BlipCBMobileReplication)
 	blipContext.Logger = DefaultBlipLogger(blipContext.ID)
 	blipContext.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
-	blipContext.LogFrames = base.LogDebugEnabled(base.KeyWebSocketMsg)
+	blipContext.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
 
 	// Create a BLIP-sync context and register handlers:
 	ctx := blipSyncContext{
@@ -793,7 +793,7 @@ func DefaultBlipLogger(contextID string) blip.LogFn {
 
 		switch eventType {
 		case blip.LogMessage:
-			base.Debugf(base.KeyWebSocketMsg, formatWithContextID, paramsWithContextID...)
+			base.Debugf(base.KeyWebSocketFrame, formatWithContextID, paramsWithContextID...)
 		case blip.LogFrame:
 			base.Debugf(base.KeyWebSocket, formatWithContextID, paramsWithContextID...)
 		default:
