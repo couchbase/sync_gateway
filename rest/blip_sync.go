@@ -793,11 +793,11 @@ func DefaultBlipLogger(contextID string) blip.LogFn {
 
 		switch eventType {
 		case blip.LogMessage:
-			base.LogTo("WS+", formatWithContextID, paramsWithContextID...)
+			base.Debugf(base.KeyWebSocketMsg, formatWithContextID, paramsWithContextID...)
 		case blip.LogFrame:
-			base.LogTo("WS++", formatWithContextID, paramsWithContextID...)
+			base.Debugf(base.KeyWebSocket, formatWithContextID, paramsWithContextID...)
 		default:
-			base.LogTo("WS", formatWithContextID, paramsWithContextID...)
+			base.Infof(base.KeyWebSocket, formatWithContextID, paramsWithContextID...)
 		}
 	}
 }

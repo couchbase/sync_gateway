@@ -476,7 +476,7 @@ func generateChanges(database *db.Database, inChannels base.Set, options db.Chan
 		if ok {
 			closeNotify = cn.CloseNotify()
 		} else {
-			base.LogTo("Changes", "continuous changes cannot get Close Notifier from ResponseWriter")
+			base.Infof(base.KeyChanges, "continuous changes cannot get Close Notifier from ResponseWriter")
 		}
 	}
 
@@ -548,7 +548,7 @@ loop:
 						break collect
 					}
 				}
-				base.LogTo("Changes", "sending %d change(s)", len(entries))
+				base.Infof(base.KeyChanges, "sending %d change(s)", len(entries))
 				err = send(entries)
 
 				if err == nil && waiting {
@@ -581,7 +581,7 @@ loop:
 			if h != nil {
 				base.Debugf(base.KeyChanges, "Client connection lost: %v", base.UD(h.currentEffectiveUserNameAsUser()))
 			} else {
-				base.LogTo("Changes+", "Client connection lost")
+				base.Debugf(base.KeyChanges, "Client connection lost")
 			}
 			forceClose = true
 			break loop
@@ -640,7 +640,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 				base.Warnf(base.KeyAll, "WebSocket connection (#%03d) closed with error %v",
 					h.serialNumber, err)
 			}
-			base.LogTo("HTTP+", "#%03d:     --> WebSocket closed", h.serialNumber)
+			base.Debugf(base.KeyHTTP, "#%03d:     --> WebSocket closed", h.serialNumber)
 		}()
 
 		// Read changes-feed options from an initial incoming WebSocket message in JSON format:

@@ -1,8 +1,9 @@
 package rest
 
 import (
-	"github.com/couchbase/sync_gateway/base"
 	"io"
+
+	"github.com/couchbase/sync_gateway/base"
 
 	"net/http"
 )
@@ -35,12 +36,12 @@ func (t *TeeReadCloser) Close() error {
 // the logging key
 type LoggingTeeResponseWriter struct {
 	http.ResponseWriter
-	LogKey       string        // The log key to use, eg "HTTP+"
+	LogKey       base.LogKey   // The log key to use, eg base.KeyHTTP
 	SerialNumber uint64        // The request ID
 	Request      *http.Request // The request
 }
 
-func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKey string, serialNum uint64, req *http.Request) http.ResponseWriter {
+func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKey base.LogKey, serialNum uint64, req *http.Request) http.ResponseWriter {
 	return &LoggingTeeResponseWriter{
 		ResponseWriter: wrappedResponseWriter,
 		LogKey:         logKey,
@@ -50,6 +51,6 @@ func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKe
 }
 
 func (l *LoggingTeeResponseWriter) Write(b []byte) (int, error) {
-	base.LogTo(l.LogKey, " #%03d: %s %s %s", l.SerialNumber, l.Request.Method, base.SanitizeRequestURL(l.Request.URL), string(b))
+	base.Infof(l.LogKey, " #%03d: %s %s %s", l.SerialNumber, l.Request.Method, base.SanitizeRequestURL(l.Request.URL), string(b))
 	return l.ResponseWriter.Write(b)
 }

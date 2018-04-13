@@ -459,17 +459,6 @@ type SGLogger interface {
 	Logf(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 }
 
-// Logs a message to the console, but only if the corresponding key is true in LogKeys.
-func LogTo(key string, format string, args ...interface{}) {
-	logLock.RLock()
-	defer logLock.RUnlock()
-	ok := logLevel <= 1 && (logStar || LogKeys[key])
-
-	if ok {
-		printf(fgYellow+key+": "+reset+format, args...)
-	}
-}
-
 func EnableLogKey(key string) {
 	logLock.Lock()
 	defer logLock.Unlock()
@@ -632,21 +621,21 @@ func UpdateLogger(logFilePath string) {
 	}
 }
 
-// This provides an io.Writer interface around the base.Log API
+// This provides an io.Writer interface around the base.Infof API
 type LoggerWriter struct {
-	LogKey       string        // The log key to log to, eg, "HTTP+"
+	LogKey       LogKey        // The log key to log to, eg, KeyHTTP
 	SerialNumber uint64        // The request ID
 	Request      *http.Request // The request
 }
 
 // Write() method to satisfy the io.Writer interface
 func (lw *LoggerWriter) Write(p []byte) (n int, err error) {
-	LogTo(lw.LogKey, " #%03d: %s %s %s", lw.SerialNumber, lw.Request.Method, SanitizeRequestURL(lw.Request.URL), string(p))
+	Infof(lw.LogKey, " #%03d: %s %s %s", lw.SerialNumber, lw.Request.Method, SanitizeRequestURL(lw.Request.URL), string(p))
 	return len(p), nil
 }
 
 // Create a new LoggerWriter
-func NewLoggerWriter(logKey string, serialNumber uint64, req *http.Request) *LoggerWriter {
+func NewLoggerWriter(logKey LogKey, serialNumber uint64, req *http.Request) *LoggerWriter {
 	return &LoggerWriter{
 		LogKey:       logKey,
 		SerialNumber: serialNumber,

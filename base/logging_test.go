@@ -11,7 +11,6 @@ package base
 
 import (
 	"bytes"
-	"errors"
 	"log"
 	"testing"
 
@@ -50,21 +49,15 @@ func TestRedactedLogFuncs(t *testing.T) {
 
 func Benchmark_LoggingPerformance(b *testing.B) {
 
-	var logKeys = map[string]bool{
-		"CRUD": true,
-	}
-
-	UpdateLogKeys(logKeys, true)
+	consoleLogger.LogKey.Enable(KeyCRUD)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		LogTo("CRUD", "some crud'y message")
-		Log("An unformatted log message")
-		Logf("%s", "A formatted log message")
-		LogError(errors.New("This is an error message"))
-		Warn("%s", "A WARNING message")
-		TEMP("%s", "A TEMP message")
+		Debugf(KeyCRUD, "some crud'y message")
+		Infof(KeyCRUD, "some crud'y message")
+		Warnf(KeyCRUD, "some crud'y message")
+		Errorf(KeyCRUD, "some crud'y message")
 	}
 }
 

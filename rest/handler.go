@@ -213,7 +213,7 @@ func (h *handler) invoke(method handlerMethod) error {
 		// to stdout as well as writing back to the socket
 		h.response = NewLoggerTeeResponseWriter(
 			h.response,
-			"HTTP",
+			base.KeyHTTP,
 			h.serialNumber,
 			h.rq,
 		)
@@ -245,7 +245,7 @@ func (h *handler) logRequestBody() {
 	h.requestBody = NewTeeReadCloser(
 		h.requestBody,
 		base.NewLoggerWriter(
-			"HTTP",
+			base.KeyHTTP,
 			h.serialNumber,
 			h.rq,
 		),
@@ -618,7 +618,7 @@ func (h *handler) addJSON(value interface{}) {
 	if err != nil {
 		clientConnectionError := strings.Contains(err.Error(), "write: broken pipe")
 		if clientConnectionError {
-			base.LogTo("CRUD+", "Couldn't serialize document body, HTTP client closed connection")
+			base.Debugf(base.KeyCRUD, "Couldn't serialize document body, HTTP client closed connection")
 			h.writeStatus(http.StatusServiceUnavailable, "Couldn't serialize document body")
 		} else {
 			base.Warnf(base.KeyAll, "Couldn't serialize JSON for %v : %s", base.UD(value), err)

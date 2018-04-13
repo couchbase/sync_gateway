@@ -116,7 +116,7 @@ func (h *handler) handleGetDoc() error {
 			})
 			return err
 		} else {
-			base.LogTo("HTTP+", "Fallback to non-multipart for open_revs")
+			base.Debugf(base.KeyHTTP, "Fallback to non-multipart for open_revs")
 			h.setHeader("Content-Type", "application/json")
 			h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)

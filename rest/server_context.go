@@ -909,7 +909,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 
 				if err == base.ErrViewTimeoutError {
 					// Timeout error, possibly due to view re-indexing, so retry
-					base.LogTo("Auth", "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
+					base.Infof(base.KeyAuth, "Error calling UpdatePrincipal(): %v.  Will retry in case this is a temporary error", err)
 					return true, err, nil
 				}
 

@@ -173,7 +173,7 @@ func (h *handler) handleOIDCRefresh() error {
 
 	tokenResponse, err := oac.RequestToken(oauth2.GrantTypeRefreshToken, refreshToken)
 	if err != nil {
-		base.LogTo("OIDC", "Unsuccessful token refresh: %v", err)
+		base.Infof(base.KeyOIDC, "Unsuccessful token refresh: %v", err)
 		return base.HTTPErrorf(http.StatusUnauthorized, "Unable to refresh token.")
 		return err
 	}
