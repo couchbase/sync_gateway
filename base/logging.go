@@ -334,7 +334,6 @@ func ParseLogFlags(flags []string) {
 
 	ParseLogFlagsMap(keyMap)
 	logLock.Unlock()
-	Infof(KeyAll, "Enabling logging: %s", flags)
 }
 
 // Parses a map of log keys and enabled bool, probably coming from a argv flags.
