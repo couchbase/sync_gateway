@@ -354,19 +354,17 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 // Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.
+// This method does not directly access any state of c, so it doesn't lock
 func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
+
 	entryTime := time.Now()
 	docID := string(event.Key)
 	docJSON := event.Value
 	changedChannelsCombined := base.Set{}
 
-	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc?
-	if strings.HasPrefix(docID, auth.UserKeyPrefix) {
-		c.processPrincipalDoc(docID, docJSON, true)
-		return
-	} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
-		c.processPrincipalDoc(docID, docJSON, false)
+	if strings.HasPrefix(docID, auth.UserKeyPrefix) || strings.HasPrefix(docID, auth.RoleKeyPrefix) {
+		c.processPrincipalDoc(event)
 		return
 	}
 
@@ -550,7 +548,12 @@ func (c *changeCache) processUnusedSequence(docID string) {
 
 }
 
-func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
+func (c *changeCache) processPrincipalDoc(event sgbucket.FeedEvent) {
+
+	docID := string(event.Key)
+	isUser := strings.HasPrefix(docID, auth.UserKeyPrefix)
+	docJSON := event.Value
+
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
 	// have gaps in it, causing later sequences to get stuck in the queue.
@@ -559,6 +562,29 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		base.WarnR("changeCache: Error unmarshaling doc %q: %v", base.UD(docID), err)
 		return
 	}
+
+	if isUser && princ.GetLastUpdateExpiry() != event.Expiry {
+		// Looks like this is a GetAndTouch change that only changed the expiry, since otherwise
+		// the user's UpdateExpiry field would have been updated to match the doc expiry.
+		// Ignore this DCP event completely.
+		return
+	}
+
+	// If it made past the , we want to call c.onChange() with the docid
+	changedItems := base.SetOf(docID)
+
+	defer func() {
+
+		// Invoke the onChange() callback.
+		// This needs to be done after processEntry() is called to give a chance for the sequence for the principal
+		// doc to get buffered.  Otherwise change listeners will wake up and not see any new changes and go back to waiting.
+		if c.onChange != nil {
+			c.onChange(changedItems)
+		}
+
+	}()
+
+	// If there's changedChannels, add those in too
 	sequence := princ.Sequence()
 	c.lock.RLock()
 	initialSequence := c.initialSequence
@@ -580,10 +606,14 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 	base.LogToR("Cache", "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
+	// Process this entry which will buffer it into the change cache and returned the set of changed channels.
 	changedChannels := c.processEntry(change)
-	if c.onChange != nil && len(changedChannels) > 0 {
-		c.onChange(changedChannels)
-	}
+
+	// Add the changedChannels into the changedItems set
+	changedItems = changedChannels.Union(changedItems)
+
+	// The defer defined above will kick in and call c.OnChange() the docID + changedChannels
+
 }
 
 // Handles a newly-arrived LogEntry.

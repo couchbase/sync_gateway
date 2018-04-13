@@ -97,6 +97,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 // key to determine handling, based on whether the incoming mutation is an internal Sync Gateway document.
 func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool {
 	requiresCheckpointPersistence := true
+
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
 		if strings.HasPrefix(key, auth.UserKeyPrefix) ||
@@ -104,7 +105,6 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
-			listener.Notify(base.SetOf(key))
 		} else if strings.HasPrefix(key, UnusedSequenceKeyPrefix) { // SG unused sequence marker docs
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
@@ -306,6 +306,8 @@ func (waiter *changeWaiter) Wait() uint32 {
 		return WaiterClosed
 	}
 }
+
+
 
 // Returns the current counter value for the waiter's user (and roles).
 // If this value changes, it means the user or roles have been updated.

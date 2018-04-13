@@ -55,30 +55,32 @@ const (
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name               string                  // Database name
-	Bucket             base.Bucket             // Storage
-	BucketSpec         base.BucketSpec         // The BucketSpec
-	BucketLock         sync.RWMutex            // Control Access to the underlying bucket object
-	mutationListener   changeListener          // Listens on server mutation feed (TAP or DCP)
-	sequences          *sequenceAllocator      // Source of new sequence numbers
-	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
-	StartTime          time.Time               // Timestamp when context was instantiated
-	ChangesClientStats Statistics              // Tracks stats of # of changes connections
-	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
-	autoImport         bool                    // Add sync data to new untracked docs?
-	Shadower           *Shadower               // Tracks an external Couchbase bucket
-	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
-	changeCache        ChangeIndex             //
-	EventMgr           *EventManager           // Manages notification events
-	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
-	SequenceHasher     *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
-	SequenceType       SequenceType            // Type of sequences used for this DB (integer or vector clock)
-	Options            DatabaseContextOptions  // Database Context Options
-	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
-	State              uint32                  // The runtime state of the DB from a service perspective
-	ExitChanges        chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
-	OIDCProviders      auth.OIDCProviderMap    // OIDC clients
-	PurgeInterval      int                     // Metadata purge interval, in hours
+	Name                  string                  // Database name
+	Bucket                base.Bucket             // Storage
+	BucketSpec            base.BucketSpec         // The BucketSpec
+	BucketLock            sync.RWMutex            // Control Access to the underlying bucket object
+	mutationListener      changeListener          // Listens on server mutation feed (TAP or DCP)
+	sequences             *sequenceAllocator      // Source of new sequence numbers
+	ChannelMapper         *channels.ChannelMapper // Runs JS 'sync' function
+	StartTime             time.Time               // Timestamp when context was instantiated
+	ChangesClientStats    Statistics              // Tracks stats of # of changes connections
+	RevsLimit             uint32                  // Max depth a document's revision tree can grow to
+	autoImport            bool                    // Add sync data to new untracked docs?
+	Shadower              *Shadower               // Tracks an external Couchbase bucket
+	revisionCache         *RevisionCache          // Cache of recently-accessed doc revisions
+	changeCache           ChangeIndex             //
+	EventMgr              *EventManager           // Manages notification events
+	AllowEmptyPassword    bool                    // Allow empty passwords?  Defaults to false
+	SequenceHasher        *sequenceHasher         // Used to generate and resolve hash values for vector clock sequences
+	SequenceType          SequenceType            // Type of sequences used for this DB (integer or vector clock)
+	Options               DatabaseContextOptions  // Database Context Options
+	AccessLock            sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
+	State                 uint32                  // The runtime state of the DB from a service perspective
+	ExitChanges           chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
+	OIDCProviders         auth.OIDCProviderMap    // OIDC clients
+	PurgeInterval         int                     // Metadata purge interval, in hours
+	UserInactivityTTLDays uint32                  // The number of days users can be inactive before being automatically deleted
+
 }
 
 type DatabaseContextOptions struct {
@@ -517,7 +519,16 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
-	authenticator := auth.NewAuthenticator(context.Bucket, context)
+	authenticatorOptions := &auth.AuthenticatorOptions{}
+	authenticatorOptions.ChannelComputer = context
+
+	if context.UserInactivityTTLDays > 0 {
+		// convert from days -> seconds
+		userInactivityTTLSeconds := time.Hour * time.Duration(24) * time.Duration(context.UserInactivityTTLDays)
+		authenticatorOptions.InactivityExpiryOffset = userInactivityTTLSeconds
+	}
+
+	authenticator := auth.NewAuthenticator(context.Bucket, authenticatorOptions)
 	if context.Options.SessionCookieName != "" {
 		authenticator.SetSessionCookieName(context.Options.SessionCookieName)
 	}

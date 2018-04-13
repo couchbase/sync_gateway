@@ -61,11 +61,12 @@ func init() {
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb
 type CouchbaseBucketGoCB struct {
-	*gocb.Bucket               // the underlying gocb bucket
-	spec         BucketSpec    // keep a copy of the BucketSpec for DCP usage
-	singleOps    chan struct{} // Manages max concurrent single ops (per kv node)
-	bulkOps      chan struct{} // Manages max concurrent bulk ops (per kv node)
-	viewOps      chan struct{} // Manages max concurrent view ops (per kv node)
+	*gocb.Bucket                         // the underlying gocb bucket
+	spec         BucketSpec              // keep a copy of the BucketSpec for DCP usage
+	singleOps    chan struct{}           // Manages max concurrent single ops (per kv node)
+	bulkOps      chan struct{}           // Manages max concurrent bulk ops (per kv node)
+	viewOps      chan struct{}           // Manages max concurrent view ops (per kv node)
+	testCallback sgbucket.TestCallbackFn // Test callback function to help repro CAS retries
 }
 
 type GoCBLogger struct{}
@@ -149,11 +150,11 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	// Define channels to limit the number of concurrent single and bulk operations,
 	// to avoid gocb queue overflow issues
 	bucket = &CouchbaseBucketGoCB{
-		goCBBucket,
-		spec,
-		make(chan struct{}, MaxConcurrentSingleOps*nodeCount),
-		make(chan struct{}, MaxConcurrentBulkOps*nodeCount),
-		make(chan struct{}, MaxConcurrentViewOps*nodeCount),
+		Bucket: goCBBucket,
+		spec: spec,
+		singleOps: make(chan struct{}, MaxConcurrentSingleOps*nodeCount),
+		bulkOps: make(chan struct{}, MaxConcurrentBulkOps*nodeCount),
+		viewOps: make(chan struct{}, MaxConcurrentViewOps*nodeCount),
 	}
 
 	bucket.Bucket.SetViewTimeout(bucket.spec.GetViewQueryTimeout())
@@ -1374,6 +1375,8 @@ func (bucket *CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, 
 
 }
 
+// Update that has the ability to do a retry loop, which can handles retries on CAS failures.
+// TODO: consolidate Update() and WriteUpdate().  It appears that the persist/indexable options for WriteUpdate() are no longer needed.
 func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
 
 	for {
@@ -1394,6 +1397,13 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 				return err
 			}
 			cas = 0 // Key not found error
+		}
+
+		// If the tests have set a testing related callback, then invoke it here.
+		// This is useful for tests that need to update the document "mid-invocation" to trigger CAS retries.
+		testCallBack := bucket.GetTestCallback()
+		if testCallBack != nil {
+			testCallBack()
 		}
 
 		// Invoke callback to get updated value
@@ -1436,6 +1446,14 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 }
 
 func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
+	return bucket.writeUpdateAndMaybeTouch(k, exp, false, callback)
+}
+
+func (bucket *CouchbaseBucketGoCB) WriteUpdateAndTouch(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
+	return bucket.writeUpdateAndMaybeTouch(k, exp, true, callback)
+}
+
+func (bucket *CouchbaseBucketGoCB) writeUpdateAndMaybeTouch(k string, exp uint32, touch bool, callback sgbucket.WriteUpdateFunc) error {
 
 	for {
 		var value []byte
@@ -1445,13 +1463,27 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 
 		// Load the existing value.
 		gocbExpvars.Add("Update_Get", 1)
-		value, cas, err = bucket.GetRaw(k)
+		if touch {
+			// Touch: update the expiry value during the get
+			value, cas, err = bucket.GetAndTouchRaw(k, exp)
+		} else {
+			// Do a normal Get()
+			value, cas, err = bucket.GetRaw(k)
+		}
+
 		if err != nil {
 			if !bucket.IsKeyNotFoundError(err) {
 				// Unexpected error, abort
 				return err
 			}
 			cas = 0 // Key not found error
+		}
+
+		// If the tests have set a testing related callback, then invoke it here.
+		// This is useful for tests that need to update the document "mid-invocation" to trigger CAS retries.
+		testCallBack := bucket.GetTestCallback()
+		if testCallBack != nil {
+			testCallBack()
 		}
 
 		// Invoke callback to get updated value
@@ -1507,6 +1539,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 		}
 	}
 }
+
 
 // WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
 // failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
@@ -2079,6 +2112,7 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sg
 	return feed, err
 }
 
+
 func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
 	return StartDCPFeed(bucket, bucket.spec, args, callback)
 }
@@ -2209,6 +2243,14 @@ func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{
 	} else {
 		return input
 	}
+}
+
+func (bucket *CouchbaseBucketGoCB) SetTestCallback(fn sgbucket.TestCallbackFn) {
+	bucket.testCallback = fn
+}
+
+func (bucket CouchbaseBucketGoCB) GetTestCallback() (fn sgbucket.TestCallbackFn) {
+	return bucket.testCallback
 }
 
 // Applies the viewquery options as specified in the params map to the viewQuery object,

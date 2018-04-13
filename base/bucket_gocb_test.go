@@ -14,15 +14,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"testing"
-
 	"reflect"
+	"testing"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
-	"gopkg.in/couchbase/gocbcore.v7"
 	pkgerrors "github.com/pkg/errors"
+	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 // NOTE: most of these tests are disabled by default and have been renamed to Couchbase*
@@ -464,8 +463,6 @@ func TestIncrCounter(t *testing.T) {
 		t.Errorf("Error incrementing value for existing counter")
 	}
 	assert.Equals(t, retrieval, uint64(2))
-
-
 
 }
 

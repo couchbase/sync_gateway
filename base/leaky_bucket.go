@@ -87,6 +87,9 @@ func (b *LeakyBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc)
 func (b *LeakyBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
+func (b *LeakyBucket) WriteUpdateAndTouch(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
+	return b.bucket.WriteUpdateAndTouch(k, exp, callback)
+}
 func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
 	return b.bucket.SetBulk(entries)
 }
@@ -340,6 +343,14 @@ func (b *LeakyBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uui
 
 func (b *LeakyBucket) SetFirstTimeViewCustomPartialError(val bool) {
 	b.config.FirstTimeViewCustomPartialError = val
+}
+
+func (b *LeakyBucket) SetTestCallback(fn sgbucket.TestCallbackFn) {
+	b.bucket.SetTestCallback(fn)
+}
+
+func (b *LeakyBucket) GetTestCallback() (fn sgbucket.TestCallbackFn) {
+	return b.bucket.GetTestCallback()
 }
 
 // An implementation of a sgbucket tap feed that wraps

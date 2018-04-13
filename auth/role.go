@@ -139,6 +139,15 @@ func (role *roleImpl) SetPreviousChannels(channels ch.TimedSet) {
 	role.PreviousChannels_ = channels
 }
 
+func (role *roleImpl) SetLastUpdateExpiry(exp uint32) {
+	base.Warn("SetLastUpdateExpiry() called for Role, but this is being ignored")
+}
+
+func (role *roleImpl) GetLastUpdateExpiry() (exp uint32) {
+	base.Warn("GetLastUpdateExpiry() called for Role, but this is being ignored")
+	return 0
+}
+
 // Checks whether this role object contains valid data; if not, returns an error.
 func (role *roleImpl) validate() error {
 	if !IsValidPrincipalName(role.Name_) {

@@ -144,6 +144,8 @@ type DbConfig struct {
 	NumIndexReplicasHousekeeping *uint                          `json:"num_index_replicas_housekeeping"`        // Number of GSI index replicas used for housekeeping indexes
 	UseViews                     bool                           `json:"use_views"`                              // Force use of views instead of GSI
 	SendWWWAuthenticateHeader    *bool                          `json:"send_www_authenticate_header,omitempty"` // If false, disables setting of 'WWW-Authenticate' header in 401 responses
+	UserInactivityTTLDays        *uint32                        `json:"user_inactivity_ttl_days,omitempty"`     // The number of days users can be inactive before being automatically deleted
+
 }
 
 type DeprecatedOptions struct {

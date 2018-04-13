@@ -130,8 +130,9 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server
 type CouchbaseBucket struct {
-	*couchbase.Bucket            // the underlying go-couchbase bucket
-	spec              BucketSpec // keep a copy of the BucketSpec for DCP usage
+	*couchbase.Bucket                         // the underlying go-couchbase bucket
+	testCallback      sgbucket.TestCallbackFn // Test callback function to help repro CAS retries
+	spec              BucketSpec              // keep a copy of the BucketSpec for DCP usage
 }
 
 type couchbaseFeedImpl struct {
@@ -229,6 +230,15 @@ func (bucket *CouchbaseBucket) DeleteWithXattr(k string, xattr string) error {
 	return errors.New("DeleteWithXattr not implemented by CouchbaseBucket")
 }
 
+
+func (bucket *CouchbaseBucket) SetTestCallback(fn sgbucket.TestCallbackFn) {
+	bucket.testCallback = fn
+}
+
+func (bucket *CouchbaseBucket) GetTestCallback() (fn sgbucket.TestCallbackFn) {
+	return bucket.testCallback
+}
+
 func (bucket *CouchbaseBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
 	cbCallback := func(current []byte) (updated []byte, opt couchbase.WriteOptions, err error) {
 		updated, walrusOpt, _, err := callback(current)
@@ -236,6 +246,10 @@ func (bucket *CouchbaseBucket) WriteUpdate(k string, exp uint32, callback sgbuck
 		return
 	}
 	return bucket.Bucket.WriteUpdate(k, int(exp), cbCallback)
+}
+
+func (bucket *CouchbaseBucket) WriteUpdateAndTouch(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
+	return fmt.Errorf("WriteUpdateAndTouch() not implemented for CouchbaseBucket")
 }
 
 func (bucket *CouchbaseBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
@@ -459,7 +473,7 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 		return nil, err
 	}
 
-	bucket = &CouchbaseBucket{cbbucket, spec}
+	bucket = &CouchbaseBucket{Bucket: cbbucket, spec: spec}
 
 	if spec.FeedType == TapFeedType {
 		// TAP was removed in Couchbase Server 5.x, so ensure connecting to 4.x, else error.  See SG Issue #2523

@@ -24,6 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
+	"log"
 )
 
 func TestChangesAccessNotifyInteger(t *testing.T) {
@@ -58,17 +59,22 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 			Last_Seq db.SequenceID
 		}
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
+		log.Printf("Posting /db/_changes")
 		changesResponse := it.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+		log.Printf("Finished posting /db/_changes.  Response: %+v", changesResponse)
 		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.Equals(t, len(changes.Results), 3)
 	}()
 
 	// Wait for changes to start.
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Put document that triggers access grant for user, PBS
 	response = it.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"bernard", "accessChannel":["PBS"]}`)
 	assertStatus(t, response, 201)
+
+	err = WaitWithTimeout(&wg, time.Second * 30)
+	assertNoError(t, err, "Timed out waiting for wait group to fire")
 
 	wg.Wait()
 }
