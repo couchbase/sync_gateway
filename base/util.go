@@ -832,6 +832,18 @@ func ConvertToEmptyInterfaceSlice(i interface{}) (result []interface{}, err erro
 
 }
 
+func isMinimumVersion(major, minor, minMajor, minMinor uint64) bool {
+	if major < minMajor {
+		return false
+	}
+
+	if major == minMajor && minor < minMinor {
+		return false
+	}
+
+	return true
+}
+
 var kBackquoteStringRegexp *regexp.Regexp
 
 // Preprocesses a string containing `...`-delimited strings. Converts the backquotes into double-quotes,

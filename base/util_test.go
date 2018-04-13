@@ -291,3 +291,24 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 	assert.True(t, err != nil)
 
 }
+
+// IsMinimumVersion takes (major, minor, minimumMajor, minimumMinor)
+func TestIsMinimumVersion(t *testing.T) {
+
+	// Expected true
+	assertTrue(t, isMinimumVersion(1, 0, 0, 0), "Invalid minimum version check - expected false")
+	assertTrue(t, isMinimumVersion(1, 0, 1, 0), "Invalid minimum version check - expected false")
+	assertTrue(t, isMinimumVersion(2, 5, 2, 5), "Invalid minimum version check - expected false")
+	assertTrue(t, isMinimumVersion(3, 0, 2, 5), "Invalid minimum version check - expected false")
+	assertTrue(t, isMinimumVersion(3, 5, 3, 4), "Invalid minimum version check - expected false")
+	assertTrue(t, isMinimumVersion(5, 5, 4, 4), "Invalid minimum version check - expected false")
+	assertTrue(t, isMinimumVersion(0, 0, 0, 0), "Invalid minimum version check - expected false")
+
+	// Expected false
+	assertTrue(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
+	assertTrue(t, !isMinimumVersion(5, 0, 6, 0), "Invalid minimum version check - expected false")
+	assertTrue(t, !isMinimumVersion(4, 5, 5, 0), "Invalid minimum version check - expected false")
+	assertTrue(t, !isMinimumVersion(5, 0, 5, 1), "Invalid minimum version check - expected false")
+	assertTrue(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
+
+}

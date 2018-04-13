@@ -469,12 +469,23 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// If using a walrus bucket, force use of views
 	useViews := config.UseViews
 	if !useViews && spec.IsWalrusBucket() {
-		base.Warnf(base.KeyAll, "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in your database config to avoid this warning.")
+		base.Warnf(base.KeyAll, "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
 	}
 
 	// Initialize Views or GSI indexes
 	if !useViews {
+
+		// Couchbase Server version must be 5.5 or higher to use GSI
+		gsiSupported, errServerVersion := base.IsMinimumServerVersion(bucket, 5, 5)
+		if errServerVersion != nil {
+			return nil, errServerVersion
+		}
+
+		if !gsiSupported {
+			return nil, errors.New("Couchbase Server version must be 5.5 or higher for Sync Gateway to use GSI.  Upgrade the server, or set 'use_views':true in Sync Gateway's database config.")
+		}
+
 		numReplicas := DefaultNumIndexReplicas
 		numHousekeepingReplicas := DefaultNumIndexReplicas
 		if config.NumIndexReplicas != nil {
