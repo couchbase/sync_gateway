@@ -122,7 +122,7 @@ type DbConfig struct {
 	Users                        map[string]*db.PrincipalConfig `json:"users,omitempty"`                        // Initial user accounts
 	Roles                        map[string]*db.PrincipalConfig `json:"roles,omitempty"`                        // Initial roles
 	RevsLimit                    *uint32                        `json:"revs_limit,omitempty"`                   // Max depth a document's revision tree can grow to
-	ImportDocs                   interface{}                    `json:"import_docs,omitempty"`                  // false, true, or "continuous"
+	AutoImport                   interface{}                    `json:"import_docs,omitempty"`                  // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
 	ImportFilter                 *string                        `json:"import_filter,omitempty"`                // Filter function (import)
 	Shadow                       *ShadowConfig                  `json:"shadow,omitempty"`                       // This is where the ShadowConfig used to be.  If found, it should throw an error
 	EventHandlers                interface{}                    `json:"event_handlers,omitempty"`               // Event handlers (webhook)
@@ -294,6 +294,24 @@ func (dbConfig *DbConfig) setup(name string) error {
 	return err
 }
 
+func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
+
+	autoImport := false
+	switch dbConfig.AutoImport {
+	case nil:
+	case false:
+	case true:
+		autoImport = true
+	case "continuous":
+		autoImport = true
+	default:
+		return false, fmt.Errorf("Unrecognized value for import_docs: %#v.  Must be set to 'continous', true or false, or be omitted entirely", dbConfig.AutoImport)
+	}
+
+	return autoImport, nil
+
+}
+
 func (dbConfig DbConfig) validate() error {
 
 	// if there is a ChannelIndex being used, then the only valid feed type is DCPSHARD
@@ -332,7 +350,12 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 		return err
 	}
 
-	if dbConfig.FeedType == base.TapFeedType && dbConfig.ImportDocs == "continuous" {
+	autoImportEnabled, err := dbConfig.AutoImportEnabled()
+	if err != nil {
+		return err
+	}
+
+	if dbConfig.FeedType == base.TapFeedType && autoImportEnabled == true {
 		return fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import")
 	}
 
