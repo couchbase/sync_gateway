@@ -17,14 +17,8 @@ func getLogFilePath() string {
 	}
 
 	logFilePath := filepath.Join(
-		home,
-		"Library",
-		"Application Support",
-		"sync_gateway",
-		"var",
-		"lib",
-		"sync_gateway",
-		"logs",
+		home, "Library", "Application Support", "Couchbase",
+		"var", "lib", "sync_gateway", "logs",
 	)
 
 	logFilePath, err := filepath.Abs(logFilePath)

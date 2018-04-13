@@ -10,13 +10,8 @@ var defaultLogFilePath = getLogFilePath()
 // getLogFilePath returns the absolute path to place log files into.
 func getLogFilePath() string {
 	logFilePath := filepath.Join(
-		filepath.Separator,
-		"opt",
-		"sync_gateway",
-		"var",
-		"lib",
-		"sync_gateway",
-		"logs",
+		filepath.Separator, "opt", "Couchbase",
+		"var", "lib", "sync_gateway", "logs",
 	)
 
 	logFilePath, err := filepath.Abs(logFilePath)

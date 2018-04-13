@@ -917,3 +917,9 @@ func addPrefixes(format string, logLevel LogLevel, logKey LogKey) string {
 func color(str string, logLevel LogLevel) string {
 	return str
 }
+
+// LogDebugEnabled returns true if either the console should log at debug level,
+// or if the debugLogger is enabled.
+func LogDebugEnabled() bool {
+	return consoleLogger.shouldLog(LevelDebug, KeyAll) || debugLogger.shouldLog()
+}
