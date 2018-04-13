@@ -257,14 +257,14 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 			indexesWg.Add(1)
 			go func(index SGIndex) {
 				defer indexesWg.Done()
-				base.LogTo("Query+", "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
+				base.Debugf(base.KeyQuery, "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
 				queryStatement := replaceSyncTokensQuery(index.readinessQuery, useXattrs)
 				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
 				if queryErr != nil {
 					base.Warn("Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
 				}
-				base.LogTo("Query+", "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
+				base.Debugf(base.KeyQuery, "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
 			}(sgIndex)
 		}
 	}
@@ -290,7 +290,7 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 			return nil
 		}
 		if err == base.ErrViewTimeoutError {
-			base.Logf("Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
+			base.Infof(base.KeyAll, "Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
 		} else {
 			return err
 		}
@@ -305,7 +305,7 @@ func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool)
 
 	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
 	if !ok {
-		base.Warn("Cannot remove obsolete indexes for non-gocb bucket - skipping.")
+		base.Warnf(base.KeyAll, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
 		return
 	}
 

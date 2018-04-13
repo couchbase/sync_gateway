@@ -213,7 +213,7 @@ func (h *handler) invoke(method handlerMethod) error {
 		// to stdout as well as writing back to the socket
 		h.response = NewLoggerTeeResponseWriter(
 			h.response,
-			"HTTP",
+			base.KeyHTTP,
 			h.serialNumber,
 			h.rq,
 		)
@@ -231,9 +231,8 @@ func (h *handler) logRequestLine() {
 		proto = " HTTP/2"
 	}
 
-	base.LogToR("HTTP", " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.UD(base.SanitizeRequestURL(h.rq.URL)), proto, base.UD(h.currentEffectiveUserNameAsUser()))
+	base.Infof(base.KeyHTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.UD(base.SanitizeRequestURL(h.rq.URL)), proto, base.UD(h.currentEffectiveUserNameAsUser()))
 }
-
 
 func (h *handler) logRequestBody() {
 
@@ -246,7 +245,7 @@ func (h *handler) logRequestBody() {
 	h.requestBody = NewTeeReadCloser(
 		h.requestBody,
 		base.NewLoggerWriter(
-			"HTTP",
+			base.KeyHTTP,
 			h.serialNumber,
 			h.rq,
 		),
@@ -267,13 +266,15 @@ func (h *handler) logDuration(realTime bool) {
 		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
 	}
 
-	logKey := "HTTP+"
 	if h.status >= 300 {
-		logKey = "HTTP"
+		base.Warnf(base.KeyHTTP, "#%03d:     --> %d %s  (%.1f ms)",
+			h.serialNumber, h.status, h.statusMessage,
+			float64(duration)/float64(time.Millisecond))
+	} else {
+		base.Infof(base.KeyHTTP, "#%03d:     --> %d %s  (%.1f ms)",
+			h.serialNumber, h.status, h.statusMessage,
+			float64(duration)/float64(time.Millisecond))
 	}
-	base.LogTo(logKey, "#%03d:     --> %d %s  (%.1f ms)",
-		h.serialNumber, h.status, h.statusMessage,
-		float64(duration)/float64(time.Millisecond))
 }
 
 // logStatusWithDuration will log the request status and the duration of the request.
@@ -330,7 +331,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	if userName, password := h.getBasicAuth(); userName != "" {
 		h.user = context.Authenticator().AuthenticateUser(userName, password)
 		if h.user == nil {
-			base.LogfR("HTTP auth failed for username=%q", base.UD(userName))
+			base.Infof(base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
 			if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
 				h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
 			}
@@ -511,7 +512,6 @@ func (h *handler) getBearerToken() string {
 	return ""
 }
 
-
 func (h *handler) currentEffectiveUserName() string {
 	var effectiveName string
 
@@ -554,14 +554,14 @@ func (h *handler) disableResponseCompression() {
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeJSONStatus(status int, value interface{}) {
 	if !h.requestAccepts("application/json") {
-		base.WarnR("Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
+		base.Warnf(base.KeyAll, "Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
 		return
 	}
 
 	jsonOut, err := json.Marshal(value)
 	if err != nil {
-		base.WarnR("Couldn't serialize JSON for %v : %s", base.UD(value), err)
+		base.Warnf(base.KeyAll, "Couldn't serialize JSON for %v : %s", base.UD(value), err)
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
 		return
 	}
@@ -597,7 +597,7 @@ func (h *handler) writeText(value []byte) {
 
 func (h *handler) writeTextStatus(status int, value []byte) {
 	if !h.requestAccepts("text/plain") {
-		base.WarnR("Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
+		base.Warnf(base.KeyAll, "Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only text/plain available")
 		return
 	}
@@ -618,10 +618,10 @@ func (h *handler) addJSON(value interface{}) {
 	if err != nil {
 		clientConnectionError := strings.Contains(err.Error(), "write: broken pipe")
 		if clientConnectionError {
-			base.LogTo("CRUD+", "Couldn't serialize document body, HTTP client closed connection")
+			base.Debugf(base.KeyCRUD, "Couldn't serialize document body, HTTP client closed connection")
 			h.writeStatus(http.StatusServiceUnavailable, "Couldn't serialize document body")
 		} else {
-			base.WarnR("Couldn't serialize JSON for %v : %s", base.UD(value), err)
+			base.Warnf(base.KeyAll, "Couldn't serialize JSON for %v : %s", base.UD(value), err)
 			h.writeStatus(http.StatusInternalServerError, "Couldn't serialize document body")
 		}
 	}

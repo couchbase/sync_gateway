@@ -192,7 +192,7 @@ func (user *userImpl) Authenticate(password string) bool {
 	if user == nil {
 		return false
 	} else if user.OldPasswordHash_ != nil {
-		base.WarnR("User account %q still has pre-beta password hash; need to reset password", base.UD(user.Name_))
+		base.Warnf(base.KeyAll, "User account %q still has pre-beta password hash; need to reset password", base.UD(user.Name_))
 		return false // Password must be reset to use new (bcrypt) password hash
 	} else if user.PasswordHash_ == nil {
 		if password != "" {
@@ -264,7 +264,7 @@ func (user *userImpl) GetRoles() []Role {
 		roles := make([]Role, 0, len(user.RolesSince_))
 		for name := range user.RolesSince_ {
 			role, err := user.auth.GetRole(name)
-			//base.LogToR("Access", "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
+			//base.Infof(base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
 			if err != nil {
 				panic(fmt.Sprintf("Error getting user role %q: %v", name, err))
 			} else if role != nil {

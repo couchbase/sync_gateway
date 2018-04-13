@@ -125,7 +125,7 @@ type JSEventFunction struct {
 
 func NewJSEventFunction(fnSource string) *JSEventFunction {
 
-	base.LogToR("Events", "Creating new JSEventFunction")
+	base.Infof(base.KeyEvents, "Creating new JSEventFunction")
 	return &JSEventFunction{
 		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
 			func(fnSource string) (sgbucket.JSServerTask, error) {
@@ -150,7 +150,7 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	}
 
 	if err != nil {
-		base.WarnR("Error calling function - function processing aborted: %v", err)
+		base.Warnf(base.KeyAll, "Error calling function - function processing aborted: %v", err)
 		return "", err
 	}
 
@@ -175,7 +175,7 @@ func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.WarnR("Event validate function returned non-boolean result %v", result)
+		base.Warnf(base.KeyAll, "Event validate function returned non-boolean result %v", result)
 		return false, errors.New("Validate function returned non-boolean value.")
 	}
 

@@ -53,7 +53,7 @@ func CreateUUID() string {
 	bytes := make([]byte, 16)
 	n, err := rand.Read(bytes)
 	if n < 16 {
-		LogPanicR("Failed to generate random ID: %s", err)
+		Panicf(KeyAll, "Failed to generate random ID: %s", err)
 	}
 	return fmt.Sprintf("%x", bytes)
 }
@@ -335,10 +335,10 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 			if err == nil {
 				err = fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
 			}
-			WarnR("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+			Warnf(KeyAll, "RetryLoop for %v giving up after %v attempts", description, numAttempts)
 			return err, value
 		}
-		LogToR("Debug", "RetryLoop retrying %v after %v ms.", description, sleepMs)
+		Debugf(KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
 
 		<-time.After(time.Millisecond * time.Duration(sleepMs))
 
@@ -408,10 +408,10 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 				if err == nil {
 					err = fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
 				}
-				WarnR("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+				Warnf(KeyAll, "RetryLoop for %v giving up after %v attempts", description, numAttempts)
 				return err, value
 			}
-			LogToR("Debug", "RetryLoop retrying %v after %v ms.", description, sleepMs)
+			Debugf(KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
 
 			<-time.After(time.Millisecond * time.Duration(sleepMs))
 
@@ -497,7 +497,7 @@ func WriteHistogram(expvarMap *expvar.Map, since time.Time, prefix string) {
 
 func WriteHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, prefix string) {
 
-	if LogEnabledExcludingLogStar("PerfStats") {
+	if LogDebugEnabled(KeyAll) {
 		var durationMs int
 		if duration < 1*time.Second {
 			durationMs = int(duration/(100*time.Millisecond)) * 100
@@ -567,7 +567,7 @@ func IsFilePathWritable(fp string) (bool, error) {
 	//Check that the filePath points to a file not a directory
 	fi, err := os.Stat(fp)
 	if err == nil || !os.IsNotExist(err) {
-		WarnR("filePath exists")
+		Warnf(KeyAll, "filePath exists")
 		if fi.Mode().IsDir() {
 			return false, fmt.Errorf("IsFilePathWritable() called but %s is a directory rather than a file", fp)
 		}

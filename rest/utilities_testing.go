@@ -684,8 +684,8 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 	bt.blipContext = blip.NewContext(BlipCBMobileReplication)
 	bt.blipContext.Logger = DefaultBlipLogger(bt.blipContext.ID)
 
-	bt.blipContext.LogMessages = base.LogEnabledExcludingLogStar("WS+")
-	bt.blipContext.LogFrames = base.LogEnabledExcludingLogStar("WS++")
+	bt.blipContext.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
+	bt.blipContext.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
 
 	origin := "http://localhost" // TODO: what should be used here?
 
@@ -1366,8 +1366,14 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 
 }
 
-type StdIoLogger struct{}
+type TestLogger struct {
+	T *testing.T
+}
 
-func (s StdIoLogger) LogToR(key string, format string, args ...interface{}) {
-	base.LogTo(key, format, args...)
+func (l TestLogger) Logf(logLevel base.LogLevel, logKey base.LogKey, format string, args ...interface{}) {
+	l.T.Logf(
+		base.LogLevelName(logLevel)+" "+
+			base.LogKeyName(logKey)+": "+
+			format, args...,
+	)
 }

@@ -145,7 +145,7 @@ func recordCBClientStat(opname, k string, start time.Time, err error) {
 }
 
 func (h *handler) handleExpvar() error {
-	base.LogTo("HTTP", "Recording snapshot of current debug variables.")
+	base.Infof(base.KeyHTTP, "Recording snapshot of current debug variables.")
 	grTracker.recordSnapshot()
 	h.rq.URL.Path = strings.Replace(h.rq.URL.Path, kDebugURLPathPrefix, "/debug/vars", 1)
 	http.DefaultServeMux.ServeHTTP(h.response, h.rq)

@@ -334,7 +334,6 @@ func ParseLogFlags(flags []string) {
 
 	ParseLogFlagsMap(keyMap)
 	logLock.Unlock()
-	Logf("Enabling logging: %s", flags)
 }
 
 // Parses a map of log keys and enabled bool, probably coming from a argv flags.
@@ -456,7 +455,7 @@ func GetCallersName(depth int) string {
 
 // Partial interface for the SGLogger
 type SGLogger interface {
-	LogToR(key string, format string, args ...interface{})
+	Logf(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 }
 
 // Logs a message to the console, but only if the corresponding key is true in LogKeys.
@@ -657,21 +656,21 @@ func UpdateLogger(logFilePath string) {
 	}
 }
 
-// This provides an io.Writer interface around the base.Log API
+// This provides an io.Writer interface around the base.Infof API
 type LoggerWriter struct {
-	LogKey       string        // The log key to log to, eg, "HTTP+"
+	LogKey       LogKey        // The log key to log to, eg, KeyHTTP
 	SerialNumber uint64        // The request ID
 	Request      *http.Request // The request
 }
 
 // Write() method to satisfy the io.Writer interface
 func (lw *LoggerWriter) Write(p []byte) (n int, err error) {
-	LogTo(lw.LogKey, " #%03d: %s %s %s", lw.SerialNumber, lw.Request.Method, SanitizeRequestURL(lw.Request.URL), string(p))
+	Infof(lw.LogKey, " #%03d: %s %s %s", lw.SerialNumber, lw.Request.Method, SanitizeRequestURL(lw.Request.URL), string(p))
 	return len(p), nil
 }
 
 // Create a new LoggerWriter
-func NewLoggerWriter(logKey string, serialNumber uint64, req *http.Request) *LoggerWriter {
+func NewLoggerWriter(logKey LogKey, serialNumber uint64, req *http.Request) *LoggerWriter {
 	return &LoggerWriter{
 		LogKey:       logKey,
 		SerialNumber: serialNumber,
@@ -930,7 +929,49 @@ func addPrefixes(format string, logLevel LogLevel, logKey LogKey) string {
 	return timestampPrefix + logLevelPrefix + logKeyPrefix + format
 }
 
-// color is a stub that can be used in the future to color based on log level
+// color wraps the given string with color based on logLevel
+// This won't work on Windows. Maybe use fatih's colour package?
 func color(str string, logLevel LogLevel) string {
-	return str
+	if !colorEnabled() {
+		return str
+	}
+
+	var color string
+
+	switch logLevel {
+	case LevelError:
+		color = "\033[1;31m"
+	case LevelWarn:
+		color = "\033[1;33m"
+	case LevelInfo:
+		color = "\033[1;34m"
+	case LevelDebug:
+		color = "\033[0;36m"
+	case LevelNone:
+		color = "\033[0;32m"
+	}
+
+	return color + str + "\033[0m"
+}
+
+func colorEnabled() bool {
+	return consoleLogger.ColorEnabled &&
+		os.Getenv("TERM") != "dumb" &&
+		runtime.GOOS != "windows"
+}
+
+// ConsoleLogLevel returns the enabled console log level.
+func ConsoleLogLevel() string {
+	return LogLevelName(*consoleLogger.LogLevel)
+}
+
+// ConsoleLogKeys returns the enabled console log keys.
+func ConsoleLogKeys() []string {
+	return consoleLogger.LogKey.EnabledLogKeys()
+}
+
+// LogDebugEnabled returns true if either the console should log at debug level,
+// or if the debugLogger is enabled.
+func LogDebugEnabled(logKey LogKey) bool {
+	return consoleLogger.shouldLog(LevelDebug, logKey) || debugLogger.shouldLog()
 }

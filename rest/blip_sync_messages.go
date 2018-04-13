@@ -39,7 +39,7 @@ func newSubChangesParams(rq *blip.Message, logger base.SGLogger, zeroSeq db.Sequ
 	if sinceStr, found := rq.Properties["since"]; found {
 		var err error
 		if sinceSequenceId, err = sequenceIDParser(base.ConvertJSONString(sinceStr)); err != nil {
-			logger.LogToR("Sync", "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
+			logger.Logf(base.LevelInfo, base.KeySync, "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
 			return params, err
 		}
 	}
@@ -48,7 +48,7 @@ func newSubChangesParams(rq *blip.Message, logger base.SGLogger, zeroSeq db.Sequ
 	// rq.BodyReader() returns an EOF for a non-existent body, so using rq.Body() here
 	docIDs, err := readDocIDsFromRequest(rq)
 	if err != nil {
-		logger.LogToR("Sync", "%s: Error reading doc IDs on subChanges request: %s", rq, err)
+		logger.Logf(base.LevelInfo, base.KeySync, "%s: Error reading doc IDs on subChanges request: %s", rq, err)
 		return params, err
 	}
 	params._docIDs = docIDs

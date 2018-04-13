@@ -12,9 +12,9 @@ func (c *DatabaseContext) watchDocChanges() {
 	if c.mutationListener.DocChannel == nil {
 		return
 	}
-	base.LogToR("Shadow", "Watching doc changes...")
+	base.Infof(base.KeyShadow, "Watching doc changes...")
 	for event := range c.mutationListener.DocChannel {
-		base.LogToR("Feed", "Got shadow event:%s", base.UD(event.Key))
+		base.Infof(base.KeyFeed, "Got shadow event:%s", base.UD(event.Key))
 		doc, err := unmarshalDocument(string(event.Key), event.Value)
 		if err == nil {
 			if doc.HasValidSyncData(c.writeSequences()) {
@@ -32,7 +32,7 @@ func (c *DatabaseContext) watchDocChanges() {
 
 // Adds sync metadata to a Couchbase document
 func (c *DatabaseContext) assimilate(docid string) {
-	base.LogToR("CRUD", "Importing new doc %q", base.UD(docid))
+	base.Infof(base.KeyCRUD, "Importing new doc %q", base.UD(docid))
 	db := Database{DatabaseContext: c, user: nil}
 	_, err := db.updateDoc(docid, true, 0, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		if doc.HasValidSyncData(c.writeSequences()) {
@@ -44,6 +44,6 @@ func (c *DatabaseContext) assimilate(docid string) {
 		return doc.Body(), nil, nil, nil
 	})
 	if err != nil && err != couchbase.UpdateCancel {
-		base.WarnR("Failed to import new doc %q: %v", base.UD(docid), err)
+		base.Warnf(base.KeyAll, "Failed to import new doc %q: %v", base.UD(docid), err)
 	}
 }

@@ -95,7 +95,7 @@ const nonJSONPrefix = byte(1)
 func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
 	data, _, err := db.Bucket.GetRaw(oldRevisionKey(docid, revid))
 	if base.IsDocNotFoundError(err) {
-		base.LogToR("CRUD+", "No old revision %q / %q", base.UD(docid), revid)
+		base.Debugf(base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revid)
 		err = base.HTTPErrorf(404, "missing")
 	}
 	if data != nil {
@@ -103,13 +103,13 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 		if len(data) > 0 && data[0] == nonJSONPrefix {
 			data = data[1:]
 		}
-		base.LogToR("CRUD+", "Got old revision %q / %q --> %d bytes", base.UD(docid), revid, len(data))
+		base.Debugf(base.KeyCRUD, "Got old revision %q / %q --> %d bytes", base.UD(docid), revid, len(data))
 	}
 	return data, err
 }
 
 func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) error {
-	base.LogToR("CRUD+", "Saving old revision %q / %q (%d bytes)", base.UD(docid), revid, len(body))
+	base.Debugf(base.KeyCRUD, "Saving old revision %q / %q (%d bytes)", base.UD(docid), revid, len(body))
 
 	// Set old revisions to expire after Options.OldRevExpirySeconds.  Defaults to 5 minutes.
 
@@ -124,7 +124,7 @@ func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) 
 
 // Currently only used by unit tests - deletes an archived old revision from the database
 func (db *Database) purgeOldRevisionJSON(docid string, revid string) error {
-	base.LogToR("CRUD+", "Purging old revision backup %q / %q ", base.UD(docid), revid)
+	base.Debugf(base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
 	return db.Bucket.Delete(oldRevisionKey(docid, revid))
 }
 
@@ -158,7 +158,7 @@ func genOfRevID(revid string) int {
 	var generation int
 	n, _ := fmt.Sscanf(revid, "%d-", &generation)
 	if n < 1 || generation < 1 {
-		base.WarnR("genOfRevID unsuccessful for %q", revid)
+		base.Warnf(base.KeyAll, "genOfRevID unsuccessful for %q", revid)
 		return -1
 	}
 	return generation
@@ -173,7 +173,7 @@ func ParseRevID(revid string) (int, string) {
 	var id string
 	n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
 	if n < 1 || generation < 1 {
-		base.WarnR("parseRevID unsuccessful for %q", revid)
+		base.Warnf(base.KeyAll, "parseRevID unsuccessful for %q", revid)
 		return -1, ""
 	}
 	return generation, id

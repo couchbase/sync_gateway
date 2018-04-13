@@ -22,32 +22,62 @@ const (
 	KeyBucket
 	KeyCache
 	KeyChanges
+	KeyChannelIndex
+	KeyChannelStorage
 	KeyCRUD
 	KeyDCP
+	KeyDIndex
 	KeyEvents
 	KeyFeed
+	KeyGoCB
+	KeyHeartbeat
 	KeyHTTP
 	KeyImport
+	KeyIndex
+	KeyMigrate
+	KeyOIDC
+	KeyQuery
 	KeyReplicate
+	KeySequences
+	KeyShadow
+	KeySync
+	KeySyncMsg
+	KeyWebSocket
+	KeyWebSocketFrame
 )
 
 var (
 	logKeyNames = map[LogKey]string{
-		KeyNone:      "",
-		KeyAll:       "*",
-		KeyAccess:    "Access",
-		KeyAttach:    "Attach",
-		KeyAuth:      "Auth",
-		KeyBucket:    "Bucket",
-		KeyCache:     "Cache",
-		KeyChanges:   "Changes",
-		KeyCRUD:      "CRUD",
-		KeyDCP:       "DCP",
-		KeyEvents:    "Events",
-		KeyFeed:      "Feed",
-		KeyHTTP:      "HTTP",
-		KeyImport:    "Import",
-		KeyReplicate: "Replicate",
+		KeyNone:           "",
+		KeyAll:            "*",
+		KeyAccess:         "Access",
+		KeyAttach:         "Attach",
+		KeyAuth:           "Auth",
+		KeyBucket:         "Bucket",
+		KeyCache:          "Cache",
+		KeyChanges:        "Changes",
+		KeyChannelIndex:   "ChannelIndex",
+		KeyChannelStorage: "ChannelStorage",
+		KeyCRUD:           "CRUD",
+		KeyDCP:            "DCP",
+		KeyDIndex:         "DIndex",
+		KeyEvents:         "Events",
+		KeyFeed:           "Feed",
+		KeyGoCB:           "gocb",
+		KeyHeartbeat:      "Heartbeat",
+		KeyHTTP:           "HTTP",
+		KeyImport:         "Import",
+		KeyIndex:          "Index",
+		KeyMigrate:        "Migrate",
+		KeyOIDC:           "OIDC",
+		KeyQuery:          "Query",
+		KeyReplicate:      "Replicate",
+		KeySequences:      "Sequences",
+		KeyShadow:         "Shadow",
+		KeySync:           "Sync",
+		KeySyncMsg:        "SyncMsg",
+		KeyWebSocket:      "WS",
+		KeyWebSocketFrame: "WS+", // backwards compatibility for WS++ logkey
 	}
 
 	// Inverse of the map above. Optimisation for string -> LogKey lookups in ToLogKey
@@ -70,6 +100,11 @@ func (keyMask *LogKey) Disable(logKey LogKey) {
 // Always returns true if KeyAll is enabled in keyMask.
 func (keyMask *LogKey) Enabled(logKey LogKey) bool {
 	return keyMask.enabled(logKey, true)
+}
+
+// Enabled returns true if the given logKey is enabled in keyMask.
+func (keyMask *LogKey) EnabledExcludingWildcard(logKey LogKey) bool {
+	return keyMask.enabled(logKey, false)
 }
 
 // enabled returns true if the given logKey is enabled in keyMask, with an optional wildcard check.

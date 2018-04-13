@@ -1252,7 +1252,7 @@ func TestLegacyImport(t *testing.T) {
 
 	// Now they're visible:
 	doc, err = db.GetDocument("alreadyHere1", DocUnmarshalAll)
-	base.LogfR("doc = %+v", doc)
+	base.Infof(base.KeyAll, "doc = %+v", doc)
 	assert.True(t, doc != nil)
 	assertNoError(t, err, "can't get doc")
 }

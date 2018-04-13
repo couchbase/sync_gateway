@@ -240,8 +240,8 @@ func (h *handler) handleChanges() error {
 			to = fmt.Sprintf("  (to %s)", h.user.Name())
 		}
 
-		base.LogToR("Changes+", "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
-		 	h.rq.URL, feed, options, filter, base.UD(channelsArray), base.UD(docIdsArray), base.UD(to))
+		base.Debugf(base.KeyChanges, "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
+			h.rq.URL, feed, options, filter, base.UD(channelsArray), base.UD(docIdsArray), base.UD(to))
 
 	}
 
@@ -360,7 +360,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		if ok {
 			closeNotify = cn.CloseNotify()
 		} else {
-			base.LogTo("Changes", "simple changes cannot get Close Notifier from ResponseWriter")
+			base.Infof(base.KeyChanges, "simple changes cannot get Close Notifier from ResponseWriter")
 		}
 
 		encoder := json.NewEncoder(h.response)
@@ -387,13 +387,13 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
-				base.LogToR("Heartbeat", "heartbeat written to _changes feed for request received %s", base.UD(h.currentEffectiveUserNameAsUser()))
+				base.Infof(base.KeyHeartbeat, "heartbeat written to _changes feed for request received %s", base.UD(h.currentEffectiveUserNameAsUser()))
 			case <-timeout:
 				message = "OK (timeout)"
 				forceClose = true
 				break loop
 			case <-closeNotify:
-				base.LogToR("Changes", "Connection lost from client: %v", base.UD(h.currentEffectiveUserNameAsUser()))
+				base.Infof(base.KeyChanges, "Connection lost from client: %v", base.UD(h.currentEffectiveUserNameAsUser()))
 				forceClose = true
 				break loop
 			case <-h.db.ExitChanges:
@@ -476,7 +476,7 @@ func generateChanges(database *db.Database, inChannels base.Set, options db.Chan
 		if ok {
 			closeNotify = cn.CloseNotify()
 		} else {
-			base.LogTo("Changes", "continuous changes cannot get Close Notifier from ResponseWriter")
+			base.Infof(base.KeyChanges, "continuous changes cannot get Close Notifier from ResponseWriter")
 		}
 	}
 
@@ -548,7 +548,7 @@ loop:
 						break collect
 					}
 				}
-				base.LogTo("Changes", "sending %d change(s)", len(entries))
+				base.Infof(base.KeyChanges, "sending %d change(s)", len(entries))
 				err = send(entries)
 
 				if err == nil && waiting {
@@ -572,16 +572,16 @@ loop:
 		case <-heartbeat:
 			err = send(nil)
 			if h != nil {
-				base.LogToR("Heartbeat", "heartbeat written to _changes feed for request received %s", base.UD(h.currentEffectiveUserNameAsUser()))
+				base.Infof(base.KeyHeartbeat, "heartbeat written to _changes feed for request received %s", base.UD(h.currentEffectiveUserNameAsUser()))
 			}
 		case <-timeout:
 			forceClose = true
 			break loop
 		case <-closeNotify:
 			if h != nil {
-				base.LogToR("Changes+", "Client connection lost: %v", base.UD(h.currentEffectiveUserNameAsUser()))
+				base.Debugf(base.KeyChanges, "Client connection lost: %v", base.UD(h.currentEffectiveUserNameAsUser()))
 			} else {
-				base.LogTo("Changes+", "Client connection lost")
+				base.Debugf(base.KeyChanges, "Client connection lost")
 			}
 			forceClose = true
 			break loop
@@ -637,10 +637,10 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		h.logStatus(101, "Upgraded to WebSocket protocol")
 		defer func() {
 			if err := conn.Close(); err != nil {
-				base.WarnR("WebSocket connection (#%03d) closed with error %v",
+				base.Warnf(base.KeyAll, "WebSocket connection (#%03d) closed with error %v",
 					h.serialNumber, err)
 			}
-			base.LogTo("HTTP+", "#%03d:     --> WebSocket closed", h.serialNumber)
+			base.Debugf(base.KeyHTTP, "#%03d:     --> WebSocket closed", h.serialNumber)
 		}()
 
 		// Read changes-feed options from an initial incoming WebSocket message in JSON format:

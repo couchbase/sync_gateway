@@ -204,12 +204,12 @@ func (h *handler) handleProfiling() error {
 			defer f.Close()
 			if profile := pprof.Lookup(profileName); profile != nil {
 				profile.WriteTo(f, 0)
-				base.LogfR("Wrote %s profile to %s", profileName, base.UD(params.File))
+				base.Infof(base.KeyAll, "Wrote %s profile to %s", profileName, base.UD(params.File))
 			} else {
 				return base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
 			}
 		} else {
-			base.LogfR("Starting CPU profile to %s ...", base.UD(params.File))
+			base.Infof(base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
 			pprof.StartCPUProfile(f)
 		}
 	} else {
@@ -236,7 +236,7 @@ func (h *handler) handleHeapProfiling() error {
 		return err
 	}
 
-	base.LogfR("Dumping heap profile to %s ...", base.UD(params.File))
+	base.Infof(base.KeyAll, "Dumping heap profile to %s ...", base.UD(params.File))
 	f, err := os.Create(params.File)
 	if err != nil {
 		return err

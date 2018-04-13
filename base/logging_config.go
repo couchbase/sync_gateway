@@ -28,7 +28,7 @@ type LoggingConfig struct {
 
 func (c *LoggingConfig) Init() error {
 	if c == nil {
-		return errors.New("invalid LoggingConfig")
+		return errors.New("nil LoggingConfig")
 	}
 
 	err := validateLogFilePath(&c.LogFilePath)

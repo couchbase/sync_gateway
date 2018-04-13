@@ -77,7 +77,7 @@ func (wh *Webhook) HandleEvent(event Event) {
 		// If filter function is defined, use it to determine whether to post
 		success, err := wh.filter.CallValidateFunction(event)
 		if err != nil {
-			base.WarnR("Error calling webhook filter function: %v", err)
+			base.Warnf(base.KeyAll, "Error calling webhook filter function: %v", err)
 		}
 
 		// If filter returns false, cancel webhook post
@@ -92,7 +92,7 @@ func (wh *Webhook) HandleEvent(event Event) {
 		// for DocumentChangeEvent, post document body
 		jsonOut, err := json.Marshal(event.Doc)
 		if err != nil {
-			base.WarnR("Error marshalling doc for webhook post: %v", err)
+			base.Warnf(base.KeyAll, "Error marshalling doc for webhook post: %v", err)
 			return
 		}
 		contentType = "application/json"
@@ -108,13 +108,13 @@ func (wh *Webhook) HandleEvent(event Event) {
 		//}
 		jsonOut, err := json.Marshal(event.Doc)
 		if err != nil {
-			base.WarnR("Error marshalling doc for webhook post")
+			base.Warnf(base.KeyAll, "Error marshalling doc for webhook post")
 			return
 		}
 		contentType = "application/json"
 		payload = bytes.NewBuffer(jsonOut)
 	default:
-		base.WarnR("Webhook invoked for unsupported event type.")
+		base.Warnf(base.KeyAll, "Webhook invoked for unsupported event type.")
 		return
 	}
 	func() {
@@ -128,12 +128,12 @@ func (wh *Webhook) HandleEvent(event Event) {
 		}()
 
 		if err != nil {
-			base.WarnR("Error attempting to post %s to url %s: %s -- %+v", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
+			base.Warnf(base.KeyAll, "Error attempting to post %s to url %s: %s -- %+v", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
 			return
 		}
 
 		if base.LogEnabled("Events+") {
-			base.LogToR("Events+", "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
+			base.Debugf(base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
 				base.UD(payload), base.UD(wh.SanitizedUrl()), resp.Status)
 		}
 	}()
