@@ -570,6 +570,21 @@ func (c *changeCache) processPrincipalDoc(event sgbucket.FeedEvent) {
 		return
 	}
 
+	// If it made past the , we want to call c.onChange() with the docid
+	changedItems := base.SetOf(docID)
+
+	defer func() {
+
+		// Invoke the onChange() callback.
+		// This needs to be done after processEntry() is called to give a chance for the sequence for the principal
+		// doc to get buffered.  Otherwise change listeners will wake up and not see any new changes and go back to waiting.
+		if c.onChange != nil {
+			c.onChange(changedItems)
+		}
+
+	}()
+
+	// If there's changedChannels, add those in too
 	sequence := princ.Sequence()
 	c.lock.RLock()
 	initialSequence := c.initialSequence
@@ -594,15 +609,10 @@ func (c *changeCache) processPrincipalDoc(event sgbucket.FeedEvent) {
 	// Process this entry which will buffer it into the change cache and returned the set of changed channels.
 	changedChannels := c.processEntry(change)
 
-	// Add the user doc id to the set of changedChannels to get a set of all changed items to callback c.Onchange() with
-	changedItems := changedChannels.Union(base.SetOf(docID))
+	// Add the changedChannels into the changedItems set
+	changedItems = changedChannels.Union(changedItems)
 
-	// Invoke the onChange() callback.
-	// This needs to be done after processEntry() is called to give a chance for the sequence for the principal
-	// doc to get buffered.  Otherwise change listeners will wake up and not see any new changes and go back to waiting.
-	if c.onChange != nil {
-		c.onChange(changedItems)
-	}
+	// The defer defined above will kick in and call c.OnChange() the docID + changedChannels
 
 }
 
