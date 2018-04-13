@@ -65,7 +65,7 @@ type DatabaseContext struct {
 	StartTime          time.Time               // Timestamp when context was instantiated
 	ChangesClientStats Statistics              // Tracks stats of # of changes connections
 	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
-	autoImport         bool                    // Add sync data to new untracked docs?
+	autoImport         bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
 	Shadower           *Shadower               // Tracks an external Couchbase bucket
 	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
 	changeCache        ChangeIndex             //

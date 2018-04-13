@@ -356,14 +356,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
-	var importDocs, autoImport bool
-	switch config.ImportDocs {
+	autoImport := false
+	switch config.AutoImport {
 	case nil:
+	case false:
+	case true:
+		autoImport = true
 	case "continuous":
-		importDocs = true
 		autoImport = true
 	default:
-		return nil, fmt.Errorf("Unrecognized value for ImportDocs: %#v.  Must be set to 'continous' or omitted", config.ImportDocs)
+		return nil, fmt.Errorf("Unrecognized value for import_docs: %#v.  Must be set to 'continous', true or false, or be omitted entirely", config.AutoImport)
 	}
 
 	importOptions := db.ImportOptions{}
@@ -618,13 +620,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
-	// Support for legacy importDocs handling - if xattrs aren't enabled, support a backfill-style import on startup
-	if importDocs && !config.UseXattrs() {
-		db, _ := db.GetDatabase(dbcontext, nil) // TODO: shouldn't this be checking the returned err?
-		if _, err := db.UpdateAllDocChannels(false, true); err != nil {
-			return nil, err
-		}
-	}
 
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit

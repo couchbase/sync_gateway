@@ -709,7 +709,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	rt := RestTester{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
-			ImportDocs: "continuous",
+			AutoImport: "continuous",
 		},
 	}
 	defer rt.Close()
@@ -766,7 +766,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	rt := RestTester{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
-			ImportDocs: "continuous",
+			AutoImport: "continuous",
 		},
 	}
 	defer rt.Close()
@@ -1067,7 +1067,7 @@ func TestDcpBackfill(t *testing.T) {
 	// Create a new context, with import docs enabled, to process backfill
 	newRt := RestTester{
 		DatabaseConfig: &DbConfig{
-			ImportDocs: "continuous",
+			AutoImport: "continuous",
 		},
 		NoFlush: true,
 	}
