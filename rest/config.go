@@ -664,13 +664,13 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 			filename := flag.Arg(i)
 			c, err := ReadServerConfig(runMode, filename)
 			if err != nil {
-				base.Errorf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
+				base.Fatalf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
 			}
 			if config == nil {
 				config = c
 			} else {
 				if err := config.MergeWith(c); err != nil {
-					base.Errorf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
+					base.Fatalf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
 				}
 			}
 		}
@@ -760,8 +760,7 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
 	if err := config.setupAndValidateLogging(*verbose); err != nil {
-		base.Errorf(base.KeyAll, "Error setting up logging: %v", err)
-		os.Exit(1)
+		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
 	}
 
 	//return config
@@ -799,7 +798,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		http2Enabled,
 	)
 	if err != nil {
-		base.Errorf(base.KeyAll, "Failed to start HTTP server on %s: %v", base.UD(addr), err)
+		base.Fatalf(base.KeyAll, "Failed to start HTTP server on %s: %v", base.UD(addr), err)
 	}
 }
 
@@ -856,7 +855,7 @@ func RunServer(config *ServerConfig) {
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Errorf(base.KeyAll, "Error opening database %s: %v", base.UD(dbConfig.Name), err)
+			base.Fatalf(base.KeyAll, "Error opening database %s: %v", base.UD(dbConfig.Name), err)
 		}
 	}
 
