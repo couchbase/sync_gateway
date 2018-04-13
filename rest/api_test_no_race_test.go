@@ -67,7 +67,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	}()
 
 	// Wait for changes to start.
-	time.Sleep(5 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Put document that triggers access grant for user, PBS
 	response = it.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"bernard", "accessChannel":["PBS"]}`)
