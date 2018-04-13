@@ -803,6 +803,18 @@ func init() {
 	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{})
 }
 
+// Panicf logs the given formatted string and args to the error log level and given log key and then panics.
+func Panicf(logKey LogKey, format string, args ...interface{}) {
+	Errorf(logKey, format, args...)
+	panic(fmt.Sprintf(format, args...))
+}
+
+// Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
+func Fatalf(logKey LogKey, format string, args ...interface{}) {
+	Errorf(logKey, format, args...)
+	os.Exit(1)
+}
+
 // Errorf logs the given formatted string and args to the error log level and given log key.
 func Errorf(logKey LogKey, format string, args ...interface{}) {
 	logTo(LevelError, logKey, format, args...)
@@ -839,6 +851,11 @@ func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 
 	// Prepend timestamp, level, log key
 	format = addPrefixes(format, logLevel, logKey)
+
+	// Warn and error logs also append caller name/line numbers.
+	if logLevel <= LevelWarn {
+		format += " -- " + GetCallersName(2)
+	}
 
 	// Perform log redaction, if necessary.
 	args = redact(args)
@@ -916,10 +933,4 @@ func addPrefixes(format string, logLevel LogLevel, logKey LogKey) string {
 // color is a stub that can be used in the future to color based on log level
 func color(str string, logLevel LogLevel) string {
 	return str
-}
-
-// LogDebugEnabled returns true if either the console should log at debug level,
-// or if the debugLogger is enabled.
-func LogDebugEnabled() bool {
-	return consoleLogger.shouldLog(LevelDebug, KeyAll) || debugLogger.shouldLog()
 }
