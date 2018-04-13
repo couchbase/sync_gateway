@@ -538,7 +538,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 	}
 
-	if LogDebugEnabled() {
+	if LogEnabledExcludingLogStar("Bucket") {
 		bucket = &LoggingBucket{bucket: bucket}
 	}
 	return

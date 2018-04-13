@@ -98,8 +98,8 @@ func (h *handler) handleBLIPSync() error {
 	// Create a BLIP context:
 	blipContext := blip.NewContext(BlipCBMobileReplication)
 	blipContext.Logger = DefaultBlipLogger(blipContext.ID)
-	blipContext.LogMessages = base.LogDebugEnabled()
-	blipContext.LogFrames = base.LogDebugEnabled()
+	blipContext.LogMessages = base.LogEnabledExcludingLogStar("WS+")
+	blipContext.LogFrames = base.LogEnabledExcludingLogStar("WS++")
 
 	// Create a BLIP-sync context and register handlers:
 	ctx := blipSyncContext{

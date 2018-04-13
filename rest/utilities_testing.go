@@ -684,8 +684,8 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 	bt.blipContext = blip.NewContext(BlipCBMobileReplication)
 	bt.blipContext.Logger = DefaultBlipLogger(bt.blipContext.ID)
 
-	bt.blipContext.LogMessages = base.LogDebugEnabled()
-	bt.blipContext.LogFrames = base.LogDebugEnabled()
+	bt.blipContext.LogMessages = base.LogEnabledExcludingLogStar("WS+")
+	bt.blipContext.LogFrames = base.LogEnabledExcludingLogStar("WS++")
 
 	origin := "http://localhost" // TODO: what should be used here?
 

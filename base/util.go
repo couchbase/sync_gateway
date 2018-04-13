@@ -497,7 +497,7 @@ func WriteHistogram(expvarMap *expvar.Map, since time.Time, prefix string) {
 
 func WriteHistogramForDuration(expvarMap *expvar.Map, duration time.Duration, prefix string) {
 
-	if LogDebugEnabled() {
+	if LogEnabledExcludingLogStar("PerfStats") {
 		var durationMs int
 		if duration < 1*time.Second {
 			durationMs = int(duration/(100*time.Millisecond)) * 100
