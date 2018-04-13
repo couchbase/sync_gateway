@@ -35,7 +35,7 @@ func (c *LoggingConfig) Init() error {
 		return err
 	}
 
-	consoleLogger, err = NewConsoleLogger(c.Console)
+	consoleLogger, err = NewConsoleLogger(&c.Console)
 	if err != nil {
 		return err
 	}

@@ -24,7 +24,7 @@ type ConsoleLoggerConfig struct {
 }
 
 // NewConsoleLogger returms a new ConsoleLogger from a config.
-func NewConsoleLogger(config ConsoleLoggerConfig) (*ConsoleLogger, error) {
+func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	// validate and set defaults
 	if err := config.init(); err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	return nil
 }
 
-func newConsoleLoggerOrPanic(config ConsoleLoggerConfig) *ConsoleLogger {
+func newConsoleLoggerOrPanic(config *ConsoleLoggerConfig) *ConsoleLogger {
 	logger, err := NewConsoleLogger(config)
 	if err != nil {
 		panic(err)

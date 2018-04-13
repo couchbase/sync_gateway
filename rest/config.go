@@ -513,18 +513,44 @@ func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
 		config.Logging = &base.LoggingConfig{}
 	}
 
-	if err := config.deprecatedConfigLoggingFallback(verbose); err != nil {
-		return err
-	}
+	// populate values from deprecated config options if not set
+	config.deprecatedConfigLoggingFallback(verbose)
 
 	base.SetRedaction(config.Logging.RedactionLevel)
 
-	return config.Logging.Init()
+	if err := config.Logging.Init(); err != nil {
+		return err
+	}
+
+	if config.Logging.DeprecatedDefaultLog == nil {
+		config.Logging.DeprecatedDefaultLog = &base.LogAppenderConfig{}
+	}
+
+	// Set old LogKeys config setting for backwards compatibility.
+	// TODO: Remove when old logging is stripped out.
+	config.Logging.DeprecatedDefaultLog.LogKeys = config.Logging.Console.LogKeys
+
+	// Set old LogFilePath config setting for backwards compatibility.
+	// TODO: Remove when old logging is stripped out.
+	config.Logging.DeprecatedDefaultLog.LogLevel = *base.ToDeprecatedLogLevel(*config.Logging.Console.LogLevel)
+
+	defaultLogger := config.Logging.DeprecatedDefaultLog
+	if err := defaultLogger.ValidateLogAppender(); err != nil {
+		return err
+	}
+	base.CreateRollingLogger(defaultLogger)
+
+	base.EnableLogKey("HTTP")
+	if verbose {
+		base.EnableLogKey("HTTP+")
+	}
+
+	return nil
 }
 
 // deprecatedConfigLoggingFallback will parse the ServerConfig and try to
 // use older logging config options for backwards compatibility.
-func (config *ServerConfig) deprecatedConfigLoggingFallback(verbose bool) error {
+func (config *ServerConfig) deprecatedConfigLoggingFallback(verbose bool) {
 
 	if config.Logging.DeprecatedDefaultLog != nil {
 		// Fall back to the old logging.["default"].LogFilePath option
@@ -559,30 +585,6 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback(verbose bool) error 
 		config.Logging.Console.LogKeys = config.DeprecatedLog
 	}
 
-	if config.Logging.DeprecatedDefaultLog == nil {
-		config.Logging.DeprecatedDefaultLog = &base.LogAppenderConfig{}
-	}
-
-	// Set old LogKeys config setting for backwards compatibility.
-	// TODO: Remove when old logging is stripped out.
-	config.Logging.DeprecatedDefaultLog.LogKeys = config.Logging.Console.LogKeys
-
-	// Set old LogFilePath config setting for backwards compatibility.
-	// TODO: Remove when old logging is stripped out.
-	config.Logging.DeprecatedDefaultLog.LogLevel = *base.ToDeprecatedLogLevel(*config.Logging.Console.LogLevel)
-
-	defaultLogger := config.Logging.DeprecatedDefaultLog
-	if err := defaultLogger.ValidateLogAppender(); err != nil {
-		return err
-	}
-	base.CreateRollingLogger(defaultLogger)
-
-	base.EnableLogKey("HTTP")
-	if verbose {
-		base.EnableLogKey("HTTP+")
-	}
-
-	return nil
 }
 
 func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {

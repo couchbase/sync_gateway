@@ -800,7 +800,7 @@ func init() {
 	// We'll initilise a default consoleLogger so we can still log stuff before/during parsing logging configs.
 	// This maintains consistent formatting (timestamps, levels, etc) in the output,
 	// and allows a single set of logging functions to be used, rather than fmt.Printf()
-	consoleLogger = newConsoleLoggerOrPanic(ConsoleLoggerConfig{})
+	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{})
 }
 
 // Errorf logs the given formatted string and args to the error log level and given log key.
