@@ -498,7 +498,8 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		if spec.Auth != nil {
 			username, _, _ = spec.Auth.GetCredentials()
 		}
-		LogfR("%v Opening Couchbase database %s on <%s>%s as user %q", spec.CouchbaseDriver, MD(spec.BucketName), SD(spec.Server), UD(username))
+				
+		LogfR("%v Opening Couchbase database %s on <%s>%s as user %q", spec.CouchbaseDriver, MD(spec.BucketName), SD(spec.Server), suffix, UD(username))
 
 		switch spec.CouchbaseDriver {
 		case GoCB, GoCBCustomSGTranscoder:
