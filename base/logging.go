@@ -925,12 +925,6 @@ func colorEnabled() bool {
 		runtime.GOOS != "windows"
 }
 
-// LogDebugEnabled returns true if either the console should log at debug level,
-// or if the debugLogger is enabled.
-func LogDebugEnabled() bool {
-	return consoleLogger.shouldLog(LevelDebug, KeyAll) || debugLogger.shouldLog()
-}
-
 // ConsoleLogLevel returns the enabled console log level.
 func ConsoleLogLevel() string {
 	return LogLevelName(*consoleLogger.LogLevel)
@@ -939,4 +933,10 @@ func ConsoleLogLevel() string {
 // ConsoleLogKeys returns the enabled console log keys.
 func ConsoleLogKeys() []string {
 	return consoleLogger.LogKey.EnabledLogKeys()
+}
+
+// LogDebugEnabled returns true if either the console should log at debug level,
+// or if the debugLogger is enabled.
+func LogDebugEnabled(logKey LogKey) bool {
+	return consoleLogger.shouldLog(LevelDebug, logKey) || debugLogger.shouldLog()
 }

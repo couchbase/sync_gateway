@@ -116,7 +116,7 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 		return nil, initErr
 	}
 
-	if LogDebugEnabled() {
+	if LogDebugEnabled(KeyDCP) {
 		Infof(KeyDCP, "Using DCP Logging Receiver.")
 		logRec := &DCPLoggingReceiver{rec: r}
 		return logRec, nil
