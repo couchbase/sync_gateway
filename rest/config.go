@@ -294,6 +294,24 @@ func (dbConfig *DbConfig) setup(name string) error {
 	return err
 }
 
+func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
+
+	autoImport := false
+	switch dbConfig.AutoImport {
+	case nil:
+	case false:
+	case true:
+		autoImport = true
+	case "continuous":
+		autoImport = true
+	default:
+		return false, fmt.Errorf("Unrecognized value for import_docs: %#v.  Must be set to 'continous', true or false, or be omitted entirely", dbConfig.AutoImport)
+	}
+
+	return autoImport, nil
+
+}
+
 func (dbConfig DbConfig) validate() error {
 
 	// if there is a ChannelIndex being used, then the only valid feed type is DCPSHARD
@@ -332,7 +350,12 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 		return err
 	}
 
-	if dbConfig.FeedType == base.TapFeedType && dbConfig.AutoImport == "continuous" {
+	autoImportEnabled, err := dbConfig.AutoImportEnabled()
+	if err != nil {
+		return err
+	}
+
+	if dbConfig.FeedType == base.TapFeedType && autoImportEnabled == true {
 		return fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import")
 	}
 
