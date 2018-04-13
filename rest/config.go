@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -72,7 +73,7 @@ type ServerConfig struct {
 	CORS                           *CORSConfig              `json:",omitempty"`            // Configuration for allowing CORS
 	DeprecatedLog                  []string                 `json:"log,omitempty"`         // Log keywords to enable
 	DeprecatedLogFilePath          *string                  `json:"logFilePath,omitempty"` // Path to log file, if missing write to stderr
-	Logging                        *base.LoggingConfigMap   `json:",omitempty"`            // Configuration for logging with optional log file rotation
+	Logging                        *base.LoggingConfig      `json:",omitempty"`            // Configuration for logging with optional log file rotation
 	Pretty                         bool                     `json:",omitempty"`            // Pretty-print JSON responses?
 	DeploymentID                   *string                  `json:",omitempty"`            // Optional customer/deployment ID for stats reporting
 	StatsReportInterval            *float64                 `json:",omitempty"`            // Optional stats report interval (0 to disable)
@@ -507,24 +508,37 @@ func (config *ServerConfig) setupAndValidateDatabases() error {
 }
 
 func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
-	//If a logging config exists, it must contain a single
-	// appender named "default"
+
 	if config.Logging == nil {
-		if config.DeprecatedLogFilePath != nil {
-			base.UpdateLogger(*config.DeprecatedLogFilePath)
-		}
-	} else {
-		if len(*config.Logging) != 1 || ((*config.Logging)["default"] == nil) {
-			return fmt.Errorf("The logging section must define a single \"default\" appender")
-		}
-		// Validate the default appender configuration
-		if defaultLogger := (*config.Logging)["default"]; defaultLogger != nil {
-			if err := defaultLogger.ValidateLogAppender(); err != nil {
-				return err
-			}
-			base.CreateRollingLogger(defaultLogger)
-		}
+		config.Logging = &base.LoggingConfig{}
 	}
+
+	// populate values from deprecated config options if not set
+	config.deprecatedConfigLoggingFallback(verbose)
+
+	base.SetRedaction(config.Logging.RedactionLevel)
+
+	if err := config.Logging.Init(); err != nil {
+		return err
+	}
+
+	if config.Logging.DeprecatedDefaultLog == nil {
+		config.Logging.DeprecatedDefaultLog = &base.LogAppenderConfig{}
+	}
+
+	// Set old LogKeys config setting for backwards compatibility.
+	// TODO: Remove when old logging is stripped out.
+	config.Logging.DeprecatedDefaultLog.LogKeys = config.Logging.Console.LogKeys
+
+	// Set old LogFilePath config setting for backwards compatibility.
+	// TODO: Remove when old logging is stripped out.
+	config.Logging.DeprecatedDefaultLog.LogLevel = *base.ToDeprecatedLogLevel(*config.Logging.Console.LogLevel)
+
+	defaultLogger := config.Logging.DeprecatedDefaultLog
+	if err := defaultLogger.ValidateLogAppender(); err != nil {
+		return err
+	}
+	base.CreateRollingLogger(defaultLogger)
 
 	base.EnableLogKey("HTTP")
 	if verbose {
@@ -532,6 +546,45 @@ func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
 	}
 
 	return nil
+}
+
+// deprecatedConfigLoggingFallback will parse the ServerConfig and try to
+// use older logging config options for backwards compatibility.
+func (config *ServerConfig) deprecatedConfigLoggingFallback(verbose bool) {
+
+	if config.Logging.DeprecatedDefaultLog != nil {
+		// Fall back to the old logging.["default"].LogFilePath option
+		if config.Logging.LogFilePath == "" && config.Logging.DeprecatedDefaultLog.LogFilePath != nil {
+			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogFilePath. Use logging.logFilePath instead.")
+			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
+			config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
+		}
+
+		// Fall back to the old logging.["default"].LogKeys option
+		if len(config.Logging.Console.LogKeys) == 0 && len(config.Logging.DeprecatedDefaultLog.LogKeys) > 0 {
+			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogKeys. Use logging.console.logKeys instead.")
+			config.Logging.Console.LogKeys = config.Logging.DeprecatedDefaultLog.LogKeys
+		}
+
+		// Fall back to the old logging.["default"].LogLevel option
+		if config.Logging.Console.LogLevel == nil && config.Logging.DeprecatedDefaultLog.LogLevel != 0 {
+			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogLevel. Use logging.console.logLevel instead.")
+			config.Logging.Console.LogLevel = base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
+		}
+	}
+
+	// Fall back to the old LogFilePath option
+	if config.Logging.LogFilePath == "" && config.DeprecatedLogFilePath != nil {
+		base.Warnf(base.KeyAll, "Using deprecated config option: logFilePath. Use logging.logFilePath instead.")
+		config.Logging.LogFilePath = *config.DeprecatedLogFilePath
+	}
+
+	// Fall back to the old Log option
+	if config.Logging.Console.LogKeys == nil && len(config.DeprecatedLog) > 0 {
+		base.Warnf(base.KeyAll, "Using deprecated config option: log. Use logging.console.logKeys instead.")
+		config.Logging.Console.LogKeys = config.DeprecatedLog
+	}
+
 }
 
 func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {

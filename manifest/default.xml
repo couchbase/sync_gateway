@@ -83,7 +83,7 @@
 
   <project name="npipe" path="godeps/src/github.com/natefinch/npipe" remote="natefinch" revision="0938d701e50e580f5925c773055eb6d6b32a0cbc"/>
 
-  <project name="lumberjack" path="godeps/src/github.com/natefinch/lumberjack" remote="natefinch" revision="dd45e6a67c53f673bb49ca8a001fd3a63ceb640e"/>
+  <project name="lumberjack" path="godeps/src/github.com/natefinch/lumberjack" remote="natefinch" revision="aee4629129445bbdfb69aa565537dcfa16544311"/>
 
   <project name="otto" path="godeps/src/github.com/robertkrimen/otto" remote="couchbasedeps" revision="a813c59b1b4471ff7ecd3b533bac2f7e7d178784"/>
 

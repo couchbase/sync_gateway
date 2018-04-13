@@ -78,7 +78,7 @@ func (l *RedactionLevel) UnmarshalText(text []byte) error {
 	case "full":
 		*l = RedactFull
 	default:
-		return fmt.Errorf("unrecognized level: %v", string(text))
+		return fmt.Errorf("unrecognized redaction level: %q", text)
 	}
 	return nil
 }

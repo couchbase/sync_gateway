@@ -227,7 +227,7 @@ func init() {
 	logNoTime = false
 }
 
-func LogLevel() int {
+func GetLogLevel() int {
 	return logLevel
 }
 
@@ -235,6 +235,38 @@ func SetLogLevel(level int) {
 	logLock.Lock()
 	defer logLock.Unlock()
 	logLevel = level
+}
+
+// For transforming a new log level to the old type.
+func ToDeprecatedLogLevel(logLevel LogLevel) *Level {
+	var deprecatedLogLevel Level
+	switch logLevel {
+	case LevelDebug:
+		deprecatedLogLevel = DebugLevel
+	case LevelInfo:
+		deprecatedLogLevel = InfoLevel
+	case LevelWarn:
+		deprecatedLogLevel = WarnLevel
+	case LevelError:
+		deprecatedLogLevel = ErrorLevel
+	}
+	return &deprecatedLogLevel
+}
+
+// For transforming an old log level to the new type.
+func ToLogLevel(deprecatedLogLevel Level) *LogLevel {
+	var newLogLevel LogLevel
+	switch deprecatedLogLevel {
+	case DebugLevel:
+		newLogLevel.Set(LevelDebug)
+	case InfoLevel:
+		newLogLevel.Set(LevelInfo)
+	case WarnLevel:
+		newLogLevel.Set(LevelWarn)
+	case ErrorLevel:
+		newLogLevel.Set(LevelError)
+	}
+	return &newLogLevel
 }
 
 // Disables ANSI color in log output.
@@ -651,7 +683,6 @@ func CreateRollingLogger(logConfig *LogAppenderConfig) {
 	if logConfig != nil {
 		SetLogLevel(logConfig.LogLevel.sgLevel())
 		ParseLogFlags(logConfig.LogKeys)
-		SetRedaction(logConfig.RedactionLevel)
 
 		if logConfig.LogFilePath == nil {
 			return
@@ -754,4 +785,152 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 
 	return formatWithContextID, params
 
+}
+
+// *************************************************************************
+//   2018-04-10: New logging below. Above code is to be removed/cleaned up
+// *************************************************************************
+
+var (
+	consoleLogger                                    *ConsoleLogger
+	debugLogger, infoLogger, warnLogger, errorLogger *FileLogger
+)
+
+func init() {
+	// We'll initilise a default consoleLogger so we can still log stuff before/during parsing logging configs.
+	// This maintains consistent formatting (timestamps, levels, etc) in the output,
+	// and allows a single set of logging functions to be used, rather than fmt.Printf()
+	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{})
+}
+
+// Panicf logs the given formatted string and args to the error log level and given log key and then panics.
+func Panicf(logKey LogKey, format string, args ...interface{}) {
+	Errorf(logKey, format, args...)
+	panic(fmt.Sprintf(format, args...))
+}
+
+// Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
+func Fatalf(logKey LogKey, format string, args ...interface{}) {
+	Errorf(logKey, format, args...)
+	os.Exit(1)
+}
+
+// Errorf logs the given formatted string and args to the error log level and given log key.
+func Errorf(logKey LogKey, format string, args ...interface{}) {
+	logTo(LevelError, logKey, format, args...)
+}
+
+// Warnf logs the given formatted string and args to the warn log level and given log key.
+func Warnf(logKey LogKey, format string, args ...interface{}) {
+	logTo(LevelWarn, logKey, format, args...)
+}
+
+// Infof logs the given formatted string and args to the info log level and given log key.
+func Infof(logKey LogKey, format string, args ...interface{}) {
+	logTo(LevelInfo, logKey, format, args...)
+}
+
+// Debugf logs the given formatted string and args to the debug log level with an optional log key.
+func Debugf(logKey LogKey, format string, args ...interface{}) {
+	logTo(LevelDebug, logKey, format, args...)
+}
+
+func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
+	shouldLogError := errorLogger.shouldLog()
+	shouldLogWarn := warnLogger.shouldLog()
+	shouldLogInfo := infoLogger.shouldLog()
+	shouldLogDebug := debugLogger.shouldLog()
+
+	shouldLog := shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug
+
+	// exit early if we aren't going to log anything
+	if !shouldLog || logLevel <= LevelNone {
+		return
+	}
+
+	// Prepend timestamp, level, log key
+	format = addPrefixes(format, logLevel, logKey)
+
+	// Warn and error logs also append caller name/line numbers.
+	if logLevel <= LevelWarn {
+		format += " -- " + GetCallersName(2)
+	}
+
+	// Perform log redaction, if necessary.
+	args = redact(args)
+
+	if shouldLogConsole {
+		consoleLogger.logger.Printf(color(format, logLevel), args...)
+	}
+
+	switch logLevel {
+	case LevelError:
+		if shouldLogError {
+			errorLogger.logger.Printf(format, args...)
+		}
+		fallthrough
+	case LevelWarn:
+		if shouldLogWarn {
+			warnLogger.logger.Printf(format, args...)
+		}
+		fallthrough
+	case LevelInfo:
+		if shouldLogInfo {
+			infoLogger.logger.Printf(format, args...)
+		}
+		fallthrough
+	case LevelDebug:
+		if shouldLogDebug {
+			debugLogger.logger.Printf(format, args...)
+		}
+	}
+}
+
+// Broadcastf will print the same log to ALL outputs, ignoring logLevel and logKey settings.
+// This can be useful for printing an indicator of app restarts, version numbers, etc. but MUST be used sparingly.
+func Broadcastf(format string, args ...interface{}) {
+	format = addPrefixes(format, LevelNone, KeyNone)
+	if consoleLogger.logger != nil {
+		consoleLogger.logger.Printf(color(format, LevelNone), args...)
+	}
+	if errorLogger.shouldLog() {
+		errorLogger.logger.Printf(format, args...)
+	}
+	if warnLogger.shouldLog() {
+		warnLogger.logger.Printf(format, args...)
+	}
+	if infoLogger.shouldLog() {
+		infoLogger.logger.Printf(format, args...)
+	}
+	if debugLogger.shouldLog() {
+		debugLogger.logger.Printf(format, args...)
+	}
+}
+
+// addPrefixes will modify the format string to add timestamps, log level, and other common prefixes.
+func addPrefixes(format string, logLevel LogLevel, logKey LogKey) string {
+	timestampPrefix := time.Now().Format(ISO8601Format) + " "
+
+	var logLevelPrefix string
+	if logLevel > LevelNone {
+		logLevelPrefix = "[" + logLevelNamePrint(logLevel) + "] "
+	}
+
+	var logKeyPrefix string
+	if logKey > KeyNone && logKey != KeyAll {
+		logKeyName := LogKeyName(logKey)
+		// Append "+" to logKeys at debug level (for backwards compatibility)
+		if logLevel == LevelDebug {
+			logKeyName += "+"
+		}
+		logKeyPrefix = logKeyName + ": "
+	}
+
+	return timestampPrefix + logLevelPrefix + logKeyPrefix + format
+}
+
+// color is a stub that can be used in the future to color based on log level
+func color(str string, logLevel LogLevel) string {
+	return str
 }
