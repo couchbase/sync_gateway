@@ -14,16 +14,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"testing"
-
 	"reflect"
+	"testing"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
-	"time"
 )
 
 // NOTE: most of these tests are disabled by default and have been renamed to Couchbase*
