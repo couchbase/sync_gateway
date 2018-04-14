@@ -610,7 +610,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	rt := RestTester{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
-			ImportDocs: "continuous",
+			AutoImport: "continuous",
 		},
 	}
 	defer rt.Close()
