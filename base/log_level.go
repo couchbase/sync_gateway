@@ -20,13 +20,15 @@ const (
 	LevelInfo
 	// LevelDebug enables all logging.
 	LevelDebug
+	// LevelStats is a pseudo log level used to log stats to file
+	LevelStats
 
 	levelCount
 )
 
 var (
-	logLevelNames      = []string{"none", "error", "warn", "info", "debug"}
-	logLevelNamesPrint = []string{"NON", "ERR", "WRN", "INF", "DBG"}
+	logLevelNames      = []string{"none", "error", "warn", "info", "debug", "stats"}
+	logLevelNamesPrint = []string{"NON", "ERR", "WRN", "INF", "DBG", "STS"}
 )
 
 func (l *LogLevel) Set(newLevel LogLevel) {

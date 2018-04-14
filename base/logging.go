@@ -792,7 +792,7 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 
 var (
 	consoleLogger                                    *ConsoleLogger
-	debugLogger, infoLogger, warnLogger, errorLogger *FileLogger
+	debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
 )
 
 func init() {
@@ -834,14 +834,20 @@ func Debugf(logKey LogKey, format string, args ...interface{}) {
 	logTo(LevelDebug, logKey, format, args...)
 }
 
+// Statsf logs the given formatted string and args to the stats pseudo log level with an optional log key.
+func Statsf(logKey LogKey, format string, args ...interface{}) {
+	logTo(LevelStats, logKey, format, args...)
+}
+
 func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
 	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
 	shouldLogError := errorLogger.shouldLog()
 	shouldLogWarn := warnLogger.shouldLog()
 	shouldLogInfo := infoLogger.shouldLog()
 	shouldLogDebug := debugLogger.shouldLog()
+	shouldLogStats := statsLogger.shouldLog()
 
-	shouldLog := shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug
+	shouldLog := shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug || shouldLogStats
 
 	// exit early if we aren't going to log anything
 	if !shouldLog || logLevel <= LevelNone {
@@ -882,6 +888,10 @@ func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 	case LevelDebug:
 		if shouldLogDebug {
 			debugLogger.logger.Printf(format, args...)
+		}
+	case LevelStats:
+		if shouldLogStats {
+			statsLogger.logger.Printf(format, args...)
 		}
 	}
 }

@@ -12,6 +12,7 @@ const (
 	warnMinAge  = 90
 	infoMinAge  = 3
 	debugMinAge = 1
+	statsMinAge = 3 //TODO test and adjust
 )
 
 type LoggingConfig struct {
@@ -22,6 +23,7 @@ type LoggingConfig struct {
 	Warn           FileLoggerConfig    `json:",omitempty"` // Warn log file output
 	Info           FileLoggerConfig    `json:",omitempty"` // Info log file output
 	Debug          FileLoggerConfig    `json:",omitempty"` // Debug log file output
+	Stats          FileLoggerConfig    `json:",omitempty"` // Stats log file output
 
 	DeprecatedDefaultLog *LogAppenderConfig `json:"default,omitempty"` // Deprecated "default" logging option.
 }
@@ -57,6 +59,11 @@ func (c *LoggingConfig) Init() error {
 	}
 
 	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, c.LogFilePath, debugMinAge)
+	if err != nil {
+		return err
+	}
+
+	statsLogger, err = NewFileLogger(c.Stats, LevelStats, c.LogFilePath, statsMinAge)
 	if err != nil {
 		return err
 	}
