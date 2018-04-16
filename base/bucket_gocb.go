@@ -46,6 +46,9 @@ const (
 	// numNodesPersistTo.  In our case, we only want to block until it's durable on the node we're writing to,
 	// so this is set to 1
 	numNodesPersistTo = uint(1)
+
+	xattrMacroCas         = "cas"
+	xattrMacroValueCrc32c = "value_crc32c"
 )
 
 var recoverableGoCBErrors = map[string]struct{}{
@@ -1021,7 +1024,8 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
-	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
+	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
+	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -1035,9 +1039,10 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 			// TODO: Once that's fixed, need to wrap w/ retry handling
 			gocbExpvars.Add("WriteCasWithXattr_Insert", 1)
 			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc, 0, exp).
-				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
-				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
-				UpsertEx("", v, gocb.SubdocFlagNone).                                                         // Update the document body
+				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                               // Update the xattr
+				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros).               // Stamp the cas on the xattr
+				UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the body hash on the xattr
+				UpsertEx("", v, gocb.SubdocFlagNone).                                                                       // Update the document body
 				Execute()
 			if err != nil {
 				shouldRetry = isRecoverableGoCBError(err)
@@ -1052,9 +1057,10 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 		if v != nil {
 			// Have value and xattr value - update both
 			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, gocb.Cas(cas), exp).
-				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
-				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
-				UpsertEx("", v, gocb.SubdocFlagNone).                                                         // Update the document body
+				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                               // Update the xattr
+				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros).               // Stamp the cas on the xattr
+				UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the body hash on the xattr
+				UpsertEx("", v, gocb.SubdocFlagNone).                                                                       // Update the document body
 				Execute()
 			if err != nil {
 				shouldRetry = isRecoverableGoCBError(err)
@@ -1064,8 +1070,9 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 		} else {
 			// Update xattr only
 			docFragment, err := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), exp).
-				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                 // Update the xattr
-				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                               // Update the xattr
+				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros).               // Stamp the cas on the xattr
+				UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the body hash on the xattr
 				Execute()
 			if err != nil {
 				shouldRetry = isRecoverableGoCBError(err)
@@ -1100,7 +1107,8 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
-	xattrCasProperty := fmt.Sprintf("%s.cas", xattrKey)
+	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
+	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		var mutateFlag gocb.SubdocDocFlag
@@ -1118,8 +1126,9 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		}
 
 		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), exp).
-			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
-			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                              // Update the xattr
+			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros).              // Stamp the cas on the xattr
+			UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the body hash on the xattr
 		if deleteBody {
 			builder.RemoveEx("", gocb.SubdocFlagNone) // Delete the document body
 		}

@@ -404,7 +404,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	// Import handling.
 	if c.context.UseXattrs() {
 		// If this isn't an SG write, we shouldn't attempt to cache.  Import if this node is configured for import, otherwise ignore.
-		if syncData == nil || !syncData.IsSGWrite(event.Cas) {
+		if syncData == nil || !syncData.IsSGWrite(event.Cas, rawBody) {
 			if c.context.autoImport {
 				// If syncData is nil, or if this was not an SG write, attempt to import
 				isDelete := event.Opcode == sgbucket.FeedOpDeletion

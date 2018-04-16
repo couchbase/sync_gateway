@@ -122,7 +122,7 @@ type DbConfig struct {
 	Users                        map[string]*db.PrincipalConfig `json:"users,omitempty"`                        // Initial user accounts
 	Roles                        map[string]*db.PrincipalConfig `json:"roles,omitempty"`                        // Initial roles
 	RevsLimit                    *uint32                        `json:"revs_limit,omitempty"`                   // Max depth a document's revision tree can grow to
-	ImportDocs                   interface{}                    `json:"import_docs,omitempty"`                  // false, true, or "continuous"
+	AutoImport                   interface{}                    `json:"import_docs,omitempty"`                  // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
 	ImportFilter                 *string                        `json:"import_filter,omitempty"`                // Filter function (import)
 	Shadow                       *ShadowConfig                  `json:"shadow,omitempty"`                       // This is where the ShadowConfig used to be.  If found, it should throw an error
 	EventHandlers                interface{}                    `json:"event_handlers,omitempty"`               // Event handlers (webhook)
@@ -294,6 +294,24 @@ func (dbConfig *DbConfig) setup(name string) error {
 	return err
 }
 
+func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
+
+	autoImport := false
+	switch dbConfig.AutoImport {
+	case nil:
+	case false:
+	case true:
+		autoImport = true
+	case "continuous":
+		autoImport = true
+	default:
+		return false, fmt.Errorf("Unrecognized value for import_docs: %#v.  Must be set to 'continous', true or false, or be omitted entirely", dbConfig.AutoImport)
+	}
+
+	return autoImport, nil
+
+}
+
 func (dbConfig DbConfig) validate() error {
 
 	// if there is a ChannelIndex being used, then the only valid feed type is DCPSHARD
@@ -332,7 +350,12 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 		return err
 	}
 
-	if dbConfig.FeedType == base.TapFeedType && dbConfig.ImportDocs == "continuous" {
+	autoImportEnabled, err := dbConfig.AutoImportEnabled()
+	if err != nil {
+		return err
+	}
+
+	if dbConfig.FeedType == base.TapFeedType && autoImportEnabled == true {
 		return fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import")
 	}
 
@@ -664,13 +687,13 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 			filename := flag.Arg(i)
 			c, err := ReadServerConfig(runMode, filename)
 			if err != nil {
-				base.Errorf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
+				base.Fatalf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
 			}
 			if config == nil {
 				config = c
 			} else {
 				if err := config.MergeWith(c); err != nil {
-					base.Errorf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
+					base.Fatalf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
 				}
 			}
 		}
@@ -760,8 +783,7 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
 	if err := config.setupAndValidateLogging(*verbose); err != nil {
-		base.Errorf(base.KeyAll, "Error setting up logging: %v", err)
-		os.Exit(1)
+		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
 	}
 
 	//return config
@@ -799,7 +821,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		http2Enabled,
 	)
 	if err != nil {
-		base.Errorf(base.KeyAll, "Failed to start HTTP server on %s: %v", base.UD(addr), err)
+		base.Fatalf(base.KeyAll, "Failed to start HTTP server on %s: %v", base.UD(addr), err)
 	}
 }
 
@@ -856,7 +878,7 @@ func RunServer(config *ServerConfig) {
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Errorf(base.KeyAll, "Error opening database %s: %v", base.UD(dbConfig.Name), err)
+			base.Fatalf(base.KeyAll, "Error opening database %s: %v", base.UD(dbConfig.Name), err)
 		}
 	}
 

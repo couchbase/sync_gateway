@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
@@ -491,6 +492,192 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")
 }
 
+// Test scenario where another actor updates a different xattr on a document.  Sync Gateway
+// should detect and not import/create new revision during read-triggered import
+func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// 1. Create doc via the SDK
+	mobileKey := "TestImportMultiActorUpdate"
+	mobileBody := make(map[string]interface{})
+	mobileBody["channels"] = "ABC"
+	_, err := bucket.Add(mobileKey, 0, mobileBody)
+	assertNoError(t, err, "Error writing SDK doc")
+
+	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
+	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	assert.Equals(t, response.Code, 200)
+	// Extract rev from response for comparison with second GET below
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revId, ok := body["_rev"].(string)
+	assertTrue(t, ok, "No rev included in response")
+
+	// Go get the cas for the doc to use for update
+	_, cas, getErr := bucket.GetRaw(mobileKey)
+	assertNoError(t, getErr, "Error retrieving cas for multi-actor document")
+
+	// Modify the document via the SDK to add a new, non-mobile xattr
+	xattrVal := make(map[string]interface{})
+	xattrVal["actor"] = "not mobile"
+	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
+	assertTrue(t, ok, "Unable to cast bucket to gocb bucket")
+	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
+		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
+		Execute()
+	assertNoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
+
+	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
+	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	assert.Equals(t, response.Code, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	newRevId := body["_rev"].(string)
+	log.Printf("Retrieved via Sync Gateway after non-mobile update, revId:%v", newRevId)
+	assert.Equals(t, newRevId, revId)
+}
+
+// Test scenario where another actor updates a different xattr on a document.  Sync Gateway
+// should detect and not import/create new revision during write-triggered import
+func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// 1. Create doc via the SDK
+	mobileKey := "TestImportMultiActorUpdate"
+	mobileBody := make(map[string]interface{})
+	mobileBody["channels"] = "ABC"
+	_, err := bucket.Add(mobileKey, 0, mobileBody)
+	assertNoError(t, err, "Error writing SDK doc")
+
+	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
+	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	assert.Equals(t, response.Code, 200)
+	// Extract rev from response for comparison with second GET below
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revId, ok := body["_rev"].(string)
+	assertTrue(t, ok, "No rev included in response")
+
+	// Go get the cas for the doc to use for update
+	_, cas, getErr := bucket.GetRaw(mobileKey)
+	assertNoError(t, getErr, "Error retrieving cas for multi-actor document")
+
+	// Modify the document via the SDK to add a new, non-mobile xattr
+	xattrVal := make(map[string]interface{})
+	xattrVal["actor"] = "not mobile"
+	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
+	assertTrue(t, ok, "Unable to cast bucket to gocb bucket")
+	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
+		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
+		Execute()
+	assertNoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
+
+	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
+	// rev should have generation 2.
+	putResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?rev=%s", mobileKey, revId), `{"updated":true}`)
+	assert.Equals(t, putResponse.Code, 201)
+	json.Unmarshal(putResponse.Body.Bytes(), &body)
+	log.Printf("Put response details: %s", putResponse.Body.Bytes())
+	newRevId, ok := body["rev"].(string)
+	assertTrue(t, ok, "Unable to cast rev to string")
+	log.Printf("Retrieved via Sync Gateway PUT after non-mobile update, revId:%v", newRevId)
+	assert.Equals(t, newRevId, "2-04bb60e2d65acedb2a846daa0ce882ea")
+}
+
+// Test scenario where another actor updates a different xattr on a document.  Sync Gateway
+// should detect and not import/create new revision during feed-based import
+func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &DbConfig{
+			AutoImport: "continuous",
+		},
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// Create doc via the SDK
+	mobileKey := "TestImportMultiActorFeed"
+	mobileBody := make(map[string]interface{})
+	mobileBody["channels"] = "ABC"
+	_, err := bucket.Add(mobileKey, 0, mobileBody)
+	assertNoError(t, err, "Error writing SDK doc")
+
+	// Attempt to get the document via Sync Gateway.  Guarantees initial import is complete
+	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	assert.Equals(t, response.Code, 200)
+	// Extract rev from response for comparison with second GET below
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revId, ok := body["_rev"].(string)
+	assertTrue(t, ok, "No rev included in response")
+
+	// Go get the cas for the doc to use for update
+	_, cas, getErr := bucket.GetRaw(mobileKey)
+	assertNoError(t, getErr, "Error retrieving cas for multi-actor document")
+
+	// Check expvars before update
+	crcMatchesBefore, _ := base.GetExpvarAsInt("syncGateway_import", "crc32c_match_count")
+	crcMismatchesBefore, _ := base.GetExpvarAsInt("syncGateway_import", "crc32c_mismatch_count")
+
+	// Modify the document via the SDK to add a new, non-mobile xattr
+	xattrVal := make(map[string]interface{})
+	xattrVal["actor"] = "not mobile"
+	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
+	assertTrue(t, ok, "Unable to cast bucket to gocb bucket")
+	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
+		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
+		Execute()
+	assertNoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
+
+	// Wait until crc match count changes
+	var crcMatchesAfter, crcMismatchesAfter int
+	for i := 0; i < 20; i++ {
+		crcMatchesAfter, _ = base.GetExpvarAsInt("syncGateway_import", "crc32c_match_count")
+		crcMismatchesAfter, _ = base.GetExpvarAsInt("syncGateway_import", "crc32c_mismatch_count")
+		// if they changed, import has been processed
+		if crcMatchesAfter > crcMatchesBefore || crcMismatchesAfter > crcMismatchesAfter {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Expect one crcMatch, no mismatches
+	assert.True(t, crcMatchesAfter-crcMatchesBefore == 1)
+	assert.True(t, crcMismatchesAfter-crcMismatchesBefore == 0)
+
+	// Get the doc again, validate rev hasn't changed
+	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	assert.Equals(t, response.Code, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	newRevId := body["_rev"].(string)
+	log.Printf("Retrieved via Sync Gateway after non-mobile update, revId:%v", newRevId)
+	assert.Equals(t, newRevId, revId)
+
+}
+
 // Structs for manual rev storage validation
 type treeDoc struct {
 	Meta treeMeta `json:"_sync"`
@@ -709,7 +896,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	rt := RestTester{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
-			ImportDocs: "continuous",
+			AutoImport: "continuous",
 		},
 	}
 	defer rt.Close()
@@ -766,7 +953,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	rt := RestTester{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
-			ImportDocs: "continuous",
+			AutoImport: "continuous",
 		},
 	}
 	defer rt.Close()
@@ -1067,7 +1254,7 @@ func TestDcpBackfill(t *testing.T) {
 	// Create a new context, with import docs enabled, to process backfill
 	newRt := RestTester{
 		DatabaseConfig: &DbConfig{
-			ImportDocs: "continuous",
+			AutoImport: "continuous",
 		},
 		NoFlush: true,
 	}

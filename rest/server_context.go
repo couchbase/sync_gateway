@@ -356,16 +356,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
-	var importDocs, autoImport bool
-	switch config.ImportDocs {
-	case nil, false:
-	case true:
-		importDocs = true
-	case "continuous":
-		importDocs = true
-		autoImport = true
-	default:
-		return nil, fmt.Errorf("Unrecognized value for ImportDocs: %#v", config.ImportDocs)
+	autoImport, err := config.AutoImportEnabled()
+	if err != nil {
+		return nil, err
 	}
 
 	importOptions := db.ImportOptions{}
@@ -469,12 +462,23 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// If using a walrus bucket, force use of views
 	useViews := config.UseViews
 	if !useViews && spec.IsWalrusBucket() {
-		base.Warnf(base.KeyAll, "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in your database config to avoid this warning.")
+		base.Warnf(base.KeyAll, "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
 	}
 
 	// Initialize Views or GSI indexes
 	if !useViews {
+
+		// Couchbase Server version must be 5.5 or higher to use GSI
+		gsiSupported, errServerVersion := base.IsMinimumServerVersion(bucket, 5, 5)
+		if errServerVersion != nil {
+			return nil, errServerVersion
+		}
+
+		if !gsiSupported {
+			return nil, errors.New("Couchbase Server version must be 5.5 or higher for Sync Gateway to use GSI.  Upgrade the server, or set 'use_views':true in Sync Gateway's database config.")
+		}
+
 		numReplicas := DefaultNumIndexReplicas
 		numHousekeepingReplicas := DefaultNumIndexReplicas
 		if config.NumIndexReplicas != nil {
@@ -620,13 +624,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
-	// Support for legacy importDocs handling - if xattrs aren't enabled, support a backfill-style import on startup
-	if importDocs && !config.UseXattrs() {
-		db, _ := db.GetDatabase(dbcontext, nil) // TODO: shouldn't this be checking the returned err?
-		if _, err := db.UpdateAllDocChannels(false, true); err != nil {
-			return nil, err
-		}
-	}
 
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit

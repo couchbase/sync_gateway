@@ -13,9 +13,11 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"expvar"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"math"
 	"net/http"
@@ -832,6 +834,38 @@ func ConvertToEmptyInterfaceSlice(i interface{}) (result []interface{}, err erro
 		return nil, fmt.Errorf("Unexpected type passed to ConvertToEmptyInterfaceSlice: %T", i)
 	}
 
+}
+
+func isMinimumVersion(major, minor, minMajor, minMinor uint64) bool {
+	if major < minMajor {
+		return false
+	}
+
+	if major == minMajor && minor < minMinor {
+		return false
+	}
+
+	return true
+}
+
+func HexCasToUint64(cas string) uint64 {
+	casBytes, err := hex.DecodeString(strings.TrimPrefix(cas, "0x"))
+	if err != nil || len(casBytes) != 8 {
+		// Invalid cas - return zero
+		return 0
+	}
+
+	return binary.LittleEndian.Uint64(casBytes[0:8])
+}
+
+func Crc32cHash(input []byte) uint32 {
+	// crc32.MakeTable already ensures singleton table creation, so shouldn't need to cache.
+	table := crc32.MakeTable(crc32.Castagnoli)
+	return crc32.Checksum(input, table)
+}
+
+func Crc32cHashString(input []byte) string {
+	return fmt.Sprintf("0x%x", Crc32cHash(input))
 }
 
 var kBackquoteStringRegexp *regexp.Regexp

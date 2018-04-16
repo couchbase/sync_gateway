@@ -54,8 +54,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 			return nil, err
 		}
 		// If existing doc wasn't an SG Write, import the doc.
-		if !doc.IsSGWrite() {
-
+		if !doc.IsSGWrite(rawBucketDoc.Body) {
 			var importErr error
 			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas)
 			if importErr != nil {
@@ -125,7 +124,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 		}
 
 		// If existing doc wasn't an SG Write, import the doc.
-		if !doc.IsSGWrite() {
+		if !doc.IsSGWrite(rawDoc) {
 			var importErr error
 
 			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
@@ -594,7 +593,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !doc.IsSGWrite() && db.UseXattrs() {
+		if doc != nil && !doc.IsSGWrite(nil) && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(docid, doc, body)
 			if err != nil {
 				return nil, nil, nil, err
@@ -666,7 +665,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !doc.IsSGWrite() && db.UseXattrs() {
+		if doc != nil && !doc.IsSGWrite(nil) && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(docid, doc, body)
 			if err != nil {
 				return nil, nil, nil, err

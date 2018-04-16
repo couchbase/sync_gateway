@@ -1,5 +1,9 @@
 {
-  "log": ["*"],
+  "logging": {
+    "console": {
+      "logKeys": ["*"]
+    }
+  },
   "CORS": {
     "Origin":["http://localhost:8000"],
     "LoginOrigin":["http://localhost:8000"],

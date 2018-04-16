@@ -21,8 +21,8 @@ import (
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
-	"gopkg.in/couchbase/gocbcore.v7"
 	pkgerrors "github.com/pkg/errors"
+	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 // NOTE: most of these tests are disabled by default and have been renamed to Couchbase*
@@ -465,8 +465,6 @@ func TestIncrCounter(t *testing.T) {
 	}
 	assert.Equals(t, retrieval, uint64(2))
 
-
-
 }
 
 func TestGetAndTouchRaw(t *testing.T) {
@@ -593,6 +591,9 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 
+	valBytes, marshalErr := json.Marshal(val)
+	assertNoError(t, marshalErr, "Error marshalling document body")
+
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = float64(123)
 	xattrVal["rev"] = "1-1234"
@@ -615,12 +616,27 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
-	// TODO: Cas check fails, pending xattr code to make it to gocb master
-	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
+
 	assert.Equals(t, getCas, cas)
 	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
 	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
 	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+	macroCasString, ok := retrievedXattr[xattrMacroCas].(string)
+	assertTrue(t, ok, "Unable to retrieve xattrMacroCas as string")
+	assert.Equals(t, HexCasToUint64(macroCasString), cas)
+	macroBodyHashString, ok := retrievedXattr[xattrMacroValueCrc32c].(string)
+	assertTrue(t, ok, "Unable to retrieve xattrMacroValueCrc32c as string")
+	assert.Equals(t, macroBodyHashString, Crc32cHashString(valBytes))
+
+	// Validate against $document.value_crc32c
+	var retrievedVxattr map[string]interface{}
+	_, err = bucket.GetWithXattr(key, "$document", retrievedVal, &retrievedVxattr)
+	vxattrCrc32c, ok := retrievedVxattr["value_crc32c"].(string)
+	assertTrue(t, ok, "Unable to retrieve virtual xattr crc32c as string")
+
+	assert.Equals(t, vxattrCrc32c, Crc32cHashString(valBytes))
+	assert.Equals(t, vxattrCrc32c, macroBodyHashString)
+
 }
 
 // TestXattrWriteCasUpsert.  Validates basic write of document with xattr,  retrieval of the same doc w/ xattr, update of the doc w/ xattr, retrieval of the doc w/ xattr.
