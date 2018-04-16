@@ -1,5 +1,9 @@
 {
-  "log": ["*"],
+  "logging": {
+    "console": {
+      "logKeys": ["*"]
+    }
+  },
   "databases": {
     "db": {
       "server": "walrus:",

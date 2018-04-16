@@ -1,75 +1,73 @@
 {
-   "log":[
-      "*"
-   ],
-   "databases":{
-      "db":{
-         "server":"walrus:",
-         "allow_conflicts": false,
-         "revs_limit": 20
+  "logging": {
+    "console": {
+      "logKeys": ["*"]
+    }
+  },
+  "databases": {
+    "db": {
+      "server": "walrus:",
+      "allow_conflicts": false,
+      "revs_limit": 20
+    },
+    "db2": {
+      "server": "walrus:",
+      "allow_conflicts": false,
+      "revs_limit": 20
+    },
+    "db3": {
+      "server": "walrus:",
+      "allow_conflicts": false,
+      "revs_limit": 20
+    },
+    "db4": {
+      "server": "walrus:",
+      "users": {
+        "GUEST": {
+          "disabled": false,
+          "admin_channels": ["*"]
+        }
       },
-      "db2":{
-         "server":"walrus:",
-         "allow_conflicts": false,
-         "revs_limit": 20
+      "allow_conflicts": false,
+      "revs_limit": 20
+    },
+    "db5": {
+      "server": "walrus:",
+      "users": {
+        "GUEST": {
+          "disabled": false,
+          "admin_channels": ["*"]
+        }
       },
-      "db3":{
-         "server":"walrus:",
-         "allow_conflicts": false,
-         "revs_limit": 20
-      },
-      "db4":{
-         "server":"walrus:",
-         "users":{
-            "GUEST":{
-               "disabled":false,
-               "admin_channels":[
-                  "*"
-               ]
-            }
-         },
-         "allow_conflicts": false,
-         "revs_limit": 20
-      },
-      "db5":{
-         "server":"walrus:",
-         "users":{
-            "GUEST":{
-               "disabled":false,
-               "admin_channels":[
-                  "*"
-               ]
-            }
-         },
-         "allow_conflicts": false,
-         "revs_limit": 20
-      }
-   },
-   "replications":[
-      {
-         "replication_id":"push-to-other-continuous",
-         "source":"http://localhost:4985/db",
-         "target":"http://otherhost.com:4985/db",
-         "continuous":true
-      },
-      {
-         "replication_id":"pull-from-other-continuous",
-         "source":"http://otherhost.com:4985/db",
-         "target":"http://localhost:4985/db",
-         "continuous":true
-      },
-      {
-         "replication_id":"local-to-local-one-shot",
-         "source":"http://localhost:4985/db2",
-         "target":"http://localhost:4985/db3",
-         "continuous":false
-      },
-      {
-         "replication_id":"local-to-local-one-shot-non-admin-async",
-         "source":"http://localhost:4984/db4",
-         "target":"http://localhost:4984/db5",
-         "continuous":false,
-         "async":true
-      }
-   ]
+      "allow_conflicts": false,
+      "revs_limit": 20
+    }
+  },
+  "replications": [
+    {
+      "replication_id": "push-to-other-continuous",
+      "source": "http://localhost:4985/db",
+      "target": "http://otherhost.com:4985/db",
+      "continuous": true
+    },
+    {
+      "replication_id": "pull-from-other-continuous",
+      "source": "http://otherhost.com:4985/db",
+      "target": "http://localhost:4985/db",
+      "continuous": true
+    },
+    {
+      "replication_id": "local-to-local-one-shot",
+      "source": "http://localhost:4985/db2",
+      "target": "http://localhost:4985/db3",
+      "continuous": false
+    },
+    {
+      "replication_id": "local-to-local-one-shot-non-admin-async",
+      "source": "http://localhost:4984/db4",
+      "target": "http://localhost:4984/db5",
+      "continuous": false,
+      "async": true
+    }
+  ]
 }

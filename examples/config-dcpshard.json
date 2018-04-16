@@ -1,9 +1,11 @@
 {
     "interface":":4984",
     "adminInterface":":4985",
-    "log":[
-        "*"
-    ],
+    "logging": {
+      "console": {
+        "logKeys": ["*"]
+      }
+    },
     "verbose":"true",
     "cluster_config":{
         "server":"http://localhost:8091",

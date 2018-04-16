@@ -1,22 +1,22 @@
 {
-   "log":[
-      "*"
-   ],
-   "SSLCert":"examples/ssl/cert.pem",
-   "SSLKey":"examples/ssl/privkey.pem",
-   "databases":{
-      "db":{
-         "server":"walrus:",
-         "users":{
-            "GUEST":{
-               "disabled":false,
-               "admin_channels":[
-                  "*"
-               ]
-            }
-         },
-         "allow_conflicts": false,
-         "revs_limit": 20
-      }
-   }
+  "logging": {
+    "console": {
+      "logKeys": ["*"]
+    }
+  },
+  "SSLCert": "examples/ssl/cert.pem",
+  "SSLKey": "examples/ssl/privkey.pem",
+  "databases": {
+    "db": {
+      "server": "walrus:",
+      "users": {
+        "GUEST": {
+          "disabled": false,
+          "admin_channels": ["*"]
+        }
+      },
+      "allow_conflicts": false,
+      "revs_limit": 20
+    }
+  }
 }

@@ -1,9 +1,14 @@
 {
-    "log":["REST", "Shadow", "CRUD", "CRUD+", "HTTP", "HTTP+", "Access", "Changes", "Changes+","Auth", "SSL"],
-    "maxFileDescriptors": 50000,
-    "facebook" : {
-        "register" : true
-    },
+  "logging": {
+    "console": {
+      "logLevel": "debug",
+      "logKeys": ["REST", "Shadow", "CRUD", "HTTP","Access", "Changes", "Auth", "SSL"]
+    }
+  },
+  "maxFileDescriptors": 50000,
+  "facebook" : {
+    "register" : true
+  },
 	"databases": {
     "gaggle": {
       "server":"http://172.23.121.38:8091",

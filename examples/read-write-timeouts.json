@@ -1,7 +1,11 @@
 {
   "ServerReadTimeout": 200,
   "ServerWriteTimeout": 200,
-  "log": ["*"],
+  "logging": {
+    "console": {
+      "logKeys": ["*"]
+    }
+  },
   "databases": {
     "db": {
       "server": "walrus:",
