@@ -187,7 +187,6 @@ func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.
 		Opcode:      opcode,
 		Key:         rq.Key,
 		Value:       rq.Body,
-		Sequence:    rq.Cas,
 		DataType:    rq.DataType,
 		Cas:         rq.Cas,
 		Expiry:      ExtractExpiryFromDCPMutation(rq),
