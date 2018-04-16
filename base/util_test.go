@@ -291,3 +291,39 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 	assert.True(t, err != nil)
 
 }
+
+func TestReflectExpiry(t *testing.T) {
+	exp := time.Now().Add(time.Hour)
+
+	expiry, err := ReflectExpiry(uint(1234))
+	assert.Equals(t, err.Error(), "Unrecognized expiry format")
+	assert.Equals(t, expiry, (*uint32)(nil))
+
+	expiry, err = ReflectExpiry(true)
+	assert.Equals(t, err.Error(), "Unrecognized expiry format")
+	assert.Equals(t, expiry, (*uint32)(nil))
+
+	expiry, err = ReflectExpiry(int64(1234))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, *expiry, uint32(1234))
+
+	expiry, err = ReflectExpiry(float64(1234))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, *expiry, uint32(1234))
+
+	expiry, err = ReflectExpiry("1234")
+	assert.Equals(t, err, nil)
+	assert.Equals(t, *expiry, uint32(1234))
+
+	expiry, err = ReflectExpiry(exp.Format(time.RFC3339))
+	assert.Equals(t, err, nil)
+	assert.Equals(t, *expiry, uint32(exp.Unix()))
+
+	expiry, err = ReflectExpiry("invalid")
+	assert.Equals(t, err.Error(), `Unable to parse expiry invalid as either numeric or date expiry: parsing time "invalid" as "2006-01-02T15:04:05Z07:00": cannot parse "invalid" as "2006"`)
+	assert.Equals(t, expiry, (*uint32)(nil))
+
+	expiry, err = ReflectExpiry(nil)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, expiry, (*uint32)(nil))
+}
