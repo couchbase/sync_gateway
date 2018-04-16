@@ -137,7 +137,10 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if changed {
 			// Save the updated doc:
 			updatedBytes, marshalErr := json.Marshal(princ)
-			return updatedBytes, nil, pkgerrors.Wrapf(marshalErr, "Error calling json.Marshal() for doc ID: %s in getPrincipal()", docID)
+			if marshalErr != nil {
+				marshalErr = pkgerrors.Wrapf(marshalErr, "Error calling json.Marshal() for doc ID: %s in getPrincipal()", docID)
+			}
+			return updatedBytes, nil, marshalErr
 		} else {
 			// Principal is valid, so stop the update
 			return nil, nil, couchbase.UpdateCancel
