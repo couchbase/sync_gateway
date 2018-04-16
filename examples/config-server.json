@@ -1,5 +1,9 @@
 {
-  "log": ["*"],
+  "logging": {
+    "console": {
+      "logKeys": ["*"]
+    }
+  },
   "configServer": "http://localhost:8001/",
   "databases": {
     "db": {

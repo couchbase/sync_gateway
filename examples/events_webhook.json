@@ -1,8 +1,10 @@
 {
-  "log": [
-    "CRUD+",
-    "Events+"
-  ],
+  "logging": {
+    "console": {
+      "logLevel": "debug",
+      "logKeys": ["CRUD", "Events"]
+    }
+  },
   "databases": {
     "db": {
       "server": "walrus:",

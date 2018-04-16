@@ -1,6 +1,10 @@
 {
    "interface":":4984",
-   "log":["*"],
+   "logging": {
+     "console": {
+       "logKeys": ["*"]
+     }
+   },
    "databases": {
       "default": {
         "server": "http://localhost:8091",
