@@ -259,6 +259,8 @@ func CbsExpiryToTime(expiry uint32) time.Time {
 //   4. Null JSON values return 0
 func ReflectExpiry(rawExpiry interface{}) (*uint32, error) {
 	switch expiry := rawExpiry.(type) {
+	case int64:
+		return ValidateUint32Expiry(expiry)
 	case float64:
 		return ValidateUint32Expiry(int64(expiry))
 	case string:
