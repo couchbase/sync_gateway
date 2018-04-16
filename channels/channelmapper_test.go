@@ -388,12 +388,12 @@ func TestExpiryFunction(t *testing.T) {
 
 	// Invalid: negative value
 	res5, err := mapper.MapToChannelsAndAccess(parse(`{"expiry":-100}`), `{}`, noUser)
-	assertNoError(t, err, "MapToChannelsAndAccess error for expiry as array")
+	assertNoError(t, err, "MapToChannelsAndAccess error for expiry as negative value")
 	assert.True(t, res5.Expiry == nil)
 
 	// Invalid - larger than uint32
 	res6, err := mapper.MapToChannelsAndAccess(parse(`{"expiry":123456789012345}`), `{}`, noUser)
-	assertNoError(t, err, "MapToChannelsAndAccess error for expiry as array")
+	assertNoError(t, err, "MapToChannelsAndAccess error for expiry > unit32")
 	assert.True(t, res6.Expiry == nil)
 
 	// Invalid - non-unix date
@@ -403,7 +403,60 @@ func TestExpiryFunction(t *testing.T) {
 
 	// No expiry specified
 	res7, err := mapper.MapToChannelsAndAccess(parse(`{"value":5}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess error for expiry not specified")
+	assert.True(t, res7.Expiry == nil)
+}
+
+func TestExpiryFunctionConstantValue(t *testing.T) {
+	mapper := NewChannelMapper(`function(doc) {expiry(100);}`)
+	res1, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess error")
+	assert.DeepEquals(t, *res1.Expiry, uint32(100))
+
+	mapper = NewChannelMapper(`function(doc) {expiry("500");}`)
+	res2, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess error")
+	assert.DeepEquals(t, *res2.Expiry, uint32(500))
+
+	mapper = NewChannelMapper(`function(doc) {expiry("2105-01-01T00:00:00.000+00:00");}`)
+	res_stringDate, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess error")
+	assert.DeepEquals(t, *res_stringDate.Expiry, uint32(4260211200))
+
+	// Validate invalid expiry values log warning and don't set expiry
+	mapper = NewChannelMapper(`function(doc) {expiry("abc");}`)
+	res3, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess error for expiry:abc")
+	assert.True(t, res3.Expiry == nil)
+
+	// Invalid: non-numeric
+	mapper = NewChannelMapper(`function(doc) {expiry(["100", "200"]);}`)
+	res4, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
 	assertNoError(t, err, "MapToChannelsAndAccess error for expiry as array")
+	assert.True(t, res4.Expiry == nil)
+
+	// Invalid: negative value
+	mapper = NewChannelMapper(`function(doc) {expiry(-100);}`)
+	res5, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess error for expiry as negative value")
+	assert.True(t, res5.Expiry == nil)
+
+	// Invalid - larger than uint32
+	mapper = NewChannelMapper(`function(doc) {expiry(123456789012345);}`)
+	res6, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess error for expiry as > unit32")
+	assert.True(t, res6.Expiry == nil)
+
+	// Invalid - non-unix date
+	mapper = NewChannelMapper(`function(doc) {expiry("1805-01-01T00:00:00.000+00:00");}`)
+	resInvalidDate, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess error for expiry:1805-01-01T00:00:00.000+00:00")
+	assert.True(t, resInvalidDate.Expiry == nil)
+
+	// No expiry specified
+	mapper = NewChannelMapper(`function(doc) {expiry();}`)
+	res7, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
+	assertNoError(t, err, "MapToChannelsAndAccess error for expiry not specified")
 	assert.True(t, res7.Expiry == nil)
 }
 
