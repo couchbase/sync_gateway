@@ -1,15 +1,29 @@
 {
   "logging": {
-    "default": {
-      "logFilePath": "/var/tmp/sglogfile.log",
-      "logKeys": ["*"],
-      "logLevel": "debug",
+    "logFilePath": "/var/tmp/sglogs",
+    "console": {
+    "logLevel": "debug",
+      "logKeys": ["*"]
+    },
+    "error": {
+      "enabled": true,
       "rotation": {
-        "maxsize": 1,
-        "maxage": 30,
-        "maxbackups": 2,
-        "localtime": true
+        "maxsize": 20,
+        "maxage": 180
       }
+    },
+    "warn": {
+      "enabled": true,
+      "rotation": {
+        "maxsize": 20,
+        "maxage": 90
+      }
+    },
+    "info": {
+      "enabled": false
+    },
+    "debug": {
+      "enabled": false
     }
   },
   "databases": {
