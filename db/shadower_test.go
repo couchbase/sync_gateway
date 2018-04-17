@@ -182,7 +182,7 @@ func TestShadowerPush(t *testing.T) {
 	_, err = db.Put("key2", Body{"ccc": "ddd"})
 	assertNoError(t, err, "Put")
 
-	base.Log("Waiting for shadower to catch up...")
+	t.Log("Waiting for shadower to catch up...")
 	var doc1, doc2 Body
 	waitFor(t, func() bool {
 		_, err1 := bucket.Get("key1", &doc1)

@@ -139,7 +139,7 @@ func (context *DatabaseContext) QueryAccess(username string) (sgbucket.QueryResu
 	}
 
 	if username == "" {
-		base.Warn("QueryAccess called with empty username - returning empty result iterator")
+		base.Warnf(base.KeyAll, "QueryAccess called with empty username - returning empty result iterator")
 		return &EmptyResultIterator{}, nil
 	}
 
@@ -171,7 +171,7 @@ func (context *DatabaseContext) QueryRoleAccess(username string) (sgbucket.Query
 	}
 
 	if username == "" {
-		base.Warn("QueryRoleAccess called with empty username")
+		base.Warnf(base.KeyAll, "QueryRoleAccess called with empty username")
 		return &EmptyResultIterator{}, nil
 	}
 

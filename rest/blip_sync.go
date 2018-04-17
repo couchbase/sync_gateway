@@ -461,7 +461,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 	var changeList [][]interface{}
 	if err := rq.ReadJSONBody(&changeList); err != nil {
-		base.Warn("Handle changes got error: %v", err)
+		base.Warnf(base.KeyAll, "Handle changes got error: %v", err)
 		return err
 	}
 
