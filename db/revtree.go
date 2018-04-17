@@ -110,7 +110,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 
 	if tree == nil {
-		//base.Warn("No RevTree for input %q", inputjson)
+		// base.Warnf(base.KeyAll, "No RevTree for input %q", inputjson)
 		return nil
 	}
 	var rep revTreeList
@@ -393,7 +393,7 @@ func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string) {
 func (tree RevTree) removeRevisionBody(revid string) (deletedBodyKey string) {
 	info, found := tree[revid]
 	if !found {
-		base.LogError(fmt.Errorf("RemoveRevisionBody called for revid not in tree: %v", revid))
+		base.Errorf(base.KeyAll, "RemoveRevisionBody called for revid not in tree: %v", revid)
 		return ""
 	}
 	deletedBodyKey = info.BodyKey

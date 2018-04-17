@@ -57,7 +57,7 @@ func TestShadowerPull(t *testing.T) {
 	assertNoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
-	base.Log("Waiting for shadower to catch up...")
+	t.Logf("Waiting for shadower to catch up...")
 	var doc1, doc2 *document
 	waitFor(t, func() bool {
 		seq, _ := db.LastSequence()
@@ -68,7 +68,7 @@ func TestShadowerPull(t *testing.T) {
 	assert.DeepEquals(t, doc1.Body(), Body{"foo": float64(1)})
 	assert.DeepEquals(t, doc2.Body(), Body{"bar": float64(-1)})
 
-	base.Log("Deleting remote doc")
+	t.Logf("Deleting remote doc")
 	bucket.Delete("key1")
 
 	waitFor(t, func() bool {
@@ -118,14 +118,14 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 	assertNoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
-	base.Log("Waiting for shadower to catch up...")
+	t.Logf("Waiting for shadower to catch up...")
 	waitFor(t, func() bool {
 		seq, _ := db.LastSequence()
 		return seq >= 2
 	})
 
 	//Write shadow doc with same body, should not generate an notification event
-	base.Log("Updating remote doc without any changes to body")
+	t.Logf("Updating remote doc without any changes to body")
 	bucket.Set("key1", 0, Body{"foo": 1})
 
 	waitFor(t, func() bool {
@@ -134,7 +134,7 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 	})
 
 	//Write shadow doc with different body, should generate an notification event
-	base.Log("Updating remote doc with changes to body")
+	t.Logf("Updating remote doc with changes to body")
 	bucket.Set("key2", 0, Body{"foo": 1})
 
 	waitFor(t, func() bool {
@@ -192,7 +192,7 @@ func TestShadowerPush(t *testing.T) {
 	assert.DeepEquals(t, doc1, Body{"aaa": "bbb"})
 	assert.DeepEquals(t, doc2, Body{"ccc": "ddd"})
 
-	base.Log("Deleting local doc")
+	t.Logf("Deleting local doc")
 	db.DeleteDoc("key1", key1rev1)
 
 	waitFor(t, func() bool {
@@ -334,7 +334,7 @@ func TestShadowerPattern(t *testing.T) {
 	assertNoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
-	base.Log("Waiting for shadower to catch up...")
+	t.Logf("Waiting for shadower to catch up...")
 	waitFor(t, func() bool {
 		seq, _ := db.LastSequence()
 		return seq >= 2

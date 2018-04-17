@@ -12,7 +12,7 @@ type LoggingBucket struct {
 }
 
 func (b *LoggingBucket) GetName() string {
-	//LogTo("Bucket", "GetName()")
+	//Infof(KeyBucket, "GetName()")
 	return b.bucket.GetName()
 }
 func (b *LoggingBucket) Get(k string, rv interface{}) (uint64, error) {

@@ -67,7 +67,7 @@ func (s *Shadower) readTapFeed() {
 				base.Infof(base.KeyShadow, "Reading history of external bucket")
 			}
 			vbucketsFilling++
-			//base.LogTo("Shadow", "Reading history of external bucket")
+			// base.Infof(base.KeyShadow, "Reading history of external bucket")
 		case sgbucket.FeedOpMutation, sgbucket.FeedOpDeletion:
 			key := string(event.Key)
 			if !s.docIDMatches(key) {

@@ -209,7 +209,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		err = bucket.CreateIndex(indexName, indexExpression, filterExpression, options)
 		if err != nil {
-			base.Warn("Error creating index %s: %v - will retry.", indexName, err)
+			base.Warnf(base.KeyAll, "Error creating index %s: %v - will retry.", indexName, err)
 		}
 		return err != nil, err, nil
 	}
@@ -228,11 +228,11 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
 func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, numHousekeepingReplicas uint) error {
 
-	base.Logf("Initializing indexes with numReplicas: %d", numReplicas)
+	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d", numReplicas)
 
 	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
 	if !ok {
-		base.Log("Using a non-Couchbase bucket - indexes will not be created.")
+		base.Warnf(base.KeyAll, "Using a non-Couchbase bucket - indexes will not be created.")
 		return nil
 	}
 
@@ -249,7 +249,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, num
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
 func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 	var indexesWg sync.WaitGroup
-	base.Logf("Verifying index availability for bucket %s...", bucket.GetName())
+	base.Infof(base.KeyAll, "Verifying index availability for bucket %s...", base.UD(bucket.GetName()))
 	indexErrors := make(chan error, len(sgIndexes))
 
 	for _, sgIndex := range sgIndexes {
@@ -261,7 +261,7 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 				queryStatement := replaceSyncTokensQuery(index.readinessQuery, useXattrs)
 				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
 				if queryErr != nil {
-					base.Warn("Query error for statement [%s], err:%v", queryStatement, queryErr)
+					base.Warnf(base.KeyAll, "Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
 				}
 				base.Debugf(base.KeyQuery, "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
@@ -276,7 +276,7 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 		return err
 	}
 
-	base.Logf("Indexes ready for bucket %s.", bucket.GetName())
+	base.Infof(base.KeyAll, "Indexes ready for bucket %s.", base.UD(bucket.GetName()))
 	return nil
 }
 
