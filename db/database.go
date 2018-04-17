@@ -111,6 +111,9 @@ type UserViewsOptions struct {
 }
 
 type APIEndpoints struct {
+
+	// This setting is only needed for testing purposes.  In the Couchbase Lite unit tests that run in "integration mode"
+	// against a running Sync Gateway, the tests need to be able to flush the data in between tests to start with a clean DB.
 	EnableCouchbaseBucketFlush bool `json:"enable_couchbase_bucket_flush,omitempty"` // Whether Couchbase buckets can be flushed via Admin REST API
 }
 
