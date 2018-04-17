@@ -2204,57 +2204,12 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 
 }
 
+// Get the number of items in the bucket.
 // GOCB doesn't currently offer a way to do this, and so this is a workaround to go directly
 // to Couchbase Server REST API.
-// See https://forums.couchbase.com/t/is-there-a-way-to-get-the-number-of-items-in-a-bucket/12816/4
-// for GOCB discussion.
-// NOTE: unfortunately this code was duplicated with TestBucketManager.BucketItemCount() since TestBucketManager
-// holds a reference to a *gocb.Bucket, but not a CouchbaseBucketGoCB wrapper.  If this code could get
-// pushed down into *gocb.Bucket, then both methods could be removed.
 func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
-
-	reqUri := fmt.Sprintf("%s/pools/default/buckets/%s", bucket.spec.Server, bucket.spec.BucketName)
-	req, err := http.NewRequest("GET", reqUri, nil)
-	if err != nil {
-		return -1, err
-	}
-	req.Header.Add("Content-Type", "application/json")
-
 	user, pass, _ := bucket.spec.Auth.GetCredentials()
-
-	req.SetBasicAuth(user, pass)
-
-	goCBClient := bucket.goCBHttpClient()
-
-	resp, err := goCBClient.Do(req)
-	if err != nil {
-		return -1, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		_, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return -1, err
-		}
-		return -1, pkgerrors.Wrapf(err, "Error trying to find number of items in bucket")
-	}
-
-	respJson := map[string]interface{}{}
-
-	decoder := json.NewDecoder(resp.Body)
-	if err := decoder.Decode(&respJson); err != nil {
-		return -1, err
-	}
-
-	basicStats := respJson["basicStats"].(map[string]interface{})
-
-	itemCountRaw := basicStats["itemCount"]
-
-	itemCountFloat := itemCountRaw.(float64)
-
-	return int(itemCountFloat), nil
-
+	return GoCBBucketItemCount(bucket.Bucket, bucket.spec, user, pass)
 }
 
 func (bucket *CouchbaseBucketGoCB) goCBHttpClient() *http.Client {
@@ -2506,4 +2461,49 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 	default:
 		return nil, false
 	}
+}
+
+
+func GoCBBucketItemCount(bucket *gocb.Bucket, spec BucketSpec, user, pass string) (itemCount int, err error) {
+
+	reqUri := fmt.Sprintf("%s/pools/default/buckets/%s", spec.Server, spec.BucketName)
+	req, err := http.NewRequest("GET", reqUri, nil)
+	if err != nil {
+		return -1, err
+	}
+	req.Header.Add("Content-Type", "application/json")
+
+	req.SetBasicAuth(user, pass)
+
+	goCBClient := bucket.IoRouter().HttpClient()
+
+	resp, err := goCBClient.Do(req)
+	if err != nil {
+		return -1, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		_, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return -1, err
+		}
+		return -1, pkgerrors.Wrapf(err, "Error trying to find number of items in bucket")
+	}
+
+	respJson := map[string]interface{}{}
+
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&respJson); err != nil {
+		return -1, err
+	}
+
+	basicStats := respJson["basicStats"].(map[string]interface{})
+
+	itemCountRaw := basicStats["itemCount"]
+
+	itemCountFloat := itemCountRaw.(float64)
+
+	return int(itemCountFloat), nil
+
 }

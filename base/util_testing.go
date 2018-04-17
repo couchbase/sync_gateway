@@ -1,12 +1,9 @@
 package base
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/rand"
-	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -277,45 +274,7 @@ func (tbm *TestBucketManager) Close() error {
 // See https://forums.couchbase.com/t/is-there-a-way-to-get-the-number-of-items-in-a-bucket/12816/4
 // for GOCB discussion.
 func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
-
-	reqUri := fmt.Sprintf("%s/pools/default/buckets/%s", tbm.BucketSpec.Server, tbm.BucketSpec.BucketName)
-	req, err := http.NewRequest("GET", reqUri, nil)
-	if err != nil {
-		return -1, err
-	}
-	req.Header.Add("Content-Type", "application/json")
-
-	req.SetBasicAuth(tbm.AdministratorUsername, tbm.AdministratorPassword)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return -1, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		_, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return -1, err
-		}
-		return -1, pkgerrors.Wrapf(err, "Error trying to find number of items in bucket")
-	}
-
-	respJson := map[string]interface{}{}
-
-	decoder := json.NewDecoder(resp.Body)
-	if err := decoder.Decode(&respJson); err != nil {
-		return -1, err
-	}
-
-	basicStats := respJson["basicStats"].(map[string]interface{})
-
-	itemCountRaw := basicStats["itemCount"]
-
-	itemCountFloat := itemCountRaw.(float64)
-
-	return int(itemCountFloat), nil
-
+	return GoCBBucketItemCount(tbm.Bucket, tbm.BucketSpec, tbm.AdministratorUsername, tbm.AdministratorPassword)
 }
 
 func (tbm *TestBucketManager) EmptyTestBucket() error {
