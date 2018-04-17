@@ -2174,33 +2174,33 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 		return err
 	}
 
-	maxTries := 20
-	numTries := 0
-	for {
 
+	// Wait until the bucket item count is 0, since flush is asynchronous
+	worker := func() (shouldRetry bool, err error, value interface{}) {
 		itemCount, err := bucket.BucketItemCount()
 		if err != nil {
-			return err
+			return false, err, nil
 		}
 
 		if itemCount == 0 {
-			// Bucket flushed, we're done
-			break
+			// bucket flushed, we're done
+			return false, nil, nil
 		}
 
-		if numTries > maxTries {
-			return fmt.Errorf("Timed out waiting for bucket to be empty after flush.  ItemCount: %v", itemCount)
-		}
-
-		// Still items left, wait a little bit and try again
-		Warnf(KeyAll,"TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
-		time.Sleep(time.Millisecond * 500)
-
-		numTries += 1
+		// Retry
+		return true, nil, nil
 
 	}
 
+	// Kick off retry loop
+	description := fmt.Sprintf("Wait until bucket %s has 0 items after flush", bucket.spec.BucketName)
+	err, _ = RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 10000))
+	if err != nil {
+		return err
+	}
+
 	return nil
+
 
 }
 
