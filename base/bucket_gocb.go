@@ -2163,7 +2163,7 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = bucketManager.Flush()
 		if err != nil {
-			Warn("Error flushing bucket: %v  Will retry.", err)
+			Warnf(KeyAll, "Error flushing bucket: %v  Will retry.", err)
 			shouldRetry = true
 		}
 		return shouldRetry, err, nil
@@ -2193,7 +2193,7 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 		}
 
 		// Still items left, wait a little bit and try again
-		Warn("TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
+		Warnf(KeyAll,"TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
 		time.Sleep(time.Millisecond * 500)
 
 		numTries += 1
