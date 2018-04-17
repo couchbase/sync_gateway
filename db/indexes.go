@@ -228,13 +228,27 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
 func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, numHousekeepingReplicas uint) error {
 
-	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d", numReplicas)
+	skip := true
+	var gocbBucket *base.CouchbaseBucketGoCB
 
-	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
-	if !ok {
-		base.Warnf(base.KeyAll, "Using a non-Couchbase bucket - indexes will not be created.")
+	switch b := bucket.(type) {
+	case *base.CouchbaseBucketGoCB:
+		gocbBucket = b
+		skip = false
+	case *base.LoggingBucket:
+		underlyingBucket, ok := b.GetUnderlyingBucket().(*base.CouchbaseBucketGoCB)
+		if ok {
+			gocbBucket = underlyingBucket
+			skip = false
+		}
+	}
+
+	if skip {
+		base.Warnf(base.KeyAll, "Using a non-Couchbase bucket: %T - indexes will not be created.", bucket)
 		return nil
 	}
+
+	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d", numReplicas)
 
 	for _, sgIndex := range sgIndexes {
 		err := sgIndex.createIfNeeded(gocbBucket, useXattrs, numReplicas)
