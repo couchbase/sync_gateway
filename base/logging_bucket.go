@@ -208,3 +208,8 @@ func (b *LoggingBucket) UUID() (string, error) {
 func (b *LoggingBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 	return b.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
 }
+
+// GetUnderlyingBucket returns the underlying bucket for the LoggingBucket.
+func (b *LoggingBucket) GetUnderlyingBucket() Bucket {
+	return b.bucket
+}
