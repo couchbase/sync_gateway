@@ -23,7 +23,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -2151,7 +2150,6 @@ func (bucket *CouchbaseBucketGoCB) Close() {
 	}
 }
 
-
 // This flushes the bucket.
 func (bucket *CouchbaseBucketGoCB) Flush() error {
 
@@ -2173,7 +2171,6 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 	if err != nil {
 		return err
 	}
-
 
 	// Wait until the bucket item count is 0, since flush is asynchronous
 	worker := func() (shouldRetry bool, err error, value interface{}) {
@@ -2200,7 +2197,6 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 	}
 
 	return nil
-
 
 }
 
