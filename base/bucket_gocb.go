@@ -2212,13 +2212,6 @@ func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) 
 	return GoCBBucketItemCount(bucket.Bucket, bucket.spec, user, pass)
 }
 
-func (bucket *CouchbaseBucketGoCB) goCBHttpClient() *http.Client {
-
-	goCBClient := bucket.Bucket.IoRouter()
-	return goCBClient.HttpClient()
-
-}
-
 func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
 
 	bucket.singleOps <- struct{}{}
