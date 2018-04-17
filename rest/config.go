@@ -885,7 +885,7 @@ func RunServer(config *ServerConfig) {
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Fatalf(base.KeyAll, "Error opening database %s: %v", base.UD(dbConfig.Name), err)
+			base.Fatalf(base.KeyAll, "Error opening database %s: %+v", base.UD(dbConfig.Name), err)
 		}
 	}
 
