@@ -126,9 +126,9 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
-	base.StatsExpvars.Add("requests_total", 1)
-	base.StatsExpvars.Add("requests_active", 1)
-	defer base.StatsExpvars.Add("requests_active", -1)
+	base.UpdateDbStat(h.getStatPrefix(), "requests_total", 1)
+	base.UpdateDbStat(h.getStatPrefix(), "requests_active", 1)
+	defer base.UpdateDbStat(h.getStatPrefix(), "requests_active", -1)
 
 	var err error
 	if h.server.config.CompressResponses == nil || *h.server.config.CompressResponses {
@@ -851,4 +851,15 @@ func getRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64,
 	}
 
 	return value
+}
+
+func (h *handler) getStatPrefix() (string) {
+	if dbname := h.PathVar("db"); dbname != "" {
+		if _, err := h.server.GetDatabase(dbname); err == nil {
+			return dbname
+		}
+	} else if strings.HasPrefix(h.rq.URL.Path, "/_") {
+		return "_server"
+	}
+	return ""
 }

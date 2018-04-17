@@ -35,14 +35,14 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
-		base.StatsExpvars.Add("vectorChanges_total", 1)
-		base.StatsExpvars.Add("vectorChanges_active", 1)
+		base.UpdateDbStat(db.Name, "vectorChanges_total", 1)
+		base.UpdateDbStat(db.Name, "vectorChanges_active", 1)
 		var cumulativeClock *base.SyncSequenceClock
 		var lastHashedValue string
 		hashedEntryCount := 0
 		defer func() {
 			base.Debugf(base.KeyChanges, "MultiChangesFeed done %s", base.UD(to))
-			base.StatsExpvars.Add("vectorChanges_active", -1)
+			base.UpdateDbStat(db.Name, "vectorChanges_active", -1)
 			close(output)
 		}()
 

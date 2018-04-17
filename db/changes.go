@@ -354,11 +354,11 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 	go func() {
 
-		base.StatsExpvars.Add("simpleChanges_total", 1)
-		base.StatsExpvars.Add("simpleChanges_active", 1)
+		base.UpdateDbStat(db.Name, "simpleChanges_total", 1)
+		base.UpdateDbStat(db.Name, "simpleChanges_active", 1)
 		defer func() {
 			base.Infof(base.KeyChanges, "MultiChangesFeed done %s", base.UD(to))
-			base.StatsExpvars.Add("simpleChanges_active", -1)
+			base.UpdateDbStat(db.Name, "simpleChanges_active", -1)
 			close(output)
 		}()
 

@@ -297,7 +297,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-
+	base.InitDbStats(config.Name)
 	return sc._getOrAddDatabaseFromConfig(config, useExisting)
 }
 
