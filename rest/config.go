@@ -869,7 +869,7 @@ func RunServer(config *ServerConfig) {
 		cpus := runtime.NumCPU()
 		if cpus > 1 {
 			runtime.GOMAXPROCS(cpus)
-			base.Logf("Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
+			base.Infof(base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
 		}
 	}
 
@@ -914,7 +914,7 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 
 	// if the user passes -skipRunModeValidation on the command line, then skip validation
 	if config.SkipRunmodeValidation == true {
-		base.Logf("Skipping runmode (accel vs normal) config validation")
+		base.Infof(base.KeyAll, "Skipping runmode (accel vs normal) config validation")
 		return
 	}
 
@@ -922,12 +922,12 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 	case SyncGatewayRunModeNormal:
 		// if index writer == true for any databases, panic
 		if config.HasAnyIndexWriterConfiguredDatabases() {
-			base.LogPanic("SG is running in normal mode but there are databases configured as index writers")
+			base.Panicf(base.KeyAll, "SG is running in normal mode but there are databases configured as index writers")
 		}
 	case SyncGatewayRunModeAccel:
 		// if index writer != true for any databases, panic
 		if config.HasAnyIndexReaderConfiguredDatabases() {
-			base.LogPanic("SG is running in sg-accelerator mode but there are databases configured as index readers")
+			base.Panicf(base.KeyAll, "SG is running in sg-accelerator mode but there are databases configured as index readers")
 		}
 	}
 

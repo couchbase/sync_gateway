@@ -472,7 +472,7 @@ func (h *handler) readDocument() (db.Body, error) {
 			body, err := db.ReadMultipartDocument(reader)
 			if err != nil {
 				ioutil.WriteFile("GatewayPUT.mime", raw, 0600)
-				base.Warn("Error reading MIME data: copied to file GatewayPUT.mime")
+				base.Warnf(base.KeyAll, "Error reading MIME data: copied to file GatewayPUT.mime")
 			}
 			return body, err
 		} else {

@@ -86,7 +86,7 @@ func NewBitFlagStorage(bucket base.Bucket, channelName string, partitions *base.
 	var err error
 	storage.indexBlockCache, err = base.NewLRUCache(50)
 	if err != nil {
-		base.LogFatal("Error creating LRU cache for index blocks: %v", err)
+		base.Fatalf(base.KeyAll, "Error creating LRU cache for index blocks: %v", err)
 	}
 	return storage
 }
@@ -930,7 +930,7 @@ func (b BlockSet) keySet() []string {
 func readIndexEntriesInto(bucket base.Bucket, keys []string, entries map[string]*LogEntry) error {
 	results, err := bucket.GetBulkRaw(keys)
 	if err != nil {
-		base.Warn("error doing bulk get:", err)
+		base.Warnf(base.KeyAll, "error doing bulk get:", err)
 		return err
 	}
 	// TODO: unmarshal in concurrent goroutines
@@ -939,7 +939,7 @@ func readIndexEntriesInto(bucket base.Bucket, keys []string, entries map[string]
 			entry := entries[key]
 			removed := entry.Removed
 			if err := entries[key].Unmarshal(entry); err != nil {
-				base.Warn("Error unmarshalling entry")
+				base.Warnf(base.KeyAll, "Error unmarshalling entry")
 			}
 			if removed {
 				entry.SetRemoved()

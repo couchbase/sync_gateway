@@ -105,7 +105,7 @@ func (sc *ServerContext) startReplicators() {
 
 		params, _, _, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
 		if err != nil {
-			base.LogError(err)
+			base.Errorf(base.KeyAll, "Error validating replication parameters: %v", err)
 			continue
 		}
 
@@ -140,7 +140,7 @@ func (sc *ServerContext) Close() {
 	defer sc.lock.Unlock()
 
 	if err := sc.replicator.StopReplications(); err != nil {
-		base.Warn("Error stopping replications: %+v.  This could cause a resource leak.  Please restart Sync Gateway to cleanup leaked resources.", err)
+		base.Warnf(base.KeyAll, "Error stopping replications: %+v.  This could cause a resource leak.  Please restart Sync Gateway to cleanup leaked resources.", err)
 	}
 
 	sc.stopStatsReporter()
@@ -561,8 +561,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 		sequenceHashOptions.Bucket, err = base.GetBucket(sequenceHashBucketSpec, nil)
 		if err != nil {
-			base.Logf("Error opening sequence hash bucket %q, pool %q, server <%s>",
-				sequenceHashBucketSpec.BucketName, sequenceHashBucketSpec.PoolName, sequenceHashBucketSpec.Server)
+			base.Warnf(base.KeyAll, "Error opening sequence hash bucket %q, pool %q, server <%s>",
+				base.UD(sequenceHashBucketSpec.BucketName), sequenceHashBucketSpec.PoolName, base.SD(sequenceHashBucketSpec.Server))
 			return nil, err
 		}
 
@@ -623,7 +623,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
 		return nil, err
 	}
-
 
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
@@ -705,7 +704,7 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
 		reloadedDb, err := sc.ReloadDatabaseFromConfig(database.Name, true)
 		if err != nil {
-			base.LogError(err)
+			base.Errorf(base.KeyAll, "Error reloading database from config: %v", err)
 			return
 		}
 
@@ -767,7 +766,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 			customWaitTime, err = strconv.ParseInt(eventHandlers.WaitForProcess, 10, 0)
 			if err != nil {
 				customWaitTime = -1
-				base.Warn("Error parsing wait_for_process from config, using default %s", err)
+				base.Warnf(base.KeyAll, "Error parsing wait_for_process from config, using default %s", err)
 			}
 		}
 		dbcontext.EventMgr.Start(eventHandlers.MaxEventProc, int(customWaitTime))
@@ -789,7 +788,7 @@ func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eve
 		case "webhook":
 			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout)
 			if err != nil {
-				base.Warn("Error creating webhook %v", err)
+				base.Warnf(base.KeyAll, "Error creating webhook %v", err)
 				return err
 			}
 			dbcontext.EventMgr.RegisterEventHandler(wh, eventType)
@@ -813,7 +812,7 @@ func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn
 
 func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *ShadowConfig) error {
 
-	base.Warn("Bucket Shadowing feature comes with a number of limitations and caveats. See https://github.com/couchbase/sync_gateway/issues/1363 for more details.")
+	base.Warnf(base.KeyAll, "Bucket Shadowing feature comes with a number of limitations and caveats. See https://github.com/couchbase/sync_gateway/issues/1363 for more details.")
 
 	var pattern *regexp.Regexp
 	if shadow.Doc_id_regex != nil {
@@ -1014,7 +1013,7 @@ func (sc *ServerContext) reportStats() {
 	bodyReader := bytes.NewReader(body)
 	_, err := sc.HTTPClient.Post(kStatsReportURL, "application/json", bodyReader)
 	if err != nil {
-		base.Warn("Error posting stats: %v", err)
+		base.Warnf(base.KeyAll, "Error posting stats: %v", err)
 	}
 }
 

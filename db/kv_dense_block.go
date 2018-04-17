@@ -12,7 +12,6 @@ package db
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -619,7 +618,7 @@ func (d *DenseBlock) MakeLogEntry(indexEntry DenseBlockIndexEntry, entry DenseBl
 func (d *DenseBlock) GetIndexEntry(position int64) (indexEntry DenseBlockIndexEntry) {
 	indexEntry, err := base.SafeSlice(d.value, int(position), int(position+INDEX_ENTRY_LEN))
 	if err != nil {
-		base.LogError(errors.New(fmt.Sprintf("Unable to GetIndexEntry from DensBlock, key: %v, cas: %v, error: %v", d.Key, d.cas, err)))
+		base.Errorf(base.KeyAll, "Unable to GetIndexEntry from DensBlock, key: %v, cas: %v, error: %v", d.Key, d.cas, err)
 	}
 	return indexEntry
 }
@@ -627,7 +626,7 @@ func (d *DenseBlock) GetIndexEntry(position int64) (indexEntry DenseBlockIndexEn
 func (d *DenseBlock) GetEntry(position int64, length uint16) (entry DenseBlockDataEntry) {
 	entry, err := base.SafeSlice(d.value, int(position), int(position+int64(length)))
 	if err != nil {
-		base.LogError(errors.New(fmt.Sprintf("Unable to GetEntry from DensBlock, key: %v, cas: %v, error: %v", d.Key, d.cas, err)))
+		base.Errorf(base.KeyAll, "Unable to GetEntry from DensBlock, key: %v, cas: %v, error: %v", d.Key, d.cas, err)
 	}
 
 	return entry

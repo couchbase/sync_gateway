@@ -776,7 +776,7 @@ func readWebSocketMessage(conn *websocket.Conn) ([]byte, error) {
 	var message []byte
 	if err := websocket.Message.Receive(conn, &message); err != nil {
 		if err != io.EOF {
-			base.Warn("Error reading initial websocket message: %v", err)
+			base.Warnf(base.KeyAll, "Error reading initial websocket message: %v", err)
 			return nil, err
 		}
 	}

@@ -629,7 +629,7 @@ func UpdateLogger(logFilePath string) {
 	//Attempt to open file for write at path provided
 	fo, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
 	if err != nil {
-		LogFatal("unable to open logfile for write: %s", logFilePath)
+		Fatalf(KeyAll, "unable to open logfile for write: %s", logFilePath)
 	}
 
 	//defer write lock to here otherwise LogFatal above will deadlock
@@ -651,7 +651,7 @@ func UpdateLogger(logFilePath string) {
 	if oldLogFile != nil {
 		err = oldLogFile.Close()
 		if err != nil {
-			Warn("unable to close old log File after updating logger")
+			Warnf(KeyAll, "unable to close old log File after updating logger")
 		}
 	}
 }

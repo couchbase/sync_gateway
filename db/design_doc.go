@@ -619,7 +619,7 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 			if errRetryCount > maxRetry {
 				return err
 			}
-			base.Logf("Error waiting for view %q to be ready for bucket %q - retrying...(%d/%d)", viewName, bucket.GetName(), errRetryCount, maxRetry)
+			base.Warnf(base.KeyAll, "Error waiting for view %q to be ready for bucket %q - retrying...(%d/%d)", viewName, bucket.GetName(), errRetryCount, maxRetry)
 			time.Sleep(time.Duration(retrySleep) * time.Millisecond)
 			retrySleep *= float64(1.5)
 		}

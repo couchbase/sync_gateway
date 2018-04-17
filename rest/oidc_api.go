@@ -235,7 +235,7 @@ func (h *handler) getOIDCCallbackURL() string {
 		scheme = "https"
 	}
 	if dbName := h.PathVar("db"); dbName == "" {
-		base.Warn("Can't calculate OIDC callback URL without DB in path.")
+		base.Warnf(base.KeyAuth, "Can't calculate OIDC callback URL without DB in path.")
 		return ""
 	} else {
 		return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbName, "_oidc_callback")

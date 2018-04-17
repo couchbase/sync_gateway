@@ -123,14 +123,14 @@ func (entry *LogEntry) SetDeleted() {
 
 func (c ChannelIndexOptions) ValidateOrPanic() {
 	if c.NumShards == 0 {
-		base.LogPanic("The number of shards must be greater than 0")
+		base.Panicf(base.KeyAll, "The number of shards must be greater than 0")
 	}
 
 	// make sure num_shards is a power of two, or panic
 	isPowerOfTwo := base.IsPowerOfTwo(c.NumShards)
 	if !isPowerOfTwo {
 		errMsg := "Invalid value for num_shards in feed_params: %v Must be a power of 2 so that all shards have the same number of vbuckets"
-		base.LogPanic(errMsg, c.NumShards)
+		base.Panicf(base.KeyAll, errMsg, c.NumShards)
 	}
 
 }

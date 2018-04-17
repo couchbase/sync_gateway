@@ -216,7 +216,7 @@ func (h *handler) handleProfiling() error {
 		if profileName != "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "Missing JSON 'file' parameter")
 		} else {
-			base.Log("...ending CPU profile.")
+			base.Infof(base.KeyAll, "...ending CPU profile.")
 			pprof.StopCPUProfile()
 		}
 	}

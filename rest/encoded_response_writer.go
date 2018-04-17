@@ -60,7 +60,7 @@ func (w *EncodedResponseWriter) Write(b []byte) (int, error) {
 
 func (w *EncodedResponseWriter) disableCompression() {
 	if w.sniffDone {
-		base.Warn("EncodedResponseWriter: Too late to disableCompression!")
+		base.Warnf(base.KeyAll, "EncodedResponseWriter: Too late to disableCompression!")
 	}
 	w.sniffDone = true
 }
@@ -84,7 +84,7 @@ func (w *EncodedResponseWriter) sniff(bytes []byte) {
 	}
 
 	// OK, we can compress the response:
-	//base.LogTo("HTTP+", "GZip-compressing response")
+	//base.Debugf(base.KeyHTTP, "GZip-compressing response")
 	w.Header().Set("Content-Encoding", "gzip")
 	w.Header().Del("Content-Length") // length is unknown due to compression
 

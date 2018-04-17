@@ -829,11 +829,11 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 	}
 
 	if doCurrentDocs {
-		base.Log("Recomputing document channels...")
+		base.Infof(base.KeyAll, "Recomputing document channels...")
 	}
 
 	if doImportDocs {
-		base.Log("Importing documents...")
+		base.Infof(base.KeyAll, "Importing documents...")
 	}
 
 	results, err := db.QueryImport(doCurrentDocs)
@@ -976,7 +976,7 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 
 	if changeCount > 0 {
 		// Now invalidate channel cache of all users/roles:
-		base.Log("Invalidating channel caches of users/roles...")
+		base.Infof(base.KeyAll, "Invalidating channel caches of users/roles...")
 		users, roles, _ := db.AllPrincipalIDs()
 		for _, name := range users {
 			db.invalUserChannels(name)
