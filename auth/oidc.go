@@ -237,7 +237,7 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 	var oidcConfig oidc.ProviderConfig
 	oidcConfig, err = customConfig.AsProviderConfig()
 	if err != nil {
-		base.Debugf(base.KeyOIDC, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
+		base.Debugf(base.KeyOIDC, "Error invoking calling discovery URL %s: %+v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 
