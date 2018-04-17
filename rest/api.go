@@ -72,8 +72,7 @@ func (h *handler) handleFlush() error {
 		// If it's not a walrus bucket, don't allow flush unless the unsupported config is set
 		if !h.db.BucketSpec.IsWalrusBucket() {
 			if !h.db.DatabaseContext.AllowFlushNonCouchbaseBuckets() {
-				msg := "Flush not allowed on Couchbase buckets by default.  You must explicitly enable the ability to flush " +
-					"Couchbase buckets via the Unsupported option: api_endpoints/enable_couchbase_bucket_flush"
+				msg := "Flush not allowed on Couchbase buckets by default."
 				return fmt.Errorf(msg)
 			}
 		}
