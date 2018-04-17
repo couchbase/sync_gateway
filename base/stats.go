@@ -43,6 +43,7 @@ var globalStatNames = append(perDbStatNames, []string{
 const (
 	KTimingExpvarVbNo      = 0
 	KTimingExpvarFrequency = 200
+	statLogInterval        = time.Minute * 1
 )
 
 //initialise the expvar properties that are exposed via syncGateway_stats
@@ -57,6 +58,14 @@ func init() {
 	TimingExpvars = NewSequenceTimingExpvar(KTimingExpvarFrequency, KTimingExpvarVbNo, "st")
 	StatsExpvars.Set("sequenceTiming", TimingExpvars)
 	InitDbStats("_server")
+
+	ticker := time.NewTicker(statLogInterval)
+	go func () {
+		for {
+			<-ticker.C
+			Statsf(KeyAll, StatsExpvars.String())
+		}
+	}()
 }
 
 func InitDbStats(name string) {
