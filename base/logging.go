@@ -804,13 +804,13 @@ func init() {
 
 // Panicf logs the given formatted string and args to the error log level and given log key and then panics.
 func Panicf(logKey LogKey, format string, args ...interface{}) {
-	Errorf(logKey, format, args...)
+	logTo(LevelError, logKey, format, args...)
 	panic(fmt.Sprintf(format, args...))
 }
 
 // Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
 func Fatalf(logKey LogKey, format string, args ...interface{}) {
-	Errorf(logKey, format, args...)
+	logTo(LevelError, logKey, format, args...)
 	os.Exit(1)
 }
 
