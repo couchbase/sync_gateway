@@ -75,10 +75,10 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	// Always enable the HTTP log key
 	lcc.LogKeys = append(lcc.LogKeys, logKeyNames[KeyHTTP])
 
-	// Turn on debug level if we see any "+" log keys
+	// Overriding to debug log level if we see any "+" log keys
 	for _, k := range lcc.LogKeys {
-		if strings.HasSuffix(k, "+") {
-			Infof(KeyAll, "Found \"+\" Log Key. Switching to debug Log Level.")
+		if strings.HasSuffix(k, "+") && !lcc.LogLevel.Enabled(LevelDebug) {
+			Infof(KeyAll, "Found \"+\" Log Key. Overriding to debug log level.")
 			lcc.LogLevel.Set(LevelDebug)
 		}
 	}
