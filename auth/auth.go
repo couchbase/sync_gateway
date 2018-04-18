@@ -111,9 +111,10 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			princ = nil
 			return nil, nil, couchbase.UpdateCancel
 		}
+
 		princ = factory()
 		if err := json.Unmarshal(currentValue, princ); err != nil {
-			return nil, nil, pkgerrors.Wrapf(err, "Error calling json.Unmarshal() for doc ID: %s in getPrincipal()", docID)
+			return nil, nil, pkgerrors.WithStack(base.NewRedactableError("json.Unmarshal() error: %v for doc ID: %s in getPrincipal()", err, base.UD(docID)))
 		}
 		changed := false
 		if princ.Channels() == nil {
@@ -137,7 +138,10 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if changed {
 			// Save the updated doc:
 			updatedBytes, marshalErr := json.Marshal(princ)
-			return updatedBytes, nil, pkgerrors.Wrapf(marshalErr, "Error calling json.Marshal() for doc ID: %s in getPrincipal()", docID)
+			if marshalErr != nil {
+				marshalErr = pkgerrors.WithStack(base.NewRedactableError("json.Unmarshal() error: %v for doc ID: %s in getPrincipal()", marshalErr, base.UD(docID)))
+			}
+			return updatedBytes, nil, marshalErr
 		} else {
 			// Principal is valid, so stop the update
 			return nil, nil, couchbase.UpdateCancel
