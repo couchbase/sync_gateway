@@ -2,7 +2,6 @@ package base
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/pkg/errors"
 )
@@ -26,17 +25,23 @@ type LoggingConfig struct {
 	DeprecatedDefaultLog *LogAppenderConfig `json:"default,omitempty"` // Deprecated "default" logging option.
 }
 
-func (c *LoggingConfig) Init() error {
+func (c *LoggingConfig) Init(defaultLogFilePath string) (err error) {
 	if c == nil {
 		return errors.New("nil LoggingConfig")
 	}
 
-	err := validateLogFilePath(&c.LogFilePath)
+	consoleLogger, err = NewConsoleLogger(&c.Console)
 	if err != nil {
 		return err
 	}
 
-	consoleLogger, err = NewConsoleLogger(&c.Console)
+	// If there's nowhere to specified put log files, we'll log an error, but we'll continue anyway.
+	if !hasLogFilePath(&c.LogFilePath, defaultLogFilePath) {
+		Errorf(KeyAll, "No logFilePath configured, and --defaultLogFilePath flag is not set. Unable to write log files!")
+		return nil
+	}
+
+	err = validateLogFilePath(&c.LogFilePath, defaultLogFilePath)
 	if err != nil {
 		return err
 	}
@@ -64,9 +69,10 @@ func (c *LoggingConfig) Init() error {
 	return nil
 }
 
-func validateLogFilePath(logFilePath *string) error {
+// validateLogFilePath ensures the given path is created and is a directory.
+func validateLogFilePath(logFilePath *string, defaultLogFilePath string) error {
 	if logFilePath == nil || *logFilePath == "" {
-		*logFilePath = defaultLogFilePath()
+		*logFilePath = defaultLogFilePath
 	}
 
 	err := os.MkdirAll(*logFilePath, 0700)
@@ -84,27 +90,7 @@ func validateLogFilePath(logFilePath *string) error {
 	return nil
 }
 
-// defaultLogFilePath returns an absolute path to place log files into.
-func defaultLogFilePath() string {
-	// get path to the running executable
-	path, err := os.Executable()
-	if err != nil {
-		panic(err)
-	}
-
-	// get directory of the running executable
-	path = filepath.Dir(path)
-
-	// append var/lib/sync_gateway/logs
-	logFilePath := filepath.Join(
-		path, "var", "lib", "sync_gateway", "logs",
-	)
-
-	// convert to absolute path if required
-	logFilePath, err = filepath.Abs(logFilePath)
-	if err != nil {
-		panic(err)
-	}
-
-	return logFilePath
+// hasLogFilePath returns true if there's either a logFilePath set, or we can fall back to a defaultLogFilePath.
+func hasLogFilePath(logFilePath *string, defaultLogFilePath string) bool {
+	return (logFilePath != nil && *logFilePath != "") || defaultLogFilePath != ""
 }

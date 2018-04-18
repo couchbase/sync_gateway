@@ -530,7 +530,7 @@ func (config *ServerConfig) setupAndValidateDatabases() error {
 	return nil
 }
 
-func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
+func (config *ServerConfig) setupAndValidateLogging(verbose bool, defaultLogFilePath string) error {
 
 	if config.Logging == nil {
 		config.Logging = &base.LoggingConfig{}
@@ -541,7 +541,7 @@ func (config *ServerConfig) setupAndValidateLogging(verbose bool) error {
 
 	base.SetRedaction(config.Logging.RedactionLevel)
 
-	if err := config.Logging.Init(); err != nil {
+	if err := config.Logging.Init(defaultLogFilePath); err != nil {
 		return err
 	}
 
@@ -675,9 +675,12 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	dbName := flag.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
-	logKeys := flag.String("log", "", "Log keywords, comma separated")
-	logFilePath := flag.String("logFilePath", "", "Path to log file")
+	logKeys := flag.String("log", "", "Log keys, comma separated")
+	logFilePath := flag.String("logFilePath", "", "Path to log files")
 	skipRunModeValidation := flag.Bool("skipRunModeValidation", false, "Skip config validation for runmode (accel vs normal sg)")
+
+	// used by service scripts as a way to specify a per-distro defaultLogFilePath
+	defaultLogFilePath := flag.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
 	flag.Parse()
 
@@ -731,7 +734,11 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 		}
 
 		if *logFilePath != "" {
-			config.DeprecatedLogFilePath = logFilePath
+			config.Logging.LogFilePath = *logFilePath
+		}
+
+		if *logKeys != "" {
+			config.Logging.Console.LogKeys = strings.Split(*logKeys, ",")
 		}
 
 		if *skipRunModeValidation == true {
@@ -782,7 +789,7 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
-	if err := config.setupAndValidateLogging(*verbose); err != nil {
+	if err := config.setupAndValidateLogging(*verbose, *defaultLogFilePath); err != nil {
 		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
 	}
 
