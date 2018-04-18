@@ -271,7 +271,7 @@ func (h *handler) logDuration(realTime bool) {
 			h.serialNumber, h.status, h.statusMessage,
 			float64(duration)/float64(time.Millisecond))
 	} else {
-		base.Infof(base.KeyHTTP, "#%03d:     --> %d %s  (%.1f ms)",
+		base.Debugf(base.KeyHTTP, "#%03d:     --> %d %s  (%.1f ms)",
 			h.serialNumber, h.status, h.statusMessage,
 			float64(duration)/float64(time.Millisecond))
 	}
