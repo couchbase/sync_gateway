@@ -37,7 +37,7 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (err error) {
 
 	// If there's nowhere to specified put log files, we'll log an error, but we'll continue anyway.
 	if !hasLogFilePath(&c.LogFilePath, defaultLogFilePath) {
-		Errorf(KeyAll, "No logFilePath configured, and --defaultLogFilePath flag is not set. Unable to write log files!")
+		Errorf(KeyAll, "No logFilePath configured, and --defaultLogFilePath flag is not set. Log files required for product support are not being generated.")
 		return nil
 	}
 
