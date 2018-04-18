@@ -41,7 +41,7 @@ case \"\$1\" in
         else
             echo "Starting $name"
             cd \"\$RUNBASE\"
-            sudo -u \"\$RUNAS\" \$GATEWAY \$CONFIG >> \"\$stdout_log\" 2>> \"\$stderr_log\" &
+            sudo -u \"\$RUNAS\" \$GATEWAY --defaultLogFilePath \"\$LOGS\" \$CONFIG >> \"\$stdout_log\" 2>> \"\$stderr_log\" &
             echo \$! > \"\$PIDFILE\"
             if ! is_running; then
                 echo "Unable to start, see \$stdout_log and \$stderr_log"

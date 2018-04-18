@@ -6,9 +6,13 @@ import (
 	"log"
 	"os/exec"
 
-	"github.com/kardianos/service"
 	"os"
+
+	"github.com/kardianos/service"
 )
+
+const installLocation = "C:\\Program Files (x86)\\Couchbase\\"
+const defaultLogFilePath = installLocation + "var\\lib\\couchbase\\logs"
 
 var logger service.Logger
 
@@ -29,12 +33,12 @@ func (p *program) Start(s service.Service) error {
 }
 
 func (p *program) startup() error {
-	logger.Infof("Starting Sync Gateway service using command: `%s %s`", p.ExePath, p.ConfigPath)
+	logger.Infof("Starting Sync Gateway service using command: `%s --defaultLogFilePath %s %s`", p.ExePath, defaultLogFilePath, p.ConfigPath)
 
 	if p.ConfigPath != "" {
-		p.SyncGateway = exec.Command(p.ExePath, p.ConfigPath)
+		p.SyncGateway = exec.Command(p.ExePath, "--defaultLogFilePath", defaultLogFilePath, p.ConfigPath)
 	} else {
-		p.SyncGateway = exec.Command(p.ExePath)
+		p.SyncGateway = exec.Command(p.ExePath, "--defaultLogFilePath", defaultLogFilePath)
 	}
 
 	f, err := os.OpenFile(p.StderrPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
@@ -80,23 +84,23 @@ func main() {
 
 	switch len(os.Args) {
 	case 2:
-		exePath = "C:\\Program Files (x86)\\Couchbase\\sync_gateway.exe" // Uses default binary image path
-		stderrPath = "C:\\Program Files (x86)\\Couchbase\\var\\lib\\couchbase\\logs\\sync_gateway_error.log" // Uses default stderr path
-		svcConfig.Arguments = []string{"start", stderrPath}                          // Uses the default config
+		exePath = installLocation + "sync_gateway.exe"             // Uses default binary image path
+		stderrPath = defaultLogFilePath + "sync_gateway_error.log" // Uses default stderr path
+		svcConfig.Arguments = []string{"start", stderrPath}        // Uses the default config
 	case 3:
-		exePath = "C:\\Program Files (x86)\\Couchbase\\sync_gateway.exe" // Uses default binary image path
-		configPath = os.Args[2]                                          // Uses custom config
-		stderrPath = "C:\\Program Files (x86)\\Couchbase\\var\\lib\\couchbase\\logs\\sync_gateway_error.log" // Uses default stderr path
+		exePath = installLocation + "sync_gateway.exe"             // Uses default binary image path
+		configPath = os.Args[2]                                    // Uses custom config
+		stderrPath = defaultLogFilePath + "sync_gateway_error.log" // Uses default stderr path
 		svcConfig.Arguments = []string{"start", configPath, stderrPath}
 	case 4:
-		exePath = os.Args[2]    // Uses custom binary image path
-		configPath = os.Args[3] // Uses custom config
-		stderrPath = "C:\\Program Files (x86)\\Couchbase\\var\\lib\\couchbase\\logs\\sync_gateway_error.log" // Uses default stderr path
+		exePath = os.Args[2]                                       // Uses custom binary image path
+		configPath = os.Args[3]                                    // Uses custom config
+		stderrPath = defaultLogFilePath + "sync_gateway_error.log" // Uses default stderr path
 		svcConfig.Arguments = []string{"start", exePath, configPath, stderrPath}
 	case 5:
 		exePath = os.Args[2]    // Uses custom binary image path
 		configPath = os.Args[3] // Uses custom config
-		stderrPath = os.Args[4]
+		stderrPath = os.Args[4] // Uses custom stderr path
 		svcConfig.Arguments = []string{"start", exePath, configPath, stderrPath}
 	default:
 		panic("Valid parameters combinations are: COMMAND [none, custom config path, or custom exe path and custom config path].")

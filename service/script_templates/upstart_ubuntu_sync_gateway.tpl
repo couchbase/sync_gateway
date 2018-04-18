@@ -24,4 +24,4 @@ pre-start script
   chown -R \${RUNAS}:\${RUNAS} \${RUNBASE}/data
 end script
 
-exec start-stop-daemon --start --chuid \$RUNAS --chdir \$RUNBASE --make-pidfile --pidfile \$PIDFILE --startas \$GATEWAY -- \$CONFIG >> \${LOGS}/\${NAME}_access.log 2>> \${LOGS}/\${NAME}_error.log
+exec start-stop-daemon --start --chuid \$RUNAS --chdir \$RUNBASE --make-pidfile --pidfile \$PIDFILE --startas \$GATEWAY -- --defaultLogFilePath \"\$LOGS\" \$CONFIG >> \${LOGS}/\${NAME}_access.log 2>> \${LOGS}/\${NAME}_error.log
