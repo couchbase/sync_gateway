@@ -11,6 +11,8 @@
         <key>ProgramArguments</key>
         <array>
             <string>${GATEWAY_TEMPLATE_VAR}</string>
+            <string>--defaultLogFilePath</string>
+            <string>${LOGS_TEMPLATE_VAR}</string>
             <string>${CONFIG_TEMPLATE_VAR}</string>
         </array>
         <key>KeepAlive</key>
@@ -21,4 +23,3 @@
         <string>${LOGS_TEMPLATE_VAR}/${SERVICE_NAME}_error.log</string>
 </dict>
 </plist>
-
