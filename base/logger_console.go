@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 )
 
 type ConsoleLogger struct {
@@ -73,6 +74,14 @@ func (lcc *ConsoleLoggerConfig) init() error {
 
 	// Always enable the HTTP log key
 	lcc.LogKeys = append(lcc.LogKeys, logKeyNames[KeyHTTP])
+
+	// Turn on debug level if we see any "+" log keys
+	for _, k := range lcc.LogKeys {
+		if strings.HasSuffix(k, "+") {
+			Infof(KeyAll, "Found \"+\" Log Key. Switching to debug Log Level.")
+			lcc.LogLevel.Set(LevelDebug)
+		}
+	}
 
 	return nil
 }
