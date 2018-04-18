@@ -3,6 +3,7 @@ package base
 import (
 	"fmt"
 	"log"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/gocb"
@@ -40,12 +41,21 @@ func TestN1qlQuery(t *testing.T) {
 	indexExpression := "val"
 	err := bucket.CreateIndex("testIndex_value", indexExpression, "", testN1qlOptions)
 	if err != nil {
-		t.Errorf("Error creating index: %s", err)
+		if !strings.Contains(err.Error(), "index testIndex_value already exists") {
+			t.Errorf("Error creating index: %s", err)
+		}
+	}
+
+	// Wait for index readiness
+	onlineErr := bucket.WaitForIndexOnline("testIndex_value")
+	if onlineErr != nil {
+		t.Errorf("Error waiting for index to come online: %v", err)
 	}
 
 	// Check index state
 	exists, state, stateErr := bucket.GetIndexMeta("testIndex_value")
 	assertNoError(t, stateErr, "Error validating index state")
+	assertTrue(t, state != nil, "No state returned for index")
 	assert.Equals(t, state.State, "online")
 	assert.Equals(t, exists, true)
 
