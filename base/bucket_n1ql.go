@@ -186,8 +186,8 @@ func (bucket *CouchbaseBucketGoCB) WaitForIndexOnline(indexName string) error {
 func (bucket *CouchbaseBucketGoCB) waitForBucketExistence(indexName string, shouldExist bool) error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		exists, indexMeta, getMetaErr := bucket.GetIndexMeta(indexName)
-		if getMetaErr {
+		exists, _, getMetaErr := bucket.GetIndexMeta(indexName)
+		if getMetaErr != nil {
 			return false, getMetaErr, nil
 		}
 		// If it's in the desired state, we're done
@@ -232,7 +232,7 @@ func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
 
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
 	if err != nil && !IsIndexerRetryIndexError(err) {
-		return pkgerrors.Wrapf(err, "Error creating index with statement: %s", createStatement)
+		return err
 	}
 
 	if IsIndexerRetryIndexError(err) {
