@@ -6,7 +6,7 @@ import (
 )
 
 const ServerName = "@PRODUCT_NAME@"                  // DO NOT CHANGE; clients check this
-const VersionNumber = "2.0"                          // API/feature level
+const VersionNumber = "2.1"                          // API/feature level
 const VersionBuildNumberString = "@PRODUCT_VERSION@" // Real string substituted by Jenkins build
 const VersionCommitSHA = "@COMMIT_SHA@"              // Real string substituted by Jenkins build
 
