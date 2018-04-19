@@ -206,7 +206,7 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 
 	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
-		return nil, errors.New("Cannot perform principals N1QL query on non-Couchbase bucket.")
+		return nil, errors.New("Cannot perform N1QL query on non-Couchbase bucket.")
 	}
 
 	results, err = gocbBucket.Query(statement, params, consistency, adhoc)
