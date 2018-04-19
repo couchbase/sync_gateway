@@ -114,7 +114,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 
 		princ = factory()
 		if err := json.Unmarshal(currentValue, princ); err != nil {
-			return nil, nil, pkgerrors.WithStack(base.NewRedactableError("json.Unmarshal() error: %v for doc ID: %s in getPrincipal()", err, base.UD(docID)))
+			return nil, nil, pkgerrors.WithStack(base.NewRedactableError("json.Unmarshal() error for doc ID: %s in getPrincipal().  Error: %v", base.UD(docID), err))
 		}
 		changed := false
 		if princ.Channels() == nil {
@@ -139,7 +139,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			// Save the updated doc:
 			updatedBytes, marshalErr := json.Marshal(princ)
 			if marshalErr != nil {
-				marshalErr = pkgerrors.WithStack(base.NewRedactableError("json.Unmarshal() error: %v for doc ID: %s in getPrincipal()", marshalErr, base.UD(docID)))
+				marshalErr = pkgerrors.WithStack(base.NewRedactableError("json.Unmarshal() error for doc ID: %s in getPrincipal(). Error: %v", base.UD(docID), marshalErr))
 			}
 			return updatedBytes, nil, marshalErr
 		} else {

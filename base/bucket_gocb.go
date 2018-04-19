@@ -125,7 +125,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
-		return nil, pkgerrors.WithStack(NewRedactableError("Error opening GoCB bucket.  Error: %v Bucket: %s", err, MD(spec.BucketName)))
+		return nil, pkgerrors.WithStack(NewRedactableError("Error opening GoCB bucket. Bucket: %s.  Error: %v", MD(spec.BucketName), err))
 	}
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
@@ -290,7 +290,7 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 	}
 
 	if err != nil {
-		err = pkgerrors.WithStack(NewRedactableError("Unrecoverable GoCB error doing Get().  Error: %v.  Doc ID: %s", err, UD(k)))
+		err = pkgerrors.WithStack(NewRedactableError("Unrecoverable GoCB error doing Get(). Doc ID: %s.  Error: %v.", UD(k), err))
 	}
 
 	return cas, err
@@ -859,7 +859,7 @@ func (bucket *CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added
 		if err == gocb.ErrKeyExists {
 			return false, nil
 		}
-		err = pkgerrors.WithStack(NewRedactableError("Error calling GoCB AddRaw().  Error: %v.  Doc ID: %s", err, UD(k)))
+		err = pkgerrors.WithStack(NewRedactableError("Error calling GoCB AddRaw(). Doc ID: %s.  Error: %v.", UD(k), err))
 	}
 
 	return err == nil, err
@@ -892,7 +892,7 @@ func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) erro
 	}
 	err, _ := RetryLoop("CouchbaseBucketGoCB Set()", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		err = pkgerrors.WithStack(NewRedactableError("Error calling GoCB Set().  Error: %v.  Doc ID: %s", err, UD(k)))
+		err = pkgerrors.WithStack(NewRedactableError("Error calling GoCB Set(). Doc ID: %s. Error: %v.", UD(k), err))
 	}
 	return err
 
@@ -1662,7 +1662,7 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 	}
 
 	if err != nil {
-		err = pkgerrors.WithStack(NewRedactableError("Unrecoverable GoCB error doing Incr().  Error: %v Doc ID: %s %s with amt: %d", err, k, amt))
+		err = pkgerrors.WithStack(NewRedactableError("Unrecoverable GoCB error doing Incr().  Doc ID: %s %s with amt: %d.  Error: %v", UD(k), amt, err))
 	}
 
 	return cas, err
@@ -2250,7 +2250,7 @@ func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint
 	wg.Wait()
 
 	if getMetaError != nil {
-		getMetaError = pkgerrors.WithStack(NewRedactableError("Error getting expiry value.  Error: %v Doc ID: %s", getMetaError, UD(k)))
+		getMetaError = pkgerrors.WithStack(NewRedactableError("Error getting expiry value. Doc ID: %s.   Error: %v", UD(k), getMetaError))
 	}
 
 	return expiry, getMetaError
