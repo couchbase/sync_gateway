@@ -110,9 +110,17 @@ type UserViewsOptions struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether pass-through view query is supported through public API
 }
 
+type APIEndpoints struct {
+
+	// This setting is only needed for testing purposes.  In the Couchbase Lite unit tests that run in "integration mode"
+	// against a running Sync Gateway, the tests need to be able to flush the data in between tests to start with a clean DB.
+	EnableCouchbaseBucketFlush bool `json:"enable_couchbase_bucket_flush,omitempty"` // Whether Couchbase buckets can be flushed via Admin REST API
+}
+
 type UnsupportedOptions struct {
 	UserViews        UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
 	OidcTestProvider OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
+	APIEndpoints     APIEndpoints            `json:"api_endpoints,omitempty"`      // Config settings for API endpoints
 }
 
 // Options associated with the import of documents not written by Sync Gateway
@@ -1069,6 +1077,10 @@ func (context *DatabaseContext) AllowConflicts() bool {
 		return *context.Options.AllowConflicts
 	}
 	return base.DefaultAllowConflicts
+}
+
+func (context *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
+	return context.Options.UnsupportedOptions.APIEndpoints.EnableCouchbaseBucketFlush
 }
 
 //////// SEQUENCE ALLOCATION:

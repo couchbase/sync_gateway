@@ -11,6 +11,7 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	httpprof "net/http/pprof"
@@ -18,7 +19,6 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strconv"
-
 	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -64,7 +64,59 @@ func (h *handler) handleVacuum() error {
 }
 
 func (h *handler) handleFlush() error {
-	if bucket, ok := h.db.Bucket.(sgbucket.DeleteableBucket); ok {
+
+
+	// If it can be flushed, then flush it
+	if _, ok := h.db.Bucket.(sgbucket.FlushableBucket); ok {
+
+		// If it's not a walrus bucket, don't allow flush unless the unsupported config is set
+		if !h.db.BucketSpec.IsWalrusBucket() {
+			if !h.db.DatabaseContext.AllowFlushNonCouchbaseBuckets() {
+				msg := "Flush not allowed on Couchbase buckets by default."
+				return fmt.Errorf(msg)
+			}
+		}
+
+		name := h.db.Name
+		config := h.server.GetDatabaseConfig(name)
+
+		// This needs to first call RemoveDatabase since flushing the bucket under Sync Gateway might cause issues.
+		h.server.RemoveDatabase(name)
+
+		// Create a bucket connection spec from the database config
+		spec, err := GetBucketSpec(config)
+		if err != nil {
+			return err
+		}
+
+		// Manually re-open a temporary bucket connection just for flushing purposes
+		tempBucketForFlush, err := db.ConnectToBucket(spec, nil)
+		if err != nil {
+			return err
+		}
+		defer tempBucketForFlush.Close() // Close the temporary connection to the bucket that was just for purposes of flushing it
+
+		// Flush the bucket (assuming it conforms to sgbucket.DeleteableBucket interface
+		if tempBucketForFlush, ok := tempBucketForFlush.(sgbucket.FlushableBucket); ok {
+
+			// Flush
+			err := tempBucketForFlush.Flush()
+			if err != nil {
+				return err
+			}
+
+		}
+
+		// Re-open database and add to Sync Gateway
+		_, err2 := h.server.AddDatabaseFromConfig(config)
+		if err2 != nil {
+			return err2
+		}
+
+	} else if bucket, ok := h.db.Bucket.(sgbucket.DeleteableBucket); ok {
+
+		// If it's not flushable, but it's deletable, then delete it
+
 		name := h.db.Name
 		config := h.server.GetDatabaseConfig(name)
 		h.server.RemoveDatabase(name)
@@ -74,9 +126,15 @@ func (h *handler) handleFlush() error {
 			err = err2
 		}
 		return err
+
 	} else {
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket does not support flush")
+
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Bucket does not support flush or delete")
+
 	}
+
+	return nil
+
 }
 
 func (h *handler) handleResync() error {

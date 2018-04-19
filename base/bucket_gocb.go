@@ -2150,6 +2150,64 @@ func (bucket *CouchbaseBucketGoCB) Close() {
 	}
 }
 
+// This flushes the bucket.
+func (bucket *CouchbaseBucketGoCB) Flush() error {
+
+	bucketManager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
+	}
+
+	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
+		err = bucketManager.Flush()
+		if err != nil {
+			Warnf(KeyAll, "Error flushing bucket: %v  Will retry.", err)
+			shouldRetry = true
+		}
+		return shouldRetry, err, nil
+	}
+
+	err, _ = RetryLoop("EmptyTestBucket", workerFlush, CreateDoublingSleeperFunc(12, 10))
+	if err != nil {
+		return err
+	}
+
+	// Wait until the bucket item count is 0, since flush is asynchronous
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		itemCount, err := bucket.BucketItemCount()
+		if err != nil {
+			return false, err, nil
+		}
+
+		if itemCount == 0 {
+			// bucket flushed, we're done
+			return false, nil, nil
+		}
+
+		// Retry
+		return true, nil, nil
+
+	}
+
+	// Kick off retry loop
+	description := fmt.Sprintf("Wait until bucket %s has 0 items after flush", bucket.spec.BucketName)
+	err, _ = RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 10000))
+	if err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+// Get the number of items in the bucket.
+// GOCB doesn't currently offer a way to do this, and so this is a workaround to go directly
+// to Couchbase Server REST API.
+func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
+	user, pass, _ := bucket.spec.Auth.GetCredentials()
+	return GoCBBucketItemCount(bucket.Bucket, bucket.spec, user, pass)
+}
+
 func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
 
 	bucket.singleOps <- struct{}{}
@@ -2392,4 +2450,59 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 	default:
 		return nil, false
 	}
+}
+
+
+func GoCBBucketItemCount(bucket *gocb.Bucket, spec BucketSpec, user, pass string) (itemCount int, err error) {
+
+	relativeUri := fmt.Sprintf("pools/default/buckets/%s", spec.BucketName)
+
+	mgmtEps := bucket.IoRouter().MgmtEps()
+	if len(mgmtEps) == 0 {
+		return -1, fmt.Errorf("No available Couchbase Server nodes")
+	}
+	bucketEp := mgmtEps[rand.Intn(len(mgmtEps))]
+
+	reqUri := fmt.Sprintf("%s/%s", bucketEp, relativeUri)
+
+	req, err := http.NewRequest("GET", reqUri, nil)
+	if err != nil {
+		return -1, err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+
+	req.SetBasicAuth(user, pass)
+
+	goCBClient := bucket.IoRouter().HttpClient()
+
+	resp, err := goCBClient.Do(req)
+	if err != nil {
+		return -1, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		_, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return -1, err
+		}
+		return -1, pkgerrors.Wrapf(err, "Error trying to find number of items in bucket")
+	}
+
+	respJson := map[string]interface{}{}
+
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&respJson); err != nil {
+		return -1, err
+	}
+
+	basicStats := respJson["basicStats"].(map[string]interface{})
+
+	itemCountRaw := basicStats["itemCount"]
+
+	itemCountFloat := itemCountRaw.(float64)
+
+	return int(itemCountFloat), nil
+
 }
