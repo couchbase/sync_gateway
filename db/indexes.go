@@ -170,28 +170,41 @@ func (i *SGIndex) isXattrOnly() bool {
 	return i.flags&IdxFlagXattrOnly != 0
 }
 
-// Creates index associated with specified SGIndex if not already present
-func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs bool, numReplica uint) error {
+// Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
+// will need to be invoked for any created indexes.
+func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs bool, numReplica uint) (isDeferred bool, err error) {
 
 	if i.isXattrOnly() && !useXattrs {
-		return nil
+		return false, nil
 	}
 
 	indexName := i.fullIndexName(useXattrs)
 
-	exists, _, metaErr := bucket.GetIndexMeta(indexName)
+	exists, indexMeta, metaErr := bucket.GetIndexMeta(indexName)
 	if metaErr != nil {
-		return metaErr
+		return false, metaErr
 	}
+
+	// For already existing indexes, check whether they are deferred
 	if exists {
-		return nil
+		if indexMeta == nil {
+			return false, fmt.Errorf("No metadata retrieved for existing index %s", indexName)
+		}
+		if indexMeta.State == base.IndexStateDeferred {
+			return true, nil
+		}
+		return false, nil
 	}
 
 	// Create index
 	indexExpression := replaceSyncTokensIndex(i.expression, useXattrs)
 	filterExpression := replaceSyncTokensIndex(i.filterExpression, useXattrs)
 
-	var options *base.N1qlIndexOptions
+	options := &base.N1qlIndexOptions{
+		DeferBuild:      true,
+		NumReplica:      numReplica,
+		IndexTombstones: i.shouldIndexTombstones(useXattrs),
+	}
 	// We want to pass nil options unless one or more of the WITH elements are required
 	if numReplica > 0 || i.shouldIndexTombstones(useXattrs) {
 		options = &base.N1qlIndexOptions{
@@ -218,14 +231,13 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	}
 
 	description := fmt.Sprintf("Attempt to create index %s", indexName)
-	err, _ := base.RetryLoop(description, worker, sleeper)
+	err, _ = base.RetryLoop(description, worker, sleeper)
 
 	if err != nil {
-		return pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
+		return false, pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
 	}
 
-	// Wait for created index to come online
-	return bucket.WaitForIndexOnline(indexName)
+	return true, nil
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
@@ -238,13 +250,31 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, num
 	}
 	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d", numReplicas)
 
+	// Create any indexes that aren't present
+	deferredIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
-		err := sgIndex.createIfNeeded(gocbBucket, useXattrs, numReplicas)
+		isDeferred, err := sgIndex.createIfNeeded(gocbBucket, useXattrs, numReplicas)
+		fullIndexName := sgIndex.fullIndexName(useXattrs)
 		if err != nil {
 			return fmt.Errorf("Unable to install index %s: %v", sgIndex.simpleName, err)
 		}
+
+		if isDeferred {
+			deferredIndexes = append(deferredIndexes, fullIndexName)
+		}
 	}
 
+	// Issue BUILD INDEX for any deferred indexes
+	if len(deferredIndexes) > 0 {
+		gocbBucket.BuildIndexes(deferredIndexes)
+	}
+
+	// Wait for newly built indexes to be online
+	for _, indexName := range deferredIndexes {
+		gocbBucket.WaitForIndexOnline(indexName)
+	}
+
+	// Wait for initial readiness queries to complete
 	return waitForIndexes(gocbBucket, useXattrs)
 }
 

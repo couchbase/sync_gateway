@@ -10,9 +10,10 @@ import (
 	pkgerrors "github.com/pkg/errors"
 )
 
-const BucketQueryToken = "$_bucket" // Token used for bucket name replacement in query statements
-const MaxQueryRetries = 30          // Maximum query retries on indexer error
-const IndexStateOnline = "online"   // bucket state value, as returned by SELECT FROM system:indexes
+const BucketQueryToken = "$_bucket"   // Token used for bucket name replacement in query statements
+const MaxQueryRetries = 30            // Maximum query retries on indexer error
+const IndexStateOnline = "online"     // bucket state value, as returned by SELECT FROM system:indexes
+const IndexStateDeferred = "deferred" // bucket state value, as returned by SELECT FROM system:indexes
 
 // IndexOptions used to build the 'with' clause
 type N1qlIndexOptions struct {
@@ -92,10 +93,31 @@ func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression stri
 	return bucket.createIndex(createStatement, options)
 }
 
+// BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:
+//   BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
+func (bucket *CouchbaseBucketGoCB) BuildIndexes(indexNames []string) error {
+
+	if len(indexNames) == 0 {
+		return nil
+	}
+
+	// Not using strings.Join because we want to escape each index name
+	indexNameList := fmt.Sprintf("`%s`", indexNames[0])
+	for i := 1; i < len(indexNames); i++ {
+		indexNameList = fmt.Sprintf("%s,`%s`", indexNameList, indexNames[i])
+	}
+
+	buildStatement := fmt.Sprintf("BUILD INDEX ON `%s`(%s)", bucket.GetName(), indexNameList)
+	n1qlQuery := gocb.NewN1qlQuery(buildStatement)
+	_, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+
+	return err
+}
+
 // CreateIndex creates the specified index in the current bucket using on the specified index expression.
 func (bucket *CouchbaseBucketGoCB) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
 
-	createStatement := fmt.Sprintf("CREATE PRIMARY INDEX %s ON %s", indexName, bucket.GetName())
+	createStatement := fmt.Sprintf("CREATE PRIMARY INDEX `%s` ON `%s`", indexName, bucket.GetName())
 	return bucket.createIndex(createStatement, options)
 }
 
@@ -112,12 +134,12 @@ func (bucket *CouchbaseBucketGoCB) createIndex(createStatement string, options *
 	Debugf(KeyIndex, "Attempting to create index using statement: [%s]", UD(createStatement))
 	n1qlQuery := gocb.NewN1qlQuery(createStatement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
-	if err != nil && !IsRecoverableCreateIndexError(err) {
+	if err != nil && !IsServerRetryCreateIndexError(err) {
 		return pkgerrors.Wrapf(err, "Error creating index with statement: %s", createStatement)
 	}
 
-	if IsRecoverableCreateIndexError(err) {
-		Infof(KeyQuery, "Recoverable error creating index with statement: %s, error:%v", UD(createStatement), err)
+	if IsServerRetryCreateIndexError(err) {
+		Infof(KeyQuery, "Temporary error creating index - server will retry.  Error:%v", err)
 		return nil
 	}
 
@@ -193,7 +215,7 @@ func IsIndexNotFoundError(err error) bool {
 
 // 'Bucket in Recovery' type errors are of the form:
 // error:[5000] GSI CreateIndex() - cause: Encountered transient error.  Index creation will be retried in background.  Error: Index testIndex_value will retry building in the background for reason: Bucket test_data_bucket In Recovery.
-func IsRecoverableCreateIndexError(err error) bool {
+func IsServerRetryCreateIndexError(err error) bool {
 	if err == nil {
 		return false
 	}
