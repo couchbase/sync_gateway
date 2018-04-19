@@ -2380,3 +2380,16 @@ func (bucket *CouchbaseBucketGoCB) releaseViewOp() {
 	<-bucket.viewOps
 	gocbExpvars.Add("ViewOps", -1)
 }
+
+func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
+
+	switch typedBucket := bucket.(type) {
+	case *CouchbaseBucketGoCB:
+		return typedBucket, true
+	case *LoggingBucket:
+		gocbBucket, ok := typedBucket.GetUnderlyingBucket().(*CouchbaseBucketGoCB)
+		return gocbBucket, ok
+	default:
+		return nil, false
+	}
+}
