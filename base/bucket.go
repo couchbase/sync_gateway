@@ -296,13 +296,13 @@ func (bucket *CouchbaseBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbuck
 	go func() {
 		for cbEvent := range cbFeed.C {
 			events <- sgbucket.FeedEvent{
-				Opcode:   sgbucket.FeedOpcode(cbEvent.Opcode),
-				Expiry:   cbEvent.Expiry,
-				Flags:    cbEvent.Flags,
-				Key:      cbEvent.Key,
-				Value:    cbEvent.Value,
-				Sequence: cbEvent.Cas,
-				VbNo:     cbEvent.VBucket,
+				Opcode: sgbucket.FeedOpcode(cbEvent.Opcode),
+				Expiry: cbEvent.Expiry,
+				Flags:  cbEvent.Flags,
+				Key:    cbEvent.Key,
+				Value:  cbEvent.Value,
+				Cas:    cbEvent.Cas,
+				VbNo:   cbEvent.VBucket,
 			}
 		}
 	}()

@@ -11,16 +11,16 @@ func TestDedupeTapEventsLaterSeqSameDoc(t *testing.T) {
 
 	tapEvents := []sgbucket.FeedEvent{
 		{
-			Opcode:   sgbucket.FeedOpMutation,
-			Key:      []byte("doc1"),
-			Value:    []byte(`".."`),
-			Sequence: 1,
+			Opcode: sgbucket.FeedOpMutation,
+			Key:    []byte("doc1"),
+			Value:  []byte(`".."`),
+			Cas:    1,
 		},
 		{
-			Opcode:   sgbucket.FeedOpMutation,
-			Key:      []byte("doc1"),
-			Value:    []byte(`".."`),
-			Sequence: 2,
+			Opcode: sgbucket.FeedOpMutation,
+			Key:    []byte("doc1"),
+			Value:  []byte(`".."`),
+			Cas:    2,
 		},
 	}
 
@@ -31,7 +31,7 @@ func TestDedupeTapEventsLaterSeqSameDoc(t *testing.T) {
 
 	// make sure the earlier event was deduped
 	dedupedEvent := deduped[0]
-	assert.True(t, dedupedEvent.Sequence == 2)
+	assert.True(t, dedupedEvent.Cas == 2)
 
 }
 
@@ -39,16 +39,16 @@ func TestDedupeNoDedupeDifferentDocs(t *testing.T) {
 
 	tapEvents := []sgbucket.FeedEvent{
 		{
-			Opcode:   sgbucket.FeedOpMutation,
-			Key:      []byte("doc1"),
-			Value:    []byte(`".."`),
-			Sequence: 1,
+			Opcode: sgbucket.FeedOpMutation,
+			Key:    []byte("doc1"),
+			Value:  []byte(`".."`),
+			Cas:    1,
 		},
 		{
-			Opcode:   sgbucket.FeedOpMutation,
-			Key:      []byte("doc2"),
-			Value:    []byte(`".."`),
-			Sequence: 2,
+			Opcode: sgbucket.FeedOpMutation,
+			Key:    []byte("doc2"),
+			Value:  []byte(`".."`),
+			Cas:    2,
 		},
 	}
 

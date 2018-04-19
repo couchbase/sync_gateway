@@ -393,7 +393,7 @@ func dedupeTapEvents(tapEvents []sgbucket.FeedEvent) []sgbucket.FeedEvent {
 	for _, tapEvent := range tapEvents {
 		key := string(tapEvent.Key)
 		latestTapEventForKey := latestTapEventPerKey[key]
-		if tapEvent.Sequence == latestTapEventForKey.Sequence {
+		if tapEvent.Cas == latestTapEventForKey.Cas {
 			deduped = append(deduped, tapEvent)
 		}
 	}

@@ -77,7 +77,7 @@ func (s *Shadower) readTapFeed() {
 			if !isDeletion && event.Expiry > 0 {
 				break // ignore ephemeral documents
 			}
-			err := s.pullDocument(key, event.Value, isDeletion, event.Sequence, event.Flags)
+			err := s.pullDocument(key, event.Value, isDeletion, event.Cas, event.Flags)
 			if err != nil {
 				base.Warnf(base.KeyAll, "Error applying change %q from external bucket: %v", base.UD(key), err)
 			}
