@@ -2455,11 +2455,21 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 
 func GoCBBucketItemCount(bucket *gocb.Bucket, spec BucketSpec, user, pass string) (itemCount int, err error) {
 
-	reqUri := fmt.Sprintf("%s/pools/default/buckets/%s", spec.Server, spec.BucketName)
+	relativeUri := fmt.Sprintf("pools/default/buckets/%s", spec.BucketName)
+
+	mgmtEps := bucket.IoRouter().MgmtEps()
+	if len(mgmtEps) == 0 {
+		return -1, fmt.Errorf("No available Couchbase Server nodes")
+	}
+	bucketEp := mgmtEps[rand.Intn(len(mgmtEps))]
+
+	reqUri := fmt.Sprintf("%s/%s", bucketEp, relativeUri)
+
 	req, err := http.NewRequest("GET", reqUri, nil)
 	if err != nil {
 		return -1, err
 	}
+
 	req.Header.Add("Content-Type", "application/json")
 
 	req.SetBasicAuth(user, pass)
