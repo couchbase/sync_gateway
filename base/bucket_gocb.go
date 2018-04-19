@@ -1879,7 +1879,7 @@ func (bucket *CouchbaseBucketGoCB) View(ddoc, name string, params map[string]int
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return viewResult, pkgerrors.Wrapf(err, "Unexpected error querying design doc %q, view %q with params:%+v", ddoc, name, params)
+		return viewResult, pkgerrors.WithStack(NewRedactableError("Unexpected error querying design doc %q, view %q with params:%+v.  Error: %v", UD(ddoc), UD(name), UD(params), err))
 	}
 
 	if goCbViewResult != nil {
@@ -1952,7 +1952,7 @@ func (bucket *CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[stri
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return pkgerrors.Wrapf(err, "Unexpected error querying design doc %q, view %q with params:%+v", ddoc, name, params)
+		return pkgerrors.WithStack(NewRedactableError("Unexpected error querying design doc %q, view %q with params:%+v.  Error: %v", UD(ddoc), UD(name), UD(params), err))
 	}
 
 	// Define a struct to store the rows as raw bytes
@@ -2045,7 +2045,7 @@ func (bucket CouchbaseBucketGoCB) ViewQuery(ddoc, name string, params map[string
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return nil, pkgerrors.Wrapf(err, "Unexpected error querying design doc %q, view %q with params:%+v", ddoc, name, params)
+		return nil, pkgerrors.WithStack(NewRedactableError("Unexpected error querying design doc %q, view %q with params:%+v.  Error: %v", UD(ddoc), UD(name), UD(params), err))
 	}
 
 	return goCbViewResult, nil

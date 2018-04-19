@@ -150,7 +150,7 @@ func CouchbaseUrlWithAuth(serverUrl, username, password, bucketname string) (str
 	// parse url and reconstruct it piece by piece
 	u, err := url.Parse(serverUrl)
 	if err != nil {
-		return "", pkgerrors.Wrapf(err, "Error parsing serverUrl: %v", serverUrl)
+		return "", pkgerrors.WithStack(NewRedactableError("Error parsing serverUrl: %v.  Error: %v", MD(serverUrl), err))
 	}
 
 	userPass := bytes.Buffer{}
@@ -565,7 +565,7 @@ func IsFilePathWritable(fp string) (bool, error) {
 	//Check that containing dir exists
 	_, err := os.Stat(containingDir)
 	if err != nil {
-		return false, pkgerrors.Wrapf(err, "Error checking if %s is not writable", fp)
+		return false, pkgerrors.WithStack(NewRedactableError("Error checking if %s is not writable.  Error: %v", UD(fp), err))
 	}
 
 	//Check that the filePath points to a file not a directory
@@ -573,7 +573,7 @@ func IsFilePathWritable(fp string) (bool, error) {
 	if err == nil || !os.IsNotExist(err) {
 		Warnf(KeyAll, "filePath exists")
 		if fi.Mode().IsDir() {
-			return false, fmt.Errorf("IsFilePathWritable() called but %s is a directory rather than a file", fp)
+			return false, NewRedactableError("IsFilePathWritable() called but %s is a directory rather than a file", UD(fp))
 		}
 	}
 
@@ -584,7 +584,7 @@ func IsFilePathWritable(fp string) (bool, error) {
 		return true, nil
 	}
 	if os.IsPermission(err) {
-		return false, pkgerrors.Wrapf(err, "Error checking if %s is not writable", fp)
+		return false, pkgerrors.WithStack(NewRedactableError("Error checking if %s is not writable.  Error: %v", UD(fp), err))
 	}
 
 	return true, nil
@@ -693,7 +693,7 @@ func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []strin
 	// Unable to do simple URL parse, try to parse into components w/ gocbconnstr
 	connSpec, errParse := gocbconnstr.Parse(couchbaseUri)
 	if errParse != nil {
-		return httpUrls, pkgerrors.Wrapf(err, "Error parsing gocb connection string: %v", couchbaseUri)
+		return httpUrls, pkgerrors.WithStack(NewRedactableError("Error parsing gocb connection string: %v.  Error: %v", MD(couchbaseUri), errParse))
 	}
 
 	for _, address := range connSpec.Addresses {
@@ -707,7 +707,7 @@ func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []strin
 		case "couchbase":
 			fallthrough
 		case "couchbases":
-			return nil, fmt.Errorf("couchbase:// and couchbases:// URI schemes can only be used with GoCB buckets.  Bucket: %+v", bucket)
+			return nil, NewRedactableError("couchbase:// and couchbases:// URI schemes can only be used with GoCB buckets.  Bucket: %+v", MD(bucket))
 		case "https":
 			translatedScheme = "https"
 		}
