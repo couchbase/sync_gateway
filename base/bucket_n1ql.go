@@ -215,6 +215,8 @@ func IsIndexNotFoundError(err error) bool {
 
 // 'Bucket in Recovery' type errors are of the form:
 // error:[5000] GSI CreateIndex() - cause: Encountered transient error.  Index creation will be retried in background.  Error: Index testIndex_value will retry building in the background for reason: Bucket test_data_bucket In Recovery.
+// error:[5000] GSI Drop() - cause: Fail to drop index on some indexer nodes.  Error=Encountered error when dropping index: Indexer In Recovery. Drop index will be retried in background.
+// error:[5000] BuildIndexes - cause: Build index fails.  %vIndex testIndexDeferred will retry building in the background for reason: Build Already In Progress. Bucket test_data_bucket.
 func IsServerRetryCreateIndexError(err error) bool {
 	if err == nil {
 		return false
