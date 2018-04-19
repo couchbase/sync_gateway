@@ -11,7 +11,7 @@ type RedactableError struct {
 }
 
 // Create a new redactable error.  Same signature as fmt.Errorf() for easy drop-in replacement.
-func NewRedactableError(fmt string, args ...interface{}) *RedactableError {
+func RedactErrorf(fmt string, args ...interface{}) *RedactableError {
 	return &RedactableError{
 		fmt: fmt,
 		args: args,

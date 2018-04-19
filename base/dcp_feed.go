@@ -579,11 +579,11 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		dataSourceOptions,
 	)
 	if err != nil {
-		return pkgerrors.WithStack(NewRedactableError("Error connecting to new bucket cbdatasource.  URLs:%s, pool:%s, bucket:%s.  Error: %v", MD(urls), MD(poolName), MD(bucketName), err))
+		return pkgerrors.WithStack(RedactErrorf("Error connecting to new bucket cbdatasource.  URLs:%s, pool:%s, bucket:%s.  Error: %v", MD(urls), MD(poolName), MD(bucketName), err))
 	}
 
 	if err = bds.Start(); err != nil {
-		return pkgerrors.WithStack(NewRedactableError("Error starting bucket cbdatasource.  URLs:%s, pool:%s, bucket:%s.  Error: %v", MD(urls), MD(poolName), MD(bucketName), err))
+		return pkgerrors.WithStack(RedactErrorf("Error starting bucket cbdatasource.  URLs:%s, pool:%s, bucket:%s.  Error: %v", MD(urls), MD(poolName), MD(bucketName), err))
 	}
 
 	// Close the data source if feed terminator is closed

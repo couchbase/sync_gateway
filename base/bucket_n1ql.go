@@ -149,7 +149,7 @@ func (bucket *CouchbaseBucketGoCB) createIndex(indexName string, createStatement
 	n1qlQuery := gocb.NewN1qlQuery(createStatement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
 	if err != nil && !IsIndexerRetryIndexError(err) {
-		return pkgerrors.WithStack(NewRedactableError("Error creating index with statement: %s.  Error: %v", UD(createStatement), err))
+		return pkgerrors.WithStack(RedactErrorf("Error creating index with statement: %s.  Error: %v", UD(createStatement), err))
 	}
 
 	if IsIndexerRetryIndexError(err) {

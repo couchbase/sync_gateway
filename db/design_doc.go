@@ -554,7 +554,7 @@ func installViews(bucket base.Bucket) error {
 		err, _ := base.RetryLoop(description, worker, sleeper)
 
 		if err != nil {
-			return pkgerrors.WithStack(base.NewRedactableError("Error installing Couchbase Design doc: %v.  Error: %v", base.UD(designDocName), err))
+			return pkgerrors.WithStack(base.RedactErrorf("Error installing Couchbase Design doc: %v.  Error: %v", base.UD(designDocName), err))
 		}
 	}
 
