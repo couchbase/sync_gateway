@@ -11,7 +11,6 @@ package auth
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
@@ -324,7 +323,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	base.Debugf(base.KeyOIDC, "Provider for issuer: %+v", base.UD(provider))
 
 	if provider == nil {
-		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
+		return nil, jose.JWT{}, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
 	}
 
 	// VerifyJWT validates the claims and signature on the JWT

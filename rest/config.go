@@ -655,7 +655,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	}
 	for name, db := range other.Databases {
 		if self.Databases[name] != nil {
-			return fmt.Errorf("Database %q already specified earlier", name)
+			return base.RedactErrorf("Database %q already specified earlier", base.UD(name))
 		}
 		self.Databases[name] = db
 	}

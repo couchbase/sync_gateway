@@ -166,11 +166,11 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int, docid string) 
 		if ok && revpos >= int64(minRevpos) {
 			digest, ok := meta["digest"]
 			if !ok {
-				return nil, fmt.Errorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to missing digest field", docid, attachmentName, revpos)
+				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to missing digest field", base.UD(docid), base.UD(attachmentName), revpos)
 			}
 			digestStr, ok := digest.(string)
 			if !ok {
-				return nil, fmt.Errorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to unexpected digest field: %v", docid, attachmentName, revpos, digest)
+				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to unexpected digest field: %v", base.UD(docid), base.UD(attachmentName), revpos, digest)
 			}
 			key := AttachmentKey(digestStr)
 			data, err := db.GetAttachment(key)

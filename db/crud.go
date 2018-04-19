@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -1076,7 +1075,7 @@ func (db *Database) updateAndReturnDoc(
 
 			currentRevFromHistory, ok := docOut.History[docOut.CurrentRev]
 			if !ok {
-				err = fmt.Errorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", docOut.CurrentRev, docOut)
+				err = base.RedactErrorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", docOut.CurrentRev, base.UD(docOut))
 				return
 			}
 

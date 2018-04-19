@@ -433,7 +433,7 @@ func (bucket *CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte,
 	// Type assertion of result into a map
 	resultMap, ok := result.(map[string][]byte)
 	if !ok {
-		return nil, fmt.Errorf("Error doing type assertion of %v into a map", result)
+		return nil, RedactErrorf("Error doing type assertion of %v into a map", UD(result))
 	}
 
 	return resultMap, err
@@ -471,7 +471,7 @@ func (bucket *CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]ui
 	// Type assertion of result into a map
 	resultMap, ok := result.(map[string]uint64)
 	if !ok {
-		return nil, fmt.Errorf("Error doing type assertion of %v into a map", result)
+		return nil, RedactErrorf("Error doing type assertion of %v into a map", UD(result))
 	}
 
 	return resultMap, err
@@ -795,7 +795,7 @@ func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []by
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return nil, 0, fmt.Errorf("GetAndTouchRaw: Error doing type assertion of %v into a uint64", result)
+		return nil, 0, RedactErrorf("GetAndTouchRaw: Error doing type assertion of %v into a uint64", UD(result))
 	}
 
 	// If returnVal was never set to anything, return nil or else type assertion below will panic
@@ -1022,7 +1022,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("WriteCas: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, RedactErrorf("WriteCas: Error doing type assertion of %v into a uint64,  Key: %v", UD(result), UD(k))
 	}
 
 	return cas, err
@@ -1106,7 +1106,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("WriteCasWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, RedactErrorf("WriteCasWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", UD(result), UD(k))
 	}
 
 	return cas, err
@@ -1166,7 +1166,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("UpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, RedactErrorf("UpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", UD(result), UD(k))
 	}
 
 	return cas, err
@@ -1240,7 +1240,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", result, result, k)
+		return 0, RedactErrorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", UD(result), UD(result), UD(k))
 	}
 
 	return cas, err
@@ -1720,7 +1720,7 @@ func (bucket *CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, erro
 
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
-		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
+		return nil, RedactErrorf("Unable to obtain manager for bucket %s", MD(bucket.GetName()))
 	}
 	return manager, nil
 }
@@ -1735,7 +1735,7 @@ func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) er
 	case *sgbucket.DesignDoc:
 		sgDesignDoc = *typeValue
 	default:
-		return fmt.Errorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", value)
+		return RedactErrorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", MD(value))
 	}
 
 	manager, err := bucket.getBucketManager()
@@ -2277,7 +2277,7 @@ func (bucket *CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaEr
 	// Type assertion of result
 	expiry, ok := result.(uint32)
 	if !ok {
-		return 0, fmt.Errorf("Get: Error doing type assertion of %v into a uint32,  Key: %v", result, k)
+		return 0, RedactErrorf("Get: Error doing type assertion of %v into a uint32,  Key: %v", result, UD(k))
 	}
 
 	return expiry, err

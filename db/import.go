@@ -3,7 +3,6 @@ package db
 import (
 	"errors"
 	"expvar"
-	"fmt"
 	"strconv"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -62,7 +61,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool, expiry *uint32, mode ImportMode) (docOut *document, err error) {
 
 	if existingDoc == nil {
-		return nil, fmt.Errorf("No existing doc present when attempting to import %s", docid)
+		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
 	}
 
 	// Get the doc expiry if it wasn't passed in
@@ -96,7 +95,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	base.Debugf(base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 
 	if existingDoc == nil {
-		return nil, fmt.Errorf("No existing doc present when attempting to import %s", docid)
+		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
 	}
 
 	var newRev string
@@ -256,7 +255,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	// TODO: Could refactor migrateMetadata to use WriteUpdateWithXattr for both CAS retry and general write handling, and avoid cast to CouchbaseBucketGoCB
 	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
 	if !ok {
-		return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
+		return nil, false, base.RedactErrorf("Metadata migration requires gocb bucket (%T)", base.MD(db.Bucket))
 	}
 
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)

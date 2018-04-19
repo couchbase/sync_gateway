@@ -490,7 +490,7 @@ func (doc *document) persistModifiedRevisionBodies(bucket base.Bucket) error {
 			return err
 		}
 		if revInfo.BodyKey == "" || len(revInfo.Body) == 0 {
-			return fmt.Errorf("Missing key or body for revision during external persistence.  doc: %s rev:%s key: %s  len(body): %d", doc.ID, revID, revInfo.BodyKey, len(revInfo.Body))
+			return base.RedactErrorf("Missing key or body for revision during external persistence.  doc: %s rev:%s key: %s  len(body): %d", base.UD(doc.ID), revID, base.UD(revInfo.BodyKey), len(revInfo.Body))
 		}
 
 		// If addRaw indicates that the doc already exists, can ignore.  Another writer already persisted this rev backup.
