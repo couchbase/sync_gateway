@@ -144,7 +144,7 @@ func (context *DatabaseContext) QueryAccess(username string) (sgbucket.QueryResu
 	}
 
 	// N1QL Query
-	gocbBucket, ok := context.Bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
 		return nil, errors.New("Cannot perform access N1QL query on non-Couchbase bucket.")
 	}
@@ -165,7 +165,7 @@ func (context *DatabaseContext) QueryRoleAccess(username string) (sgbucket.Query
 	}
 
 	// N1QL Query
-	gocbBucket, ok := context.Bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
 		return nil, errors.New("Cannot perform role access N1QL query on non-Couchbase bucket.")
 	}
@@ -190,7 +190,7 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 	}
 
 	// N1QL Query
-	gocbBucket, ok := context.Bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
 		return nil, errors.New("Cannot perform channels N1QL query on non-Couchbase bucket.")
 	}
@@ -238,7 +238,7 @@ func (context *DatabaseContext) QueryImport(hasSyncData bool) (sgbucket.QueryRes
 	}
 
 	// N1QL Query
-	gocbBucket, ok := context.Bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
 		return nil, errors.New("Cannot perform channels N1QL query on non-Couchbase bucket.")
 	}
@@ -263,7 +263,7 @@ func (context *DatabaseContext) QueryPrincipals() (sgbucket.QueryResultIterator,
 	}
 
 	// N1QL Query
-	gocbBucket, ok := context.Bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
 		return nil, errors.New("Cannot perform principals N1QL query on non-Couchbase bucket.")
 	}
@@ -283,7 +283,7 @@ func (context *DatabaseContext) QuerySessions(userName string) (sgbucket.QueryRe
 	}
 
 	// N1QL Query
-	gocbBucket, ok := context.Bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
 		return nil, errors.New("Cannot perform sessions N1QL query on non-Couchbase bucket.")
 	}
@@ -325,7 +325,7 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 	}
 
 	// N1QL Query
-	gocbBucket, ok := context.Bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
 		return nil, errors.New("Cannot perform AllDocs N1QL query on non-Couchbase bucket.")
 	}
@@ -352,7 +352,7 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time) (sgbucket.Q
 	}
 
 	// N1QL Query
-	gocbBucket, ok := context.Bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
 		return nil, errors.New("Cannot perform tombstones N1QL query on non-Couchbase bucket.")
 	}

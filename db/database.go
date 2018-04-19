@@ -353,7 +353,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	} else {
 		// Set the purge interval for tombstone compaction
 		context.PurgeInterval = DefaultPurgeInterval
-		gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
+		gocbBucket, ok := base.AsGoCBBucket(bucket)
 		if ok {
 			serverPurgeInterval, err := gocbBucket.GetMetadataPurgeInterval()
 			if err != nil {

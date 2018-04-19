@@ -228,26 +228,11 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
 func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, numHousekeepingReplicas uint) error {
 
-	skip := true
-	var gocbBucket *base.CouchbaseBucketGoCB
-
-	switch b := bucket.(type) {
-	case *base.CouchbaseBucketGoCB:
-		gocbBucket = b
-		skip = false
-	case *base.LoggingBucket:
-		underlyingBucket, ok := b.GetUnderlyingBucket().(*base.CouchbaseBucketGoCB)
-		if ok {
-			gocbBucket = underlyingBucket
-			skip = false
-		}
-	}
-
-	if skip {
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	if !ok {
 		base.Warnf(base.KeyAll, "Using a non-Couchbase bucket: %T - indexes will not be created.", bucket)
 		return nil
 	}
-
 	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d", numReplicas)
 
 	for _, sgIndex := range sgIndexes {
@@ -317,7 +302,7 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 //  - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
 func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool) (removedIndexes []string, err error) {
 
-	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if !ok {
 		base.Warnf(base.KeyAll, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
 		return

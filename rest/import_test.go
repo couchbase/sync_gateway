@@ -529,7 +529,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	assertTrue(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
 		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
@@ -582,7 +582,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	assertTrue(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
 		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
@@ -645,7 +645,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	gocbBucket, ok := bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	assertTrue(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
 		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
@@ -933,7 +933,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	assertXattrSyncMetaRevGeneration(t, bucket, mobileKeyNoExpiry, 1)
 
 	// Verify the expiry has been preserved after the import
-	gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, _ := base.AsGoCBBucket(bucket)
 	expiry, err := gocbBucket.GetExpiry(mobileKey)
 	assertNoError(t, err, "Error calling GetExpiry()")
 	assert.True(t, expiry == uint32(expiryUnixEpoch))
@@ -984,7 +984,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	assertXattrSyncMetaRevGeneration(t, bucket, key, 1)
 
 	// Now get the doc expiry and validate that it has been migrated into the doc metadata
-	gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, _ := base.AsGoCBBucket(bucket)
 	expiry, err := gocbBucket.GetExpiry(key)
 	assert.True(t, expiry > 0)
 	assertNoError(t, err, "Error calling getExpiry()")
@@ -1053,7 +1053,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			assertNoError(t, err, "Error writing SDK doc")
 
 			// Verify the expiry before the on-demand import is triggered
-			gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
+			gocbBucket, _ := base.AsGoCBBucket(bucket)
 			expiry, err := gocbBucket.GetExpiry(key)
 			assertNoError(t, err, "Error calling GetExpiry()")
 			assert.True(t, expiry == uint32(expiryUnixEpoch))
@@ -1142,7 +1142,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, bucket, key, testCase.expectedRevGeneration)
 
 			// Now get the doc expiry and validate that it has been migrated into the doc metadata
-			gocbBucket := bucket.(*base.CouchbaseBucketGoCB)
+			gocbBucket, _ := base.AsGoCBBucket(bucket)
 			expiry, err := gocbBucket.GetExpiry(key)
 			assertNoError(t, err, "Error calling GetExpiry()")
 			assert.True(t, expiry > 0)

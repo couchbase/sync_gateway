@@ -167,7 +167,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, testBucket.Bucket, key, 1)
 
 			// Verify the expiry has been preserved after the import
-			gocbBucket := testBucket.Bucket.(*base.CouchbaseBucketGoCB)
+			gocbBucket, _ := base.AsGoCBBucket(testBucket.Bucket)
 			expiry, err := gocbBucket.GetExpiry(key)
 			assertNoError(t, err, "Error calling GetExpiry()")
 			log.Printf("expiry: %v  laterSyncMetaExpiry.Unix(): %v", expiry, laterSyncMetaExpiry.Unix())
@@ -222,4 +222,3 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
 	assert.True(t, generation == expectedRevGeneration)
 }
-

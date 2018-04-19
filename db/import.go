@@ -41,7 +41,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 
 	// Get the doc expiry if it wasn't passed in
 	if expiry == nil {
-		gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
+		gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
 		getExpiry, getExpiryErr := gocbBucket.GetExpiry(docid)
 		if getExpiryErr != nil {
 			return nil, getExpiryErr
@@ -67,7 +67,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool
 
 	// Get the doc expiry if it wasn't passed in
 	if expiry == nil {
-		gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
+		gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
 		getExpiry, getExpiryErr := gocbBucket.GetExpiry(docid)
 		if getExpiryErr != nil {
 			return nil, getExpiryErr
@@ -115,7 +115,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 				body = doc.Body()
 
 				// Reload the doc expiry
-				gocbBucket := db.Bucket.(*base.CouchbaseBucketGoCB)
+				gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
 				expiry, getExpiryErr := gocbBucket.GetExpiry(docid)
 				if getExpiryErr != nil {
 					return nil, nil, nil, getExpiryErr
@@ -254,7 +254,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	}
 
 	// TODO: Could refactor migrateMetadata to use WriteUpdateWithXattr for both CAS retry and general write handling, and avoid cast to CouchbaseBucketGoCB
-	gocbBucket, ok := db.Bucket.(*base.CouchbaseBucketGoCB)
+	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
 	if !ok {
 		return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
 	}
