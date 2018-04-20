@@ -578,33 +578,33 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback(verbose bool) {
 	if config.Logging.DeprecatedDefaultLog != nil {
 		// Fall back to the old logging.["default"].LogFilePath option
 		if config.Logging.LogFilePath == "" && config.Logging.DeprecatedDefaultLog.LogFilePath != nil {
-			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogFilePath. Use logging.logFilePath instead.")
+			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogFilePath. Use logging.log_file_path instead.")
 			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
 			config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
 		}
 
 		// Fall back to the old logging.["default"].LogKeys option
 		if len(config.Logging.Console.LogKeys) == 0 && len(config.Logging.DeprecatedDefaultLog.LogKeys) > 0 {
-			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogKeys. Use logging.console.logKeys instead.")
+			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogKeys. Use logging.console.log_keys instead.")
 			config.Logging.Console.LogKeys = config.Logging.DeprecatedDefaultLog.LogKeys
 		}
 
 		// Fall back to the old logging.["default"].LogLevel option
 		if config.Logging.Console.LogLevel == nil && config.Logging.DeprecatedDefaultLog.LogLevel != 0 {
-			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogLevel. Use logging.console.logLevel instead.")
+			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogLevel. Use logging.console.log_level instead.")
 			config.Logging.Console.LogLevel = base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
 		}
 	}
 
 	// Fall back to the old LogFilePath option
 	if config.Logging.LogFilePath == "" && config.DeprecatedLogFilePath != nil {
-		base.Warnf(base.KeyAll, "Using deprecated config option: logFilePath. Use logging.logFilePath instead.")
+		base.Warnf(base.KeyAll, "Using deprecated config option: logFilePath. Use logging.log_file_path instead.")
 		config.Logging.LogFilePath = *config.DeprecatedLogFilePath
 	}
 
 	// Fall back to the old Log option
 	if config.Logging.Console.LogKeys == nil && len(config.DeprecatedLog) > 0 {
-		base.Warnf(base.KeyAll, "Using deprecated config option: log. Use logging.console.logKeys instead.")
+		base.Warnf(base.KeyAll, "Using deprecated config option: log. Use logging.console.log_keys instead.")
 		config.Logging.Console.LogKeys = config.DeprecatedLog
 	}
 
