@@ -1,8 +1,8 @@
 {
   "logging": {
     "console": {
-      "logLevel": "debug",
-      "logKeys": ["HTTP"]
+      "log_level": "debug",
+      "log_keys": ["HTTP"]
     }
   },
   "adminInterface": "127.0.0.1:4985",

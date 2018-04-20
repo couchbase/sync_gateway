@@ -1,0 +1,14 @@
+{
+  "logging": {
+    "redaction_level": "partial"
+  },
+  "databases": {
+    "db": {
+      "server": "walrus:data",
+      "bucket": "default",
+      "users": {"GUEST": {"disabled": false,"admina_channels": ["*"]}},
+      "allow_conflicts": false,
+      "revs_limit": 20
+    }
+  }
+}

@@ -26,16 +26,16 @@ type FileLogger struct {
 }
 
 type FileLoggerConfig struct {
-	Enabled  *bool             `json:",omitempty"` // Toggle for this log output
-	Rotation logRotationConfig `json:",omitempty"` // Log rotation settings
+	Enabled  *bool             `json:"enabled,omitempty"`  // Toggle for this log output
+	Rotation logRotationConfig `json:"rotation,omitempty"` // Log rotation settings
 
 	Output io.Writer `json:"-"` // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
 }
 
 type logRotationConfig struct {
-	MaxSize   *int `json:",omitempty"` // The maximum size in MB of the log file before it gets rotated.
-	MaxAge    *int `json:",omitempty"` // The maximum number of days to retain old log files.
-	LocalTime bool `json:",omitempty"` // If true, it uses the computer's local time to format the backup timestamp.
+	MaxSize   *int `json:"max_size,omitempty"`  // The maximum size in MB of the log file before it gets rotated.
+	MaxAge    *int `json:"max_age,omitempty"`   // The maximum number of days to retain old log files.
+	LocalTime bool `json:"localtime,omitempty"` // If true, it uses the computer's local time to format the backup timestamp.
 }
 
 // NewFileLogger returms a new FileLogger from a config.

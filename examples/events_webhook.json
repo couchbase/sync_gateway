@@ -1,8 +1,8 @@
 {
   "logging": {
     "console": {
-      "logLevel": "debug",
-      "logKeys": ["CRUD", "Events"]
+      "log_level": "debug",
+      "log_keys": ["CRUD", "Events"]
     }
   },
   "databases": {

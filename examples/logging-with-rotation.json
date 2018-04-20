@@ -1,22 +1,22 @@
 {
   "logging": {
-    "logFilePath": "/var/tmp/sglogs",
+    "log_file_path": "/var/tmp/sglogs",
     "console": {
-    "logLevel": "debug",
-      "logKeys": ["*"]
+      "log_level": "debug",
+      "log_keys": ["*"]
     },
     "error": {
       "enabled": true,
       "rotation": {
-        "maxsize": 20,
-        "maxage": 180
+        "max_size": 20,
+        "max_age": 180
       }
     },
     "warn": {
       "enabled": true,
       "rotation": {
-        "maxsize": 20,
-        "maxage": 90
+        "max_size": 20,
+        "max_age": 90
       }
     },
     "info": {

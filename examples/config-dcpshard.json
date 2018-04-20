@@ -3,7 +3,7 @@
     "adminInterface":":4985",
     "logging": {
       "console": {
-        "logKeys": ["*"]
+        "log_keys": ["*"]
       }
     },
     "verbose":"true",

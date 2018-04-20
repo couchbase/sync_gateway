@@ -1,7 +1,7 @@
 {
   "logging": {
     "console": {
-      "logKeys": ["*"]
+      "log_keys": ["*"]
     }
   },
   "configServer": "http://localhost:8001/",
