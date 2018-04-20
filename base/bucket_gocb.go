@@ -1735,7 +1735,7 @@ func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) er
 	case *sgbucket.DesignDoc:
 		sgDesignDoc = *typeValue
 	default:
-		return RedactErrorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", value)
+		return fmt.Errorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", value)
 	}
 
 	manager, err := bucket.getBucketManager()
