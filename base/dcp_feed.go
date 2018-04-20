@@ -344,7 +344,7 @@ func makeVbucketMetadataForSequence(vbucketUUID uint64, sequence uint64) []byte 
 //         - Is a relatively infrequent operation (occurs when vbuckets are initially assigned to an accel node)
 func (r *DCPReceiver) persistCheckpoint(vbNo uint16, value []byte) error {
 	dcpExpvars.Add("persistCheckpoint_count", 1)
-	Debugf(KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
+	Tracef(KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
 	return r.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo), 0, value)
 }
 
@@ -462,23 +462,23 @@ func (r *DCPLoggingReceiver) OnError(err error) {
 
 func (r *DCPLoggingReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	Debugf(KeyDCP, "DataUpdate:%d, %s, %d, %v", vbucketId, UD(key), seq, req)
+	Tracef(KeyDCP, "DataUpdate:%d, %s, %d, %v", vbucketId, UD(key), seq, req)
 	return r.rec.DataUpdate(vbucketId, key, seq, req)
 }
 
 func (r *DCPLoggingReceiver) SetBucketNotifyFn(notify sgbucket.BucketNotifyFn) {
-	Debugf(KeyDCP, "SetBucketNotifyFn()")
+	Tracef(KeyDCP, "SetBucketNotifyFn()")
 	r.rec.SetBucketNotifyFn(notify)
 }
 
 func (r *DCPLoggingReceiver) GetBucketNotifyFn() sgbucket.BucketNotifyFn {
-	Debugf(KeyDCP, "GetBucketNotifyFn()")
+	Tracef(KeyDCP, "GetBucketNotifyFn()")
 	return r.rec.GetBucketNotifyFn()
 }
 
 func (r *DCPLoggingReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	Debugf(KeyDCP, "DataDelete:%d, %s, %d, %v", vbucketId, UD(key), seq, req)
+	Tracef(KeyDCP, "DataDelete:%d, %s, %d, %v", vbucketId, UD(key), seq, req)
 	return r.rec.DataDelete(vbucketId, key, seq, req)
 }
 
@@ -489,24 +489,24 @@ func (r *DCPLoggingReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) erro
 
 func (r *DCPLoggingReceiver) SetMetaData(vbucketId uint16, value []byte) error {
 
-	Debugf(KeyDCP, "SetMetaData:%d, %s", vbucketId, value)
+	Tracef(KeyDCP, "SetMetaData:%d, %s", vbucketId, value)
 	return r.rec.SetMetaData(vbucketId, value)
 }
 
 func (r *DCPLoggingReceiver) GetMetaData(vbucketId uint16) (
 	value []byte, lastSeq uint64, err error) {
-	Debugf(KeyDCP, "GetMetaData:%d", vbucketId)
+	Tracef(KeyDCP, "GetMetaData:%d", vbucketId)
 	return r.rec.GetMetaData(vbucketId)
 }
 
 func (r *DCPLoggingReceiver) SnapshotStart(vbucketId uint16,
 	snapStart, snapEnd uint64, snapType uint32) error {
-	Debugf(KeyDCP, "SnapshotStart:%d, %d, %d, %d", vbucketId, snapStart, snapEnd, snapType)
+	Tracef(KeyDCP, "SnapshotStart:%d, %d, %d, %d", vbucketId, snapStart, snapEnd, snapType)
 	return r.rec.SnapshotStart(vbucketId, snapStart, snapEnd, snapType)
 }
 
 func (r *DCPLoggingReceiver) SeedSeqnos(uuids map[uint16]uint64, seqs map[uint16]uint64) {
-	Debugf(KeyDCP, "SeedSeqnos:%v, %v", uuids, seqs)
+	Tracef(KeyDCP, "SeedSeqnos:%v, %v", uuids, seqs)
 	r.rec.SeedSeqnos(uuids, seqs)
 }
 
@@ -590,7 +590,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	if args.Terminator != nil {
 		go func() {
 			<-args.Terminator
-			Debugf(KeyDCP, "Closing DCP Feed based on termination notification")
+			Tracef(KeyDCP, "Closing DCP Feed based on termination notification")
 			bds.Close()
 		}()
 	}
