@@ -227,6 +227,16 @@ func init() {
 	logNoTime = false
 }
 
+func GetLogLevel() int {
+	return logLevel
+}
+
+func SetLogLevel(level int) {
+	logLock.Lock()
+	defer logLock.Unlock()
+	logLevel = level
+}
+
 // For transforming a new log level to the old type.
 func ToDeprecatedLogLevel(logLevel LogLevel) *Level {
 	var deprecatedLogLevel Level
@@ -679,7 +689,7 @@ func NewLoggerWriter(logKey LogKey, serialNumber uint64, req *http.Request) *Log
 
 func CreateRollingLogger(logConfig *LogAppenderConfig) {
 	if logConfig != nil {
-		// TODO:// SetLogLevel(logConfig.LogLevel.sgLevel())
+		SetLogLevel(logConfig.LogLevel.sgLevel())
 		ParseLogFlags(logConfig.LogKeys)
 
 		if logConfig.LogFilePath == nil {
