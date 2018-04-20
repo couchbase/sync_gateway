@@ -345,12 +345,33 @@ func (h *handler) handleSetLogging() error {
 	if err != nil {
 		return nil
 	}
-	if h.getQuery("level") != "" {
-		base.SetLogLevel(int(getRestrictedIntQuery(h.getQueryValues(), "level", uint64(base.GetLogLevel()), 1, 3, false)))
+
+	var newLogLevel *base.LogLevel
+	if level := h.getQuery("logLevel"); level != "" {
+		if err := newLogLevel.UnmarshalText([]byte(level)); err != nil {
+			return err
+		}
+	} else if level := h.getIntQuery("level", 0); level != 0 {
+		base.Warnf(base.KeyAll, "Using deprecated query parameter: %q. Use %q instead.", "level", "logLevel")
+		switch int(getRestrictedInt(&level, 0, 1, 3, false)) {
+		case 1:
+			newLogLevel.Set(base.LevelInfo)
+		case 2:
+			newLogLevel.Set(base.LevelWarn)
+		case 3:
+			newLogLevel.Set(base.LevelError)
+		}
+	}
+
+	if newLogLevel != nil {
+		base.Infof(base.KeyAll, "Setting log level to: %v", base.LogLevelName(*newLogLevel))
+		base.ConsoleLogLevel().Set(*newLogLevel)
+
 		if len(body) == 0 {
 			return nil // empty body is OK if request is just setting the log level
 		}
 	}
+
 	var keys map[string]bool
 	if err := json.Unmarshal(body, &keys); err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid JSON or non-boolean values")

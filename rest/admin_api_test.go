@@ -434,13 +434,13 @@ func TestLogging(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &logKeys)
 	assert.DeepEquals(t, logKeys, map[string]interface{}{})
 
-	//Set logKeys, Changes+ should also enable Changes (PUT replaces any existing log keys)
+	//Set logKeys, Changes+ should enable Changes (PUT replaces any existing log keys)
 	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Cache":true, "HTTP":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var updatedLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &updatedLogKeys)
-	assert.DeepEquals(t, updatedLogKeys, map[string]interface{}{"Changes+": true, "Changes": true, "Cache": true, "HTTP": true})
+	assert.DeepEquals(t, updatedLogKeys, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true})
 
 	//Disable Changes logKey which should also disable Changes+
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
@@ -450,13 +450,13 @@ func TestLogging(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &deletedLogKeys)
 	assert.DeepEquals(t, deletedLogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
 
-	//Enable Changes++, which should enable Changes+ and Changes (POST append logKeys)
+	//Enable Changes++, which should enable Changes (POST append logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var appendedLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &appendedLogKeys)
-	assert.DeepEquals(t, appendedLogKeys, map[string]interface{}{"Changes++": true, "Changes+": true, "Changes": true, "Cache": true, "HTTP": true})
+	assert.DeepEquals(t, appendedLogKeys, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true})
 
 	//Disable Changes++ (POST modifies logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
@@ -464,23 +464,23 @@ func TestLogging(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabledLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &disabledLogKeys)
-	assert.DeepEquals(t, disabledLogKeys, map[string]interface{}{"Changes": true, "Changes+": true, "Cache": true, "HTTP": true})
+	assert.DeepEquals(t, disabledLogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
 
-	//Re-Enable Changes++, which should enable Changes+ and Changes (POST append logKeys)
+	//Re-Enable Changes++, which should enable Changes (POST append logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
-	//Disable Changes+ which should also disable Changes++ (POST modifies logKeys)
+	//Disable Changes+ which should disable Changes (POST modifies logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes+":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabled2LogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &disabled2LogKeys)
-	assert.DeepEquals(t, disabled2LogKeys, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true})
+	assert.DeepEquals(t, disabled2LogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
 
-	//Re-Enable Changes++, which should enable Changes+ and Changes (POST append logKeys)
+	//Re-Enable Changes++, which should enable Changes (POST append logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
 
-	//Disable Changes which should also disable Changes+ and Changes++ (POST modifies logKeys)
+	//Disable Changes (POST modifies logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")

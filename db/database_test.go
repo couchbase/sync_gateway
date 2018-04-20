@@ -1557,7 +1557,7 @@ func TestViewCustom(t *testing.T) {
 //////// BENCHMARKS
 
 func BenchmarkDatabase(b *testing.B) {
-	base.SetLogLevel(2) // disables logging
+	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:          base.UnitTestUrl(),

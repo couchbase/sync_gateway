@@ -417,24 +417,32 @@ func DisableSgReplicateLogging() {
 	clog.DisableKey("Replicate")
 }
 
+// GetLogKeys returns log keys in a map
 func GetLogKeys() map[string]bool {
-	logLock.RLock()
-	defer logLock.RUnlock()
-	keys := map[string]bool{}
-	for k, v := range LogKeys {
-		keys[k] = v
+	consoleLogKeys := ConsoleLogKey().EnabledLogKeys()
+	logKeys := make(map[string]bool, len(consoleLogKeys))
+	for _, v := range consoleLogKeys {
+		logKeys[v] = true
 	}
-	return keys
+	return logKeys
 }
 
+// UpdateLogKeys updates the console's log keys from a map
 func UpdateLogKeys(keys map[string]bool, replace bool) {
-	logLock.Lock()
-	defer logLock.Unlock()
 	if replace {
-		LogKeys = map[string]bool{}
+		ConsoleLogKey().Set(KeyNone)
 	}
 
-	ParseLogFlagsMap(keys)
+	for k, v := range keys {
+		key := strings.Replace(k, "+", "", -1)
+		if v {
+			ConsoleLogKey().Enable(logKeyNamesInverse[key])
+		} else {
+			ConsoleLogKey().Disable(logKeyNamesInverse[key])
+		}
+	}
+
+	Infof(KeyAll, "Setting log keys to: %v", ConsoleLogKey().EnabledLogKeys())
 }
 
 // Returns a string identifying a function on the call stack.
@@ -960,14 +968,14 @@ func colorEnabled() bool {
 		runtime.GOOS != "windows"
 }
 
-// ConsoleLogLevel returns the enabled console log level.
-func ConsoleLogLevel() string {
-	return LogLevelName(*consoleLogger.LogLevel)
+// ConsoleLogLevel returns the console log level.
+func ConsoleLogLevel() *LogLevel {
+	return consoleLogger.LogLevel
 }
 
-// ConsoleLogKeys returns the enabled console log keys.
-func ConsoleLogKeys() []string {
-	return consoleLogger.LogKey.EnabledLogKeys()
+// ConsoleLogKey returns the console log key.
+func ConsoleLogKey() *LogKey {
+	return consoleLogger.LogKey
 }
 
 // LogDebugEnabled returns true if either the console should log at debug level,

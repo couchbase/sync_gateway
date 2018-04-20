@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/couchbase/goutils/logging"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -288,7 +287,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 				}
 				b.StopTimer()
 				if getResponse.Code != 200 {
-					log.Printf("Unexpected response: %s", getResponse)
+					b.Logf("Unexpected response: %v", getResponse)
 				}
 				b.StartTimer()
 			}
@@ -298,8 +297,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 }
 
 func initBenchmarkLogging() {
-	base.SetLogLevel(2) // disables logging
-	logging.SetLogger(nil)
+	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
 }
 
 func PurgeDoc(rt RestTester, docid string) {
