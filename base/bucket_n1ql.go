@@ -15,6 +15,8 @@ const MaxQueryRetries = 30            // Maximum query retries on indexer error
 const IndexStateOnline = "online"     // bucket state value, as returned by SELECT FROM system:indexes
 const IndexStateDeferred = "deferred" // bucket state value, as returned by SELECT FROM system:indexes
 
+var SlowQueryWarningThreshold time.Duration
+
 // IndexOptions used to build the 'with' clause
 type N1qlIndexOptions struct {
 	NumReplica      uint `json:"num_replica,omitempty"`          // Number of replicas
@@ -306,4 +308,10 @@ func QueryCloseErrors(closeError error) []error {
 
 	return closeErrors
 
+}
+
+func SlowQueryLog(startTime time.Time, messageFormat string, args ...interface{}) {
+	if elapsed := time.Now().Sub(startTime); elapsed > SlowQueryWarningThreshold {
+		Infof(KeyQuery, messageFormat+" took "+elapsed.String(), args...)
+	}
 }
