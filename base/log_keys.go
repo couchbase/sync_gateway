@@ -151,8 +151,9 @@ func ToLogKey(keysStr []string) LogKey {
 
 		// Strip "+" in log keys and warn (for backwards compatibility)
 		if strings.HasSuffix(name, "+") {
-			Warnf(KeyAll, "Deprecated plus log key: %q found. Removing plus from log key.", name)
-			name = strings.Replace(name, "+", "", -1)
+			newName := strings.Replace(name, "+", "", -1)
+			Warnf(KeyAll, "Deprecated log key: %q found. Changing to: %q.", name, newName)
+			name = newName
 		}
 
 		if logKey, ok := logKeyNamesInverse[name]; ok {
