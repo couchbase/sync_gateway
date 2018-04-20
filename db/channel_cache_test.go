@@ -242,8 +242,7 @@ func writeEntries(entries []*LogEntry) {
 
 func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
-	base.SetLogLevel(2) // disables logging
-	//base.SetLogLevel(2) // disables logging
+	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -262,7 +261,7 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
-	base.SetLogLevel(2) // disables logging
+	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -279,8 +278,7 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
-	//base.LogKeys["Cache+"] = true
-	base.SetLogLevel(2) // disables logging
+	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -297,7 +295,7 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
-	base.SetLogLevel(2) // disables logging
+	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -314,7 +312,7 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
-	base.SetLogLevel(2) // disables logging
+	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -349,7 +347,7 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
 func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
-	base.SetLogLevel(2) // disables logging
+	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())

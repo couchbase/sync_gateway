@@ -868,7 +868,7 @@ func RunServer(config *ServerConfig) {
 
 	base.Broadcastf("==== %s ====", base.LongVersionString)
 
-	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKeys())
+	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKey().EnabledLogKeys())
 	base.Infof(base.KeyAll, "Console LogLevel: %v", base.ConsoleLogLevel())
 	base.Infof(base.KeyAll, "Log Redaction Level: %s", config.Logging.RedactionLevel)
 
