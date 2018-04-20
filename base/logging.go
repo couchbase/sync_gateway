@@ -430,16 +430,15 @@ func GetLogKeys() map[string]bool {
 // UpdateLogKeys updates the console's log keys from a map
 func UpdateLogKeys(keys map[string]bool, replace bool) {
 	if replace {
-		none := KeyNone
-		consoleLogger.LogKey = &none
+		ConsoleLogKey().Set(KeyNone)
 	}
 
 	for k, v := range keys {
 		key := strings.Replace(k, "+", "", -1)
 		if v {
-			consoleLogger.LogKey.Enable(logKeyNamesInverse[key])
+			ConsoleLogKey().Enable(logKeyNamesInverse[key])
 		} else {
-			consoleLogger.LogKey.Disable(logKeyNamesInverse[key])
+			ConsoleLogKey().Disable(logKeyNamesInverse[key])
 		}
 	}
 

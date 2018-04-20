@@ -96,6 +96,11 @@ func (keyMask *LogKey) Disable(logKey LogKey) {
 	atomic.StoreUint32((*uint32)(keyMask), val & ^uint32(logKey))
 }
 
+// Set will override the keyMask with the given logKey.
+func (keyMask *LogKey) Set(logKey LogKey) {
+	atomic.StoreUint32((*uint32)(keyMask), uint32(logKey))
+}
+
 // Enabled returns true if the given logKey is enabled in keyMask.
 // Always returns true if KeyAll is enabled in keyMask.
 func (keyMask *LogKey) Enabled(logKey LogKey) bool {
