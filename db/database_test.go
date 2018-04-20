@@ -1124,7 +1124,7 @@ func TestAccessFunctionDb(t *testing.T) {
 }
 
 // Disabled until https://github.com/couchbase/sync_gateway/issues/3413 is fixed
-func DisableTestAccessFunctionWithVbuckets(t *testing.T) {
+func TestAccessFunctionWithVbuckets(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test only works with a Couchbase server")
