@@ -1240,7 +1240,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, RedactErrorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", UD(result), UD(result), UD(k))
+		return 0, RedactErrorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", UD(result), result, UD(k))
 	}
 
 	return cas, err
@@ -1735,7 +1735,7 @@ func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) er
 	case *sgbucket.DesignDoc:
 		sgDesignDoc = *typeValue
 	default:
-		return RedactErrorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", MD(value))
+		return RedactErrorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", value)
 	}
 
 	manager, err := bucket.getBucketManager()

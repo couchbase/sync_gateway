@@ -255,7 +255,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	// TODO: Could refactor migrateMetadata to use WriteUpdateWithXattr for both CAS retry and general write handling, and avoid cast to CouchbaseBucketGoCB
 	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
 	if !ok {
-		return nil, false, base.RedactErrorf("Metadata migration requires gocb bucket (%T)", base.MD(db.Bucket))
+		return nil, false, base.RedactErrorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
 	}
 
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
