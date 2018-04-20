@@ -17,9 +17,9 @@ type ConsoleLogger struct {
 }
 
 type ConsoleLoggerConfig struct {
-	LogLevel     *LogLevel `json:",omitempty"` // Log Level for the console output
-	LogKeys      []string  `json:",omitempty"` // Log Keys for the console output
-	ColorEnabled bool      `json:",omitempty"` // Log with color for the console output
+	LogLevel     *LogLevel `json:"log_level,omitempty"`     // Log Level for the console output
+	LogKeys      []string  `json:"log_keys,omitempty"`      // Log Keys for the console output
+	ColorEnabled bool      `json:"color_enabled,omitempty"` // Log with color for the console output
 
 	Output io.Writer `json:"-"` // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
 }

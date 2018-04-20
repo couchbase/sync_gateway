@@ -2,7 +2,7 @@
    "interface":":4984",
    "logging": {
      "console": {
-       "logKeys": ["*"]
+       "log_keys": ["*"]
      }
    },
    "databases": {
