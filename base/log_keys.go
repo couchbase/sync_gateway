@@ -148,8 +148,13 @@ func (keyMask *LogKey) EnabledLogKeys() []string {
 func ToLogKey(keysStr []string) LogKey {
 	var logKeys LogKey
 	for _, name := range keysStr {
-		// Ignore "+" in log keys (for backwards compatibility)
-		name := strings.Replace(name, "+", "", -1)
+
+		// Strip "+" in log keys and warn (for backwards compatibility)
+		if strings.HasSuffix(name, "+") {
+			newName := strings.Replace(name, "+", "", -1)
+			Warnf(KeyAll, "Deprecated log key: %q found. Changing to: %q.", name, newName)
+			name = newName
+		}
 
 		if logKey, ok := logKeyNamesInverse[name]; ok {
 			logKeys.Enable(logKey)
