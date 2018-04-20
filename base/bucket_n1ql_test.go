@@ -348,6 +348,48 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 	}
 }
 
+func TestDeferredCreateIndex(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	if !ok {
+		t.Fatalf("Requires gocb bucket")
+	}
+
+	indexName := "testIndexDeferred"
+	assertNoError(t, tearDownTestIndex(bucket, indexName), "Error in pre-test cleanup")
+
+	deferN1qlOptions := &N1qlIndexOptions{
+		NumReplica: 0,
+		DeferBuild: true,
+	}
+
+	createExpression := "_sync.sequence"
+	err := bucket.CreateIndex(indexName, createExpression, "", deferN1qlOptions)
+	if err != nil {
+		t.Errorf("Error creating index: %s", err)
+	}
+
+	// Drop the index
+	defer func() {
+		err = bucket.DropIndex(indexName)
+		if err != nil {
+			t.Errorf("Error dropping index: %s", err)
+		}
+	}()
+
+	buildErr := bucket.BuildIndexes([]string{indexName})
+	assertNoError(t, buildErr, "Error building indexes")
+
+	readyErr := bucket.WaitForIndexOnline(indexName)
+	assertNoError(t, readyErr, "Error validating index online")
+
+}
+
 func TestCreateAndDropIndexErrors(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {
@@ -409,4 +451,19 @@ func queryResultCount(queryResults gocb.QueryResults) (count int, err error) {
 		log.Printf("QueryResults[%d]: %s", count, bytes)
 		count++
 	}
+}
+
+func tearDownTestIndex(bucket *CouchbaseBucketGoCB, indexName string) (err error) {
+
+	exists, _, err := bucket.GetIndexMeta(indexName)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		return bucket.DropIndex(indexName)
+	} else {
+		return nil
+	}
+
 }

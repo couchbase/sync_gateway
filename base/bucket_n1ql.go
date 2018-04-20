@@ -10,9 +10,10 @@ import (
 	pkgerrors "github.com/pkg/errors"
 )
 
-const BucketQueryToken = "$_bucket" // Token used for bucket name replacement in query statements
-const MaxQueryRetries = 30          // Maximum query retries on indexer error
-const IndexStateOnline = "online"   // bucket state value, as returned by SELECT FROM system:indexes
+const BucketQueryToken = "$_bucket"   // Token used for bucket name replacement in query statements
+const MaxQueryRetries = 30            // Maximum query retries on indexer error
+const IndexStateOnline = "online"     // bucket state value, as returned by SELECT FROM system:indexes
+const IndexStateDeferred = "deferred" // bucket state value, as returned by SELECT FROM system:indexes
 
 // IndexOptions used to build the 'with' clause
 type N1qlIndexOptions struct {
@@ -89,17 +90,50 @@ func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression stri
 	// Replace any BucketQueryToken references in the index expression
 	createStatement = strings.Replace(createStatement, BucketQueryToken, bucket.GetName(), -1)
 
-	return bucket.createIndex(createStatement, options)
+	return bucket.createIndex(indexName, createStatement, options)
+}
+
+// BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:
+//   BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
+func (bucket *CouchbaseBucketGoCB) BuildIndexes(indexNames []string) error {
+
+	if len(indexNames) == 0 {
+		return nil
+	}
+
+	// Not using strings.Join because we want to escape each index name
+	indexNameList := fmt.Sprintf("`%s`", indexNames[0])
+	for i := 1; i < len(indexNames); i++ {
+		indexNameList = fmt.Sprintf("%s,`%s`", indexNameList, indexNames[i])
+	}
+
+	buildStatement := fmt.Sprintf("BUILD INDEX ON `%s`(%s)", bucket.GetName(), indexNameList)
+	n1qlQuery := gocb.NewN1qlQuery(buildStatement)
+	_, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+
+	// If indexer reports build will be completed in the background, wait to validate build actually happens.
+	if IsIndexerRetryBuildError(err) {
+		Infof(KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
+		// Wait for bucket to be created in background before returning
+		for _, indexName := range indexNames {
+			waitErr := bucket.WaitForIndexOnline(indexName)
+			if waitErr != nil {
+				return waitErr
+			}
+		}
+		return nil
+	}
+	return err
 }
 
 // CreateIndex creates the specified index in the current bucket using on the specified index expression.
 func (bucket *CouchbaseBucketGoCB) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
 
-	createStatement := fmt.Sprintf("CREATE PRIMARY INDEX %s ON %s", indexName, bucket.GetName())
-	return bucket.createIndex(createStatement, options)
+	createStatement := fmt.Sprintf("CREATE PRIMARY INDEX `%s` ON `%s`", indexName, bucket.GetName())
+	return bucket.createIndex(indexName, createStatement, options)
 }
 
-func (bucket *CouchbaseBucketGoCB) createIndex(createStatement string, options *N1qlIndexOptions) error {
+func (bucket *CouchbaseBucketGoCB) createIndex(indexName string, createStatement string, options *N1qlIndexOptions) error {
 
 	if options != nil {
 		withClause, marshalErr := json.Marshal(options)
@@ -112,13 +146,14 @@ func (bucket *CouchbaseBucketGoCB) createIndex(createStatement string, options *
 	Debugf(KeyIndex, "Attempting to create index using statement: [%s]", UD(createStatement))
 	n1qlQuery := gocb.NewN1qlQuery(createStatement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
-	if err != nil && !IsRecoverableCreateIndexError(err) {
+	if err != nil && !IsIndexerRetryIndexError(err) {
 		return pkgerrors.Wrapf(err, "Error creating index with statement: %s", createStatement)
 	}
 
-	if IsRecoverableCreateIndexError(err) {
-		Infof(KeyQuery, "Recoverable error creating index with statement: %s, error:%v", UD(createStatement), err)
-		return nil
+	if IsIndexerRetryIndexError(err) {
+		Infof(KeyQuery, "Indexer error creating index - waiting for server background retry.  Error:%v", err)
+		// Wait for bucket to be created in background before returning
+		return bucket.waitForBucketExistence(indexName, true)
 	}
 
 	closeErr := results.Close()
@@ -138,6 +173,29 @@ func (bucket *CouchbaseBucketGoCB) WaitForIndexOnline(indexName string) error {
 			return false, nil, nil
 		}
 		return true, getMetaErr, nil
+	}
+
+	// Kick off retry loop
+	description := fmt.Sprintf("GetIndexMeta for index %s", indexName)
+	err, _ := RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+
+	return err
+}
+
+// Waits for bucket to exist/not exist.  Used in response to background create/drop processing by server.
+func (bucket *CouchbaseBucketGoCB) waitForBucketExistence(indexName string, shouldExist bool) error {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		exists, _, getMetaErr := bucket.GetIndexMeta(indexName)
+		if getMetaErr != nil {
+			return false, getMetaErr, nil
+		}
+		// If it's in the desired state, we're done
+		if exists == shouldExist {
+			return false, nil, nil
+		}
+		// Retry
+		return true, nil, nil
 	}
 
 	// Kick off retry loop
@@ -173,8 +231,14 @@ func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
 	n1qlQuery := gocb.NewN1qlQuery(statement)
 
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
-	if err != nil {
+	if err != nil && !IsIndexerRetryIndexError(err) {
 		return err
+	}
+
+	if IsIndexerRetryIndexError(err) {
+		Infof(KeyQuery, "Indexer error dropping index - waiting for server background retry.  Error:%v", err)
+		// Wait for bucket to be dropped in background before returning
+		return bucket.waitForBucketExistence(indexName, false)
 	}
 
 	closeErr := results.Close()
@@ -191,13 +255,23 @@ func IsIndexNotFoundError(err error) bool {
 	return strings.Contains(err.Error(), "not found")
 }
 
-// 'Bucket in Recovery' type errors are of the form:
+// 'IsIndexerRetry' type errors are of the form:
 // error:[5000] GSI CreateIndex() - cause: Encountered transient error.  Index creation will be retried in background.  Error: Index testIndex_value will retry building in the background for reason: Bucket test_data_bucket In Recovery.
-func IsRecoverableCreateIndexError(err error) bool {
+// error:[5000] GSI Drop() - cause: Fail to drop index on some indexer nodes.  Error=Encountered error when dropping index: Indexer In Recovery. Drop index will be retried in background.
+// error:[5000] BuildIndexes - cause: Build index fails.  %vIndex testIndexDeferred will retry building in the background for reason: Build Already In Progress. Bucket test_data_bucket.
+//  https://issues.couchbase.com/browse/MB-19358 is filed to request improved indexer error codes for these scenarios (and others)
+func IsIndexerRetryIndexError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "Index creation will be retried in background")
+	return strings.Contains(err.Error(), "will be retried in background")
+}
+
+func IsIndexerRetryBuildError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "will retry building in the background")
 }
 
 // Check for transient indexer errors (can be retried)
