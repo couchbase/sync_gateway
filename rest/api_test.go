@@ -866,6 +866,8 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	spec := base.GetTestBucketSpec(base.DataBucket)
 	username, password, _ := spec.Auth.GetCredentials()
 
+
+	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
 			Server:   &server,
@@ -873,6 +875,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 			Username: username,
 			Password: password,
 		},
+		NumIndexReplicas: rt1.DatabaseConfig.NumIndexReplicas,  // Use the same NumIndexReplicas as original test bucket (0)
 		Name: "db",
 	})
 

@@ -100,8 +100,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.AllowConflicts = &boolVal
 		}
 
-		// Use views when testing with a non-couchbase server
+		// Set to 0 for test buckets, since it should assume that there is only one node.
 		numReplicas := uint(0)
+
 		rt.DatabaseConfig.UseViews = base.TestUseViews()
 		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
 
