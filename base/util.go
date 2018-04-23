@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -671,6 +672,7 @@ func BooleanPointer(booleanValue bool) *bool {
 // Related CBGT ticket: https://issues.couchbase.com/browse/MB-25522
 func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []string, err error) {
 
+	log.Printf("converting URI for %s", couchbaseUri)
 	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints.  Note that incoming bucket may be CouchbaseBucketGoCB or *CouchbaseBucketGoCB.
 	switch typedBucket := bucket.(type) {
 	case *CouchbaseBucketGoCB:
@@ -866,6 +868,20 @@ func Crc32cHash(input []byte) uint32 {
 
 func Crc32cHashString(input []byte) string {
 	return fmt.Sprintf("0x%x", Crc32cHash(input))
+}
+
+func SplitHostPort(hostport string) (string, string, error) {
+	host, port, err := net.SplitHostPort(hostport)
+	if err != nil {
+		return "", "", err
+	}
+
+	// If this is an IPv6 address, we need to rewrap it in []
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+
+	return host, port, nil
 }
 
 var kBackquoteStringRegexp *regexp.Regexp

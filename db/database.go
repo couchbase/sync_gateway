@@ -377,6 +377,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if ok {
 		maxTTL, err := gocbBucket.GetMaxTTL()
+
 		if err != nil {
 			return nil, err
 		}

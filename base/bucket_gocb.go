@@ -16,6 +16,7 @@ import (
 	"expvar"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -104,13 +105,28 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		EnableGoCBLogging()
 	}
 
-	cluster, err := gocb.Connect(spec.Server)
+	connString, err := spec.GetConnString()
 	if err != nil {
+		Warnf(KeyAuth, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
+		return nil, err
+	}
+
+	cluster, err := gocb.Connect(connString)
+	if err != nil {
+		Infof(KeyAuth, "gocb connect returned error", err)
 		return nil, err
 	}
 
 	password := ""
-	if spec.Auth != nil {
+	// Check for client cert (x.509) authentication
+	if spec.Certpath != "" {
+		certAuthErr := cluster.Authenticate(gocb.CertificateAuthenticator{})
+		if certAuthErr != nil {
+			Infof(KeyAuth, "Error Attempting certificate authentication %s", certAuthErr)
+			return nil, pkgerrors.WithStack(certAuthErr)
+		}
+	} else if spec.Auth != nil {
+		Infof(KeyAuth, "Attempting credential authentication %s", connString)
 		user, pass, _ := spec.Auth.GetCredentials()
 		authErr := cluster.Authenticate(gocb.PasswordAuthenticator{
 			Username: user,
@@ -125,8 +141,10 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
+		Infof(KeyAll, "Error opening bucket: %v", err)
 		return nil, pkgerrors.WithStack(err)
 	}
+	Infof(KeyAll, "Successfully opened bucket")
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
 		// Set transcoder to SGTranscoder to avoid cases where it tries to write docs as []byte without setting
@@ -206,7 +224,6 @@ func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 
 }
 
-
 // Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
 // that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
 // bucket and server purge intervals).
@@ -277,6 +294,7 @@ func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
 		return -1, err
 	}
 	username, password, _ := bucket.spec.Auth.GetCredentials()
+	log.Printf("Not Setting basic auth: %q %q", username, password)
 	req.SetBasicAuth(username, password)
 
 	client := bucket.Bucket.IoRouter()
@@ -298,7 +316,6 @@ func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
 	return bucketResponseWithMaxTTL.MaxTTLSeconds, nil
 
 }
-
 
 func (bucket *CouchbaseBucketGoCB) GetName() string {
 	return bucket.spec.BucketName

@@ -59,33 +59,33 @@ const (
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	Interface                  *string                  `json:",omitempty"`            // Interface to bind REST API to, default ":4984"
-	SSLCert                    *string                  `json:",omitempty"`            // Path to SSL cert file, or nil
-	SSLKey                     *string                  `json:",omitempty"`            // Path to SSL private key file, or nil
-	ServerReadTimeout          *int                     `json:",omitempty"`            // maximum duration.Second before timing out read of the HTTP(S) request
-	ServerWriteTimeout         *int                     `json:",omitempty"`            // maximum duration.Second before timing out write of the HTTP(S) response
-	AdminInterface             *string                  `json:",omitempty"`            // Interface to bind admin API to, default "localhost:4985"
-	AdminUI                    *string                  `json:",omitempty"`            // Path to Admin HTML page, if omitted uses bundled HTML
-	ProfileInterface           *string                  `json:",omitempty"`            // Interface to bind Go profile API to (no default)
-	ConfigServer               *string                  `json:",omitempty"`            // URL of config server (for dynamic db discovery)
-	Facebook                   *FacebookConfig          `json:",omitempty"`            // Configuration for Facebook validation
-	Google                     *GoogleConfig            `json:",omitempty"`            // Configuration for Google validation
-	CORS                       *CORSConfig              `json:",omitempty"`            // Configuration for allowing CORS
-	DeprecatedLog              []string                 `json:"log,omitempty"`         // Log keywords to enable
-	DeprecatedLogFilePath      *string                  `json:"logFilePath,omitempty"` // Path to log file, if missing write to stderr
-	Logging                    *base.LoggingConfig      `json:",omitempty"`            // Configuration for logging with optional log file rotation
-	Pretty                     bool                     `json:",omitempty"`            // Pretty-print JSON responses?
-	DeploymentID               *string                  `json:",omitempty"`            // Optional customer/deployment ID for stats reporting
-	StatsReportInterval        *float64                 `json:",omitempty"`            // Optional stats report interval (0 to disable)
-	MaxCouchbaseConnections    *int                     `json:",omitempty"`            // Max # of sockets to open to a Couchbase Server node
-	MaxCouchbaseOverflow       *int                     `json:",omitempty"`            // Max # of overflow sockets to open
-	CouchbaseKeepaliveInterval *int                     `json:",omitempty"`            // TCP keep-alive interval between SG and Couchbase server
-	SlowQueryWarningThreshold  *int                     `json:",omitempty"`            // Log warnings if N1QL queries take this many ms
-	MaxIncomingConnections     *int                     `json:",omitempty"`            // Max # of incoming HTTP connections to accept
-	MaxFileDescriptors         *uint64                  `json:",omitempty"`            // Max # of open file descriptors (RLIMIT_NOFILE)
-	CompressResponses          *bool                    `json:",omitempty"`            // If false, disables compression of HTTP responses
-	Databases                  DbConfigMap              `json:",omitempty"`            // Pre-configured databases, mapped by name
-	Replications               []*ReplicationConfig     `json:",omitempty"`
+	Interface                  *string                  `json:",omitempty"`                        // Interface to bind REST API to, default ":4984"
+	SSLCert                    *string                  `json:",omitempty"`                        // Path to SSL cert file, or nil
+	SSLKey                     *string                  `json:",omitempty"`                        // Path to SSL private key file, or nil
+	ServerReadTimeout          *int                     `json:",omitempty"`                        // maximum duration.Second before timing out read of the HTTP(S) request
+	ServerWriteTimeout         *int                     `json:",omitempty"`                        // maximum duration.Second before timing out write of the HTTP(S) response
+	AdminInterface             *string                  `json:",omitempty"`                        // Interface to bind admin API to, default "localhost:4985"
+	AdminUI                    *string                  `json:",omitempty"`                        // Path to Admin HTML page, if omitted uses bundled HTML
+	ProfileInterface           *string                  `json:",omitempty"`                        // Interface to bind Go profile API to (no default)
+	ConfigServer               *string                  `json:",omitempty"`                        // URL of config server (for dynamic db discovery)
+	Facebook                   *FacebookConfig          `json:",omitempty"`                        // Configuration for Facebook validation
+	Google                     *GoogleConfig            `json:",omitempty"`                        // Configuration for Google validation
+	CORS                       *CORSConfig              `json:",omitempty"`                        // Configuration for allowing CORS
+	DeprecatedLog              []string                 `json:"log,omitempty"`                     // Log keywords to enable
+	DeprecatedLogFilePath      *string                  `json:"logFilePath,omitempty"`             // Path to log file, if missing write to stderr
+	Logging                    *base.LoggingConfig      `json:",omitempty"`                        // Configuration for logging with optional log file rotation
+	Pretty                     bool                     `json:",omitempty"`                        // Pretty-print JSON responses?
+	DeploymentID               *string                  `json:",omitempty"`                        // Optional customer/deployment ID for stats reporting
+	StatsReportInterval        *float64                 `json:",omitempty"`                        // Optional stats report interval (0 to disable)
+	MaxCouchbaseConnections    *int                     `json:",omitempty"`                        // Max # of sockets to open to a Couchbase Server node
+	MaxCouchbaseOverflow       *int                     `json:",omitempty"`                        // Max # of overflow sockets to open
+	CouchbaseKeepaliveInterval *int                     `json:",omitempty"`                        // TCP keep-alive interval between SG and Couchbase server
+	SlowQueryWarningThreshold  *int                     `json:",omitempty"`                        // Log warnings if N1QL queries take this many ms
+	MaxIncomingConnections     *int                     `json:",omitempty"`                        // Max # of incoming HTTP connections to accept
+	MaxFileDescriptors         *uint64                  `json:",omitempty"`                        // Max # of open file descriptors (RLIMIT_NOFILE)
+	CompressResponses          *bool                    `json:",omitempty"`                        // If false, disables compression of HTTP responses
+	Databases                  DbConfigMap              `json:",omitempty"`                        // Pre-configured databases, mapped by name
+	Replications               []*ReplicationConfig     `json:",omitempty"`                        // sg-replicate replication definitions
 	MaxHeartbeat               uint64                   `json:",omitempty"`                        // Max heartbeat value for _changes request (seconds)
 	ClusterConfig              *ClusterConfig           `json:"cluster_config,omitempty"`          // Bucket and other config related to CBGT
 	SkipRunmodeValidation      bool                     `json:"skip_runmode_validation,omitempty"` // If this is true, skips any config validation regarding accel vs normal mode
@@ -96,11 +96,40 @@ type ServerConfig struct {
 
 // Bucket configuration elements - used by db, shadow, index
 type BucketConfig struct {
-	Server   *string `json:"server,omitempty"`   // Couchbase server URL
-	Pool     *string `json:"pool,omitempty"`     // Couchbase pool name, default "default"
-	Bucket   *string `json:"bucket,omitempty"`   // Bucket name
-	Username string  `json:"username,omitempty"` // Username for authenticating to server
-	Password string  `json:"password,omitempty"` // Password for authenticating to server
+	Server     *string `json:"server,omitempty"`     // Couchbase server URL
+	Pool       *string `json:"pool,omitempty"`       // Couchbase pool name, default "default"
+	Bucket     *string `json:"bucket,omitempty"`     // Bucket name
+	Username   string  `json:"username,omitempty"`   // Username for authenticating to server
+	Password   string  `json:"password,omitempty"`   // Password for authenticating to server
+	CertPath   string  `json:"certpath,omitempty"`   // Cert path (public key) for X.509 bucket auth
+	KeyPath    string  `json:"keypath,omitempty"`    // Key path (private key) for X.509 bucket auth
+	CACertPath string  `json:"cacertpath,omitempty"` // Root CA cert path for X.509 bucket auth
+}
+
+func (bc BucketConfig) MakeBucketSpec() base.BucketSpec {
+
+	server := "http://localhost:8091"
+	pool := "default"
+	bucketName := ""
+
+	if bc.Server != nil {
+		server = *bc.Server
+	}
+	if bc.Pool != nil {
+		pool = *bc.Pool
+	}
+	if bc.Bucket != nil {
+		bucketName = *bc.Bucket
+	}
+
+	return base.BucketSpec{
+		Server:     server,
+		PoolName:   pool,
+		BucketName: bucketName,
+		Keypath:    bc.KeyPath,
+		Certpath:   bc.CertPath,
+		CACertPath: bc.CACertPath,
+	}
 }
 
 type ClusterConfig struct {
@@ -223,6 +252,7 @@ type Http2Config struct {
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
+
 	dbConfig.Name = name
 	if dbConfig.Bucket == nil {
 		dbConfig.Bucket = &dbConfig.Name
