@@ -125,7 +125,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
-		return nil, pkgerrors.WithStack(RedactErrorf("Error opening GoCB bucket. Bucket: %s.  Error: %v", MD(spec.BucketName), err))
+		return nil, pkgerrors.WithStack(err)
 	}
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
@@ -290,7 +290,7 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 	}
 
 	if err != nil {
-		err = pkgerrors.WithStack(RedactErrorf("Unrecoverable GoCB error doing Get(). Doc ID: %s.  Error: %v.", UD(k), err))
+		err = pkgerrors.WithStack(err)
 	}
 
 	return cas, err
@@ -859,7 +859,7 @@ func (bucket *CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added
 		if err == gocb.ErrKeyExists {
 			return false, nil
 		}
-		err = pkgerrors.WithStack(RedactErrorf("Error calling GoCB AddRaw(). Doc ID: %s.  Error: %v.", UD(k), err))
+		err = pkgerrors.WithStack(err)
 	}
 
 	return err == nil, err
@@ -892,7 +892,7 @@ func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) erro
 	}
 	err, _ := RetryLoop("CouchbaseBucketGoCB Set()", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		err = pkgerrors.WithStack(RedactErrorf("Error calling GoCB Set(). Doc ID: %s. Error: %v.", UD(k), err))
+		err = pkgerrors.WithStack(err)
 	}
 	return err
 
@@ -1662,7 +1662,7 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 	}
 
 	if err != nil {
-		err = pkgerrors.WithStack(RedactErrorf("Unrecoverable GoCB error doing Incr().  Doc ID: %s %s with amt: %d.  Error: %v", UD(k), amt, err))
+		err = pkgerrors.WithStack(err)
 	}
 
 	return cas, err
@@ -1879,7 +1879,7 @@ func (bucket *CouchbaseBucketGoCB) View(ddoc, name string, params map[string]int
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return viewResult, pkgerrors.WithStack(RedactErrorf("Unexpected error querying design doc %q, view %q with params:%+v.  Error: %v", UD(ddoc), UD(name), UD(params), err))
+		return viewResult, pkgerrors.WithStack(err)
 	}
 
 	if goCbViewResult != nil {
@@ -1952,7 +1952,7 @@ func (bucket *CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[stri
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return pkgerrors.WithStack(RedactErrorf("Unexpected error querying design doc %q, view %q with params:%+v.  Error: %v", UD(ddoc), UD(name), UD(params), err))
+		return pkgerrors.WithStack(err)
 	}
 
 	// Define a struct to store the rows as raw bytes
@@ -2045,7 +2045,7 @@ func (bucket CouchbaseBucketGoCB) ViewQuery(ddoc, name string, params map[string
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return nil, pkgerrors.WithStack(RedactErrorf("Unexpected error querying design doc %q, view %q with params:%+v.  Error: %v", UD(ddoc), UD(name), UD(params), err))
+		return nil, pkgerrors.WithStack(err)
 	}
 
 	return goCbViewResult, nil
@@ -2250,7 +2250,7 @@ func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint
 	wg.Wait()
 
 	if getMetaError != nil {
-		getMetaError = pkgerrors.WithStack(RedactErrorf("Error getting expiry value. Doc ID: %s.   Error: %v", UD(k), getMetaError))
+		getMetaError = pkgerrors.WithStack(getMetaError)
 	}
 
 	return expiry, getMetaError
@@ -2469,7 +2469,6 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 		return nil, false
 	}
 }
-
 
 func GoCBBucketItemCount(bucket *gocb.Bucket, spec BucketSpec, user, pass string) (itemCount int, err error) {
 
