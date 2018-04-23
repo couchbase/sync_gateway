@@ -550,11 +550,11 @@ func installViews(bucket base.Bucket) error {
 			return err != nil, err, nil
 		}
 
-		description := fmt.Sprintf("Attempt to install Couchbase design doc bucket : %v", designDocName)
+		description := fmt.Sprintf("Attempt to install Couchbase design doc")
 		err, _ := base.RetryLoop(description, worker, sleeper)
 
 		if err != nil {
-			return pkgerrors.Wrapf(err, "Error installing Couchbase Design doc: %v", designDocName)
+			return pkgerrors.WithStack(base.RedactErrorf("Error installing Couchbase Design doc: %v.  Error: %v", base.UD(designDocName), err))
 		}
 	}
 

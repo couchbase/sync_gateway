@@ -490,7 +490,7 @@ func (doc *document) persistModifiedRevisionBodies(bucket base.Bucket) error {
 			return err
 		}
 		if revInfo.BodyKey == "" || len(revInfo.Body) == 0 {
-			return fmt.Errorf("Missing key or body for revision during external persistence.  doc: %s rev:%s key: %s  len(body): %d", doc.ID, revID, revInfo.BodyKey, len(revInfo.Body))
+			return base.RedactErrorf("Missing key or body for revision during external persistence.  doc: %s rev:%s key: %s  len(body): %d", base.UD(doc.ID), revID, base.UD(revInfo.BodyKey), len(revInfo.Body))
 		}
 
 		// If addRaw indicates that the doc already exists, can ignore.  Another writer already persisted this rev backup.
@@ -694,15 +694,14 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 	root := documentRoot{SyncData: &syncData{History: make(RevTree)}}
 	err := json.Unmarshal([]byte(data), &root)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error unmarshaling doc %q: %s", base.UD(doc.ID), err)
-		return pkgerrors.Wrapf(err, "Failed to UnmarshalJSON() doc with id: %s", doc.ID)
+		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 	if root.SyncData != nil {
 		doc.syncData = *root.SyncData
 	}
 
 	if err := json.Unmarshal(data, &doc._body); err != nil {
-		return pkgerrors.Wrapf(err, "Failed to UnmarshalJSON() doc with id: %s", doc.ID)
+		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
 	delete(doc._body, "_sync")
@@ -717,7 +716,10 @@ func (doc *document) MarshalJSON() ([]byte, error) {
 	body["_sync"] = &doc.syncData
 	data, err := json.Marshal(body)
 	delete(body, "_sync")
-	return data, pkgerrors.Wrapf(err, "Failed to MarshalJSON() doc with id: %s", doc.ID)
+	if err != nil {
+		err = pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
+	}
+	return data, err
 }
 
 // UnmarshalWithXattr unmarshals the provided raw document and xattr bytes.  The provided DocumentUnmarshalLevel
@@ -736,7 +738,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		doc.syncData = syncData{History: make(RevTree)}
 		unmarshalErr := json.Unmarshal(xdata, &doc.syncData)
 		if unmarshalErr != nil {
-			return pkgerrors.Wrapf(unmarshalErr, "Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalAll/Sync)", doc.ID)
+			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		// Unmarshal body if requested and present
 		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
@@ -750,7 +752,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		doc.syncData = syncData{}
 		unmarshalErr := json.Unmarshal(xdata, &doc.syncData)
 		if unmarshalErr != nil {
-			return pkgerrors.Wrapf(unmarshalErr, "Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalNoHistory)", doc.ID)
+			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc.rawBody = data
 	case DocUnmarshalRev:
@@ -758,7 +760,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		var revOnlyMeta revOnlySyncData
 		unmarshalErr := json.Unmarshal(xdata, &revOnlyMeta)
 		if unmarshalErr != nil {
-			return pkgerrors.Wrapf(unmarshalErr, "Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev)", doc.ID)
+			return pkgerrors.WithStack(base.RedactErrorf( "Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc.syncData = syncData{
 			CurrentRev: revOnlyMeta.CurrentRev,
@@ -770,7 +772,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		var casOnlyMeta casOnlySyncData
 		unmarshalErr := json.Unmarshal(xdata, &casOnlyMeta)
 		if unmarshalErr != nil {
-			return pkgerrors.Wrapf(unmarshalErr, "Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalCAS)", doc.ID)
+			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalCAS).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc.syncData = syncData{
 			Cas: casOnlyMeta.Cas,
@@ -795,14 +797,14 @@ func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 		if !deleted {
 			data, err = json.Marshal(body)
 			if err != nil {
-				return nil, nil, pkgerrors.Wrapf(err, "Failed to MarshalWithXattr() doc body with id: %s", doc.ID)
+				return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
 			}
 		}
 	}
 
 	xdata, err = json.Marshal(doc.syncData)
 	if err != nil {
-		return nil, nil, pkgerrors.Wrapf(err, "Failed to MarshalWithXattr() doc syncData with id: %s", doc.ID)
+		return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc syncData with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
 	return data, xdata, nil

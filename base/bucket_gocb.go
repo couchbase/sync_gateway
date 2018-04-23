@@ -125,7 +125,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error opening GoCB bucket: %s", spec.BucketName)
+		return nil, pkgerrors.WithStack(RedactErrorf("Error opening GoCB bucket. Bucket: %s.  Error: %v", MD(spec.BucketName), err))
 	}
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
@@ -286,10 +286,14 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, RedactErrorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, UD(k))
 	}
 
-	return cas, pkgerrors.Wrapf(err, "Unrecoverable GoCB error doing Get() on key: %s", k)
+	if err != nil {
+		err = pkgerrors.WithStack(RedactErrorf("Unrecoverable GoCB error doing Get(). Doc ID: %s.  Error: %v.", UD(k), err))
+	}
+
+	return cas, err
 
 }
 
@@ -429,7 +433,7 @@ func (bucket *CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte,
 	// Type assertion of result into a map
 	resultMap, ok := result.(map[string][]byte)
 	if !ok {
-		return nil, fmt.Errorf("Error doing type assertion of %v into a map", result)
+		return nil, RedactErrorf("Error doing type assertion of %v into a map", UD(result))
 	}
 
 	return resultMap, err
@@ -467,7 +471,7 @@ func (bucket *CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]ui
 	// Type assertion of result into a map
 	resultMap, ok := result.(map[string]uint64)
 	if !ok {
-		return nil, fmt.Errorf("Error doing type assertion of %v into a map", result)
+		return nil, RedactErrorf("Error doing type assertion of %v into a map", UD(result))
 	}
 
 	return resultMap, err
@@ -791,7 +795,7 @@ func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []by
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return nil, 0, fmt.Errorf("GetAndTouchRaw: Error doing type assertion of %v into a uint64", result)
+		return nil, 0, RedactErrorf("GetAndTouchRaw: Error doing type assertion of %v into a uint64", UD(result))
 	}
 
 	// If returnVal was never set to anything, return nil or else type assertion below will panic
@@ -851,11 +855,14 @@ func (bucket *CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added
 	}
 	err, _ = RetryLoop("CouchbaseBucketGoCB AddRaw()", worker, bucket.spec.RetrySleeper())
 
-	if err != nil && err == gocb.ErrKeyExists {
-		return false, nil
+	if err != nil {
+		if err == gocb.ErrKeyExists {
+			return false, nil
+		}
+		err = pkgerrors.WithStack(RedactErrorf("Error calling GoCB AddRaw(). Doc ID: %s.  Error: %v.", UD(k), err))
 	}
 
-	return err == nil, pkgerrors.Wrapf(err, "Error calling GoCB AddRaw() for doc id: %s", k)
+	return err == nil, err
 
 }
 
@@ -884,7 +891,10 @@ func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) erro
 
 	}
 	err, _ := RetryLoop("CouchbaseBucketGoCB Set()", worker, bucket.spec.RetrySleeper())
-	return pkgerrors.Wrapf(err, "Unrecoverable GoCB error doing Set() on key: %s", k)
+	if err != nil {
+		err = pkgerrors.WithStack(RedactErrorf("Error calling GoCB Set(). Doc ID: %s. Error: %v.", UD(k), err))
+	}
+	return err
 
 }
 
@@ -1012,7 +1022,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("WriteCas: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, RedactErrorf("WriteCas: Error doing type assertion of %v into a uint64,  Key: %v", UD(result), UD(k))
 	}
 
 	return cas, err
@@ -1096,7 +1106,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("WriteCasWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, RedactErrorf("WriteCasWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", UD(result), UD(k))
 	}
 
 	return cas, err
@@ -1156,7 +1166,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("UpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, RedactErrorf("UpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", UD(result), UD(k))
 	}
 
 	return cas, err
@@ -1230,7 +1240,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", result, result, k)
+		return 0, RedactErrorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", UD(result), result, UD(k))
 	}
 
 	return cas, err
@@ -1648,10 +1658,14 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 	// Type assertion of result
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, fmt.Errorf("Incr: Error doing type assertion of %v into a uint64,  Key: %v", result, k)
+		return 0, RedactErrorf("Incr: Error doing type assertion of %v into a uint64,  Key: %v", result, UD(k))
 	}
 
-	return cas, pkgerrors.Wrapf(err, "Unrecoverable GoCB error doing Incr() on key: %s with amt: %d", k, amt)
+	if err != nil {
+		err = pkgerrors.WithStack(RedactErrorf("Unrecoverable GoCB error doing Incr().  Doc ID: %s %s with amt: %d.  Error: %v", UD(k), amt, err))
+	}
+
+	return cas, err
 
 }
 
@@ -1706,7 +1720,7 @@ func (bucket *CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, erro
 
 	manager := bucket.Bucket.Manager(username, password)
 	if manager == nil {
-		return nil, fmt.Errorf("Unable to obtain manager for bucket %s", bucket.GetName())
+		return nil, RedactErrorf("Unable to obtain manager for bucket %s", MD(bucket.GetName()))
 	}
 	return manager, nil
 }
@@ -1865,7 +1879,7 @@ func (bucket *CouchbaseBucketGoCB) View(ddoc, name string, params map[string]int
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return viewResult, pkgerrors.Wrapf(err, "Unexpected error querying design doc %q, view %q with params:%+v", ddoc, name, params)
+		return viewResult, pkgerrors.WithStack(RedactErrorf("Unexpected error querying design doc %q, view %q with params:%+v.  Error: %v", UD(ddoc), UD(name), UD(params), err))
 	}
 
 	if goCbViewResult != nil {
@@ -1938,7 +1952,7 @@ func (bucket *CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[stri
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return pkgerrors.Wrapf(err, "Unexpected error querying design doc %q, view %q with params:%+v", ddoc, name, params)
+		return pkgerrors.WithStack(RedactErrorf("Unexpected error querying design doc %q, view %q with params:%+v.  Error: %v", UD(ddoc), UD(name), UD(params), err))
 	}
 
 	// Define a struct to store the rows as raw bytes
@@ -2031,7 +2045,7 @@ func (bucket CouchbaseBucketGoCB) ViewQuery(ddoc, name string, params map[string
 
 	// If it's any other error, return it as-is
 	if err != nil {
-		return nil, pkgerrors.Wrapf(err, "Unexpected error querying design doc %q, view %q with params:%+v", ddoc, name, params)
+		return nil, pkgerrors.WithStack(RedactErrorf("Unexpected error querying design doc %q, view %q with params:%+v.  Error: %v", UD(ddoc), UD(name), UD(params), err))
 	}
 
 	return goCbViewResult, nil
@@ -2225,7 +2239,7 @@ func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint
 	getMetaCallback := func(value []byte, flags uint32, cas gocbcore.Cas, exp uint32, seq gocbcore.SeqNo, dataType uint8, deleted uint32, err error) {
 		defer wg.Done()
 		if err != nil {
-			getMetaError = pkgerrors.Wrapf(getMetaError, "Error getting expiry for doc: %s", k)
+			getMetaError = err
 			return
 		}
 		expiry = exp
@@ -2234,6 +2248,10 @@ func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint
 	agent.GetMeta([]byte(k), getMetaCallback)
 
 	wg.Wait()
+
+	if getMetaError != nil {
+		getMetaError = pkgerrors.WithStack(RedactErrorf("Error getting expiry value. Doc ID: %s.   Error: %v", UD(k), getMetaError))
+	}
 
 	return expiry, getMetaError
 
@@ -2259,7 +2277,7 @@ func (bucket *CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaEr
 	// Type assertion of result
 	expiry, ok := result.(uint32)
 	if !ok {
-		return 0, fmt.Errorf("Get: Error doing type assertion of %v into a uint32,  Key: %v", result, k)
+		return 0, RedactErrorf("Get: Error doing type assertion of %v into a uint32,  Key: %v", result, UD(k))
 	}
 
 	return expiry, err

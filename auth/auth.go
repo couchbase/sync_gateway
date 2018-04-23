@@ -11,7 +11,6 @@ package auth
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
@@ -111,9 +110,10 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			princ = nil
 			return nil, nil, couchbase.UpdateCancel
 		}
+
 		princ = factory()
 		if err := json.Unmarshal(currentValue, princ); err != nil {
-			return nil, nil, pkgerrors.Wrapf(err, "Error calling json.Unmarshal() for doc ID: %s in getPrincipal()", docID)
+			return nil, nil, pkgerrors.WithStack(base.RedactErrorf("json.Unmarshal() error for doc ID: %s in getPrincipal().  Error: %v", base.UD(docID), err))
 		}
 		changed := false
 		if princ.Channels() == nil {
@@ -137,7 +137,10 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if changed {
 			// Save the updated doc:
 			updatedBytes, marshalErr := json.Marshal(princ)
-			return updatedBytes, nil, pkgerrors.Wrapf(marshalErr, "Error calling json.Marshal() for doc ID: %s in getPrincipal()", docID)
+			if marshalErr != nil {
+				marshalErr = pkgerrors.WithStack(base.RedactErrorf("json.Unmarshal() error for doc ID: %s in getPrincipal(). Error: %v", base.UD(docID), marshalErr))
+			}
+			return updatedBytes, nil, marshalErr
 		} else {
 			// Principal is valid, so stop the update
 			return nil, nil, couchbase.UpdateCancel
@@ -320,7 +323,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	base.Debugf(base.KeyOIDC, "Provider for issuer: %+v", base.UD(provider))
 
 	if provider == nil {
-		return nil, jose.JWT{}, fmt.Errorf("No provider found for issuer %v", issuer)
+		return nil, jose.JWT{}, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
 	}
 
 	// VerifyJWT validates the claims and signature on the JWT

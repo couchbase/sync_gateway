@@ -268,7 +268,7 @@ func (bucket *CouchbaseBucket) View(ddoc, name string, params map[string]interfa
 
 	vres, ok := result.(sgbucket.ViewResult)
 	if !ok {
-		return vres, fmt.Errorf("Error converting view result %v to sgbucket.ViewResult", result)
+		return vres, RedactErrorf("Error converting view result %v to sgbucket.ViewResult", UD(result))
 	}
 	return vres, err
 }

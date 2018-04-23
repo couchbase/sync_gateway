@@ -94,34 +94,34 @@ func (pc OidcProviderConfiguration) AsProviderConfig() (oidc.ProviderConfig, err
 
 	var err error
 	if conf.Issuer, err = pc.parseURI(pc.Issuer); err != nil {
-		return oidc.ProviderConfig{}, err
+		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.Issuer")
 	}
 	if conf.AuthEndpoint, err = pc.parseURI(pc.AuthEndpoint); err != nil {
-		return oidc.ProviderConfig{}, err
+		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.AuthEndpoint")
 	}
 	if conf.TokenEndpoint, err = pc.parseURI(pc.TokenEndpoint); err != nil {
-		return oidc.ProviderConfig{}, err
+		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.TokenEndpoint")
 	}
 	if conf.UserInfoEndpoint, err = pc.parseURI(pc.UserInfoEndpoint); err != nil {
-		return oidc.ProviderConfig{}, err
+		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.UserInfoEndpoint")
 	}
 	if conf.KeysEndpoint, err = pc.parseURI(pc.JwksUri); err != nil {
-		return oidc.ProviderConfig{}, err
+		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.JwksUri")
 	}
 	if conf.RegistrationEndpoint, err = pc.parseURI(pc.RegistrationEndpoint); err != nil {
-		return oidc.ProviderConfig{}, err
+		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.RegistrationEndpoint")
 	}
 	if conf.Policy, err = pc.parseURI(pc.Policy); err != nil {
-		return oidc.ProviderConfig{}, err
+		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.Policy")
 	}
 	if conf.Policy, err = pc.parseURI(pc.Policy); err != nil {
-		return oidc.ProviderConfig{}, err
+		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.Policy")
 	}
 	if conf.TermsOfService, err = pc.parseURI(pc.TermsOfService); err != nil {
-		return oidc.ProviderConfig{}, err
+		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.TermsOfService")
 	}
 	if conf.ServiceDocs, err = pc.parseURI(pc.ServiceDocs); err != nil {
-		return oidc.ProviderConfig{}, err
+		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.ServiceDocs")
 	}
 
 	return conf, nil
@@ -134,13 +134,13 @@ func (pc *OidcProviderConfiguration) parseURI(s string) (*url.URL, error) {
 	}
 	u, err := url.Parse(s)
 	if err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error parsing URI: [%s]", s)
+		return nil, pkgerrors.Wrapf(err, "Error parsing URI")
 	}
 
 	if u.Host == "" {
-		return nil, fmt.Errorf("Host required in URI [%s]:", s)
+		return nil, fmt.Errorf("Host required in URI")
 	} else if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("Invalid URI scheme [%s]:", s)
+		return nil, fmt.Errorf("Invalid URI scheme.  Only valid schemes are http and https")
 	}
 
 	return u, nil

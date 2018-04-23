@@ -134,7 +134,7 @@ func (op *OIDCProvider) InitUserPrefix() error {
 func (op *OIDCProvider) InitOIDCClient() error {
 
 	if op.Issuer == "" {
-		return fmt.Errorf("Issuer not defined for OpenID Connect provider %+v", op)
+		return base.RedactErrorf("Issuer not defined for OpenID Connect provider %+v", base.UD(op))
 	}
 
 	config, shouldSyncConfig, err := op.DiscoverConfig()
@@ -237,7 +237,7 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 	var oidcConfig oidc.ProviderConfig
 	oidcConfig, err = customConfig.AsProviderConfig()
 	if err != nil {
-		base.Debugf(base.KeyOIDC, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
+		base.Debugf(base.KeyOIDC, "Error invoking calling discovery URL %s: %+v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 

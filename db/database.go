@@ -323,12 +323,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			}
 
 			if strings.Contains(name, "_") {
-				return nil, fmt.Errorf("OpenID Connect provider names cannot contain underscore:%s", name)
+				return nil, base.RedactErrorf("OpenID Connect provider names cannot contain underscore:%s", base.UD(name))
 			}
 			provider.Name = name
 			if _, ok := context.OIDCProviders[provider.Issuer]; ok {
-				base.Warnf(base.KeyAll, "Multiple OIDC providers defined for issuer %v", base.UD(provider.Issuer))
-				return nil, fmt.Errorf("Multiple OIDC providers defined for issuer %v", provider.Issuer)
+				return nil, base.RedactErrorf("Multiple OIDC providers defined for issuer %v", base.UD(provider.Issuer))
 			}
 
 			// If this is the default provider, or there's only one provider defined, set IsDefault
@@ -391,7 +390,7 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	if provider, ok := context.OIDCProviders[providerName]; ok {
 		return provider, nil
 	} else {
-		return nil, fmt.Errorf("No provider found for provider name %q", providerName)
+		return nil, base.RedactErrorf("No provider found for provider name %q", base.UD(providerName))
 	}
 }
 

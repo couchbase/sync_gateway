@@ -655,7 +655,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	}
 	for name, db := range other.Databases {
 		if self.Databases[name] != nil {
-			return fmt.Errorf("Database %q already specified earlier", name)
+			return base.RedactErrorf("Database %q already specified earlier", base.UD(name))
 		}
 		self.Databases[name] = db
 	}
@@ -885,7 +885,7 @@ func RunServer(config *ServerConfig) {
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Fatalf(base.KeyAll, "Error opening database %s: %v", base.UD(dbConfig.Name), err)
+			base.Fatalf(base.KeyAll, "Error opening database %s: %+v", base.UD(dbConfig.Name), err)
 		}
 	}
 

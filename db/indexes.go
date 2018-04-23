@@ -256,7 +256,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, num
 		isDeferred, err := sgIndex.createIfNeeded(gocbBucket, useXattrs, numReplicas)
 		fullIndexName := sgIndex.fullIndexName(useXattrs)
 		if err != nil {
-			return fmt.Errorf("Unable to install index %s: %v", sgIndex.simpleName, err)
+			return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
 		}
 
 		if isDeferred {

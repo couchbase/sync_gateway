@@ -3,13 +3,13 @@ package db
 import (
 	"errors"
 	"expvar"
-	"fmt"
 	"strconv"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto"
+	"fmt"
 )
 
 var importExpvars *expvar.Map
@@ -62,7 +62,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool, expiry *uint32, mode ImportMode) (docOut *document, err error) {
 
 	if existingDoc == nil {
-		return nil, fmt.Errorf("No existing doc present when attempting to import %s", docid)
+		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
 	}
 
 	// Get the doc expiry if it wasn't passed in
@@ -96,7 +96,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	base.Debugf(base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 
 	if existingDoc == nil {
-		return nil, fmt.Errorf("No existing doc present when attempting to import %s", docid)
+		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
 	}
 
 	var newRev string

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	pkgerrors "github.com/pkg/errors"
 )
 
 // Redactor provides an interface for log redaction.
@@ -19,6 +21,12 @@ func redact(args []interface{}) []interface{} {
 	for i, v := range args {
 		if r, ok := v.(Redactor); ok {
 			args[i] = r.Redact()
+		} else if err, ok := v.(error); ok {
+			// it's an error, and may need to be unwrapped before it can be redacted
+			err = pkgerrors.Cause(err)
+			if r, ok := err.(Redactor); ok {
+				args[i] = r.Redact()
+			}
 		}
 	}
 	return args
