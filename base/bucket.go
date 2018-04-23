@@ -12,6 +12,7 @@ package base
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -96,6 +97,7 @@ type BucketSpec struct {
 	Server, PoolName, BucketName, FeedType string
 	Auth                                   AuthHandler
 	CouchbaseDriver                        CouchbaseDriver
+	Certpath, Keypath, CACertPath          string         // X.509 auth parameters
 	MaxNumRetries                          int            // max number of retries before giving up
 	InitialRetrySleepTimeMS                int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
 	UseXattrs                              bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
@@ -112,6 +114,37 @@ func (spec BucketSpec) IsWalrusBucket() bool {
 	return strings.Contains(spec.Server, "walrus:")
 }
 
+func (spec BucketSpec) IsTLS() bool {
+	return strings.HasPrefix(spec.Server, "couchbases") || strings.HasPrefix(spec.Server, "https")
+}
+
+func (spec BucketSpec) UseClientCert() bool {
+	if spec.Certpath == "" || spec.Keypath == "" {
+		return false
+	}
+	return true
+}
+
+func (spec BucketSpec) GetConnString() (string, error) {
+
+	connUrl, err := url.Parse(spec.Server)
+	if err != nil {
+		return "", err
+	}
+	connQuery := connUrl.Query()
+	if spec.Certpath != "" && spec.Keypath != "" {
+		connQuery.Set("certpath", spec.Certpath)
+		connQuery.Set("keypath", spec.Keypath)
+	}
+	if spec.CACertPath != "" {
+		connQuery.Set("cacertpath", spec.CACertPath)
+	}
+
+	connUrl.RawQuery = connQuery.Encode()
+	return connUrl.String(), nil
+
+}
+
 func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 
 	// If the user doesn't specify any timeout, default to 75s
@@ -126,6 +159,99 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 
 	return time.Duration(*b.ViewQueryTimeoutSecs) * time.Second
 
+}
+
+// Used by cbdatasource to create a TLS-enabled memcached connection, including client cert (x.509) information when
+// available.  Builds a connection, then wraps w/ gomemcached Client for use by cbdatasource.
+func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err error) {
+
+	log.Printf("=======================Using Sync Gateway's TLSConnect")
+
+	d := net.Dialer{
+		Deadline: time.Now().Add(30 * time.Second),
+	}
+
+	host, port, err := SplitHostPort(dest)
+
+	// TODO: Replace with retrieval of TLS port
+	port = 11207
+	dest = host + ":" + port
+
+	conn, err := d.Dial("tcp", dest)
+
+	//	conn, err := dialFun(prot, dest)
+	if err != nil {
+		return nil, err
+	}
+
+	tcpConn, isTcpConn := conn.(*net.TCPConn)
+	if !isTcpConn {
+		return memcached.Wrap(conn)
+	} else {
+
+		err = tcpConn.SetNoDelay(false)
+		if err != nil {
+			return nil, pkgerrors.Wrapf(err, "Error setting NoDelay on tcpConn during TLS Connect")
+		}
+
+		tlsConfig := &tls.Config{
+			ServerName: host,
+		}
+
+		if b.CertPath != "" && b.Keypath != "" {
+			var error configErr
+			tlsConfig, configErr = TLSConfigForX509(b.Certpath, b.Keypath, b.CACertPath)
+			if configErr != nil {
+				return nil, pkgerrors.Wrapf(configErr, "Error adding x509 to TLSConfig")
+			}
+		}
+
+		tlsConn := tls.Client(tcpConn, tlsConfig)
+		tlsErr := tlsConn.Handshake()
+		if tlsErr != nil {
+			return nil, pkgerrors.Wrapf(tlsErr, "TLS handshake failed in TLSConnect")
+			log.Printf("tls handshake failed with error: %v", tlsErr)
+		}
+		return memcached.Wrap(tlsConn)
+	}
+
+}
+
+func TLSConfigForX509(certpath, keypath, cacertpath string) (*tls.Config, error) {
+
+	cacertpaths := []string{cacertpath}
+
+	tlsConfig := &tls.Config{}
+
+	if len(cacertpaths) > 0 {
+		roots := x509.NewCertPool()
+
+		for _, path := range cacertpaths {
+			cacert, err := ioutil.ReadFile(path)
+			if err != nil {
+				return nil, err
+			}
+
+			ok := roots.AppendCertsFromPEM(cacert)
+			if !ok {
+				return nil, fmt.Errorf("can't append certs from PEM")
+			}
+		}
+
+		tlsConfig.RootCAs = roots
+	} else {
+		tlsConfig.InsecureSkipVerify = true
+	}
+
+	if certpath != "" && keypath != "" {
+		cert, err := tls.LoadX509KeyPair(certpath, keypath)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+	return tlsConfig, nil
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server

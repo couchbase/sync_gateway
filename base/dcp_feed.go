@@ -10,15 +10,22 @@
 package base
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net"
 	"sync"
 	"time"
 
+	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
+	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
@@ -152,6 +159,8 @@ func (r *DCPReceiver) OnError(err error) {
 
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
+
+	log.Printf("DataUpdate: %d %s", vbucketId, key)
 	dcpExpvars.Add("dataUpdate_count", 1)
 	r.updateSeq(vbucketId, seq, true)
 	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpMutation))
@@ -517,6 +526,25 @@ func (r *DCPLoggingReceiver) initFeed(feedType uint64) error {
 	return r.rec.initFeed(feedType)
 }
 
+// NoPasswordAuthHandler is used for client auth
+type NoPasswordAuthHandler struct {
+	handler AuthHandler
+}
+
+func (nph NoPasswordAuthHandler) GetCredentials() (string, string, string) {
+	_, _, bucketname := nph.handler.GetCredentials()
+	return "", "", bucketname
+}
+
+type CertAuthForDCP struct {
+	handler AuthHandler
+}
+
+func (a CertAuthForDCP) GetCredentials() (string, string, string) {
+	_, _, bucketname := a.handler.GetCredentials()
+	return "", "", bucketname
+}
+
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
 func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
@@ -524,9 +552,12 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
 	// reusing the bucket connection we've already established.
 	urls, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server)
+	log.Printf("Converted to: %v %v", urls, errConvertServerSpec)
 	if errConvertServerSpec != nil {
 		return errConvertServerSpec
 	}
+
+	log.Printf("StartDCPFeed generating urls:%v", urls)
 
 	poolName := spec.PoolName
 	if poolName == "" {
@@ -566,6 +597,20 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 
 	dataSourceOptions.Name = GenerateDcpStreamName("SG")
 
+	auth := spec.Auth
+
+	if spec.Certpath != "" {
+		couchbase.SetCertFile(spec.Certpath)
+		couchbase.SetKeyFile(spec.Keypath)
+		couchbase.SetRootFile(spec.CACertPath)
+		couchbase.SetSkipVerify(false)
+		auth = NoPasswordAuthHandler{handler: spec.Auth}
+	}
+
+	if spec.IsTLS() {
+		dataSourceOptions.Connect = TLSConnect
+	}
+
 	Debugf(KeyFeed, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
 	bds, err := cbdatasource.NewBucketDataSource(
 		urls,
@@ -573,7 +618,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		bucketName,
 		"",
 		vbucketIdsArr,
-		spec.Auth,
+		auth,
 		dcpReceiver,
 		dataSourceOptions,
 	)
