@@ -20,6 +20,7 @@ import shutil
 import urlparse
 import json
 import tempfile
+import uuid
 from sys import platform as _platform
 
 from tasks import CbcollectInfoOptions
@@ -71,7 +72,6 @@ USAGE = """usage: %prog [options] output_file.zip
 mydir = os.path.dirname(sys.argv[0])
 
 def create_option_parser():
-    
     parser = optparse.OptionParser(usage=USAGE, option_class=CbcollectInfoOptions)
     parser.add_option("-r", dest="root",
                       help="root directory - defaults to %s" % (mydir + "/.."),
@@ -85,6 +85,14 @@ def create_option_parser():
     parser.add_option("--watch-stdin", dest="watch_stdin",
                       action="store_true", default=False,
                       help=optparse.SUPPRESS_HELP)
+    parser.add_option("--log-redaction-level", dest="redact_level",
+                      default="none",
+                      help="redaction level for the logs collected, none and partial supported (default is none)")
+    parser.add_option("--log-redaction-salt", dest="salt_value",
+                      default=str(uuid.uuid4()),
+                      help="Is used to salt the hashing of tagged data, \
+                            defaults to random uuid. If input by user it should \
+                            be provided along with --log-redaction-level option")
     parser.add_option("--just-upload-into", dest="just_upload_into",
                       help=optparse.SUPPRESS_HELP)
     parser.add_option("--upload-host", dest="upload_host",
@@ -105,7 +113,6 @@ def create_option_parser():
                       help="path to Sync Gateway config.  By default will try to discover via expvars")
     parser.add_option("--sync-gateway-executable", dest="sync_gateway_executable",
                       help="path to Sync Gateway executable.  By default will try to discover via expvars")
-    
     return parser
 
 def expvar_url(sg_url):
@@ -399,6 +406,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
 
 
     # Get server config
+    # TODO: Redact sensitive data
     server_config_url = "{0}/_config".format(sg_url)
     config_task = make_curl_task(name="Collect server config",
                                  user="",
@@ -587,8 +595,21 @@ def main():
         print("do not have write access to the directory %s" % (zip_dir))
         sys.exit(1)
 
-    # Generate the s3 URL where zip files will be updated
-    upload_url = generate_upload_url(parser, options, zip_filename)
+    if options.redact_level != "none" and options.redact_level != "partial":
+        parser.error("Invalid redaction level. Only 'none' and 'partial' are supported.")
+
+    ud_prefix = ""
+    ud_suffix = ""
+    upload_url = ""
+    if options.redact_level != "none":
+        ud_prefix = "<ud>"
+        ud_suffix = "</ud>"
+
+        # Generate the s3 URL where zip files will be updated
+        redact_zip_file = zip_filename[:-4] + "-redacted" + zip_filename[-4:]
+        upload_url = generate_upload_url(parser, options, redact_zip_file)
+    else:
+        upload_url = generate_upload_url(parser, options, zip_filename)
 
     # Linux
     if os.name == 'posix':
@@ -654,10 +675,25 @@ def main():
     # Echo the command line args used to run sgcollect_info
     cmd_line_args_task = AllOsTask(
         "Echo sgcollect_info cmd line args",
-        "echo options: {0} args: {1}".format(options, args),
+        "echo options: {0} args: {1}".format({k: ud_prefix+'{0}'+ud_suffix.format(v) for k, v in options.__dict__.items()}, args),
         log_file="sgcollect_info_options.log",
     )
     runner.run(cmd_line_args_task)
+
+    runner.close_all_files()
+
+    # Build redacted zip file
+    if options.redact_level != "none":
+        # We don't want to attempt to redact binary/pprof files, as this could result in corruption
+        blacklist = [
+            'profile.text',           'goroutine.text',           'heap.text',
+            'profile.raw',            'goroutine.raw',            'heap.raw',
+            'profile.dot',            'goroutine.dot',            'heap.dot',
+            'profile.pdf',            'goroutine.pdf',            'heap.pdf',
+            'pprof_http_profile.log', 'pprof_http_goroutine.log', 'pprof_http_heap.log'
+        ]
+        log("Redacting log files to level: %s" % options.redact_level)
+        runner.redact_and_zip(redact_zip_file, 'sgcollect_info', options.salt_value, platform.node(), blacklist)
 
     # Build the actual zip file
     runner.zip(zip_filename, 'sgcollect_info', platform.node())
@@ -667,7 +703,13 @@ def main():
 
     # Upload the zip to the URL to S3 if required
     if upload_url:
-        do_upload_and_exit(zip_filename, upload_url)
+        if options.redact_level != "none":
+            do_upload_and_exit(redact_zip_file, upload_url)
+        else:
+            do_upload_and_exit(zip_filename, upload_url)
+
+    if options.redact_level != "none":
+        print "Zipfile built: {0}".format(redact_zip_file)
 
     print "Zipfile built: {0}".format(zip_filename)
 

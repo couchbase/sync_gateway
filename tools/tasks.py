@@ -20,6 +20,65 @@ import urlparse
 import urllib2
 import base64
 import mmap
+import hashlib
+
+
+class LogRedactor:
+    def __init__(self, salt, tmpdir, blacklist=[]):
+        self.target_dir = os.path.join(tmpdir, "redacted")
+        os.makedirs(self.target_dir)
+
+        self.blacklist = blacklist
+        print('Redaction blacklist: {0}'.format(blacklist))
+
+        self.couchbase_log = CouchbaseLogProcessor(salt)
+        self.regular_log = RegularLogProcessor(salt)
+
+    def _process_file(self, ifile, ofile, processor):
+        try:
+            with open(ifile, 'r') as inp:
+                with open(ofile, 'w+') as out:
+                    # Write redaction header
+                    out.write(self.couchbase_log.do("RedactLevel"))
+                    for line in inp:
+                        out.write(processor.do(line))
+        except IOError as e:
+            log("I/O error(%s): %s" % (e.errno, e.strerror))
+
+    def redact_file(self, name, ifile):
+        ofile = os.path.join(self.target_dir, name)
+        _, filename = os.path.split(name)
+        if any(s in filename for s in self.blacklist):
+            print('WARNING: Not redacting blacklisted file {0}'.format(filename))
+            return ifile
+        self._process_file(ifile, ofile, self.regular_log)
+        return ofile
+
+
+class CouchbaseLogProcessor:
+    def __init__(self, salt):
+        self.salt = salt
+
+    def do(self, line):
+        if "RedactLevel" in line:
+            return 'RedactLevel:partial,HashOfSalt:%s\n' \
+                % hashlib.sha1(self.salt).hexdigest()
+        else:
+            return line
+
+
+class RegularLogProcessor:
+    def __init__(self, salt):
+        self.salt = salt
+        self.rex = re.compile('(<ud>)(.+?)(</ud>)')
+
+    def _hash(self, match):
+        h = hashlib.sha1(self.salt + match.group(2)).hexdigest()
+        return match.group(1) + h + match.group(3)
+
+    def do(self, line):
+        return self.rex.sub(self._hash, line)
+
 
 class AltExitC(object):
     def __init__(self):
@@ -56,6 +115,7 @@ AltExit = AltExitC()
 def log(message, end = '\n'):
     sys.stderr.write(message + end)
     sys.stderr.flush()
+
 
 class Task(object):
     privileged = False
@@ -256,16 +316,31 @@ class TaskRunner(object):
         elif self.verbosity >= 2:
             log('Skipping "%s" (%s): not for platform %s' % (task.description, command_to_print, sys.platform))
 
-    def zip(self, filename, log_type, node):
-        """Write all our logs to a zipfile"""
-        exe = exec_name("gozip")
+    def redact_and_zip(self, filename, log_type, salt, node, blacklist=[]):
+        files = []
+        redactor = LogRedactor(salt, self.tmpdir, blacklist)
+
+        for name, fp in self.files.iteritems():
+            files.append(redactor.redact_file(name, fp.name))
 
         prefix = "%s_%s_%s" % (log_type, node, self.start_time)
+        self._zip_helper(prefix, filename, files)
 
+    def zip(self, filename, log_type, node):
         files = []
         for name, fp in self.files.iteritems():
-            fp.close()
             files.append(fp.name)
+
+        prefix = "%s_%s_%s" % (log_type, node, self.start_time)
+        self._zip_helper(prefix, filename, files)
+
+    def close_all_files(self):
+        for name, fp in self.files.iteritems():
+            fp.close()
+
+    def _zip_helper(self, prefix, filename, files):
+        """Write all our logs to a zipfile"""
+        exe = exec_name("gozip")
 
         fallback = False
 
@@ -959,5 +1034,3 @@ def exec_name(name):
     if sys.platform == 'win32':
         name += ".exe"
     return name
-
-
