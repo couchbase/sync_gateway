@@ -1374,7 +1374,7 @@ type TestLogger struct {
 func (l TestLogger) Logf(logLevel base.LogLevel, logKey base.LogKey, format string, args ...interface{}) {
 	l.T.Logf(
 		logLevel.String()+" "+
-			base.LogKeyName(logKey)+": "+
+			logKey.String()+": "+
 			format, args...,
 	)
 }

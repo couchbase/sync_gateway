@@ -29,7 +29,7 @@ var (
 	logLevelNamesPrint = []string{"NON", "ERR", "WRN", "INF", "DBG"}
 )
 
-// Set will replace the current log level with newLevel.
+// Set will override the log level with the given log level.
 func (l *LogLevel) Set(newLevel LogLevel) {
 	atomic.StoreUint32((*uint32)(l), uint32(newLevel))
 }

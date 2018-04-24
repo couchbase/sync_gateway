@@ -128,9 +128,8 @@ func (keyMask *LogKey) enabled(logKey LogKey, checkWildcards bool) bool {
 	return flag&uint32(logKey) != 0
 }
 
-// LogKeyName returns the string representation of a single log key.
-func LogKeyName(logKey LogKey) string {
-	// No lock required to read concurrently, as long as nobody writes to logKeyNames.
+// String returns the string representation of a single log key.
+func (logKey LogKey) String() string {
 	return logKeyNames[logKey]
 }
 
@@ -143,7 +142,7 @@ func (keyMask *LogKey) EnabledLogKeys() []string {
 	for i := 0; i < len(logKeyNames); i++ {
 		logKey := LogKey(1) << uint32(i)
 		if keyMask.enabled(logKey, false) {
-			logKeys = append(logKeys, LogKeyName(logKey))
+			logKeys = append(logKeys, logKey.String())
 		}
 	}
 	return logKeys
