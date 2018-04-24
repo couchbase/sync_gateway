@@ -2004,7 +2004,7 @@ func TestQueueBacklog(t *testing.T) {
 	numGoroutines := 3
 	wg.Add(numGoroutines)
 
-	// Start a goroutines that try to create a new doc but timeout after 500 ms, and retry in that case
+	// Start goroutines that try to create a new doc but timeout after a timeout, and retry in that case
 	for i := 0; i < numGoroutines; i++ {
 
 		go func(goroutineId int) {
@@ -2037,31 +2037,37 @@ func SetWithTimeoutRetry(bucket Bucket, key string, jsonDoc map[string]interface
 
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
+
+		errChan := make(chan error)
+
 		go func() {
-			defer wg.Done()
 			startTime := time.Now()
 			err = bucket.Set(key, 0, jsonDoc)
 			if err != nil {
-				
-				// Panic here out of laziness, rather than creating an error channel
-				panic(fmt.Sprintf("Error trying to set value in bucket: %v", err))
-
-				// Got an error, retry
-				//log.Printf("Error trying to set value in bucket: %v", err)
-				//return true, err, nil
-
+				errChan <- err
+				return
 			}
+			wg.Done()
 			delta := time.Since(startTime)
 			log.Printf("Set doc in: %v", delta)
 		}()
 
-		timeoutErr := WaitWithTimeout(wg, timeout)
-		if timeoutErr != nil {
-			return true, timeoutErr, nil
+		// Wait for either success (wg.Done() is called), failure where an error is returned, or timeout occurs
+		select {
+		case err := <-errChan:
+			return true, err, nil
+		case <-AfterWgDone(wg):
+			// Looks like it succeeded, we're done
+			return false, nil, nil
+		case <-time.After(timeout):
+			err := fmt.Errorf("Timed out waiting for bucket set operation after %v.  Will retry", timeout)
+			log.Printf("%v", err)
+			return true, err, nil
 		}
 
+		// how can it get here?
 		// Looks like it succeeded, we're done
-		return false, nil, nil
+		// return false, nil, nil
 
 	}
 
@@ -2075,6 +2081,18 @@ func SetWithTimeoutRetry(bucket Bucket, key string, jsonDoc map[string]interface
 	err, _ := RetryLoop("SetWithTimeoutRetry", retryWorker, retrySleeper)
 	return err
 
+}
+
+
+// Convert a waitgroup to a channel that can be blocked on in a select{}
+// TODO: can this leak goroutines?
+func AfterWgDone(wg *sync.WaitGroup) chan struct{} {
+	doneChan := make(chan struct{})
+	go func() {
+		wg.Wait()
+		doneChan <- struct{}{}
+	}()
+	return doneChan
 }
 
 func downloadJsonDoc(url string) (jsonDoc map[string]interface{}, err error) {
