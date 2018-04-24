@@ -36,6 +36,7 @@ from tasks import make_curl_task
 from tasks import flatten
 from tasks import do_upload_and_exit
 from tasks import add_file_task
+from tasks import add_gzip_file_task
 
 import password_remover
 
@@ -252,9 +253,26 @@ def extract_element_from_default_logging_config(element, config):
             # If we can't deserialise the json or find the key then return nothing
             return
 
+def extract_element_from_logging_config(element, config):
+    # extracts a property from nested logging object
+        try:
+            logging_config = extract_element_from_config('logging', config)
+            if logging_config:
+                guessed_log_path = extract_element_from_config(element, json.dumps(logging_config))
+                if guessed_log_path:
+                    return guessed_log_path
+            return
+        except (ValueError, KeyError):
+            # If we can't deserialise the json or find the key then return nothing
+            return
+
 def make_collect_logs_tasks(zip_dir, sg_url):
 
     sg_log_files = {
+        "sg_error.log": "sg_error.log",
+        "sg_warn.log": "sg_warn.log",
+        "sg_info.log": "sg_info.log",
+        "sg_debug.log": "sg_debug.log",
         "sync_gateway_access.log": "sync_gateway_access.log",
         "sync_gateway_error.log": "sync_gateway_error.log",
         "sg_accel_access.log": "sg_accel_access.log",
@@ -263,7 +281,7 @@ def make_collect_logs_tasks(zip_dir, sg_url):
 
     os_home_dirs = [
         "/home/sg_accel/logs",
-        "/home/sync_gateway/logs",  
+        "/home/sync_gateway/logs",
         "/var/log/sg_accel",
         "/var/log/sync_gateway",
         "/Users/sync_gateway/logs",
@@ -295,7 +313,7 @@ def make_collect_logs_tasks(zip_dir, sg_url):
     for _, path in sg_log_files.iteritems():
         for os_home_dir in os_home_dirs:
             sg_log_file_path = os.path.join(os_home_dir, path)
-            
+
             # As long as a task that monitors this log file path has not already been added, add a new task
             if sg_log_file_path not in sg_log_file_paths:
                 task = add_file_task(sourcefile_path=sg_log_file_path)
@@ -305,7 +323,7 @@ def make_collect_logs_tasks(zip_dir, sg_url):
             sg_log_file_paths[sg_log_file_path] = sg_log_file_path
 
 
-    # Find log file path from new style logging config
+    # Find log file path from logging.["default"] style config
     guessed_logging_path = extract_element_from_default_logging_config('LogFilePath', config_str)
     if guessed_logging_path:
         # Get the parent directory and the log file name
@@ -325,6 +343,40 @@ def make_collect_logs_tasks(zip_dir, sg_url):
             print('Capturing rotated log file {0}'.format(log_file_item_path))
             task = add_file_task(sourcefile_path=log_file_item_path)
             sg_tasks.append(task)
+
+
+    # Find log file path from SGW 2.1 style logging config
+    guessed_log_file_path = extract_element_from_logging_config('log_file_path', config_str)
+    if guessed_log_file_path:
+        log_file_path = os.path.abspath(guessed_log_file_path)
+
+        for log_file_name in sg_log_files:
+            # iterate over all log files, including those with a timestamp
+            name, ext = os.path.splitext(log_file_name)
+            log_file_pattern = "{0}*{1}".format(name, ext)
+            rotated_logs_pattern = os.path.join(
+               log_file_path,
+               log_file_pattern
+            )
+
+            for log_file_item_name in glob.iglob(rotated_logs_pattern):
+                log_file_item_path = os.path.join(log_file_path, log_file_item_name)
+                print('Capturing rotated log file {0}'.format(log_file_item_path))
+                task = add_file_task(sourcefile_path=log_file_item_path)
+                sg_tasks.append(task)
+
+            # try gzipped logs too
+            log_file_pattern = "{0}*{1}.gz".format(name, ext)
+            rotated_logs_pattern = os.path.join(
+               log_file_path,
+               log_file_pattern
+            )
+
+            for log_file_item_name in glob.iglob(rotated_logs_pattern):
+                log_file_item_path = os.path.join(log_file_path, log_file_item_name)
+                print('Capturing compressed rotated log file {0}'.format(log_file_item_path))
+                task = add_gzip_file_task(sourcefile_path=log_file_item_path, log_file_name="{}{}".format(name, ext))
+                sg_tasks.append(task)
 
     return sg_tasks
 

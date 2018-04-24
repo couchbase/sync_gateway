@@ -9,6 +9,7 @@ import string
 import re
 import platform
 import glob
+import gzip
 import socket
 import threading
 import optparse
@@ -437,6 +438,28 @@ def make_curl_task(name, url, user="", password="", content_postprocessors=[],
         log_file=log_file,
         **kwargs
     )
+
+def add_gzip_file_task(sourcefile_path, log_file_name, content_postprocessors=[]):
+    """
+    Adds the extracted contents of a file to the output zip
+
+    The content_postprocessors is a list of functions -- see make_curl_task
+    """
+    def python_add_file_task():
+        with gzip.open(sourcefile_path, 'r') as infile:
+            contents = infile.read()
+            for content_postprocessor in content_postprocessors:
+                contents = content_postprocessor(contents)
+            return contents
+
+    task = PythonTask(
+        description="Extracted contents of {0}".format(sourcefile_path),
+        callable=python_add_file_task,
+        log_file=log_file_name,
+        log_exception=False,
+    )
+
+    return task
 
 def add_file_task(sourcefile_path, content_postprocessors=[]):
     """
