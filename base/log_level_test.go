@@ -66,15 +66,15 @@ func TestLogLevelNames(t *testing.T) {
 	assert.Equals(t, len(logLevelNames), int(levelCount))
 	assert.Equals(t, len(logLevelNamesPrint), int(levelCount))
 
-	assert.Equals(t, LogLevelName(LevelNone), "none")
-	assert.Equals(t, LogLevelName(LevelError), "error")
-	assert.Equals(t, LogLevelName(LevelInfo), "info")
-	assert.Equals(t, LogLevelName(LevelWarn), "warn")
-	assert.Equals(t, LogLevelName(LevelDebug), "debug")
-	assert.Equals(t, LogLevelName(LevelTrace), "trace")
+	assert.Equals(t, LevelNone.String(), "none")
+	assert.Equals(t, LevelError.String(), "error")
+	assert.Equals(t, LevelInfo.String(), "info")
+	assert.Equals(t, LevelWarn.String(), "warn")
+	assert.Equals(t, LevelDebug.String(), "debug")
+	assert.Equals(t, LevelTrace.String(), "trace")
 
 	// Test out of bounds log level
-	assert.Equals(t, LogLevelName(math.MaxUint32), "")
+	assert.Equals(t, LogLevel(math.MaxUint32).String(), "LogLevel(4294967295)")
 }
 
 func TestLogLevelText(t *testing.T) {
@@ -82,7 +82,7 @@ func TestLogLevelText(t *testing.T) {
 		t.Run(fmt.Sprintf("LogLevel: %v", i), func(ts *testing.T) {
 			text, err := i.MarshalText()
 			assert.Equals(ts, err, nil)
-			assert.Equals(ts, string(text), LogLevelName(i))
+			assert.Equals(ts, string(text), i.String())
 
 			var logLevel LogLevel
 			err = logLevel.UnmarshalText(text)
@@ -94,9 +94,9 @@ func TestLogLevelText(t *testing.T) {
 	// nil pointer recievers
 	var logLevelPtr *LogLevel
 	_, err := logLevelPtr.MarshalText()
-	assert.Equals(t, err.Error(), "invalid log level")
+	assert.StringContains(t, err.Error(), "unrecognized log level")
 	err = logLevelPtr.UnmarshalText([]byte("none"))
-	assert.Equals(t, err.Error(), "invalid log level")
+	assert.Equals(t, err.Error(), "nil log level")
 
 	// Invalid values
 	var logLevel = LogLevel(math.MaxUint32)
@@ -154,7 +154,7 @@ func TestLogLevelConcurrency(t *testing.T) {
 
 func BenchmarkLogLevelName(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_ = LogLevelName(LevelWarn)
+		_ = LevelWarn.String()
 	}
 }
 

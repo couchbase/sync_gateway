@@ -1,6 +1,7 @@
 package base
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -39,12 +40,12 @@ func TestLogKey(t *testing.T) {
 }
 
 func TestLogKeyNames(t *testing.T) {
-	name := LogKeyName(KeyDCP)
+	name := KeyDCP.String()
 	assert.Equals(t, name, "DCP")
 
-	// Can't retrieve name of combined log keys.
-	name = LogKeyName(KeyDCP | KeyReplicate)
-	assert.Equals(t, name, "")
+	// Combined log keys, or key masks print the binary representation.
+	name = LogKey(KeyDCP | KeyReplicate).String()
+	assert.Equals(t, name, fmt.Sprintf("LogKey(%b)", KeyDCP|KeyReplicate))
 
 	keys := []string{}
 	logKeys := ToLogKey(keys)
@@ -54,23 +55,23 @@ func TestLogKeyNames(t *testing.T) {
 	keys = append(keys, "DCP")
 	logKeys = ToLogKey(keys)
 	assert.Equals(t, logKeys, KeyDCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KeyDCP)})
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String()})
 
 	keys = append(keys, "Access")
 	logKeys = ToLogKey(keys)
 	assert.Equals(t, logKeys, KeyAccess|KeyDCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KeyAccess), LogKeyName(KeyDCP)})
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAccess.String(), KeyDCP.String()})
 
 	keys = []string{"*", "DCP"}
 	logKeys = ToLogKey(keys)
 	assert.Equals(t, logKeys, KeyAll|KeyDCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KeyAll), LogKeyName(KeyDCP)})
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAll.String(), KeyDCP.String()})
 
 	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
 	keys = []string{"DCP", "HTTP+", "InvalidLogKey"}
 	logKeys = ToLogKey(keys)
 	assert.Equals(t, logKeys, KeyDCP|KeyHTTP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{LogKeyName(KeyDCP), LogKeyName(KeyHTTP)})
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String(), KeyHTTP.String()})
 }
 
 // This test has no assertions, but will flag any data races when run under `-race`.
@@ -139,7 +140,7 @@ func BenchmarkToggleLogKeys(b *testing.B) {
 
 func BenchmarkLogKeyName(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_ = LogKeyName(KeyDCP)
+		_ = KeyDCP.String()
 	}
 }
 

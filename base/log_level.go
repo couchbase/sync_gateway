@@ -31,6 +31,7 @@ var (
 	logLevelNamesPrint = []string{"NON", "ERR", "WRN", "INF", "DBG", "TRC"}
 )
 
+// Set will override the log level with the given log level.
 func (l *LogLevel) Set(newLevel LogLevel) {
 	atomic.StoreUint32((*uint32)(l), uint32(newLevel))
 }
@@ -43,36 +44,35 @@ func (l *LogLevel) Enabled(logLevel LogLevel) bool {
 	return atomic.LoadUint32((*uint32)(l)) >= uint32(logLevel)
 }
 
-// LogLevelName returns the string representation of a log level (e.g. "debug" or "warn")
-func LogLevelName(logLevel LogLevel) string {
-	if int(logLevel) >= len(logLevelNames) {
-		return ""
+// String returns the string representation of a log level (e.g. "debug" or "warn")
+func (l LogLevel) String() string {
+	if l >= levelCount {
+		return fmt.Sprintf("LogLevel(%d)", l)
+
 	}
-	return logLevelNames[logLevel]
+	return logLevelNames[l]
 }
 
-// logLevelNamePrint returns the string value to print for a log level (e.g. "DBG" or "WRN")
-func logLevelNamePrint(logLevel LogLevel) string {
-	if int(logLevel) >= len(logLevelNames) {
-		return ""
+// StringShort returns the short string representation of a log level (e.g. "DBG" or "WRN")
+func (l LogLevel) StringShort() string {
+	if l >= levelCount {
+		return fmt.Sprintf("LVL(%d)", l)
 	}
-	return logLevelNamesPrint[logLevel]
+	return logLevelNamesPrint[l]
 }
 
+// MarshalText implements the TextMarshaler interface.
 func (l *LogLevel) MarshalText() (text []byte, err error) {
-	if l == nil {
-		return nil, errors.New("invalid log level")
+	if l == nil || *l >= levelCount {
+		return nil, fmt.Errorf("unrecognized log level: %v (valid range: %d-%d)", l, 0, levelCount-1)
 	}
-	name := LogLevelName(*l)
-	if name == "" {
-		return nil, fmt.Errorf("unrecognized log level: %v (valid range: %d-%d)", *l, 0, levelCount-1)
-	}
-	return []byte(name), nil
+	return []byte(l.String()), nil
 }
 
+// UnmarshalText implements the TextUnmarshaler interface.
 func (l *LogLevel) UnmarshalText(text []byte) error {
 	if l == nil {
-		return errors.New("invalid log level")
+		return errors.New("nil log level")
 	}
 	for i, name := range logLevelNames {
 		if name == string(text) {

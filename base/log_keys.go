@@ -1,6 +1,7 @@
 package base
 
 import (
+	"fmt"
 	"strings"
 	"sync/atomic"
 )
@@ -128,10 +129,13 @@ func (keyMask *LogKey) enabled(logKey LogKey, checkWildcards bool) bool {
 	return flag&uint32(logKey) != 0
 }
 
-// LogKeyName returns the string representation of a single log key.
-func LogKeyName(logKey LogKey) string {
+// String returns the string representation of a single log key.
+func (logKey LogKey) String() string {
 	// No lock required to read concurrently, as long as nobody writes to logKeyNames.
-	return logKeyNames[logKey]
+	if str, ok := logKeyNames[logKey]; ok {
+		return str
+	}
+	return fmt.Sprintf("LogKey(%b)", logKey)
 }
 
 // EnabledLogKeys returns a slice of enabled log key names.
@@ -143,7 +147,7 @@ func (keyMask *LogKey) EnabledLogKeys() []string {
 	for i := 0; i < len(logKeyNames); i++ {
 		logKey := LogKey(1) << uint32(i)
 		if keyMask.enabled(logKey, false) {
-			logKeys = append(logKeys, LogKeyName(logKey))
+			logKeys = append(logKeys, logKey.String())
 		}
 	}
 	return logKeys
