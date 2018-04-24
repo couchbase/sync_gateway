@@ -459,3 +459,23 @@ func NumOpenBuckets(bucketName string) int32 {
 	}
 	return numOpen
 }
+
+// Wait for the WaitGroup, or return an error if the wg.Wait() doesn't return within timeout
+func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
+
+	// Create a channel so that a goroutine waiting on the waitgroup can send it's result (if any)
+	wgFinished := make(chan bool)
+
+	go func() {
+		wg.Wait()
+		wgFinished <- true
+	}()
+
+	select {
+	case <-wgFinished:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("Timed out waiting after %v", timeout)
+	}
+
+}

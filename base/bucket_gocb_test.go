@@ -18,6 +18,12 @@ import (
 
 	"reflect"
 
+	"io/ioutil"
+	"net/http"
+
+	"sync"
+	"time"
+
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/go.assert"
@@ -1968,6 +1974,129 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 	_, err := GetBucketWithInvalidUsernamePassword(DataBucket)
 	assert.Equals(t, err, ErrFatalBucketConnection)
 
+}
+
+// Repro attempt for SG #3212 (SG becomes unresponsive after updating a document)
+func TestQueueBacklog(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	// Download a large json doc and load into memory
+	// http://cbmobile-datasets.s3.amazonaws.com/Large_Json_Docs/jeopordy_questions.json
+	jsonDoc, err := downloadJsonDoc("http://cbmobile-datasets.s3.amazonaws.com/Large_Json_Docs/jeopordy_questions_dict.json")
+	assertNoError(t, err, "Unexpected error")
+
+	// Open a bucket
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	// Try setting the doc
+	//startTime := time.Now()
+	//err = bucket.Set("test", 0, jsonDoc)
+	//assertNoError(t, err, "Unexpected error")
+	//delta := time.Since(startTime)
+	//log.Printf("delta: %v", delta)
+
+	wg := &sync.WaitGroup{}
+	numGoroutines := 3
+	wg.Add(numGoroutines)
+
+	// Start a goroutines that try to create a new doc but timeout after 500 ms, and retry in that case
+	for i := 0; i < numGoroutines; i++ {
+
+		go func(goroutineId int) {
+
+			defer wg.Done()
+			numRetries := 10
+			key := fmt.Sprintf("%d", goroutineId)
+			err := SetWithTimeoutRetry(bucket, key, jsonDoc, time.Second, numRetries)
+			if err != nil {
+				log.Printf("Goroutine #%d got error: %+v", goroutineId, err)
+			} else {
+				log.Printf("Goroutine #%d saved doc", goroutineId)
+
+			}
+
+		}(i)
+	}
+
+	wg.Wait()
+
+	// See if it blows up the gocb queue .. or what happens
+
+}
+
+// Tries to set a doc in a bucket, but times out if the op takes longer than timeout.  It will retry up
+// to numRetries before eventually giving up with an error
+func SetWithTimeoutRetry(bucket Bucket, key string, jsonDoc map[string]interface{}, timeout time.Duration, numRetries int) error {
+
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			startTime := time.Now()
+			err = bucket.Set(key, 0, jsonDoc)
+			if err != nil {
+				
+				// Panic here out of laziness, rather than creating an error channel
+				panic(fmt.Sprintf("Error trying to set value in bucket: %v", err))
+
+				// Got an error, retry
+				//log.Printf("Error trying to set value in bucket: %v", err)
+				//return true, err, nil
+
+			}
+			delta := time.Since(startTime)
+			log.Printf("Set doc in: %v", delta)
+		}()
+
+		timeoutErr := WaitWithTimeout(wg, timeout)
+		if timeoutErr != nil {
+			return true, timeoutErr, nil
+		}
+
+		// Looks like it succeeded, we're done
+		return false, nil, nil
+
+	}
+
+	retrySleeper := func(retryCount int) (shouldContinue bool, timeTosleepMs int) {
+		if retryCount >= numRetries {
+			return false, 0
+		}
+		return true, 0
+	}
+
+	err, _ := RetryLoop("SetWithTimeoutRetry", retryWorker, retrySleeper)
+	return err
+
+}
+
+func downloadJsonDoc(url string) (jsonDoc map[string]interface{}, err error) {
+
+	resp, err := http.DefaultClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	jsonDoc = map[string]interface{}{}
+
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(bodyBytes, &jsonDoc); err != nil {
+		return nil, err
+	}
+
+	return jsonDoc, nil
 }
 
 func createTombstonedDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) {
