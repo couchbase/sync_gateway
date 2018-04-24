@@ -222,6 +222,10 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		err = bucket.CreateIndex(indexName, indexExpression, filterExpression, options)
 		if err != nil {
+			// If index has already been created (race w/ other SG node), return without error
+			if err == base.ErrIndexAlreadyExists {
+				return false, nil, nil
+			}
 			if strings.Contains(err.Error(), "not enough indexer nodes") {
 				return false, fmt.Errorf("Unable to create indexes with the specified number of replicas (%d).  Increase the number of index nodes, or modify 'num_index_replicas' in your Sync Gateway database config.", numReplica), nil
 			}

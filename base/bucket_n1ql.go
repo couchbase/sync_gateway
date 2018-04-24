@@ -92,7 +92,11 @@ func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression stri
 	// Replace any BucketQueryToken references in the index expression
 	createStatement = strings.Replace(createStatement, BucketQueryToken, bucket.GetName(), -1)
 
-	return bucket.createIndex(indexName, createStatement, options)
+	createErr := bucket.createIndex(indexName, createStatement, options)
+	if createErr != nil && strings.Contains(createErr.Error(), "already exists") {
+		return ErrIndexAlreadyExists
+	}
+	return createErr
 }
 
 // BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:

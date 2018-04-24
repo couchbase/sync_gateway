@@ -35,6 +35,7 @@ const (
 	casFailureShouldRetry = sgErrorCode(0x09)
 	errPartialViewErrors  = sgErrorCode(0x10)
 	indexerError          = sgErrorCode(0x11)
+	indexExists           = sgErrorCode(0x12)
 )
 
 type SGError struct {
@@ -53,6 +54,7 @@ var (
 	ErrEmptyMetadata         = &SGError{emptyMetadata}
 	ErrCasFailureShouldRetry = &SGError{casFailureShouldRetry}
 	ErrIndexerError          = &SGError{indexerError}
+	ErrIndexAlreadyExists    = &SGError{indexExists}
 
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.
@@ -83,6 +85,8 @@ func (e SGError) Error() string {
 		return "Partial errors in view"
 	case indexerError:
 		return "Indexer error"
+	case indexExists:
+		return "Index already exists"
 	default:
 		return "Unknown error"
 	}
