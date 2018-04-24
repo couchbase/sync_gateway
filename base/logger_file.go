@@ -15,7 +15,7 @@ var (
 	ErrInvalidLoggingMaxAge = errors.New("Invalid MaxAge")
 
 	maxAgeLimit             = 9999 // days
-	defaultMaxSize          = 200  // megabytes
+	defaultMaxSize          = 100  // megabytes
 	defaultMaxAgeMultiplier = 2    // e.g. 90 minimum == 180 default maxAge
 )
 

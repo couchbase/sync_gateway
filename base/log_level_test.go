@@ -16,36 +16,49 @@ func TestLogLevel(t *testing.T) {
 	assert.False(t, logLevelPtr.Enabled(LevelWarn))
 	assert.False(t, logLevelPtr.Enabled(LevelInfo))
 	assert.False(t, logLevelPtr.Enabled(LevelDebug))
+	assert.False(t, logLevelPtr.Enabled(LevelTrace))
 
 	logLevel := LevelNone
 	assert.False(t, logLevel.Enabled(LevelError))
 	assert.False(t, logLevel.Enabled(LevelWarn))
 	assert.False(t, logLevel.Enabled(LevelInfo))
 	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelTrace))
 
 	logLevel.Set(LevelError)
 	assert.True(t, logLevel.Enabled(LevelError))
 	assert.False(t, logLevel.Enabled(LevelWarn))
 	assert.False(t, logLevel.Enabled(LevelInfo))
 	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelTrace))
 
 	logLevel.Set(LevelWarn)
 	assert.True(t, logLevel.Enabled(LevelError))
 	assert.True(t, logLevel.Enabled(LevelWarn))
 	assert.False(t, logLevel.Enabled(LevelInfo))
 	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelTrace))
 
 	logLevel.Set(LevelInfo)
 	assert.True(t, logLevel.Enabled(LevelError))
 	assert.True(t, logLevel.Enabled(LevelWarn))
 	assert.True(t, logLevel.Enabled(LevelInfo))
 	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelTrace))
 
 	logLevel.Set(LevelDebug)
 	assert.True(t, logLevel.Enabled(LevelError))
 	assert.True(t, logLevel.Enabled(LevelWarn))
 	assert.True(t, logLevel.Enabled(LevelInfo))
 	assert.True(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelTrace))
+
+	logLevel.Set(LevelTrace)
+	assert.True(t, logLevel.Enabled(LevelError))
+	assert.True(t, logLevel.Enabled(LevelWarn))
+	assert.True(t, logLevel.Enabled(LevelInfo))
+	assert.True(t, logLevel.Enabled(LevelDebug))
+	assert.True(t, logLevel.Enabled(LevelTrace))
 }
 
 func TestLogLevelNames(t *testing.T) {
@@ -58,6 +71,7 @@ func TestLogLevelNames(t *testing.T) {
 	assert.Equals(t, LevelInfo.String(), "info")
 	assert.Equals(t, LevelWarn.String(), "warn")
 	assert.Equals(t, LevelDebug.String(), "debug")
+	assert.Equals(t, LevelTrace.String(), "trace")
 
 	// Test out of bounds log level
 	assert.Equals(t, LogLevel(math.MaxUint32).String(), "LogLevel(4294967295)")

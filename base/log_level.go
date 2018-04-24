@@ -18,15 +18,17 @@ const (
 	LevelWarn
 	// LevelInfo enables info, warn, and error logging.
 	LevelInfo
-	// LevelDebug enables all logging.
+	// LevelDebug enables debug, info, warn, and error logging.
 	LevelDebug
+	// LevelTrace enables trace, debug, info, warn, and error logging logging.
+	LevelTrace
 
 	levelCount
 )
 
 var (
-	logLevelNames      = []string{"none", "error", "warn", "info", "debug"}
-	logLevelNamesPrint = []string{"NON", "ERR", "WRN", "INF", "DBG"}
+	logLevelNames      = []string{"none", "error", "warn", "info", "debug", "trace"}
+	logLevelNamesPrint = []string{"NON", "ERR", "WRN", "INF", "DBG", "TRC"}
 )
 
 // Set will override the log level with the given log level.
