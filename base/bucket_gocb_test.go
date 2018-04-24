@@ -2015,7 +2015,7 @@ func TestQueueBacklog(t *testing.T) {
 			err := SetWithTimeoutRetry(bucket, key, jsonDoc, time.Second, numRetries)
 			if err != nil {
 				log.Printf("Goroutine #%d got error: %+v", goroutineId, err)
-			} 
+			}
 
 		}(i)
 	}
@@ -2060,7 +2060,7 @@ func SetWithTimeoutRetry(bucket Bucket, key string, jsonDoc map[string]interface
 			// Looks like it succeeded, we're done
 			return false, nil, nil
 		case <-time.After(timeout):
-			err := fmt.Errorf("Timed out waiting for bucket set operation on docid: %v after %v.  Will retry", key, timeout)
+			err := fmt.Errorf("Timed out waiting for bucket set operation on docid: %v after %v", key, timeout)
 			log.Printf("%v", err)
 			return true, err, nil
 		}
