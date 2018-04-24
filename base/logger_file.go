@@ -78,14 +78,14 @@ func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int
 	} else if *lfc.Rotation.MaxAge == 0 {
 		// A value of zero disables the age-based log cleanup in Lumberjack.
 	} else if *lfc.Rotation.MaxAge < minAge {
-		return fmt.Errorf("MaxAge for %s was set to %d which is below the minimum of %d", LogLevelName(level), *lfc.Rotation.MaxAge, minAge)
+		return fmt.Errorf("MaxAge for %v was set to %d which is below the minimum of %d", level, *lfc.Rotation.MaxAge, minAge)
 	} else if *lfc.Rotation.MaxAge > maxAgeLimit {
-		return fmt.Errorf("MaxAge for %s was set to %d which is above the maximum of %d", LogLevelName(level), *lfc.Rotation.MaxAge, maxAgeLimit)
+		return fmt.Errorf("MaxAge for %v was set to %d which is above the maximum of %d", level, *lfc.Rotation.MaxAge, maxAgeLimit)
 	}
 
 	if lfc.Output == nil {
 		lfc.Output = newLumberjackOutput(
-			filepath.Join(filepath.FromSlash(logFilePath), "sg_"+LogLevelName(level)+".log"),
+			filepath.Join(filepath.FromSlash(logFilePath), "sg_"+level.String()+".log"),
 			*lfc.Rotation.MaxSize,
 			*lfc.Rotation.MaxAge,
 		)

@@ -41,27 +41,27 @@ func (l *LogLevel) Enabled(logLevel LogLevel) bool {
 	return atomic.LoadUint32((*uint32)(l)) >= uint32(logLevel)
 }
 
-// LogLevelName returns the string representation of a log level (e.g. "debug" or "warn")
-func LogLevelName(logLevel LogLevel) string {
-	if int(logLevel) >= len(logLevelNames) {
+// String returns the string representation of a log level (e.g. "debug" or "warn")
+func (l LogLevel) String() string {
+	if int(l) >= len(logLevelNames) {
 		return ""
 	}
-	return logLevelNames[logLevel]
+	return logLevelNames[l]
 }
 
-// logLevelNamePrint returns the string value to print for a log level (e.g. "DBG" or "WRN")
-func logLevelNamePrint(logLevel LogLevel) string {
-	if int(logLevel) >= len(logLevelNames) {
+// StringShort returns the short string representation of a log level (e.g. "DBG" or "WRN")
+func (l LogLevel) StringShort() string {
+	if int(l) >= len(logLevelNames) {
 		return ""
 	}
-	return logLevelNamesPrint[logLevel]
+	return logLevelNamesPrint[l]
 }
 
 func (l *LogLevel) MarshalText() (text []byte, err error) {
 	if l == nil {
 		return nil, errors.New("invalid log level")
 	}
-	name := LogLevelName(*l)
+	name := l.String()
 	if name == "" {
 		return nil, fmt.Errorf("unrecognized log level: %v (valid range: %d-%d)", *l, 0, levelCount-1)
 	}

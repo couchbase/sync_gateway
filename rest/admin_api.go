@@ -364,7 +364,7 @@ func (h *handler) handleSetLogging() error {
 	}
 
 	if newLogLevel != nil {
-		base.Infof(base.KeyAll, "Setting log level to: %v", base.LogLevelName(*newLogLevel))
+		base.Infof(base.KeyAll, "Setting log level to: %v", newLogLevel)
 		base.ConsoleLogLevel().Set(*newLogLevel)
 
 		if len(body) == 0 {

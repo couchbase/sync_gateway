@@ -921,7 +921,7 @@ func addPrefixes(format string, logLevel LogLevel, logKey LogKey) string {
 
 	var logLevelPrefix string
 	if logLevel > LevelNone {
-		logLevelPrefix = "[" + logLevelNamePrint(logLevel) + "] "
+		logLevelPrefix = "[" + logLevel.StringShort() + "] "
 	}
 
 	var logKeyPrefix string
