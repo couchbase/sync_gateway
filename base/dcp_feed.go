@@ -462,7 +462,7 @@ func (r *DCPLoggingReceiver) OnError(err error) {
 
 func (r *DCPLoggingReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	Tracef(KeyDCP, "DataUpdate:%d, %s, %d, %v", vbucketId, UD(key), seq, req)
+	Tracef(KeyDCP, "DataUpdate:%d, %s, %d, %v", vbucketId, UD(string(key)), seq, UD(req))
 	return r.rec.DataUpdate(vbucketId, key, seq, req)
 }
 
@@ -478,7 +478,7 @@ func (r *DCPLoggingReceiver) GetBucketNotifyFn() sgbucket.BucketNotifyFn {
 
 func (r *DCPLoggingReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	Tracef(KeyDCP, "DataDelete:%d, %s, %d, %v", vbucketId, UD(key), seq, req)
+	Tracef(KeyDCP, "DataDelete:%d, %s, %d, %v", vbucketId, UD(string(key)), seq, UD(req))
 	return r.rec.DataDelete(vbucketId, key, seq, req)
 }
 
@@ -488,7 +488,6 @@ func (r *DCPLoggingReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) erro
 }
 
 func (r *DCPLoggingReceiver) SetMetaData(vbucketId uint16, value []byte) error {
-
 	Tracef(KeyDCP, "SetMetaData:%d, %s", vbucketId, value)
 	return r.rec.SetMetaData(vbucketId, value)
 }
