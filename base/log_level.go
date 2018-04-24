@@ -29,6 +29,7 @@ var (
 	logLevelNamesPrint = []string{"NON", "ERR", "WRN", "INF", "DBG"}
 )
 
+// Set will replace the current log level with newLevel.
 func (l *LogLevel) Set(newLevel LogLevel) {
 	atomic.StoreUint32((*uint32)(l), uint32(newLevel))
 }
@@ -43,34 +44,33 @@ func (l *LogLevel) Enabled(logLevel LogLevel) bool {
 
 // String returns the string representation of a log level (e.g. "debug" or "warn")
 func (l LogLevel) String() string {
-	if int(l) >= len(logLevelNames) {
-		return ""
+	if l >= levelCount {
+		return fmt.Sprintf("LogLevel(%d)", l)
+
 	}
 	return logLevelNames[l]
 }
 
 // StringShort returns the short string representation of a log level (e.g. "DBG" or "WRN")
 func (l LogLevel) StringShort() string {
-	if int(l) >= len(logLevelNames) {
-		return ""
+	if l >= levelCount {
+		return fmt.Sprintf("LVL(%d)", l)
 	}
 	return logLevelNamesPrint[l]
 }
 
+// MarshalText implements the TextMarshaler interface.
 func (l *LogLevel) MarshalText() (text []byte, err error) {
-	if l == nil {
-		return nil, errors.New("invalid log level")
+	if l == nil || *l >= levelCount {
+		return nil, fmt.Errorf("unrecognized log level: %v (valid range: %d-%d)", l, 0, levelCount-1)
 	}
-	name := l.String()
-	if name == "" {
-		return nil, fmt.Errorf("unrecognized log level: %v (valid range: %d-%d)", *l, 0, levelCount-1)
-	}
-	return []byte(name), nil
+	return []byte(l.String()), nil
 }
 
+// UnmarshalText implements the TextUnmarshaler interface.
 func (l *LogLevel) UnmarshalText(text []byte) error {
 	if l == nil {
-		return errors.New("invalid log level")
+		return errors.New("nil log level")
 	}
 	for i, name := range logLevelNames {
 		if name == string(text) {

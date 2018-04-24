@@ -60,7 +60,7 @@ func TestLogLevelNames(t *testing.T) {
 	assert.Equals(t, LevelDebug.String(), "debug")
 
 	// Test out of bounds log level
-	assert.Equals(t, LogLevel(math.MaxUint32).String(), "")
+	assert.Equals(t, LogLevel(math.MaxUint32).String(), "LogLevel(4294967295)")
 }
 
 func TestLogLevelText(t *testing.T) {
@@ -80,9 +80,9 @@ func TestLogLevelText(t *testing.T) {
 	// nil pointer recievers
 	var logLevelPtr *LogLevel
 	_, err := logLevelPtr.MarshalText()
-	assert.Equals(t, err.Error(), "invalid log level")
+	assert.StringContains(t, err.Error(), "unrecognized log level")
 	err = logLevelPtr.UnmarshalText([]byte("none"))
-	assert.Equals(t, err.Error(), "invalid log level")
+	assert.Equals(t, err.Error(), "nil log level")
 
 	// Invalid values
 	var logLevel = LogLevel(math.MaxUint32)
