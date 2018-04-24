@@ -2001,7 +2001,7 @@ func TestQueueBacklog(t *testing.T) {
 	//log.Printf("delta: %v", delta)
 
 	wg := &sync.WaitGroup{}
-	numGoroutines := 3
+	numGoroutines := 10
 	wg.Add(numGoroutines)
 
 	// Start goroutines that try to create a new doc but timeout after a timeout, and retry in that case
@@ -2015,10 +2015,7 @@ func TestQueueBacklog(t *testing.T) {
 			err := SetWithTimeoutRetry(bucket, key, jsonDoc, time.Second, numRetries)
 			if err != nil {
 				log.Printf("Goroutine #%d got error: %+v", goroutineId, err)
-			} else {
-				log.Printf("Goroutine #%d saved doc", goroutineId)
-
-			}
+			} 
 
 		}(i)
 	}
@@ -2039,7 +2036,10 @@ func SetWithTimeoutRetry(bucket Bucket, key string, jsonDoc map[string]interface
 		wg.Add(1)
 
 		errChan := make(chan error)
+		doneChan := make(chan struct{})
 
+		// Spin off a goroutine to do a blocking Set().  These might "stack up" if the goroutine running
+		// this function gives up after the timeout and retries.  There's no way to cancel the blocked call to Set().
 		go func() {
 			startTime := time.Now()
 			err = bucket.Set(key, 0, jsonDoc)
@@ -2047,20 +2047,20 @@ func SetWithTimeoutRetry(bucket Bucket, key string, jsonDoc map[string]interface
 				errChan <- err
 				return
 			}
-			wg.Done()
+			doneChan <- struct{}{}
 			delta := time.Since(startTime)
-			log.Printf("Set doc in: %v", delta)
+			log.Printf("Saved docid %v in: %v", key, delta)
 		}()
 
 		// Wait for either success (wg.Done() is called), failure where an error is returned, or timeout occurs
 		select {
 		case err := <-errChan:
 			return true, err, nil
-		case <-AfterWgDone(wg):
+		case <- doneChan:
 			// Looks like it succeeded, we're done
 			return false, nil, nil
 		case <-time.After(timeout):
-			err := fmt.Errorf("Timed out waiting for bucket set operation after %v.  Will retry", timeout)
+			err := fmt.Errorf("Timed out waiting for bucket set operation on docid: %v after %v.  Will retry", key, timeout)
 			log.Printf("%v", err)
 			return true, err, nil
 		}
@@ -2081,18 +2081,6 @@ func SetWithTimeoutRetry(bucket Bucket, key string, jsonDoc map[string]interface
 	err, _ := RetryLoop("SetWithTimeoutRetry", retryWorker, retrySleeper)
 	return err
 
-}
-
-
-// Convert a waitgroup to a channel that can be blocked on in a select{}
-// TODO: can this leak goroutines?
-func AfterWgDone(wg *sync.WaitGroup) chan struct{} {
-	doneChan := make(chan struct{})
-	go func() {
-		wg.Wait()
-		doneChan <- struct{}{}
-	}()
-	return doneChan
 }
 
 func downloadJsonDoc(url string) (jsonDoc map[string]interface{}, err error) {
