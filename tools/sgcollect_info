@@ -35,7 +35,8 @@ from tasks import AllOsTask
 from tasks import make_curl_task
 from tasks import flatten
 from tasks import do_upload_and_exit
-from tasks import add_file_task, add_gzip_file_task
+from tasks import add_file_task
+from tasks import add_gzip_file_task
 
 import password_remover
 
