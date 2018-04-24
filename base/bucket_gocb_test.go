@@ -1997,12 +1997,12 @@ func TestQueueBacklog(t *testing.T) {
 	startTime := time.Now()
 
 	// Create a buffered work queue channel where the doc ids will be sent down
-	numDocs := 10
+	numDocs := 30
 	workQueueChan := make(chan int, numDocs)
 
 	// A waitgroup to wait until all the goroutines doing the Set operations have finished
 	wg := &sync.WaitGroup{}
-	numGoroutines := 1
+	numGoroutines := 10
 	wg.Add(numGoroutines)
 
 	// Start worker goroutines that try to create a new doc but timeout after a timeout, and retry in that case
