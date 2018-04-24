@@ -1993,36 +1993,64 @@ func TestQueueBacklog(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	// Try setting the doc
-	//startTime := time.Now()
-	//err = bucket.Set("test", 0, jsonDoc)
-	//assertNoError(t, err, "Unexpected error")
-	//delta := time.Since(startTime)
-	//log.Printf("delta: %v", delta)
+	// Record the start time
+	startTime := time.Now()
 
+	// Create a buffered work queue channel where the doc ids will be sent down
+	numDocs := 10
+	workQueueChan := make(chan int, numDocs)
+
+	// A waitgroup to wait until all the goroutines doing the Set operations have finished
 	wg := &sync.WaitGroup{}
-	numGoroutines := 10
+	numGoroutines := 1
 	wg.Add(numGoroutines)
 
-	// Start goroutines that try to create a new doc but timeout after a timeout, and retry in that case
+	// Start worker goroutines that try to create a new doc but timeout after a timeout, and retry in that case
 	for i := 0; i < numGoroutines; i++ {
 
 		go func(goroutineId int) {
 
 			defer wg.Done()
-			numRetries := 10
-			key := fmt.Sprintf("%d", goroutineId)
-			err := SetWithTimeoutRetry(bucket, key, jsonDoc, time.Second, numRetries)
-			if err != nil {
-				log.Printf("Goroutine #%d got error: %+v", goroutineId, err)
+
+			// Each worker goroutine loops and grabs available work until there is no more work to do
+			for {
+
+				docId, ok := <-workQueueChan
+				if !ok {
+					// No more docs to process, so we're done
+					return
+				}
+
+				// Generate the doc id based on the goroutine and absolute doc id
+				docIdStr := fmt.Sprintf("goroutine-%d-doc-%d", goroutineId, docId)
+
+				// Set the doc with a timeout and a retry.  The retries will end up stacking multiple goroutines in the case of retries
+				// since there is no way to cancel a request that a pending goroutine blocked on a call to bucket.Set()
+				numRetries := 10
+				err := SetWithTimeoutRetry(bucket, docIdStr, jsonDoc, time.Second, numRetries)
+				if err != nil {
+					log.Printf("Goroutine #%d got error: %+v", goroutineId, err)
+				}
 			}
+
 
 		}(i)
 	}
 
+	// Send docid's down the work queue channel
+	go func() {
+		for docId := 0; docId < numDocs; docId++ {
+			workQueueChan <- docId
+		}
+		close(workQueueChan)
+	}()
+
+	// Wait until all of the goroutines are done
 	wg.Wait()
 
-	// See if it blows up the gocb queue .. or what happens
+	// Log the total time
+	delta := time.Since(startTime)
+	log.Printf("Total delta: %v", delta)
 
 }
 
