@@ -842,6 +842,11 @@ func Debugf(logKey LogKey, format string, args ...interface{}) {
 	logTo(LevelDebug, logKey, format, args...)
 }
 
+// Tracef logs the given formatted string and args to the trace log level with an optional log key.
+func Tracef(logKey LogKey, format string, args ...interface{}) {
+	logTo(LevelTrace, logKey, format, args...)
+}
+
 func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
 	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
 	shouldLogError := errorLogger.shouldLog()
