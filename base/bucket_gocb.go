@@ -180,8 +180,15 @@ func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 
 	var err error
 
+	bucketEp, err := GoCBBucketMgmtEndpoint(bucket.Bucket)
+	if err != nil {
+		return -1, err
+	}
+
+	relativeUri := fmt.Sprintf("pools/default/buckets/%s", bucket.spec.BucketName)
+
 	// Check for Bucket-specific setting first
-	bucketReqUri := fmt.Sprintf("%s/pools/default/buckets/%s", bucket.spec.Server, bucket.spec.BucketName)
+	bucketReqUri := fmt.Sprintf("%s/%s", bucketEp, relativeUri)
 
 	bucketPurgeInterval, err := bucket.retrievePurgeInterval(bucketReqUri)
 	if bucketPurgeInterval > 0 || err != nil {
@@ -198,6 +205,7 @@ func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 	return 0, nil
 
 }
+
 
 // Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
 // that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
@@ -242,6 +250,55 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 
 	return purgeIntervalHours, nil
 }
+
+// Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
+// since it's not meant to operate against buckets that auto-delete data.
+func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
+
+	var err error
+
+	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
+	var bucketResponseWithMaxTTL struct {
+		MaxTTLSeconds int `json:"maxTTL,omitempty"`
+	}
+
+	bucketEp, err := GoCBBucketMgmtEndpoint(bucket.Bucket)
+	if err != nil {
+		return -1, err
+	}
+
+	relativeUri := fmt.Sprintf("pools/default/buckets/%s", bucket.spec.BucketName)
+
+	// Check for Bucket-specific setting first
+	bucketReqUri := fmt.Sprintf("%s/%s", bucketEp, relativeUri)
+
+	req, err := http.NewRequest("GET", bucketReqUri, nil)
+	if err != nil {
+		return -1, err
+	}
+	username, password, _ := bucket.spec.Auth.GetCredentials()
+	req.SetBasicAuth(username, password)
+
+	client := bucket.Bucket.IoRouter()
+	resp, err := client.HttpClient().Do(req)
+	if err != nil {
+		return -1, err
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return -1, err
+	}
+
+	if err := json.Unmarshal(respBytes, &bucketResponseWithMaxTTL); err != nil {
+		return -1, err
+	}
+
+	return bucketResponseWithMaxTTL.MaxTTLSeconds, nil
+
+}
+
 
 func (bucket *CouchbaseBucketGoCB) GetName() string {
 	return bucket.spec.BucketName
@@ -2473,16 +2530,24 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 	}
 }
 
+// Get one of the management endpoints.  It will be a string such as http://couchbase
+func GoCBBucketMgmtEndpoint(bucket *gocb.Bucket) (url string, err error) {
+	mgmtEps := bucket.IoRouter().MgmtEps()
+	if len(mgmtEps) == 0 {
+		return "", fmt.Errorf("No available Couchbase Server nodes")
+	}
+	bucketEp := mgmtEps[rand.Intn(len(mgmtEps))]
+	return bucketEp, nil
+}
+
 func GoCBBucketItemCount(bucket *gocb.Bucket, spec BucketSpec, user, pass string) (itemCount int, err error) {
 
 	relativeUri := fmt.Sprintf("pools/default/buckets/%s", spec.BucketName)
 
-	mgmtEps := bucket.IoRouter().MgmtEps()
-	if len(mgmtEps) == 0 {
-		return -1, fmt.Errorf("No available Couchbase Server nodes")
+	bucketEp, err := GoCBBucketMgmtEndpoint(bucket)
+	if err != nil {
+		return -1, err
 	}
-	bucketEp := mgmtEps[rand.Intn(len(mgmtEps))]
-
 	reqUri := fmt.Sprintf("%s/%s", bucketEp, relativeUri)
 
 	req, err := http.NewRequest("GET", reqUri, nil)
