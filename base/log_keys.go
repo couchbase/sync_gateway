@@ -206,7 +206,7 @@ func convertSpecialLogKey(oldLogKey string) (*LogKey, bool) {
 	return logKey, logKey != nil
 }
 
-// logKeyPtr is a convinience funciton that returns a pointer to the given logKey
+// logKeyPtr is a convenience function that returns a pointer to the given logKey
 func logKeyPtr(logKey LogKey) *LogKey {
 	return &logKey
 }
