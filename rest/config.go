@@ -144,6 +144,8 @@ type DbConfig struct {
 	NumIndexReplicas          *uint                          `json:"num_index_replicas"`                     // Number of GSI index replicas used for core indexes
 	UseViews                  bool                           `json:"use_views"`                              // Force use of views instead of GSI
 	SendWWWAuthenticateHeader *bool                          `json:"send_www_authenticate_header,omitempty"` // If false, disables setting of 'WWW-Authenticate' header in 401 responses
+	OperationTimeoutMS        *uint32                        `json:"operation_timeout_ms,omitempty"`         // // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+
 }
 
 type DeprecatedOptions struct {

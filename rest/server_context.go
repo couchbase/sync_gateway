@@ -338,6 +338,10 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
 	}
 
+	if config.OperationTimeoutMS != nil {
+		operationTimeout := time.Millisecond * time.Duration(*config.OperationTimeoutMS)
+		spec.OperationTimeout = &operationTimeout
+	}
 	return spec, nil
 }
 
