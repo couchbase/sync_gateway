@@ -33,6 +33,7 @@ const (
 	KeyGoCB
 	KeyHeartbeat
 	KeyHTTP
+	KeyHTTPResp
 	KeyImport
 	KeyIndex
 	KeyMigrate
@@ -67,6 +68,7 @@ var (
 		KeyGoCB:           "gocb",
 		KeyHeartbeat:      "Heartbeat",
 		KeyHTTP:           "HTTP",
+		KeyHTTPResp:       "HTTP+", // Infof printed as HTTP+
 		KeyImport:         "Import",
 		KeyIndex:          "Index",
 		KeyMigrate:        "Migrate",
