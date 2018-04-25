@@ -266,15 +266,17 @@ func (h *handler) logDuration(realTime bool) {
 		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
 	}
 
+	// Log timings/status codes for errors under the HTTP log key
+	// and the HTTPResp log key for everything else.
+	logKey := base.KeyHTTPResp
 	if h.status >= 300 {
-		base.Warnf(base.KeyHTTP, "#%03d:     --> %d %s  (%.1f ms)",
-			h.serialNumber, h.status, h.statusMessage,
-			float64(duration)/float64(time.Millisecond))
-	} else {
-		base.Debugf(base.KeyHTTP, "#%03d:     --> %d %s  (%.1f ms)",
-			h.serialNumber, h.status, h.statusMessage,
-			float64(duration)/float64(time.Millisecond))
+		logKey = base.KeyHTTP
 	}
+
+	base.Infof(logKey, "#%03d:     --> %d %s  (%.1f ms)",
+		h.serialNumber, h.status, h.statusMessage,
+		float64(duration)/float64(time.Millisecond),
+	)
 }
 
 // logStatusWithDuration will log the request status and the duration of the request.

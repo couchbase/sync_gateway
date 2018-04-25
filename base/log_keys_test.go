@@ -67,11 +67,46 @@ func TestLogKeyNames(t *testing.T) {
 	assert.Equals(t, logKeys, KeyAll|KeyDCP)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAll.String(), KeyDCP.String()})
 
-	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
-	keys = []string{"DCP", "HTTP+", "InvalidLogKey"}
+	// Special handling of log keys
+	keys = []string{"HTTP+"}
 	logKeys = ToLogKey(keys)
-	assert.Equals(t, logKeys, KeyDCP|KeyHTTP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String(), KeyHTTP.String()})
+	assert.Equals(t, logKeys, KeyHTTP|KeyHTTPResp)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyHTTP.String(), KeyHTTPResp.String()})
+
+	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
+	keys = []string{"DCP", "WS+", "InvalidLogKey"}
+	logKeys = ToLogKey(keys)
+	assert.Equals(t, logKeys, KeyDCP|KeyWebSocket)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String(), KeyWebSocket.String()})
+}
+
+func TestConvertSpecialLogKey(t *testing.T) {
+	tests := []struct {
+		input  string
+		output *LogKey
+		ok     bool
+	}{
+		{
+			input:  "HTTP",
+			output: nil,
+			ok:     false,
+		},
+		{
+			input:  "HTTP+",
+			output: logKeyPtr(KeyHTTP | KeyHTTPResp),
+			ok:     true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(ts *testing.T) {
+			output, ok := convertSpecialLogKey(test.input)
+			assert.Equals(ts, ok, test.ok)
+			if ok {
+				assert.Equals(ts, *output, *test.output)
+			}
+		})
+	}
 }
 
 // This test has no assertions, but will flag any data races when run under `-race`.

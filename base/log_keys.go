@@ -33,6 +33,7 @@ const (
 	KeyGoCB
 	KeyHeartbeat
 	KeyHTTP
+	KeyHTTPResp
 	KeyImport
 	KeyIndex
 	KeyMigrate
@@ -67,6 +68,7 @@ var (
 		KeyGoCB:           "gocb",
 		KeyHeartbeat:      "Heartbeat",
 		KeyHTTP:           "HTTP",
+		KeyHTTPResp:       "HTTP+", // Infof printed as HTTP+
 		KeyImport:         "Import",
 		KeyIndex:          "Index",
 		KeyMigrate:        "Migrate",
@@ -78,7 +80,7 @@ var (
 		KeySync:           "Sync",
 		KeySyncMsg:        "SyncMsg",
 		KeyWebSocket:      "WS",
-		KeyWebSocketFrame: "WS+", // backwards compatibility for WS++ logkey
+		KeyWebSocketFrame: "WSFrame",
 	}
 
 	// Inverse of the map above. Optimisation for string -> LogKey lookups in ToLogKey
@@ -158,9 +160,15 @@ func ToLogKey(keysStr []string) LogKey {
 	var logKeys LogKey
 	for _, name := range keysStr {
 
-		// Strip "+" in log keys and warn (for backwards compatibility)
+		// Some old log keys (like HTTP+), we want to handle slightly (map to a different key)
+		if newLogKey, ok := convertSpecialLogKey(name); ok {
+			logKeys.Enable(*newLogKey)
+			continue
+		}
+
+		// Strip a single "+" suffix in log keys and warn (for backwards compatibility)
 		if strings.HasSuffix(name, "+") {
-			newName := strings.Replace(name, "+", "", -1)
+			newName := strings.TrimSuffix(name, "+")
 			Warnf(KeyAll, "Deprecated log key: %q found. Changing to: %q.", name, newName)
 			name = newName
 		}
@@ -180,4 +188,22 @@ func inverselogKeyNames(in map[LogKey]string) map[string]LogKey {
 		out[v] = k
 	}
 	return out
+}
+
+// convertSpecialLogKey handles the conversion of some legacy log keys we want to map to a different value.
+func convertSpecialLogKey(oldLogKey string) (*LogKey, bool) {
+	var logKey *LogKey
+
+	switch oldLogKey {
+	case "HTTP+":
+		// HTTP+ Should enable both KeyHTTP and KeyHTTPResp
+		logKey = logKeyPtr(KeyHTTP | KeyHTTPResp)
+	}
+
+	return logKey, logKey != nil
+}
+
+// logKeyPtr is a convenience function that returns a pointer to the given logKey
+func logKeyPtr(logKey LogKey) *LogKey {
+	return &logKey
 }
