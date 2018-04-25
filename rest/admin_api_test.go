@@ -497,6 +497,40 @@ func TestLogging(t *testing.T) {
 	assert.DeepEquals(t, noLogKeys, map[string]interface{}{})
 }
 
+func TestLoggingLevels(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+
+	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
+	rt.SendAdminRequest("PUT", "/_logging?logLevel=info", `{}`)
+
+	// Log keys should be blank
+	response := rt.SendAdminRequest("GET", "/_logging", "")
+	var logKeys map[string]bool
+	json.Unmarshal(response.Body.Bytes(), &logKeys)
+	assert.DeepEquals(t, logKeys, map[string]bool{})
+
+	// Set log level via logLevel query parameter
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=error", ``), http.StatusOK)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=invalidLogLevel", ``), http.StatusBadRequest)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=", ``), http.StatusBadRequest)
+
+	// Set log level via old level query parameter
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=1", ``), http.StatusOK)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=2", ``), http.StatusOK)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=3", ``), http.StatusOK)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=10", ``), http.StatusOK) // Value is clamped to acceptable range, without returning an error
+
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=0", ``), http.StatusBadRequest) // Zero-value is ignored and body is to be parsed
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=0", `{}`), http.StatusOK)       // Zero-value is ignored and body is to be parsed
+
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=invalidLogLevel", ``), http.StatusBadRequest)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?level=", ``), http.StatusBadRequest)
+
+	// Trying to set log level via the body will not work (the endpoint expects a log key map)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"logLevel": "debug"}`), http.StatusBadRequest)
+}
+
 // Test user delete while that user has an active changes feed (see issue 809)
 func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
