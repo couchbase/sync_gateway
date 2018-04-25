@@ -1,5 +1,5 @@
 """
-Removes passwords from config files
+Redacts sensitive data in config files
 
 """
 
@@ -9,6 +9,7 @@ import json
 import re
 from urlparse import urlparse, urlunparse
 import traceback
+
 
 def is_valid_json(invalid_json):
     """
@@ -22,6 +23,61 @@ def is_valid_json(invalid_json):
         pass
 
     return got_exception == False
+
+
+def tag_userdata(json_text, log_json_parsing_exceptions=True):
+    """
+    Content postprocessor that tags user data in a config ready for post-process redaction
+    """
+    try:
+
+        # lower case everything so that "databases" works as a key even if the JSON has "Databases"
+        # as a key.  seems like there has to be a better way!
+        json_text = json_text.lower()
+
+        valid_json = convert_to_valid_json(json_text)
+
+        parsed_json = json.loads(valid_json)
+
+        tag_userdata_in_config(parsed_json)
+
+        formatted_json_string = json.dumps(parsed_json, indent=4)
+
+        return formatted_json_string
+
+    except Exception as e:
+        msg = "Exception trying to tag user data in {0}.  Exception: {1}".format(json_text, e)
+        if log_json_parsing_exceptions:
+            print(msg)
+            traceback.print_exc()
+        return '{"Error":"Error in sgcollect_info password_remover.py trying to tag user data.  See logs for details"}'
+
+
+def tag_userdata_in_config(config_fragment):
+        """
+        Given a dictionary that contains configuration values, recursively walk the dictionary and:
+        - Tag any sensitive user-data fields with <ud></ud> tags.
+        """
+
+        if not isinstance(config_fragment, dict):
+            return
+
+        userdata_keys = ["username", "roles", "users", "admin_channels", "admin_roles"]
+        for key in userdata_keys:
+            if key in config_fragment:
+                config_fragment[key] = UD(config_fragment[key])
+
+        for key, item in config_fragment.items():
+            if isinstance(item, dict):
+                tag_userdata_in_config(item)
+
+
+def UD(value):
+    """
+    Tags the given value with User Data tags.
+    """
+    return "<ud>{}</ud>".format(value)
+
 
 def remove_passwords_from_config(config_fragment):
     """
@@ -71,6 +127,7 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
             traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to remove passwords.  See logs for details"}'
 
+
 def strip_password_from_url(url_string):
     """
     Given a URL string like:
@@ -96,6 +153,7 @@ def strip_password_from_url(url_string):
     )
     return new_url
 
+
 def escape_json_value(raw_value):
     """
     Escape all invalid json characters like " to produce a valid json value
@@ -118,6 +176,7 @@ def escape_json_value(raw_value):
     # See http://stackoverflow.com/questions/983451/where-can-i-find-a-list-of-escape-characters-required-for-my-json-ajax-return-ty
 
     return escaped
+
 
 def convert_to_valid_json(invalid_json):
 
@@ -185,6 +244,7 @@ class TestStripPasswordsFromUrl(unittest.TestCase):
         url_no_password = strip_password_from_url(url_with_password)
         assert "foobar" not in url_no_password
         assert "bucket-1" in url_no_password
+
 
 class TestRemovePasswords(unittest.TestCase):
 
@@ -312,9 +372,6 @@ class TestRemovePasswords(unittest.TestCase):
         assert "foobar" not in with_passwords_removed
 
 
-
-
-
 class TestConvertToValidJSON(unittest.TestCase):
 
     def basic_test(self):
@@ -428,5 +485,5 @@ class TestConvertToValidJSON(unittest.TestCase):
         assert got_exception == False, "Failed to convert to valid JSON"
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     unittest.main()

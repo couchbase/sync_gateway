@@ -429,7 +429,7 @@ def make_status_tasks(sg_url):
 # Running config
 #   Server config
 #   Each DB config
-def make_config_tasks(zip_dir, sg_config_path, sg_url):
+def make_config_tasks(zip_dir, sg_config_path, sg_url, redact_level):
 
     collect_config_tasks = []
 
@@ -451,21 +451,27 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
     if sg_config_path is not None:
         sg_config_files.append(sg_config_path)
 
+    # Always strip passwords from configs
+    postprocessors = [password_remover.remove_passwords]
+
+    # Tag user data before redaction, if redact_level is set
+    if redact_level != "none":
+        postprocessors.append(password_remover.tag_userdata)
+
     # Get static server config
     for sg_config_file in sg_config_files:
-        task = add_file_task(sourcefile_path=sg_config_file, content_postprocessors=[password_remover.remove_passwords])
+        task = add_file_task(sourcefile_path=sg_config_file, content_postprocessors=postprocessors)
         collect_config_tasks.append(task)
 
 
     # Get server config
-    # TODO: Redact sensitive data
     server_config_url = "{0}/_config".format(sg_url)
     config_task = make_curl_task(name="Collect server config",
                                  user="",
                                  password="",
                                  url=server_config_url,
                                  log_file="running_server_config.log",
-                                 content_postprocessors=[password_remover.remove_passwords])
+                                 content_postprocessors=postprocessors)
     collect_config_tasks.append(config_task)
         
     # Get list of dbs from _all_dbs
@@ -478,7 +484,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url):
                                      password="",
                                      url=db_config_url,
                                      log_file="running_db_{0}_config.log".format(db),
-                                     content_postprocessors=[password_remover.remove_passwords])
+                                     content_postprocessors=postprocessors)
         collect_config_tasks.append(config_task)
 
     return collect_config_tasks
@@ -539,7 +545,7 @@ def make_download_expvars_task(sg_url):
     )
 
 
-def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path):
+def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path, redact_level):
 
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(sg_url)
@@ -566,7 +572,7 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
     http_client_pprof_tasks = make_http_client_pprof_tasks(sg_url)
 
     # Add a task to collect Sync Gateway config
-    config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url)
+    config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url, redact_level)
     
     # Curl the / endpoint and /db endpoints and save output 
     status_tasks = make_status_tasks(sg_url)
@@ -716,7 +722,7 @@ def main():
     sg_binary_path = discover_sg_binary_path(options, sg_url)
 
     # Run SG specific tasks
-    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable):
+    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable, options.redact_level):
         runner.run(task)
 
     if sg_binary_path is not None and sg_binary_path != "" and os.path.exists(sg_binary_path):
