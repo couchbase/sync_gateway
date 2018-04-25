@@ -100,7 +100,7 @@ func testBucket() base.TestBucket {
 
 	err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0, 0)
 	if err != nil {
-		log.Printf("Unable to initialize GSI indexes for test:%v", err)
+		log.Fatalf("Unable to initialize GSI indexes for test:%v", err)
 	}
 	return testBucket
 }

@@ -1,12 +1,98 @@
 package db
 
 import (
+	"fmt"
 	"log"
 	"testing"
 
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 )
+
+func TestInitializeIndexes(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Index tests require Couchbase Bucket")
+	}
+
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	dropErr := dropAllBucketIndexes(testBucket)
+	assertNoError(t, dropErr, "Error dropping all indexes")
+
+	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0, 0)
+	assertNoError(t, initErr, "Error initializing all indexes")
+
+	validateErr := validateAllIndexesOnline(testBucket)
+	assertNoError(t, validateErr, "Error validating indexes online")
+
+}
+
+// Reset bucket state
+func dropAllBucketIndexes(bucket base.Bucket) error {
+
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	if !ok {
+		return fmt.Errorf("Bucket is not gocb bucket: %T", bucket)
+	}
+
+	// Retrieve all indexes
+	getIndexesStatement := fmt.Sprintf("SELECT indexes.name from system:indexes where keyspace_id = %q", gocbBucket.GetName())
+	n1qlQuery := gocb.NewN1qlQuery(getIndexesStatement)
+	results, err := gocbBucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	if err != nil {
+		return err
+	}
+
+	var indexRow struct {
+		Name string
+	}
+
+	for results.Next(&indexRow) {
+		log.Printf("Dropping index %s...", indexRow.Name)
+		dropErr := gocbBucket.DropIndex(indexRow.Name)
+		if dropErr != nil {
+			return dropErr
+		}
+		log.Printf("...successfully dropped index %s", indexRow.Name)
+	}
+	closeErr := results.Close()
+	return closeErr
+}
+
+// Reset bucket state
+func validateAllIndexesOnline(bucket base.Bucket) error {
+
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	if !ok {
+		return fmt.Errorf("Bucket is not gocb bucket: %T", bucket)
+	}
+
+	// Retrieve all indexes
+	getIndexesStatement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes where keyspace_id = %q", gocbBucket.GetName())
+	n1qlQuery := gocb.NewN1qlQuery(getIndexesStatement)
+	results, err := gocbBucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	if err != nil {
+		return err
+	}
+
+	var indexRow struct {
+		Name  string
+		State string
+	}
+
+	for results.Next(&indexRow) {
+		if indexRow.State != base.IndexStateOnline {
+			return fmt.Errorf("Index %s is not online", indexRow.Name)
+		} else {
+			log.Printf("Validated index %s is %s", indexRow.Name, indexRow.State)
+		}
+	}
+	closeErr := results.Close()
+	return closeErr
+}
 
 func TestPostUpgradeIndexesSimple(t *testing.T) {
 
