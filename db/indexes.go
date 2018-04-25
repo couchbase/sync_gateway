@@ -197,6 +197,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	}
 
 	// Create index
+	base.Infof(base.KeyIndex, "Index %s doesn't exist, creating...", indexName)
 	indexExpression := replaceSyncTokensIndex(i.expression, useXattrs)
 	filterExpression := replaceSyncTokensIndex(i.filterExpression, useXattrs)
 
@@ -204,13 +205,6 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		DeferBuild:      true,
 		NumReplica:      numReplica,
 		IndexTombstones: i.shouldIndexTombstones(useXattrs),
-	}
-	// We want to pass nil options unless one or more of the WITH elements are required
-	if numReplica > 0 || i.shouldIndexTombstones(useXattrs) {
-		options = &base.N1qlIndexOptions{
-			NumReplica:      numReplica,
-			IndexTombstones: i.shouldIndexTombstones(useXattrs),
-		}
 	}
 
 	sleeper := base.CreateDoublingSleeperFunc(
@@ -241,6 +235,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		return false, pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
 	}
 
+	base.Infof(base.KeyIndex, "Index %s created successfully", indexName)
 	return true, nil
 }
 
@@ -252,13 +247,13 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, num
 		base.Warnf(base.KeyAll, "Using a non-Couchbase bucket: %T - indexes will not be created.", bucket)
 		return nil
 	}
-	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d", numReplicas)
+	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
-		isDeferred, err := sgIndex.createIfNeeded(gocbBucket, useXattrs, numReplicas)
 		fullIndexName := sgIndex.fullIndexName(useXattrs)
+		isDeferred, err := sgIndex.createIfNeeded(gocbBucket, useXattrs, numReplicas)
 		if err != nil {
 			return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
 		}
@@ -270,7 +265,12 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, num
 
 	// Issue BUILD INDEX for any deferred indexes
 	if len(deferredIndexes) > 0 {
-		gocbBucket.BuildIndexes(deferredIndexes)
+		base.Infof(base.KeyIndex, "Building deferred indexes (%d)...", len(deferredIndexes))
+		buildErr := gocbBucket.BuildIndexes(deferredIndexes)
+		if buildErr != nil {
+			return buildErr
+		}
+		base.Infof(base.KeyIndex, "Deferred indexes built successfully.")
 	}
 
 	// Wait for newly built indexes to be online
