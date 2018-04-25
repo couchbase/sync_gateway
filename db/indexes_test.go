@@ -22,7 +22,7 @@ func TestInitializeIndexes(t *testing.T) {
 	dropErr := dropAllBucketIndexes(testBucket)
 	assertNoError(t, dropErr, "Error dropping all indexes")
 
-	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0, 0)
+	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0)
 	assertNoError(t, initErr, "Error initializing all indexes")
 
 	validateErr := validateAllIndexesOnline(testBucket)

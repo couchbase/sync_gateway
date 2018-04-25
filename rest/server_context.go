@@ -301,7 +301,6 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	return sc._getOrAddDatabaseFromConfig(config, useExisting)
 }
 
-
 func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 
 	server := "http://localhost:8091"
@@ -338,7 +337,6 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 		UseXattrs:            config.UseXattrs(),
 		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
 	}
-
 
 	return spec, nil
 }
@@ -425,8 +423,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	}
 
-
-
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
 
 		msgFormatStr := "%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline"
@@ -496,15 +492,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 
 		numReplicas := DefaultNumIndexReplicas
-		numHousekeepingReplicas := DefaultNumIndexReplicas
 		if config.NumIndexReplicas != nil {
 			numReplicas = *config.NumIndexReplicas
 		}
-		if config.NumIndexReplicasHousekeeping != nil {
-			numHousekeepingReplicas = *config.NumIndexReplicasHousekeeping
-		}
 
-		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas, numHousekeepingReplicas)
+		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas)
 		if indexErr != nil {
 			return nil, indexErr
 		}

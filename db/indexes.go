@@ -240,7 +240,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, numHousekeepingReplicas uint) error {
+func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) error {
 
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if !ok {
