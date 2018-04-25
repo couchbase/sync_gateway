@@ -80,7 +80,7 @@ var (
 		KeySync:           "Sync",
 		KeySyncMsg:        "SyncMsg",
 		KeyWebSocket:      "WS",
-		KeyWebSocketFrame: "WS+", // Debugf printed as WS++
+		KeyWebSocketFrame: "WSFrame",
 	}
 
 	// Inverse of the map above. Optimisation for string -> LogKey lookups in ToLogKey
@@ -160,7 +160,7 @@ func ToLogKey(keysStr []string) LogKey {
 	var logKeys LogKey
 	for _, name := range keysStr {
 
-		// Some old log keys (like HTTP+, and WS++), we want to handle slightly differently.
+		// Some old log keys (like HTTP+), we want to handle slightly (map to a different key)
 		if newLogKey, ok := convertSpecialLogKey(name); ok {
 			logKeys.Enable(*newLogKey)
 			continue
@@ -198,9 +198,6 @@ func convertSpecialLogKey(oldLogKey string) (*LogKey, bool) {
 	case "HTTP+":
 		// HTTP+ Should enable both KeyHTTP and KeyHTTPResp
 		logKey = logKeyPtr(KeyHTTP | KeyHTTPResp)
-	case "WS++":
-		// WS++ should enable both KeyWebSocket and KeyWebSocketFrame
-		logKey = logKeyPtr(KeyWebSocket | KeyWebSocketFrame)
 	}
 
 	return logKey, logKey != nil

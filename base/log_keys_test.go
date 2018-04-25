@@ -67,11 +67,11 @@ func TestLogKeyNames(t *testing.T) {
 	assert.Equals(t, logKeys, KeyAll|KeyDCP)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAll.String(), KeyDCP.String()})
 
-	// Special handling of these two log keys...
-	keys = []string{"HTTP+", "WS++"}
+	// Special handling of log keys
+	keys = []string{"HTTP+"}
 	logKeys = ToLogKey(keys)
-	assert.Equals(t, logKeys, KeyHTTP|KeyHTTPResp|KeyWebSocket|KeyWebSocketFrame)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyHTTP.String(), KeyHTTPResp.String(), KeyWebSocket.String(), KeyWebSocketFrame.String()})
+	assert.Equals(t, logKeys, KeyHTTP|KeyHTTPResp)
+	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyHTTP.String(), KeyHTTPResp.String()})
 
 	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
 	keys = []string{"DCP", "WS+", "InvalidLogKey"}
@@ -94,21 +94,6 @@ func TestConvertSpecialLogKey(t *testing.T) {
 		{
 			input:  "HTTP+",
 			output: logKeyPtr(KeyHTTP | KeyHTTPResp),
-			ok:     true,
-		},
-		{
-			input:  "WS",
-			output: nil,
-			ok:     false,
-		},
-		{
-			input:  "WS+",
-			output: nil,
-			ok:     false,
-		},
-		{
-			input:  "WS++",
-			output: logKeyPtr(KeyWebSocket | KeyWebSocketFrame),
 			ok:     true,
 		},
 	}
