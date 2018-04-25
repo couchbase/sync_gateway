@@ -2070,8 +2070,10 @@ func SetWithTimeoutRetry(bucket Bucket, key string, jsonDoc map[string]interface
 		// this function gives up after the timeout and retries.  There's no way to cancel the blocked call to Set().
 		go func() {
 			startTime := time.Now()
-			err = bucket.Set(key, 0, jsonDoc)
+			baseGoCbBucket := bucket.(*CouchbaseBucketGoCB)
+			_, err = baseGoCbBucket.Bucket.Upsert(key, jsonDoc, 0)
 			if err != nil {
+				log.Printf("GoCB error: %v", err)
 				errChan <- err
 				return
 			}
