@@ -149,7 +149,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		if sc.config.AdminUI != nil {
 			http.ServeFile(w, r, *sc.config.AdminUI)
 		} else {
-			w.Write(sync_gateway_admin_ui.Admin_bundle_html())
+			w.Write(sync_gateway_admin_ui.MustAsset("assets/index.html"))
 		}
 	})
 
