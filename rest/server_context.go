@@ -498,15 +498,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 
 		numReplicas := DefaultNumIndexReplicas
-		numHousekeepingReplicas := DefaultNumIndexReplicas
 		if config.NumIndexReplicas != nil {
 			numReplicas = *config.NumIndexReplicas
 		}
-		if config.NumIndexReplicasHousekeeping != nil {
-			numHousekeepingReplicas = *config.NumIndexReplicasHousekeeping
-		}
 
-		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas, numHousekeepingReplicas)
+		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas)
 		if indexErr != nil {
 			return nil, indexErr
 		}
