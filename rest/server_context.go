@@ -301,7 +301,6 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 	return sc._getOrAddDatabaseFromConfig(config, useExisting)
 }
 
-
 func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 
 	server := "http://localhost:8091"
@@ -338,7 +337,6 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 		UseXattrs:            config.UseXattrs(),
 		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
 	}
-
 
 	return spec, nil
 }
@@ -425,8 +423,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	}
 
-
-
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
 
 		msgFormatStr := "%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline"
@@ -479,6 +475,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	useViews := config.UseViews
 	if !useViews && spec.IsWalrusBucket() {
 		base.Warnf(base.KeyAll, "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
+		useViews = true
+	}
+
+	// If using accel, force use of views
+	if !useViews && config.ChannelIndex != nil {
+		base.Warnf(base.KeyAll, "Using GSI is not supported when using Sync Gateway Accelerator - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
 	}
 
