@@ -346,36 +346,50 @@ func (h *handler) handleSetLogging() error {
 		return nil
 	}
 
-	var newLogLevel *base.LogLevel
+	var newLogLevel base.LogLevel
+	var setLogLevel bool
 	if level := h.getQuery("logLevel"); level != "" {
 		if err := newLogLevel.UnmarshalText([]byte(level)); err != nil {
-			return err
+			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
+		setLogLevel = true
 	} else if level := h.getIntQuery("level", 0); level != 0 {
 		base.Warnf(base.KeyAll, "Using deprecated query parameter: %q. Use %q instead.", "level", "logLevel")
-		switch int(getRestrictedInt(&level, 0, 1, 3, false)) {
+		switch getRestrictedInt(&level, 0, 1, 3, false) {
 		case 1:
-			newLogLevel.Set(base.LevelInfo)
+			newLogLevel = base.LevelInfo
 		case 2:
-			newLogLevel.Set(base.LevelWarn)
+			newLogLevel = base.LevelWarn
 		case 3:
-			newLogLevel.Set(base.LevelError)
+			newLogLevel = base.LevelError
 		}
+		setLogLevel = true
 	}
 
-	if newLogLevel != nil {
+	if setLogLevel {
 		base.Infof(base.KeyAll, "Setting log level to: %v", newLogLevel)
-		base.ConsoleLogLevel().Set(*newLogLevel)
+		base.ConsoleLogLevel().Set(newLogLevel)
 
+		// empty body is OK if request is just setting the log level
 		if len(body) == 0 {
-			return nil // empty body is OK if request is just setting the log level
+			return nil
 		}
 	}
 
 	var keys map[string]bool
 	if err := json.Unmarshal(body, &keys); err != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "Invalid JSON or non-boolean values")
+
+		// return a better error if a user is setting log level inside the body
+		var logLevel map[string]string
+		if err := json.Unmarshal(body, &logLevel); err == nil {
+			if _, ok := logLevel["logLevel"]; ok {
+				return base.HTTPErrorf(http.StatusBadRequest, "Can't set log level in body, please use \"logLevel\" query parameter instead.")
+			}
+		}
+
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid JSON or non-boolean values for log key map")
 	}
+
 	base.UpdateLogKeys(keys, h.rq.Method == "PUT")
 	return nil
 }
