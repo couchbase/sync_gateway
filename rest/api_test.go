@@ -862,22 +862,13 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 		AdminInterface: &DefaultAdminInterface,
 	})
 
-	server := base.UnitTestUrl()
-	bucketName := rt1.RestTesterBucket.GetName()
-	spec := base.GetTestBucketSpec(base.DataBucket)
-	username, password, _ := spec.Auth.GetCredentials()
+	// For the second rest tester, create a copy of the original database config and
+	// clear out the sync function.
+	dbConfigCopy := rt1.DatabaseConfig.MustDeepCopy()
+	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
-	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
-		BucketConfig: BucketConfig{
-			Server:   &server,
-			Bucket:   &bucketName,
-			Username: username,
-			Password: password,
-		},
-		NumIndexReplicas: rt1.DatabaseConfig.NumIndexReplicas, // Use the same NumIndexReplicas as original test bucket (0)
-		Name:             "db",
-	})
+	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
 	assertNoError(t, err, "Failed to add database to rest tester")
 
@@ -959,22 +950,13 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 		AdminInterface: &DefaultAdminInterface,
 	})
 
-	server := base.UnitTestUrl()
-	bucketName := rt1.RestTesterBucket.GetName()
-	spec := base.GetTestBucketSpec(base.DataBucket)
-	username, password, _ := spec.Auth.GetCredentials()
+	// For the second rest tester, create a copy of the original database config and
+	// clear out the sync function.
+	dbConfigCopy := rt1.DatabaseConfig.MustDeepCopy()
+	dbConfigCopy.Sync = base.StringPointer("")
 
-	rt1UseXattrs := rt1.GetDatabase().UseXattrs()
-	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
-		BucketConfig: BucketConfig{
-			Server:   &server,
-			Bucket:   &bucketName,
-			Username: username,
-			Password: password,
-		},
-		Name:         "db",
-		EnableXattrs: &rt1UseXattrs,
-	})
+	// Add a second database that uses the same underlying bucket.
+	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
 	assertNoError(t, err, "Failed to add database to rest tester")
 
@@ -1063,22 +1045,13 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 		AdminInterface: &DefaultAdminInterface,
 	})
 
-	server := base.UnitTestUrl()
-	bucketName := rt1.RestTesterBucket.GetName()
-	spec := base.GetTestBucketSpec(base.DataBucket)
-	username, password, _ := spec.Auth.GetCredentials()
+	// For the second rest tester, create a copy of the original database config and
+	// clear out the sync function.
+	dbConfigCopy := rt1.DatabaseConfig.MustDeepCopy()
+	dbConfigCopy.Sync = base.StringPointer("")
 
-	rt1UseXattrs := rt1.GetDatabase().UseXattrs()
-	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
-		BucketConfig: BucketConfig{
-			Server:   &server,
-			Bucket:   &bucketName,
-			Username: username,
-			Password: password,
-		},
-		Name:         "db",
-		EnableXattrs: &rt1UseXattrs,
-	})
+	// Add a second database that uses the same underlying bucket.
+	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
 	assertNoError(t, err, "Failed to add database to rest tester")
 

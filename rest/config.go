@@ -472,6 +472,29 @@ func (dbConfig *DbConfig) UseXattrs() bool {
 	return base.DefaultUseXattrs
 }
 
+// Create a deepcopy of this DbConfig, or panic.
+// This will only copy all of the _exported_ fields of the DbConfig.
+func (dbConfig *DbConfig) MustDeepCopy() (dbConfigCopy *DbConfig) {
+
+	dbConfigDeepCopy := &DbConfig{}
+	err := base.DeepCopy(&dbConfigDeepCopy, dbConfig)
+	if err != nil {
+		base.Panicf(base.KeyAll, "Error trying to peform deep copy of DbConfig.  Err: %v" , err)
+	}
+	return dbConfigDeepCopy
+
+}
+
+// Implementation of AuthHandler interface for ShadowConfig
+func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
+	return base.TransformBucketCredentials(shadowConfig.Username, shadowConfig.Password, *shadowConfig.Bucket)
+}
+
+// Implementation of AuthHandler interface for ChannelIndexConfig
+func (channelIndexConfig *ChannelIndexConfig) GetCredentials() (string, string, string) {
+	return base.TransformBucketCredentials(channelIndexConfig.Username, channelIndexConfig.Password, *channelIndexConfig.Bucket)
+}
+
 // Implementation of AuthHandler interface for ClusterConfig
 func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
