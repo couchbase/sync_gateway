@@ -66,6 +66,20 @@ def tag_userdata_in_server_json(config):
                 # the dict currently being iterated over.
                 dbs[UD(k)] = dbs.pop(k)
 
+        if "replicators" in config:
+            replicators = config["replicators"]
+            for i, _ in enumerate(replicators):
+                r = replicators[i]
+                if "replication_id" in r:
+                    r["replication_id"] = UD(r["replication_id"])
+                if "source" in r:
+                    r["source"] = UD(r["source"])
+                if "target" in r:
+                    r["target"] = UD(r["target"])
+                if "query_params" in r:
+                    for i, _ in enumerate(r["query_params"]):
+                        r["query_params"][i] = UD(r["query_params"][i])
+
 
 def tag_userdata_in_db_config(json_text, log_json_parsing_exceptions=True):
     """
@@ -105,27 +119,6 @@ def tag_userdata_in_db_json(db):
         if "bucket" in db:
             db["bucket"] = UD(db["bucket"])
 
-        if "oidc" in db:
-            if "default_provider" in db["oidc"]:
-                db["oidc"]["default_provider"] = UD(db["oidc"]["default_provider"])
-            if "providers" in db["oidc"]:
-                providers = db["oidc"]["providers"]
-                for provider in providers:
-                    if "issuer" in provider:
-                        provider["issuer"] = UD(provider["issuer"])
-                    if "discovery_url" in provider:
-                        provider["discovery_url"] = UD(provider["discovery_url"])
-                    if "client_id" in provider:
-                        provider["client_id"] = UD(provider["client_id"])
-                    if "validation_key" in provider:
-                        provider["validation_key"] = UD(provider["validation_key"])
-                    if "callback_url" in provider:
-                        provider["callback_url"] = UD(provider["callback_url"])
-                    if "user_prefix" in provider:
-                        provider["user_prefix"] = UD(provider["user_prefix"])
-                for k, _ in providers.items():
-                    providers[UD(k)] = providers.pop(k)
-
         if "users" in db:
             users = db["users"]
             for user in users:
@@ -151,6 +144,27 @@ def tag_userdata_in_db_json(db):
                         admin_channels[i] = UD(admin_channels[i])
             for k, _ in roles.items():
                 roles[UD(k)] = roles.pop(k)
+
+        if "oidc" in db:
+            if "default_provider" in db["oidc"]:
+                db["oidc"]["default_provider"] = UD(db["oidc"]["default_provider"])
+            if "providers" in db["oidc"]:
+                providers = db["oidc"]["providers"]
+                for provider in providers:
+                    if "issuer" in provider:
+                        provider["issuer"] = UD(provider["issuer"])
+                    if "discovery_url" in provider:
+                        provider["discovery_url"] = UD(provider["discovery_url"])
+                    if "client_id" in provider:
+                        provider["client_id"] = UD(provider["client_id"])
+                    if "validation_key" in provider:
+                        provider["validation_key"] = UD(provider["validation_key"])
+                    if "callback_url" in provider:
+                        provider["callback_url"] = UD(provider["callback_url"])
+                    if "user_prefix" in provider:
+                        provider["user_prefix"] = UD(provider["user_prefix"])
+                for k, _ in providers.items():
+                    providers[UD(k)] = providers.pop(k)
 
 
 def UD(value):
