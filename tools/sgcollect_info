@@ -396,7 +396,7 @@ def get_db_list(sg_url):
 
 # Get the "status" for the server overall that's available
 # at the server root URL, as well as the status of each database
-def make_status_tasks(sg_url):
+def make_status_tasks(sg_url, should_redact):
 
     tasks = []
 
@@ -429,7 +429,7 @@ def make_status_tasks(sg_url):
 # Running config
 #   Server config
 #   Each DB config
-def make_config_tasks(zip_dir, sg_config_path, sg_url, redact_level):
+def make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact):
 
     collect_config_tasks = []
 
@@ -454,7 +454,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, redact_level):
     # Tag user data before redaction, if redact_level is set
     server_config_postprocessors = [password_remover.remove_passwords]
     db_config_postprocessors = [password_remover.remove_passwords]
-    if redact_level != "none":
+    if should_redact:
         server_config_postprocessors.append(password_remover.tag_userdata_in_server_config)
         db_config_postprocessors.append(password_remover.tag_userdata_in_db_config)
 
@@ -544,7 +544,7 @@ def make_download_expvars_task(sg_url):
     )
 
 
-def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path, redact_level):
+def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path, should_redact):
 
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(sg_url)
@@ -571,10 +571,10 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
     http_client_pprof_tasks = make_http_client_pprof_tasks(sg_url)
 
     # Add a task to collect Sync Gateway config
-    config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url, redact_level)
+    config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact)
     
     # Curl the / endpoint and /db endpoints and save output 
-    status_tasks = make_status_tasks(sg_url)
+    status_tasks = make_status_tasks(sg_url, should_redact)
     
     # Compbine all tasks into flattened list
     sg_tasks = flatten(
@@ -655,12 +655,10 @@ def main():
     if options.redact_level != "none" and options.redact_level != "partial":
         parser.error("Invalid redaction level. Only 'none' and 'partial' are supported.")
 
-    ud_prefix = ""
-    ud_suffix = ""
     upload_url = ""
+    should_redact = False
     if options.redact_level != "none":
-        ud_prefix = "<ud>"
-        ud_suffix = "</ud>"
+        should_redact = True
 
         # Generate the s3 URL where zip files will be updated
         redact_zip_file = zip_filename[:-4] + "-redacted" + zip_filename[-4:]
@@ -721,7 +719,7 @@ def main():
     sg_binary_path = discover_sg_binary_path(options, sg_url)
 
     # Run SG specific tasks
-    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable, options.redact_level):
+    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable, should_redact):
         runner.run(task)
 
     if sg_binary_path is not None and sg_binary_path != "" and os.path.exists(sg_binary_path):
@@ -732,7 +730,7 @@ def main():
     # Echo the command line args used to run sgcollect_info
     cmd_line_args_task = AllOsTask(
         "Echo sgcollect_info cmd line args",
-        "echo options: {0} args: {1}".format({k: "{0}{1}{2}".format(ud_prefix, v, ud_suffix) for k, v in options.__dict__.items()}, args),
+        "echo options: {0} args: {1}".format({k: ud(v, should_redact) for k, v in options.__dict__.items()}, args),
         log_file="sgcollect_info_options.log",
     )
     runner.run(cmd_line_args_task)
@@ -769,6 +767,13 @@ def main():
         print "Zipfile built: {0}".format(redact_zip_file)
 
     print "Zipfile built: {0}".format(zip_filename)
+
+
+def ud(value, should_redact=True):
+    if not should_redact:
+        return value
+    return "<ud>{0}</ud>".format(value)
+
 
 if __name__ == '__main__':
     main()
