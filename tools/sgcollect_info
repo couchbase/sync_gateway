@@ -451,18 +451,17 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, redact_level):
     if sg_config_path is not None:
         sg_config_files.append(sg_config_path)
 
-    # Always strip passwords from configs
-    postprocessors = [password_remover.remove_passwords]
-
     # Tag user data before redaction, if redact_level is set
+    server_config_postprocessors = [password_remover.remove_passwords]
+    db_config_postprocessors = [password_remover.remove_passwords]
     if redact_level != "none":
-        postprocessors.append(password_remover.tag_userdata)
+        server_config_postprocessors.append(password_remover.tag_userdata_in_server_config)
+        db_config_postprocessors.append(password_remover.tag_userdata_in_db_config)
 
     # Get static server config
     for sg_config_file in sg_config_files:
-        task = add_file_task(sourcefile_path=sg_config_file, content_postprocessors=postprocessors)
+        task = add_file_task(sourcefile_path=sg_config_file, content_postprocessors=server_config_postprocessors)
         collect_config_tasks.append(task)
-
 
     # Get server config
     server_config_url = "{0}/_config".format(sg_url)
@@ -471,9 +470,9 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, redact_level):
                                  password="",
                                  url=server_config_url,
                                  log_file="running_server_config.log",
-                                 content_postprocessors=postprocessors)
+                                 content_postprocessors=server_config_postprocessors)
     collect_config_tasks.append(config_task)
-        
+
     # Get list of dbs from _all_dbs
     # For each db, get db config
     dbs = get_db_list(sg_url)
@@ -484,7 +483,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, redact_level):
                                      password="",
                                      url=db_config_url,
                                      log_file="running_db_{0}_config.log".format(db),
-                                     content_postprocessors=postprocessors)
+                                     content_postprocessors=db_config_postprocessors)
         collect_config_tasks.append(config_task)
 
     return collect_config_tasks
@@ -733,7 +732,7 @@ def main():
     # Echo the command line args used to run sgcollect_info
     cmd_line_args_task = AllOsTask(
         "Echo sgcollect_info cmd line args",
-        "echo options: {0} args: {1}".format({k: ud_prefix+'{0}'+ud_suffix.format(v) for k, v in options.__dict__.items()}, args),
+        "echo options: {0} args: {1}".format({k: "{0}{1}{2}".format(ud_prefix, v, ud_suffix) for k, v in options.__dict__.items()}, args),
         log_file="sgcollect_info_options.log",
     )
     runner.run(cmd_line_args_task)

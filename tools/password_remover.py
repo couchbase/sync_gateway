@@ -25,7 +25,7 @@ def is_valid_json(invalid_json):
     return got_exception == False
 
 
-def tag_userdata(json_text, log_json_parsing_exceptions=True):
+def tag_userdata_in_server_config(json_text, log_json_parsing_exceptions=True):
     """
     Content postprocessor that tags user data in a config ready for post-process redaction
     """
@@ -34,42 +34,123 @@ def tag_userdata(json_text, log_json_parsing_exceptions=True):
         # lower case everything so that "databases" works as a key even if the JSON has "Databases"
         # as a key.  seems like there has to be a better way!
         json_text = json_text.lower()
-
         valid_json = convert_to_valid_json(json_text)
-
         parsed_json = json.loads(valid_json)
 
-        tag_userdata_in_config(parsed_json)
+        tag_userdata_in_server_json(parsed_json)
 
         formatted_json_string = json.dumps(parsed_json, indent=4)
-
         return formatted_json_string
 
     except Exception as e:
-        msg = "Exception trying to tag user data in {0}.  Exception: {1}".format(json_text, e)
+        msg = "Exception trying to tag config user data in {0}.  Exception: {1}".format(json_text, e)
         if log_json_parsing_exceptions:
             print(msg)
             traceback.print_exc()
-        return '{"Error":"Error in sgcollect_info password_remover.py trying to tag user data.  See logs for details"}'
+        return '{"Error":"Error in sgcollect_info password_remover.py trying to tag config user data.  See logs for details"}'
 
 
-def tag_userdata_in_config(config_fragment):
+def tag_userdata_in_server_json(config):
         """
-        Given a dictionary that contains configuration values, recursively walk the dictionary and:
+        Given a dictionary that contains a full set of configuration values:
         - Tag any sensitive user-data fields with <ud></ud> tags.
         """
 
-        if not isinstance(config_fragment, dict):
-            return
+        if "databases" in config:
+            dbs = config["databases"]
+            for db in dbs:
+                tag_userdata_in_db_json(dbs[db])
+            for k, _ in dbs.items():
+                # Tag dict keys that reveal db names.
+                # Can't do this in the same loop, as it modifies
+                # the dict currently being iterated over.
+                dbs[UD(k)] = dbs.pop(k)
 
-        userdata_keys = ["username", "roles", "users", "admin_channels", "admin_roles"]
-        for key in userdata_keys:
-            if key in config_fragment:
-                config_fragment[key] = UD(config_fragment[key])
 
-        for key, item in config_fragment.items():
-            if isinstance(item, dict):
-                tag_userdata_in_config(item)
+def tag_userdata_in_db_config(json_text, log_json_parsing_exceptions=True):
+    """
+    Content postprocessor that tags user data in a db config ready for post-process redaction
+    """
+    try:
+
+        # lower case everything so that "databases" works as a key even if the JSON has "Databases"
+        # as a key.  seems like there has to be a better way!
+        json_text = json_text.lower()
+        valid_json = convert_to_valid_json(json_text)
+        parsed_json = json.loads(valid_json)
+
+        tag_userdata_in_db_json(parsed_json)
+
+        formatted_json_string = json.dumps(parsed_json, indent=4)
+        return formatted_json_string
+
+    except Exception as e:
+        msg = "Exception trying to tag db config user data in {0}.  Exception: {1}".format(json_text, e)
+        if log_json_parsing_exceptions:
+            print(msg)
+            traceback.print_exc()
+        return '{"Error":"Error in sgcollect_info password_remover.py trying to tag db config user data.  See logs for details"}'
+
+
+def tag_userdata_in_db_json(db):
+        """
+        Given a dictionary that contains a set of db configuration values:
+        - Tag any sensitive user-data fields with <ud></ud> tags.
+        """
+
+        if "name" in db:
+            db["name"] = UD(db["name"])
+        if "username" in db:
+            db["username"] = UD(db["username"])
+        if "bucket" in db:
+            db["bucket"] = UD(db["bucket"])
+
+        if "oidc" in db:
+            if "default_provider" in db["oidc"]:
+                db["oidc"]["default_provider"] = UD(db["oidc"]["default_provider"])
+            if "providers" in db["oidc"]:
+                providers = db["oidc"]["providers"]
+                for provider in providers:
+                    if "issuer" in provider:
+                        provider["issuer"] = UD(provider["issuer"])
+                    if "discovery_url" in provider:
+                        provider["discovery_url"] = UD(provider["discovery_url"])
+                    if "client_id" in provider:
+                        provider["client_id"] = UD(provider["client_id"])
+                    if "validation_key" in provider:
+                        provider["validation_key"] = UD(provider["validation_key"])
+                    if "callback_url" in provider:
+                        provider["callback_url"] = UD(provider["callback_url"])
+                    if "user_prefix" in provider:
+                        provider["user_prefix"] = UD(provider["user_prefix"])
+                for k, _ in providers.items():
+                    providers[UD(k)] = providers.pop(k)
+
+        if "users" in db:
+            users = db["users"]
+            for user in users:
+                if "name" in users[user]:
+                    users[user]["name"] = UD(users[user]["name"])
+                if "admin_channels" in users[user]:
+                    admin_channels = users[user]["admin_channels"]
+                    for i, _ in enumerate(admin_channels):
+                        admin_channels[i] = UD(admin_channels[i])
+                if "admin_roles" in users[user]:
+                    admin_roles = users[user]["admin_roles"]
+                    for i, _ in enumerate(admin_roles):
+                        admin_roles[i] = UD(admin_roles[i])
+            for k, _ in users.items():
+                users[UD(k)] = users.pop(k)
+
+        if "roles" in db:
+            roles = db["roles"]
+            for role in roles:
+                if "admin_channels" in roles[role]:
+                    admin_channels = roles[role]["admin_channels"]
+                    for i, _ in enumerate(admin_channels):
+                        admin_channels[i] = UD(admin_channels[i])
+            for k, _ in roles.items():
+                roles[UD(k)] = roles.pop(k)
 
 
 def UD(value):
