@@ -130,12 +130,12 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	// Set the GoCB opTimeout which controls how long blocking GoCB ops remain blocked before
 	// returning an "operation timed out" error.  Defaults to 2.5 seconds.  (SG #3508)
-	if spec.OperationTimeout != nil {
+	if spec.BucketOpTimeout != nil {
 
-		goCBBucket.SetOperationTimeout(*spec.OperationTimeout)
+		goCBBucket.SetOperationTimeout(*spec.BucketOpTimeout)
 
 		// Update the bulk op timeout to preserve the 1:4 ratio between op timeouts and bulk op timeouts.
-		goCBBucket.SetBulkOperationTimeout(*spec.OperationTimeout * 4)
+		goCBBucket.SetBulkOperationTimeout(*spec.BucketOpTimeout * 4)
 
 	}
 

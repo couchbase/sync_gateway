@@ -100,7 +100,7 @@ type BucketSpec struct {
 	InitialRetrySleepTimeMS                int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
 	UseXattrs                              bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
 	ViewQueryTimeoutSecs                   *uint32        // the view query timeout in seconds (default: 75 seconds)
-	OperationTimeout                       *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+	BucketOpTimeout                        *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 }
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
