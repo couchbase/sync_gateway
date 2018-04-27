@@ -1958,6 +1958,23 @@ func TestCouchbaseServerVersion(t *testing.T) {
 
 }
 
+func TestCouchbaseServerMaxTTL(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	gocbBucket := bucket.(*CouchbaseBucketGoCB)
+	maxTTL, err := gocbBucket.GetMaxTTL()
+	assertNoError(t, err, "Unexpected error")
+	assert.Equals(t, maxTTL, 0)
+
+
+}
+
 func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {

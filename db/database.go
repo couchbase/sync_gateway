@@ -373,6 +373,18 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	}
 
+	// Make sure there is no MaxTTL set on the bucket (SG #3314)
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	if ok {
+		maxTTL, err := gocbBucket.GetMaxTTL()
+		if err != nil {
+			return nil, err
+		}
+		if maxTTL != 0 {
+			return nil, fmt.Errorf("Backing Couchbase Server bucket has a non-zero MaxTTL value: %d.  Please set MaxTTL to 0 in Couchbase Server Admin UI and try again.", maxTTL)
+		}
+	}
+
 	return context, nil
 }
 
