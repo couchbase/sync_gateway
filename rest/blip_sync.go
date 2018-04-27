@@ -157,12 +157,12 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
 			}
-			ctx.Logf(base.LevelInfo, base.KeySyncMsg, "#%03d: Type:%s   --> %d %s Time:%v User:%s", handler.serialNumber, profile, status, msg, time.Since(startTime), base.UD(ctx.effectiveUsername))
+			ctx.Logf(base.LevelInfo, base.KeySyncMsg, "#%d: Type:%s   --> %d %s Time:%v User:%s", handler.serialNumber, profile, status, msg, time.Since(startTime), base.UD(ctx.effectiveUsername))
 		} else {
 
 			// Log the fact that the handler has finished, except for the "subChanges" special case which does it's own termination related logging
 			if profile != "subChanges" {
-				ctx.Logf(base.LevelDebug, base.KeySyncMsg, "#%03d: Type:%s   --> OK Time:%v User:%s ", handler.serialNumber, profile, time.Since(startTime), base.UD(ctx.effectiveUsername))
+				ctx.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s   --> OK Time:%v User:%s ", handler.serialNumber, profile, time.Since(startTime), base.UD(ctx.effectiveUsername))
 			}
 		}
 	}
@@ -312,7 +312,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
 		bh.sendChanges(rq.Sender, subChangesParams)
-		bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%03d: Type:%s   --> Time:%v User:%s ", bh.serialNumber, rq.Profile(), time.Since(startTime), base.UD(bh.effectiveUsername))
+		bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v User:%s ", bh.serialNumber, rq.Profile(), time.Since(startTime), base.UD(bh.effectiveUsername))
 	}()
 
 	return nil
@@ -784,7 +784,7 @@ func isCompressible(filename string, meta map[string]interface{}) bool {
 }
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
-	bh.Logf(base.LevelInfo, base.KeySyncMsg, "#%03d: Type:%s %s User:%s", bh.serialNumber, profile, endpoint, base.UD(bh.effectiveUsername))
+	bh.Logf(base.LevelInfo, base.KeySyncMsg, "#%d: Type:%s %s User:%s", bh.serialNumber, profile, endpoint, base.UD(bh.effectiveUsername))
 }
 
 func DefaultBlipLogger(contextID string) blip.LogFn {
