@@ -1,5 +1,5 @@
 """
-Removes passwords from config files
+Redacts sensitive data in config files
 
 """
 
@@ -9,6 +9,7 @@ import json
 import re
 from urlparse import urlparse, urlunparse
 import traceback
+
 
 def is_valid_json(invalid_json):
     """
@@ -22,6 +23,114 @@ def is_valid_json(invalid_json):
         pass
 
     return got_exception == False
+
+
+def tag_userdata_in_server_config(json_text, log_json_parsing_exceptions=True):
+    """
+    Content postprocessor that tags user data in a config ready for post-process redaction
+    """
+    try:
+
+        # lower case everything so that "databases" works as a key even if the JSON has "Databases"
+        # as a key.  seems like there has to be a better way!
+        json_text = json_text.lower()
+        valid_json = convert_to_valid_json(json_text)
+        parsed_json = json.loads(valid_json)
+
+        tag_userdata_in_server_json(parsed_json)
+
+        formatted_json_string = json.dumps(parsed_json, indent=4)
+        return formatted_json_string
+
+    except Exception as e:
+        if log_json_parsing_exceptions:
+            print("Exception trying to tag config user data in {0}.  Exception: {1}".format(json_text, e))
+            traceback.print_exc()
+        return '{"Error":"Error in sgcollect_info password_remover.py trying to tag config user data.  See logs for details"}'
+
+
+def tag_userdata_in_server_json(config):
+        """
+        Given a dictionary that contains a full set of configuration values:
+        - Tag any sensitive user-data fields with <ud></ud> tags.
+        """
+
+        if "databases" in config:
+            dbs = config["databases"]
+            for db in dbs:
+                tag_userdata_in_db_json(dbs[db])
+
+
+def tag_userdata_in_db_config(json_text, log_json_parsing_exceptions=True):
+    """
+    Content postprocessor that tags user data in a db config ready for post-process redaction
+    """
+    try:
+
+        # lower case everything so that "databases" works as a key even if the JSON has "Databases"
+        # as a key.  seems like there has to be a better way!
+        json_text = json_text.lower()
+        valid_json = convert_to_valid_json(json_text)
+        parsed_json = json.loads(valid_json)
+
+        tag_userdata_in_db_json(parsed_json)
+
+        formatted_json_string = json.dumps(parsed_json, indent=4)
+        return formatted_json_string
+
+    except Exception as e:
+        if log_json_parsing_exceptions:
+            print("Exception trying to tag db config user data in {0}.  Exception: {1}".format(json_text, e))
+            traceback.print_exc()
+        return '{"Error":"Error in sgcollect_info password_remover.py trying to tag db config user data.  See logs for details"}'
+
+
+def tag_userdata_in_db_json(db):
+        """
+        Given a dictionary that contains a set of db configuration values:
+        - Tag any sensitive user-data fields with <ud></ud> tags.
+        """
+
+        if "username" in db:
+            db["username"] = UD(db["username"])
+
+        if "users" in db:
+            users = db["users"]
+            for username in users:
+                user = users[username]
+                if "name" in user:
+                    user["name"] = UD(user["name"])
+                if "admin_channels" in user:
+                    admin_channels = user["admin_channels"]
+                    for i, _ in enumerate(admin_channels):
+                        admin_channels[i] = UD(admin_channels[i])
+                if "admin_roles" in user:
+                    admin_roles = user["admin_roles"]
+                    for i, _ in enumerate(admin_roles):
+                        admin_roles[i] = UD(admin_roles[i])
+            # Tag dict keys. Can't be done in the above loop.
+            for i, _ in users.items():
+                users[UD(i)] = users.pop(i)
+
+        if "roles" in db:
+            roles = db["roles"]
+            for rolename in roles:
+                role = roles[rolename]
+                if "admin_channels" in role:
+                    admin_channels = role["admin_channels"]
+                    for i, _ in enumerate(admin_channels):
+                        admin_channels[i] = UD(admin_channels[i])
+            # Tag dict keys. Can't be done in the above loop.
+            for i, _ in roles.items():
+                roles[UD(i)] = roles.pop(i)
+
+
+def UD(value):
+    """
+    Tags the given value with User Data tags.
+    """
+    return "<ud>{}</ud>".format(value)
+
 
 def remove_passwords_from_config(config_fragment):
     """
@@ -65,11 +174,11 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
         return formatted_json_string
 
     except Exception as e:
-        msg = "Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e)
         if log_json_parsing_exceptions:
-            print(msg)
+            print("Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e))
             traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to remove passwords.  See logs for details"}'
+
 
 def strip_password_from_url(url_string):
     """
@@ -96,6 +205,7 @@ def strip_password_from_url(url_string):
     )
     return new_url
 
+
 def escape_json_value(raw_value):
     """
     Escape all invalid json characters like " to produce a valid json value
@@ -118,6 +228,7 @@ def escape_json_value(raw_value):
     # See http://stackoverflow.com/questions/983451/where-can-i-find-a-list-of-escape-characters-required-for-my-json-ajax-return-ty
 
     return escaped
+
 
 def convert_to_valid_json(invalid_json):
 
@@ -185,6 +296,7 @@ class TestStripPasswordsFromUrl(unittest.TestCase):
         url_no_password = strip_password_from_url(url_with_password)
         assert "foobar" not in url_no_password
         assert "bucket-1" in url_no_password
+
 
 class TestRemovePasswords(unittest.TestCase):
 
@@ -312,7 +424,37 @@ class TestRemovePasswords(unittest.TestCase):
         assert "foobar" not in with_passwords_removed
 
 
+class TestTagUserData(unittest.TestCase):
 
+    def test_basic(self):
+        json_with_userdata = """
+        {
+          "databases": {
+            "db": {
+              "server": "http://bucket4:foobar@localhost:8091",
+              "bucket":"bucket-1",
+              "username":"bucket-user",
+              "password":"foobar",
+              "users": {
+                "FOO": {
+                  "password": "foobar",
+                  "disabled": false,
+                  "admin_channels": ["uber_secret_channel"]
+                },
+                "bar": { "password": "baz" }
+              }
+            },
+            "db2": { "server": "http://bucket-1:foobar@localhost:8091" }
+          }
+        }
+        """
+        tagged = tag_userdata_in_server_config(json_with_userdata)
+        assert "<ud>uber_secret_channel</ud>" in tagged
+        assert "<ud>foo</ud>" in tagged # everything is lowercased
+        assert "<ud>bucket-user</ud>" in tagged
+
+        assert "<ud>baz</ud>" not in tagged # passwords shouldn't be tagged, they get removed
+        assert "<ud>bucket-1</ud>" not in tagged # bucket name is acutally metadata
 
 
 class TestConvertToValidJSON(unittest.TestCase):
@@ -428,5 +570,5 @@ class TestConvertToValidJSON(unittest.TestCase):
         assert got_exception == False, "Failed to convert to valid JSON"
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     unittest.main()
