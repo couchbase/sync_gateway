@@ -453,6 +453,9 @@ class TestTagUserData(unittest.TestCase):
         assert "<ud>foo</ud>" in tagged # everything is lowercased
         assert "<ud>bucket-user</ud>" in tagged
 
+        assert "<ud>baz</ud>" not in tagged # passwords shouldn't be tagged, they get removed
+        assert "<ud>bucket-1</ud>" not in tagged # bucket name is acutally metadata
+
 
 class TestConvertToValidJSON(unittest.TestCase):
 
