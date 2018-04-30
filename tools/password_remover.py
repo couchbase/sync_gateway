@@ -96,27 +96,31 @@ def tag_userdata_in_db_json(db):
 
         if "users" in db:
             users = db["users"]
-            for user in users:
-                if "name" in users[user]:
-                    users[user]["name"] = UD(users[user]["name"])
-                if "admin_channels" in users[user]:
-                    admin_channels = users[user]["admin_channels"]
+            for username in users:
+                user = users[username]
+                if "name" in user:
+                    user["name"] = UD(user["name"])
+                if "admin_channels" in user:
+                    admin_channels = user["admin_channels"]
                     for i, _ in enumerate(admin_channels):
                         admin_channels[i] = UD(admin_channels[i])
-                if "admin_roles" in users[user]:
-                    admin_roles = users[user]["admin_roles"]
+                if "admin_roles" in user:
+                    admin_roles = user["admin_roles"]
                     for i, _ in enumerate(admin_roles):
                         admin_roles[i] = UD(admin_roles[i])
+            # Tag dict keys. Can't be done in the above loop.
             for i, _ in users.items():
                 users[UD(i)] = users.pop(i)
 
         if "roles" in db:
             roles = db["roles"]
-            for role in roles:
-                if "admin_channels" in roles[role]:
-                    admin_channels = roles[role]["admin_channels"]
+            for rolename in roles:
+                role = roles[rolename]
+                if "admin_channels" in role:
+                    admin_channels = role["admin_channels"]
                     for i, _ in enumerate(admin_channels):
                         admin_channels[i] = UD(admin_channels[i])
+            # Tag dict keys. Can't be done in the above loop.
             for i, _ in roles.items():
                 roles[UD(i)] = roles.pop(i)
 
