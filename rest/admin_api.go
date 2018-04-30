@@ -497,10 +497,10 @@ func (h *handler) handleSGCollect() error {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to get find SG executable: %v", err)
 	}
 
-	timestamp := time.Now().Format(base.ISO8601Format)
-	sgCollectArgs = append(sgCollectArgs, "--sync-gateway-executable", sgPath, timestamp+".zip")
+	filename := time.Now().Format(base.ISO8601Format) + ".zip"
+	sgCollectArgs = append(sgCollectArgs, "--sync-gateway-executable", sgPath, filename)
 
-	base.Debugf(base.KeyHTTP, "Calling sgcollect_info with arguments: %v", sgCollectArgs)
+	base.Debugf(base.KeyHTTP, "#%03d: Calling sgcollect_info with arguments: %v", h.serialNumber, sgCollectArgs)
 
 	cmd := exec.CommandContext(h.rq.Context(), sgcollectBinary, sgCollectArgs...)
 
@@ -514,10 +514,11 @@ func (h *handler) handleSGCollect() error {
 	if err = cmd.Run(); err != nil {
 		// Already written headers from streamCmdOutput,
 		// can't write an error status back to the response.
-		base.Warnf(base.KeyAll, "sgcollect_info failed: %v", err)
+		base.Warnf(base.KeyAll, "#%03d: sgcollect_info failed: %v", h.serialNumber, err)
 		return nil
 	}
 
+	base.Debugf(base.KeyHTTP, "#%03d: sgcollect_info finished: %s", h.serialNumber, filename)
 	return nil
 }
 
