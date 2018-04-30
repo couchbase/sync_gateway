@@ -43,9 +43,8 @@ def tag_userdata_in_server_config(json_text, log_json_parsing_exceptions=True):
         return formatted_json_string
 
     except Exception as e:
-        msg = "Exception trying to tag config user data in {0}.  Exception: {1}".format(json_text, e)
         if log_json_parsing_exceptions:
-            print(msg)
+            print("Exception trying to tag config user data in {0}.  Exception: {1}".format(json_text, e))
             traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to tag config user data.  See logs for details"}'
 
@@ -80,9 +79,8 @@ def tag_userdata_in_db_config(json_text, log_json_parsing_exceptions=True):
         return formatted_json_string
 
     except Exception as e:
-        msg = "Exception trying to tag db config user data in {0}.  Exception: {1}".format(json_text, e)
         if log_json_parsing_exceptions:
-            print(msg)
+            print("Exception trying to tag db config user data in {0}.  Exception: {1}".format(json_text, e))
             traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to tag db config user data.  See logs for details"}'
 
@@ -172,9 +170,8 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
         return formatted_json_string
 
     except Exception as e:
-        msg = "Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e)
         if log_json_parsing_exceptions:
-            print(msg)
+            print("Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e))
             traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to remove passwords.  See logs for details"}'
 
