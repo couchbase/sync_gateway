@@ -109,8 +109,8 @@ def tag_userdata_in_db_json(db):
                     admin_roles = users[user]["admin_roles"]
                     for i, _ in enumerate(admin_roles):
                         admin_roles[i] = UD(admin_roles[i])
-            for k, _ in users.items():
-                users[UD(k)] = users.pop(k)
+            for i, _ in users.items():
+                users[UD(i)] = users.pop(i)
 
         if "roles" in db:
             roles = db["roles"]
@@ -119,8 +119,8 @@ def tag_userdata_in_db_json(db):
                     admin_channels = roles[role]["admin_channels"]
                     for i, _ in enumerate(admin_channels):
                         admin_channels[i] = UD(admin_channels[i])
-            for k, _ in roles.items():
-                roles[UD(k)] = roles.pop(k)
+            for i, _ in roles.items():
+                roles[UD(i)] = roles.pop(i)
 
 
 def UD(value):
