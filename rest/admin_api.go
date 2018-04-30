@@ -15,12 +15,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -400,116 +396,49 @@ func (h *handler) handleSetLogging() error {
 	return nil
 }
 
-// sgcollectRunning is used to reject multiple requests to run sgcollect_info.
-var sgcollectRunning struct {
-	running bool
-	lock    sync.Mutex
-}
-
 func (h *handler) handleSGCollect() error {
-	sgcollectRunning.lock.Lock()
-	if sgcollectRunning.running {
-		sgcollectRunning.lock.Unlock()
-		return base.HTTPErrorf(http.StatusTooManyRequests, "sgcollect_info already running!")
+	if sgcollectInstance.Running() {
+		return base.HTTPErrorf(http.StatusTooManyRequests, "sgcollect_info is already running")
 	}
-	sgcollectRunning.running = true
-	sgcollectRunning.lock.Unlock()
-	defer func() {
-		sgcollectRunning.lock.Lock()
-		sgcollectRunning.running = false
-		sgcollectRunning.lock.Unlock()
-	}()
+	sgcollectInstance.Set(true)
+	defer sgcollectInstance.Set(false)
 
 	body, err := h.readBody()
 	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to read request body: %v", err)
+		return err
 	}
 
-	var sgCollectParams struct {
-		RedactLevel     string `json:"redact_level,omitempty"`
-		RedactSalt      string `json:"redact_salt,omitempty"`
-		OutputDirectory string `json:"output_dir,omitempty"`
-		Upload          bool   `json:"upload,omitempty"`
-		UploadProxy     string `json:"upload_proxy,omitempty"`
-		UploadHost      string `json:"upload_host,omitempty"`
-		Customer        string `json:"customer,omitempty"`
-		Ticket          string `json:"ticket,omitempty"`
-	}
-	if err = json.Unmarshal(body, &sgCollectParams); err != nil {
+	var params sgCollectConfig
+	if err = json.Unmarshal(body, &params); err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to parse request body: %v", err)
 	}
 
-	var sgCollectArgs []string
-	if sgCollectParams.RedactLevel != "" {
-		sgCollectArgs = append(sgCollectArgs, "--log-redaction-level", sgCollectParams.RedactLevel)
-	}
-	if sgCollectParams.RedactSalt != "" {
-		sgCollectArgs = append(sgCollectArgs, "--log-redaction-salt", sgCollectParams.RedactSalt)
-	}
-	if sgCollectParams.OutputDirectory != "" {
-		fileInfo, statErr := os.Stat(sgCollectParams.OutputDirectory)
-		if statErr != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid output directory specified: %v", statErr)
-		} else if !fileInfo.IsDir() {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid output directory specified: not a directory")
-		}
-		sgCollectArgs = append(sgCollectArgs, "-r", sgCollectParams.OutputDirectory)
-	}
-	if sgCollectParams.Upload {
-		if sgCollectParams.UploadHost == "" {
-			return base.HTTPErrorf(http.StatusBadRequest, "Upload host must be set if upload is true.")
-		}
-		sgCollectArgs = append(sgCollectArgs, "--upload-host", sgCollectParams.UploadHost)
-	}
-	if sgCollectParams.UploadProxy != "" {
-		base.Warnf(base.KeyAll, "Unsupported upload_proxy option for sgcollect_info")
-	}
-	if sgCollectParams.Customer != "" {
-		sgCollectArgs = append(sgCollectArgs, "--customer", sgCollectParams.Customer)
-	}
-	if sgCollectParams.Ticket != "" {
-		sgCollectArgs = append(sgCollectArgs, "--ticket", sgCollectParams.Ticket)
-	}
-
-	sgPath, err := os.Executable()
+	args, err := params.Args()
 	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to get path of SG executable: %v", err)
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid output directory specified: %v", err)
 	}
-	sgPath, err = filepath.Abs(sgPath)
+
+	sgPath, sgCollectPath, err := sgCollectPaths()
 	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to get absolute path of SG executable: %v", err)
-	}
-
-	sgPathDir, err := filepath.Abs(filepath.Dir(sgPath))
-	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to get directory of SG executable: %v", err)
-	}
-
-	sgcollectBinary := "tools/sgcollect_info"
-	if runtime.GOOS == "windows" {
-		sgcollectBinary += ".exe"
-	}
-
-	sgcollectBinary = filepath.Join(sgPathDir, sgcollectBinary)
-
-	_, err = os.Stat(sgcollectBinary)
-	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to get find SG executable: %v", err)
+		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to get paths for sgcollect_info: %v", err)
 	}
 
 	filename := time.Now().Format(base.ISO8601Format) + ".zip"
-	sgCollectArgs = append(sgCollectArgs, "--sync-gateway-executable", sgPath, filename)
+	args = append(args, "--sync-gateway-executable", sgPath, filename)
 
-	base.Debugf(base.KeyHTTP, "#%03d: Calling sgcollect_info with arguments: %v", h.serialNumber, sgCollectArgs)
+	base.Debugf(base.KeyHTTP, "#%03d: Calling sgcollect_info with arguments: %v", h.serialNumber, base.UD(args))
 
-	cmd := exec.CommandContext(h.rq.Context(), sgcollectBinary, sgCollectArgs...)
+	cmd := exec.CommandContext(h.rq.Context(), sgCollectPath, args...)
 
+	h.setHeader("Content-Type", "text/plain charset=utf-8")
+	h.response.WriteHeader(http.StatusAccepted)
+
+	// Stream stdout/stderr to the HTTP response body.
 	pipeReader, pipeWriter := io.Pipe()
 	defer pipeWriter.Close()
 	cmd.Stdout = pipeWriter
 	cmd.Stderr = pipeWriter
-	h.response.WriteHeader(http.StatusAccepted)
-	go streamCmdOutput(h.response, pipeReader)
+	go streamPipe(h.response, pipeReader)
 
 	if err = cmd.Run(); err != nil {
 		// Already written headers from streamCmdOutput,
@@ -522,8 +451,8 @@ func (h *handler) handleSGCollect() error {
 	return nil
 }
 
-// streamCmdOutput streams output from pipeReader into a the response.
-func streamCmdOutput(res http.ResponseWriter, pipeReader *io.PipeReader) {
+// streamPipe streams output from pipeReader into the response.
+func streamPipe(resp http.ResponseWriter, pipeReader *io.PipeReader) {
 	buffer := make([]byte, 1024) // 1kB buffer
 	for {
 		n, err := pipeReader.Read(buffer)
@@ -533,11 +462,11 @@ func streamCmdOutput(res http.ResponseWriter, pipeReader *io.PipeReader) {
 		}
 
 		data := buffer[0:n]
-		res.Write(data)
-		if f, ok := res.(http.Flusher); ok {
+		resp.Write(data)
+		if f, ok := resp.(http.Flusher); ok {
 			f.Flush()
 		}
-		//reset buffer
+		// reset buffer
 		for i := 0; i < n; i++ {
 			buffer[i] = 0
 		}
