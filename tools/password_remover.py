@@ -424,6 +424,36 @@ class TestRemovePasswords(unittest.TestCase):
         assert "foobar" not in with_passwords_removed
 
 
+class TestTagUserData(unittest.TestCase):
+
+    def test_basic(self):
+        json_with_userdata = """
+        {
+          "databases": {
+            "db": {
+              "server": "http://bucket4:foobar@localhost:8091",
+              "bucket":"bucket-1",
+              "username":"bucket-user",
+              "password":"foobar",
+              "users": {
+                "FOO": {
+                  "password": "foobar",
+                  "disabled": false,
+                  "admin_channels": ["uber_secret_channel"]
+                },
+                "bar": { "password": "baz" }
+              }
+            },
+            "db2": { "server": "http://bucket-1:foobar@localhost:8091" }
+          }
+        }
+        """
+        tagged = tag_userdata_in_server_config(json_with_userdata)
+        assert "<ud>uber_secret_channel</ud>" in tagged
+        assert "<ud>foo</ud>" in tagged # everything is lowercased
+        assert "<ud>bucket-user</ud>" in tagged
+
+
 class TestConvertToValidJSON(unittest.TestCase):
 
     def basic_test(self):
