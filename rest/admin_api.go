@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -425,8 +426,11 @@ func (h *handler) handleSGCollect() error {
 	}
 	defer sgcollectInstance.SetRunning(false)
 
+	// propagate the request context for cancellation
+	ctx := h.rq.Context()
+
 	base.Debugf(base.KeyHTTP, "#%03d: Calling sgcollect_info with arguments: %v", h.serialNumber, base.UD(args))
-	cmd := exec.CommandContext(h.rq.Context(), sgCollectPath, args...)
+	cmd := exec.CommandContext(ctx, sgCollectPath, args...)
 
 	h.setHeader("Content-Type", "text/plain charset=utf-8")
 	h.response.WriteHeader(http.StatusAccepted)
@@ -436,7 +440,7 @@ func (h *handler) handleSGCollect() error {
 	defer pipeWriter.Close()
 	cmd.Stdout = pipeWriter
 	cmd.Stderr = pipeWriter
-	go streamPipe(h.response, pipeReader)
+	go streamPipe(ctx, h.response, pipeReader)
 
 	if err = cmd.Run(); err != nil {
 		// Already written headers from streamCmdOutput,
@@ -450,9 +454,16 @@ func (h *handler) handleSGCollect() error {
 }
 
 // streamPipe streams output from pipeReader into the response.
-func streamPipe(resp http.ResponseWriter, pipeReader *io.PipeReader) {
+func streamPipe(ctx context.Context, resp http.ResponseWriter, pipeReader *io.PipeReader) {
 	buffer := make([]byte, 1024) // 1kB buffer
 	for {
+		// Handle cancellation
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		n, err := pipeReader.Read(buffer)
 		if err != nil {
 			if err != io.EOF {
