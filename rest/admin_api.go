@@ -400,8 +400,8 @@ func (h *handler) handleSGCollect() error {
 	if sgcollectInstance.Running() {
 		return base.HTTPErrorf(http.StatusTooManyRequests, "sgcollect_info is already running")
 	}
-	sgcollectInstance.Set(true)
-	defer sgcollectInstance.Set(false)
+	sgcollectInstance.SetRunning(true)
+	defer sgcollectInstance.SetRunning(false)
 
 	body, err := h.readBody()
 	if err != nil {
@@ -457,6 +457,9 @@ func streamPipe(resp http.ResponseWriter, pipeReader *io.PipeReader) {
 	for {
 		n, err := pipeReader.Read(buffer)
 		if err != nil {
+			if err != io.EOF {
+				base.Errorf(base.KeyAll, "Unexpected error from pipeReader: %v", err)
+			}
 			pipeReader.Close()
 			break
 		}

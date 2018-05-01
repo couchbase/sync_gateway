@@ -73,7 +73,7 @@ func (i *sgCollectInstance) Running() bool {
 	return i.running
 }
 
-func (i *sgCollectInstance) Set(b bool) {
+func (i *sgCollectInstance) SetRunning(b bool) {
 	i.lock.Lock()
 	defer i.lock.Unlock()
 	i.running = b
@@ -91,7 +91,7 @@ func sgCollectPaths() (sgPath, sgCollectPath string, err error) {
 		return "", "", err
 	}
 
-	sgCollectPath = "tools/sgcollect_info"
+	sgCollectPath = filepath.Join("tools", "sgcollect_info")
 	if runtime.GOOS == "windows" {
 		sgCollectPath += ".exe"
 	}
