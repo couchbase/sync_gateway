@@ -397,12 +397,6 @@ func (h *handler) handleSetLogging() error {
 }
 
 func (h *handler) handleSGCollect() error {
-	if sgcollectInstance.Running() {
-		return base.HTTPErrorf(http.StatusTooManyRequests, "sgcollect_info is already running")
-	}
-	sgcollectInstance.SetRunning(true)
-	defer sgcollectInstance.SetRunning(false)
-
 	body, err := h.readBody()
 	if err != nil {
 		return err
@@ -426,8 +420,12 @@ func (h *handler) handleSGCollect() error {
 	filename := time.Now().Format(base.ISO8601Format) + ".zip"
 	args = append(args, "--sync-gateway-executable", sgPath, filename)
 
-	base.Debugf(base.KeyHTTP, "#%03d: Calling sgcollect_info with arguments: %v", h.serialNumber, base.UD(args))
+	if err = sgcollectInstance.SetRunning(true); err != nil {
+		return base.HTTPErrorf(http.StatusTooManyRequests, "%v", err)
+	}
+	defer sgcollectInstance.SetRunning(false)
 
+	base.Debugf(base.KeyHTTP, "#%03d: Calling sgcollect_info with arguments: %v", h.serialNumber, base.UD(args))
 	cmd := exec.CommandContext(h.rq.Context(), sgCollectPath, args...)
 
 	h.setHeader("Content-Type", "text/plain charset=utf-8")

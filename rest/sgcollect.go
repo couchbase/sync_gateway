@@ -67,16 +67,15 @@ type sgCollectInstance struct {
 	lock    sync.Mutex
 }
 
-func (i *sgCollectInstance) Running() bool {
+// SetRunning will mark the sgCollectInstance as running, if b is true, and is not already running.
+func (i *sgCollectInstance) SetRunning(b bool) error {
 	i.lock.Lock()
 	defer i.lock.Unlock()
-	return i.running
-}
-
-func (i *sgCollectInstance) SetRunning(b bool) {
-	i.lock.Lock()
-	defer i.lock.Unlock()
+	if i.running && b {
+		return errors.New("sgcollect_info already running")
+	}
 	i.running = b
+	return nil
 }
 
 // sgCollectPaths returns the absolute paths to Sync Gateway and to sgcollect_info.
