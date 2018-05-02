@@ -642,7 +642,14 @@ def main():
     if sg_url is None:
         sg_url = "http://127.0.0.1:4985"
     print "Using Sync Gateway URL: {0}".format(sg_url)
-    
+
+    # Exit early if SG is not running
+    try:
+        urllib2.urlopen(sg_url)
+    except urllib2.URLError:
+        print("Error: Sync Gateway must be running in order to use sgcollect_info")
+        sys.exit(1)
+
     # Build path to zip directory, make sure it exists
     zip_filename = args[0]
     if zip_filename[-4:] != '.zip':
