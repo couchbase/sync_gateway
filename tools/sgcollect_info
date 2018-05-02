@@ -643,9 +643,9 @@ def main():
         sg_url = "http://127.0.0.1:4985"
     print "Using Sync Gateway URL: {0}".format(sg_url)
 
-    # Check SG is running before continuing
+    # Exit early if SG is not running
     try:
-        response = urllib2.urlopen(sg_url)
+        urllib2.urlopen(sg_url)
     except urllib2.URLError:
         print("Error: Sync Gateway must be running in order to use sgcollect_info")
         sys.exit(1)
