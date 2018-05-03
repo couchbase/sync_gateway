@@ -173,6 +173,9 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
         "raw",
     ]
 
+    if sg_binary_path is None:
+        sg_binary_path = ""
+
     #if sg_binary_path does not point to a file, generate a new path by starting with the location of sgcollect_info script
     if not os.path.isfile(sg_binary_path):
         # the filename of the sg_binary without any path information, eg, "sync_gateway"
@@ -375,7 +378,7 @@ def make_collect_logs_tasks(zip_dir, sg_url):
             for log_file_item_name in glob.iglob(rotated_logs_pattern):
                 log_file_item_path = os.path.join(log_file_path, log_file_item_name)
                 print('Capturing compressed rotated log file {0}'.format(log_file_item_path))
-                task = add_gzip_file_task(sourcefile_path=log_file_item_path, log_file_name="{}{}".format(name, ext))
+                task = add_gzip_file_task(sourcefile_path=log_file_item_path, log_file_name="{0}{1}".format(name, ext))
                 sg_tasks.append(task)
 
     return sg_tasks
@@ -385,10 +388,15 @@ def get_db_list(sg_url):
 
     # build url to _all_dbs
     all_dbs_url = "{0}/_all_dbs".format(sg_url)
-    
+
+    data = []
+
     # get content and parse into json
-    response = urllib2.urlopen(all_dbs_url)
-    data = json.load(response)
+    try:
+        response = urllib2.urlopen(all_dbs_url)
+        data = json.load(response)
+    except urllib2.URLError as e:
+        print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
 
     # return list of dbs
     return data
@@ -502,12 +510,17 @@ def get_config_path_from_cmdline(cmdline_args):
 
 def get_paths_from_expvars(sg_url):
 
+    data = None
     sg_binary_path = None
     sg_config_path = None
     
     # get content and parse into json
-    response = urllib2.urlopen(expvar_url(sg_url))
-    data = json.load(response)
+    try:
+        response = urllib2.urlopen(expvar_url(sg_url))
+        data = json.load(response)
+    except urllib2.URLError as e:
+        print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
+
     if data is not None and data.has_key("cmdline"):
         cmdline_args = data["cmdline"]
         if len(cmdline_args) == 0:
@@ -642,13 +655,6 @@ def main():
     if sg_url is None:
         sg_url = "http://127.0.0.1:4985"
     print "Using Sync Gateway URL: {0}".format(sg_url)
-
-    # Exit early if SG is not running
-    try:
-        urllib2.urlopen(sg_url)
-    except urllib2.URLError:
-        print("Error: Sync Gateway must be running in order to use sgcollect_info")
-        sys.exit(1)
 
     # Build path to zip directory, make sure it exists
     zip_filename = args[0]
