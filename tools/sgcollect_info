@@ -375,7 +375,7 @@ def make_collect_logs_tasks(zip_dir, sg_url):
             for log_file_item_name in glob.iglob(rotated_logs_pattern):
                 log_file_item_path = os.path.join(log_file_path, log_file_item_name)
                 print('Capturing compressed rotated log file {0}'.format(log_file_item_path))
-                task = add_gzip_file_task(sourcefile_path=log_file_item_path, log_file_name="{}{}".format(name, ext))
+                task = add_gzip_file_task(sourcefile_path=log_file_item_path, log_file_name="{0}{1}".format(name, ext))
                 sg_tasks.append(task)
 
     return sg_tasks

@@ -129,7 +129,7 @@ def UD(value):
     """
     Tags the given value with User Data tags.
     """
-    return "<ud>{}</ud>".format(value)
+    return "<ud>{0}</ud>".format(value)
 
 
 def remove_passwords_from_config(config_fragment):
