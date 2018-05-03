@@ -3,6 +3,7 @@ package base
 import (
 	"os"
 	"strings"
+	"time"
 )
 
 const (
@@ -59,6 +60,8 @@ const (
 	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) //90 days in seconds
 
 	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
+
+	DefaultWaitForSequenceTesting = time.Second * 30  // TODO: reset this back to original (2 s) -- or leave at 30?
 
 )
 
