@@ -77,7 +77,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	if unreadPollCount > kMaxUnreadPollCount {
 		// We've sent a notify, but had (kMaxUnreadPollCount) polls without anyone calling getChanges.
 		// Assume nobody is listening for updates - cancel polling for this channel
-		base.Debugf(base.KeyDIndex, "Cancelling polling for channel %s", base.UD(k.channelName))
+		base.Debugf(base.KeyAccel, "Cancelling polling for channel %s", base.UD(k.channelName))
 		return false, true
 	}
 
@@ -113,7 +113,7 @@ func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChann
 	}
 
 	if hasPostStableChanges {
-		base.Debugf(base.KeyDIndex, "Channel %s has changes later than the stable sequence - will be updated in next polling cycle.", base.UD(k.channelName))
+		base.Debugf(base.KeyAccel, "Channel %s has changes later than the stable sequence - will be updated in next polling cycle.", base.UD(k.channelName))
 	}
 	k.lastPolledPostStable = hasPostStableChanges
 
@@ -259,7 +259,7 @@ func (k *KvChannelIndex) loadChannelClock() (base.SequenceClock, error) {
 	key := GetChannelClockKey(k.channelName)
 	value, _, err := k.indexBucket.GetRaw(key)
 	if err != nil {
-		base.Debugf(base.KeyDIndex, "No existing channel clock for key %s:%v.  Using empty channel clock", base.UD(key), err)
+		base.Debugf(base.KeyAccel, "No existing channel clock for key %s:%v.  Using empty channel clock", base.UD(key), err)
 		return chanClock, err
 	}
 	err = chanClock.Unmarshal(value)
@@ -281,7 +281,7 @@ func (k *KvChannelIndex) loadClock() {
 	}
 	data, cas, err := k.indexBucket.GetRaw(GetChannelClockKey(k.channelName))
 	if err != nil {
-		base.Debugf(base.KeyDIndex, "Unable to find existing channel clock for channel %s - treating as new", base.UD(k.channelName))
+		base.Debugf(base.KeyAccel, "Unable to find existing channel clock for channel %s - treating as new", base.UD(k.channelName))
 	}
 	k.clock.Unmarshal(data)
 	k.clock.SetCas(cas)
