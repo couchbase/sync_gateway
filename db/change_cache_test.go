@@ -506,6 +506,7 @@ func TestLowSequenceHandling(t *testing.T) {
 		"Cache":    true,
 		"Changes":  true,
 		"Changes+": true,
+		base.KeyQuery.String(): true,
 	}
 
 	base.UpdateLogKeys(logKeys, true)
@@ -574,6 +575,15 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
+	var logKeys = map[string]bool{
+		"Cache":    true,
+		"Changes":  true,
+		"Changes+": true,
+		base.KeyQuery.String(): true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
@@ -628,9 +638,10 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	var logKeys = map[string]bool{
 		"Sequence": true,
+		base.KeyQuery.String(): true,
 	}
-
 	base.UpdateLogKeys(logKeys, true)
+	
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
