@@ -301,7 +301,6 @@ func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration
 
 	startTime := time.Now()
 
-	var i int
 	for {
 
 		if time.Since(startTime) >= maxWaitTime {
@@ -312,7 +311,7 @@ func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration
 		nextSequence := c.nextSequence
 		c.lock.RUnlock()
 		if nextSequence >= sequence+1 {
-			base.Infof(base.KeyAll, "waitForSequence(%d) took %d ms", sequence, i*100)
+			base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -321,7 +320,6 @@ func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration
 
 // FOR TESTS ONLY: Blocks until the given sequence has been received.
 func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration) {
-	var i int
 
 	startTime := time.Now()
 
@@ -345,7 +343,7 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime ti
 			}
 			c.skippedSeqLock.RUnlock()
 			if !foundInMissing {
-				base.Infof(base.KeyAll, "waitForSequence(%d) took %d ms", sequence, i*100)
+				base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
 				return
 			}
 		}

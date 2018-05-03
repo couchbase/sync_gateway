@@ -8,6 +8,7 @@ import (
 
 	"github.com/couchbase/gocb"
 	pkgerrors "github.com/pkg/errors"
+	"runtime/debug"
 )
 
 const BucketQueryToken = "$_bucket"   // Token used for bucket name replacement in query statements
@@ -70,8 +71,12 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 
 		// Indexer error - wait then retry
 		err = queryErr
-		Warnf(KeyAll, "Indexer error during query - retry %d/%d after %v.", i, MaxQueryRetries, waitTime)
+		Warnf(KeyAll, "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
 		time.Sleep(waitTime)
+
+		// temp
+		debug.PrintStack()
+
 		waitTime = time.Duration(waitTime * 2)
 	}
 

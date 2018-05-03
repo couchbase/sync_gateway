@@ -641,7 +641,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 		base.KeyQuery.String(): true,
 	}
 	base.UpdateLogKeys(logKeys, true)
-	
+
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -679,7 +679,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Validate the initial sequences arrive as expected
-	err = appendFromFeed(&changes, feed, 3)
+	err = appendFromFeed(&changes, feed, 3, base.DefaultWaitForSequenceTesting)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 3)
 	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
@@ -699,8 +699,8 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	db.changeCache.waitForSequence(9, base.DefaultWaitForSequenceTesting)
 
 	time.Sleep(500 * time.Millisecond)
-	err = appendFromFeed(&changes, feed, 4)
-	assert.True(t, err == nil)
+	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequenceTesting)
+	assertNoError(t, err, "Expected more changes to be sent on feed, but never received")
 	assert.Equals(t, len(changes), 7)
 	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"}))
 	// Notes:
@@ -763,7 +763,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	// Array to read changes from feed to support assertions
 	var changes = make([]*ChangeEntry, 0, 50)
 
-	err = appendFromFeed(&changes, feed, 4)
+	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequenceTesting)
 
 	// Validate the initial sequences arrive as expected
 	assert.True(t, err == nil)
@@ -779,7 +779,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 
 	db.changeCache.waitForSequenceWithMissing(4, base.DefaultWaitForSequenceTesting)
 
-	err = appendFromFeed(&changes, feed, 2)
+	err = appendFromFeed(&changes, feed, 2, base.DefaultWaitForSequenceTesting)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 6)
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4}))
@@ -788,7 +788,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "NBC"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
 	db.changeCache.waitForSequence(9, base.DefaultWaitForSequenceTesting)
-	appendFromFeed(&changes, feed, 5)
+	appendFromFeed(&changes, feed, 5, base.DefaultWaitForSequenceTesting)
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 
 }
@@ -1150,7 +1150,7 @@ func verifySequencesInFeed(feed <-chan (*ChangeEntry), sequences []uint64) ([]*C
 	var changes = make([]*ChangeEntry, 0, 50)
 	for {
 		// Attempt to read at one entry from feed
-		err := appendFromFeed(&changes, feed, 1)
+		err := appendFromFeed(&changes, feed, 1, base.DefaultWaitForSequenceTesting)
 		if err != nil {
 			return nil, err
 		}
@@ -1161,9 +1161,8 @@ func verifySequencesInFeed(feed <-chan (*ChangeEntry), sequences []uint64) ([]*C
 	}
 }
 
-func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntries int) error {
+func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntries int, maxWaitTime time.Duration) error {
 
-	log.Println("Feed retrieving ", feed, numEntries)
 	count := 0
 	timeout := false
 	for !timeout {
@@ -1171,27 +1170,22 @@ func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntr
 		case entry, ok := <-feed:
 			if ok {
 				if entry != nil {
-					log.Println("Changes entry:", entry)
 					*changes = append(*changes, entry)
 					count++
 				}
 			} else {
-				log.Println("Non-entry error")
 				return errors.New("Non-entry returned on feed.")
 			}
 			if count == numEntries {
-				log.Println("returned numEntries - returning")
 				return nil
 			}
-		case <-time.After(time.Second * 10):
+		case <-time.After(maxWaitTime):
 			timeout = true
 		}
 	}
 	if count != numEntries {
-		log.Printf("Miscount, count (%d) != numEntries (%d)", count, numEntries)
-		return errors.New("Unable to return the requested number of entries")
+		return fmt.Errorf("appendFromFeed expected %d entries but only received %d.  Timeout: %v", numEntries, count, timeout)
 	}
-	log.Println("standard completion")
 	return nil
 
 }
