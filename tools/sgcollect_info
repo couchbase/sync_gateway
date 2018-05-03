@@ -3,24 +3,16 @@
 import os
 import sys
 import tempfile
-import time
 import subprocess
-import string
 import re
 import platform
 import glob
-import socket
-import threading
 import optparse
-import atexit
-import signal
-import urllib
-import urllib2 
+import urllib2
 import shutil
-import urlparse
 import json
-import tempfile
 import uuid
+
 from sys import platform as _platform
 
 from tasks import CbcollectInfoOptions
@@ -28,15 +20,14 @@ from tasks import dump_utilities
 from tasks import generate_upload_url
 from tasks import TaskRunner
 from tasks import make_os_tasks
-from tasks import get_server_guts
 from tasks import log
-from tasks import read_guts
 from tasks import AllOsTask
 from tasks import make_curl_task
 from tasks import flatten
 from tasks import do_upload_and_exit
 from tasks import add_file_task
 from tasks import add_gzip_file_task
+from tasks import setup_stdin_watcher
 
 import password_remover
 
@@ -61,8 +52,8 @@ else:
 # See https://github.com/couchbase/sync_gateway/issues/1640
 #
 # Python version compatibility:
-# 
-# Until the libc / centos6 issues are resolved, this should remain python 2.6 compatible.  
+#
+# Until the libc / centos6 issues are resolved, this should remain python 2.6 compatible.
 # One common incompatibility is the formatting syntax, as discussed here: http://bit.ly/2rIH8wg
 USAGE = """usage: %prog [options] output_file.zip
 
@@ -71,6 +62,7 @@ USAGE = """usage: %prog [options] output_file.zip
     %prog -v output_file.zip"""
 
 mydir = os.path.dirname(sys.argv[0])
+
 
 def create_option_parser():
     parser = optparse.OptionParser(usage=USAGE, option_class=CbcollectInfoOptions)
@@ -115,6 +107,7 @@ def create_option_parser():
     parser.add_option("--sync-gateway-executable", dest="sync_gateway_executable",
                       help="path to Sync Gateway executable.  By default will try to discover via expvars")
     return parser
+
 
 def expvar_url(sg_url):
 
@@ -173,7 +166,7 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
         "raw",
     ]
 
-    #if sg_binary_path does not point to a file, generate a new path by starting with the location of sgcollect_info script
+    # if sg_binary_path does not point to a file, generate a new path by starting with the location of sgcollect_info script
     if not os.path.isfile(sg_binary_path):
         # the filename of the sg_binary without any path information, eg, "sync_gateway"
         sg_binary_filename = os.path.basename(sg_binary_path)
@@ -212,11 +205,13 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
 
     return pprof_tasks
 
+
 def to_lower_case_keys_dict(original_dict):
     result = {}
-    for k,v in original_dict.items():
-        result[k.lower()] = v 
+    for k, v in original_dict.items():
+        result[k.lower()] = v
     return result
+
 
 def extract_element_from_config(element, config):
     """ The config returned from /_config may not be fully formed json
@@ -231,12 +226,13 @@ def extract_element_from_config(element, config):
         # convert dictionary keys to lower case
         original_dict = json.loads(config)
         lower_case_keys_dict = to_lower_case_keys_dict(original_dict)
-        
-        #lookup key after converting element name to lower case
+
+        # lookup key after converting element name to lower case
         return lower_case_keys_dict[element.lower()]
     except (ValueError, KeyError):
         # If we can't deserialise the json or find the key then return nothing
         return
+
 
 def extract_element_from_default_logging_config(element, config):
     # extracts a property from nested logging object
@@ -253,6 +249,7 @@ def extract_element_from_default_logging_config(element, config):
             # If we can't deserialise the json or find the key then return nothing
             return
 
+
 def extract_element_from_logging_config(element, config):
     # extracts a property from nested logging object
         try:
@@ -265,6 +262,7 @@ def extract_element_from_logging_config(element, config):
         except (ValueError, KeyError):
             # If we can't deserialise the json or find the key then return nothing
             return
+
 
 def make_collect_logs_tasks(zip_dir, sg_url):
 
@@ -322,7 +320,6 @@ def make_collect_logs_tasks(zip_dir, sg_url):
             # Track which log file paths have been added so far
             sg_log_file_paths[sg_log_file_path] = sg_log_file_path
 
-
     # Find log file path from logging.["default"] style config
     guessed_logging_path = extract_element_from_default_logging_config('LogFilePath', config_str)
     if guessed_logging_path:
@@ -339,11 +336,10 @@ def make_collect_logs_tasks(zip_dir, sg_url):
         )
 
         for log_file_item_name in glob.iglob(rotated_logs_pattern):
-            log_file_item_path = os.path.join(log_file_parent_dir,log_file_item_name)
+            log_file_item_path = os.path.join(log_file_parent_dir, log_file_item_name)
             print('Capturing rotated log file {0}'.format(log_file_item_path))
             task = add_file_task(sourcefile_path=log_file_item_path)
             sg_tasks.append(task)
-
 
     # Find log file path from SGW 2.1 style logging config
     guessed_log_file_path = extract_element_from_logging_config('log_file_path', config_str)
@@ -385,7 +381,7 @@ def get_db_list(sg_url):
 
     # build url to _all_dbs
     all_dbs_url = "{0}/_all_dbs".format(sg_url)
-    
+
     # get content and parse into json
     response = urllib2.urlopen(all_dbs_url)
     data = json.load(response)
@@ -407,7 +403,7 @@ def make_status_tasks(sg_url, should_redact):
                           url=sg_url,
                           log_file="server_status.log")
     tasks.append(task)
-        
+
     # Get list of dbs from _all_dbs
     # For each db, get db config
     dbs = get_db_list(sg_url)
@@ -421,7 +417,7 @@ def make_status_tasks(sg_url, should_redact):
         tasks.append(task)
 
     return tasks
-    
+
 
 # Startup config
 #   Commandline args (covered in expvars, IIRC)
@@ -444,7 +440,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact):
         R'C:\Program Files (x86)\Couchbase\basic_sg_accel_config.json',     # Windows sg accel
         R'C:\Program Files (x86)\Couchbase\serviceconfig.json'               # Windows sync gateway
     ]
-    sg_config_files = [ x for x in sg_config_files if os.path.exists(x)]
+    sg_config_files = [x for x in sg_config_files if os.path.exists(x)]
 
     # If a config path was discovered from the expvars, or passed in via the user, add that in the
     # list of files to probe
@@ -498,17 +494,17 @@ def get_config_path_from_cmdline(cmdline_args):
         if ".json" in cmdline_arg and "http" not in cmdline_arg:
             return cmdline_arg
     return None
-    
+
 
 def get_paths_from_expvars(sg_url):
 
     sg_binary_path = None
     sg_config_path = None
-    
+
     # get content and parse into json
     response = urllib2.urlopen(expvar_url(sg_url))
     data = json.load(response)
-    if data is not None and data.has_key("cmdline"):
+    if data is not None and "cmdline" in data:
         cmdline_args = data["cmdline"]
         if len(cmdline_args) == 0:
             return (sg_binary_path, sg_config_path)
@@ -548,14 +544,14 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
 
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(sg_url)
-    print "Discovered from expvars: sg_binary_path={0} sg_config_path={1}".format(sg_binary_path, sg_config_path)
+    print("Discovered from expvars: sg_binary_path={0} sg_config_path={1}".format(sg_binary_path, sg_config_path))
 
     # If user passed in a specific path to the SG binary, then use it
     if sync_gateway_executable_path is not None and len(sync_gateway_executable_path) > 0:
         if not os.path.exists(sync_gateway_executable_path):
             raise Exception("Path to sync gateway executable passed in does not exist: {0}".format(sync_gateway_executable_path))
         sg_binary_path = sync_gateway_executable_path
-    
+
     # Collect logs
     collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url)
 
@@ -564,7 +560,7 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
     # If the user passed in a valid config path, then use that rather than what's in the expvars
     if sync_gateway_config_path_option is not None and len(sync_gateway_config_path_option) > 0 and os.path.exists(sync_gateway_config_path_option):
         sg_config_path = sync_gateway_config_path_option
-    
+
     # Add a task to collect pprofs
     go_tool_pprof_tasks = make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url)
 
@@ -572,10 +568,10 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
 
     # Add a task to collect Sync Gateway config
     config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact)
-    
-    # Curl the / endpoint and /db endpoints and save output 
+
+    # Curl the / endpoint and /db endpoints and save output
     status_tasks = make_status_tasks(sg_url, should_redact)
-    
+
     # Compbine all tasks into flattened list
     sg_tasks = flatten(
         [
@@ -587,8 +583,9 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
             status_tasks,
         ]
     )
-    
+
     return sg_tasks
+
 
 def discover_sg_binary_path(options, sg_url):
 
@@ -603,7 +600,6 @@ def discover_sg_binary_path(options, sg_url):
         if os.path.exists(sg_binary_path_candidate):
             return sg_binary_path_candidate
 
-
     sg_binary_path, _ = get_paths_from_expvars(sg_url)
 
     if options.sync_gateway_executable is not None and len(options.sync_gateway_executable) > 0:
@@ -615,6 +611,7 @@ def discover_sg_binary_path(options, sg_url):
     # fallback to whatever was specified in options
     return options.sync_gateway_executable
 
+
 def main():
 
     # ask all tools to use C locale (MB-12050)
@@ -625,7 +622,7 @@ def main():
     if platform.system() == 'Darwin':
         os.environ["COUCHBASE_TOP"] = os.path.abspath(os.path.join(mydir, ".."))
 
-    # Parse command line options 
+    # Parse command line options
     parser = create_option_parser()
     options, args = parser.parse_args()
 
@@ -641,7 +638,7 @@ def main():
     sg_url = options.sync_gateway_url
     if sg_url is None:
         sg_url = "http://127.0.0.1:4985"
-    print "Using Sync Gateway URL: {0}".format(sg_url)
+    print("Using Sync Gateway URL: {0}".format(sg_url))
 
     # Exit early if SG is not running
     try:
@@ -697,7 +694,7 @@ def main():
 
         os.environ['LD_LIBRARY_PATH'] = ':'.join(library_path)
 
-    # Windows 
+    # Windows
     elif os.name == 'nt':
 
         path = [
@@ -707,7 +704,7 @@ def main():
         os.environ['PATH'] = ';'.join(path)
 
     # If user asked to just upload, then upload and exit
-    if options.just_upload_into != None:
+    if options.just_upload_into is not None:
         do_upload_and_exit(args[0], options.just_upload_into)
 
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
@@ -732,7 +729,7 @@ def main():
     if sg_binary_path is not None and sg_binary_path != "" and os.path.exists(sg_binary_path):
         runner.collect_file(sg_binary_path)
     else:
-        print "WARNING: unable to find Sync Gateway executable, omitting from result.  Go pprofs will not be accurate."
+        print("WARNING: unable to find Sync Gateway executable, omitting from result.  Go pprofs will not be accurate.")
 
     # Echo the command line args used to run sgcollect_info
     cmd_line_args_task = AllOsTask(
@@ -771,9 +768,9 @@ def main():
             do_upload_and_exit(zip_filename, upload_url)
 
     if options.redact_level != "none":
-        print "Zipfile built: {0}".format(redact_zip_file)
+        print("Zipfile built: {0}".format(redact_zip_file))
 
-    print "Zipfile built: {0}".format(zip_filename)
+    print("Zipfile built: {0}".format(zip_filename))
 
 
 def ud(value, should_redact=True):
