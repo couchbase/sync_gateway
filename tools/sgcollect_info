@@ -173,6 +173,9 @@ def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
         "raw",
     ]
 
+    if sg_binary_path is None:
+        sg_binary_path = ""
+
     #if sg_binary_path does not point to a file, generate a new path by starting with the location of sgcollect_info script
     if not os.path.isfile(sg_binary_path):
         # the filename of the sg_binary without any path information, eg, "sync_gateway"
@@ -385,10 +388,15 @@ def get_db_list(sg_url):
 
     # build url to _all_dbs
     all_dbs_url = "{0}/_all_dbs".format(sg_url)
-    
+
+    data = []
+
     # get content and parse into json
-    response = urllib2.urlopen(all_dbs_url)
-    data = json.load(response)
+    try:
+        response = urllib2.urlopen(all_dbs_url)
+        data = json.load(response)
+    except urllib2.URLError as e:
+        print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
 
     # return list of dbs
     return data
@@ -502,12 +510,17 @@ def get_config_path_from_cmdline(cmdline_args):
 
 def get_paths_from_expvars(sg_url):
 
+    data = None
     sg_binary_path = None
     sg_config_path = None
     
     # get content and parse into json
-    response = urllib2.urlopen(expvar_url(sg_url))
-    data = json.load(response)
+    try:
+        response = urllib2.urlopen(expvar_url(sg_url))
+        data = json.load(response)
+    except urllib2.URLError as e:
+        print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
+
     if data is not None and data.has_key("cmdline"):
         cmdline_args = data["cmdline"]
         if len(cmdline_args) == 0:
