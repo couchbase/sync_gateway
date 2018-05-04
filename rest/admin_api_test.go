@@ -992,7 +992,8 @@ func TestDBOfflineConcurrent(t *testing.T) {
 		wg.Done()
 	}()
 
-	wg.Wait()
+	err := WaitWithTimeout(&wg, time.Second * 30)
+	assertNoError(t, err, "Error waiting for waitgroup")
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
