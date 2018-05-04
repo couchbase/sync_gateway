@@ -382,7 +382,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	base.Infof(base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
-		base.UD(dbName), base.UD(spec.BucketName), base.SD(spec.PoolName), base.SD(spec.Server))
+		base.MD(dbName), base.MD(spec.BucketName), base.SD(spec.PoolName), base.SD(spec.Server))
 
 	if err := db.ValidateDatabaseName(dbName); err != nil {
 		return nil, err
@@ -580,7 +580,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		sequenceHashOptions.Bucket, err = base.GetBucket(sequenceHashBucketSpec, nil)
 		if err != nil {
 			base.Warnf(base.KeyAll, "Error opening sequence hash bucket %q, pool %q, server <%s>",
-				base.UD(sequenceHashBucketSpec.BucketName), sequenceHashBucketSpec.PoolName, base.SD(sequenceHashBucketSpec.Server))
+				base.MD(sequenceHashBucketSpec.BucketName), base.SD(sequenceHashBucketSpec.PoolName), base.SD(sequenceHashBucketSpec.Server))
 			return nil, err
 		}
 
@@ -662,7 +662,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
 
 	if dbcontext.ChannelMapper == nil {
-		base.Infof(base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.UD(dbName))
+		base.Infof(base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
 	}
 
 	// Create default users & roles:
@@ -679,7 +679,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	if shadow := config.Deprecated.Shadow; shadow != nil {
 		if err := sc.startShadowing(dbcontext, shadow); err != nil {
 			base.Warnf(base.KeyAll, "Database %q: unable to connect to external bucket for shadowing: %v",
-				base.UD(dbName), err)
+				base.MD(dbName), err)
 		}
 	}
 
@@ -824,7 +824,7 @@ func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn
 		return err
 	}
 	// Sync function has changed:
-	base.Infof(base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.UD(dbcontext.Name))
+	base.Infof(base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbcontext.Name))
 	return nil
 }
 
@@ -875,7 +875,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 	//Remove credentials from server URL before logging
 	url, err := couchbase.ParseURL(spec.Server)
 	if err == nil {
-		base.Infof(base.KeyAll, "Database %q shadowing remote bucket %q, pool %q, server <%s:%s/%s>", base.UD(dbcontext.Name), base.UD(spec.BucketName), spec.PoolName, url.Scheme, base.SD(url.Host), url.Path)
+		base.Infof(base.KeyAll, "Database %q shadowing remote bucket %q, pool %q, server <%s:%s/%s>", base.MD(dbcontext.Name), base.MD(spec.BucketName), base.SD(spec.PoolName), url.Scheme, base.SD(url.Host), url.Path)
 	}
 	return nil
 }
@@ -893,7 +893,7 @@ func (sc *ServerContext) _removeDatabase(dbName string) bool {
 	if context == nil {
 		return false
 	}
-	base.Infof(base.KeyAll, "Closing db /%s (bucket %q)", base.UD(context.Name), base.UD(context.Bucket.GetName()))
+	base.Infof(base.KeyAll, "Closing db /%s (bucket %q)", base.MD(context.Name), base.MD(context.Bucket.GetName()))
 	context.Close()
 	delete(sc.databases_, dbName)
 	return true

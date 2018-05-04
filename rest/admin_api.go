@@ -73,7 +73,7 @@ func (h *handler) handleDbOnline() error {
 
 	json.Unmarshal(body, &input)
 
-	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.UD(h.db.Name), input.Delay)
+	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 
 	timer := time.NewTimer(time.Duration(input.Delay) * time.Second)
 	go func() {
@@ -90,7 +90,7 @@ func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
 	if err = h.db.TakeDbOffline("ADMIN Request"); err != nil {
-		base.Infof(base.KeyCRUD, "Unable to take Database : %v, offline", base.UD(h.db.Name))
+		base.Infof(base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
 	}
 
 	return err

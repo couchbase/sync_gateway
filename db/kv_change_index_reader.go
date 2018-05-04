@@ -72,7 +72,7 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChannelI
 	k.indexReadBucket, err = base.GetBucket(indexOptions.Spec, nil)
 	if err != nil {
 		base.Infof(base.KeyAll, "Error opening index bucket %q, pool %q, server <%s>",
-			base.UD(indexOptions.Spec.BucketName), base.UD(indexOptions.Spec.PoolName), base.UD(indexOptions.Spec.Server))
+			base.MD(indexOptions.Spec.BucketName), base.SD(indexOptions.Spec.PoolName), base.SD(indexOptions.Spec.Server))
 		// TODO: revert to local index?
 		return err
 	}

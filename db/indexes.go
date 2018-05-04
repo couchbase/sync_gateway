@@ -285,7 +285,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
 func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 	var indexesWg sync.WaitGroup
-	base.Infof(base.KeyAll, "Verifying index availability for bucket %s...", base.UD(bucket.GetName()))
+	base.Infof(base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
 	indexErrors := make(chan error, len(sgIndexes))
 
 	for _, sgIndex := range sgIndexes {
@@ -312,7 +312,7 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 		return err
 	}
 
-	base.Infof(base.KeyAll, "Indexes ready for bucket %s.", base.UD(bucket.GetName()))
+	base.Infof(base.KeyAll, "Indexes ready for bucket %s.", base.MD(bucket.GetName()))
 	return nil
 }
 
