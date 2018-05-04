@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
-	pkgerrors "github.com/pkg/errors"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -207,11 +206,10 @@ type TestBucketManager struct {
 	AdministratorUsername string
 	AdministratorPassword string
 	BucketSpec            BucketSpec
-	Bucket                *gocb.Bucket
+	Bucket                *CouchbaseBucketGoCB
 	AuthHandler           AuthHandler
 	Cluster               *gocb.Cluster
 	ClusterManager        *gocb.ClusterManager
-	BucketManager         *gocb.BucketManager
 }
 
 func NewTestBucketManager(spec BucketSpec) *TestBucketManager {
@@ -235,38 +233,41 @@ func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 
 	IncrNumOpenBuckets(tbm.BucketSpec.BucketName)
 
-	cluster, err := gocb.Connect(tbm.BucketSpec.Server)
+	//cluster, err := gocb.Connect(tbm.BucketSpec.Server)
+	//if err != nil {
+	//	return false, err
+	//}
+	//tbm.Cluster = cluster
+	//
+	//tbm.ClusterManager = cluster.Manager(tbm.AdministratorUsername, tbm.AdministratorPassword)
+	//
+	//username, password, _ := tbm.BucketSpec.Auth.GetCredentials()
+	//bucket, err := tbm.Cluster.OpenBucket(tbm.BucketSpec.BucketName, password)
+	//if err != nil {
+	//	// Authentication failure should return an explicit error as we can't continue from here.
+	//	if pkgerrors.Cause(err) == gocb.ErrAuthError {
+	//		log.Printf("Unable to authenticate as %s: %v", username, err)
+	//		return false, err
+	//	}
+	//
+	//	// There could be other errors here, but we assume the bucket doesn't exist, and may be able to continue.
+	//	// TODO: should check returned error type
+	//	log.Printf("GoCB error opening bucket: %v", err)
+	//	return false, nil
+	//}
+	//tbm.Bucket = bucket
+
+	tbm.Bucket, err = GetCouchbaseBucketGoCB(tbm.BucketSpec)
 	if err != nil {
 		return false, err
 	}
-	tbm.Cluster = cluster
-
-	tbm.ClusterManager = cluster.Manager(tbm.AdministratorUsername, tbm.AdministratorPassword)
-
-	username, password, _ := tbm.BucketSpec.Auth.GetCredentials()
-	bucket, err := tbm.Cluster.OpenBucket(tbm.BucketSpec.BucketName, password)
-	if err != nil {
-		// Authentication failure should return an explicit error as we can't continue from here.
-		if pkgerrors.Cause(err) == gocb.ErrAuthError {
-			log.Printf("Unable to authenticate as %s: %v", username, err)
-			return false, err
-		}
-
-		// There could be other errors here, but we assume the bucket doesn't exist, and may be able to continue.
-		// TODO: should check returned error type
-		log.Printf("GoCB error opening bucket: %v", err)
-		return false, nil
-	}
-	tbm.Bucket = bucket
-
-	tbm.BucketManager = tbm.Bucket.Manager(username, password)
 
 	return true, nil
 
 }
 
-func (tbm *TestBucketManager) Close() error {
-	return tbm.Bucket.Close()
+func (tbm *TestBucketManager) Close() {
+	tbm.Bucket.Close()
 }
 
 // GOCB doesn't currently offer a way to do this, and so this is a workaround to go directly
@@ -274,17 +275,97 @@ func (tbm *TestBucketManager) Close() error {
 // See https://forums.couchbase.com/t/is-there-a-way-to-get-the-number-of-items-in-a-bucket/12816/4
 // for GOCB discussion.
 func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
-	return GoCBBucketItemCount(tbm.Bucket, tbm.BucketSpec, tbm.AdministratorUsername, tbm.AdministratorPassword)
+	return GoCBBucketItemCount(tbm.Bucket.Bucket, tbm.BucketSpec, tbm.AdministratorUsername, tbm.AdministratorPassword)
 }
 
-func (tbm *TestBucketManager) EmptyTestBucket() error {
+func (tbm *TestBucketManager) DropIndexes() error {
+	return DropAllBucketIndexes(tbm.Bucket)
+}
+
+// Reset bucket state
+func DropAllBucketIndexes(gocbBucket *CouchbaseBucketGoCB) error {
+
+	// Retrieve all indexes
+	indexes, err := getIndexes(gocbBucket)
+	if err != nil {
+		return err
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(indexes))
+
+	asyncErrors := make(chan error, len(indexes))
+	defer close(asyncErrors)
+
+	for _, index := range indexes {
+
+		go func(indexToDrop string) {
+
+			defer wg.Done()
+
+			log.Printf("Dropping index %s...", indexToDrop)
+			dropErr := gocbBucket.DropIndex(indexToDrop)
+			if dropErr != nil {
+				asyncErrors <- dropErr
+			}
+			log.Printf("...successfully dropped index %s", indexToDrop)
+		}(index)
+
+	}
+
+	// Wait until all goroutines finish
+	wg.Wait()
+
+	// Check if any errors were put into the asyncErrors channel.  If any, just return the first one
+	select {
+	case asyncError := <-asyncErrors:
+		return asyncError
+	default:
+	}
+
+	return nil
+}
+
+// Get a list of all index names in the bucket
+func getIndexes(gocbBucket *CouchbaseBucketGoCB) (indexes []string, err error) {
+
+	indexes = []string{}
+
+
+	// Retrieve all indexes
+	getIndexesStatement := fmt.Sprintf("SELECT indexes.name from system:indexes where keyspace_id = %q", gocbBucket.GetName())
+	n1qlQuery := gocb.NewN1qlQuery(getIndexesStatement)
+	results, err := gocbBucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	if err != nil {
+		return indexes, err
+	}
+
+	// Close the results in a defer, and set the value of the "err" return value
+	defer func() {
+		err = results.Close()
+	}()
+
+	var indexRow struct {
+		Name string
+	}
+
+	for results.Next(&indexRow) {
+		indexes = append(indexes, indexRow.Name)
+	}
+
+	return indexes, err
+
+}
+
+
+func (tbm *TestBucketManager) FlushBucket() error {
 
 	// Try to Flush the bucket in a retry loop
 	// Ignore sporadic errors like:
 	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
-		err = tbm.BucketManager.Flush()
+		err = tbm.Bucket.Flush()
 		if err != nil {
 			Warnf(KeyAll, "Error flushing bucket: %v  Will retry.", err)
 		}
@@ -328,7 +409,12 @@ func (tbm *TestBucketManager) EmptyTestBucket() error {
 }
 
 func (tbm *TestBucketManager) RecreateOrEmptyBucket() error {
-	if err := tbm.EmptyTestBucket(); err != nil {
+
+	if err := tbm.DropIndexes(); err != nil {
+		return err
+	}
+
+	if err := tbm.FlushBucket(); err != nil {
 		return err
 	}
 

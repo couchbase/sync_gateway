@@ -100,7 +100,7 @@ func testBucket() base.TestBucket {
 
 	// Workaround attempt for the issues in #3422.  Drop the index to attempt to avoid any
 	// "Index rollback" errors.
-	dropAllBucketIndexes(testBucket.Bucket)
+	// dropAllBucketIndexes(testBucket.Bucket)
 
 	err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0)
 	if err != nil {
