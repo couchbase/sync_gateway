@@ -97,7 +97,8 @@ var QueryStarChannel = SGQuery{
 			"META(`%s`).id AS id "+
 			"FROM `%s`"+
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
-			"AND META().id NOT LIKE '%s'",
+			"AND META().id NOT LIKE '%s'"+
+			"ORDER BY seq",
 		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
 	adhoc: false,
 }
