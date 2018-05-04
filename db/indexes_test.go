@@ -8,6 +8,7 @@ import (
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+	"sync"
 )
 
 func TestInitializeIndexes(t *testing.T) {
@@ -39,27 +40,79 @@ func dropAllBucketIndexes(bucket base.Bucket) error {
 	}
 
 	// Retrieve all indexes
+	indexes, err := getIndexes(bucket)
+	if err != nil {
+		return err
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(indexes))
+
+	asyncErrors := make(chan error, len(indexes))
+	defer close(asyncErrors)
+
+	for _, index := range indexes {
+
+		go func(indexToDrop string) {
+
+			defer wg.Done()
+
+			log.Printf("Dropping index %s...", indexToDrop)
+			dropErr := gocbBucket.DropIndex(indexToDrop)
+			if dropErr != nil {
+				asyncErrors <- dropErr
+			}
+			log.Printf("...successfully dropped index %s", indexToDrop)
+		}(index)
+
+	}
+
+	// Wait until all goroutines finish
+	wg.Wait()
+
+	// Check if any errors were put into the asyncErrors channel.  If any, just return the first one
+	select {
+	case asyncError := <-asyncErrors:
+		return asyncError
+	default:
+	}
+
+	return nil
+}
+
+// Get a list of all index names in the bucket
+func getIndexes(bucket base.Bucket) (indexes []string, err error) {
+
+	indexes = []string{}
+
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	if !ok {
+		return indexes, fmt.Errorf("Bucket is not gocb bucket: %T", bucket)
+	}
+
+	// Retrieve all indexes
 	getIndexesStatement := fmt.Sprintf("SELECT indexes.name from system:indexes where keyspace_id = %q", gocbBucket.GetName())
 	n1qlQuery := gocb.NewN1qlQuery(getIndexesStatement)
 	results, err := gocbBucket.ExecuteN1qlQuery(n1qlQuery, nil)
 	if err != nil {
-		return err
+		return indexes, err
 	}
+
+	// Close the results in a defer, and set the value of the "err" return value
+	defer func() {
+		err = results.Close()
+	}()
 
 	var indexRow struct {
 		Name string
 	}
 
 	for results.Next(&indexRow) {
-		log.Printf("Dropping index %s...", indexRow.Name)
-		dropErr := gocbBucket.DropIndex(indexRow.Name)
-		if dropErr != nil {
-			return dropErr
-		}
-		log.Printf("...successfully dropped index %s", indexRow.Name)
+		indexes = append(indexes, indexRow.Name)
 	}
-	closeErr := results.Close()
-	return closeErr
+
+	return indexes, err
+
 }
 
 // Reset bucket state
