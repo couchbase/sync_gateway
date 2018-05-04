@@ -162,7 +162,7 @@ func (listener *changeListener) Notify(keys base.Set) {
 		listener.keyCounts[key] = listener.counter
 	}
 	base.Debugf(base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
-		base.UD(listener.bucketName), base.UD(keys), listener.counter)
+		base.MD(listener.bucketName), base.UD(keys), listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -201,7 +201,7 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 	listener.tapNotifier.L.Lock()
 	defer listener.tapNotifier.L.Unlock()
 	base.Debugf(base.KeyChanges, "No new changes to send to change listener.  Waiting for %q's count to pass %d",
-		base.UD(listener.bucketName), counter)
+		base.MD(listener.bucketName), counter)
 
 	for {
 		curCounter := listener._currentCount(keys)

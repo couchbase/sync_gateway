@@ -231,7 +231,7 @@ func (h *handler) logRequestLine() {
 		proto = " HTTP/2"
 	}
 
-	base.Infof(base.KeyHTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.UD(base.SanitizeRequestURL(h.rq.URL)), proto, base.UD(h.currentEffectiveUserNameAsUser()))
+	base.Infof(base.KeyHTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.UD(base.SanitizeRequestURL(h.rq.URL)), proto, h.currentEffectiveUserNameAsUser())
 }
 
 func (h *handler) logRequestBody() {
@@ -514,14 +514,15 @@ func (h *handler) getBearerToken() string {
 	return ""
 }
 
+// currentEffectiveUserName returns the effective name of the user for the request. This method will tag user names with UserData tags.
 func (h *handler) currentEffectiveUserName() string {
 	var effectiveName string
 
 	if h.privs == adminPrivs {
 		effectiveName = "ADMIN"
 	} else if h.user != nil {
-		if h.user.Name() != "" {
-			effectiveName = h.user.Name()
+		if name := h.user.Name(); name != "" {
+			effectiveName = base.UD(name).Redact()
 		} else {
 			effectiveName = "GUEST"
 		}
@@ -530,8 +531,12 @@ func (h *handler) currentEffectiveUserName() string {
 	return effectiveName
 }
 
+// currentEffectiveUserNameAsUser formats an effectiveUserName for appending to logs.
 func (h *handler) currentEffectiveUserNameAsUser() string {
-	return fmt.Sprintf(" (as %s)", h.currentEffectiveUserName())
+	if name := h.currentEffectiveUserName(); name != "" {
+		return fmt.Sprintf(" (as %s)", name)
+	}
+	return ""
 }
 
 //////// RESPONSES:

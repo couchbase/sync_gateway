@@ -253,7 +253,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
-		base.Infof(base.KeyFeed, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.UD(bucket.GetName()))
+		base.Infof(base.KeyFeed, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
 		if err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
