@@ -387,13 +387,13 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
-				base.Infof(base.KeyHeartbeat, "heartbeat written to _changes feed for request received %s", base.UD(h.currentEffectiveUserNameAsUser()))
+				base.Infof(base.KeyHeartbeat, "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
 			case <-timeout:
 				message = "OK (timeout)"
 				forceClose = true
 				break loop
 			case <-closeNotify:
-				base.Infof(base.KeyChanges, "Connection lost from client: %v", base.UD(h.currentEffectiveUserNameAsUser()))
+				base.Infof(base.KeyChanges, "Connection lost from client: %v", h.currentEffectiveUserNameAsUser())
 				forceClose = true
 				break loop
 			case <-h.db.ExitChanges:
@@ -572,14 +572,14 @@ loop:
 		case <-heartbeat:
 			err = send(nil)
 			if h != nil {
-				base.Infof(base.KeyHeartbeat, "heartbeat written to _changes feed for request received %s", base.UD(h.currentEffectiveUserNameAsUser()))
+				base.Infof(base.KeyHeartbeat, "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
 			}
 		case <-timeout:
 			forceClose = true
 			break loop
 		case <-closeNotify:
 			if h != nil {
-				base.Debugf(base.KeyChanges, "Client connection lost: %v", base.UD(h.currentEffectiveUserNameAsUser()))
+				base.Debugf(base.KeyChanges, "Client connection lost: %v", h.currentEffectiveUserNameAsUser())
 			} else {
 				base.Debugf(base.KeyChanges, "Client connection lost")
 			}
