@@ -254,7 +254,7 @@ func (h *handler) createUserSession() error {
 func (h *handler) getUserSession() error {
 
 	h.assertAdminOnly()
-	session, err := h.db.Authenticator().GetSession(h.PathVar("sessionid"))
+	session, err := h.db.Authenticator().GetSession(h.PathVar("MD_sessionid"))
 
 	if session == nil {
 		if err == nil {
@@ -270,11 +270,11 @@ func (h *handler) getUserSession() error {
 // that the session being deleted is associated with the user.
 func (h *handler) deleteUserSession() error {
 	h.assertAdminOnly()
-	userName := h.PathVar("name")
+	userName := h.PathVar("UD_name")
 	if userName != "" {
-		return h.deleteUserSessionWithValidation(h.PathVar("sessionid"), userName)
+		return h.deleteUserSessionWithValidation(h.PathVar("MD_sessionid"), userName)
 	} else {
-		return h.db.Authenticator().DeleteSession(h.PathVar("sessionid"))
+		return h.db.Authenticator().DeleteSession(h.PathVar("MD_sessionid"))
 	}
 }
 
@@ -282,7 +282,7 @@ func (h *handler) deleteUserSession() error {
 func (h *handler) deleteUserSessions() error {
 	h.assertAdminOnly()
 
-	userName := h.PathVar("name")
+	userName := h.PathVar("UD_name")
 	return h.db.DeleteUserSessions(userName)
 }
 

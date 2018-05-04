@@ -44,34 +44,34 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	r.Handle("/", makeHandler(sc, privs, (*handler).handleRoot)).Methods("GET", "HEAD")
 
 	// Operations on databases:
-	r.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, (*handler).handleGetDB)).Methods("GET", "HEAD")
-	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, (*handler).handlePostDoc)).Methods("POST")
+	r.Handle("/{MD_db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, (*handler).handleGetDB)).Methods("GET", "HEAD")
+	r.Handle("/{MD_db:"+dbRegex+"}/", makeHandler(sc, privs, (*handler).handlePostDoc)).Methods("POST")
 
 	// Special database URLs:
-	dbr := r.PathPrefix("/{db:" + dbRegex + "}/").Subrouter()
+	dbr := r.PathPrefix("/{MD_db:" + dbRegex + "}/").Subrouter()
 	dbr.StrictSlash(true)
 	dbr.Handle("/_all_docs", makeHandler(sc, privs, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
 	dbr.Handle("/_bulk_docs", makeHandler(sc, privs, (*handler).handleBulkDocs)).Methods("POST")
 	dbr.Handle("/_bulk_get", makeHandler(sc, privs, (*handler).handleBulkGet)).Methods("POST")
 	dbr.Handle("/_changes", makeHandler(sc, privs, (*handler).handleChanges)).Methods("GET", "HEAD", "POST")
-	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handlePutDesignDoc)).Methods("PUT")
-	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handleDeleteDesignDoc)).Methods("DELETE")
-	dbr.Handle("/_design/{ddoc}/_view/{view}", makeHandler(sc, privs, (*handler).handleView)).Methods("GET")
+	dbr.Handle("/_design/{MD_ddoc}", makeHandler(sc, privs, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_design/{MD_ddoc}", makeHandler(sc, privs, (*handler).handlePutDesignDoc)).Methods("PUT")
+	dbr.Handle("/_design/{MD_ddoc}", makeHandler(sc, privs, (*handler).handleDeleteDesignDoc)).Methods("DELETE")
+	dbr.Handle("/_design/{MD_ddoc}/_view/{MD_view}", makeHandler(sc, privs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, (*handler).handleEFC)).Methods("POST")
 	dbr.Handle("/_revs_diff", makeHandler(sc, privs, (*handler).handleRevsDiff)).Methods("POST")
 
 	// Document URLs:
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handlePutLocalDoc)).Methods("PUT")
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handleDelLocalDoc)).Methods("DELETE")
+	dbr.Handle("/_local/{UD_docid}", makeHandler(sc, privs, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_local/{UD_docid}", makeHandler(sc, privs, (*handler).handlePutLocalDoc)).Methods("PUT")
+	dbr.Handle("/_local/{UD_docid}", makeHandler(sc, privs, (*handler).handleDelLocalDoc)).Methods("DELETE")
 
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleGetDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handlePutDoc)).Methods("PUT")
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleDeleteDoc)).Methods("DELETE")
+	dbr.Handle("/{UD_docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleGetDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/{UD_docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handlePutDoc)).Methods("PUT")
+	dbr.Handle("/{UD_docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleDeleteDoc)).Methods("DELETE")
 
-	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
-	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handlePutAttachment)).Methods("PUT")
+	dbr.Handle("/{UD_docid:"+docRegex+"}/{UD_attach}", makeHandler(sc, privs, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
+	dbr.Handle("/{UD_docid:"+docRegex+"}/{UD_attach}", makeHandler(sc, privs, (*handler).handlePutAttachment)).Methods("PUT")
 
 	// Session/login URLs are per-database (unlike in CouchDB)
 	// These have public privileges so that they can be called without being logged in already
@@ -156,43 +156,43 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, (*handler).createUserSession)).Methods("POST")
 
-	dbr.Handle("/_session/{sessionid}",
+	dbr.Handle("/_session/{MD_sessionid}",
 		makeHandler(sc, adminPrivs, (*handler).getUserSession)).Methods("GET")
 
-	dbr.Handle("/_session/{sessionid}",
+	dbr.Handle("/_session/{MD_sessionid}",
 		makeHandler(sc, adminPrivs, (*handler).deleteUserSession)).Methods("DELETE")
 
-	dbr.Handle("/_raw/{docid:"+docRegex+"}",
+	dbr.Handle("/_raw/{UD_docid:"+docRegex+"}",
 		makeHandler(sc, adminPrivs, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
 
-	dbr.Handle("/_revtree/{docid:"+docRegex+"}",
+	dbr.Handle("/_revtree/{UD_docid:"+docRegex+"}",
 		makeHandler(sc, adminPrivs, (*handler).handleGetRevTree)).Methods("GET")
 
 	dbr.Handle("/_user/",
 		makeHandler(sc, adminPrivs, (*handler).getUsers)).Methods("GET", "HEAD")
 	dbr.Handle("/_user/",
 		makeHandler(sc, adminPrivs, (*handler).putUser)).Methods("POST")
-	dbr.Handle("/_user/{name}",
+	dbr.Handle("/_user/{UD_name}",
 		makeHandler(sc, adminPrivs, (*handler).getUserInfo)).Methods("GET", "HEAD")
-	dbr.Handle("/_user/{name}",
+	dbr.Handle("/_user/{UD_name}",
 		makeHandler(sc, adminPrivs, (*handler).putUser)).Methods("PUT")
-	dbr.Handle("/_user/{name}",
+	dbr.Handle("/_user/{UD_name}",
 		makeHandler(sc, adminPrivs, (*handler).deleteUser)).Methods("DELETE")
 
-	dbr.Handle("/_user/{name}/_session",
+	dbr.Handle("/_user/{UD_name}/_session",
 		makeHandler(sc, adminPrivs, (*handler).deleteUserSessions)).Methods("DELETE")
-	dbr.Handle("/_user/{name}/_session/{sessionid}",
+	dbr.Handle("/_user/{UD_name}/_session/{MD_sessionid}",
 		makeHandler(sc, adminPrivs, (*handler).deleteUserSession)).Methods("DELETE")
 
 	dbr.Handle("/_role/",
 		makeHandler(sc, adminPrivs, (*handler).getRoles)).Methods("GET", "HEAD")
 	dbr.Handle("/_role/",
 		makeHandler(sc, adminPrivs, (*handler).putRole)).Methods("POST")
-	dbr.Handle("/_role/{name}",
+	dbr.Handle("/_role/{UD_name}",
 		makeHandler(sc, adminPrivs, (*handler).getRoleInfo)).Methods("GET", "HEAD")
-	dbr.Handle("/_role/{name}",
+	dbr.Handle("/_role/{UD_name}",
 		makeHandler(sc, adminPrivs, (*handler).putRole)).Methods("PUT")
-	dbr.Handle("/_role/{name}",
+	dbr.Handle("/_role/{UD_name}",
 		makeHandler(sc, adminPrivs, (*handler).deleteRole)).Methods("DELETE")
 
 	r.Handle("/_logging",
@@ -260,15 +260,15 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleDbOnline)).Methods("POST")
 	dbr.Handle("/_offline",
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleDbOffline)).Methods("POST")
-	dbr.Handle("/_dump/{view}",
+	dbr.Handle("/_dump/{MD_view}",
 		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
-	dbr.Handle("/_view/{view}", // redundant; just for backward compatibility with 1.0
+	dbr.Handle("/_view/{MD_view}", // redundant; just for backward compatibility with 1.0
 		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
-	dbr.Handle("/_dumpchannel/{channel}",
+	dbr.Handle("/_dumpchannel/{UD_channel}",
 		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
 	dbr.Handle("/_index",
 		makeHandler(sc, adminPrivs, (*handler).handleIndex)).Methods("GET")
-	dbr.Handle("/_index/channel/{channel}",
+	dbr.Handle("/_index/channel/{UD_channel}",
 		makeHandler(sc, adminPrivs, (*handler).handleIndexChannel)).Methods("GET")
 	dbr.Handle("/_index/channels",
 		makeHandler(sc, adminPrivs, (*handler).handleIndexAllChannels)).Methods("GET")
@@ -277,9 +277,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.
-	r.Handle("/{newdb:"+dbRegex+"}/",
+	r.Handle("/{MD_newdb:"+dbRegex+"}/",
 		makeHandler(sc, adminPrivs, (*handler).handleCreateDB)).Methods("PUT")
-	r.Handle("/{db:"+dbRegex+"}/",
+	r.Handle("/{MD_db:"+dbRegex+"}/",
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleDeleteDB)).Methods("DELETE")
 
 	r.Handle("/_all_dbs",

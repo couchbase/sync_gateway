@@ -32,7 +32,7 @@ const kDefaultDBOnlineDelay = 0
 // "Create" a database (actually just register an existing bucket)
 func (h *handler) handleCreateDB() error {
 	h.assertAdminOnly()
-	dbName := h.PathVar("newdb")
+	dbName := h.PathVar("MD_newdb")
 	var config *DbConfig
 	if err := h.readJSONInto(&config); err != nil {
 		return err
@@ -316,7 +316,7 @@ func (h *handler) handleActiveTasks() error {
 
 func (h *handler) handleGetRawDoc() error {
 	h.assertAdminOnly()
-	docid := h.PathVar("docid")
+	docid := h.PathVar("UD_docid")
 	doc, err := h.db.GetDocument(docid, db.DocUnmarshalAll)
 	if doc != nil {
 		h.writeJSON(doc)
@@ -326,7 +326,7 @@ func (h *handler) handleGetRawDoc() error {
 
 func (h *handler) handleGetRevTree() error {
 	h.assertAdminOnly()
-	docid := h.PathVar("docid")
+	docid := h.PathVar("UD_docid")
 	doc, err := h.db.GetDocument(docid, db.DocUnmarshalAll)
 
 	if doc != nil {
@@ -527,19 +527,19 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 
 // Handles PUT or POST to /_user/*
 func (h *handler) putUser() error {
-	username := mux.Vars(h.rq)["name"]
+	username := mux.Vars(h.rq)["UD_name"]
 	return h.updatePrincipal(username, true)
 }
 
 // Handles PUT or POST to /_role/*
 func (h *handler) putRole() error {
-	rolename := mux.Vars(h.rq)["name"]
+	rolename := mux.Vars(h.rq)["UD_name"]
 	return h.updatePrincipal(rolename, false)
 }
 
 func (h *handler) deleteUser() error {
 	h.assertAdminOnly()
-	username := mux.Vars(h.rq)["name"]
+	username := mux.Vars(h.rq)["UD_name"]
 
 	// Can't delete the guest user, only disable.
 	if username == base.GuestUsername {
@@ -559,7 +559,7 @@ func (h *handler) deleteUser() error {
 
 func (h *handler) deleteRole() error {
 	h.assertAdminOnly()
-	role, err := h.db.Authenticator().GetRole(mux.Vars(h.rq)["name"])
+	role, err := h.db.Authenticator().GetRole(mux.Vars(h.rq)["UD_name"])
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -571,7 +571,7 @@ func (h *handler) deleteRole() error {
 
 func (h *handler) getUserInfo() error {
 	h.assertAdminOnly()
-	user, err := h.db.Authenticator().GetUser(internalUserName(mux.Vars(h.rq)["name"]))
+	user, err := h.db.Authenticator().GetUser(internalUserName(mux.Vars(h.rq)["UD_name"]))
 	if user == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -586,7 +586,7 @@ func (h *handler) getUserInfo() error {
 
 func (h *handler) getRoleInfo() error {
 	h.assertAdminOnly()
-	role, err := h.db.Authenticator().GetRole(mux.Vars(h.rq)["name"])
+	role, err := h.db.Authenticator().GetRole(mux.Vars(h.rq)["UD_name"])
 	if role == nil {
 		if err == nil {
 			err = kNotFoundError
@@ -634,7 +634,7 @@ func (h *handler) handleIndex() error {
 
 // HTTP handler for /index/channel
 func (h *handler) handleIndexChannel() error {
-	channelName := h.PathVar("channel")
+	channelName := h.PathVar("UD_channel")
 	base.Infof(base.KeyHTTP, "Index channel %q", base.UD(channelName))
 
 	channelStats, err := h.db.IndexChannelStats(channelName)

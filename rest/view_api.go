@@ -14,7 +14,7 @@ import (
 
 // HTTP handler for GET _design/$ddoc
 func (h *handler) handleGetDesignDoc() error {
-	ddocID := h.PathVar("ddoc")
+	ddocID := h.PathVar("MD_ddoc")
 	base.Debugf(base.KeyAll, "GetDesignDoc %v", base.MD(ddocID))
 	var result interface{}
 	if ddocID == db.DesignDocSyncGateway() {
@@ -38,7 +38,7 @@ func (h *handler) handleGetDesignDoc() error {
 
 // HTTP handler for PUT _design/$ddoc
 func (h *handler) handlePutDesignDoc() error {
-	ddocID := h.PathVar("ddoc")
+	ddocID := h.PathVar("MD_ddoc")
 	var ddoc sgbucket.DesignDoc
 	err := h.readJSONInto(&ddoc)
 	if err != nil {
@@ -53,7 +53,7 @@ func (h *handler) handlePutDesignDoc() error {
 
 // HTTP handler for DELETE _design/$ddoc
 func (h *handler) handleDeleteDesignDoc() error {
-	ddocID := h.PathVar("ddoc")
+	ddocID := h.PathVar("MD_ddoc")
 	return h.db.DeleteDesignDoc(ddocID)
 }
 
@@ -61,8 +61,8 @@ func (h *handler) handleDeleteDesignDoc() error {
 func (h *handler) handleView() error {
 	// Couchbase Server view API:
 	// http://docs.couchbase.com/admin/admin/REST/rest-views-get.html
-	ddocName := h.PathVar("ddoc")
-	viewName := h.PathVar("view")
+	ddocName := h.PathVar("MD_ddoc")
+	viewName := h.PathVar("MD_view")
 	if ddocName == "" {
 		ddocName = db.DesignDocSyncGateway()
 	}

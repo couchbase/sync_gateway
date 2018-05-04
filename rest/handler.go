@@ -154,7 +154,7 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
-	if dbname := h.PathVar("db"); dbname != "" {
+	if dbname := h.PathVar("MD_db"); dbname != "" {
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
 			h.logRequestLine()
 			return err
@@ -231,7 +231,7 @@ func (h *handler) logRequestLine() {
 		proto = " HTTP/2"
 	}
 
-	base.Infof(base.KeyHTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.UD(base.SanitizeRequestURL(h.rq.URL)), proto, h.currentEffectiveUserNameAsUser())
+	base.Infof(base.KeyHTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.SanitizeRequestURL(h.rq), proto, h.currentEffectiveUserNameAsUser())
 }
 
 func (h *handler) logRequestBody() {

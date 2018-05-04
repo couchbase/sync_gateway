@@ -167,34 +167,34 @@ func TestSanitizeURL(t *testing.T) {
 
 	url, err := url.Parse("http://localhost:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E")
 	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL := base.SanitizeRequestURL(url)
+	sanitizedURL := base.SanitizeRequestURLQueryParams(url)
 	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/_oidc_callback?code=******")
 
 	url, err = url.Parse("http://localhost:4985/default/_oidc_refresh?refresh_token==1/KPuhjLJrTZO9OExSypWtqiDioXf3nzAUJnewmyhK94s")
 	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL = base.SanitizeRequestURL(url)
+	sanitizedURL = base.SanitizeRequestURLQueryParams(url)
 	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/_oidc_refresh?refresh_token=******")
 
 	// Ensure non-matching parameters aren't getting sanitized
 
 	url, err = url.Parse("http://localhost:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E&state=123456")
 	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL = base.SanitizeRequestURL(url)
+	sanitizedURL = base.SanitizeRequestURLQueryParams(url)
 	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/_oidc_callback?code=******&state=123456")
 
 	url, err = url.Parse("http://localhost:4985/default/_changes?since=5&feed=longpoll")
 	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL = base.SanitizeRequestURL(url)
+	sanitizedURL = base.SanitizeRequestURLQueryParams(url)
 	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/_changes?since=5&feed=longpoll")
 
 	// Ensure matching non-parameters aren't getting sanitized
 	url, err = url.Parse("http://localhost:4985/default/doctokencode")
 	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL = base.SanitizeRequestURL(url)
+	sanitizedURL = base.SanitizeRequestURLQueryParams(url)
 	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/doctokencode")
 
 	url, err = url.Parse("http://localhost:4985/default/doctoken=code=")
 	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL = base.SanitizeRequestURL(url)
+	sanitizedURL = base.SanitizeRequestURLQueryParams(url)
 	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/doctoken=code=")
 }

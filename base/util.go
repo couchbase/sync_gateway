@@ -33,6 +33,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbaselabs/gocbconnstr"
+	"github.com/gorilla/mux"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -590,16 +591,40 @@ func IsFilePathWritable(fp string) (bool, error) {
 	return true, nil
 }
 
-// Replaces sensitive data from the URL query string with ******.
+// SanitizeRequestURL will return a sanitised string of the URL by:
+// - Tagging mux path variables.
+// - Replacing sensitive data from the URL query string with ******.
 // Have to use string replacement instead of writing directly to the Values URL object, as only the URL's raw query is mutable.
-func SanitizeRequestURL(requestURL *url.URL) string {
-	urlString := requestURL.String()
+func SanitizeRequestURL(rq *http.Request) string {
+	urlString := SanitizeRequestURLQueryParams(rq.URL)
+
+	// Apply tagging to path variables
+	pathVars := mux.Vars(rq)
+	if (RedactSystemData || RedactMetadata || RedactUserData) && len(pathVars) > 0 {
+		for k, v := range pathVars {
+			if strings.HasPrefix(k, "UD") {
+				urlString = strings.Replace(urlString, v, UD(v).Redact(), 1)
+			} else if strings.HasPrefix(k, "MD") {
+				urlString = strings.Replace(urlString, v, MD(v).Redact(), 1)
+			} else if strings.HasPrefix(k, "SD") {
+				urlString = strings.Replace(urlString, v, SD(v).Redact(), 1)
+			}
+		}
+	}
+
+	return urlString
+}
+
+// SanitizeRequestURLQueryParams replaces sensitive data from the URL query string with ******.
+func SanitizeRequestURLQueryParams(rqURL *url.URL) string {
+	urlString := rqURL.String()
+
 	// Do a basic contains for the values we care about, to minimize performance impact on other requests.
 	if strings.Contains(urlString, "code=") || strings.Contains(urlString, "token=") {
 		// Iterate over the URL values looking for matches, and then do a string replacement of the found value
 		// into urlString.  Need to unescapte the urlString, as the values returned by URL.Query() get unescaped.
 		urlString, _ = url.QueryUnescape(urlString)
-		values := requestURL.Query()
+		values := rqURL.Query()
 		for key, vals := range values {
 			if key == "code" || strings.Contains(key, "token") {
 				//In case there are multiple entries
