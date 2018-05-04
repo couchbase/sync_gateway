@@ -28,7 +28,6 @@ const (
 	QueryTypeSessions     = "sessions"
 	QueryTypeTombstones   = "tombstones"
 	QueryTypeResync       = "resync"
-	QueryTypeImport       = "import"
 	QueryTypeAllDocs      = "allDocs"
 )
 
@@ -97,8 +96,7 @@ var QueryStarChannel = SGQuery{
 			"META(`%s`).id AS id "+
 			"FROM `%s`"+
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
-			"AND META().id NOT LIKE '%s'"+
-			"ORDER BY seq",
+			"AND META().id NOT LIKE '%s'",
 		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
 	adhoc: false,
 }
@@ -155,24 +153,13 @@ var QueryResync = SGQuery{
 		"SELECT META(`%s`).id "+
 			"FROM `%s` "+
 			"WHERE META(`%s`).id NOT LIKE '%s' "+
-			"AND $sync IS NOT MISSING",
+			"AND $sync.sequence > 0",
 		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
 	adhoc: false,
 }
 
-var QueryImport = SGQuery{
-	name: QueryTypeImport,
-	statement: fmt.Sprintf(
-		"SELECT META(`%s`).id "+
-			"FROM `%s` "+
-			"WHERE META(`%s`).id NOT LIKE '%s' "+
-			"AND $sync.sequence IS MISSING ",
-		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
-	adhoc: false,
-}
-
-// QueryAllDocs is using the primary index.  We currently don't have a performance-tuned use of AllDocs today - if needed,
-// should create a custom index
+// QueryAllDocs is using the star channel's index, which is indexed by sequence, then ordering the results by doc id.
+// We currently don't have a performance-tuned use of AllDocs today - if needed, should create a custom index indexed by doc id.
 var QueryAllDocs = SGQuery{
 	name: QueryTypeAllDocs,
 	statement: fmt.Sprintf(
@@ -181,7 +168,8 @@ var QueryAllDocs = SGQuery{
 			"$sync.sequence as s, "+
 			"$sync.channels as c "+
 			"FROM `%s` "+
-			"WHERE META(`%s`).id NOT LIKE '%s' "+
+			"WHERE $sync.sequence > 0 AND "+ // Required to use the
+			"META(`%s`).id NOT LIKE '%s' "+
 			"AND $sync IS NOT MISSING "+
 			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",
 		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
@@ -314,28 +302,18 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 	return context.N1QLQueryWithStats(channelQuery.name, channelQueryStatement, params, gocb.RequestPlus, channelQuery.adhoc)
 }
 
-func (context *DatabaseContext) QueryImport(hasSyncData bool) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryResync() (sgbucket.QueryResultIterator, error) {
 
 	if context.Options.UseViews {
 		opts := Body{"stale": false, "reduce": false}
-		if hasSyncData {
-			opts["startkey"] = []interface{}{true}
-		} else {
-			opts["endkey"] = []interface{}{true}
-			opts["inclusive_end"] = false
-		}
+		opts["startkey"] = []interface{}{true}
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewImport, opts)
 	}
 
 	// N1QL Query
 	var importQueryStatement string
-	if hasSyncData {
-		importQueryStatement = replaceSyncTokensQuery(QueryResync.statement, context.UseXattrs())
-	} else {
-		importQueryStatement = replaceSyncTokensQuery(QueryImport.statement, context.UseXattrs())
-	}
-
-	return context.N1QLQueryWithStats(QueryTypeImport, importQueryStatement, nil, gocb.RequestPlus, QueryImport.adhoc)
+	importQueryStatement = replaceSyncTokensQuery(QueryResync.statement, context.UseXattrs())
+	return context.N1QLQueryWithStats(QueryTypeResync, importQueryStatement, nil, gocb.RequestPlus, QueryResync.adhoc)
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index

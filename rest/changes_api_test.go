@@ -1446,9 +1446,9 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	a.Save(bernard)
 
 	// Put several documents
-	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/doc5", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/doc4", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/doc3", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -1460,10 +1460,10 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	testDb.FlushChannelCache()
 
 	// Add a few more docs (to increment the channel cache's validFrom)
-	response = rt.SendAdminRequest("PUT", "/db/doc4", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("PUT", "/db/doc5", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
 	testDb.WaitForSequence(5)
@@ -1479,7 +1479,9 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assertNoError(t, err, "Error unmarshalling changes response")
 	assert.Equals(t, len(changes.Results), 5)
-	for _, entry := range changes.Results {
+	for index, entry := range changes.Results {
+		// Expects docs in sequence order from 1-5
+		assert.Equals(t, entry.Seq.Seq, uint64(index+1))
 		log.Printf("Entry:%+v", entry)
 	}
 	queryCount := base.GetExpvarAsString("syncGateway_changeCache", "view_queries")
@@ -1491,7 +1493,9 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assertNoError(t, err, "Error unmarshalling changes response")
 	assert.Equals(t, len(changes.Results), 5)
-	for _, entry := range changes.Results {
+	for index, entry := range changes.Results {
+		// Expects docs in sequence order from 1-5
+		assert.Equals(t, entry.Seq.Seq, uint64(index+1))
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there haven't been any more view queries
