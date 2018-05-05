@@ -2342,7 +2342,9 @@ func TestAccessOnTombstone(t *testing.T) {
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 1)
-	assert.Equals(t, changes.Results[0].ID, "alpha")
+	if len(changes.Results) > 0 {
+		assert.Equals(t, changes.Results[0].ID, "alpha")
+	}
 
 	// Delete the document
 	response = rt.Send(request("DELETE", fmt.Sprintf("/db/alpha?rev=%s", revId), ""))
