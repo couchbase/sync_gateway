@@ -153,7 +153,7 @@ var QueryResync = SGQuery{
 		"SELECT META(`%s`).id "+
 			"FROM `%s` "+
 			"WHERE META(`%s`).id NOT LIKE '%s' "+
-			"AND $sync.sequence > 0",
+			"AND $sync.sequence > 0", // Required to use IndexAllDocs
 		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
 	adhoc: false,
 }
@@ -168,7 +168,7 @@ var QueryAllDocs = SGQuery{
 			"$sync.sequence as s, "+
 			"$sync.channels as c "+
 			"FROM `%s` "+
-			"WHERE $sync.sequence > 0 AND "+ // Required to use the
+			"WHERE $sync.sequence > 0 AND "+ // Required to use IndexAllDocs
 			"META(`%s`).id NOT LIKE '%s' "+
 			"AND $sync IS NOT MISSING "+
 			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",

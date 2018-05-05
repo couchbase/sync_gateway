@@ -1685,6 +1685,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	assert.Equals(t, options.HeartbeatMs, uint64(60000))
 }
 
+// Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
 	//restTester := initRestTester(db.IntSequenceType, `function(doc) {channel(doc.channels);}`)
 	var rt RestTester
@@ -1904,6 +1905,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equals(t, allDocsResult.Rows[1].ID, "doc2")
 }
 
+// Test _all_docs API call when using vector sequences (accel), under different security scenarios
 func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	rt := initRestTester(db.ClockSequenceType, `function(doc) {channel(doc.channels);}`)
