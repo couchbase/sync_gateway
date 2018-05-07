@@ -290,25 +290,8 @@ func TestUserAllowEmptyPassword(t *testing.T) {
 	assertStatus(t, response, 200)
 }
 
-// Workaround the fact that this fails sporadically and generates noise by running in a loop.
-// See https://github.com/couchbase/sync_gateway/issues/3006
-func TestUserAccessRace(t *testing.T) {
-
-	for i := 0; i < 10; i++ {
-		err := UserAccessRaceFailsSporadically()
-		if err == nil {
-			return
-		}
-		log.Printf("UserAccessRaceFailsSporadically failed with error: %v.  Waiting and will retry.", err)
-		time.Sleep(time.Second * 5)
-	}
-
-	t.Fatalf("UserAccessRaceFailsSporadically failed sporadically 10 times in a row.")
-
-}
-
 // Test user access grant while that user has an active changes feed.  (see issue #880)
-func UserAccessRaceFailsSporadically() error {
+func TestUserAccessRace(t *testing.T) {
 
 	syncFunction := `
 function(doc, oldDoc) {
@@ -341,15 +324,11 @@ function(doc, oldDoc) {
 	defer rt.SendAdminRequest("PUT", "/_logging", `{}`) // reset logging to initial state
 
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
-	if response.Code != 201 {
-		return fmt.Errorf("Expected 201 response code")
-	}
+	assertStatus(t, response, 201)
 
 	//Try to force channel initialisation for user bernard
 	response = rt.SendAdminRequest("GET", "/db/_user/bernard", "")
-	if response.Code != 200 {
-		return fmt.Errorf("Expected 201 response code")
-	}
+	assertStatus(t, response, 200)
 
 	// Create list docs
 	input := `{"docs": [`
@@ -374,8 +353,6 @@ function(doc, oldDoc) {
 
 	numExpectedChanges := 201
 
-	errChan := make(chan error, 1)
-
 	go func() {
 		defer wg.Done()
 
@@ -394,10 +371,7 @@ function(doc, oldDoc) {
 			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
 
 			changes, err := readContinuousChanges(changesResponse)
-			if err != nil {
-				errChan <- err
-				return
-			}
+			assert.Equals(t, err, nil)
 
 			changesAccumulated = append(changesAccumulated, changes...)
 
@@ -416,8 +390,7 @@ function(doc, oldDoc) {
 
 			numTries++
 			if numTries > maxTries {
-				errChan <- fmt.Errorf("Giving up trying to receive %d changes.  Only received %d", numExpectedChanges, len(changesAccumulated))
-				return
+				t.Fatalf("Giving up trying to receive %d changes.  Only received %d", numExpectedChanges, len(changesAccumulated))
 			}
 
 		}
@@ -446,9 +419,6 @@ function(doc, oldDoc) {
 
 	// wait for changes feed to complete (time out)
 	wg.Wait()
-
-	return nil
-
 }
 
 func TestLogging(t *testing.T) {
