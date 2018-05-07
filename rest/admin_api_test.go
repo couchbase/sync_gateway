@@ -293,6 +293,14 @@ func TestUserAllowEmptyPassword(t *testing.T) {
 // Test user access grant while that user has an active changes feed.  (see issue #880)
 func TestUserAccessRace(t *testing.T) {
 
+	// This test only runs against Walrus due to known sporadic failures.
+	// See https://github.com/couchbase/sync_gateway/issues/3006
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip this test under integration testing")
+	}
+
+
+
 	syncFunction := `
 function(doc, oldDoc) {
   if (doc.type == "list") {
