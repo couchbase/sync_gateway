@@ -1715,11 +1715,11 @@ func TestAllDocsAccessControl(t *testing.T) {
 	err = a.Save(guest)
 	assert.Equals(t, err, nil)
 
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"channels":[]}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"channels":["CBS"]}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc3", `{"channels":["CBS", "Cinemax"]}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc4", `{"channels":["WB", "Cinemax"]}`), 201)
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc5", `{"channels":"Cinemax"}`), 201)
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc4", `{"channels":["WB", "Cinemax"]}`), 201)
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc3", `{"channels":["CBS", "Cinemax"]}`), 201)
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"channels":["CBS"]}`), 201)
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"channels":[]}`), 201)
 
 	guest.SetDisabled(true)
 	err = a.Save(guest)

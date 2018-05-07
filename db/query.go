@@ -160,6 +160,10 @@ var QueryResync = SGQuery{
 
 // QueryAllDocs is using the star channel's index, which is indexed by sequence, then ordering the results by doc id.
 // We currently don't have a performance-tuned use of AllDocs today - if needed, should create a custom index indexed by doc id.
+// Note: QueryAllDocs function may appends additional filter and ordering of the form:
+//    AND META(`bucket`).id >= '%s'
+//    AND META(`bucket`).id <= '%s'
+//    ORDER BY META(`bucket`).id
 var QueryAllDocs = SGQuery{
 	name: QueryTypeAllDocs,
 	statement: fmt.Sprintf(
@@ -377,14 +381,21 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 	}
 
+	bucketName := context.Bucket.GetName()
+
 	// N1QL Query
 	allDocsQueryStatement := replaceSyncTokensQuery(QueryAllDocs.statement, context.UseXattrs())
 	if startKey != "" {
-		allDocsQueryStatement = fmt.Sprintf("%s AND META().id >= '%s'", allDocsQueryStatement, startKey)
+		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id >= '%s'",
+			allDocsQueryStatement, bucketName, startKey)
 	}
 	if endKey != "" {
-		allDocsQueryStatement = fmt.Sprintf("%s AND META().id <= '%s'", allDocsQueryStatement, endKey)
+		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id <= '%s'",
+			allDocsQueryStatement, bucketName, endKey)
 	}
+
+	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(`%s`).id",
+		allDocsQueryStatement, bucketName)
 
 	return context.N1QLQueryWithStats(QueryTypeAllDocs, allDocsQueryStatement, nil, gocb.RequestPlus, QueryAllDocs.adhoc)
 }
