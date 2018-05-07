@@ -1225,38 +1225,6 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assertHTTPError(t, err, 403)
 }
 
-func TestLegacyImport(t *testing.T) {
-
-	if base.TestUseXattrs() {
-		t.Skip("This test should not be run in XATTR mode.  Skipping")
-	}
-
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
-
-	// Add docs to the underlying bucket:
-	for i := 1; i <= 20; i++ {
-		db.Bucket.Add(fmt.Sprintf("alreadyHere%d", i), 0, Body{"key1": i, "key2": "hi"})
-	}
-
-	// Make sure they aren't visible thru the gateway:
-	doc, err := db.GetDocument("alreadyHere1", DocUnmarshalAll)
-	assert.Equals(t, doc, (*document)(nil))
-	assert.Equals(t, err.(*base.HTTPError).Status, 404)
-
-	// Import them:
-	count, err := db.UpdateAllDocChannels(false, true)
-	assertNoError(t, err, "ApplySyncFun")
-	assert.Equals(t, count, 20)
-
-	// Now they're visible:
-	doc, err = db.GetDocument("alreadyHere1", DocUnmarshalAll)
-	base.Infof(base.KeyAll, "doc = %+v", doc)
-	assert.True(t, doc != nil)
-	assertNoError(t, err, "can't get doc")
-}
-
 func TestPostWithExistingId(t *testing.T) {
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})

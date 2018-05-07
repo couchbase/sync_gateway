@@ -65,7 +65,6 @@ func (h *handler) handleVacuum() error {
 
 func (h *handler) handleFlush() error {
 
-
 	// If it can be flushed, then flush it
 	if _, ok := h.db.Bucket.(sgbucket.FlushableBucket); ok {
 
@@ -151,7 +150,7 @@ func (h *handler) handleResync() error {
 
 	if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
 
-		docsChanged, err := h.db.UpdateAllDocChannels(true, false)
+		docsChanged, err := h.db.UpdateAllDocChannels()
 		if err != nil {
 			return err
 		}

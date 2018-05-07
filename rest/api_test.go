@@ -866,7 +866,6 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	spec := base.GetTestBucketSpec(base.DataBucket)
 	username, password, _ := spec.Auth.GetCredentials()
 
-
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
 		BucketConfig: BucketConfig{
@@ -875,8 +874,8 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 			Username: username,
 			Password: password,
 		},
-		NumIndexReplicas: rt1.DatabaseConfig.NumIndexReplicas,  // Use the same NumIndexReplicas as original test bucket (0)
-		Name: "db",
+		NumIndexReplicas: rt1.DatabaseConfig.NumIndexReplicas, // Use the same NumIndexReplicas as original test bucket (0)
+		Name:             "db",
 	})
 
 	assertNoError(t, err, "Failed to add database to rest tester")
@@ -1686,20 +1685,232 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	assert.Equals(t, options.HeartbeatMs, uint64(60000))
 }
 
-func TestAccessControl(t *testing.T) {
-	restTester := initRestTester(db.IntSequenceType, `function(doc) {channel(doc.channels);}`)
-	defer restTester.Close()
-	testAccessControl(t, restTester)
+// Test _all_docs API call under different security scenarios
+func TestAllDocsAccessControl(t *testing.T) {
+	//restTester := initRestTester(db.IntSequenceType, `function(doc) {channel(doc.channels);}`)
+	var rt RestTester
+	defer rt.Close()
+	type allDocsRow struct {
+		ID    string `json:"id"`
+		Key   string `json:"key"`
+		Value struct {
+			Rev      string              `json:"rev"`
+			Channels []string            `json:"channels,omitempty"`
+			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
+		} `json:"value"`
+		Doc   db.Body `json:"doc,omitempty"`
+		Error string  `json:"error"`
+	}
+	var allDocsResult struct {
+		TotalRows int          `json:"total_rows"`
+		Offset    int          `json:"offset"`
+		Rows      []allDocsRow `json:"rows"`
+	}
+
+	// Create some docs:
+	a := auth.NewAuthenticator(rt.Bucket(), nil)
+	guest, err := a.GetUser("")
+	assert.Equals(t, err, nil)
+	guest.SetDisabled(false)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc5", `{"channels":"Cinemax"}`), 201)
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc4", `{"channels":["WB", "Cinemax"]}`), 201)
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc3", `{"channels":["CBS", "Cinemax"]}`), 201)
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"channels":["CBS"]}`), 201)
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"channels":[]}`), 201)
+
+	guest.SetDisabled(true)
+	err = a.Save(guest)
+	assert.Equals(t, err, nil)
+
+	// Create a user:
+	alice, err := a.NewUser("alice", "letmein", channels.SetOf("Cinemax"))
+	a.Save(alice)
+
+	// Get a single doc the user has access to:
+	request, _ := http.NewRequest("GET", "/db/doc3", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response := rt.Send(request)
+	assertStatus(t, response, 200)
+
+	// Get a single doc the user doesn't have access to:
+	request, _ = http.NewRequest("GET", "/db/doc2", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 403)
+
+	// Check that _all_docs only returns the docs the user has access to:
+	request, _ = http.NewRequest("GET", "/db/_all_docs?channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 3)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
+	assert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
+	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+
+	//Check all docs limit option
+	request, _ = http.NewRequest("GET", "/db/_all_docs?limit=1&channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	//Check all docs startkey option
+	request, _ = http.NewRequest("GET", "/db/_all_docs?startkey=doc5&channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	//Check all docs startkey option with double quote
+	request, _ = http.NewRequest("GET", `/db/_all_docs?startkey="doc5"&channels=true`, nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	//Check all docs endkey option
+	request, _ = http.NewRequest("GET", "/db/_all_docs?endkey=doc3&channels=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	//Check all docs endkey option
+	request, _ = http.NewRequest("GET", `/db/_all_docs?endkey="doc3"&channels=true`, nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	// Check _all_docs with include_docs option:
+	request, _ = http.NewRequest("GET", "/db/_all_docs?include_docs=true", nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 3)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	assert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
+	assert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
+
+	// Check POST to _all_docs:
+	body := `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
+	request, _ = http.NewRequest("POST", "/db/_all_docs?channels=true", bytes.NewBufferString(body))
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 4)
+	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
+	assert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
+	assert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	assert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
+	assert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
+
+	// Check GET to _all_docs with keys parameter:
+	request, _ = http.NewRequest("GET", `/db/_all_docs?channels=true&keys=%5B%22doc4%22%2C%22doc1%22%2C%22doc3%22%2C%22b0gus%22%5D`, nil)
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response from GET _all_docs = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 4)
+	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	assert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
+	assert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
+	assert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
+	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	assert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
+	assert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
+
+	// Check POST to _all_docs with limit option:
+	body = `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
+	request, _ = http.NewRequest("POST", "/db/_all_docs?limit=1&channels=true", bytes.NewBufferString(body))
+	request.SetBasicAuth("alice", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, 200)
+
+	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 1)
+	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+
+	// Check _all_docs as admin:
+	response = rt.SendAdminRequest("GET", "/db/_all_docs", "")
+	assertStatus(t, response, 200)
+
+	log.Printf("Admin response = %s", response.Body.Bytes())
+	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, len(allDocsResult.Rows), 5)
+	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	assert.Equals(t, allDocsResult.Rows[1].ID, "doc2")
 }
 
-func TestVbSeqAccessControl(t *testing.T) {
+// Test _all_docs API call when using vector sequences (accel), under different security scenarios
+func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
-	restTester := initRestTester(db.ClockSequenceType, `function(doc) {channel(doc.channels);}`)
-	defer restTester.Close()
-	testAccessControl(t, restTester)
-}
+	rt := initRestTester(db.ClockSequenceType, `function(doc) {channel(doc.channels);}`)
+	defer rt.Close()
 
-func testAccessControl(t *testing.T, rt indexTester) {
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`
@@ -2061,7 +2272,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.Equals(t, err, nil)
 	assert.True(t, changed)
-	changeCount, err := database.UpdateAllDocChannels(true, false)
+	changeCount, err := database.UpdateAllDocChannels()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, changeCount, 9)
 
@@ -2131,7 +2342,9 @@ func TestAccessOnTombstone(t *testing.T) {
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 1)
-	assert.Equals(t, changes.Results[0].ID, "alpha")
+	if len(changes.Results) > 0 {
+		assert.Equals(t, changes.Results[0].ID, "alpha")
+	}
 
 	// Delete the document
 	response = rt.Send(request("DELETE", fmt.Sprintf("/db/alpha?rev=%s", revId), ""))
