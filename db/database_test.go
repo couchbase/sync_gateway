@@ -98,10 +98,6 @@ func testBucket() base.TestBucket {
 		log.Fatalf("Couldn't connect to bucket: %v", err)
 	}
 
-	// Workaround attempt for the issues in #3422.  Drop the index to attempt to avoid any
-	// "Index rollback" errors.
-	// dropAllBucketIndexes(testBucket.Bucket)
-
 	err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0)
 	if err != nil {
 		log.Fatalf("Unable to initialize GSI indexes for test:%v", err)

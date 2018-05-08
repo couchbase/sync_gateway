@@ -248,30 +248,6 @@ func (tbm *TestBucketManager) OpenTestBucket() (bucketExists bool, err error) {
 
 	IncrNumOpenBuckets(tbm.BucketSpec.BucketName)
 
-	//cluster, err := gocb.Connect(tbm.BucketSpec.Server)
-	//if err != nil {
-	//	return false, err
-	//}
-	//tbm.Cluster = cluster
-	//
-	//tbm.ClusterManager = cluster.Manager(tbm.AdministratorUsername, tbm.AdministratorPassword)
-	//
-	//username, password, _ := tbm.BucketSpec.Auth.GetCredentials()
-	//bucket, err := tbm.Cluster.OpenBucket(tbm.BucketSpec.BucketName, password)
-	//if err != nil {
-	//	// Authentication failure should return an explicit error as we can't continue from here.
-	//	if pkgerrors.Cause(err) == gocb.ErrAuthError {
-	//		log.Printf("Unable to authenticate as %s: %v", username, err)
-	//		return false, err
-	//	}
-	//
-	//	// There could be other errors here, but we assume the bucket doesn't exist, and may be able to continue.
-	//	// TODO: should check returned error type
-	//	log.Printf("GoCB error opening bucket: %v", err)
-	//	return false, nil
-	//}
-	//tbm.Bucket = bucket
-
 	tbm.Bucket, err = GetCouchbaseBucketGoCB(tbm.BucketSpec)
 	if err != nil {
 		return false, err

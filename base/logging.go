@@ -474,9 +474,8 @@ func LogTo(key string, format string, args ...interface{}) {
 
 	if ok {
 		printf(fgYellow+key+": "+reset+format, args...)
-	} else {
-		printf("LogKeys: %+v", LogKeys)
 	}
+
 }
 
 // LogToR redacts any arguments implementing the Redactor interface before calling LogTo
