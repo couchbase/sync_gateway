@@ -215,6 +215,11 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleReplicate)).Methods("POST")
 	r.Handle("/_active_tasks",
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleActiveTasks)).Methods("GET")
+
+	r.Handle("/_sgcollect_info",
+		makeHandler(sc, adminPrivs, (*handler).handleSGCollectStatus)).Methods("GET")
+	r.Handle("/_sgcollect_info",
+		makeHandler(sc, adminPrivs, (*handler).handleSGCollectCancel)).Methods("DELETE")
 	r.Handle("/_sgcollect_info",
 		makeHandler(sc, adminPrivs, (*handler).handleSGCollect)).Methods("POST")
 

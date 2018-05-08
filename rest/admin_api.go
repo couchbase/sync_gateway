@@ -10,13 +10,10 @@
 package rest
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"os/exec"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -397,93 +394,51 @@ func (h *handler) handleSetLogging() error {
 	return nil
 }
 
+func (h *handler) handleSGCollectStatus() error {
+	if !sgcollectInstance.IsRunning() {
+		h.writeTextStatus(http.StatusOK, []byte("sgcollect_info not running"))
+		return nil
+	}
+
+	h.writeTextStatus(http.StatusOK, []byte("sgcollect_info running"))
+	return nil
+}
+
+func (h *handler) handleSGCollectCancel() error {
+	err := sgcollectInstance.Stop()
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Error stopping sgcollect_info: %v", err)
+	}
+
+	return nil
+}
+
 func (h *handler) handleSGCollect() error {
 	body, err := h.readBody()
 	if err != nil {
 		return err
 	}
 
-	var params sgCollectConfig
+	var params sgCollectOptions
 	if err = json.Unmarshal(body, &params); err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to parse request body: %v", err)
 	}
 
-	args, err := params.Args()
-	if err != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "Invalid output directory specified: %v", err)
-	}
-
-	sgPath, sgCollectPath, err := sgCollectPaths()
-	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to get paths for sgcollect_info: %v", err)
+	if err = params.Validate(); err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid options used for sgcollect_info: %v", err)
 	}
 
 	filename := time.Now().Format(base.ISO8601Format) + ".zip"
-	args = append(args, "--sync-gateway-executable", sgPath, filename)
+	args := params.Args()
 
-	if err = sgcollectInstance.SetRunning(true); err != nil {
-		return base.HTTPErrorf(http.StatusTooManyRequests, "%v", err)
-	}
-	defer sgcollectInstance.SetRunning(false)
-
-	// propagate the request context for cancellation
-	ctx := h.rq.Context()
-
-	base.Debugf(base.KeyHTTP, "#%03d: Calling sgcollect_info with arguments: %v", h.serialNumber, base.UD(args))
-	cmd := exec.CommandContext(ctx, sgCollectPath, args...)
-
-	h.setHeader("Content-Type", "text/plain charset=utf-8")
-	h.response.WriteHeader(http.StatusAccepted)
-
-	// Stream stdout/stderr to the HTTP response body.
-	pipeReader, pipeWriter := io.Pipe()
-	defer pipeWriter.Close()
-	cmd.Stdout = pipeWriter
-	cmd.Stderr = pipeWriter
-	go streamPipe(ctx, h.response, pipeReader)
-
-	if err = cmd.Run(); err != nil {
-		// Already written headers from streamCmdOutput,
-		// can't write an error status back to the response.
-		base.Warnf(base.KeyAll, "#%03d: sgcollect_info failed: %v", h.serialNumber, err)
-		return nil
+	if err := sgcollectInstance.Start(filename, args...); err != nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 
-	base.Debugf(base.KeyHTTP, "#%03d: sgcollect_info finished: %s", h.serialNumber, filename)
+	base.Infof(base.KeyAll, "#%03d: sgcollect_info started with args: %v", h.serialNumber, base.UD(args))
+
+	h.writeTextStatus(http.StatusOK, []byte("sgcollect_info started"))
 	return nil
-}
-
-// streamPipe streams output from pipeReader into the response.
-func streamPipe(ctx context.Context, resp http.ResponseWriter, pipeReader *io.PipeReader) {
-	buffer := make([]byte, 1024) // 1kB buffer
-	for {
-		// Handle cancellation
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		n, err := pipeReader.Read(buffer)
-		if err != nil {
-			if err != io.EOF {
-				base.Errorf(base.KeyAll, "Unexpected error from pipeReader: %v", err)
-			}
-			pipeReader.Close()
-			break
-		}
-
-		data := buffer[0:n]
-		resp.Write(data)
-		if f, ok := resp.(http.Flusher); ok {
-			f.Flush()
-		}
-		// reset buffer
-		for i := 0; i < n; i++ {
-			buffer[i] = 0
-		}
-	}
-
 }
 
 //////// USERS & ROLES:
