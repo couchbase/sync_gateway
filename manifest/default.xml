@@ -18,6 +18,7 @@
   <remote fetch="https://github.com/pkg/" name="pkg"/>
   <remote fetch="https://github.com/go-sourcemap/" name="go-sourcemap"/>
   <remote fetch="https://github.com/google/" name="google"/>
+  <remote fetch="https://github.com/opentracing/" name="opentracing"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
@@ -128,5 +129,9 @@
   <project name="sourcemap" path="godeps/src/gopkg.in/sourcemap.v1" remote="go-sourcemap" revision="6e83acea0053641eff084973fee085f0c193c61a"/>
 
   <project name="uuid" path="godeps/src/github.com/google/uuid" remote="google" revision="dec09d789f3dba190787f8b4454c7d3c936fed9e"/>
+
+  <project name="opentracing-go" path="godeps/src/github.com/opentracing/opentracing-go" remote="opentracing" revision="6c572c00d1830223701e155de97408483dfcd14a"/>
+
+
 
 </manifest>

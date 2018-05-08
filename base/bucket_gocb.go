@@ -28,6 +28,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
+	"github.com/couchbaselabs/gocbconnstr"
 )
 
 var gocbExpvars *expvar.Map
@@ -104,7 +105,18 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		EnableGoCBLogging()
 	}
 
-	cluster, err := gocb.Connect(spec.Server)
+	connSpec, err := gocbconnstr.Parse(spec.Server)
+	if err != nil {
+		return nil, err
+	}
+
+	// Increase the number of idle connections per-host to fix SG #3534
+	if connSpec.Options == nil {
+		connSpec.Options = map[string][]string{}
+	}
+	connSpec.Options["http_max_idle_conns_per_host"] = []string{"100"}
+
+	cluster, err := gocb.Connect(connSpec.String())
 	if err != nil {
 		return nil, err
 	}
