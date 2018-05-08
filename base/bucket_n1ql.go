@@ -8,7 +8,6 @@ import (
 
 	"github.com/couchbase/gocb"
 	pkgerrors "github.com/pkg/errors"
-	"runtime/debug"
 )
 
 const BucketQueryToken = "$_bucket"   // Token used for bucket name replacement in query statements
