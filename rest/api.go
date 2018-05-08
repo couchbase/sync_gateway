@@ -238,7 +238,7 @@ func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 
 // ADMIN API to turn Go CPU profiling on/off
 func (h *handler) handleProfiling() error {
-	profileName := h.PathVar("name")
+	profileName := h.PathVar("profilename")
 	var params struct {
 		File string `json:"file"`
 	}

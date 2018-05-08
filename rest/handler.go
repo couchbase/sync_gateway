@@ -154,7 +154,7 @@ func (h *handler) invoke(method handlerMethod) error {
 
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
-	if dbname := h.PathVar("MD_db"); dbname != "" {
+	if dbname := h.PathVar("db"); dbname != "" {
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
 			h.logRequestLine()
 			return err

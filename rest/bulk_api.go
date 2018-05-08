@@ -232,7 +232,7 @@ func (h *handler) handleAllDocs() error {
 
 // HTTP handler for _dump
 func (h *handler) handleDump() error {
-	viewName := h.PathVar("MD_view")
+	viewName := h.PathVar("view")
 	base.Infof(base.KeyHTTP, "Dump view %q", base.MD(viewName))
 	opts := db.Body{"stale": false, "reduce": false}
 	result, err := h.db.Bucket.View(db.DesignDocSyncGateway(), viewName, opts)
@@ -304,7 +304,7 @@ func (h *handler) handleRepair() error {
 
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
-	channelName := h.PathVar("UD_channel")
+	channelName := h.PathVar("channel")
 	since := h.getIntQuery("since", 0)
 	base.Infof(base.KeyHTTP, "Dump channel %q", base.UD(channelName))
 

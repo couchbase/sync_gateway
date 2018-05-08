@@ -591,6 +591,20 @@ func IsFilePathWritable(fp string) (bool, error) {
 	return true, nil
 }
 
+// redactedPathVars is a lookup map of path variables to redaction types.
+var redactedPathVars = map[string]string{
+	"docid":   "UD",
+	"attach":  "UD",
+	"name":    "UD",
+	"channel": "UD",
+
+	"db":        "MD",
+	"newdb":     "MD",
+	"ddoc":      "MD",
+	"view":      "MD",
+	"sessionid": "MD",
+}
+
 // SanitizeRequestURL will return a sanitised string of the URL by:
 // - Tagging mux path variables.
 // - Replacing sensitive data from the URL query string with ******.
@@ -602,11 +616,12 @@ func SanitizeRequestURL(rq *http.Request) string {
 	pathVars := mux.Vars(rq)
 	if (RedactSystemData || RedactMetadata || RedactUserData) && len(pathVars) > 0 {
 		for k, v := range pathVars {
-			if strings.HasPrefix(k, "UD") {
+			switch redactedPathVars[k] {
+			case "UD":
 				urlString = strings.Replace(urlString, v, UD(v).Redact(), 1)
-			} else if strings.HasPrefix(k, "MD") {
+			case "MD":
 				urlString = strings.Replace(urlString, v, MD(v).Redact(), 1)
-			} else if strings.HasPrefix(k, "SD") {
+			case "SD":
 				urlString = strings.Replace(urlString, v, SD(v).Redact(), 1)
 			}
 		}
