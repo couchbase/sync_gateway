@@ -16,7 +16,7 @@ if [ "$SG_TEST_BACKING_STORE" == "Couchbase" ] || [ "$SG_TEST_BACKING_STORE" == 
 fi
 
 # Extend timeout 
-EXTRA_FLAGS="$EXTRA_FLAGS -timeout=180m"
+EXTRA_FLAGS="$EXTRA_FLAGS -timeout=360m"
 
 echo "Running Sync Gateway unit tests"
 go test "$@" $EXTRA_FLAGS github.com/couchbase/sync_gateway/...
