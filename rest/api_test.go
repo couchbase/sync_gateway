@@ -33,7 +33,6 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
 	"github.com/robertkrimen/otto/underscore"
-	"reflect"
 )
 
 func init() {
@@ -1214,23 +1213,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 		map[string]interface{}{"rev": "1-4d79588b9fe9c38faae61f0c1b9471c0", "id": "bulk2"})
 }
 
-// Work around known sporadic failures with TestBulkDocsChangeToRoleAccess by running in a retry
-// loop until it passes.  See https://github.com/couchbase/sync_gateway/issues/3539
 func TestBulkDocsChangeToRoleAccess(t *testing.T) {
-	for i := 0; i < 10; i++ {
-		err := BulkDocsChangeToRoleAccessSporadicFailure()
-		if err == nil {
-			return
-		}
-		log.Printf("BulkDocsChangeToRoleAccessSporadicFailure returned error: %v.  Retrying.", err)
-		time.Sleep(time.Second * 5)
-	}
-
-	t.Errorf("TestBulkDocsChangeToRoleAccess sporadically failed 10 times.  Giving up.")
-
-}
-
-func BulkDocsChangeToRoleAccessSporadicFailure() error {
 
 	var logKeys = map[string]bool{
 		"Access":  true,
@@ -1259,9 +1242,7 @@ func BulkDocsChangeToRoleAccessSporadicFailure() error {
 	user, err := authenticator.NewUser("user1", "letmein", nil)
 	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)})
 	err = authenticator.Save(user)
-	if err != nil {
-		return err
-	}
+	assert.Equals(t, err, nil)
 
 	// Bulk docs with 2 docs.  First doc grants role1 access to chan1.  Second requires chan1 for write.
 	input := `{"docs": [
@@ -1278,28 +1259,15 @@ func BulkDocsChangeToRoleAccessSporadicFailure() error {
 				]}`
 
 	response := rt.Send(requestByUser("POST", "/db/_bulk_docs", input, "user1"))
-	if response.Code != 201 {
-		return fmt.Errorf("Expected response code 201")
-	}
+	assertStatus(t, response, 201)
 
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
-	if len(docs) != 2 {
-		return fmt.Errorf("Expected 2 docs, got %d", len(docs))
-	}
-
-	expected := map[string]interface{}{"rev": "1-17424d2a21bf113768dfdbcd344741ac", "id": "bulk1"}
-	if !reflect.DeepEqual(docs[0], expected) {
-		return fmt.Errorf("Expected %+v but got %+v", expected, docs[0])
-	}
-
-	expected = map[string]interface{}{"rev": "1-f120ccb33c0a6ef43ef202ade28f98ef", "id": "bulk2"}
-	if !reflect.DeepEqual(docs[1], expected) {
-		return fmt.Errorf("Expected %+v but got %+v", expected, docs[1])
-	}
-
-	return nil
-
+	assert.Equals(t, len(docs), 2)
+	assert.DeepEquals(t, docs[0],
+		map[string]interface{}{"rev": "1-17424d2a21bf113768dfdbcd344741ac", "id": "bulk1"})
+	assert.DeepEquals(t, docs[1],
+		map[string]interface{}{"rev": "1-f120ccb33c0a6ef43ef202ade28f98ef", "id": "bulk2"})
 }
 
 func TestBulkDocsNoEdits(t *testing.T) {
