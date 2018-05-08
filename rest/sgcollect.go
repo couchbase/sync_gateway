@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sync"
+	"sync/atomic"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -20,29 +20,25 @@ var (
 	// ErrSGCollectInfoNotRunning is returned if sgcollect_info is not running.
 	ErrSGCollectInfoNotRunning = errors.New("not running")
 
-	sgcollectInstance sgCollect
+	sgcollectInstance = sgCollect{status: base.Uint32Ptr(sgStopped)}
+
+	sgPath, sgCollectPath, _ = sgCollectPaths()
+)
+
+const (
+	sgStopped uint32 = iota
+	sgRunning
 )
 
 type sgCollect struct {
-	// output  io.Writer
-	cancel  context.CancelFunc
-	running bool
-
-	sync.Mutex
+	cancel context.CancelFunc
+	status *uint32
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
 func (sg *sgCollect) Start(filename string, args ...string) error {
-	sg.Lock()
-	defer sg.Unlock()
-
-	if sg.running {
+	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
-	}
-
-	sgPath, sgCollectPath, err := sgCollectPaths()
-	if err != nil {
-		return err
 	}
 
 	args = append(args, "--sync-gateway-executable", sgPath, filename)
@@ -51,19 +47,18 @@ func (sg *sgCollect) Start(filename string, args ...string) error {
 	sg.cancel = cancelFunc
 	cmd := exec.CommandContext(ctx, sgCollectPath, args...)
 
-	err = cmd.Start()
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		return err
 	}
 
-	sg.running = true
+	atomic.StoreUint32(sg.status, sgRunning)
 	base.Infof(base.KeyAll, "sgcollect_info started with args: %v", base.UD(args))
 
 	go func() {
 		if err := cmd.Wait(); err != nil {
 			base.Warnf(base.KeyAll, "sgcollect_info failed: %v", err)
 		}
-		sg.running = false
+		atomic.StoreUint32(sg.status, sgStopped)
 		base.Infof(base.KeyAll, "sgcollect_info finished")
 	}()
 
@@ -72,30 +67,19 @@ func (sg *sgCollect) Start(filename string, args ...string) error {
 
 // Stop will stop sgcollect_info, if running.
 func (sg *sgCollect) Stop() error {
-	sg.Lock()
-	defer sg.Unlock()
-
-	if !sg.running {
+	if atomic.LoadUint32(sg.status) == sgStopped {
 		return ErrSGCollectInfoNotRunning
 	}
 
 	sg.cancel()
-	sg.running = false
+	atomic.StoreUint32(sg.status, sgStopped)
 
 	return nil
 }
 
-// _isRunning returns true if sgcollect_info is running
-func (sg *sgCollect) _isRunning() bool {
-	return sg.running
-}
-
 // IsRunning returns true if sgcollect_info is running
 func (sg *sgCollect) IsRunning() bool {
-	sg.Lock()
-	defer sg.Unlock()
-
-	return sg._isRunning()
+	return atomic.LoadUint32(sg.status) == sgRunning
 }
 
 type sgCollectOptions struct {

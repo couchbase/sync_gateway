@@ -410,6 +410,7 @@ func (h *handler) handleSGCollectCancel() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error stopping sgcollect_info: %v", err)
 	}
 
+	h.writeTextStatus(http.StatusOK, []byte("sgcollect_info cancelled"))
 	return nil
 }
 
