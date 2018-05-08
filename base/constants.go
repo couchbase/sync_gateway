@@ -48,11 +48,16 @@ const (
 	TestEnvSyncGatewayUseXattrs = "SG_TEST_USE_XATTRS"
 	TestEnvSyncGatewayTrue      = "True"
 
+	// Should the tests drop the GSI indexes?
+	TestEnvSyncGatewayDropIndexes = "SG_TEST_DROP_INDEXES"
+
 	// Don't use an auth handler by default, but provide a way to override
 	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"
 
 	DefaultUseXattrs      = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	DefaultAllowConflicts = true  // Whether Sync Gateway allows revision conflicts, if not specified in the config
+
+	DefaultDropIndexes = false // Whether Sync Gateway drops GSI indexes before each test while running in integration mode
 
 	DefaultOldRevExpirySeconds = uint32(300)
 
@@ -61,7 +66,7 @@ const (
 
 	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
 
-	DefaultWaitForSequenceTesting = time.Second * 30  // TODO: reset this back to original (2 s) -- or leave at 30?
+	DefaultWaitForSequenceTesting = time.Second * 30 // TODO: reset this back to original (2 s) -- or leave at 30?
 
 )
 

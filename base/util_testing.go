@@ -172,13 +172,28 @@ func TestUseXattrs() bool {
 	useXattrs := os.Getenv(TestEnvSyncGatewayUseXattrs)
 	switch {
 	case strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue):
-		Infof(KeyAll, "Using xattrs: strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue).  |%v| == |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue))
 		return true
 	default:
-		Infof(KeyAll, "NOT Using xattrs: strings.ToLower(useXattrs) != strings.ToLower(TestEnvSyncGatewayTrue).  |%v| != |%v|", strings.ToLower(useXattrs), strings.ToLower(TestEnvSyncGatewayTrue))
+		// Otherwise fallback to hardcoded default
+		return DefaultUseXattrs
 	}
-	// Otherwise fallback to hardcoded default
-	return DefaultUseXattrs
+
+}
+
+// Should tests try to drop GSI indexes before flushing buckets?
+// See SG #3422
+func TestsShouldDropIndexes() bool {
+
+	// First check if the SG_TEST_USE_XATTRS env variable is set
+	dropIndexes := os.Getenv(TestEnvSyncGatewayDropIndexes)
+	switch {
+	case strings.ToLower(dropIndexes) == strings.ToLower(TestEnvSyncGatewayTrue):
+		return true
+	default:
+		// Otherwise fallback to hardcoded default
+		return DefaultDropIndexes
+	}
+
 }
 
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
@@ -331,7 +346,6 @@ func getIndexes(gocbBucket *CouchbaseBucketGoCB) (indexes []string, err error) {
 
 	indexes = []string{}
 
-
 	// Retrieve all indexes
 	getIndexesStatement := fmt.Sprintf("SELECT indexes.name from system:indexes where keyspace_id = %q", gocbBucket.GetName())
 	n1qlQuery := gocb.NewN1qlQuery(getIndexesStatement)
@@ -356,7 +370,6 @@ func getIndexes(gocbBucket *CouchbaseBucketGoCB) (indexes []string, err error) {
 	return indexes, err
 
 }
-
 
 func (tbm *TestBucketManager) FlushBucket() error {
 
@@ -412,8 +425,10 @@ func (tbm *TestBucketManager) FlushBucket() error {
 
 func (tbm *TestBucketManager) RecreateOrEmptyBucket() error {
 
-	if err := tbm.DropIndexes(); err != nil {
-		return err
+	if TestsShouldDropIndexes() {
+		if err := tbm.DropIndexes(); err != nil {
+			return err
+		}
 	}
 
 	if err := tbm.FlushBucket(); err != nil {
