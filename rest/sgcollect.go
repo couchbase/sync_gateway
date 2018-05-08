@@ -57,14 +57,15 @@ func (sg *sgCollect) Start(filename string, args ...string) error {
 	}
 
 	sg.running = true
+	base.Infof(base.KeyAll, "sgcollect_info started with args: %v", base.UD(args))
 
-	go func(s *sgCollect, c *exec.Cmd) {
-		if err := c.Wait(); err != nil {
+	go func() {
+		if err := cmd.Wait(); err != nil {
 			base.Warnf(base.KeyAll, "sgcollect_info failed: %v", err)
 		}
-		s.running = false
+		sg.running = false
 		base.Infof(base.KeyAll, "sgcollect_info finished")
-	}(sg, cmd)
+	}()
 
 	return nil
 }

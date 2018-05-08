@@ -435,8 +435,6 @@ func (h *handler) handleSGCollect() error {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 
-	base.Infof(base.KeyAll, "#%03d: sgcollect_info started with args: %v", h.serialNumber, base.UD(args))
-
 	h.writeTextStatus(http.StatusOK, []byte("sgcollect_info started"))
 	return nil
 }
