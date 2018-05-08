@@ -13,16 +13,15 @@ import (
 )
 
 var (
-	defualtSGUploadHost = "https://s3.amazonaws.com/cb-customers"
-
 	// ErrSGCollectInfoAlreadyRunning is returned if sgcollect_info is already running.
 	ErrSGCollectInfoAlreadyRunning = errors.New("already running")
 	// ErrSGCollectInfoNotRunning is returned if sgcollect_info is not running.
 	ErrSGCollectInfoNotRunning = errors.New("not running")
 
-	sgcollectInstance = sgCollect{status: base.Uint32Ptr(sgStopped)}
+	defualtSGUploadHost   = "https://s3.amazonaws.com/cb-customers"
+	sgPath, sgCollectPath = sgCollectPaths()
 
-	sgPath, sgCollectPath, _ = sgCollectPaths()
+	sgcollectInstance = sgCollect{status: base.Uint32Ptr(sgStopped)}
 )
 
 const (
@@ -149,15 +148,15 @@ func (c *sgCollectOptions) Args() []string {
 }
 
 // sgCollectPaths returns the absolute paths to Sync Gateway and to sgcollect_info.
-func sgCollectPaths() (sgPath, sgCollectPath string, err error) {
-	sgPath, err = os.Executable()
+func sgCollectPaths() (sgPath, sgCollectPath string) {
+	sgPath, err := os.Executable()
 	if err != nil {
-		return "", "", err
+		base.Warnf(base.KeyAll, "Unable to get path to SG executable. sgcollect_info may not contain all data nessesary for support.")
 	}
 
 	sgPath, err = filepath.Abs(sgPath)
 	if err != nil {
-		return "", "", err
+		base.Warnf(base.KeyAll, "Unable to get absolute path to SG executable. sgcollect_info may not contain all data nessesary for support.")
 	}
 
 	// TODO: Validate this works on Windows
@@ -171,8 +170,8 @@ func sgCollectPaths() (sgPath, sgCollectPath string, err error) {
 	// Make sure sgcollect_info exists
 	_, err = os.Stat(sgCollectPath)
 	if err != nil {
-		return "", "", err
+		base.Warnf(base.KeyAll, "Unable to find sgcollect_info executable")
 	}
 
-	return sgPath, sgCollectPath, nil
+	return sgPath, sgCollectPath
 }
