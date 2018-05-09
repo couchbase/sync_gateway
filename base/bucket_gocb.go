@@ -26,9 +26,9 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
-	"github.com/couchbaselabs/gocbconnstr"
 )
 
 var gocbExpvars *expvar.Map
@@ -114,7 +114,9 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	if connSpec.Options == nil {
 		connSpec.Options = map[string][]string{}
 	}
-	connSpec.Options["http_max_idle_conns_per_host"] = []string{"100"}
+	connSpec.Options["http_max_idle_conns_per_host"] = []string{fmt.Sprintf("%s", DefaultHttpMaxIdleConnsPerHost)}
+	connSpec.Options["http_max_idle_conns"] = []string{fmt.Sprintf("%s", DefaultHttpMaxIdleConns)}
+	connSpec.Options["http_idle_conn_timeout"] = []string{fmt.Sprintf("%s", DefaultHttpIdleConnTimeoutMilliseconds)}
 
 	cluster, err := gocb.Connect(connSpec.String())
 	if err != nil {
@@ -229,7 +231,6 @@ func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 
 }
 
-
 // Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
 // that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
 // bucket and server purge intervals).
@@ -321,7 +322,6 @@ func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
 	return bucketResponseWithMaxTTL.MaxTTLSeconds, nil
 
 }
-
 
 func (bucket *CouchbaseBucketGoCB) GetName() string {
 	return bucket.spec.BucketName

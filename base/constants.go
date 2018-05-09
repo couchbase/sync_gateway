@@ -60,6 +60,19 @@ const (
 
 	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
 
+	// Default the max number of idle connections per host to a relatively high number to avoid
+	// excessive socket churn caused by opening short-lived connections and closing them after, which can cause
+	// a high number of connections to end up in the TIME_WAIT state and exhaust system resources.  Since
+	// GoCB is only connecting to a fixed set of Couchbase nodes, this number can be set relatively high and
+	// still stay within a reasonable value.
+	DefaultHttpMaxIdleConnsPerHost = 256
+
+	// This primarily depends on MaxIdleConnsPerHost as the limiting factor, but sets some upper limit just to avoid
+	// being completely unlimited
+	DefaultHttpMaxIdleConns = DefaultHttpMaxIdleConnsPerHost * 250
+
+	// Keep idle connections around for a maximimum of 90 seconds.  This is the same value used by the Go DefaultTransport.
+	DefaultHttpIdleConnTimeoutMilliseconds = 90 * 1000
 )
 
 func UnitTestUrl() string {
