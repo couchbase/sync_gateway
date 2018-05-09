@@ -3,6 +3,7 @@ package base
 import (
 	"os"
 	"strings"
+	"fmt"
 )
 
 const (
@@ -65,14 +66,14 @@ const (
 	// a high number of connections to end up in the TIME_WAIT state and exhaust system resources.  Since
 	// GoCB is only connecting to a fixed set of Couchbase nodes, this number can be set relatively high and
 	// still stay within a reasonable value.
-	DefaultHttpMaxIdleConnsPerHost = 256
+	DefaultHttpMaxIdleConnsPerHost = "256"
 
 	// This primarily depends on MaxIdleConnsPerHost as the limiting factor, but sets some upper limit just to avoid
 	// being completely unlimited
-	DefaultHttpMaxIdleConns = DefaultHttpMaxIdleConnsPerHost * 250
+	DefaultHttpMaxIdleConns = "64000"
 
 	// Keep idle connections around for a maximimum of 90 seconds.  This is the same value used by the Go DefaultTransport.
-	DefaultHttpIdleConnTimeoutMilliseconds = 90 * 1000
+	DefaultHttpIdleConnTimeoutMilliseconds = "90000"
 )
 
 func UnitTestUrl() string {

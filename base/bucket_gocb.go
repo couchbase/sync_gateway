@@ -114,9 +114,13 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	if connSpec.Options == nil {
 		connSpec.Options = map[string][]string{}
 	}
-	connSpec.Options["http_max_idle_conns_per_host"] = []string{fmt.Sprintf("%d", DefaultHttpMaxIdleConnsPerHost)}
-	connSpec.Options["http_max_idle_conns"] = []string{fmt.Sprintf("%d", DefaultHttpMaxIdleConns)}
-	connSpec.Options["http_idle_conn_timeout"] = []string{fmt.Sprintf("%d", DefaultHttpIdleConnTimeoutMilliseconds)}
+
+	asValues := url.Values(connSpec.Options)
+	asValues.Add("http_max_idle_conns_per_host", DefaultHttpMaxIdleConnsPerHost)
+	asValues.Add("http_max_idle_conns", DefaultHttpMaxIdleConns)
+	asValues.Add("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
+
+	connSpec.Options = asValues
 
 	cluster, err := gocb.Connect(connSpec.String())
 	if err != nil {
