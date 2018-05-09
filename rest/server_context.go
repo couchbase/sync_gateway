@@ -475,6 +475,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
+	// If it's using XATTRS, then crc32c macro expansion must be supported, so this requires CBS 5.5 or later.  See SG #3523
+	if config.UseXattrs() {
+		crc32cMacroExpansionSupported, errServerVersion := base.IsMinimumServerVersion(bucket, 5, 5)
+		if errServerVersion != nil {
+			return nil, errServerVersion
+		}
+		if !crc32cMacroExpansionSupported {
+			return nil, errors.New("Couchbase Server version must be 5.5 or higher for Sync Gateway to use Shared Bucket Mode.  Upgrade the server, or disable Shared Bucket Mode.")
+		}
+	}
+
 	// If using a walrus bucket, force use of views
 	useViews := config.UseViews
 	if !useViews && spec.IsWalrusBucket() {
