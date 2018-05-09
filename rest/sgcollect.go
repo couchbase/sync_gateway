@@ -51,14 +51,14 @@ func (sg *sgCollect) Start(filename string, args ...string) error {
 	}
 
 	atomic.StoreUint32(sg.status, sgRunning)
-	base.Infof(base.KeyAll, "sgcollect_info started with args: %v", base.UD(args))
+	base.Infof(base.KeyAdmin, "sgcollect_info started with args: %v", base.UD(args))
 
 	go func() {
 		if err := cmd.Wait(); err != nil {
-			base.Warnf(base.KeyAll, "sgcollect_info failed: %v", err)
+			base.Warnf(base.KeyAdmin, "sgcollect_info failed: %v", err)
 		}
 		atomic.StoreUint32(sg.status, sgStopped)
-		base.Infof(base.KeyAll, "sgcollect_info finished")
+		base.Infof(base.KeyAdmin, "sgcollect_info finished")
 	}()
 
 	return nil
