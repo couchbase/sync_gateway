@@ -17,6 +17,7 @@ const (
 	// KeyAll is a wildcard for all log keys.
 	KeyAll LogKey = 1 << iota
 
+	KeyAdmin
 	KeyAccel
 	KeyAccess
 	KeyAttach
@@ -55,6 +56,7 @@ var (
 	logKeyNames = map[LogKey]string{
 		KeyNone:           "",
 		KeyAll:            "*",
+		KeyAdmin:          "Admin",
 		KeyAccel:          "Accel",
 		KeyAccess:         "Access",
 		KeyAttach:         "Attach",

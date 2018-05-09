@@ -394,6 +394,58 @@ func (h *handler) handleSetLogging() error {
 	return nil
 }
 
+func (h *handler) handleSGCollectStatus() error {
+	status := "stopped"
+	if sgcollectInstance.IsRunning() {
+		status = "running"
+	}
+
+	h.writeJSONStatus(http.StatusOK, map[string]string{
+		"status": status,
+	})
+	return nil
+}
+
+func (h *handler) handleSGCollectCancel() error {
+	err := sgcollectInstance.Stop()
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Error stopping sgcollect_info: %v", err)
+	}
+
+	h.writeJSONStatus(http.StatusOK, map[string]string{
+		"status": "cancelled",
+	})
+	return nil
+}
+
+func (h *handler) handleSGCollect() error {
+	body, err := h.readBody()
+	if err != nil {
+		return err
+	}
+
+	var params sgCollectOptions
+	if err = json.Unmarshal(body, &params); err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unable to parse request body: %v", err)
+	}
+
+	if err = params.Validate(); err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid options used for sgcollect_info: %v", err)
+	}
+
+	filename := "sgcollect_info_" + time.Now().Format(base.ISO8601Format) + ".zip"
+	args := params.Args()
+
+	if err := sgcollectInstance.Start(filename, args...); err != nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
+	}
+
+	h.writeJSONStatus(http.StatusOK, map[string]string{
+		"status": "started",
+	})
+	return nil
+}
+
 //////// USERS & ROLES:
 
 func internalUserName(name string) string {
