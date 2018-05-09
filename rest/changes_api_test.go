@@ -10,22 +10,20 @@
 package rest
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/go.assert"
-
-	"bytes"
-	"net/http"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/go.assert"
 )
 
 type indexTester struct {
@@ -125,7 +123,8 @@ func TestReproduce2383(t *testing.T) {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
 
-	rt := RestTester{leakyBucketConfig: &base.LeakyBucketConfig{}}
+	var rt RestTester
+	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/_logging", `{"*":true, "color":true}`)
 	assert.NotEquals(t, response, nil)
@@ -1500,6 +1499,112 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	}
 	// Validate that there haven't been any more view queries
 	assert.Equals(t, base.GetExpvarAsString("syncGateway_changeCache", "view_queries"), queryCount)
+
+}
+
+// Tests view backfill with slow query, checks duplicate handling for cache entries if a document is updated after query runs, but before document is
+// prepended to the cache.  Reproduces #3475
+func TestChangesViewBackfillSlowQuery(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip test with LeakyBucket dependency test when running in integration")
+	}
+
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true, "Changes+":true, "Cache":true, "Cache+":true}`)
+	assert.True(t, response != nil)
+
+	// Create user:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	assert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put rev1 of document
+	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	assert.Equals(t, body["ok"], true)
+	revId := body["rev"].(string)
+
+	testDb := rt.ServerContext().Database("db")
+	testDb.WaitForSequence(1)
+
+	log.Printf("about to flush")
+	// Flush the channel cache
+	testDb.FlushChannelCache()
+	log.Printf("flush done")
+
+	// Write another doc, to initialize the cache (and guarantee overlap)
+	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	testDb.WaitForSequence(2)
+
+	// Set up PostQueryCallback on bucket - will be invoked when changes triggers the cache backfill view query
+
+	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
+	assertTrue(t, ok, "Bucket was not of type LeakyBucket")
+	postQueryCallback := func(ddoc, viewName string, params map[string]interface{}) {
+		log.Printf("Got callback for %s, %s, %v", ddoc, viewName, params)
+		// Check which channel the callback was invoked for
+		startkey, ok := params["startkey"].([]interface{})
+		log.Printf("startkey: %v %T", startkey, startkey)
+		channelName := ""
+		if ok && len(startkey) > 1 {
+			channelName, _ = startkey[0].(string)
+		}
+		if viewName == "channels" && channelName == "PBS" {
+			// Update doc1
+			log.Printf("Putting doc w/ revid:%s", revId)
+			updateResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/doc1?rev=%s", revId), `{"modified":true, "channels":["PBS"]}`)
+			assertStatus(t, updateResponse, 201)
+			testDb.WaitForSequence(3)
+		}
+
+	}
+	leakyBucket.SetPostQueryCallback(postQueryCallback)
+
+	// Issue a since=0 changes request.  Will cause the following:
+	//   1. Retrieves doc2 from the cache
+	//   2. View query retrieves doc1 rev-1
+	//   3. PostQueryCallback forces doc1 rev-2 to be added to the cache
+	//   4. doc1 rev-1 is prepended to the cache
+	//   5. Returns 1 + 2 (doc 2, doc 1 rev-1).  This is correct (doc1 rev2 wasn't cached when the changes query was issued),
+	//      but now the cache has two versions of doc1.  Subsequent changes request will returns duplicates.
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	changesJSON := `{"since":0, "limit":50}`
+	changes.Results = nil
+	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 2)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	queryCount := base.GetExpvarAsString("syncGateway_changeCache", "view_queries")
+	log.Printf("After initial changes request, query count is :%s", queryCount)
+
+	leakyBucket.SetPostQueryCallback(nil)
+
+	// Issue another since=0 changes request - cache SHOULD only have a single rev for doc1
+	changes.Results = nil
+	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 2)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	// Validate that there haven't been any more view queries
+	updatedQueryCount := base.GetExpvarAsString("syncGateway_changeCache", "view_queries")
+	log.Printf("After second changes request, query count is :%s", updatedQueryCount)
+	assert.Equals(t, updatedQueryCount, "1")
 
 }
 

@@ -30,6 +30,7 @@ type LeakyBucketConfig struct {
 
 	// Returns a partial error the first time ViewCustom is called
 	FirstTimeViewCustomPartialError bool
+	PostQueryCallback               func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
@@ -133,6 +134,10 @@ func (b *LeakyBucket) ViewQuery(ddoc, name string, params map[string]interface{}
 	if b.config.FirstTimeViewCustomPartialError {
 		b.config.FirstTimeViewCustomPartialError = !b.config.FirstTimeViewCustomPartialError
 		err = ErrPartialViewErrors
+	}
+
+	if b.config.PostQueryCallback != nil {
+		b.config.PostQueryCallback(ddoc, name, params)
 	}
 	return iterator, err
 }
@@ -338,8 +343,14 @@ func (b *LeakyBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uui
 	return b.bucket.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
 }
 
+// Accessors to set leaky bucket config for a running bucket.  Used to tune properties on a walrus bucket created as part of rest tester - it will
+// be a leaky bucket (due to DCP support), but there's no mechanism to pass in a leaky bucket config to a RestTester bucket at bucket creation time.
 func (b *LeakyBucket) SetFirstTimeViewCustomPartialError(val bool) {
 	b.config.FirstTimeViewCustomPartialError = val
+}
+
+func (b *LeakyBucket) SetPostQueryCallback(callback func(ddoc, viewName string, params map[string]interface{})) {
+	b.config.PostQueryCallback = callback
 }
 
 // An implementation of a sgbucket tap feed that wraps

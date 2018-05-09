@@ -217,7 +217,6 @@ func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 
 }
 
-
 // Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
 // that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
 // bucket and server purge intervals).
@@ -309,7 +308,6 @@ func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
 	return bucketResponseWithMaxTTL.MaxTTLSeconds, nil
 
 }
-
 
 func (bucket *CouchbaseBucketGoCB) GetName() string {
 	return bucket.spec.BucketName
