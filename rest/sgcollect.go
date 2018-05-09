@@ -1,8 +1,10 @@
 package rest
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,6 +48,11 @@ func (sg *sgCollect) Start(filename string, args ...string) error {
 	sg.cancel = cancelFunc
 	cmd := exec.CommandContext(ctx, sgCollectPath, args...)
 
+	// Send command stderr/stdout to pipe
+	pipeReader, pipeWriter := io.Pipe()
+	cmd.Stderr = pipeWriter
+	cmd.Stdout = pipeWriter
+
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -53,12 +60,35 @@ func (sg *sgCollect) Start(filename string, args ...string) error {
 	atomic.StoreUint32(sg.status, sgRunning)
 	base.Infof(base.KeyAdmin, "sgcollect_info started with args: %v", base.UD(args))
 
+	// Stream sgcollect_info output to the logs
 	go func() {
-		if err := cmd.Wait(); err != nil {
-			base.Warnf(base.KeyAdmin, "sgcollect_info failed: %v", err)
+		scanner := bufio.NewScanner(pipeReader)
+		for scanner.Scan() {
+			base.Debugf(base.KeyAdmin, "sgcollect_info: %v", scanner.Text())
 		}
+		if err := scanner.Err(); err != nil {
+			base.Warnf(base.KeyAdmin, "sgcollect_info: unexpected error: %v", err)
+		}
+	}()
+
+	go func() {
+		// Blocks until command finishes
+		err := cmd.Wait()
+
 		atomic.StoreUint32(sg.status, sgStopped)
-		base.Infof(base.KeyAdmin, "sgcollect_info finished")
+		duration := cmd.ProcessState.UserTime()
+
+		if err != nil {
+			if err.Error() == "signal: killed" {
+				base.Infof(base.KeyAdmin, "sgcollect_info cancelled after %v", duration)
+				return
+			}
+
+			base.Warnf(base.KeyAdmin, "sgcollect_info failed after %v with reason: %v. Check debug logs with log key 'Admin' for more detail.", duration, err)
+			return
+		}
+
+		base.Infof(base.KeyAdmin, "sgcollect_info finished successfully after %v", duration)
 	}()
 
 	return nil
