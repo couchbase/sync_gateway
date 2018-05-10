@@ -804,25 +804,21 @@ var (
 )
 
 // RotateLogfiles rotates all active log files.
-func RotateLogfiles() error {
+func RotateLogfiles() map[*FileLogger]error {
 	Infof(KeyAll, "Rotating log files...")
 
-	// Even if one errors, we still want to try and rotate the rest, hence the weird error handling.
-	var err error
-	if e := debugLogger.Rotate(); e != nil {
-		err = e
-	}
-	if e := infoLogger.Rotate(); e != nil {
-		err = e
-	}
-	if e := warnLogger.Rotate(); e != nil {
-		err = e
-	}
-	if e := errorLogger.Rotate(); e != nil {
-		err = e
+	loggers := map[*FileLogger]error{
+		debugLogger: nil,
+		infoLogger:  nil,
+		warnLogger:  nil,
+		errorLogger: nil,
 	}
 
-	return err
+	for logger := range loggers {
+		loggers[logger] = logger.Rotate()
+	}
+
+	return loggers
 }
 
 func init() {
