@@ -4,12 +4,15 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -204,4 +207,28 @@ func sgCollectPaths() (sgPath, sgCollectPath string) {
 	}
 
 	return sgPath, sgCollectPath
+}
+
+// sgcollectFilename returns a Windows-safe filename for sgcollect_info zip files.
+func sgcollectFilename() string {
+	// get current username
+	username := "unknown"
+	user, err := user.Current()
+	if err == nil && user != nil {
+		username = user.Username
+	}
+
+	// get primary IP address
+	ip := base.FindPrimaryAddr().String()
+
+	// get timestamp
+	timestamp := time.Now().UTC().Format("2006-01-02t150405")
+
+	// E.g: sgcollectinfo-2018-05-10t133456-bbrks@203.0.113.123.zip
+	filename := fmt.Sprintf("sgcollectinfo-%s-%s@%s.zip", timestamp, username, ip)
+
+	// Strip illegal Windows filename characters
+	filename = base.ReplaceAll(filename, "\\/:*?\"<>|", "")
+
+	return filename
 }
