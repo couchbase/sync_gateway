@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -11,13 +12,11 @@ import (
 func TestSgcollectFilename(t *testing.T) {
 	filename := sgcollectFilename()
 
-	// Check the product name has been set
-	assert.False(t, strings.Contains(filename, "ProductName"))
-
 	// Check it doesn't have forbidden chars
 	assert.False(t, strings.ContainsAny(filename, "\\/:*?\"<>|"))
 
-	matched, err := regexp.Match(`^sgcollectinfo\-\d{4}\-\d{2}\-\d{2}t\d{6}\-sga?@(\d{1,3}\.){4}zip$`, []byte(filename))
+	pattern := `^sgcollectinfo\-\d{4}\-\d{2}\-\d{2}t\d{6}\-sga?@(\d{1,3}\.){4}zip$`
+	matched, err := regexp.Match(pattern, []byte(filename))
 	assertNoError(t, err, "unexpected regexp error")
-	assert.True(t, matched)
+	assertTrue(t, matched, fmt.Sprintf("Filename: %s did not match pattern: %s", filename, pattern))
 }

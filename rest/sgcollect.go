@@ -215,16 +215,10 @@ func sgcollectFilename() string {
 	// get timestamp
 	timestamp := time.Now().UTC().Format("2006-01-02t150405")
 
-	// Use a shortened product name as username.
-	// This may change, so the unit test for sgcollectFilename explicitly checks one of these is set.
-	name := "ProductName"
-	switch base.ProductName {
-	case "Couchbase Sync Gateway":
-		name = "sg"
-	case "Couchbase SG Accel":
+	// use a shortened product name
+	name := "sg"
+	if base.ProductName == "Couchbase SG Accel" {
 		name = "sga"
-	default:
-		base.Warnf(base.KeyAdmin, "Unrecognised ProductName: %v", base.ProductName)
 	}
 
 	// get primary IP address
