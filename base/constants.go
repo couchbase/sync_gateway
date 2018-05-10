@@ -3,7 +3,6 @@ package base
 import (
 	"os"
 	"strings"
-	"fmt"
 )
 
 const (
