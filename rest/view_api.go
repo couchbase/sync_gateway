@@ -10,7 +10,6 @@ import (
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"strings"
 )
 
 // HTTP handler for GET _design/$ddoc
@@ -30,11 +29,6 @@ func (h *handler) handleGetDesignDoc() error {
 		result = db.Body{"filters": db.Body{"bychannel": filter}}
 	} else {
 		if err := h.db.GetDesignDoc(ddocID, &result); err != nil {
-			// GoCB doesn't provide an easy way to distinguish what the cause of the error was, so
-			// resort to a string pattern match for "not_found" and propagate a 404 error in that case.
-			if strings.Contains(err.Error(), "not_found") {
-				return base.HTTPErrorf(404, "%v","missing")
-			}
 			return err
 		}
 	}
