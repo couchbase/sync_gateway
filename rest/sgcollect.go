@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/user"
@@ -219,7 +220,10 @@ func sgcollectFilename() string {
 	}
 
 	// get primary IP address
-	ip := base.FindPrimaryAddr().String()
+	ip, err := base.FindPrimaryAddr()
+	if err != nil {
+		ip = net.IPv4zero
+	}
 
 	// get timestamp
 	timestamp := time.Now().UTC().Format("2006-01-02t150405")
