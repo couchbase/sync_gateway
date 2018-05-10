@@ -909,7 +909,9 @@ func RunServer(config *ServerConfig) {
 
 func HandleSighup() {
 	for logger, err := range base.RotateLogfiles() {
-		base.Warnf(base.KeyAll, "Error rotating %v: %v", logger, err)
+		if err != nil {
+			base.Warnf(base.KeyAll, "Error rotating %v: %v", logger, err)
+		}
 	}
 }
 
