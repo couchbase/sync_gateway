@@ -157,8 +157,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	case sgbucket.MissingError:
 		return http.StatusNotFound, "missing"
 	case *SGError:
-		switch unwrappedErr.code {
-		case notFound:
+		switch unwrappedErr {
+		case ErrNotFound:
 			return http.StatusNotFound, "missing"
 		}
 	case *json.SyntaxError, *json.UnmarshalTypeError:
