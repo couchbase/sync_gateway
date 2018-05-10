@@ -11,9 +11,6 @@ import (
 func TestSgcollectFilename(t *testing.T) {
 	filename := sgcollectFilename()
 
-	assert.True(t, strings.HasPrefix(filename, "sgcollectinfo-"))
-	assert.True(t, strings.HasSuffix(filename, ".zip"))
-
 	// Check it doesn't have forbidden chars
 	assert.False(t, strings.ContainsAny(filename, "\\/:*?\"<>|"))
 
