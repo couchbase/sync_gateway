@@ -10,8 +10,12 @@
 package base
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -165,8 +169,6 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 // available.  Builds a connection, then wraps w/ gomemcached Client for use by cbdatasource.
 func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err error) {
 
-	log.Printf("=======================Using Sync Gateway's TLSConnect")
-
 	d := net.Dialer{
 		Deadline: time.Now().Add(30 * time.Second),
 	}
@@ -174,7 +176,7 @@ func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err err
 	host, port, err := SplitHostPort(dest)
 
 	// TODO: Replace with retrieval of TLS port
-	port = 11207
+	port = "11207"
 	dest = host + ":" + port
 
 	conn, err := d.Dial("tcp", dest)
@@ -198,8 +200,8 @@ func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err err
 			ServerName: host,
 		}
 
-		if b.CertPath != "" && b.Keypath != "" {
-			var error configErr
+		if b.Certpath != "" && b.Keypath != "" {
+			var configErr error
 			tlsConfig, configErr = TLSConfigForX509(b.Certpath, b.Keypath, b.CACertPath)
 			if configErr != nil {
 				return nil, pkgerrors.Wrapf(configErr, "Error adding x509 to TLSConfig")
@@ -210,7 +212,6 @@ func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err err
 		tlsErr := tlsConn.Handshake()
 		if tlsErr != nil {
 			return nil, pkgerrors.Wrapf(tlsErr, "TLS handshake failed in TLSConnect")
-			log.Printf("tls handshake failed with error: %v", tlsErr)
 		}
 		return memcached.Wrap(tlsConn)
 	}
