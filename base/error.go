@@ -36,6 +36,7 @@ const (
 	errPartialViewErrors  = sgErrorCode(0x10)
 	indexerError          = sgErrorCode(0x11)
 	indexExists           = sgErrorCode(0x12)
+	notFound              = sgErrorCode(0x13)
 )
 
 type SGError struct {
@@ -55,6 +56,7 @@ var (
 	ErrCasFailureShouldRetry = &SGError{casFailureShouldRetry}
 	ErrIndexerError          = &SGError{indexerError}
 	ErrIndexAlreadyExists    = &SGError{indexExists}
+	ErrNotFound              = &SGError{notFound}
 
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.
@@ -87,6 +89,8 @@ func (e SGError) Error() string {
 		return "Indexer error"
 	case indexExists:
 		return "Index already exists"
+	case notFound:
+		return "Not Found"
 	default:
 		return "Unknown error"
 	}
@@ -152,6 +156,11 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		}
 	case sgbucket.MissingError:
 		return http.StatusNotFound, "missing"
+	case *SGError:
+		switch unwrappedErr.code {
+		case notFound:
+			return http.StatusNotFound, "missing"
+		}
 	case *json.SyntaxError, *json.UnmarshalTypeError:
 		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", unwrappedErr)
 	}
