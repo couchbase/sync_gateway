@@ -220,7 +220,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
 	// overlap, which helps confirm that we've got everything.
-	resultFromView, err := c.context.getChangesInChannelFromView(c.channelName, cacheValidFrom,
+	resultFromView, err := c.context.getChangesInChannelFromQuery(c.channelName, cacheValidFrom,
 		options)
 	if err != nil {
 		return nil, err
