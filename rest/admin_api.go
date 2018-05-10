@@ -433,7 +433,7 @@ func (h *handler) handleSGCollect() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid options used for sgcollect_info: %v", err)
 	}
 
-	filename := "sgcollect_info_" + time.Now().Format(base.ISO8601Format) + ".zip"
+	filename := fmt.Sprintf("sgcollect_info-%v.zip", time.Now().UnixNano())
 	args := params.Args()
 
 	if err := sgcollectInstance.Start(filename, args...); err != nil {
