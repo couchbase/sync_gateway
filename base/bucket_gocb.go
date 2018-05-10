@@ -1126,8 +1126,8 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 			if crc32cMacroExpansionSupported {
 				mutateInBuilder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the body hash on the xattr
 			}
-			docFragment, err := mutateInBuilder.UpsertEx("", v, gocb.SubdocFlagNone). // Update the document body
-													Execute()
+			mutateInBuilder.UpsertEx("", v, gocb.SubdocFlagNone) // Update the document body
+			docFragment, err := mutateInBuilder.Execute()
 
 			if err != nil {
 				shouldRetry = isRecoverableGoCBError(err)
@@ -1147,8 +1147,8 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 			if crc32cMacroExpansionSupported {
 				mutateInBuilder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the body hash on the xattr
 			}
-			docFragment, err := mutateInBuilder.UpsertEx("", v, gocb.SubdocFlagNone). // Update the document body
-													Execute()
+			mutateInBuilder.UpsertEx("", v, gocb.SubdocFlagNone) // Update the document body
+			docFragment, err := mutateInBuilder.Execute()
 
 			if err != nil {
 				shouldRetry = isRecoverableGoCBError(err)
