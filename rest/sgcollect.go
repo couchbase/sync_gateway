@@ -9,9 +9,9 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -212,11 +212,14 @@ func sgCollectPaths() (sgPath, sgCollectPath string) {
 
 // sgcollectFilename returns a Windows-safe filename for sgcollect_info zip files.
 func sgcollectFilename() string {
-	// get current username
-	username := "unknown"
-	user, err := user.Current()
-	if err == nil && user != nil {
-		username = user.Username
+
+	// get timestamp
+	timestamp := time.Now().UTC().Format("2006-01-02t150405")
+
+	// Use a shortened product name as username
+	name := "sg"
+	if strings.Contains(base.ServerName, "Accel") {
+		name = "sga"
 	}
 
 	// get primary IP address
@@ -225,11 +228,8 @@ func sgcollectFilename() string {
 		ip = net.IPv4zero
 	}
 
-	// get timestamp
-	timestamp := time.Now().UTC().Format("2006-01-02t150405")
-
-	// E.g: sgcollectinfo-2018-05-10t133456-bbrks@203.0.113.123.zip
-	filename := fmt.Sprintf("sgcollectinfo-%s-%s@%s.zip", timestamp, username, ip)
+	// E.g: sgcollectinfo-2018-05-10t133456-sg@203.0.113.123.zip
+	filename := fmt.Sprintf("sgcollectinfo-%s-%s@%s.zip", timestamp, name, ip)
 
 	// Strip illegal Windows filename characters
 	filename = base.ReplaceAll(filename, "\\/:*?\"<>|", "")
