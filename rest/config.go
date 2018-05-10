@@ -907,10 +907,9 @@ func RunServer(config *ServerConfig) {
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 
-// for now  just cycle the logger to allow for log file rotation
 func HandleSighup() {
-	if config.DeprecatedLogFilePath != nil {
-		base.UpdateLogger(*config.DeprecatedLogFilePath)
+	if err := base.RotateLogfiles(); err != nil {
+		base.Warnf(base.KeyAll, "Error rotating log files: %v", err)
 	}
 }
 

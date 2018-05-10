@@ -22,6 +22,7 @@ var (
 type FileLogger struct {
 	Enabled bool
 
+	output io.Writer
 	logger *log.Logger
 }
 
@@ -47,8 +48,22 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, logFilePath string, 
 
 	return &FileLogger{
 		Enabled: *config.Enabled,
+		output:  config.Output,
 		logger:  log.New(config.Output, "", 0),
 	}, nil
+}
+
+// Rotate will rotate the active log file.
+func (l *FileLogger) Rotate() error {
+	if l == nil {
+		return errors.New("nil FileLogger")
+	}
+
+	if logger, ok := l.output.(*lumberjack.Logger); ok {
+		return logger.Rotate()
+	}
+
+	return errors.New("can't rotate non-lumberjack log output")
 }
 
 // shouldLog returns true if we can log.
