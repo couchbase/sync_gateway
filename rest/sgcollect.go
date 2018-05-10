@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -204,7 +203,7 @@ func sgCollectPaths() (sgPath, sgCollectPath string) {
 	// Make sure sgcollect_info exists
 	_, err = os.Stat(sgCollectPath)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to find sgcollect_info executable")
+		base.Warnf(base.KeyAll, "Unable to find sgcollect_info executable. sgcollect_info cannot be run from the admin API.")
 	}
 
 	return sgPath, sgCollectPath
@@ -216,10 +215,16 @@ func sgcollectFilename() string {
 	// get timestamp
 	timestamp := time.Now().UTC().Format("2006-01-02t150405")
 
-	// Use a shortened product name as username
-	name := "sg"
-	if strings.Contains(base.ServerName, "Accel") {
+	// Use a shortened product name as username.
+	// This may change, so the unit test for sgcollectFilename explicitly checks one of these is set.
+	name := "ProductName"
+	switch base.ProductName {
+	case "Couchbase Sync Gateway":
+		name = "sg"
+	case "Couchbase SG Accel":
 		name = "sga"
+	default:
+		base.Warnf(base.KeyAdmin, "Unrecognised ProductName: %v", base.ProductName)
 	}
 
 	// get primary IP address

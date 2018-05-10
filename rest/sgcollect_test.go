@@ -11,6 +11,9 @@ import (
 func TestSgcollectFilename(t *testing.T) {
 	filename := sgcollectFilename()
 
+	// Check the product name has been set
+	assert.False(t, strings.Contains(filename, "ProductName"))
+
 	// Check it doesn't have forbidden chars
 	assert.False(t, strings.ContainsAny(filename, "\\/:*?\"<>|"))
 
