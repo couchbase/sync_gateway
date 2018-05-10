@@ -707,6 +707,9 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	logKeys := flag.String("log", "", "Log keys, comma separated")
 	logFilePath := flag.String("logFilePath", "", "Path to log files")
 	skipRunModeValidation := flag.Bool("skipRunModeValidation", false, "Skip config validation for runmode (accel vs normal sg)")
+	certpath := flag.String("certpath", "", "Client certificate path")
+	cacertpath := flag.String("cacertpath", "", "Root CA certificate path")
+	keypath := flag.String("keypath", "", "Client certificate key path")
 
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
 	defaultLogFilePath := flag.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
@@ -798,9 +801,12 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 				*dbName: {
 					Name: *dbName,
 					BucketConfig: BucketConfig{
-						Server: couchbaseURL,
-						Bucket: bucketName,
-						Pool:   poolName,
+						Server:     couchbaseURL,
+						Bucket:     bucketName,
+						Pool:       poolName,
+						CertPath:   *certpath,
+						CACertPath: *cacertpath,
+						KeyPath:    *keypath,
 					},
 					Users: map[string]*db.PrincipalConfig{
 						base.GuestUsername: {

@@ -10,22 +10,17 @@
 package base
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"net"
 	"sync"
 	"time"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
-	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
@@ -608,7 +603,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	}
 
 	if spec.IsTLS() {
-		dataSourceOptions.Connect = TLSConnect
+		dataSourceOptions.Connect = spec.TLSConnect
 	}
 
 	Debugf(KeyFeed, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
