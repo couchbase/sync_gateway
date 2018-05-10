@@ -1604,7 +1604,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	// Validate that there haven't been any more view queries
 	updatedQueryCount := base.GetExpvarAsString("syncGateway_changeCache", "view_queries")
 	log.Printf("After second changes request, query count is :%s", updatedQueryCount)
-	assert.Equals(t, updatedQueryCount, "1")
+	assert.Equals(t, updatedQueryCount, queryCount)
 
 }
 
