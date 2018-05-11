@@ -29,10 +29,9 @@ const NoSeq = uint64(0x7FFFFFFFFFFFFFFF)
 // Completeness guarantee: the cache is guaranteed to have _every_ change in a channel from the validFrom sequence
 // up to the current known latest change in that channel.  Eg, there are no gaps/holes.
 //
-// The validFrom state variable tracks the oldest sequence for which the cache is valid, and tries to minimize
-// the number of GSI/View backfill queries by remembering the starting point of previous backfill queries.  It
-// tracks the starting point after which the cache can guarantee completeness.  As the new entries are added and
-// capacity is exceeded, the validFrom sequence will continually increase.
+// The validFrom state variable tracks the oldest sequence for which the cache is complete.  This may be earlier
+// than the oldest entry in the cache.  Used to determine whether a GSI/View query is required for a given
+// getChanges request.
 //
 // Shortly after startup and receiving a few changes from DCP, the cache might look something like this:
 //
@@ -414,7 +413,7 @@ func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 // method can't confirm that there are no missing sequences in between.
 //
 // changesValidFrom represents the validfrom value of the query, and should always be LTE the
-// oldest value (lowest sequence number) in the cache, although this is not strictly enforced.
+// oldest value (lowest sequence number) in the set of changes being prepended, although this is not strictly enforced.
 //
 // If all of the changes don't fit in the cache, then only the most recent (highest sequence number)
 // changes will be added, and the oldest changes (lowest sequence numbers) will be discarded.  In that case, the validFrom
