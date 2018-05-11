@@ -646,13 +646,14 @@ func tagPathVars(req *http.Request, urlString *string) {
 
 // redactedQueryParams is a lookup map of query params to redaction types.
 var redactedQueryParams = map[string]string{
-	"channels": "UD",
-	"doc_ids":  "UD",
-	"docid":    "UD",
+	"channels": "UD", // updateChangesOptionsFromQuery, handleChanges
+	"doc_ids":  "UD", // updateChangesOptionsFromQuery, handleChanges
+	"startkey": "UD", // handleAllDocs
+	"endkey":   "UD", // handleAllDocs
 
-	"since":     "MD",
-	"rev":       "MD",
-	"open_revs": "MD",
+	"since":     "MD", // handleDumpChannel, updateChangesOptionsFromQuery, handleChanges
+	"rev":       "MD", // handleGetDoc, handlePutDoc, handleDeleteDoc, handleDelLocalDoc, handleGetAttachment, handlePutAttachment
+	"open_revs": "MD", // handleGetDoc
 }
 
 func tagQueryParams(req *http.Request, urlString *string) {
