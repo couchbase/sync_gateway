@@ -149,7 +149,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		if sc.config.AdminUI != nil {
 			http.ServeFile(w, r, *sc.config.AdminUI)
 		} else {
-			w.Write(sync_gateway_admin_ui.Admin_bundle_html())
+			w.Write(sync_gateway_admin_ui.MustAsset("assets/index.html"))
 		}
 	})
 
@@ -215,6 +215,13 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleReplicate)).Methods("POST")
 	r.Handle("/_active_tasks",
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleActiveTasks)).Methods("GET")
+
+	r.Handle("/_sgcollect_info",
+		makeHandler(sc, adminPrivs, (*handler).handleSGCollectStatus)).Methods("GET")
+	r.Handle("/_sgcollect_info",
+		makeHandler(sc, adminPrivs, (*handler).handleSGCollectCancel)).Methods("DELETE")
+	r.Handle("/_sgcollect_info",
+		makeHandler(sc, adminPrivs, (*handler).handleSGCollect)).Methods("POST")
 
 	// Debugging handlers
 	r.Handle("/_debug/pprof/goroutine",

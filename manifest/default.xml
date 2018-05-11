@@ -18,6 +18,7 @@
   <remote fetch="https://github.com/pkg/" name="pkg"/>
   <remote fetch="https://github.com/go-sourcemap/" name="go-sourcemap"/>
   <remote fetch="https://github.com/google/" name="google"/>
+  <remote fetch="https://github.com/opentracing/" name="opentracing"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
@@ -36,7 +37,7 @@
 
   
   <!-- Sync Gateway Accel-->
-  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="6f618c5fc9e9a1f3130839e61e2357153956f369"/>
+  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="551d6ff8d7b84979133b4d5991f9159e33e8d3ce"/>
 
   <!-- Dependencies specific to Sync Gateway Accel-->
   <project groups="notdefault,sg-accel" name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="97e27ff20421ea35bda1b49c1d12799ba11ef2fe"/>
@@ -55,15 +56,15 @@
 
   <project name="retriever" path="godeps/src/github.com/couchbase/retriever" remote="couchbase" revision="19c5a5d92a2f34fb96ae91d26901e4a7076b8020"/>
 
-  <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" revision="5970c6334fc429dc648b802ef97736902755c94b" remote="couchbaselabs"/>
+  <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" revision="93c74bac9ddc2979ab895a37087c225c998b03bf" remote="couchbaselabs"/>
 
   <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="61b5ac22b62ad0e06bd461c8989cfb49a4d3169e"/>
 
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="195945aa8fd23ea4772883396fd6b31730035eff"/>
 
-  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="72b08dc5389b2536dd073f16a093a964edce65eb"/>
+  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="eb0048566506484772bb1be22c1cf0c8cd9def05"/>
 
-  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="de2ebfbb130fe9df6ffdacde73f799f17a72e70b"/>
+  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="7b68c492c29f3f952a00a4ba97dac14cc4b2b57e"/>
 
   <project name="gocbconnstr" path="godeps/src/github.com/couchbaselabs/gocbconnstr" remote="couchbaselabs" revision="710456e087a6d497e87f41d0a9d98d6a75672186"/>
 
@@ -128,5 +129,9 @@
   <project name="sourcemap" path="godeps/src/gopkg.in/sourcemap.v1" remote="go-sourcemap" revision="6e83acea0053641eff084973fee085f0c193c61a"/>
 
   <project name="uuid" path="godeps/src/github.com/google/uuid" remote="google" revision="dec09d789f3dba190787f8b4454c7d3c936fed9e"/>
+
+  <project name="opentracing-go" path="godeps/src/github.com/opentracing/opentracing-go" remote="opentracing" revision="6c572c00d1830223701e155de97408483dfcd14a"/>
+
+
 
 </manifest>

@@ -253,7 +253,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
-		base.Infof(base.KeyFeed, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.UD(bucket.GetName()))
+		base.Infof(base.KeyFeed, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
 		if err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
@@ -837,25 +837,11 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
 // and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
 // To be used when the JavaScript sync function changes.
-func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) (int, error) {
+func (db *Database) UpdateAllDocChannels() (int, error) {
 
-	if doCurrentDocs && doImportDocs {
-		return 0, errors.New("UpdateAllDocChannels doesn't support processing both current and imports in one request.")
-	}
+	base.Infof(base.KeyAll, "Recomputing document channels...")
 
-	if !doCurrentDocs && !doImportDocs {
-		return 0, nil
-	}
-
-	if doCurrentDocs {
-		base.Infof(base.KeyAll, "Recomputing document channels...")
-	}
-
-	if doImportDocs {
-		base.Infof(base.KeyAll, "Importing documents...")
-	}
-
-	results, err := db.QueryImport(doCurrentDocs)
+	results, err := db.QueryResync()
 	if err != nil {
 		return 0, err
 	}
@@ -879,19 +865,9 @@ func (db *Database) UpdateAllDocChannels(doCurrentDocs bool, doImportDocs bool) 
 		documentUpdateFunc := func(doc *document) (updatedDoc *document, shouldUpdate bool, updatedExpiry *uint32, err error) {
 			imported := false
 			if !doc.HasValidSyncData(db.writeSequences()) {
-				// This is a document not known to the sync gateway. Ignore or import it:
-				if !doImportDocs {
-					return nil, false, nil, couchbase.UpdateCancel
-				}
-				imported = true
-				if err = db.initializeSyncData(doc); err != nil {
-					return nil, false, nil, err
-				}
-				base.Infof(base.KeyCRUD, "\tImporting document %q --> rev %q", base.UD(docid), doc.CurrentRev)
+				// This is a document not known to the sync gateway. Ignore it:
+				return nil, false, nil, couchbase.UpdateCancel
 			} else {
-				if !doCurrentDocs {
-					return nil, false, nil, couchbase.UpdateCancel
-				}
 				base.Infof(base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
 			}
 

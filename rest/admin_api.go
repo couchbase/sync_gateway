@@ -73,7 +73,7 @@ func (h *handler) handleDbOnline() error {
 
 	json.Unmarshal(body, &input)
 
-	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.UD(h.db.Name), input.Delay)
+	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 
 	timer := time.NewTimer(time.Duration(input.Delay) * time.Second)
 	go func() {
@@ -90,7 +90,7 @@ func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
 	if err = h.db.TakeDbOffline("ADMIN Request"); err != nil {
-		base.Infof(base.KeyCRUD, "Unable to take Database : %v, offline", base.UD(h.db.Name))
+		base.Infof(base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
 	}
 
 	return err
@@ -391,6 +391,57 @@ func (h *handler) handleSetLogging() error {
 	}
 
 	base.UpdateLogKeys(keys, h.rq.Method == "PUT")
+	return nil
+}
+
+func (h *handler) handleSGCollectStatus() error {
+	status := "stopped"
+	if sgcollectInstance.IsRunning() {
+		status = "running"
+	}
+
+	h.writeJSONStatus(http.StatusOK, map[string]string{
+		"status": status,
+	})
+	return nil
+}
+
+func (h *handler) handleSGCollectCancel() error {
+	err := sgcollectInstance.Stop()
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Error stopping sgcollect_info: %v", err)
+	}
+
+	h.writeJSONStatus(http.StatusOK, map[string]string{
+		"status": "cancelled",
+	})
+	return nil
+}
+
+func (h *handler) handleSGCollect() error {
+	body, err := h.readBody()
+	if err != nil {
+		return err
+	}
+
+	var params sgCollectOptions
+	if err = json.Unmarshal(body, &params); err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unable to parse request body: %v", err)
+	}
+
+	if err = params.Validate(); err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid options used for sgcollect_info: %v", err)
+	}
+
+	args := params.Args()
+
+	if err := sgcollectInstance.Start(sgcollectFilename(), args...); err != nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
+	}
+
+	h.writeJSONStatus(http.StatusOK, map[string]string{
+		"status": "started",
+	})
 	return nil
 }
 

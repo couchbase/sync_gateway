@@ -886,7 +886,7 @@ func RunServer(config *ServerConfig) {
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Fatalf(base.KeyAll, "Error opening database %s: %+v", base.UD(dbConfig.Name), err)
+			base.Fatalf(base.KeyAll, "Error opening database %s: %+v", base.MD(dbConfig.Name), err)
 		}
 	}
 
@@ -907,10 +907,11 @@ func RunServer(config *ServerConfig) {
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 
-// for now  just cycle the logger to allow for log file rotation
 func HandleSighup() {
-	if config.DeprecatedLogFilePath != nil {
-		base.UpdateLogger(*config.DeprecatedLogFilePath)
+	for logger, err := range base.RotateLogfiles() {
+		if err != nil {
+			base.Warnf(base.KeyAll, "Error rotating %v: %v", logger, err)
+		}
 	}
 }
 

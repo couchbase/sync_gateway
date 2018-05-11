@@ -259,7 +259,7 @@ func (s *ShardedClock) Load() (isChanged bool, err error) {
 	newCounter, err := s.bucket.Incr(s.countKey, 0, 0, 0)
 	if err != nil {
 		Warnf(KeyAll, "Error getting count for %s:%v", s.countKey, err)
-		Debugf(KeyDIndex, "Error getting count:%v", err)
+		Debugf(KeyAccel, "Error getting count:%v", err)
 		return false, err
 	}
 	if newCounter == s.counter {

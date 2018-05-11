@@ -139,19 +139,19 @@ func (b *LoggingBucket) DeleteDDoc(docname string) error {
 }
 func (b *LoggingBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 	start := time.Now()
-	defer func() { Tracef(KeyBucket, "View(%q, %q, ...) [%v]", UD(ddoc), UD(name), time.Since(start)) }()
+	defer func() { Tracef(KeyBucket, "View(%q, %q, ...) [%v]", MD(ddoc), UD(name), time.Since(start)) }()
 	return b.bucket.View(ddoc, name, params)
 }
 
 func (b *LoggingBucket) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
 	start := time.Now()
-	defer func() { Tracef(KeyBucket, "ViewCustom(%q, %q, ...) [%v]", UD(ddoc), UD(name), time.Since(start)) }()
+	defer func() { Tracef(KeyBucket, "ViewCustom(%q, %q, ...) [%v]", MD(ddoc), UD(name), time.Since(start)) }()
 	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
 
 func (b *LoggingBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 	start := time.Now()
-	defer func() { Tracef(KeyBucket, "ViewQuery(%q, %q, ...) [%v]", UD(ddoc), UD(name), time.Since(start)) }()
+	defer func() { Tracef(KeyBucket, "ViewQuery(%q, %q, ...) [%v]", MD(ddoc), UD(name), time.Since(start)) }()
 	return b.bucket.ViewQuery(ddoc, name, params)
 }
 

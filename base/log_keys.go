@@ -7,7 +7,7 @@ import (
 )
 
 // LogKey is a bitfield of log keys.
-type LogKey uint32
+type LogKey uint64
 
 // Values for log keys.
 const (
@@ -17,6 +17,8 @@ const (
 	// KeyAll is a wildcard for all log keys.
 	KeyAll LogKey = 1 << iota
 
+	KeyAdmin
+	KeyAccel
 	KeyAccess
 	KeyAttach
 	KeyAuth
@@ -25,9 +27,9 @@ const (
 	KeyChanges
 	KeyChannelIndex
 	KeyChannelStorage
+	KeyCompact
 	KeyCRUD
 	KeyDCP
-	KeyDIndex
 	KeyEvents
 	KeyFeed
 	KeyGoCB
@@ -36,10 +38,12 @@ const (
 	KeyHTTPResp
 	KeyImport
 	KeyIndex
+	KeyIndexEntries
 	KeyMigrate
 	KeyOIDC
 	KeyQuery
 	KeyReplicate
+	KeyRollback
 	KeySequences
 	KeyShadow
 	KeySync
@@ -52,6 +56,8 @@ var (
 	logKeyNames = map[LogKey]string{
 		KeyNone:           "",
 		KeyAll:            "*",
+		KeyAdmin:          "Admin",
+		KeyAccel:          "Accel",
 		KeyAccess:         "Access",
 		KeyAttach:         "Attach",
 		KeyAuth:           "Auth",
@@ -60,9 +66,9 @@ var (
 		KeyChanges:        "Changes",
 		KeyChannelIndex:   "ChannelIndex",
 		KeyChannelStorage: "ChannelStorage",
+		KeyCompact:        "Compact",
 		KeyCRUD:           "CRUD",
 		KeyDCP:            "DCP",
-		KeyDIndex:         "DIndex",
 		KeyEvents:         "Events",
 		KeyFeed:           "Feed",
 		KeyGoCB:           "gocb",
@@ -71,10 +77,12 @@ var (
 		KeyHTTPResp:       "HTTP+", // Infof printed as HTTP+
 		KeyImport:         "Import",
 		KeyIndex:          "Index",
+		KeyIndexEntries:   "IndexEntries",
 		KeyMigrate:        "Migrate",
 		KeyOIDC:           "OIDC",
 		KeyQuery:          "Query",
 		KeyReplicate:      "Replicate",
+		KeyRollback:       "Rollback",
 		KeySequences:      "Sequences",
 		KeyShadow:         "Shadow",
 		KeySync:           "Sync",
@@ -89,19 +97,19 @@ var (
 
 // Enable will enable the given logKey in keyMask.
 func (keyMask *LogKey) Enable(logKey LogKey) {
-	val := atomic.LoadUint32((*uint32)(keyMask))
-	atomic.StoreUint32((*uint32)(keyMask), val|uint32(logKey))
+	val := atomic.LoadUint64((*uint64)(keyMask))
+	atomic.StoreUint64((*uint64)(keyMask), val|uint64(logKey))
 }
 
 // Disable will disable the given logKey in keyMask.
 func (keyMask *LogKey) Disable(logKey LogKey) {
-	val := atomic.LoadUint32((*uint32)(keyMask))
-	atomic.StoreUint32((*uint32)(keyMask), val & ^uint32(logKey))
+	val := atomic.LoadUint64((*uint64)(keyMask))
+	atomic.StoreUint64((*uint64)(keyMask), val & ^uint64(logKey))
 }
 
 // Set will override the keyMask with the given logKey.
 func (keyMask *LogKey) Set(logKey LogKey) {
-	atomic.StoreUint32((*uint32)(keyMask), uint32(logKey))
+	atomic.StoreUint64((*uint64)(keyMask), uint64(logKey))
 }
 
 // Enabled returns true if the given logKey is enabled in keyMask.
@@ -121,14 +129,14 @@ func (keyMask *LogKey) enabled(logKey LogKey, checkWildcards bool) bool {
 		return false
 	}
 
-	flag := atomic.LoadUint32((*uint32)(keyMask))
+	flag := atomic.LoadUint64((*uint64)(keyMask))
 
 	// If KeyAll is set, return true for everything.
-	if checkWildcards && flag&uint32(KeyAll) != 0 {
+	if checkWildcards && flag&uint64(KeyAll) != 0 {
 		return true
 	}
 
-	return flag&uint32(logKey) != 0
+	return flag&uint64(logKey) != 0
 }
 
 // String returns the string representation of a single log key.
@@ -147,7 +155,7 @@ func (keyMask *LogKey) EnabledLogKeys() []string {
 	}
 	var logKeys = make([]string, 0, len(logKeyNames))
 	for i := 0; i < len(logKeyNames); i++ {
-		logKey := LogKey(1) << uint32(i)
+		logKey := LogKey(1) << uint64(i)
 		if keyMask.enabled(logKey, false) {
 			logKeys = append(logKeys, logKey.String())
 		}

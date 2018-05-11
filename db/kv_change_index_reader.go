@@ -72,7 +72,7 @@ func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChannelI
 	k.indexReadBucket, err = base.GetBucket(indexOptions.Spec, nil)
 	if err != nil {
 		base.Infof(base.KeyAll, "Error opening index bucket %q, pool %q, server <%s>",
-			base.UD(indexOptions.Spec.BucketName), base.UD(indexOptions.Spec.PoolName), base.UD(indexOptions.Spec.Server))
+			base.MD(indexOptions.Spec.BucketName), base.SD(indexOptions.Spec.PoolName), base.SD(indexOptions.Spec.Server))
 		// TODO: revert to local index?
 		return err
 	}
@@ -304,7 +304,7 @@ func (k *kvChangeIndexReader) GetChangesForRange(channelName string, sinceClock 
 	}
 	changes, err := reader.GetChanges(sinceClock, toClock, limit, activeOnly)
 	if err != nil {
-		base.Debugf(base.KeyDIndex, "No clock found for channel %s, assuming no entries in index", base.UD(channelName))
+		base.Debugf(base.KeyAccel, "No clock found for channel %s, assuming no entries in index", base.UD(channelName))
 		return nil, nil
 	}
 
@@ -318,10 +318,10 @@ func (k *kvChangeIndexReader) getOrCreateReader(channelName string) (*KvChannelI
 	if index == nil {
 		index, err = k.newChannelReader(channelName)
 		IndexExpvars.Add("getOrCreateReader_create", 1)
-		base.Debugf(base.KeyDIndex, "getOrCreateReader: Created new reader for channel %s", base.UD(channelName))
+		base.Debugf(base.KeyAccel, "getOrCreateReader: Created new reader for channel %s", base.UD(channelName))
 	} else {
 		IndexExpvars.Add("getOrCreateReader_get", 1)
-		base.Debugf(base.KeyDIndex, "getOrCreateReader: Using existing reader for channel %s", base.UD(channelName))
+		base.Debugf(base.KeyAccel, "getOrCreateReader: Using existing reader for channel %s", base.UD(channelName))
 	}
 	return index, err
 }

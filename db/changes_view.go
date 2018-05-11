@@ -74,7 +74,7 @@ func nextChannelQueryEntry(results sgbucket.QueryResultIterator) (*LogEntry, boo
 }
 
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
-func (dbc *DatabaseContext) getChangesInChannelFromView(
+func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 	channelName string, endSeq uint64, options ChangesOptions) (LogEntries, error) {
 	if dbc.Bucket == nil {
 		return nil, errors.New("No bucket available for channel view query")
@@ -157,7 +157,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 			// Otherwise update startkey and re-query
 
 			startSeq = highSeq + 1
-			base.Infof(base.KeyCache, "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), highSeq+1, endSeq, options.Limit)
+			base.Infof(base.KeyCache, "  Querying 'channels' for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), highSeq+1, endSeq, options.Limit)
 		} else {
 			// If not active-only, we only need one iteration of the loop - the limit applied to the view query is sufficient
 			break
@@ -165,11 +165,11 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 	}
 
 	if len(entries) > 0 {
-		base.Infof(base.KeyCache, "    Got %d rows from view for %q: #%d ... #%d",
+		base.Infof(base.KeyCache, "    Got %d rows from query for %q: #%d ... #%d",
 			len(entries), base.UD(channelName), entries[0].Sequence, entries[len(entries)-1].Sequence)
 	}
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
-		base.Infof(base.KeyAll, "changes_view: Query took %v to return %d rows.  Channel: %s StartSeq: %d EndSeq: %d Limit: %d",
+		base.Infof(base.KeyAll, "Channel query took %v to return %d rows.  Channel: %s StartSeq: %d EndSeq: %d Limit: %d",
 			elapsed, len(entries), base.UD(channelName), startSeq, endSeq, options.Limit)
 	}
 	changeCacheExpvars.Add("view_queries", 1)
@@ -178,5 +178,5 @@ func (dbc *DatabaseContext) getChangesInChannelFromView(
 
 // Public channel view call - for unit test support
 func (dbc *DatabaseContext) ChannelViewTest(channelName string, endSeq uint64, options ChangesOptions) (LogEntries, error) {
-	return dbc.getChangesInChannelFromView(channelName, endSeq, options)
+	return dbc.getChangesInChannelFromQuery(channelName, endSeq, options)
 }

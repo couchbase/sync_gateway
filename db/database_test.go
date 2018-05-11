@@ -1225,38 +1225,6 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assertHTTPError(t, err, 403)
 }
 
-func TestLegacyImport(t *testing.T) {
-
-	if base.TestUseXattrs() {
-		t.Skip("This test should not be run in XATTR mode.  Skipping")
-	}
-
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
-
-	// Add docs to the underlying bucket:
-	for i := 1; i <= 20; i++ {
-		db.Bucket.Add(fmt.Sprintf("alreadyHere%d", i), 0, Body{"key1": i, "key2": "hi"})
-	}
-
-	// Make sure they aren't visible thru the gateway:
-	doc, err := db.GetDocument("alreadyHere1", DocUnmarshalAll)
-	assert.Equals(t, doc, (*document)(nil))
-	assert.Equals(t, err.(*base.HTTPError).Status, 404)
-
-	// Import them:
-	count, err := db.UpdateAllDocChannels(false, true)
-	assertNoError(t, err, "ApplySyncFun")
-	assert.Equals(t, count, 20)
-
-	// Now they're visible:
-	doc, err = db.GetDocument("alreadyHere1", DocUnmarshalAll)
-	base.Infof(base.KeyAll, "doc = %+v", doc)
-	assert.True(t, doc != nil)
-	assertNoError(t, err, "can't get doc")
-}
-
 func TestPostWithExistingId(t *testing.T) {
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
@@ -1466,18 +1434,20 @@ func TestChannelView(t *testing.T) {
 	// Query view (retry loop to wait for indexing)
 	for i := 0; i < 10; i++ {
 		var err error
-		entries, err = db.getChangesInChannelFromView("*", 0, ChangesOptions{})
+		entries, err = db.getChangesInChannelFromQuery("*", 0, ChangesOptions{})
 
 		assertNoError(t, err, "Couldn't create document")
 		if len(entries) >= 1 {
-			log.Printf("View query returned entry: %+v", entries[0])
 			break
 		}
 		log.Printf("No entries found - retrying (%d/10)", i+1)
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	assert.True(t, len(entries) == 1)
+	for i, entry := range entries {
+		log.Printf("View Query returned entry (%d): %v", i, entry)
+	}
+	assert.Equals(t, len(entries), 1)
 
 }
 
