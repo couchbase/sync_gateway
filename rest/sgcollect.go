@@ -20,15 +20,14 @@ var (
 	// ErrSGCollectInfoNotRunning is returned if sgcollect_info is not running.
 	ErrSGCollectInfoNotRunning = errors.New("not running")
 
-	defualtSGUploadHost   = "https://s3.amazonaws.com/cb-customers"
-	sgPath, sgCollectPath = sgCollectPaths()
-
 	sgcollectInstance = sgCollect{status: base.Uint32Ptr(sgStopped)}
 )
 
 const (
 	sgStopped uint32 = iota
 	sgRunning
+
+	defualtSGUploadHost = "https://s3.amazonaws.com/cb-customers"
 )
 
 type sgCollect struct {
@@ -40,6 +39,11 @@ type sgCollect struct {
 func (sg *sgCollect) Start(filename string, args ...string) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
+	}
+
+	sgPath, sgCollectPath, err := sgCollectPaths()
+	if err != nil {
+		return err
 	}
 
 	args = append(args, "--sync-gateway-executable", sgPath, filename)
@@ -178,18 +182,18 @@ func (c *sgCollectOptions) Args() []string {
 }
 
 // sgCollectPaths returns the absolute paths to Sync Gateway and to sgcollect_info.
-func sgCollectPaths() (sgPath, sgCollectPath string) {
-	sgPath, err := os.Executable()
+func sgCollectPaths() (sgPath, sgCollectPath string, err error) {
+	sgPath, err = os.Executable()
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to get path to SG executable. sgcollect_info may not contain all data nessesary for support.")
+		return "", "", err
 	}
 
 	sgPath, err = filepath.Abs(sgPath)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to get absolute path to SG executable. sgcollect_info may not contain all data nessesary for support.")
+		return "", "", err
 	}
 
-	// TODO: Validate this works on Windows
+	// FIXME: Not always in ./tools (e.g. CentOS #3555)
 	sgCollectPath = filepath.Join("tools", "sgcollect_info")
 	if runtime.GOOS == "windows" {
 		sgCollectPath += ".exe"
@@ -200,8 +204,8 @@ func sgCollectPaths() (sgPath, sgCollectPath string) {
 	// Make sure sgcollect_info exists
 	_, err = os.Stat(sgCollectPath)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to find sgcollect_info executable")
+		return "", "", err
 	}
 
-	return sgPath, sgCollectPath
+	return sgPath, sgCollectPath, nil
 }
