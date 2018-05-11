@@ -12,9 +12,9 @@ import (
 
 const BucketQueryToken = "$_bucket"   // Token used for bucket name replacement in query statements
 const MaxQueryRetries = 30            // Maximum query retries on indexer error
-const IndexStateOnline = "online"     // bucket state value, as returned by SELECT FROM system:indexes
-const IndexStateDeferred = "deferred" // bucket state value, as returned by SELECT FROM system:indexes
-const IndexStatePending = "pending"   // bucket state value, as returned by SELECT FROM system:indexes
+const IndexStateOnline = "online"     // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created and built.
+const IndexStateDeferred = "deferred" // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created but not built.
+const IndexStatePending = "pending"   // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created, build is in progress
 
 var SlowQueryWarningThreshold time.Duration
 
@@ -98,7 +98,7 @@ func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression stri
 
 // BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:
 //   BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
-func (bucket *CouchbaseBucketGoCB) BuildIndexes(indexNames []string) error {
+func (bucket *CouchbaseBucketGoCB) buildIndexes(indexNames []string) error {
 
 	if len(indexNames) == 0 {
 		return nil
@@ -126,48 +126,43 @@ func (bucket *CouchbaseBucketGoCB) BuildIndexes(indexNames []string) error {
 	return err
 }
 
-// If any of the provided indexes are in a pending state, attempt to rebuild those indexes.  On error, requery for indexes in pending
-// state and reattempts, up to max retries
-func (bucket *CouchbaseBucketGoCB) BuildPendingIndexes(indexSet []string, maxRetries int) error {
+// Issues a build command for any deferred sync gateway indexes associated with the bucket.  Waits for
+func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error {
 
 	if len(indexSet) == 0 {
 		return nil
 	}
 
 	var buildErr error
-	for i := 1; i <= maxRetries; i++ {
-		statement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes WHERE indexes.keyspace_id = '%s' and indexes.name in [%s]", bucket.GetName(), StringSliceToN1QLArray(indexSet, "'"))
-		n1qlQuery := gocb.NewN1qlQuery(statement)
-		results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
-		if err != nil {
-			return err
-		}
-		pendingIndexes := make([]string, 0)
-		var indexInfo gocb.IndexInfo
-		for results.Next(&indexInfo) {
-			if indexInfo.State == IndexStatePending || indexInfo.State == IndexStateDeferred {
-				pendingIndexes = append(pendingIndexes, indexInfo.Name)
-			}
-		}
-		closeErr := results.Close()
-		if closeErr != nil {
-			return closeErr
-		}
 
-		if len(pendingIndexes) == 0 {
-			return nil
+	// Only build indexes that are in deferred state.  Query system:indexes to validate the provided set of indexes
+	statement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes WHERE indexes.keyspace_id = '%s' and indexes.name in [%s]", bucket.GetName(), StringSliceToN1QLArray(indexSet, "'"))
+	n1qlQuery := gocb.NewN1qlQuery(statement)
+	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	if err != nil {
+		return err
+	}
+	deferredIndexes := make([]string, 0)
+	var indexInfo gocb.IndexInfo
+	for results.Next(&indexInfo) {
+		// If index is deferred (not built) or pending (build in progress), add to the set of pendi
+		if indexInfo.State == IndexStateDeferred {
+			deferredIndexes = append(deferredIndexes, indexInfo.Name)
 		}
-		Infof(KeyQuery, "Building deferred indexes: %v", pendingIndexes)
-		buildErr = bucket.BuildIndexes(pendingIndexes)
-		// If build is successful, return
-		if buildErr == nil {
-			return nil
-		}
-		Infof(KeyQuery, "Build index error - attempt (%d/%d).  Error: %v", i, maxRetries, buildErr)
-		time.Sleep(1 * time.Second)
+	}
+	closeErr := results.Close()
+	if closeErr != nil {
+		return closeErr
 	}
 
-	Infof(KeyQuery, "Unable to build deferred indexes after %d attempts. Error: %v", maxRetries, buildErr)
+	if len(deferredIndexes) == 0 {
+		return nil
+	}
+
+	Infof(KeyQuery, "Building deferred indexes: %v", deferredIndexes)
+	buildErr = bucket.buildIndexes(deferredIndexes)
+
+	// If build is successful, return
 	return buildErr
 
 }

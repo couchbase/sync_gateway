@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
@@ -185,13 +186,25 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		return false, metaErr
 	}
 
-	// For already existing indexes, check whether they are deferred
+	// For already existing indexes, check whether they need to be built.
 	if exists {
 		if indexMeta == nil {
 			return false, fmt.Errorf("No metadata retrieved for existing index %s", indexName)
 		}
-		if indexMeta.State == base.IndexStateDeferred || indexMeta.State == base.IndexStatePending {
-			return true, nil
+		if indexMeta.State == base.IndexStateDeferred {
+			// Two possible scenarios when index already exists in deferred state:
+			//  1. Another SG is in the process of index creation
+			//  2. SG previously crashed between index creation and index build.
+			// GSI doesn't like concurrent build requests, so wait and recheck index state before treating as option 2
+			base.Infof(base.KeyQuery, "Index %s already in deferred state - waiting 10s to re-evaluate before issuing build to avoid concurrent build requests.")
+			time.Sleep(10 * time.Second)
+			exists, indexMeta, metaErr = bucket.GetIndexMeta(indexName)
+			if metaErr != nil || indexMeta == nil {
+				return false, fmt.Errorf("Error retrieving index metadata after defer wait. IndexMeta: %v Error:%v", indexMeta, metaErr)
+			}
+			if indexMeta.State == base.IndexStateDeferred {
+				return true, nil
+			}
 		}
 		return false, nil
 	}
@@ -253,6 +266,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
+	allSGIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
 		fullIndexName := sgIndex.fullIndexName(useXattrs)
 		isDeferred, err := sgIndex.createIfNeeded(gocbBucket, useXattrs, numReplicas)
@@ -263,16 +277,15 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 		if isDeferred {
 			deferredIndexes = append(deferredIndexes, fullIndexName)
 		}
+		allSGIndexes = append(allSGIndexes, fullIndexName)
 	}
 
-	// Issue BUILD INDEX for any deferred indexes.  On error, call BuildPendingIndexes for retry handling
+	// Issue BUILD INDEX for any deferred indexes.
 	if len(deferredIndexes) > 0 {
-		buildErr := gocbBucket.BuildIndexes(deferredIndexes)
+		buildErr := gocbBucket.BuildDeferredIndexes(deferredIndexes)
 		if buildErr != nil {
-			base.Infof(base.KeyIndex, "Error building deferred indexes - will retry build for indexes in pending state.  Error: %v", buildErr)
-			gocbBucket.BuildPendingIndexes(deferredIndexes, 10)
-		} else {
-			base.Infof(base.KeyIndex, "Indexes built successfully")
+			base.Infof(base.KeyIndex, "Error building deferred indexes.  Error: %v", buildErr)
+			return buildErr
 		}
 	}
 

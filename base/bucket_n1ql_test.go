@@ -423,7 +423,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 		}
 	}()
 
-	buildErr := bucket.BuildIndexes([]string{indexName})
+	buildErr := bucket.buildIndexes([]string{indexName})
 	assertNoError(t, buildErr, "Error building indexes")
 
 	readyErr := bucket.WaitForIndexOnline(indexName)
@@ -431,7 +431,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 
 }
 
-func TestBuildPendingIndexes(t *testing.T) {
+func TestBuildDeferredIndexes(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -480,7 +480,7 @@ func TestBuildPendingIndexes(t *testing.T) {
 		}
 	}()
 
-	buildErr := bucket.BuildPendingIndexes([]string{deferredIndexName, nonDeferredIndexName}, 10)
+	buildErr := bucket.BuildDeferredIndexes([]string{deferredIndexName, nonDeferredIndexName})
 	assertNoError(t, buildErr, "Error building indexes")
 
 	readyErr := bucket.WaitForIndexOnline(deferredIndexName)
@@ -489,10 +489,10 @@ func TestBuildPendingIndexes(t *testing.T) {
 	assertNoError(t, readyErr, "Error validating index online")
 
 	// Ensure no errors from no-op scenarios
-	alreadyBuiltErr := bucket.BuildPendingIndexes([]string{deferredIndexName, nonDeferredIndexName}, 10)
+	alreadyBuiltErr := bucket.BuildDeferredIndexes([]string{deferredIndexName, nonDeferredIndexName})
 	assertNoError(t, alreadyBuiltErr, "Error building already built indexes")
 
-	emptySetErr := bucket.BuildPendingIndexes([]string{}, 10)
+	emptySetErr := bucket.BuildDeferredIndexes([]string{})
 	assertNoError(t, emptySetErr, "Error building empty set")
 }
 
