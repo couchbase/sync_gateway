@@ -289,7 +289,8 @@ def make_collect_logs_tasks(zip_dir, sg_url):
         "/var/log/sync_gateway",
         "/Users/sync_gateway/logs",                                                     # OSX sync gateway
         "/Users/sg_accel/logs",                                                         # OSX sg accel
-        R'C:\Program Files (x86)\Couchbase\var\lib\couchbase\logs',                     # Windows (Pre-2.1)
+        R'C:\Program Files (x86)\Couchbase\var\lib\couchbase\logs',                     # Windows (Pre-2.0)
+        R'C:\Program Files\Couchbase\var\lib\couchbase\logs',                           # Windows (Post-2.0)
         R'C:\Program Files\Couchbase\Sync Gateway Accelerator\var\lib\couchbase\logs',  # Windows (Post-2.1) sg accel
         R'C:\Program Files\Couchbase\Sync Gateway\var\lib\couchbase\logs'               # Windows (Post-2.1) sync gateway
     ]
