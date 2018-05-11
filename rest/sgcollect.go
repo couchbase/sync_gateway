@@ -4,12 +4,15 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -225,4 +228,31 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 
 		return sgBinary, sgCollectBinary, nil
 	}
+}
+
+// sgcollectFilename returns a Windows-safe filename for sgcollect_info zip files.
+func sgcollectFilename() string {
+
+	// get timestamp
+	timestamp := time.Now().UTC().Format("2006-01-02t150405")
+
+	// use a shortened product name
+	name := "sg"
+	if base.ProductName == "Couchbase SG Accel" {
+		name = "sga"
+	}
+
+	// get primary IP address
+	ip, err := base.FindPrimaryAddr()
+	if err != nil {
+		ip = net.IPv4zero
+	}
+
+	// E.g: sgcollectinfo-2018-05-10t133456-sg@203.0.113.123.zip
+	filename := fmt.Sprintf("sgcollectinfo-%s-%s@%s.zip", timestamp, name, ip)
+
+	// Strip illegal Windows filename characters
+	filename = base.ReplaceAll(filename, "\\/:*?\"<>|", "")
+
+	return filename
 }
