@@ -234,7 +234,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 				//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
 				//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
 				//       the doc won't be flagged as removed from that channel in the in-memory channel cache.
-				entries, err := c.context.getChangesInChannelFromView("*", endSequence, options)
+				entries, err := c.context.getChangesInChannelFromQuery("*", endSequence, options)
 				if err == nil && len(entries) > 0 {
 					// Found it - store to send to the caches.
 					found = append(found, entries[0])
