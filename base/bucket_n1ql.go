@@ -126,17 +126,19 @@ func (bucket *CouchbaseBucketGoCB) buildIndexes(indexNames []string) error {
 	return err
 }
 
-// Issues a build command for any deferred sync gateway indexes associated with the bucket.  Waits for
+// Issues a build command for any deferred sync gateway indexes associated with the bucket.
 func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error {
 
 	if len(indexSet) == 0 {
 		return nil
 	}
 
-	var buildErr error
-
 	// Only build indexes that are in deferred state.  Query system:indexes to validate the provided set of indexes
-	statement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes WHERE indexes.keyspace_id = '%s' and indexes.name in [%s]", bucket.GetName(), StringSliceToN1QLArray(indexSet, "'"))
+	statement := fmt.Sprintf("SELECT indexes.name, indexes.state "+
+		"FROM system:indexes "+
+		"WHERE indexes.keyspace_id = '%s' "+
+		"AND indexes.name IN [%s]",
+		bucket.GetName(), StringSliceToN1QLArray(indexSet, "'"))
 	n1qlQuery := gocb.NewN1qlQuery(statement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
 	if err != nil {
@@ -145,7 +147,7 @@ func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error
 	deferredIndexes := make([]string, 0)
 	var indexInfo gocb.IndexInfo
 	for results.Next(&indexInfo) {
-		// If index is deferred (not built) or pending (build in progress), add to the set of pendi
+		// If index is deferred (not built), add to set of deferred indexes
 		if indexInfo.State == IndexStateDeferred {
 			deferredIndexes = append(deferredIndexes, indexInfo.Name)
 		}
@@ -160,9 +162,7 @@ func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error
 	}
 
 	Infof(KeyQuery, "Building deferred indexes: %v", deferredIndexes)
-	buildErr = bucket.buildIndexes(deferredIndexes)
-
-	// If build is successful, return
+	buildErr := bucket.buildIndexes(deferredIndexes)
 	return buildErr
 
 }
