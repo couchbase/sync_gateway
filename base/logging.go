@@ -803,6 +803,24 @@ var (
 	debugLogger, infoLogger, warnLogger, errorLogger *FileLogger
 )
 
+// RotateLogfiles rotates all active log files.
+func RotateLogfiles() map[*FileLogger]error {
+	Infof(KeyAll, "Rotating log files...")
+
+	loggers := map[*FileLogger]error{
+		debugLogger: nil,
+		infoLogger:  nil,
+		warnLogger:  nil,
+		errorLogger: nil,
+	}
+
+	for logger := range loggers {
+		loggers[logger] = logger.Rotate()
+	}
+
+	return loggers
+}
+
 func init() {
 	// We'll initilise a default consoleLogger so we can still log stuff before/during parsing logging configs.
 	// This maintains consistent formatting (timestamps, levels, etc) in the output,
