@@ -170,13 +170,12 @@ func TestUseXattrs() bool {
 
 	// First check if the SG_TEST_USE_XATTRS env variable is set
 	useXattrs := os.Getenv(TestEnvSyncGatewayUseXattrs)
-	switch {
-	case strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue):
+	if strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue) {
 		return true
-	default:
-		// Otherwise fallback to hardcoded default
-		return DefaultUseXattrs
 	}
+
+	// Otherwise fallback to hardcoded default
+	return DefaultUseXattrs
 
 }
 
@@ -186,13 +185,13 @@ func TestsShouldDropIndexes() bool {
 
 	// First check if the SG_TEST_USE_XATTRS env variable is set
 	dropIndexes := os.Getenv(TestEnvSyncGatewayDropIndexes)
-	switch {
-	case strings.ToLower(dropIndexes) == strings.ToLower(TestEnvSyncGatewayTrue):
+
+	if strings.ToLower(dropIndexes) == strings.ToLower(TestEnvSyncGatewayTrue) {
 		return true
-	default:
-		// Otherwise fallback to hardcoded default
-		return DefaultDropIndexes
 	}
+
+	// Otherwise fallback to hardcoded default
+	return DefaultDropIndexes
 
 }
 
@@ -322,28 +321,21 @@ func getIndexes(gocbBucket *CouchbaseBucketGoCB) (indexes []string, err error) {
 
 	indexes = []string{}
 
-	// Retrieve all indexes
-	getIndexesStatement := fmt.Sprintf("SELECT indexes.name from system:indexes where keyspace_id = %q", gocbBucket.GetName())
-	n1qlQuery := gocb.NewN1qlQuery(getIndexesStatement)
-	results, err := gocbBucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	manager, err := gocbBucket.getBucketManager()
 	if err != nil {
 		return indexes, err
 	}
 
-	// Close the results in a defer, and set the value of the "err" return value
-	defer func() {
-		err = results.Close()
-	}()
-
-	var indexRow struct {
-		Name string
+	indexInfo, err := manager.GetIndexes()
+	if err != nil {
+		return indexes, err
 	}
 
-	for results.Next(&indexRow) {
-		indexes = append(indexes, indexRow.Name)
+	for _, indexInfo := range indexInfo {
+		indexes = append(indexes, indexInfo.Name)
 	}
 
-	return indexes, err
+	return indexes, nil
 
 }
 

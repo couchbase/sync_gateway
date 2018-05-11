@@ -51,7 +51,6 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 
 		Tracef(KeyQuery, "Executing N1QL query: %v", UD(n1qlQuery))
 		queryResults, queryErr := bucket.ExecuteN1qlQuery(n1qlQuery, params)
-		Tracef(KeyQuery, "Done executing N1QL query: %v.  Error: %v", UD(n1qlQuery), queryErr)
 
 		if queryErr == nil {
 			return queryResults, queryErr
