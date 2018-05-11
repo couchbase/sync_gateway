@@ -14,6 +14,7 @@ const BucketQueryToken = "$_bucket"   // Token used for bucket name replacement 
 const MaxQueryRetries = 30            // Maximum query retries on indexer error
 const IndexStateOnline = "online"     // bucket state value, as returned by SELECT FROM system:indexes
 const IndexStateDeferred = "deferred" // bucket state value, as returned by SELECT FROM system:indexes
+const IndexStatePending = "pending"   // bucket state value, as returned by SELECT FROM system:indexes
 
 var SlowQueryWarningThreshold time.Duration
 
@@ -22,10 +23,6 @@ type N1qlIndexOptions struct {
 	NumReplica      uint `json:"num_replica,omitempty"`          // Number of replicas
 	IndexTombstones bool `json:"retain_deleted_xattr,omitempty"` // Whether system xattrs on tombstones should be indexed
 	DeferBuild      bool `json:"defer_build,omitempty"`          // Whether to defer initial build of index (requires a subsequent BUILD INDEX invocation)
-}
-
-type IndexMetadata struct {
-	State string // Index state (e.g. 'online')
 }
 
 // Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
@@ -108,10 +105,7 @@ func (bucket *CouchbaseBucketGoCB) BuildIndexes(indexNames []string) error {
 	}
 
 	// Not using strings.Join because we want to escape each index name
-	indexNameList := fmt.Sprintf("`%s`", indexNames[0])
-	for i := 1; i < len(indexNames); i++ {
-		indexNameList = fmt.Sprintf("%s,`%s`", indexNameList, indexNames[i])
-	}
+	indexNameList := StringSliceToN1QLArray(indexNames, "`")
 
 	buildStatement := fmt.Sprintf("BUILD INDEX ON `%s`(%s)", bucket.GetName(), indexNameList)
 	n1qlQuery := gocb.NewN1qlQuery(buildStatement)
@@ -130,6 +124,52 @@ func (bucket *CouchbaseBucketGoCB) BuildIndexes(indexNames []string) error {
 		return nil
 	}
 	return err
+}
+
+// If any of the provided indexes are in a pending state, attempt to rebuild those indexes.  On error, requery for indexes in pending
+// state and reattempts, up to max retries
+func (bucket *CouchbaseBucketGoCB) BuildPendingIndexes(indexSet []string, maxRetries int) error {
+
+	if len(indexSet) == 0 {
+		return nil
+	}
+
+	var buildErr error
+	for i := 1; i <= maxRetries; i++ {
+		statement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes WHERE indexes.keyspace_id = '%s' and indexes.name in [%s]", bucket.GetName(), StringSliceToN1QLArray(indexSet, "'"))
+		n1qlQuery := gocb.NewN1qlQuery(statement)
+		results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+		if err != nil {
+			return err
+		}
+		pendingIndexes := make([]string, 0)
+		var indexInfo gocb.IndexInfo
+		for results.Next(&indexInfo) {
+			if indexInfo.State == IndexStatePending || indexInfo.State == IndexStateDeferred {
+				pendingIndexes = append(pendingIndexes, indexInfo.Name)
+			}
+		}
+		closeErr := results.Close()
+		if closeErr != nil {
+			return closeErr
+		}
+
+		if len(pendingIndexes) == 0 {
+			return nil
+		}
+		Infof(KeyQuery, "Building deferred indexes: %v", pendingIndexes)
+		buildErr = bucket.BuildIndexes(pendingIndexes)
+		// If build is successful, return
+		if buildErr == nil {
+			return nil
+		}
+		Infof(KeyQuery, "Build index error - attempt (%d/%d).  Error: %v", i, maxRetries, buildErr)
+		time.Sleep(1 * time.Second)
+	}
+
+	Infof(KeyQuery, "Unable to build deferred indexes after %d attempts. Error: %v", maxRetries, buildErr)
+	return buildErr
+
 }
 
 // CreateIndex creates the specified index in the current bucket using on the specified index expression.
@@ -211,7 +251,7 @@ func (bucket *CouchbaseBucketGoCB) waitForBucketExistence(indexName string, shou
 	return err
 }
 
-func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, meta *IndexMetadata, err error) {
+func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, meta *gocb.IndexInfo, err error) {
 	statement := fmt.Sprintf("SELECT state from system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, bucket.GetName())
 	n1qlQuery := gocb.NewN1qlQuery(statement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
@@ -219,8 +259,8 @@ func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, 
 		return false, nil, err
 	}
 
-	indexMeta := &IndexMetadata{}
-	err = results.One(indexMeta)
+	indexInfo := &gocb.IndexInfo{}
+	err = results.One(indexInfo)
 	if err != nil {
 		if err == gocb.ErrNoResults {
 			return false, nil, nil
@@ -228,7 +268,7 @@ func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, 
 			return true, nil, err
 		}
 	}
-	return true, indexMeta, nil
+	return true, indexInfo, nil
 }
 
 // CreateIndex drops the specified index from the current bucket.
@@ -318,4 +358,16 @@ func SlowQueryLog(startTime time.Time, messageFormat string, args ...interface{}
 	if elapsed := time.Now().Sub(startTime); elapsed > SlowQueryWarningThreshold {
 		Infof(KeyQuery, messageFormat+" took "+elapsed.String(), args...)
 	}
+}
+
+// Converts to a format like `value1`,`value2` when quote=`
+func StringSliceToN1QLArray(values []string, quote string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	asString := fmt.Sprintf("%s%s%s", quote, values[0], quote)
+	for i := 1; i < len(values); i++ {
+		asString = fmt.Sprintf("%s,%s%s%s", asString, quote, values[i], quote)
+	}
+	return asString
 }

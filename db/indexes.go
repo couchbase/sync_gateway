@@ -190,7 +190,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		if indexMeta == nil {
 			return false, fmt.Errorf("No metadata retrieved for existing index %s", indexName)
 		}
-		if indexMeta.State == base.IndexStateDeferred {
+		if indexMeta.State == base.IndexStateDeferred || indexMeta.State == base.IndexStatePending {
 			return true, nil
 		}
 		return false, nil
@@ -198,6 +198,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 
 	// Create index
 	base.Infof(base.KeyIndex, "Index %s doesn't exist, creating...", indexName)
+	isDeferred = true
 	indexExpression := replaceSyncTokensIndex(i.expression, useXattrs)
 	filterExpression := replaceSyncTokensIndex(i.filterExpression, useXattrs)
 
@@ -218,6 +219,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		if err != nil {
 			// If index has already been created (race w/ other SG node), return without error
 			if err == base.ErrIndexAlreadyExists {
+				isDeferred = false // Index already exists, don't need to update.
 				return false, nil, nil
 			}
 			if strings.Contains(err.Error(), "not enough indexer nodes") {
@@ -236,7 +238,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	}
 
 	base.Infof(base.KeyIndex, "Index %s created successfully", indexName)
-	return true, nil
+	return isDeferred, nil
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
@@ -263,14 +265,15 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 		}
 	}
 
-	// Issue BUILD INDEX for any deferred indexes
+	// Issue BUILD INDEX for any deferred indexes.  On error, call BuildPendingIndexes for retry handling
 	if len(deferredIndexes) > 0 {
-		base.Infof(base.KeyIndex, "Building deferred indexes (%d)...", len(deferredIndexes))
 		buildErr := gocbBucket.BuildIndexes(deferredIndexes)
 		if buildErr != nil {
-			return buildErr
+			base.Infof(base.KeyIndex, "Error building deferred indexes - will retry build for indexes in pending state.  Error: %v", buildErr)
+			gocbBucket.BuildPendingIndexes(deferredIndexes, 10)
+		} else {
+			base.Infof(base.KeyIndex, "Indexes built successfully")
 		}
-		base.Infof(base.KeyIndex, "Deferred indexes built successfully.")
 	}
 
 	// Wait for newly built indexes to be online
