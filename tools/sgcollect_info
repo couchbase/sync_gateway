@@ -449,8 +449,10 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact):
         "/opt/sg_accel/etc/sg_accel.json",                                  # amazon linux AMI sg accel
         "/Users/sync_gateway/sg_accel.json",                                # OSX sg accel
         "/Users/sync_gateway/sync_gateway.json"                             # OSX sync gateway
-        R'C:\Program Files (x86)\Couchbase\basic_sg_accel_config.json',     # Windows sg accel
-        R'C:\Program Files (x86)\Couchbase\serviceconfig.json'               # Windows sync gateway
+        R'C:\Program Files (x86)\Couchbase\basic_sg_accel_config.json',     # Windows (Pre-2.0) sg accel
+        R'C:\Program Files (x86)\Couchbase\serviceconfig.json'              # Windows (Pre-2.0) sync gateway
+        R'C:\Program Files\Couchbase\Sync Gateway Accelerator\basic_sg_accel_config.json', # Windows (Post-2.0) sg accel
+        R'C:\Program Files\Couchbase\Sync Gateway\serviceconfig.json'       # Windows (Post-2.0) sync gateway
     ]
     sg_config_files = [ x for x in sg_config_files if os.path.exists(x)]
 
@@ -606,10 +608,12 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
 def discover_sg_binary_path(options, sg_url):
 
     sg_bin_dirs = [
-        "/opt/couchbase-sync-gateway/bin/sync_gateway",            # Linux + OSX
-        "/opt/couchbase-sg-accel/bin/sg_accel",                    # Linux + OSX
-        R'C:\Program Files (x86)\Couchbase\sync_gateway.exe',      # Windows
-        R'C:\Program Files (x86)\Couchbase\sg_accel.exe',          # Windows
+        "/opt/couchbase-sync-gateway/bin/sync_gateway",                      # Linux + OSX
+        "/opt/couchbase-sg-accel/bin/sg_accel",                              # Linux + OSX
+        R'C:\Program Files (x86)\Couchbase\sync_gateway.exe',                # Windows (Pre-2.0)
+        R'C:\Program Files (x86)\Couchbase\sg_accel.exe',                    # Windows (Pre-2.0)
+        R'C:\Program Files\Couchbase\Sync Gateway\sync_gateway.exe',         # Windows (Post-2.0)
+        R'C:\Program Files\Couchbase\Sync Gateway Accelerator\sg_accel.exe', # Windows (Post-2.0)
     ]
 
     for sg_binary_path_candidate in sg_bin_dirs:
