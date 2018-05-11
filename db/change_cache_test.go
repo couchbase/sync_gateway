@@ -346,7 +346,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
 	// Test that retrieval isn't blocked by skipped sequences
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 6})
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 6}, base.DefaultWaitForSequenceTesting)
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
 	assertNoError(t, err, "Couldn't GetChanges")
@@ -361,7 +361,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// Validate insert to various cache states
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"CBS"}, 7)
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 7})
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 7}, base.DefaultWaitForSequenceTesting)
 	// verify insert at start (PBS)
 	pbsCache := db.changeCache.getChannelCache("PBS")
 	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
@@ -438,14 +438,14 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	// Write some more docs
 	WriteDirect(db, []string{"CBS"}, 3)
 	WriteDirect(db, []string{"PBS"}, 12)
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 12})
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 12}, base.DefaultWaitForSequenceTesting)
 
 	// Test multiple backfill in single changes loop iteration
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 4)
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 7)
 	WriteDirect(db, []string{"ABC", "PBS"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 13)
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 13})
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 13}, base.DefaultWaitForSequenceTesting)
 	time.Sleep(50 * time.Millisecond)
 
 	// We can't guarantee how compound sequences will be generated in a multi-core test - will
@@ -506,6 +506,7 @@ func TestLowSequenceHandling(t *testing.T) {
 		"Cache":    true,
 		"Changes":  true,
 		"Changes+": true,
+		base.KeyQuery.String(): true,
 	}
 
 	base.UpdateLogKeys(logKeys, true)
@@ -529,7 +530,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 6})
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 6}, base.DefaultWaitForSequenceTesting)
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -574,6 +575,15 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
+	var logKeys = map[string]bool{
+		"Cache":    true,
+		"Changes":  true,
+		"Changes+": true,
+		base.KeyQuery.String(): true,
+	}
+
+	base.UpdateLogKeys(logKeys, true)
+
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
@@ -592,7 +602,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	WriteDirect(db, []string{"PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	db.changeCache.waitForSequence(6)
+	db.changeCache.waitForSequence(6, base.DefaultWaitForSequenceTesting)
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -628,9 +638,10 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	var logKeys = map[string]bool{
 		"Sequence": true,
+		base.KeyQuery.String(): true,
 	}
-
 	base.UpdateLogKeys(logKeys, true)
+
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -649,7 +660,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	WriteDirect(db, []string{"PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	db.changeCache.waitForSequence(6)
+	db.changeCache.waitForSequence(6, base.DefaultWaitForSequenceTesting)
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -668,7 +679,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Validate the initial sequences arrive as expected
-	err = appendFromFeed(&changes, feed, 3)
+	err = appendFromFeed(&changes, feed, 3, base.DefaultWaitForSequenceTesting)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 3)
 	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
@@ -685,11 +696,11 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	WriteDirect(db, []string{"PBS"}, 9)
 
-	db.changeCache.waitForSequence(9)
+	db.changeCache.waitForSequence(9, base.DefaultWaitForSequenceTesting)
 
 	time.Sleep(500 * time.Millisecond)
-	err = appendFromFeed(&changes, feed, 4)
-	assert.True(t, err == nil)
+	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequenceTesting)
+	assertNoError(t, err, "Expected more changes to be sent on feed, but never received")
 	assert.Equals(t, len(changes), 7)
 	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"}))
 	// Notes:
@@ -735,7 +746,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 6})
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 6}, base.DefaultWaitForSequenceTesting)
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -752,7 +763,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	// Array to read changes from feed to support assertions
 	var changes = make([]*ChangeEntry, 0, 50)
 
-	err = appendFromFeed(&changes, feed, 4)
+	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequenceTesting)
 
 	// Validate the initial sequences arrive as expected
 	assert.True(t, err == nil)
@@ -766,9 +777,9 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"ABC", "PBS"}, 4)
 
-	db.changeCache.waitForSequenceWithMissing(4)
+	db.changeCache.waitForSequenceWithMissing(4, base.DefaultWaitForSequenceTesting)
 
-	err = appendFromFeed(&changes, feed, 2)
+	err = appendFromFeed(&changes, feed, 2, base.DefaultWaitForSequenceTesting)
 	assert.True(t, err == nil)
 	assert.Equals(t, len(changes), 6)
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4}))
@@ -776,8 +787,8 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 7)
 	WriteDirect(db, []string{"ABC", "NBC"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
-	db.changeCache.waitForSequence(9)
-	appendFromFeed(&changes, feed, 5)
+	db.changeCache.waitForSequence(9, base.DefaultWaitForSequenceTesting)
+	appendFromFeed(&changes, feed, 5, base.DefaultWaitForSequenceTesting)
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 
 }
@@ -829,7 +840,7 @@ func TestChannelRace(t *testing.T) {
 	WriteDirect(db, []string{"Even"}, 2)
 	WriteDirect(db, []string{"Odd"}, 3)
 
-	db.changeCache.waitForSequence(3)
+	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting)
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -937,7 +948,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	changeCache.CleanSkippedSequenceQueue()
 
 	// Validate that 3 is in the channel cache, 5 isn't
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 3})
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 3}, base.DefaultWaitForSequenceTesting)
 	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
 	assertNoError(t, err, "Get Changes returned error")
 	assert.Equals(t, len(entries), 1)
@@ -1024,7 +1035,7 @@ func TestChannelCacheSize(t *testing.T) {
 	}
 
 	// Validate that retrieval returns expected sequences
-	db.changeCache.waitForSequence(750)
+	db.changeCache.waitForSequence(750, base.DefaultWaitForSequenceTesting)
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: SequenceID{Seq: 0}})
 	assertNoError(t, err, "Couldn't GetChanges")
@@ -1139,7 +1150,7 @@ func verifySequencesInFeed(feed <-chan (*ChangeEntry), sequences []uint64) ([]*C
 	var changes = make([]*ChangeEntry, 0, 50)
 	for {
 		// Attempt to read at one entry from feed
-		err := appendFromFeed(&changes, feed, 1)
+		err := appendFromFeed(&changes, feed, 1, base.DefaultWaitForSequenceTesting)
 		if err != nil {
 			return nil, err
 		}
@@ -1150,9 +1161,8 @@ func verifySequencesInFeed(feed <-chan (*ChangeEntry), sequences []uint64) ([]*C
 	}
 }
 
-func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntries int) error {
+func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntries int, maxWaitTime time.Duration) error {
 
-	log.Println("Feed retrieving ", feed, numEntries)
 	count := 0
 	timeout := false
 	for !timeout {
@@ -1160,27 +1170,22 @@ func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntr
 		case entry, ok := <-feed:
 			if ok {
 				if entry != nil {
-					log.Println("Changes entry:", entry)
 					*changes = append(*changes, entry)
 					count++
 				}
 			} else {
-				log.Println("Non-entry error")
 				return errors.New("Non-entry returned on feed.")
 			}
 			if count == numEntries {
-				log.Println("returned numEntries - returning")
 				return nil
 			}
-		case <-time.After(time.Second * 10):
+		case <-time.After(maxWaitTime):
 			timeout = true
 		}
 	}
 	if count != numEntries {
-		log.Printf("Miscount, count (%d) != numEntries (%d)", count, numEntries)
-		return errors.New("Unable to return the requested number of entries")
+		return fmt.Errorf("appendFromFeed expected %d entries but only received %d.  Timeout: %v", numEntries, count, timeout)
 	}
-	log.Println("standard completion")
 	return nil
 
 }

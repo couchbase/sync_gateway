@@ -48,7 +48,10 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
+
+		Tracef(KeyQuery, "Executing N1QL query: %v", UD(n1qlQuery))
 		queryResults, queryErr := bucket.ExecuteN1qlQuery(n1qlQuery, params)
+
 		if queryErr == nil {
 			return queryResults, queryErr
 		}
@@ -66,8 +69,9 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 
 		// Indexer error - wait then retry
 		err = queryErr
-		Warnf(KeyAll, "Indexer error during query - retry %d/%d", i, MaxQueryRetries)
+		Warnf(KeyAll, "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
 		time.Sleep(waitTime)
+
 		waitTime = time.Duration(waitTime * 2)
 	}
 

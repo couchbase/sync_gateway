@@ -293,6 +293,14 @@ func TestUserAllowEmptyPassword(t *testing.T) {
 // Test user access grant while that user has an active changes feed.  (see issue #880)
 func TestUserAccessRace(t *testing.T) {
 
+	// This test only runs against Walrus due to known sporadic failures.
+	// See https://github.com/couchbase/sync_gateway/issues/3006
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip this test under integration testing")
+	}
+
+
+
 	syncFunction := `
 function(doc, oldDoc) {
   if (doc.type == "list") {
@@ -912,6 +920,7 @@ func TestFlush(t *testing.T) {
 func TestDBOfflineSingle(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -934,6 +943,7 @@ func TestDBOfflineSingle(t *testing.T) {
 func TestDBOfflineConcurrent(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -962,7 +972,8 @@ func TestDBOfflineConcurrent(t *testing.T) {
 		wg.Done()
 	}()
 
-	wg.Wait()
+	err := WaitWithTimeout(&wg, time.Second * 30)
+	assertNoError(t, err, "Error waiting for waitgroup")
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -975,6 +986,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 func TestStartDBOffline(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
@@ -995,6 +1007,7 @@ func TestStartDBOffline(t *testing.T) {
 func TestDBOffline503Response(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1018,6 +1031,7 @@ func TestDBOffline503Response(t *testing.T) {
 func TestDBOfflinePutDbConfig(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1042,6 +1056,7 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 func TestDBGetConfigNames(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	p := "password"
@@ -1069,6 +1084,7 @@ func TestDBGetConfigNames(t *testing.T) {
 func TestDBOfflinePostResync(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1094,6 +1110,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 func TestDBOfflineSingleResync(t *testing.T) {
 
 	var rt RestTester
+	defer rt.Close()
 
 	//create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
@@ -1146,6 +1163,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 func TestDBOnlineSingle(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1179,6 +1197,7 @@ func TestDBOnlineSingle(t *testing.T) {
 func TestDBOnlineConcurrent(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1226,6 +1245,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 func TestSingleDBOnlineWithDelay(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1266,6 +1286,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1315,6 +1336,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 func TestDBOnlineWithTwoDelays(t *testing.T) {
 
 	var rt RestTester
+	rt.NoFlush = true  // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")

@@ -46,6 +46,7 @@ func init() {
 
 func TestRoot(t *testing.T) {
 	var rt RestTester
+	rt.NoFlush = true
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/", "")
@@ -411,6 +412,7 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 
 func TestCORSOrigin(t *testing.T) {
 	var rt RestTester
+	rt.NoFlush = true
 	defer rt.Close()
 
 	reqHeaders := map[string]string{

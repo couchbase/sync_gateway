@@ -729,7 +729,7 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntr
 func (context *DatabaseContext) WaitForSequence(sequence uint64) (err error) {
 	base.Debugf(base.KeySequences, "Waiting for sequence: %d", sequence)
 	if err == nil {
-		context.changeCache.waitForSequenceID(SequenceID{Seq: sequence})
+		context.changeCache.waitForSequenceID(SequenceID{Seq: sequence}, base.DefaultWaitForSequenceTesting)
 	}
 	return
 }
@@ -738,7 +738,7 @@ func (context *DatabaseContext) WaitForSequence(sequence uint64) (err error) {
 func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64) (err error) {
 	base.Debugf(base.KeySequences, "Waiting for sequence: %d", sequence)
 	if err == nil {
-		context.changeCache.waitForSequenceWithMissing(sequence)
+		context.changeCache.waitForSequenceWithMissing(sequence, base.DefaultWaitForSequenceTesting)
 	}
 	return
 }
@@ -748,7 +748,7 @@ func (context *DatabaseContext) WaitForPendingChanges() (err error) {
 	lastSequence, err := context.LastSequence()
 	base.Debugf(base.KeySequences, "Waiting for sequence: %d", lastSequence)
 	if err == nil {
-		context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence})
+		context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence}, base.DefaultWaitForSequenceTesting)
 	}
 	return
 }

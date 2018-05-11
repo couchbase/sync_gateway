@@ -1,6 +1,8 @@
 package db
 
 import (
+	"time"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -52,7 +54,7 @@ type ChangeIndex interface {
 	GetStableClock(stale bool) (clock base.SequenceClock, err error)
 
 	// Utility functions for unit testing
-	waitForSequenceID(sequence SequenceID)
+	waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration)
 
 	// Handling specific to change_cache.go's sequence handling.  Ideally should refactor usage in changes.go to push
 	// down into internal change_cache.go handling, but it's non-trivial refactoring
@@ -60,8 +62,8 @@ type ChangeIndex interface {
 	getChannelCache(channelName string) *channelCache
 
 	// Unit test support
-	waitForSequence(sequence uint64)
-	waitForSequenceWithMissing(sequence uint64)
+	waitForSequence(sequence uint64, maxWaitTime time.Duration)
+	waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration)
 }
 
 // Index type
