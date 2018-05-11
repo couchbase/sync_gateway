@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
@@ -185,19 +186,33 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		return false, metaErr
 	}
 
-	// For already existing indexes, check whether they are deferred
+	// For already existing indexes, check whether they need to be built.
 	if exists {
 		if indexMeta == nil {
 			return false, fmt.Errorf("No metadata retrieved for existing index %s", indexName)
 		}
 		if indexMeta.State == base.IndexStateDeferred {
-			return true, nil
+			// Two possible scenarios when index already exists in deferred state:
+			//  1. Another SG is in the process of index creation
+			//  2. SG previously crashed between index creation and index build.
+			// GSI doesn't like concurrent build requests, so wait and recheck index state before treating as option 2.
+			// (see known issue documented https://developer.couchbase.com/documentation/server/current/n1ql/n1ql-language-reference/build-index.html)
+			base.Infof(base.KeyQuery, "Index %s already in deferred state - waiting 10s to re-evaluate before issuing build to avoid concurrent build requests.")
+			time.Sleep(10 * time.Second)
+			exists, indexMeta, metaErr = bucket.GetIndexMeta(indexName)
+			if metaErr != nil || indexMeta == nil {
+				return false, fmt.Errorf("Error retrieving index metadata after defer wait. IndexMeta: %v Error:%v", indexMeta, metaErr)
+			}
+			if indexMeta.State == base.IndexStateDeferred {
+				return true, nil
+			}
 		}
 		return false, nil
 	}
 
 	// Create index
 	base.Infof(base.KeyIndex, "Index %s doesn't exist, creating...", indexName)
+	isDeferred = true
 	indexExpression := replaceSyncTokensIndex(i.expression, useXattrs)
 	filterExpression := replaceSyncTokensIndex(i.filterExpression, useXattrs)
 
@@ -218,6 +233,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		if err != nil {
 			// If index has already been created (race w/ other SG node), return without error
 			if err == base.ErrIndexAlreadyExists {
+				isDeferred = false // Index already exists, don't need to update.
 				return false, nil, nil
 			}
 			if strings.Contains(err.Error(), "not enough indexer nodes") {
@@ -236,7 +252,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	}
 
 	base.Infof(base.KeyIndex, "Index %s created successfully", indexName)
-	return true, nil
+	return isDeferred, nil
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
@@ -251,6 +267,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
+	allSGIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
 		fullIndexName := sgIndex.fullIndexName(useXattrs)
 		isDeferred, err := sgIndex.createIfNeeded(gocbBucket, useXattrs, numReplicas)
@@ -261,16 +278,16 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 		if isDeferred {
 			deferredIndexes = append(deferredIndexes, fullIndexName)
 		}
+		allSGIndexes = append(allSGIndexes, fullIndexName)
 	}
 
-	// Issue BUILD INDEX for any deferred indexes
+	// Issue BUILD INDEX for any deferred indexes.
 	if len(deferredIndexes) > 0 {
-		base.Infof(base.KeyIndex, "Building deferred indexes (%d)...", len(deferredIndexes))
-		buildErr := gocbBucket.BuildIndexes(deferredIndexes)
+		buildErr := gocbBucket.BuildDeferredIndexes(deferredIndexes)
 		if buildErr != nil {
+			base.Infof(base.KeyIndex, "Error building deferred indexes.  Error: %v", buildErr)
 			return buildErr
 		}
-		base.Infof(base.KeyIndex, "Deferred indexes built successfully.")
 	}
 
 	// Wait for newly built indexes to be online
