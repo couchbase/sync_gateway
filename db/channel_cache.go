@@ -410,8 +410,17 @@ func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 
 // Prepends an array of entries to this one, skipping ones that I already have.
 // The new array needs to overlap with my current log, i.e. must contain the same sequence as
-// c.logs[0], otherwise nothing will be added because the method can't confirm that there are no
-// missing sequences in between.
+// the oldest entry in the cache (c.logs[0]), otherwise nothing will be added because the
+// method can't confirm that there are no missing sequences in between.
+//
+// changesValidFrom represents the validfrom value of the query, and should always be LTE the
+// oldest value (lowest sequence number) in the cache, although this is not strictly enforced.
+//
+// If all of the changes don't fit in the cache, then only the most recent (highest sequence number)
+// changes will be added, and the oldest changes (lowest sequence numbers) will be discarded.  In that case, the validFrom
+// state variable will be updated to reflect the oldest (lowest sequence number) of the change that actually made it into
+// the cache.
+//
 // Returns the number of entries actually prepended.
 func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint64, openEnded bool) int {
 	c.lock.Lock()
