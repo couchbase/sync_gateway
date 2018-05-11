@@ -8,7 +8,5 @@
 \#*\#
 /bin
 /pkg
-
-service/sg-windows/sg-windows
-service/sg-windows/sg-accel-service
-service/sg-windows/sgsrv.iml
+*.exe
+*.iml

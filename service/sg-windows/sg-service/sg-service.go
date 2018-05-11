@@ -11,7 +11,7 @@ import (
 	"github.com/kardianos/service"
 )
 
-const installLocation = "C:\\Program Files (x86)\\Couchbase\\"
+const installLocation = "C:\\Program Files\\Couchbase\\Sync Gateway\\"
 const defaultLogFilePath = installLocation + "var\\lib\\couchbase\\logs"
 
 var logger service.Logger
