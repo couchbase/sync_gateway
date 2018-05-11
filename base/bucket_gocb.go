@@ -1785,6 +1785,11 @@ func (bucket *CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) err
 	// TODO: Retry here for recoverable gocb errors?
 	designDocPointer, err := bucketManager.GetDesignDocument(docname)
 	if err != nil {
+		// GoCB doesn't provide an easy way to distinguish what the cause of the error was, so
+		// resort to a string pattern match for "not_found" and propagate a 404 error in that case.
+		if strings.Contains(err.Error(), "not_found") {
+			return ErrNotFound
+		}
 		return err
 	}
 
