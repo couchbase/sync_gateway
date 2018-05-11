@@ -20,15 +20,14 @@ var (
 	// ErrSGCollectInfoNotRunning is returned if sgcollect_info is not running.
 	ErrSGCollectInfoNotRunning = errors.New("not running")
 
-	defualtSGUploadHost   = "https://s3.amazonaws.com/cb-customers"
-	sgPath, sgCollectPath = sgCollectPaths()
-
 	sgcollectInstance = sgCollect{status: base.Uint32Ptr(sgStopped)}
 )
 
 const (
 	sgStopped uint32 = iota
 	sgRunning
+
+	defualtSGUploadHost = "https://s3.amazonaws.com/cb-customers"
 )
 
 type sgCollect struct {
@@ -40,6 +39,11 @@ type sgCollect struct {
 func (sg *sgCollect) Start(filename string, args ...string) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
+	}
+
+	sgPath, sgCollectPath, err := sgCollectPaths()
+	if err != nil {
+		return err
 	}
 
 	args = append(args, "--sync-gateway-executable", sgPath, filename)
@@ -177,31 +181,48 @@ func (c *sgCollectOptions) Args() []string {
 	return args
 }
 
-// sgCollectPaths returns the absolute paths to Sync Gateway and to sgcollect_info.
-func sgCollectPaths() (sgPath, sgCollectPath string) {
-	sgPath, err := os.Executable()
+// sgCollectPaths attempts to return the absolute paths to Sync Gateway and to sgcollect_info binaries.
+func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
+	sgBinary, err = os.Executable()
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to get path to SG executable. sgcollect_info may not contain all data nessesary for support.")
+		return "", "", err
 	}
 
-	sgPath, err = filepath.Abs(sgPath)
+	sgBinary, err = filepath.Abs(sgBinary)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to get absolute path to SG executable. sgcollect_info may not contain all data nessesary for support.")
+		return "", "", err
 	}
 
-	// TODO: Validate this works on Windows
-	sgCollectPath = filepath.Join("tools", "sgcollect_info")
+	hasBinDir := true
+	sgCollectPath := filepath.Join("tools", "sgcollect_info")
+
 	if runtime.GOOS == "windows" {
 		sgCollectPath += ".exe"
+		// Windows has no bin directory for the SG executable.
+		hasBinDir = false
 	}
 
-	sgCollectPath = filepath.Join(filepath.Dir(sgPath), sgCollectPath)
+	for {
+		if hasBinDir {
+			sgCollectBinary = filepath.Join(filepath.Dir(filepath.Dir(sgBinary)), sgCollectPath)
+		} else {
+			sgCollectBinary = filepath.Join(filepath.Dir(sgBinary), sgCollectPath)
+		}
 
-	// Make sure sgcollect_info exists
-	_, err = os.Stat(sgCollectPath)
-	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to find sgcollect_info executable")
+		// Check sgcollect_info exists at the path we guessed.
+		base.Debugf(base.KeyAdmin, "Checking sgcollect_info binary exists at: %v", sgCollectBinary)
+		_, err = os.Stat(sgCollectBinary)
+		if err != nil {
+
+			// First attempt may fail if there's no bin directory, so we'll try once more without.
+			if hasBinDir {
+				hasBinDir = false
+				continue
+			}
+
+			return "", "", err
+		}
+
+		return sgBinary, sgCollectBinary, nil
 	}
-
-	return sgPath, sgCollectPath
 }
