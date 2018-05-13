@@ -27,7 +27,6 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
@@ -106,26 +105,6 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		EnableGoCBLogging()
 	}
 
-	// TODO: see below
-	connSpec, err := gocbconnstr.Parse(spec.Server)
-	if err != nil {
-		return nil, err
-	}
-
-	// Increase the number of idle connections per-host to fix SG #3534
-	if connSpec.Options == nil {
-		connSpec.Options = map[string][]string{}
-	}
-
-	asValues := url.Values(connSpec.Options)
-	asValues.Add("http_max_idle_conns_per_host", DefaultHttpMaxIdleConnsPerHost)
-	asValues.Add("http_max_idle_conns", DefaultHttpMaxIdleConns)
-	asValues.Add("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
-
-	connSpec.Options = asValues
-
-	cluster, err := gocb.Connect(connSpec.String())
-
 	// TODO: Push the above down into spec.GetConnString
 	connString, err := spec.GetConnString()
 	if err != nil {
@@ -133,7 +112,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		return nil, err
 	}
 
-	cluster, err = gocb.Connect(connString)
+	cluster, err := gocb.Connect(connString)
 	if err != nil {
 		Infof(KeyAuth, "gocb connect returned error", err)
 		return nil, err

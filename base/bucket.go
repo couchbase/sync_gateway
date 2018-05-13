@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/gomemcached/client"
 	"github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -131,21 +132,30 @@ func (spec BucketSpec) UseClientCert() bool {
 
 func (spec BucketSpec) GetConnString() (string, error) {
 
-	connUrl, err := url.Parse(spec.Server)
+	connSpec, err := gocbconnstr.Parse(spec.Server)
 	if err != nil {
 		return "", err
 	}
-	connQuery := connUrl.Query()
+
+	// Increase the number of idle connections per-host to fix SG #3534
+	if connSpec.Options == nil {
+		connSpec.Options = map[string][]string{}
+	}
+	asValues := url.Values(connSpec.Options)
+	asValues.Set("http_max_idle_conns_per_host", DefaultHttpMaxIdleConnsPerHost)
+	asValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
+	asValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
+
 	if spec.Certpath != "" && spec.Keypath != "" {
-		connQuery.Set("certpath", spec.Certpath)
-		connQuery.Set("keypath", spec.Keypath)
+		asValues.Set("certpath", spec.Certpath)
+		asValues.Set("keypath", spec.Keypath)
 	}
 	if spec.CACertPath != "" {
-		connQuery.Set("cacertpath", spec.CACertPath)
+		asValues.Set("cacertpath", spec.CACertPath)
 	}
 
-	connUrl.RawQuery = connQuery.Encode()
-	return connUrl.String(), nil
+	connSpec.Options = asValues
+	return connSpec.String(), nil
 
 }
 
