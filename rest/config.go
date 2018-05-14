@@ -96,14 +96,15 @@ type ServerConfig struct {
 
 // Bucket configuration elements - used by db, shadow, index
 type BucketConfig struct {
-	Server     *string `json:"server,omitempty"`     // Couchbase server URL
-	Pool       *string `json:"pool,omitempty"`       // Couchbase pool name, default "default"
-	Bucket     *string `json:"bucket,omitempty"`     // Bucket name
-	Username   string  `json:"username,omitempty"`   // Username for authenticating to server
-	Password   string  `json:"password,omitempty"`   // Password for authenticating to server
-	CertPath   string  `json:"certpath,omitempty"`   // Cert path (public key) for X.509 bucket auth
-	KeyPath    string  `json:"keypath,omitempty"`    // Key path (private key) for X.509 bucket auth
-	CACertPath string  `json:"cacertpath,omitempty"` // Root CA cert path for X.509 bucket auth
+	Server     *string `json:"server,omitempty"`      // Couchbase server URL
+	Pool       *string `json:"pool,omitempty"`        // Couchbase pool name, default "default"
+	Bucket     *string `json:"bucket,omitempty"`      // Bucket name
+	Username   string  `json:"username,omitempty"`    // Username for authenticating to server
+	Password   string  `json:"password,omitempty"`    // Password for authenticating to server
+	CertPath   string  `json:"certpath,omitempty"`    // Cert path (public key) for X.509 bucket auth
+	KeyPath    string  `json:"keypath,omitempty"`     // Key path (private key) for X.509 bucket auth
+	CACertPath string  `json:"cacertpath,omitempty"`  // Root CA cert path for X.509 bucket auth
+	KvTLSPort  int     `json:"kv_tls_port,omitempty"` // Memcached TLS port, if not default (11207)
 }
 
 func (bc BucketConfig) MakeBucketSpec() base.BucketSpec {
@@ -111,6 +112,7 @@ func (bc BucketConfig) MakeBucketSpec() base.BucketSpec {
 	server := "http://localhost:8091"
 	pool := "default"
 	bucketName := ""
+	tlsPort := 11207
 
 	if bc.Server != nil {
 		server = *bc.Server
@@ -122,6 +124,10 @@ func (bc BucketConfig) MakeBucketSpec() base.BucketSpec {
 		bucketName = *bc.Bucket
 	}
 
+	if bc.KvTLSPort != 0 {
+		tlsPort = bc.KvTLSPort
+	}
+
 	return base.BucketSpec{
 		Server:     server,
 		PoolName:   pool,
@@ -129,6 +135,7 @@ func (bc BucketConfig) MakeBucketSpec() base.BucketSpec {
 		Keypath:    bc.KeyPath,
 		Certpath:   bc.CertPath,
 		CACertPath: bc.CACertPath,
+		KvTLSPort:  tlsPort,
 	}
 }
 

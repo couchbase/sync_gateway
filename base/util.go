@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"log"
 	"math"
 	"net"
 	"net/http"
@@ -767,7 +766,6 @@ func BooleanPointer(booleanValue bool) *bool {
 // Related CBGT ticket: https://issues.couchbase.com/browse/MB-25522
 func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []string, err error) {
 
-	log.Printf("converting URI for %s", couchbaseUri)
 	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints.  Note that incoming bucket may be CouchbaseBucketGoCB or *CouchbaseBucketGoCB.
 	switch typedBucket := bucket.(type) {
 	case *CouchbaseBucketGoCB:

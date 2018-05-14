@@ -106,7 +106,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	}
 
 	// TODO: Push the above down into spec.GetConnString
-	connString, err := spec.GetConnString()
+	connString, err := spec.GetGoCBConnString()
 	if err != nil {
 		Warnf(KeyAuth, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err

@@ -103,6 +103,7 @@ type BucketSpec struct {
 	Auth                                   AuthHandler
 	CouchbaseDriver                        CouchbaseDriver
 	Certpath, Keypath, CACertPath          string         // X.509 auth parameters
+	KvTLSPort                              int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
 	MaxNumRetries                          int            // max number of retries before giving up
 	InitialRetrySleepTimeMS                int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
 	UseXattrs                              bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
@@ -130,7 +131,10 @@ func (spec BucketSpec) UseClientCert() bool {
 	return true
 }
 
-func (spec BucketSpec) GetConnString() (string, error) {
+// Builds a gocb connection string based on BucketSpec.Server.
+// Adds idle connection configuration, and X.509 auth settings when
+// certpath/keypath/cacertpath specified.
+func (spec BucketSpec) GetGoCBConnString() (string, error) {
 
 	connSpec, err := gocbconnstr.Parse(spec.Server)
 	if err != nil {
@@ -175,8 +179,9 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 
 }
 
-// Used by cbdatasource to create a TLS-enabled memcached connection, including client cert (x.509) information when
-// available.  Builds a connection, then wraps w/ gomemcached Client for use by cbdatasource.
+// TLSConnect method is passed to cbdatasource, to be used when creating a TLS-enabled memcached connection.
+// Establishes a connection, then wraps w/ gomemcached Client for use by cbdatasource.
+// Will include client cert (x.509) authentication when specified in the BucketSpec.
 func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err error) {
 
 	d := net.Dialer{
@@ -184,44 +189,43 @@ func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err err
 	}
 
 	host, port, err := SplitHostPort(dest)
+	if err != nil {
+		return nil, err
+	}
 
-	// TODO: Replace with retrieval of TLS port
-	port = "11207"
+	port = fmt.Sprintf("%d", b.KvTLSPort)
 	dest = host + ":" + port
 
-	conn, err := d.Dial("tcp", dest)
+	Infof(KeyAll, "Establishing TLS connection for DCP to destination %s", dest)
 
-	//	conn, err := dialFun(prot, dest)
+	conn, err := d.Dial("tcp", dest)
 	if err != nil {
 		return nil, err
 	}
 
 	tcpConn, isTcpConn := conn.(*net.TCPConn)
 	if !isTcpConn {
-		return memcached.Wrap(conn)
+		return nil, fmt.Errorf("Unable to convert connection to TCPConn during DCP TLS connection (Connection type:%T)", conn)
 	} else {
-
 		err = tcpConn.SetNoDelay(false)
 		if err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error setting NoDelay on tcpConn during TLS Connect")
 		}
 
-		tlsConfig := &tls.Config{
-			ServerName: host,
-		}
-
+		tlsConfig := &tls.Config{}
 		if b.Certpath != "" && b.Keypath != "" {
 			var configErr error
 			tlsConfig, configErr = TLSConfigForX509(b.Certpath, b.Keypath, b.CACertPath)
 			if configErr != nil {
-				return nil, pkgerrors.Wrapf(configErr, "Error adding x509 to TLSConfig")
+				return nil, pkgerrors.Wrapf(configErr, "Error adding x509 to TLSConfig for DCP TLS connection")
 			}
 		}
+		tlsConfig.ServerName = host
 
 		tlsConn := tls.Client(tcpConn, tlsConfig)
 		tlsErr := tlsConn.Handshake()
 		if tlsErr != nil {
-			return nil, pkgerrors.Wrapf(tlsErr, "TLS handshake failed in TLSConnect")
+			return nil, pkgerrors.Wrapf(tlsErr, "TLS handshake failed while establishing DCP TLS connection")
 		}
 		return memcached.Wrap(tlsConn)
 	}
@@ -235,22 +239,24 @@ func TLSConfigForX509(certpath, keypath, cacertpath string) (*tls.Config, error)
 	tlsConfig := &tls.Config{}
 
 	if len(cacertpaths) > 0 {
-		roots := x509.NewCertPool()
-
+		rootCerts := x509.NewCertPool()
 		for _, path := range cacertpaths {
 			cacert, err := ioutil.ReadFile(path)
 			if err != nil {
 				return nil, err
 			}
 
-			ok := roots.AppendCertsFromPEM(cacert)
+			ok := rootCerts.AppendCertsFromPEM(cacert)
 			if !ok {
 				return nil, fmt.Errorf("can't append certs from PEM")
 			}
 		}
-
-		tlsConfig.RootCAs = roots
+		tlsConfig.RootCAs = rootCerts
 	} else {
+		// A root CA cert is required in order to secure TLS communication from a client that doesn't maintain it's own store
+		// of trusted CA certs (i.e. any SDK-based client).  If a root CA cert isn't provided, set InsecureSkipVerify=true to
+		// accept any cert provided by the server. This follows the pattern being used by the SDK for TLS connections:
+		// https://github.com/couchbase/gocbcore/blob/7b68c492c29f3f952a00a4ba97dac14cc4b2b57e/agent.go#L236
 		tlsConfig.InsecureSkipVerify = true
 	}
 
