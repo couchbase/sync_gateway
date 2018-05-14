@@ -995,9 +995,8 @@ def do_upload_and_exit(path, url):
         if url.getcode() == 200:
             log('Done uploading')
         else:
-            raise Exception('Uploading failed, expected status code 200, got status code: {0}'.format(url.getcode()))
+            raise Exception('Error uploading, expected status code 200, got status code: {0}'.format(url.getcode()))
     except Exception as e:
-        log('Error uploading: {0}'.format(e))
         log(traceback.format_exc())
         exit_code = 1
 
