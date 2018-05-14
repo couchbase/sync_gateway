@@ -633,11 +633,11 @@ func tagPathVars(req *http.Request, urlString *string) {
 	for k, v := range pathVars {
 		switch redactedPathVars[k] {
 		case "UD":
-			str = strings.Replace(str, v, UD(v).Redact(), 1)
+			str = strings.Replace(str, "/"+v, "/"+UD(v).Redact(), 1)
 		case "MD":
-			str = strings.Replace(str, v, MD(v).Redact(), 1)
+			str = strings.Replace(str, "/"+v, "/"+MD(v).Redact(), 1)
 		case "SD":
-			str = strings.Replace(str, v, SD(v).Redact(), 1)
+			str = strings.Replace(str, "/"+v, "/"+SD(v).Redact(), 1)
 		}
 	}
 
