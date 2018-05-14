@@ -523,8 +523,8 @@ type NoPasswordAuthHandler struct {
 	handler AuthHandler
 }
 
-func (nph NoPasswordAuthHandler) GetCredentials() (string, string, string) {
-	_, _, bucketname := nph.handler.GetCredentials()
+func (nph NoPasswordAuthHandler) GetCredentials() (username string, password string, bucketname string) {
+	_, _, bucketname = nph.handler.GetCredentials()
 	return "", "", bucketname
 }
 

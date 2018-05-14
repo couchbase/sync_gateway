@@ -16,7 +16,6 @@ import (
 	"expvar"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -114,7 +113,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	cluster, err := gocb.Connect(connString)
 	if err != nil {
-		Infof(KeyAuth, "gocb connect returned error", err)
+		Infof(KeyAuth, "gocb connect returned error: %v", err)
 		return nil, err
 	}
 
@@ -306,7 +305,6 @@ func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
 		return -1, err
 	}
 	username, password, _ := bucket.spec.Auth.GetCredentials()
-	log.Printf("Not Setting basic auth: %q %q", username, password)
 	req.SetBasicAuth(username, password)
 
 	client := bucket.Bucket.IoRouter()

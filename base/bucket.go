@@ -182,6 +182,7 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 // TLSConnect method is passed to cbdatasource, to be used when creating a TLS-enabled memcached connection.
 // Establishes a connection, then wraps w/ gomemcached Client for use by cbdatasource.
 // Will include client cert (x.509) authentication when specified in the BucketSpec.
+// Adheres to approach used by gocb - can be removed once SG switches to gocb's DCP client.
 func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err error) {
 
 	d := net.Dialer{

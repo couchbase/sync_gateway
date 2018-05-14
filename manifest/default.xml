@@ -114,7 +114,7 @@
 
   <project name="clockwork" path="godeps/src/github.com/jonboulle/clockwork" remote="jonboulle" revision="ed104f61ea4877bea08af6f759805674861e968d"/>
 
-  <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="5823a0cbaaa9008406021dc5daf80125ea30bba6"/>
+  <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="f98adca8eb365032cab838ef4d99453931afa112"/>
 
   <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="238f46bf38971b117d90e70cba9bd4682428a8b6"/>
 

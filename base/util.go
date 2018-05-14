@@ -975,7 +975,7 @@ func SplitHostPort(hostport string) (string, string, error) {
 
 	// If this is an IPv6 address, we need to rewrap it in []
 	if strings.Contains(host, ":") {
-		host = "[" + host + "]"
+		host := fmt.Sprintf("[%s]", host)
 	}
 
 	return host, port, nil
