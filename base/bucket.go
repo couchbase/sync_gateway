@@ -409,6 +409,12 @@ func IsMinimumServerVersion(bucket Bucket, minMajor uint64, minMinor uint64) (bo
 
 }
 
+// Crc32c macro expansion is used to avoid conflicting with the Couchbase Eventing module, which also uses XATTRS.
+// Since Couchbase Eventing was introduced in Couchbase Server 5.5, the Crc32c macro expansion only needs to be done on 5.5 or later.
+func IsCrc32cMacroExpansionSupported(bucket Bucket) (bool, error) {
+	return IsMinimumServerVersion(bucket, 5, 5)
+}
+
 func ParseCouchbaseServerVersion(versionString string) (major uint64, minor uint64, micro string, err error) {
 
 	if versionString == "" {

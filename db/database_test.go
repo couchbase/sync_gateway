@@ -582,7 +582,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	db.changeCache.waitForSequence(101)
+	db.changeCache.waitForSequence(101, base.DefaultWaitForSequenceTesting)
 	changeLog := db.GetChangeLog("all", 0)
 	assert.Equals(t, len(changeLog), 50)
 	assert.Equals(t, int(changeLog[0].Sequence), 52)
@@ -757,7 +757,7 @@ func TestConflicts(t *testing.T) {
 		"channels": []string{"all", "2a"}})
 
 	// Verify the change-log of the "all" channel:
-	db.changeCache.waitForSequence(3)
+	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting)
 	changeLog = db.GetChangeLog("all", 0)
 	assert.Equals(t, len(changeLog), 1)
 	assert.Equals(t, changeLog[0].Sequence, uint64(3))
@@ -797,7 +797,7 @@ func TestConflicts(t *testing.T) {
 	assert.True(t, doc.Channels["2b"] != nil) // has been removed from 2b
 
 	// Verify the _changes feed:
-	db.changeCache.waitForSequence(4)
+	db.changeCache.waitForSequence(4, base.DefaultWaitForSequenceTesting)
 	changes, err = db.GetChanges(channels.SetOf("all"), options)
 	assertNoError(t, err, "Couldn't GetChanges")
 	assert.Equals(t, len(changes), 1)
@@ -1388,7 +1388,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Recent sequence pruning only prunes entries older than what's been seen over DCP
 	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
 	// for caching before attempting to trigger pruning.
-	db.changeCache.waitForSequence(seqTracker)
+	db.changeCache.waitForSequence(seqTracker, base.DefaultWaitForSequenceTesting)
 
 	// Add another sequence to validate pruning when past max (20)
 	revid, err = db.Put("doc1", body)
@@ -1407,7 +1407,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		seqTracker++
 	}
 
-	db.changeCache.waitForSequence(seqTracker) //
+	db.changeCache.waitForSequence(seqTracker, base.DefaultWaitForSequenceTesting) //
 	revid, err = db.Put("doc1", body)
 	seqTracker++
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
@@ -1434,18 +1434,20 @@ func TestChannelView(t *testing.T) {
 	// Query view (retry loop to wait for indexing)
 	for i := 0; i < 10; i++ {
 		var err error
-		entries, err = db.getChangesInChannelFromView("*", 0, ChangesOptions{})
+		entries, err = db.getChangesInChannelFromQuery("*", 0, ChangesOptions{})
 
 		assertNoError(t, err, "Couldn't create document")
 		if len(entries) >= 1 {
-			log.Printf("View query returned entry: %+v", entries[0])
 			break
 		}
 		log.Printf("No entries found - retrying (%d/10)", i+1)
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	assert.True(t, len(entries) == 1)
+	for i, entry := range entries {
+		log.Printf("View Query returned entry (%d): %v", i, entry)
+	}
+	assert.Equals(t, len(entries), 1)
 
 }
 

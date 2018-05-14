@@ -40,7 +40,6 @@ type RestTester struct {
 	DatabaseConfig          *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	AdminHandler            http.Handler
 	PublicHandler           http.Handler
-	leakyBucketConfig       *base.LeakyBucketConfig
 	EnableNoConflictsMode   bool // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
 	NoFlush                 bool // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
 }
@@ -114,11 +113,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		if !rt.noAdminParty {
 			rt.SetAdminParty(true)
-		}
-
-		// If given a leakyBucketConfig we'll return a leaky bucket.
-		if rt.leakyBucketConfig != nil {
-			return base.NewLeakyBucket(rt.RestTesterBucket, *rt.leakyBucketConfig)
 		}
 
 	}

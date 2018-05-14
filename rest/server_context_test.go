@@ -30,6 +30,7 @@ func TestConfigServer(t *testing.T) {
 		}`))
 
 	var rt RestTester
+	rt.NoFlush = true
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -81,6 +82,7 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil, responseBody))
 
 	var rt RestTester
+	rt.NoFlush = true
 	defer rt.Close()
 
 	sc := rt.ServerContext()

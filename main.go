@@ -32,7 +32,7 @@ func main() {
 
 	go func() {
 		for range signalchannel {
-			base.Infof(base.KeyAll, "Handling SIGHUP signal.\n")
+			base.Infof(base.KeyAll, "Handling SIGHUP signal.")
 			rest.HandleSighup()
 		}
 	}()

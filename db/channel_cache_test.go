@@ -202,6 +202,190 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 
 }
 
+func TestPrependChanges(t *testing.T) {
+
+	base.ConsoleLogKey().Enable(base.KeyCache)
+	defer base.ConsoleLogKey().Disable(base.KeyCache)
+	context := testBucketContext()
+	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
+	// 1. Test prepend to empty cache
+	cache := newChannelCache(context, "PrependEmptyCache", 0)
+	changesToPrepend := LogEntries{
+		e(10, "doc3", "2-a"),
+		e(12, "doc2", "2-a"),
+		e(14, "doc1", "2-a"),
+	}
+
+	numPrepended := cache.prependChanges(changesToPrepend, 10, true)
+	assert.Equals(t, numPrepended, 3)
+
+	// Validate cache
+	validFrom, cachedChanges := cache.getCachedChanges(ChangesOptions{})
+	assert.Equals(t, validFrom, uint64(10))
+	assert.Equals(t, len(cachedChanges), 3)
+
+	// 2. Test prepend to populated cache, with overlap and duplicates
+	cache = newChannelCache(context, "PrependPopulatedCache", 0)
+	cache.validFrom = 13
+	cache.addToCache(e(14, "doc1", "2-a"), false)
+	cache.addToCache(e(20, "doc2", "3-a"), false)
+
+	// Prepend
+	changesToPrepend = LogEntries{
+		e(10, "doc3", "2-a"),
+		e(11, "doc5", "2-a"),
+		e(12, "doc2", "2-a"),
+		e(14, "doc1", "2-a"),
+	}
+
+	numPrepended = cache.prependChanges(changesToPrepend, 10, true)
+	assert.Equals(t, numPrepended, 2)
+
+	// Validate cache
+	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	assert.Equals(t, validFrom, uint64(10))
+	assert.Equals(t, len(cachedChanges), 4)
+	if len(cachedChanges) == 4 {
+		assert.Equals(t, cachedChanges[0].DocID, "doc3")
+		assert.Equals(t, cachedChanges[0].RevID, "2-a")
+		assert.Equals(t, cachedChanges[1].DocID, "doc5")
+		assert.Equals(t, cachedChanges[1].RevID, "2-a")
+		assert.Equals(t, cachedChanges[2].DocID, "doc1")
+		assert.Equals(t, cachedChanges[2].RevID, "2-a")
+		assert.Equals(t, cachedChanges[3].DocID, "doc2")
+		assert.Equals(t, cachedChanges[3].RevID, "3-a")
+	}
+
+	// Write a new revision for a prepended doc to the cache, validate that old entry is removed
+	cache.addToCache(e(24, "doc3", "3-a"), false)
+	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	assert.Equals(t, validFrom, uint64(10))
+	assert.Equals(t, len(cachedChanges), 4)
+	if len(cachedChanges) == 4 {
+		assert.Equals(t, cachedChanges[0].DocID, "doc5")
+		assert.Equals(t, cachedChanges[0].RevID, "2-a")
+		assert.Equals(t, cachedChanges[1].DocID, "doc1")
+		assert.Equals(t, cachedChanges[1].RevID, "2-a")
+		assert.Equals(t, cachedChanges[2].DocID, "doc2")
+		assert.Equals(t, cachedChanges[2].RevID, "3-a")
+		assert.Equals(t, cachedChanges[3].DocID, "doc3")
+		assert.Equals(t, cachedChanges[3].RevID, "3-a")
+	}
+
+	// Prepend empty set, validate validFrom update
+	cache.prependChanges(LogEntries{}, 5, true)
+	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	assert.Equals(t, validFrom, uint64(5))
+	assert.Equals(t, len(cachedChanges), 4)
+
+	// 3. Test prepend that exceeds cache capacity
+	cache = newChannelCache(context, "PrependToFillCache", 0)
+	cache.options.ChannelCacheMaxLength = 5
+	cache.validFrom = 13
+	cache.addToCache(e(14, "doc1", "2-a"), false)
+	cache.addToCache(e(20, "doc2", "3-a"), false)
+	cache.addToCache(e(22, "doc3", "3-a"), false)
+	cache.addToCache(e(23, "doc4", "3-a"), false)
+
+	// Prepend changes.  Only room for one more in cache.  doc1 and doc2 should be ignored (already in cache), doc 6 should get cached, doc 5 should be discarded.  validFrom should be doc6 (10)
+	changesToPrepend = LogEntries{
+		e(8, "doc5", "2-a"),
+		e(10, "doc6", "2-a"),
+		e(12, "doc2", "2-a"),
+		e(14, "doc1", "2-a"),
+	}
+
+	numPrepended = cache.prependChanges(changesToPrepend, 10, true)
+	assert.Equals(t, numPrepended, 1)
+
+	// Validate cache
+	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	assert.Equals(t, validFrom, uint64(10))
+	assert.Equals(t, len(cachedChanges), 5)
+	if len(cachedChanges) == 5 {
+		assert.Equals(t, cachedChanges[0].DocID, "doc6")
+		assert.Equals(t, cachedChanges[0].RevID, "2-a")
+		assert.Equals(t, cachedChanges[1].DocID, "doc1")
+		assert.Equals(t, cachedChanges[1].RevID, "2-a")
+		assert.Equals(t, cachedChanges[2].DocID, "doc2")
+		assert.Equals(t, cachedChanges[2].RevID, "3-a")
+		assert.Equals(t, cachedChanges[3].DocID, "doc3")
+		assert.Equals(t, cachedChanges[3].RevID, "3-a")
+		assert.Equals(t, cachedChanges[4].DocID, "doc4")
+		assert.Equals(t, cachedChanges[4].RevID, "3-a")
+	}
+
+	// 4. Test prepend where all docids are already present in cache.  Cache entries shouldn't change, but validFrom is updated
+	cache = newChannelCache(context, "PrependDuplicatesOnly", 0)
+	cache.validFrom = 13
+	cache.addToCache(e(14, "doc1", "2-a"), false)
+	cache.addToCache(e(20, "doc2", "3-a"), false)
+	cache.addToCache(e(22, "doc3", "3-a"), false)
+	cache.addToCache(e(23, "doc4", "3-a"), false)
+
+	changesToPrepend = LogEntries{
+		e(8, "doc2", "2-a"),
+		e(10, "doc3", "2-a"),
+		e(12, "doc4", "2-a"),
+		e(14, "doc1", "2-a"),
+	}
+	numPrepended = cache.prependChanges(changesToPrepend, 10, true)
+	assert.Equals(t, numPrepended, 0)
+	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	assert.Equals(t, validFrom, uint64(8))
+	assert.Equals(t, len(cachedChanges), 4)
+	if len(cachedChanges) == 5 {
+		assert.Equals(t, cachedChanges[0].DocID, "doc1")
+		assert.Equals(t, cachedChanges[0].RevID, "2-a")
+		assert.Equals(t, cachedChanges[1].DocID, "doc2")
+		assert.Equals(t, cachedChanges[1].RevID, "3-a")
+		assert.Equals(t, cachedChanges[2].DocID, "doc3")
+		assert.Equals(t, cachedChanges[2].RevID, "3-a")
+		assert.Equals(t, cachedChanges[3].DocID, "doc4")
+		assert.Equals(t, cachedChanges[3].RevID, "3-a")
+	}
+
+	// 5. Test prepend for an already full cache
+	cache = newChannelCache(context, "PrependFullCache", 0)
+	cache.options.ChannelCacheMaxLength = 5
+	cache.validFrom = 13
+	cache.addToCache(e(14, "doc1", "2-a"), false)
+	cache.addToCache(e(20, "doc2", "3-a"), false)
+	cache.addToCache(e(22, "doc3", "3-a"), false)
+	cache.addToCache(e(23, "doc4", "3-a"), false)
+	cache.addToCache(e(25, "doc5", "3-a"), false)
+
+	// Prepend changes, no room for in cache.
+	changesToPrepend = LogEntries{
+		e(8, "doc5", "2-a"),
+		e(10, "doc6", "2-a"),
+		e(12, "doc2", "2-a"),
+		e(14, "doc1", "2-a"),
+	}
+
+	numPrepended = cache.prependChanges(changesToPrepend, 10, true)
+	assert.Equals(t, numPrepended, 0)
+
+	// Validate cache
+	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	assert.Equals(t, validFrom, uint64(13))
+	assert.Equals(t, len(cachedChanges), 5)
+	if len(cachedChanges) == 5 {
+		assert.Equals(t, cachedChanges[0].DocID, "doc1")
+		assert.Equals(t, cachedChanges[0].RevID, "2-a")
+		assert.Equals(t, cachedChanges[1].DocID, "doc2")
+		assert.Equals(t, cachedChanges[1].RevID, "3-a")
+		assert.Equals(t, cachedChanges[2].DocID, "doc3")
+		assert.Equals(t, cachedChanges[2].RevID, "3-a")
+		assert.Equals(t, cachedChanges[3].DocID, "doc4")
+		assert.Equals(t, cachedChanges[3].RevID, "3-a")
+		assert.Equals(t, cachedChanges[4].DocID, "doc5")
+		assert.Equals(t, cachedChanges[4].RevID, "3-a")
+	}
+}
+
 func verifyChannelSequences(entries []*LogEntry, sequences []uint64) bool {
 	if len(entries) != len(sequences) {
 		log.Printf("verifyChannelSequences: entries size (%v) not equals to sequences size (%v)",

@@ -42,7 +42,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// Create a doc on two channels (sequence 1):
 	revid, _ := db.Put("doc1", Body{"channels": []string{"ABC", "PBS"}})
-	db.changeCache.waitForSequence(1)
+	db.changeCache.waitForSequence(1, base.DefaultWaitForSequenceTesting)
 	time.Sleep(100 * time.Millisecond)
 
 	// Modify user to have access to both channels (sequence 2):
@@ -53,7 +53,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assertNoError(t, err, "UpdatePrincipal failed")
 
 	// Check the _changes feed:
-	db.changeCache.waitForSequence(1)
+	db.changeCache.waitForSequence(1, base.DefaultWaitForSequenceTesting)
 	time.Sleep(100 * time.Millisecond)
 	db.Bucket.Dump()
 	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
@@ -86,7 +86,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 2 (the user doc) and isn't stuck waiting for it.
-	db.changeCache.waitForSequence(3)
+	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting)
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 
 	assertNoError(t, err, "Couldn't GetChanges (2nd)")
@@ -146,7 +146,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	// Create a doc on two channels (sequence 1):
 	revid, _ := db.Put("alpha", Body{"channels": []string{"A", "B"}})
-	db.changeCache.waitForSequence(1)
+	db.changeCache.waitForSequence(1, base.DefaultWaitForSequenceTesting)
 	time.Sleep(100 * time.Millisecond)
 
 	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
@@ -195,7 +195,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
-	db.changeCache.waitForSequence(3)
+	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting)
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 
 	assertNoError(t, err, "Couldn't GetChanges (2nd)")
@@ -230,7 +230,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	// Create a doc on two channels (sequence 1):
 	revid, _ := db.Put("alpha", Body{"channels": []string{"A", "B"}})
-	db.changeCache.waitForSequence(1)
+	db.changeCache.waitForSequence(1, base.DefaultWaitForSequenceTesting)
 	time.Sleep(100 * time.Millisecond)
 
 	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
@@ -277,7 +277,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 (the modified document) and isn't stuck waiting for it.
-	db.changeCache.waitForSequence(3)
+	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting)
 
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 

@@ -20,6 +20,7 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -987,4 +988,25 @@ func ConvertBackQuotedStrings(data []byte) []byte {
 		bytes[len(bytes)-1] = '"'
 		return bytes
 	})
+}
+
+// FindPrimaryAddr returns the primary outbound IP of this machine.
+// This is the same as find_primary_addr in sgcollect_info.
+func FindPrimaryAddr() (net.IP, error) {
+	conn, err := net.Dial("udp", "8.8.8.8:56")
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP, nil
+}
+
+// ReplaceAll returns a string with all of the given chars replaced by new
+func ReplaceAll(s, chars, new string) string {
+	for _, r := range chars {
+		s = strings.Replace(s, string(r), new, -1)
+	}
+	return s
 }

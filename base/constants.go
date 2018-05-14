@@ -3,6 +3,7 @@ package base
 import (
 	"os"
 	"strings"
+	"time"
 )
 
 const (
@@ -47,11 +48,16 @@ const (
 	TestEnvSyncGatewayUseXattrs = "SG_TEST_USE_XATTRS"
 	TestEnvSyncGatewayTrue      = "True"
 
+	// Should the tests drop the GSI indexes?
+	TestEnvSyncGatewayDropIndexes = "SG_TEST_DROP_INDEXES"
+
 	// Don't use an auth handler by default, but provide a way to override
 	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"
 
 	DefaultUseXattrs      = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	DefaultAllowConflicts = true  // Whether Sync Gateway allows revision conflicts, if not specified in the config
+
+	DefaultDropIndexes = false // Whether Sync Gateway drops GSI indexes before each test while running in integration mode
 
 	DefaultOldRevExpirySeconds = uint32(300)
 
@@ -59,6 +65,22 @@ const (
 	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) //90 days in seconds
 
 	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
+
+	DefaultWaitForSequenceTesting = time.Second * 2
+
+	// Default the max number of idle connections per host to a relatively high number to avoid
+	// excessive socket churn caused by opening short-lived connections and closing them after, which can cause
+	// a high number of connections to end up in the TIME_WAIT state and exhaust system resources.  Since
+	// GoCB is only connecting to a fixed set of Couchbase nodes, this number can be set relatively high and
+	// still stay within a reasonable value.
+	DefaultHttpMaxIdleConnsPerHost = "256"
+
+	// This primarily depends on MaxIdleConnsPerHost as the limiting factor, but sets some upper limit just to avoid
+	// being completely unlimited
+	DefaultHttpMaxIdleConns = "64000"
+
+	// Keep idle connections around for a maximimum of 90 seconds.  This is the same value used by the Go DefaultTransport.
+	DefaultHttpIdleConnTimeoutMilliseconds = "90000"
 
 )
 

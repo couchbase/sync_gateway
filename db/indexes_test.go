@@ -19,7 +19,10 @@ func TestInitializeIndexes(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	dropErr := dropAllBucketIndexes(testBucket)
+	goCbBucket, isGoCBBucket := base.AsGoCBBucket(testBucket)
+	assert.True(t, isGoCBBucket)
+
+	dropErr := base.DropAllBucketIndexes(goCbBucket)
 	assertNoError(t, dropErr, "Error dropping all indexes")
 
 	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0)
@@ -28,38 +31,6 @@ func TestInitializeIndexes(t *testing.T) {
 	validateErr := validateAllIndexesOnline(testBucket)
 	assertNoError(t, validateErr, "Error validating indexes online")
 
-}
-
-// Reset bucket state
-func dropAllBucketIndexes(bucket base.Bucket) error {
-
-	gocbBucket, ok := base.AsGoCBBucket(bucket)
-	if !ok {
-		return fmt.Errorf("Bucket is not gocb bucket: %T", bucket)
-	}
-
-	// Retrieve all indexes
-	getIndexesStatement := fmt.Sprintf("SELECT indexes.name from system:indexes where keyspace_id = %q", gocbBucket.GetName())
-	n1qlQuery := gocb.NewN1qlQuery(getIndexesStatement)
-	results, err := gocbBucket.ExecuteN1qlQuery(n1qlQuery, nil)
-	if err != nil {
-		return err
-	}
-
-	var indexRow struct {
-		Name string
-	}
-
-	for results.Next(&indexRow) {
-		log.Printf("Dropping index %s...", indexRow.Name)
-		dropErr := gocbBucket.DropIndex(indexRow.Name)
-		if dropErr != nil {
-			return dropErr
-		}
-		log.Printf("...successfully dropped index %s", indexRow.Name)
-	}
-	closeErr := results.Close()
-	return closeErr
 }
 
 // Reset bucket state

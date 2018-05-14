@@ -234,7 +234,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 				//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
 				//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
 				//       the doc won't be flagged as removed from that channel in the in-memory channel cache.
-				entries, err := c.context.getChangesInChannelFromView("*", endSequence, options)
+				entries, err := c.context.getChangesInChannelFromQuery("*", endSequence, options)
 				if err == nil && len(entries) > 0 {
 					// Found it - store to send to the caches.
 					found = append(found, entries[0])
@@ -293,29 +293,42 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 }
 
 // FOR TESTS ONLY: Blocks until the given sequence has been received.
-func (c *changeCache) waitForSequenceID(sequence SequenceID) {
-	c.waitForSequence(sequence.Seq)
+func (c *changeCache) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration) {
+	c.waitForSequence(sequence.Seq, maxWaitTime)
 }
 
-func (c *changeCache) waitForSequence(sequence uint64) {
-	var i int
-	for i = 0; i < 20; i++ {
+func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration) {
+
+	startTime := time.Now()
+
+	for {
+
+		if time.Since(startTime) >= maxWaitTime {
+			panic(fmt.Sprintf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime)))
+		}
+
 		c.lock.RLock()
 		nextSequence := c.nextSequence
 		c.lock.RUnlock()
 		if nextSequence >= sequence+1 {
-			base.Infof(base.KeyAll, "waitForSequence(%d) took %d ms", sequence, i*100)
+			base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	panic(fmt.Sprintf("changeCache: Sequence %d never showed up!", sequence))
 }
 
 // FOR TESTS ONLY: Blocks until the given sequence has been received.
-func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
-	var i int
-	for i = 0; i < 20; i++ {
+func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration) {
+
+	startTime := time.Now()
+
+	for {
+
+		if time.Since(startTime) >= maxWaitTime {
+			panic(fmt.Sprintf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime)))
+		}
+
 		c.lock.RLock()
 		nextSequence := c.nextSequence
 		c.lock.RUnlock()
@@ -330,13 +343,12 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64) {
 			}
 			c.skippedSeqLock.RUnlock()
 			if !foundInMissing {
-				base.Infof(base.KeyAll, "waitForSequence(%d) took %d ms", sequence, i*100)
+				base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
 				return
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	panic(fmt.Sprintf("changeCache: Sequence %d never showed up!", sequence))
 }
 
 //////// ADDING CHANGES:

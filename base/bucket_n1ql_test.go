@@ -423,12 +423,77 @@ func TestDeferredCreateIndex(t *testing.T) {
 		}
 	}()
 
-	buildErr := bucket.BuildIndexes([]string{indexName})
+	buildErr := bucket.buildIndexes([]string{indexName})
 	assertNoError(t, buildErr, "Error building indexes")
 
 	readyErr := bucket.WaitForIndexOnline(indexName)
 	assertNoError(t, readyErr, "Error validating index online")
 
+}
+
+func TestBuildDeferredIndexes(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	if !ok {
+		t.Fatalf("Requires gocb bucket")
+	}
+
+	deferredIndexName := "testIndexDeferred"
+	nonDeferredIndexName := "testIndexNonDeferred"
+	assertNoError(t, tearDownTestIndex(bucket, deferredIndexName), "Error in pre-test cleanup")
+	assertNoError(t, tearDownTestIndex(bucket, nonDeferredIndexName), "Error in pre-test cleanup")
+
+	deferN1qlOptions := &N1qlIndexOptions{
+		NumReplica: 0,
+		DeferBuild: true,
+	}
+
+	// Create a deferred and a non-deferred index
+	createExpression := "_sync.sequence"
+	err := bucket.CreateIndex(deferredIndexName, createExpression, "", deferN1qlOptions)
+	if err != nil {
+		t.Errorf("Error creating index: %s", err)
+	}
+
+	createExpression = "_sync.rev"
+	err = bucket.CreateIndex(nonDeferredIndexName, createExpression, "", &N1qlIndexOptions{NumReplica: 0})
+	if err != nil {
+		t.Errorf("Error creating index: %s", err)
+	}
+
+	// Drop the indexes
+	defer func() {
+		err = bucket.DropIndex(deferredIndexName)
+		if err != nil {
+			t.Errorf("Error dropping deferred index: %s", err)
+		}
+	}()
+	defer func() {
+		err = bucket.DropIndex(nonDeferredIndexName)
+		if err != nil {
+			t.Errorf("Error dropping non-deferred index: %s", err)
+		}
+	}()
+
+	buildErr := bucket.BuildDeferredIndexes([]string{deferredIndexName, nonDeferredIndexName})
+	assertNoError(t, buildErr, "Error building indexes")
+
+	readyErr := bucket.WaitForIndexOnline(deferredIndexName)
+	assertNoError(t, readyErr, "Error validating index online")
+	readyErr = bucket.WaitForIndexOnline(nonDeferredIndexName)
+	assertNoError(t, readyErr, "Error validating index online")
+
+	// Ensure no errors from no-op scenarios
+	alreadyBuiltErr := bucket.BuildDeferredIndexes([]string{deferredIndexName, nonDeferredIndexName})
+	assertNoError(t, alreadyBuiltErr, "Error building already built indexes")
+
+	emptySetErr := bucket.BuildDeferredIndexes([]string{})
+	assertNoError(t, emptySetErr, "Error building empty set")
 }
 
 func TestCreateAndDropIndexErrors(t *testing.T) {

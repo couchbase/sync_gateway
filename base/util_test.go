@@ -382,3 +382,37 @@ func TestSanitizeRequestURLQueryParams(t *testing.T) {
 	sanitizedURL = SanitizeRequestURLQueryParams(url)
 	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/doctoken=code=")
 }
+
+func TestFindPrimaryAddr(t *testing.T) {
+	ip, err := FindPrimaryAddr()
+	if err != nil && strings.Contains(err.Error(), "network is unreachable") {
+		// Skip test if dial fails.
+		// This is to allow tests to be run offline/without third-party dependencies.
+		t.Skipf("WARNING: network is unreachable: %s", err)
+	}
+
+	assert.NotEquals(t, ip, nil)
+	assert.NotEquals(t, ip.String(), "")
+	assert.NotEquals(t, ip.String(), "<nil>")
+}
+
+func TestReplaceAll(t *testing.T) {
+	tests := []struct {
+		input,
+		chars,
+		new,
+		expected string
+	}{
+		{"", "", "", ""},
+		{"safe", ":", "", "safe"},
+		{"unsafe?", "?", "", "unsafe"},
+		{"123:456:789", ":", "-", "123-456-789"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.chars, func(ts *testing.T) {
+			output := ReplaceAll(test.input, test.chars, test.new)
+			assert.Equals(ts, output, test.expected)
+		})
+	}
+}

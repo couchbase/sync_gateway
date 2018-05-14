@@ -22,6 +22,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"time"
 )
 
 const (
@@ -190,14 +191,14 @@ func (k *kvChangeIndex) getChannelCache(channelName string) *channelCache {
 }
 
 // TODO: refactor waitForSequence to accept either vbNo or clock
-func (k *kvChangeIndex) waitForSequenceID(sequence SequenceID) {
-	k.waitForSequence(sequence.Seq)
+func (k *kvChangeIndex) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration) {
+	k.waitForSequence(sequence.Seq, maxWaitTime)
 }
-func (k *kvChangeIndex) waitForSequence(sequence uint64) {
+func (k *kvChangeIndex) waitForSequence(sequence uint64, maxWaitTime time.Duration) {
 	return
 }
-func (k *kvChangeIndex) waitForSequenceWithMissing(sequence uint64) {
-	k.waitForSequence(sequence)
+func (k *kvChangeIndex) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration) {
+	k.waitForSequence(sequence, maxWaitTime)
 }
 
 // If set to false, DocChanged() becomes a no-op.
