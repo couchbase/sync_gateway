@@ -1460,7 +1460,7 @@ func TestConcurrentImport(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	base.ConsoleLogKey().Enable(base.KeyImport)
+	base.EnableTestLogKey("Import")
 
 	// Add doc to the underlying bucket:
 	db.Bucket.Add("directWrite", 0, Body{"value": "hi"})

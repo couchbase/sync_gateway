@@ -1306,7 +1306,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	LogKeys["CRUD+"] = true
+	EnableTestLogKey("CRUD+")
 
 	testBucket := GetTestBucketOrPanic()
 	defer testBucket.Close()
@@ -1406,7 +1406,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	LogKeys["CRUD+"] = true
+	EnableTestLogKey("CRUD+")
 
 	testBucket := GetTestBucketOrPanic()
 	defer testBucket.Close()
@@ -1971,7 +1971,6 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 	maxTTL, err := gocbBucket.GetMaxTTL()
 	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, maxTTL, 0)
-
 
 }
 

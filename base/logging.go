@@ -12,13 +12,11 @@ package base
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"net/http"
 	"os"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/couchbase/clog"
@@ -165,23 +163,6 @@ func (l *Level) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// 1 enables regular logs, 2 enables warnings, 3+ is nothing but panics.
-// Default value is 1.
-var logLevel int = 1
-
-// Set of LogTo() key strings that are enabled.
-var LogKeys map[string]bool
-
-var logNoTime bool
-
-var logLock sync.RWMutex
-
-var logger *log.Logger
-
-var logFile *os.File
-
-var logStar bool // enabling log key "*" enables all key-based logging
-
 type LogRotationConfig struct {
 	// MaxSize is the maximum size in megabytes of the log file before it gets
 	// rotated. It defaults to 100 megabytes.
@@ -215,25 +196,6 @@ type LogAppenderConfig struct {
 	LogLevel       Level              `json:",omitempty"`
 	Rotation       *LogRotationConfig `json:",omitempty"`
 	RedactionLevel RedactionLevel     `json:",omitempty"`
-}
-
-type LoggingConfigMap map[string]*LogAppenderConfig
-
-//Attach logger to stderr during load, this may get re-attached once config is loaded
-func init() {
-	logger = log.New(os.Stderr, "", 0)
-	LogKeys = make(map[string]bool)
-	logNoTime = false
-}
-
-func GetLogLevel() int {
-	return logLevel
-}
-
-func SetLogLevel(level int) {
-	logLock.Lock()
-	defer logLock.Unlock()
-	logLevel = level
 }
 
 // For transforming a new log level to the old type.

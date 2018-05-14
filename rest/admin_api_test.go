@@ -1570,7 +1570,7 @@ func TestDocumentChangeReplicate(t *testing.T) {
 	var rt RestTester
 	defer rt.Close() // Close RestTester, which closes ServerContext, which stops all replications
 
-	base.ConsoleLogKey().Set(base.KeyReplicate)
+	base.EnableTestLogKey("Replicate")
 	base.EnableSgReplicateLogging()
 
 	//Initiate synchronous one shot replication

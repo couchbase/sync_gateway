@@ -26,9 +26,8 @@ func TestMigrateMetadata(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	base.ConsoleLogKey().Set(base.KeyMigrate)
-
-	base.ConsoleLogKey().Enable(base.KeyImport)
+	base.EnableTestLogKey("Migrate")
+	base.EnableTestLogKey("Import")
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
@@ -97,7 +96,8 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	base.ConsoleLogKey().Set(base.KeyMigrate | base.KeyImport)
+	base.EnableTestLogKey("Migrate")
+	base.EnableTestLogKey("Import")
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()

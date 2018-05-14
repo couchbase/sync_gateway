@@ -181,7 +181,7 @@ func TestDenseBlockGetEntry(t *testing.T) {
 
 func TestDenseBlockMultipleUpdates(t *testing.T) {
 
-	base.ConsoleLogKey().Set(base.KeyAccel)
+	base.EnableTestLogKey("Accel")
 
 	testIndexBucket := base.GetTestIndexBucketOrPanic()
 	defer testIndexBucket.Close()
@@ -246,7 +246,7 @@ func TestDenseBlockMultipleUpdates(t *testing.T) {
 
 func TestDenseBlockRemovalByKey(t *testing.T) {
 
-	base.ConsoleLogKey().Set(base.KeyAccel)
+	base.EnableTestLogKey("Accel")
 
 	testIndexBucket := base.GetTestIndexBucketOrPanic()
 	defer testIndexBucket.Close()
@@ -308,7 +308,7 @@ func TestDenseBlockRemovalByKey(t *testing.T) {
 
 func TestDenseBlockRollbackTo(t *testing.T) {
 
-	base.ConsoleLogKey().Set(base.KeyAccel)
+	base.EnableTestLogKey("Accel")
 
 	testIndexBucket := base.GetTestIndexBucketOrPanic()
 	defer testIndexBucket.Close()
@@ -409,7 +409,7 @@ func TestDenseBlockOverflow(t *testing.T) {
 	// Test passes locally with both Walrus and Couchbase, and with and without -race.
 	t.Skip("WARNING: TEST DISABLED")
 
-	base.ConsoleLogKey().Set(base.KeyAccel)
+	base.EnableTestLogKey("Accel")
 
 	testIndexBucket := base.GetTestIndexBucketOrPanic()
 	defer testIndexBucket.Close()
@@ -481,7 +481,7 @@ func TestDenseBlockOverflow(t *testing.T) {
 // CAS handling test
 func TestDenseBlockConcurrentUpdates(t *testing.T) {
 
-	base.ConsoleLogKey().Set(base.KeyAccel)
+	base.EnableTestLogKey("Accel")
 
 	testIndexBucket := base.GetTestIndexBucketOrPanic()
 	defer testIndexBucket.Close()
@@ -613,7 +613,7 @@ func TestDenseBlockIterator(t *testing.T) {
 // --------------------
 func TestDenseBlockList(t *testing.T) {
 
-	base.ConsoleLogKey().Enable(base.KeyAccel)
+	base.EnableTestLogKey("Accel")
 
 	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 
@@ -654,7 +654,7 @@ func TestDenseBlockList(t *testing.T) {
 // Artificially set the CAS to an invalid value, to ensure write processing recovers from CAS mismatch
 func TestDenseBlockListBadCas(t *testing.T) {
 
-	base.ConsoleLogKey().Enable(base.KeyAccel)
+	base.EnableTestLogKey("Accel")
 
 	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 
@@ -702,7 +702,7 @@ func TestDenseBlockListBadCas(t *testing.T) {
 // Test multiple writers attempting to concurrently initialize a block
 func TestDenseBlockListConcurrentInit(t *testing.T) {
 
-	base.ConsoleLogKey().Enable(base.KeyAccel)
+	base.EnableTestLogKey("Accel")
 
 	testIndexBucket := base.GetTestIndexBucketOrPanic()
 	defer testIndexBucket.Close()
@@ -736,7 +736,7 @@ func TestDenseBlockListRotate(t *testing.T) {
 		MaxListBlockCount = initCount
 	}()
 
-	base.ConsoleLogKey().Enable(base.KeyAccel)
+	base.EnableTestLogKey("Accel")
 
 	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 
@@ -772,7 +772,7 @@ func TestDenseBlockListRotate(t *testing.T) {
 //----------------------------------------------------------------------------------------------
 
 func TestCalculateChangedPartitions(t *testing.T) {
-	base.ConsoleLogKey().Enable(base.KeyAccel)
+	base.EnableTestLogKey("Accel")
 
 	testIndexBucket := base.GetTestIndexBucketOrPanic()
 	defer testIndexBucket.Close()

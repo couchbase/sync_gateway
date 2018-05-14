@@ -780,7 +780,7 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 // Repair tool for https://github.com/couchbase/sync_gateway/issues/2847
 func TestRepairRevsHistoryWithCycles(t *testing.T) {
 
-	base.ConsoleLogKey().Set(base.KeyCRUD)
+	base.EnableTestLogKey("CRUD")
 
 	for i, testdocProblematicRevTree := range testdocProblematicRevTrees {
 
