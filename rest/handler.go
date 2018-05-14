@@ -223,6 +223,11 @@ func (h *handler) invoke(method handlerMethod) error {
 }
 
 func (h *handler) logRequestLine() {
+	// Check Log Level first, as SanitizeRequestURL is expensive to evaluate.
+	if !base.LogInfoEnabled(base.KeyHTTP) {
+		return
+	}
+
 	proto := ""
 	if h.rq.ProtoMajor >= 2 {
 		proto = " HTTP/2"

@@ -540,6 +540,12 @@ func ConsoleLogKey() *LogKey {
 	return consoleLogger.LogKey
 }
 
+// LogInfoEnabled returns true if either the console should log at info level,
+// or if the infoLogger is enabled.
+func LogInfoEnabled(logKey LogKey) bool {
+	return consoleLogger.shouldLog(LevelInfo, logKey) || infoLogger.shouldLog()
+}
+
 // LogDebugEnabled returns true if either the console should log at debug level,
 // or if the debugLogger is enabled.
 func LogDebugEnabled(logKey LogKey) bool {

@@ -1,11 +1,10 @@
 package db
 
 import (
-	"testing"
-	"time"
-
 	"fmt"
 	"log"
+	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
