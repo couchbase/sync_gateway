@@ -22,6 +22,7 @@ import urllib2
 import base64
 import mmap
 import hashlib
+import traceback
 
 
 class LogRedactor:
@@ -994,9 +995,10 @@ def do_upload_and_exit(path, url):
         if url.getcode() == 200:
             log('Done uploading')
         else:
-            raise Exception('HTTP status code: %s' % url.getcode())
+            raise Exception('Uploading failed, expected status code 200, got status code: {0}'.format(url.getcode()))
     except Exception as e:
-        log('Error uploading: %s' % e)
+        log('Error uploading: {0}'.format(e))
+        log(traceback.format_exc())
         exit_code = 1
 
     filedata.close()
