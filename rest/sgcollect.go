@@ -147,7 +147,11 @@ func (c *sgCollectOptions) Validate() error {
 	}
 
 	if c.Upload && c.Customer == "" {
-		return errors.New("customer must be set if uploading")
+		return errors.New("customer must be set if upload is true")
+	}
+
+	if !c.Upload && c.UploadHost != "" {
+		return errors.New("upload must be set if upload_host is specified")
 	}
 
 	return nil
