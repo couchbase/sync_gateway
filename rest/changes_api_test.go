@@ -720,7 +720,9 @@ func TestUnusedSequences(t *testing.T) {
 }
 
 func _testConcurrentDelete(t *testing.T) {
-	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
+
+	base.ConsoleLogKey().Set(base.KeyCache | base.KeyChanges | base.KeyCRUD)
+	base.ConsoleLogLevel().Set(base.LevelDebug)
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -759,7 +761,9 @@ func _testConcurrentDelete(t *testing.T) {
 }
 
 func _testConcurrentPutAsDelete(t *testing.T) {
-	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
+
+	base.ConsoleLogKey().Set(base.KeyCache | base.KeyChanges | base.KeyCRUD)
+	base.ConsoleLogLevel().Set(base.LevelDebug)
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -797,7 +801,9 @@ func _testConcurrentPutAsDelete(t *testing.T) {
 }
 
 func _testConcurrentUpdate(t *testing.T) {
-	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
+
+	base.ConsoleLogKey().Set(base.KeyCache | base.KeyChanges | base.KeyCRUD)
+	base.ConsoleLogLevel().Set(base.LevelDebug)
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -835,7 +841,9 @@ func _testConcurrentUpdate(t *testing.T) {
 }
 
 func _testConcurrentNewEditsFalseDelete(t *testing.T) {
-	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+", "HTTP", "HTTP+"})
+
+	base.ConsoleLogKey().Set(base.KeyCache | base.KeyChanges | base.KeyCRUD | base.KeyHTTP | base.KeyHTTPResp)
+	base.ConsoleLogLevel().Set(base.LevelDebug)
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -2120,7 +2128,9 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 // Test _changes returning conflicts
 func TestChangesIncludeConflicts(t *testing.T) {
 
-	base.ParseLogFlags([]string{"Cache+", "Changes+", "CRUD+"})
+	base.ConsoleLogKey().Set(base.KeyCache | base.KeyChanges | base.KeyCRUD)
+	base.ConsoleLogLevel().Set(base.LevelDebug)
+
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}

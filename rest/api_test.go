@@ -36,7 +36,6 @@ import (
 )
 
 func init() {
-	base.LogNoColor()
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
@@ -2131,7 +2130,8 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 func TestChannelAccessChanges(t *testing.T) {
 
-	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
+	base.ConsoleLogKey().Set(base.KeyCache | base.KeyChanges | base.KeyCRUD | base.KeyAccel)
+	base.ConsoleLogLevel().Set(base.LevelDebug)
 
 	rt := RestTester{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	defer rt.Close()
@@ -2300,7 +2300,9 @@ func TestChannelAccessChanges(t *testing.T) {
 }
 
 func TestAccessOnTombstone(t *testing.T) {
-	base.ParseLogFlags([]string{"Cache", "Changes+", "CRUD", "DIndex+"})
+
+	base.ConsoleLogKey().Set(base.KeyCache | base.KeyChanges | base.KeyCRUD | base.KeyAccel)
+	base.ConsoleLogLevel().Set(base.LevelDebug)
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 if (doc.owner) {
@@ -2369,7 +2371,9 @@ func TestAccessOnTombstone(t *testing.T) {
 
 //Test for wrong _changes entries for user joining a populated channel
 func TestUserJoiningPopulatedChannel(t *testing.T) {
-	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes", "Changes+", "CRUD"})
+
+	base.ConsoleLogKey().Set(base.KeyCache | base.KeyChanges | base.KeyCRUD)
+	base.ConsoleLogLevel().Set(base.LevelDebug)
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
