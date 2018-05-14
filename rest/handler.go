@@ -223,9 +223,6 @@ func (h *handler) invoke(method handlerMethod) error {
 }
 
 func (h *handler) logRequestLine() {
-	if !base.LogEnabled("HTTP") {
-		return
-	}
 	proto := ""
 	if h.rq.ProtoMajor >= 2 {
 		proto = " HTTP/2"

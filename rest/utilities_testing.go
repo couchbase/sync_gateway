@@ -1230,19 +1230,11 @@ func (e ExpectedChange) Equals(change []interface{}) error {
 }
 
 func EnableBlipSyncLogs() {
-	base.EnableLogKey("HTTP")
-	base.EnableLogKey("HTTP+")
-	base.EnableLogKey("Sync")
-	base.EnableLogKey("Sync+")
-	base.EnableLogKey("SyncMsg")
+	base.ConsoleLogKey().Enable(base.KeyHTTP | base.KeySync | base.KeySyncMsg)
 }
 
 func DisableBlipSyncLogs() {
-	base.DisableLogKey("HTTP")
-	base.DisableLogKey("HTTP+")
-	base.DisableLogKey("Sync")
-	base.DisableLogKey("Sync+")
-	base.DisableLogKey("SyncMsg")
+	base.ConsoleLogKey().Disable(base.KeyHTTP | base.KeySync | base.KeySyncMsg)
 }
 
 // Model "CouchDB" style REST documents which define the following special fields:

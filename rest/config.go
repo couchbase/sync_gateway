@@ -550,25 +550,6 @@ func (config *ServerConfig) setupAndValidateLogging(verbose bool, defaultLogFile
 		config.Logging.DeprecatedDefaultLog = &base.LogAppenderConfig{}
 	}
 
-	// Set old LogKeys config setting for backwards compatibility.
-	// TODO: Remove when old logging is stripped out.
-	config.Logging.DeprecatedDefaultLog.LogKeys = config.Logging.Console.LogKeys
-
-	// Set old LogFilePath config setting for backwards compatibility.
-	// TODO: Remove when old logging is stripped out.
-	config.Logging.DeprecatedDefaultLog.LogLevel = *base.ToDeprecatedLogLevel(*config.Logging.Console.LogLevel)
-
-	defaultLogger := config.Logging.DeprecatedDefaultLog
-	if err := defaultLogger.ValidateLogAppender(); err != nil {
-		return err
-	}
-	base.CreateRollingLogger(defaultLogger)
-
-	base.EnableLogKey("HTTP")
-	if verbose {
-		base.EnableLogKey("HTTP+")
-	}
-
 	return nil
 }
 
@@ -721,9 +702,6 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 		if *pretty {
 			config.Pretty = *pretty
 		}
-		if config.DeprecatedLog != nil {
-			base.ParseLogFlags(config.DeprecatedLog)
-		}
 
 		// If the interfaces were not specified in either the config file or
 		// on the command line, set them to the default values
@@ -785,16 +763,12 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 		}
 	}
 
-	base.ParseLogFlag(*logKeys)
-
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
 	if err := config.setupAndValidateLogging(*verbose, *defaultLogFilePath); err != nil {
 		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
 	}
-
-	//return config
 }
 
 func SetMaxFileDescriptors(maxP *uint64) {

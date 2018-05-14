@@ -32,7 +32,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	base.EnableLogKey("IndexChanges")
-	base.EnableLogKey("Hash+")
+	base.ConsoleLogKey().Enable(base.KeyHash)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Create a user with access to channel ABC

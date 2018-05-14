@@ -26,7 +26,7 @@ func TestMigrateMetadata(t *testing.T) {
 	}
 
 	base.EnableLogKey("Migrate")
-	base.EnableLogKey("Import+")
+	base.ConsoleLogKey().Enable(base.KeyImport)
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
@@ -96,7 +96,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 	}
 
 	base.EnableLogKey("Migrate")
-	base.EnableLogKey("Import+")
+	base.ConsoleLogKey().Enable(base.KeyImport)
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
