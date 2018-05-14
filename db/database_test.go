@@ -27,9 +27,6 @@ import (
 )
 
 func init() {
-	base.LogNoColor()
-	//base.LogKeys["CRUD"] = true
-	//base.LogKeys["CRUD+"] = true
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 

@@ -21,7 +21,8 @@ import (
 
 func TestDuplicateDocID(t *testing.T) {
 
-	base.EnableLogKey("Cache")
+	base.ConsoleLogKey().Set(base.KeyCache)
+
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -67,7 +68,8 @@ func TestDuplicateDocID(t *testing.T) {
 
 func TestLateArrivingSequence(t *testing.T) {
 
-	base.EnableLogKey("Cache")
+	base.ConsoleLogKey().Set(base.KeyCache)
+
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -99,7 +101,8 @@ func TestLateArrivingSequence(t *testing.T) {
 
 func TestLateSequenceAsFirst(t *testing.T) {
 
-	base.EnableLogKey("Cache")
+	base.ConsoleLogKey().Set(base.KeyCache)
+
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -131,7 +134,8 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 func TestDuplicateLateArrivingSequence(t *testing.T) {
 
-	base.EnableLogKey("Cache")
+	base.ConsoleLogKey().Set(base.KeyCache)
+
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -513,7 +517,8 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
-	base.EnableLogKey("CacheTest")
+	base.ConsoleLogKey().Set(base.KeyCache)
+
 	//base.SetLogLevel(2) // disables logging
 	context := testBucketContext()
 	defer context.Close()

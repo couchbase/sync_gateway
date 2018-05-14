@@ -5,9 +5,10 @@ import (
 	"time"
 
 	"fmt"
+	"log"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-	"log"
 )
 
 // There are additional tests that exercise the import functionality in rest/import_test.go
@@ -25,7 +26,8 @@ func TestMigrateMetadata(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	base.EnableLogKey("Migrate")
+	base.ConsoleLogKey().Set(base.KeyMigrate)
+
 	base.ConsoleLogKey().Enable(base.KeyImport)
 
 	db, testBucket := setupTestDB(t)
@@ -95,8 +97,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	base.EnableLogKey("Migrate")
-	base.ConsoleLogKey().Enable(base.KeyImport)
+	base.ConsoleLogKey().Set(base.KeyMigrate | base.KeyImport)
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
