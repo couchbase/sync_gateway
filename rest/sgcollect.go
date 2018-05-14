@@ -30,7 +30,7 @@ const (
 	sgStopped uint32 = iota
 	sgRunning
 
-	defualtSGUploadHost = "https://s3.amazonaws.com/cb-customers"
+	defaultSGUploadHost = "https://s3.amazonaws.com/cb-customers"
 )
 
 type sgCollect struct {
@@ -128,16 +128,11 @@ type sgCollectOptions struct {
 	Ticket          string `json:"ticket,omitempty"`
 }
 
-func (c *sgCollectOptions) setDefaults() {
-	if c.UploadHost == "" {
-		c.UploadHost = defualtSGUploadHost
-	}
-}
-
 // Validate ensures the options are OK to use in sgcollect_info.
 func (c *sgCollectOptions) Validate() error {
-	c.setDefaults()
-
+	// Validate given output directory exists, and is a directory.
+	// This does not check for write permission, however sgcollect_info
+	// will fail with an error giving that reason, if this is the case.
 	if c.OutputDirectory != "" {
 		if fileInfo, err := os.Stat(c.OutputDirectory); err != nil {
 			return err
@@ -146,12 +141,17 @@ func (c *sgCollectOptions) Validate() error {
 		}
 	}
 
-	if c.Upload && c.Customer == "" {
-		return errors.New("customer must be set if upload is true")
-	}
-
-	if !c.Upload && c.UploadHost != "" {
-		return errors.New("upload must be set if upload_host is specified")
+	if c.Upload {
+		// Customer number is required if uploading.
+		if c.Customer == "" {
+			return errors.New("customer must be set if upload is true")
+		}
+		// Default uploading to support bucket if upload_host is not specified.
+		if c.UploadHost == "" {
+			c.UploadHost = defaultSGUploadHost
+		}
+	} else if c.UploadHost != "" {
+		return errors.New("upload must be set to true if an upload_host is specified")
 	}
 
 	return nil
