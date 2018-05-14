@@ -30,7 +30,7 @@ const (
 	sgStopped uint32 = iota
 	sgRunning
 
-	defualtSGUploadHost = "https://s3.amazonaws.com/cb-customers"
+	defaultSGUploadHost = "https://s3.amazonaws.com/cb-customers"
 )
 
 type sgCollect struct {
@@ -131,7 +131,7 @@ type sgCollectOptions struct {
 func (c *sgCollectOptions) setDefaults() {
 	// Default to Support's S3 bucket.
 	if c.UploadHost == "" {
-		c.UploadHost = defualtSGUploadHost
+		c.UploadHost = defaultSGUploadHost
 	}
 }
 
@@ -156,7 +156,7 @@ func (c *sgCollectOptions) Validate() error {
 	}
 
 	// If upload is false, and a custom upload_host is provided, ask them to set upload=true.
-	if c.UploadHost != defualtSGUploadHost && !c.Upload {
+	if c.UploadHost != defaultSGUploadHost && !c.Upload {
 		return errors.New("upload must be set to true if an upload_host is specified")
 	}
 
