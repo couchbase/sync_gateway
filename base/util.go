@@ -615,11 +615,12 @@ var redactedPathVars = map[string]string{
 	"name":    "UD",
 	"channel": "UD",
 
-	"db":        "MD",
-	"newdb":     "MD",
-	"ddoc":      "MD",
-	"view":      "MD",
-	"sessionid": "MD",
+	// MD redaction is not yet supported.
+	// "db":        "MD",
+	// "newdb":     "MD",
+	// "ddoc":      "MD",
+	// "view":      "MD",
+	// "sessionid": "MD",
 }
 
 // tagPathVars will tag all redactble path variables in the urlString for the given request.
@@ -652,9 +653,10 @@ var redactedQueryParams = map[string]string{
 	"startkey": "UD", // handleAllDocs
 	"endkey":   "UD", // handleAllDocs
 
-	"since":     "MD", // handleDumpChannel, updateChangesOptionsFromQuery, handleChanges
-	"rev":       "MD", // handleGetDoc, handlePutDoc, handleDeleteDoc, handleDelLocalDoc, handleGetAttachment, handlePutAttachment
-	"open_revs": "MD", // handleGetDoc
+	// MD redaction is not yet supported.
+	// "since":     "MD", // handleDumpChannel, updateChangesOptionsFromQuery, handleChanges
+	// "rev":       "MD", // handleGetDoc, handlePutDoc, handleDeleteDoc, handleDelLocalDoc, handleGetAttachment, handlePutAttachment
+	// "open_revs": "MD", // handleGetDoc
 }
 
 func tagQueryParams(req *http.Request, urlString *string) {
