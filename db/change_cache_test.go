@@ -801,7 +801,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 //     - there are channels C,D,E,F,G with large caches that get processed between A and B
 // To test, uncomment the following
 // lines at the start of changesFeed() in changes.go to simulate slow processing:
-//	    base.Infof(base.KeySequences, "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
+//	    base.Infof(base.KeyChanges, "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
 //	    time.Sleep(100 * time.Millisecond)
 func TestChannelRace(t *testing.T) {
 	// TODO: Test current fails intermittently on concurrent access to var changes.
@@ -954,7 +954,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 func TestStopChangeCache(t *testing.T) {
 
 	base.ConsoleLogLevel().Set(base.LevelDebug)
-	base.ConsoleLogKey().Set(base.KeyChanges | base.KeyFeed)
+	base.ConsoleLogKey().Set(base.KeyChanges | base.KeyDCP)
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")

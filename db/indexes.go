@@ -211,7 +211,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	}
 
 	// Create index
-	base.Infof(base.KeyIndex, "Index %s doesn't exist, creating...", indexName)
+	base.Infof(base.KeyQuery, "Index %s doesn't exist, creating...", indexName)
 	isDeferred = true
 	indexExpression := replaceSyncTokensIndex(i.expression, useXattrs)
 	filterExpression := replaceSyncTokensIndex(i.filterExpression, useXattrs)
@@ -251,7 +251,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		return false, pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
 	}
 
-	base.Infof(base.KeyIndex, "Index %s created successfully", indexName)
+	base.Infof(base.KeyQuery, "Index %s created successfully", indexName)
 	return isDeferred, nil
 }
 
@@ -285,7 +285,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 	if len(deferredIndexes) > 0 {
 		buildErr := gocbBucket.BuildDeferredIndexes(deferredIndexes)
 		if buildErr != nil {
-			base.Infof(base.KeyIndex, "Error building deferred indexes.  Error: %v", buildErr)
+			base.Infof(base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
 			return buildErr
 		}
 	}

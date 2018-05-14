@@ -670,7 +670,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	func() {
 		if change.Skipped {
 			c.lateSeqLock.Lock()
-			base.Infof(base.KeySequences, "Acquired late sequence lock for %d", change.Sequence)
+			base.Infof(base.KeyChanges, "Acquired late sequence lock for %d", change.Sequence)
 			defer c.lateSeqLock.Unlock()
 		}
 
@@ -797,7 +797,7 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	c.skippedSeqLock.RLock()
 	defer c.skippedSeqLock.RUnlock()
 	if len(c.skippedSeqs) > 0 {
-		base.Infof(base.KeySequences, "get oldest, returning: %d", c.skippedSeqs[0].seq)
+		base.Infof(base.KeyChanges, "get oldest, returning: %d", c.skippedSeqs[0].seq)
 		return c.skippedSeqs[0].seq
 	} else {
 		return uint64(0)

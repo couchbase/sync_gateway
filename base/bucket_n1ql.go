@@ -188,7 +188,7 @@ func (bucket *CouchbaseBucketGoCB) createIndex(indexName string, createStatement
 		createStatement = fmt.Sprintf(`%s with %s`, createStatement, withClause)
 	}
 
-	Debugf(KeyIndex, "Attempting to create index using statement: [%s]", UD(createStatement))
+	Debugf(KeyQuery, "Attempting to create index using statement: [%s]", UD(createStatement))
 	n1qlQuery := gocb.NewN1qlQuery(createStatement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
 	if err != nil && !IsIndexerRetryIndexError(err) {

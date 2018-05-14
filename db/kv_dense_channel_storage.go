@@ -158,7 +158,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 		nextStartClock = l.activeBlock.getCumulativeClock()
 	}
 
-	base.Debugf(base.KeyChannelStorage, "Adding block to list. channel:[%s] partition:[%d] index:[%d]", base.UD(l.channelName), l.partition, nextIndex)
+	base.Debugf(base.KeyAccel, "Adding block to list. channel:[%s] partition:[%d] index:[%d]", base.UD(l.channelName), l.partition, nextIndex)
 
 	nextBlockKey := l.generateBlockKey(nextIndex)
 	block := NewDenseBlock(nextBlockKey, nextStartClock)
@@ -184,7 +184,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	}
 	casOut, err := l.indexBucket.WriteCas(l.activeKey, 0, 0, l.activeCas, storageValue, 0)
 	if err != nil {
-		base.Debugf(base.KeyChannelStorage, "DenseBlockList %s got CAS error trying to persist to bucket.  Reloading and retrying", l)
+		base.Debugf(base.KeyAccel, "DenseBlockList %s got CAS error trying to persist to bucket.  Reloading and retrying", l)
 		// CAS error.  If there's a concurrent writer for this partition, assume they have created the new block.
 		//  Re-initialize the current block list, and get the active block key from there.
 		found, err := l.loadDenseBlockList()
@@ -198,7 +198,7 @@ func (l *DenseBlockList) AddBlock() (*DenseBlock, error) {
 	}
 	l.activeCas = casOut
 	l.activeBlock = block
-	base.Debugf(base.KeyChannelStorage, "Successfully added block to list. channel:[%s] partition:[%d] index:[%d] activeBlocks:[%d]", base.UD(l.channelName), l.partition, nextIndex, len(l.blocks))
+	base.Debugf(base.KeyAccel, "Successfully added block to list. channel:[%s] partition:[%d] index:[%d] activeBlocks:[%d]", base.UD(l.channelName), l.partition, nextIndex, len(l.blocks))
 
 	return block, nil
 }
@@ -271,7 +271,7 @@ func (l *DenseBlockList) initDenseBlockList() error {
 	// If block list doesn't exist, add a block (which will initialize)
 	if !found {
 		l.activeCas = 0
-		base.Debugf(base.KeyChannelStorage, "Creating new block list. channel:[%s] partition:[%d] cas:[%d]", base.UD(l.channelName), l.partition, l.activeCas)
+		base.Debugf(base.KeyAccel, "Creating new block list. channel:[%s] partition:[%d] cas:[%d]", base.UD(l.channelName), l.partition, l.activeCas)
 		l.blocks = make([]DenseBlockListEntry, 0)
 		_, err = l.AddBlock()
 		if err != nil {
@@ -290,7 +290,7 @@ func (l *DenseBlockList) loadDenseBlockList() (found bool, err error) {
 		if base.IsKeyNotFoundError(l.indexBucket, readError) {
 			return false, nil
 		} else {
-			base.Debugf(base.KeyChannelStorage, "Unexpected error attempting to retrieve active block list.  key:[%s] err:[%v]", base.UD(l.activeKey), readError)
+			base.Debugf(base.KeyAccel, "Unexpected error attempting to retrieve active block list.  key:[%s] err:[%v]", base.UD(l.activeKey), readError)
 			return false, readError
 		}
 	}

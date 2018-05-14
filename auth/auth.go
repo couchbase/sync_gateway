@@ -301,26 +301,26 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 // creates the user when autoRegister=true.
 func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
 
-	base.Debugf(base.KeyOIDC, "AuthenticateJWT called with token: %s", base.UD(token))
+	base.Debugf(base.KeyAuth, "AuthenticateJWT called with token: %s", base.UD(token))
 
 	// Parse JWT (needed to determine issuer/provider)
 	jwt, err := jose.ParseJWT(token)
 	if err != nil {
-		base.Debugf(base.KeyOIDC, "Error parsing JWT in AuthenticateJWT: %v", err)
+		base.Debugf(base.KeyAuth, "Error parsing JWT in AuthenticateJWT: %v", err)
 		return nil, jose.JWT{}, err
 	}
 
 	// Get client for issuer
 	issuer, audiences, err := GetJWTIssuer(jwt)
-	base.Debugf(base.KeyOIDC, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
+	base.Debugf(base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
 	if err != nil {
-		base.Debugf(base.KeyOIDC, "Error getting JWT issuer: %v", err)
+		base.Debugf(base.KeyAuth, "Error getting JWT issuer: %v", err)
 		return nil, jose.JWT{}, err
 	}
 
-	base.Debugf(base.KeyOIDC, "Call GetProviderForIssuer w/ providers: %+v", base.UD(providers))
+	base.Debugf(base.KeyAuth, "Call GetProviderForIssuer w/ providers: %+v", base.UD(providers))
 	provider := providers.GetProviderForIssuer(issuer, audiences)
-	base.Debugf(base.KeyOIDC, "Provider for issuer: %+v", base.UD(provider))
+	base.Debugf(base.KeyAuth, "Provider for issuer: %+v", base.UD(provider))
 
 	if provider == nil {
 		return nil, jose.JWT{}, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
@@ -330,7 +330,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	client := provider.GetClient(callbackURLFunc)
 	err = client.VerifyJWT(jwt)
 	if err != nil {
-		base.Debugf(base.KeyOIDC, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
+		base.Debugf(base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
 		return nil, jwt, err
 	}
 
@@ -346,7 +346,7 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 	// Parse JWT
 	jwt, err := jose.ParseJWT(token)
 	if err != nil {
-		base.Debugf(base.KeyOIDC, "Error parsing JWT in AuthenticateTrustedJWT: %v", err)
+		base.Debugf(base.KeyAuth, "Error parsing JWT in AuthenticateTrustedJWT: %v", err)
 		return nil, jose.JWT{}, err
 	}
 
@@ -362,18 +362,18 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 
 	// Extract identity from token
 	identity, identityErr := GetJWTIdentity(jwt)
-	base.Debugf(base.KeyOIDC, "JWT identity: %+v", base.UD(identity))
+	base.Debugf(base.KeyAuth, "JWT identity: %+v", base.UD(identity))
 	if identityErr != nil {
-		base.Debugf(base.KeyOIDC, "Error getting JWT identity. Error: %v", identityErr)
+		base.Debugf(base.KeyAuth, "Error getting JWT identity. Error: %v", identityErr)
 		return nil, jwt, identityErr
 	}
 
 	username := GetOIDCUsername(provider, identity.ID)
-	base.Debugf(base.KeyOIDC, "OIDCUsername: %v", base.UD(username))
+	base.Debugf(base.KeyAuth, "OIDCUsername: %v", base.UD(username))
 
 	user, userErr := auth.GetUser(username)
 	if userErr != nil {
-		base.Debugf(base.KeyOIDC, "Failed to get OIDC User from %v.  Error: %v", base.UD(username), userErr)
+		base.Debugf(base.KeyAuth, "Failed to get OIDC User from %v.  Error: %v", base.UD(username), userErr)
 		return nil, jwt, userErr
 	}
 
@@ -381,7 +381,7 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 	// external auth system)
 	if user != nil && identity.Email != "" {
 		if identity.Email != user.Email() {
-			base.Debugf(base.KeyOIDC, "Updating user email to: %v", base.UD(identity.Email))
+			base.Debugf(base.KeyAuth, "Updating user email to: %v", base.UD(identity.Email))
 			if err := user.SetEmail(identity.Email); err == nil {
 				auth.Save(user)
 			} else {
@@ -393,11 +393,11 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 	// Auto-registration.  This will normally be done when token is originally returned
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
 	if user == nil && provider.Register {
-		base.Debugf(base.KeyOIDC, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
+		base.Debugf(base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
 		var err error
 		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil {
-			base.Debugf(base.KeyOIDC, "Error registering new user: %v", err)
+			base.Debugf(base.KeyAuth, "Error registering new user: %v", err)
 			return nil, jwt, err
 		}
 	}

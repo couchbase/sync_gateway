@@ -243,7 +243,7 @@ func (r *DensePartitionStorageReaderNonCaching) GetChanges(partitionRange base.P
 	// Initialize the block list to the starting range, then find the starting block for the partition range
 	blockList := r.GetBlockListForRange(partitionRange)
 	if blockList == nil {
-		base.Debugf(base.KeyChannelStorage, "No block found for requested partition range.  channel:[%s] partition:[%d]", base.UD(r.channelName), r.partitionNo)
+		base.Debugf(base.KeyAccel, "No block found for requested partition range.  channel:[%s] partition:[%d]", base.UD(r.channelName), r.partitionNo)
 		return changes, nil
 	}
 	startIndex := 0

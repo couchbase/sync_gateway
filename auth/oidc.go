@@ -68,19 +68,19 @@ func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 }
 
 func (opm OIDCProviderMap) GetProviderForIssuer(issuer string, audiences []string) *OIDCProvider {
-	base.Debugf(base.KeyOIDC, "GetProviderForIssuer with issuer: %v, audiences: %+v", base.UD(issuer), base.UD(audiences))
+	base.Debugf(base.KeyAuth, "GetProviderForIssuer with issuer: %v, audiences: %+v", base.UD(issuer), base.UD(audiences))
 	for _, provider := range opm {
 		if provider.Issuer == issuer && provider.ClientID != nil {
 			// Iterate over the audiences looking for a match
 			for _, aud := range audiences {
 				if *provider.ClientID == aud {
-					base.Debugf(base.KeyOIDC, "Provider matches, returning")
+					base.Debugf(base.KeyAuth, "Provider matches, returning")
 					return provider
 				}
 			}
 		}
 	}
-	base.Debugf(base.KeyOIDC, "No provider match found")
+	base.Debugf(base.KeyAuth, "No provider match found")
 	return nil
 }
 
@@ -169,7 +169,7 @@ func (op *OIDCProvider) InitOIDCClient() error {
 
 	// Start process for ongoing sync of the provider config
 	if shouldSyncConfig {
-		base.Infof(base.KeyOIDC, "Not synchronizing provider config for issuer %s...", base.UD(op.Issuer))
+		base.Infof(base.KeyAuth, "Not synchronizing provider config for issuer %s...", base.UD(op.Issuer))
 		op.OIDCClient.SyncProviderConfig(op.Issuer)
 	}
 
@@ -199,7 +199,7 @@ func (op *OIDCProvider) DiscoverConfig() (config *oidc.ProviderConfig, shouldSyn
 				shouldSync = true
 				break
 			}
-			base.Debugf(base.KeyOIDC, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
+			base.Debugf(base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
 				base.UD(op.Issuer), i, maxRetryAttempts, err)
 			time.Sleep(500 * time.Millisecond)
 		}
@@ -217,27 +217,27 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 		discoveryURL = strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
 	}
 
-	base.Debugf(base.KeyOIDC, "Fetching custom provider config from %s", base.UD(discoveryURL))
+	base.Debugf(base.KeyAuth, "Fetching custom provider config from %s", base.UD(discoveryURL))
 	req, err := http.NewRequest("GET", discoveryURL, nil)
 	if err != nil {
-		base.Debugf(base.KeyOIDC, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
+		base.Debugf(base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		base.Debugf(base.KeyOIDC, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
+		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if err := json.NewDecoder(resp.Body).Decode(&customConfig); err != nil {
-		base.Debugf(base.KeyOIDC, "Error parsing body %s: %v", base.UD(discoveryURL), err)
+		base.Debugf(base.KeyAuth, "Error parsing body %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 
 	var oidcConfig oidc.ProviderConfig
 	oidcConfig, err = customConfig.AsProviderConfig()
 	if err != nil {
-		base.Debugf(base.KeyOIDC, "Error invoking calling discovery URL %s: %+v", base.UD(discoveryURL), err)
+		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %+v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 
@@ -251,7 +251,7 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 		oidcConfig.ExpiresAt = time.Now().UTC().Add(ttl)
 	}
 
-	base.Debugf(base.KeyOIDC, "Returning config: %v", base.UD(oidcConfig))
+	base.Debugf(base.KeyAuth, "Returning config: %v", base.UD(oidcConfig))
 	return &oidcConfig, nil
 
 }

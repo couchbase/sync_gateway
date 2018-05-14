@@ -428,14 +428,14 @@ func (r *DCPReceiver) initFeed(backfillType uint64) error {
 	switch backfillType {
 	case sgbucket.FeedNoBackfill:
 		// For non-backfill, use vbucket uuids, high sequence numbers
-		Debugf(KeyFeed, "Initializing DCP with no backfill - seeding seqnos: %v", highSeqnos)
+		Debugf(KeyDCP, "Initializing DCP with no backfill - seeding seqnos: %v", highSeqnos)
 		r.SeedSeqnos(statsUuids, highSeqnos)
 	case sgbucket.FeedResume:
 		// For resume case, load previously persisted checkpoints from bucket
 		r.initMetadata(r.maxVbNo)
 		// Track backfill (from persisted checkpoints to current high seqno)
 		r.backfill.init(r.seqs, highSeqnos, r.maxVbNo)
-		Debugf(KeyFeed, "Initializing DCP feed based on persisted checkpoints")
+		Debugf(KeyDCP, "Initializing DCP feed based on persisted checkpoints")
 	default:
 		// Otherwise, start feed from zero
 		startSeqnos := make(map[uint16]uint64, r.maxVbNo)
@@ -443,7 +443,7 @@ func (r *DCPReceiver) initFeed(backfillType uint64) error {
 		r.SeedSeqnos(vbuuids, startSeqnos)
 		// Track backfill (from zero to current high seqno)
 		r.backfill.init(r.seqs, highSeqnos, r.maxVbNo)
-		Debugf(KeyFeed, "Initializing DCP feed to start from zero")
+		Debugf(KeyDCP, "Initializing DCP feed to start from zero")
 	}
 	return nil
 }
@@ -566,7 +566,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 
 	dataSourceOptions.Name = GenerateDcpStreamName("SG")
 
-	Debugf(KeyFeed, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
+	Debugf(KeyDCP, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
 	bds, err := cbdatasource.NewBucketDataSource(
 		urls,
 		poolName,
