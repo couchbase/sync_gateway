@@ -129,6 +129,7 @@ type sgCollectOptions struct {
 }
 
 func (c *sgCollectOptions) setDefaults() {
+	// Default to Support's S3 bucket.
 	if c.UploadHost == "" {
 		c.UploadHost = defualtSGUploadHost
 	}
@@ -138,6 +139,9 @@ func (c *sgCollectOptions) setDefaults() {
 func (c *sgCollectOptions) Validate() error {
 	c.setDefaults()
 
+	// Validate given output directory exists, and is a directory.
+	// This does not check for write permission, however sgcollect_info
+	// will fail with an error giving that reason, if this is the case.
 	if c.OutputDirectory != "" {
 		if fileInfo, err := os.Stat(c.OutputDirectory); err != nil {
 			return err
@@ -146,12 +150,14 @@ func (c *sgCollectOptions) Validate() error {
 		}
 	}
 
+	// Customer number is required if uploading.
 	if c.Upload && c.Customer == "" {
 		return errors.New("customer must be set if upload is true")
 	}
 
-	if !c.Upload && c.UploadHost != "" {
-		return errors.New("upload must be set if upload_host is specified")
+	// If upload is false, and a custom upload_host is provided, ask them to set upload=true.
+	if c.UploadHost != defualtSGUploadHost && !c.Upload {
+		return errors.New("upload must be set to true if an upload_host is specified")
 	}
 
 	return nil
