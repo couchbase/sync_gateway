@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -433,9 +434,10 @@ func (h *handler) handleSGCollect() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid options used for sgcollect_info: %v", err)
 	}
 
+	zipPath := filepath.Join(params.OutputDirectory, sgcollectFilename())
 	args := params.Args()
 
-	if err := sgcollectInstance.Start(sgcollectFilename(), args...); err != nil {
+	if err := sgcollectInstance.Start(zipPath, args...); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 

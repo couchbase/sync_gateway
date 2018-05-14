@@ -39,7 +39,7 @@ type sgCollect struct {
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
-func (sg *sgCollect) Start(filename string, args ...string) error {
+func (sg *sgCollect) Start(zipPath string, args ...string) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
 	}
@@ -49,7 +49,7 @@ func (sg *sgCollect) Start(filename string, args ...string) error {
 		return err
 	}
 
-	args = append(args, "--sync-gateway-executable", sgPath, filename)
+	args = append(args, "--sync-gateway-executable", sgPath, zipPath)
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	sg.cancel = cancelFunc
@@ -156,10 +156,6 @@ func (c *sgCollectOptions) Validate() error {
 // Args returns a set of arguments to pass to sgcollect_info.
 func (c *sgCollectOptions) Args() []string {
 	var args = make([]string, 0)
-
-	if c.OutputDirectory != "" {
-		args = append(args, "-r", c.OutputDirectory)
-	}
 
 	if c.Upload {
 		args = append(args, "--upload-host", c.UploadHost)
