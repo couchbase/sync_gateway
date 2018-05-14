@@ -34,6 +34,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbaselabs/gocbconnstr"
+	"github.com/gorilla/mux"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -591,27 +592,120 @@ func IsFilePathWritable(fp string) (bool, error) {
 	return true, nil
 }
 
-// Replaces sensitive data from the URL query string with ******.
+// SanitizeRequestURL will return a sanitised string of the URL by:
+// - Tagging mux path variables.
+// - Tagging query parameters.
+// - Replacing sensitive data from the URL query string with ******.
 // Have to use string replacement instead of writing directly to the Values URL object, as only the URL's raw query is mutable.
-func SanitizeRequestURL(requestURL *url.URL) string {
-	urlString := requestURL.String()
+func SanitizeRequestURL(req *http.Request) string {
+	urlString := SanitizeRequestURLQueryParams(req.URL)
+
+	if RedactSystemData || RedactMetadata || RedactUserData {
+		tagQueryParams(req, &urlString)
+		tagPathVars(req, &urlString)
+	}
+
+	return urlString
+}
+
+// redactedPathVars is a lookup map of path variables to redaction types.
+var redactedPathVars = map[string]string{
+	"docid":   "UD",
+	"attach":  "UD",
+	"name":    "UD",
+	"channel": "UD",
+
+	// MD redaction is not yet supported.
+	// "db":        "MD",
+	// "newdb":     "MD",
+	// "ddoc":      "MD",
+	// "view":      "MD",
+	// "sessionid": "MD",
+}
+
+// tagPathVars will tag all redactble path variables in the urlString for the given request.
+func tagPathVars(req *http.Request, urlString *string) {
+	if urlString == nil {
+		return
+	}
+
+	str := *urlString
+	pathVars := mux.Vars(req)
+
+	for k, v := range pathVars {
+		switch redactedPathVars[k] {
+		case "UD":
+			str = strings.Replace(str, "/"+v, "/"+UD(v).Redact(), 1)
+		case "MD":
+			str = strings.Replace(str, "/"+v, "/"+MD(v).Redact(), 1)
+		case "SD":
+			str = strings.Replace(str, "/"+v, "/"+SD(v).Redact(), 1)
+		}
+	}
+
+	*urlString = str
+}
+
+// redactedQueryParams is a lookup map of query params to redaction types.
+var redactedQueryParams = map[string]string{
+	"channels": "UD", // updateChangesOptionsFromQuery, handleChanges
+	"doc_ids":  "UD", // updateChangesOptionsFromQuery, handleChanges
+	"startkey": "UD", // handleAllDocs
+	"endkey":   "UD", // handleAllDocs
+
+	// MD redaction is not yet supported.
+	// "since":     "MD", // handleDumpChannel, updateChangesOptionsFromQuery, handleChanges
+	// "rev":       "MD", // handleGetDoc, handlePutDoc, handleDeleteDoc, handleDelLocalDoc, handleGetAttachment, handlePutAttachment
+	// "open_revs": "MD", // handleGetDoc
+}
+
+func tagQueryParams(req *http.Request, urlString *string) {
+	if urlString == nil {
+		return
+	}
+
+	str := *urlString
+	queryParams := req.URL.Query()
+	str, _ = url.QueryUnescape(str)
+
+	for k, vals := range queryParams {
+		// Query params can have more than one value (i.e: foo=bar&foo=buz)
+		for _, v := range vals {
+			switch redactedQueryParams[k] {
+			case "UD":
+				str = strings.Replace(str, fmt.Sprintf("%s=%s", k, v), fmt.Sprintf("%s=%s", k, UD(v).Redact()), 1)
+			case "MD":
+				str = strings.Replace(str, fmt.Sprintf("%s=%s", k, v), fmt.Sprintf("%s=%s", k, MD(v).Redact()), 1)
+			case "SD":
+				str = strings.Replace(str, fmt.Sprintf("%s=%s", k, v), fmt.Sprintf("%s=%s", k, SD(v).Redact()), 1)
+			}
+		}
+	}
+
+	*urlString = str
+}
+
+// SanitizeRequestURLQueryParams replaces sensitive data from the URL query string with ******.
+func SanitizeRequestURLQueryParams(reqURL *url.URL) string {
+	urlStr := reqURL.String()
+
 	// Do a basic contains for the values we care about, to minimize performance impact on other requests.
-	if strings.Contains(urlString, "code=") || strings.Contains(urlString, "token=") {
+	if strings.Contains(urlStr, "code=") || strings.Contains(urlStr, "token=") {
 		// Iterate over the URL values looking for matches, and then do a string replacement of the found value
 		// into urlString.  Need to unescapte the urlString, as the values returned by URL.Query() get unescaped.
-		urlString, _ = url.QueryUnescape(urlString)
-		values := requestURL.Query()
+		urlStr, _ = url.QueryUnescape(urlStr)
+		values := reqURL.Query()
 		for key, vals := range values {
 			if key == "code" || strings.Contains(key, "token") {
 				//In case there are multiple entries
 				for _, val := range vals {
-					urlString = strings.Replace(urlString, fmt.Sprintf("%s=%s", key, val), fmt.Sprintf("%s=******", key), -1)
+					urlStr = strings.Replace(urlStr, fmt.Sprintf("%s=%s", key, val), fmt.Sprintf("%s=******", key), -1)
 				}
 			}
 		}
 	}
 
-	return urlString
+	return urlStr
 }
 
 // Convert a map of vbno->seq high sequences (as returned by couchbasebucket.GetStatsVbSeqno()) to a SequenceClock

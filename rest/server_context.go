@@ -944,7 +944,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 		if isGuest {
 			base.Infof(base.KeyAll, "    Reset guest user to config")
 		} else if createdPrincipal {
-			base.Infof(base.KeyAll, "    Created %s %q", base.UD(what), base.UD(name))
+			base.Infof(base.KeyAll, "    Created %s %q", what, base.UD(name))
 		}
 
 	}
