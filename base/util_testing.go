@@ -38,6 +38,8 @@ func (tb TestBucket) Close() {
 
 	DecrNumOpenBuckets(tb.Bucket.GetName())
 
+	ResetTestLogging()
+
 }
 
 func GetTestBucketOrPanic() TestBucket {

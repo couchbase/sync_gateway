@@ -389,15 +389,10 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	var logKeys = map[string]bool{
-		"Sequences": true,
-		"Cache":     true,
-		"Changes":   true,
-		"Changes+":  true,
-		"DCP":       true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	base.EnableTestLogKey("Sequences")
+	base.EnableTestLogKey("Cache")
+	base.EnableTestLogKey("Changes+")
+	base.EnableTestLogKey("DCP")
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
