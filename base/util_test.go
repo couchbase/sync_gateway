@@ -12,6 +12,7 @@ package base
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -348,39 +349,115 @@ func TestIsMinimumVersion(t *testing.T) {
 	assertTrue(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
 }
 
-func TestSanitizeRequestURLQueryParams(t *testing.T) {
+func TestSanitizeRequestURL(t *testing.T) {
 
-	url, err := url.Parse("http://localhost:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E")
-	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL := SanitizeRequestURLQueryParams(url)
-	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/_oidc_callback?code=******")
+	tests := []struct {
+		input, output string
+	}{
+		{
+			// Test zero values
+			"", "",
+		},
+		{
+			"http://localhost:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E",
+			"http://localhost:4985/default/_oidc_callback?code=******",
+		},
+		{
+			"http://localhost:4985/default/_oidc_refresh?refresh_token==1/KPuhjLJrTZO9OExSypWtqiDioXf3nzAUJnewmyhK94s",
+			"http://localhost:4985/default/_oidc_refresh?refresh_token=******",
+		},
+		{
+			// Ensure non-matching parameters aren't getting sanitized
+			"http://localhost:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E&state=123456",
+			"http://localhost:4985/default/_oidc_callback?code=******&state=123456",
+		},
+		{
+			"http://localhost:4985/default/_changes?since=5&feed=longpoll",
+			"http://localhost:4985/default/_changes?since=5&feed=longpoll",
+		},
+		{
+			// Ensure matching non-parameters aren't getting sanitized
+			"http://localhost:4985/default/doctokencode",
+			"http://localhost:4985/default/doctokencode",
+		},
+		{
+			"http://localhost:4985/default/doctoken=code=",
+			"http://localhost:4985/default/doctoken=code=",
+		},
+	}
 
-	url, err = url.Parse("http://localhost:4985/default/_oidc_refresh?refresh_token==1/KPuhjLJrTZO9OExSypWtqiDioXf3nzAUJnewmyhK94s")
-	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL = SanitizeRequestURLQueryParams(url)
-	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/_oidc_refresh?refresh_token=******")
+	for _, test := range tests {
+		req, err := http.NewRequest(http.MethodGet, test.input, nil)
+		assertNoError(t, err, "Unable to create request")
+		sanitizedURL := SanitizeRequestURL(req, nil)
+		assert.Equals(t, sanitizedURL, test.output)
+	}
 
-	// Ensure non-matching parameters aren't getting sanitized
-	url, err = url.Parse("http://localhost:4985/default/_oidc_callback?code=4/1zaCA0RXtFqw93PmcP9fqOMMHfyBDhI0fS2AzeQw-5E&state=123456")
-	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL = SanitizeRequestURLQueryParams(url)
-	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/_oidc_callback?code=******&state=123456")
+}
 
-	url, err = url.Parse("http://localhost:4985/default/_changes?since=5&feed=longpoll")
-	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL = SanitizeRequestURLQueryParams(url)
-	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/_changes?since=5&feed=longpoll")
+func TestSanitizeRequestURLRedaction(t *testing.T) {
 
-	// Ensure matching non-parameters aren't getting sanitized
-	url, err = url.Parse("http://localhost:4985/default/doctokencode")
-	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL = SanitizeRequestURLQueryParams(url)
-	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/doctokencode")
+	tests := []struct {
+		input,
+		output,
+		outputRedacted string
+	}{
+		{
+			// channels should be tagged as UserData
+			"http://localhost:4985/default/_changes?channels=A",
+			"http://localhost:4985/default/_changes?channels=A",
+			"http://localhost:4985/default/_changes?channels=<ud>A</ud>",
+		},
+		{
+			// Multiple tagged params
+			"http://localhost:4985/default/_changes?channels=A&startkey=B",
+			"http://localhost:4985/default/_changes?channels=A&startkey=B",
+			"http://localhost:4985/default/_changes?channels=<ud>A</ud>&startkey=<ud>B</ud>",
+		},
+		{
+			// What about multiple channels?
+			"http://localhost:4985/default/_changes?channels=A&channels=B",
+			"http://localhost:4985/default/_changes?channels=A&channels=B",
+			"http://localhost:4985/default/_changes?channels=<ud>A</ud>&channels=<ud>B</ud>",
+		},
+		{
+			// Non-matching params?
+			"http://localhost:4985/default/_changes?channels=A&other=B",
+			"http://localhost:4985/default/_changes?channels=A&other=B",
+			"http://localhost:4985/default/_changes?channels=<ud>A</ud>&other=B",
+		},
+		{
+			// Conflicting values
+			"http://localhost:4985/A/_changes?channels=A&other=A",
+			"http://localhost:4985/A/_changes?channels=A&other=A",
+			"http://localhost:4985/A/_changes?channels=<ud>A</ud>&other=A",
+		},
+		{
+			// More conflicting values
+			"http://localhost:4985/A/_changes?channels=A&other=A",
+			"http://localhost:4985/A/_changes?channels=A&other=A",
+			"http://localhost:4985/A/_changes?channels=<ud>A</ud>&other=A",
+		},
+		{
+			"http://localhost:4985/A/_changes?channels=🔥",
+			"http://localhost:4985/A/_changes?channels=🔥",
+			"http://localhost:4985/A/_changes?channels=<ud>🔥</ud>",
+		},
+	}
 
-	url, err = url.Parse("http://localhost:4985/default/doctoken=code=")
-	assertNoError(t, err, "Unable to parse URL")
-	sanitizedURL = SanitizeRequestURLQueryParams(url)
-	assert.Equals(t, sanitizedURL, "http://localhost:4985/default/doctoken=code=")
+	for _, test := range tests {
+		req, err := http.NewRequest(http.MethodGet, test.input, nil)
+		assertNoError(t, err, "Unable to create request")
+
+		SetRedaction(RedactNone)
+		sanitizedURL := SanitizeRequestURL(req, nil)
+		assert.Equals(t, sanitizedURL, test.output)
+
+		SetRedaction(RedactPartial)
+		sanitizedURL = SanitizeRequestURL(req, nil)
+		assert.Equals(t, sanitizedURL, test.outputRedacted)
+	}
+
 }
 
 func TestFindPrimaryAddr(t *testing.T) {

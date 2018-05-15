@@ -216,6 +216,7 @@ func (h *handler) invoke(method handlerMethod) error {
 			base.KeyHTTP,
 			h.serialNumber,
 			h.rq,
+			h.getQueryValues(),
 		)
 	}
 
@@ -233,7 +234,8 @@ func (h *handler) logRequestLine() {
 		proto = " HTTP/2"
 	}
 
-	base.Infof(base.KeyHTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.SanitizeRequestURL(h.rq), proto, h.currentEffectiveUserNameAsUser())
+	queryValues := h.getQueryValues()
+	base.Infof(base.KeyHTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.currentEffectiveUserNameAsUser())
 }
 
 func (h *handler) logRequestBody() {
@@ -250,6 +252,7 @@ func (h *handler) logRequestBody() {
 			base.KeyHTTP,
 			h.serialNumber,
 			h.rq,
+			h.getQueryValues(),
 		),
 	)
 

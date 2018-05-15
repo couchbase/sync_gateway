@@ -6,6 +6,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 
 	"net/http"
+	"net/url"
 )
 
 // A TeeReader wrapper that can wrap an io.ReadCloser as opposed to just
@@ -39,18 +40,20 @@ type LoggingTeeResponseWriter struct {
 	LogKey       base.LogKey   // The log key to use, eg base.KeyHTTP
 	SerialNumber uint64        // The request ID
 	Request      *http.Request // The request
+	QueryValues  url.Values    // A cached copy of the URL query values
 }
 
-func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKey base.LogKey, serialNum uint64, req *http.Request) http.ResponseWriter {
+func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKey base.LogKey, serialNum uint64, req *http.Request, queryValues url.Values) http.ResponseWriter {
 	return &LoggingTeeResponseWriter{
 		ResponseWriter: wrappedResponseWriter,
 		LogKey:         logKey,
 		SerialNumber:   serialNum,
 		Request:        req,
+		QueryValues:    queryValues,
 	}
 }
 
 func (l *LoggingTeeResponseWriter) Write(b []byte) (int, error) {
-	base.Infof(l.LogKey, " #%03d: %s %s %s", l.SerialNumber, l.Request.Method, base.SanitizeRequestURL(l.Request), base.UD(string(b)))
+	base.Infof(l.LogKey, " #%03d: %s %s %s", l.SerialNumber, l.Request.Method, base.SanitizeRequestURL(l.Request, &l.QueryValues), base.UD(string(b)))
 	return l.ResponseWriter.Write(b)
 }
