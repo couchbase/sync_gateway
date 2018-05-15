@@ -727,7 +727,7 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntr
 
 // Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForSequence(sequence uint64) (err error) {
-	base.Debugf(base.KeySequences, "Waiting for sequence: %d", sequence)
+	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
 	if err == nil {
 		context.changeCache.waitForSequenceID(SequenceID{Seq: sequence}, base.DefaultWaitForSequenceTesting)
 	}
@@ -736,7 +736,7 @@ func (context *DatabaseContext) WaitForSequence(sequence uint64) (err error) {
 
 // Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64) (err error) {
-	base.Debugf(base.KeySequences, "Waiting for sequence: %d", sequence)
+	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
 	if err == nil {
 		context.changeCache.waitForSequenceWithMissing(sequence, base.DefaultWaitForSequenceTesting)
 	}
@@ -746,7 +746,7 @@ func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64) (err
 // Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForPendingChanges() (err error) {
 	lastSequence, err := context.LastSequence()
-	base.Debugf(base.KeySequences, "Waiting for sequence: %d", lastSequence)
+	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", lastSequence)
 	if err == nil {
 		context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence}, base.DefaultWaitForSequenceTesting)
 	}

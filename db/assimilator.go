@@ -12,7 +12,7 @@ func (c *DatabaseContext) watchDocChanges() {
 	}
 	base.Infof(base.KeyShadow, "Watching doc changes...")
 	for event := range c.mutationListener.DocChannel {
-		base.Infof(base.KeyFeed, "Got shadow event:%s", base.UD(event.Key))
+		base.Infof(base.KeyShadow, "Got shadow event:%s", base.UD(event.Key))
 		doc, err := unmarshalDocument(string(event.Key), event.Value)
 		if err == nil {
 			if doc.HasValidSyncData(c.writeSequences()) {
@@ -23,4 +23,3 @@ func (c *DatabaseContext) watchDocChanges() {
 		}
 	}
 }
-

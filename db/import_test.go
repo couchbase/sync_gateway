@@ -1,13 +1,13 @@
 package db
 
 import (
+	"fmt"
+	"log"
 	"testing"
 	"time"
 
-	"fmt"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
-	"log"
 )
 
 // There are additional tests that exercise the import functionality in rest/import_test.go
@@ -25,8 +25,8 @@ func TestMigrateMetadata(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	base.EnableLogKey("Migrate")
-	base.EnableLogKey("Import+")
+	base.EnableTestLogKey("Migrate")
+	base.EnableTestLogKey("Import")
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
@@ -95,8 +95,8 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	base.EnableLogKey("Migrate")
-	base.EnableLogKey("Import+")
+	base.EnableTestLogKey("Migrate")
+	base.EnableTestLogKey("Import")
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()

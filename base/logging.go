@@ -12,18 +12,15 @@ package base
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"net/http"
 	"os"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/couchbase/clog"
 	"github.com/couchbase/goutils/logging"
-	"github.com/natefinch/lumberjack"
 )
 
 var errMarshalNilLevel = errors.New("can't marshal a nil *Level to text")
@@ -166,23 +163,6 @@ func (l *Level) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// 1 enables regular logs, 2 enables warnings, 3+ is nothing but panics.
-// Default value is 1.
-var logLevel int = 1
-
-// Set of LogTo() key strings that are enabled.
-var LogKeys map[string]bool
-
-var logNoTime bool
-
-var logLock sync.RWMutex
-
-var logger *log.Logger
-
-var logFile *os.File
-
-var logStar bool // enabling log key "*" enables all key-based logging
-
 type LogRotationConfig struct {
 	// MaxSize is the maximum size in megabytes of the log file before it gets
 	// rotated. It defaults to 100 megabytes.
@@ -218,25 +198,6 @@ type LogAppenderConfig struct {
 	RedactionLevel RedactionLevel     `json:",omitempty"`
 }
 
-type LoggingConfigMap map[string]*LogAppenderConfig
-
-//Attach logger to stderr during load, this may get re-attached once config is loaded
-func init() {
-	logger = log.New(os.Stderr, "", 0)
-	LogKeys = make(map[string]bool)
-	logNoTime = false
-}
-
-func GetLogLevel() int {
-	return logLevel
-}
-
-func SetLogLevel(level int) {
-	logLock.Lock()
-	defer logLock.Unlock()
-	logLevel = level
-}
-
 // For transforming a new log level to the old type.
 func ToDeprecatedLogLevel(logLevel LogLevel) *Level {
 	var deprecatedLogLevel Level
@@ -267,146 +228,6 @@ func ToLogLevel(deprecatedLogLevel Level) *LogLevel {
 		newLogLevel.Set(LevelError)
 	}
 	return &newLogLevel
-}
-
-// Disables ANSI color in log output.
-func LogNoColor() {
-	// this is now the default state; see LogColor() below
-}
-
-func LogNoTime() {
-	logLock.RLock()
-	defer logLock.RUnlock()
-	//Disable timestamp for default logger, this may be used by other packages
-	log.SetFlags(log.Flags() &^ (log.Ldate | log.Ltime | log.Lmicroseconds))
-	logNoTime = true
-}
-
-func LogTime() {
-	logLock.RLock()
-	defer logLock.RUnlock()
-	//Enable timestamp for default logger, this may be used by other packages
-	log.SetFlags(log.Flags() | (log.Ldate | log.Ltime | log.Lmicroseconds))
-	logNoTime = false
-}
-
-// Parses a comma-separated list of log keys, probably coming from an argv flag.
-// The key "bw" is interpreted as a call to LogNoColor, not a key.
-func ParseLogFlag(flag string) {
-	if flag != "" {
-		ParseLogFlags(strings.Split(flag, ","))
-	}
-}
-
-func (config *LogAppenderConfig) ValidateLogAppender() error {
-	//Fail validation if an appender contains a "rotation" sub document
-	// and no "logFilePath" appender property is defined
-	if config.Rotation != nil {
-		if config.LogFilePath == nil {
-			return fmt.Errorf("The default logger must define a \"logFilePath\" when \"rotation\" is defined")
-		}
-		if _, err := IsFilePathWritable(*config.LogFilePath); err != nil {
-			return err
-		}
-		if config.Rotation.MaxSize < 0 {
-			return fmt.Errorf("Log rotation MaxSize must >= 0")
-		}
-		if config.Rotation.MaxAge < 0 {
-			return fmt.Errorf("Log rotation MaxAge must >= 0")
-		}
-		if config.Rotation.MaxBackups < 0 {
-			return fmt.Errorf("Log rotation MaxBackups must >= 0")
-		}
-	}
-
-	return nil
-}
-
-// Parses an array of log keys, probably coming from a argv flags.
-// The key "bw" is interpreted as a call to LogNoColor, not a key.
-func ParseLogFlags(flags []string) {
-	logLock.Lock()
-	keyMap := make(map[string]bool)
-
-	for _, key := range flags {
-		keyMap[key] = true
-	}
-
-	ParseLogFlagsMap(keyMap)
-	logLock.Unlock()
-}
-
-// Parses a map of log keys and enabled bool, probably coming from a argv flags.
-// The key "bw" is interpreted as a call to LogNoColor, not a key.
-func ParseLogFlagsMap(flags map[string]bool) {
-	for key, enabled := range flags {
-		switch key {
-		case "bw":
-			if enabled {
-				LogNoColor()
-			} else {
-				LogColor()
-			}
-		case "color":
-			if enabled {
-				LogColor()
-			} else {
-				LogNoColor()
-			}
-		case "notime":
-			if enabled {
-				LogNoTime()
-			} else {
-				LogTime()
-			}
-		default:
-			if enabled {
-				LogKeys[key] = enabled
-				for strings.HasSuffix(key, "+") {
-					key = key[0 : len(key)-1]
-					LogKeys[key] = enabled // "foo+" also enables "foo"
-				}
-			} else {
-				delete(LogKeys, key)
-				//if key already has "++" suffix there is no further processing
-				// else if it has "+" suffix disable "++" suffix as well
-				// else disable "+" suffix and "++" suffix
-				if !strings.HasSuffix(key, "++") {
-					//If key does not have a "+" suffix then remove "+" suffix
-					if !strings.HasSuffix(key, "+") {
-						// remove the "+" suffix as well
-						delete(LogKeys, key+"+")
-						// remove the "++" suffix as well
-						delete(LogKeys, key+"++")
-					} else {
-						// remove the "++" suffix as well
-						delete(LogKeys, key+"+")
-					}
-				}
-			}
-			if key == "*" {
-				logStar = enabled
-				if enabled {
-					EnableSgReplicateLogging()
-				}
-			}
-			// gocb requires a call into the gocb library to enable logging
-			if key == "gocb" {
-				if enabled {
-					EnableGoCBLogging()
-				} else {
-					DisableGoCBLogging()
-				}
-			}
-			if key == "Replicate" {
-				if enabled {
-					EnableSgReplicateLogging()
-				} else {
-					DisableSgReplicateLogging()
-				}
-			}
-		}
-	}
 }
 
 func EnableSgReplicateLogging() {
@@ -466,165 +287,6 @@ type SGLogger interface {
 	Logf(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 }
 
-// Logs a message to the console, but only if the corresponding key is true in LogKeys.
-func LogTo(key string, format string, args ...interface{}) {
-	logLock.RLock()
-	defer logLock.RUnlock()
-	ok := logLevel <= 1 && (logStar || LogKeys[key])
-
-	if ok {
-		printf(fgYellow+key+": "+reset+format, args...)
-	}
-
-}
-
-// LogToR redacts any arguments implementing the Redactor interface before calling LogTo
-func LogToR(key, format string, args ...interface{}) {
-	LogTo(key, format, redact(args)...)
-}
-
-func EnableLogKey(key string) {
-	logLock.Lock()
-	defer logLock.Unlock()
-	LogKeys[key] = true
-}
-
-func DisableLogKey(key string) {
-	logLock.Lock()
-	defer logLock.Unlock()
-	LogKeys[key] = false
-}
-
-func LogEnabled(key string) bool {
-	logLock.RLock()
-	defer logLock.RUnlock()
-	return logStar || LogKeys[key]
-}
-
-func LogEnabledExcludingLogStar(key string) bool {
-	logLock.RLock()
-	defer logLock.RUnlock()
-	return LogKeys[key]
-}
-
-// Logs a message to the console.
-func Log(message string) {
-	logLock.RLock()
-	defer logLock.RUnlock()
-	ok := logLevel <= 1
-
-	if ok {
-		print(message)
-	}
-}
-
-// Logs a formatted message to the console.
-func Logf(format string, args ...interface{}) {
-	logLock.RLock()
-	defer logLock.RUnlock()
-	ok := logLevel <= 1
-
-	if ok {
-		printf(format, args...)
-	}
-}
-
-// LogfR redacts any arguments implementing the Redactor interface before calling Logf
-func LogfR(format string, args ...interface{}) {
-	Logf(format, redact(args)...)
-}
-
-// If the error is not nil, logs its description and the name of the calling function.
-// Returns the input error for easy chaining.
-func LogError(err error) error {
-	if err != nil {
-		logLock.RLock()
-		ok := logLevel <= 2
-		logLock.RUnlock()
-
-		if ok {
-			logWithCaller(fgRed, "ERROR", "%v", err)
-		}
-	}
-	return err
-}
-
-// Logs a warning to the console
-func Warn(format string, args ...interface{}) {
-	logLock.RLock()
-	ok := logLevel <= 2
-	logLock.RUnlock()
-
-	if ok {
-		logWithCaller(fgRed, "WARNING", format, args...)
-	}
-}
-
-// WarnR redacts any arguments implementing the Redactor interface before calling Warn
-func WarnR(format string, args ...interface{}) {
-	Warn(format, redact(args)...)
-}
-
-// Logs a highlighted message prefixed with "TEMP". This function is intended for
-// temporary logging calls added during development and not to be checked in, hence its
-// distinctive name (which is visible and easy to search for before committing.)
-func TEMP(format string, args ...interface{}) {
-	logWithCaller(fgYellow, "TEMP", format, args...)
-}
-
-// Logs a warning to the console, then panics.
-func LogPanic(format string, args ...interface{}) {
-	logWithCaller(fgRed, "PANIC", format, args...)
-	panic(fmt.Sprintf(format, args...))
-}
-
-// LogPanicR redacts any arguments implementing the Redactor interface before calling LogPanic
-func LogPanicR(format string, args ...interface{}) {
-	LogPanic(format, redact(args)...)
-}
-
-// Logs a warning to the console, then exits the process.
-func LogFatal(format string, args ...interface{}) {
-	logWithCaller(fgRed, "FATAL", format, args...)
-	os.Exit(1)
-}
-
-// LogFatalR redacts any arguments implementing the Redactor interface before calling LogFatal
-func LogFatalR(format string, args ...interface{}) {
-	LogFatal(format, redact(args)...)
-}
-
-func logWithCaller(color string, prefix string, format string, args ...interface{}) {
-	message := fmt.Sprintf(format, args...)
-	logLock.RLock()
-	defer logLock.RUnlock()
-	print(color, prefix, ": ", message, reset,
-		dim, " -- ", GetCallersName(2), reset)
-}
-
-// Simple wrapper that converts Print to Printf.  Assumes caller is holding logLock read lock.
-func print(args ...interface{}) {
-	ok := logLevel <= 1
-
-	if ok {
-		printf("%s", fmt.Sprint(args...))
-	}
-}
-
-// Logs a formatted message to the underlying logger.  Assumes caller is holding logLock read lock.
-func printf(format string, args ...interface{}) {
-	ok := logLevel <= 1
-
-	if ok {
-		if !logNoTime {
-			timestampedFormat := strings.Join([]string{time.Now().Format(ISO8601Format), format}, " ")
-			logger.Printf(timestampedFormat, args...)
-		} else {
-			logger.Printf(format, args...)
-		}
-	}
-}
-
 func lastComponent(path string) string {
 	if index := strings.LastIndex(path, "/"); index >= 0 {
 		path = path[index+1:]
@@ -632,37 +294,6 @@ func lastComponent(path string) string {
 		path = path[index+1:]
 	}
 	return path
-}
-
-func UpdateLogger(logFilePath string) {
-	//Attempt to open file for write at path provided
-	fo, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
-	if err != nil {
-		Fatalf(KeyAll, "unable to open logfile for write: %s", logFilePath)
-	}
-
-	//defer write lock to here otherwise LogFatal above will deadlock
-	logLock.Lock()
-
-	//We keep a reference to the underlying log File as log.Logger and io.Writer
-	//have no close() methods and we want to close old files on log rotation
-	oldLogFile := logFile
-	logFile = fo
-	logger = log.New(fo, "", log.Lmicroseconds)
-	logLock.Unlock()
-
-	//re-apply log no time flags on new logger
-	if logNoTime {
-		LogNoTime()
-	}
-
-	//If there is a previously opened log file, explicitly close it
-	if oldLogFile != nil {
-		err = oldLogFile.Close()
-		if err != nil {
-			Warnf(KeyAll, "unable to close old log File after updating logger")
-		}
-	}
 }
 
 // This provides an io.Writer interface around the base.Infof API
@@ -685,99 +316,6 @@ func NewLoggerWriter(logKey LogKey, serialNumber uint64, req *http.Request) *Log
 		SerialNumber: serialNumber,
 		Request:      req,
 	}
-}
-
-func CreateRollingLogger(logConfig *LogAppenderConfig) {
-	if logConfig != nil {
-		SetLogLevel(logConfig.LogLevel.sgLevel())
-		ParseLogFlags(logConfig.LogKeys)
-
-		if logConfig.LogFilePath == nil {
-			return
-		}
-
-		lj := lumberjack.Logger{}
-
-		lj.Filename = *logConfig.LogFilePath
-		log.Printf("Log entries will be written to the file %v", *logConfig.LogFilePath)
-
-		if rotation := logConfig.Rotation; rotation != nil {
-			if rotation.MaxSize > 0 {
-				lj.MaxSize = rotation.MaxSize // megabytes
-			}
-			if rotation.MaxAge > 0 {
-				lj.MaxAge = rotation.MaxAge
-			}
-			if rotation.MaxBackups > 0 {
-				lj.MaxBackups = rotation.MaxBackups
-			}
-			lj.LocalTime = rotation.LocalTime
-		}
-
-		//Update default GoLang logger to use new rolling logger
-		logger.SetOutput(&lj)
-
-		//Update sg_replicate logger to use rolling logger
-		clog.SetOutput(&lj)
-
-		//Update go-couchbase to use rolling logger
-		gcblogger := logging.NewLogger(&lj, logConfig.LogLevel.cgLevel(), logging.TEXTFORMATTER)
-		logging.SetLogger(gcblogger)
-	}
-}
-
-// ANSI color control escape sequences.
-// Shamelessly copied from https://github.com/sqp/godock/blob/master/libs/log/colors.go
-var (
-	reset,
-	bright,
-	dim,
-	underscore,
-	blink,
-	reverse,
-	hidden,
-	fgBlack,
-	fgRed,
-	fgGreen,
-	fgYellow,
-	fgBlue,
-	fgMagenta,
-	fgCyan,
-	fgWhite,
-	bgBlack,
-	bgRed,
-	bgGreen,
-	bgYellow,
-	bgBlue,
-	bgMagenta,
-	bgCyan,
-	bgWhite string
-)
-
-func LogColor() {
-	reset = "\x1b[0m"
-	bright = "\x1b[1m"
-	dim = "\x1b[2m"
-	underscore = "\x1b[4m"
-	blink = "\x1b[5m"
-	reverse = "\x1b[7m"
-	hidden = "\x1b[8m"
-	fgBlack = "\x1b[30m"
-	fgRed = "\x1b[31m"
-	fgGreen = "\x1b[32m"
-	fgYellow = "\x1b[33m"
-	fgBlue = "\x1b[34m"
-	fgMagenta = "\x1b[35m"
-	fgCyan = "\x1b[36m"
-	fgWhite = "\x1b[37m"
-	bgBlack = "\x1b[40m"
-	bgRed = "\x1b[41m"
-	bgGreen = "\x1b[42m"
-	bgYellow = "\x1b[43m"
-	bgBlue = "\x1b[44m"
-	bgMagenta = "\x1b[45m"
-	bgCyan = "\x1b[46m"
-	bgWhite = "\x1b[47m"
 }
 
 // Prepend a context ID to each blip logging message.  The contextID uniquely identifies the blip context, and
@@ -1000,6 +538,12 @@ func ConsoleLogLevel() *LogLevel {
 // ConsoleLogKey returns the console log key.
 func ConsoleLogKey() *LogKey {
 	return consoleLogger.LogKey
+}
+
+// LogInfoEnabled returns true if either the console should log at info level,
+// or if the infoLogger is enabled.
+func LogInfoEnabled(logKey LogKey) bool {
+	return consoleLogger.shouldLog(LevelInfo, logKey) || infoLogger.shouldLog()
 }
 
 // LogDebugEnabled returns true if either the console should log at debug level,

@@ -387,7 +387,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
-				base.Infof(base.KeyHeartbeat, "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
+				base.Debugf(base.KeyChanges, "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
 			case <-timeout:
 				message = "OK (timeout)"
 				forceClose = true
@@ -572,7 +572,7 @@ loop:
 		case <-heartbeat:
 			err = send(nil)
 			if h != nil {
-				base.Infof(base.KeyHeartbeat, "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
+				base.Debugf(base.KeyChanges, "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
 			}
 		case <-timeout:
 			forceClose = true

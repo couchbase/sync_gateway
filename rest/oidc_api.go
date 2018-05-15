@@ -68,7 +68,7 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	redirectURLString = ""
 
 	providerName := h.getQuery("provider")
-	base.Infof(base.KeyOIDC, "Getting provider for name %v", base.UD(providerName))
+	base.Infof(base.KeyAuth, "Getting provider for name %v", base.UD(providerName))
 	provider, err := h.getOIDCProvider(providerName)
 	if err != nil || provider == nil {
 		return redirectURLString, err
@@ -173,7 +173,7 @@ func (h *handler) handleOIDCRefresh() error {
 
 	tokenResponse, err := oac.RequestToken(oauth2.GrantTypeRefreshToken, refreshToken)
 	if err != nil {
-		base.Infof(base.KeyOIDC, "Unsuccessful token refresh: %v", err)
+		base.Infof(base.KeyAuth, "Unsuccessful token refresh: %v", err)
 		return base.HTTPErrorf(http.StatusUnauthorized, "Unable to refresh token.")
 		return err
 	}

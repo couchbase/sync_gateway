@@ -208,7 +208,7 @@ func (k *KvChannelIndex) GetChanges(sinceClock base.SequenceClock, toClock base.
 
 	// If requested clock is later than the channel clock, return empty
 	if sinceClock.AllAfter(chanClock) {
-		base.Debugf(base.KeyChannelIndex, "requested clock is later than channel clock - no new changes to report")
+		base.Debugf(base.KeyAccel, "requested clock is later than channel clock - no new changes to report")
 		return results, nil
 	}
 

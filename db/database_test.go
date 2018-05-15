@@ -27,9 +27,6 @@ import (
 )
 
 func init() {
-	base.LogNoColor()
-	//base.LogKeys["CRUD"] = true
-	//base.LogKeys["CRUD+"] = true
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
@@ -1463,7 +1460,7 @@ func TestConcurrentImport(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	base.EnableLogKey("Import+")
+	base.EnableTestLogKey("Import")
 
 	// Add doc to the underlying bucket:
 	db.Bucket.Add("directWrite", 0, Body{"value": "hi"})

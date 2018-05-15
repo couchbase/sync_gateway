@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/couchbase/sync_gateway/base"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"regexp"
 	"time"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // EventHandler interface represents an instance of an event handler defined in the database config
@@ -132,7 +133,8 @@ func (wh *Webhook) HandleEvent(event Event) {
 			return
 		}
 
-		if base.LogEnabled("Events+") {
+		// Check Log Level first, as SanitizedUrl is expensive to evaluate.
+		if base.LogDebugEnabled(base.KeyEvents) {
 			base.Debugf(base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
 				base.UD(payload), base.UD(wh.SanitizedUrl()), resp.Status)
 		}

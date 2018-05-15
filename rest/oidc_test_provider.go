@@ -105,7 +105,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	}
 
 	issuerUrl := issuerUrl(h)
-	base.Debugf(base.KeyOIDC, "handleOidcProviderConfiguration issuerURL = %s", issuerUrl)
+	base.Debugf(base.KeyAuth, "handleOidcProviderConfiguration issuerURL = %s", issuerUrl)
 
 	config := &auth.OidcProviderConfiguration{
 		Issuer:                            issuerUrl,
@@ -147,7 +147,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	requestParams := h.rq.URL.RawQuery
 
-	base.Infof(base.KeyOIDC, "handleOidcTestProviderAuthorize() raw authorize request raw query params = %v", requestParams)
+	base.Infof(base.KeyAuth, "handleOidcTestProviderAuthorize() raw authorize request raw query params = %v", requestParams)
 
 	scope := h.getQueryValues().Get("scope")
 	if scope == "" {
@@ -204,7 +204,7 @@ func (h *handler) handleOidcTestProviderToken() error {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
-	base.Infof(base.KeyOIDC, "handleOidcTestProviderToken() called")
+	base.Infof(base.KeyAuth, "handleOidcTestProviderToken() called")
 
 	//determine the grant_type being requested
 	grantType := h.rq.FormValue("grant_type")
@@ -226,7 +226,7 @@ func (h *handler) handleOidcTestProviderCerts() error {
 		return base.HTTPErrorf(http.StatusForbidden, "OIDC test provider is not enabled")
 	}
 
-	base.Infof(base.KeyOIDC, "handleOidcTestProviderCerts() called")
+	base.Infof(base.KeyAuth, "handleOidcTestProviderCerts() called")
 
 	privateKey, err := privateKey()
 	if err != nil {
@@ -276,10 +276,10 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 
 	redirect_uri := requestParams.Get("redirect_uri")
 
-	base.Debugf(base.KeyOIDC, "handleOidcTestProviderAuthenticate() called.  username: %s authenticated: %s", username, authenticated)
+	base.Debugf(base.KeyAuth, "handleOidcTestProviderAuthenticate() called.  username: %s authenticated: %s", username, authenticated)
 
 	if username == "" || authenticated == "" {
-		base.Debugf(base.KeyOIDC, "user did not enter valid credentials -- username or authenticated is empty")
+		base.Debugf(base.KeyAuth, "user did not enter valid credentials -- username or authenticated is empty")
 		error := "?error=invalid_request&error_description=User failed authentication"
 		h.setHeader("Location", requestParams.Get("redirect_uri")+error)
 		h.response.WriteHeader(http.StatusFound)
@@ -481,7 +481,7 @@ func extractSubjectFromRefreshToken(refreshToken string) (string, error) {
 
 	subject := components[0]
 
-	base.Debugf(base.KeyOIDC, "subject extracted from refresh token = %v", subject)
+	base.Debugf(base.KeyAuth, "subject extracted from refresh token = %v", subject)
 
 	if len(components) != 2 || subject == "" {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "OIDC Refresh Token does not contain subject")

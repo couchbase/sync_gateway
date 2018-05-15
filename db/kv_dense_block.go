@@ -131,7 +131,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	// Check if block is already full.  If so, return all entries as overflow.
 	if len(d.value) > MaxBlockSize {
 
-		base.Debugf(base.KeyChannelStorage, "Block (%s) full since len(d.value) %d > MaxBlockSize %d - returning entries as overflow.  #entries:[%d]",
+		base.Debugf(base.KeyAccel, "Block (%s) full since len(d.value) %d > MaxBlockSize %d - returning entries as overflow.  #entries:[%d]",
 			d, len(d.value), MaxBlockSize, len(entries))
 
 		return entries, pendingRemoval, nil, casFailure, nil
@@ -140,7 +140,7 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	overflow, pendingRemoval, updateClock, blockChanged, addError := d.addEntries(entries)
 	if addError != nil {
 		// Error adding entries - reset the block and return error
-		base.Debugf(base.KeyChannelStorage, "Error adding entries to block. %v", err)
+		base.Debugf(base.KeyAccel, "Error adding entries to block. %v", err)
 		d.loadBlock(bucket)
 		return nil, nil, nil, casFailure, addError
 	}
@@ -152,12 +152,12 @@ func (d *DenseBlock) AddEntrySet(entries []*LogEntry, bucket base.Bucket) (overf
 	casOut, err := bucket.WriteCas(d.Key, 0, 0, d.cas, d.value, sgbucket.Raw)
 	if err != nil {
 		casFailure = true
-		base.Debugf(base.KeyChannelStorage, "Block (%s) CAS error writing block to database. %v", d, err)
+		base.Debugf(base.KeyAccel, "Block (%s) CAS error writing block to database. %v", d, err)
 		return entries, []*LogEntry{}, nil, casFailure, nil
 	}
 
 	d.cas = casOut
-	base.Debugf(base.KeyChannelStorage, "Successfully added set to block. key:[%s] #added:[%d] #overflow:[%d] #pendingRemoval:[%d]",
+	base.Debugf(base.KeyAccel, "Successfully added set to block. key:[%s] #added:[%d] #overflow:[%d] #pendingRemoval:[%d]",
 		d.Key, len(entries)-len(overflow), len(overflow), len(pendingRemoval))
 	return overflow, pendingRemoval, updateClock, casFailure, nil
 }
@@ -174,7 +174,7 @@ func (d *DenseBlock) addEntries(entries []*LogEntry) (overflow []*LogEntry, pend
 		if !blockFull {
 			changed, removalRequired, err := d.addEntry(entry)
 			if err != nil {
-				base.Debugf(base.KeyChannelStorage, "Error adding entry to block.  key:[%s] error:%v", base.UD(entry.DocID), err)
+				base.Debugf(base.KeyAccel, "Error adding entry to block.  key:[%s] error:%v", base.UD(entry.DocID), err)
 				return nil, nil, nil, false, err
 			}
 			if changed {
@@ -217,7 +217,7 @@ func (d *DenseBlock) addEntry(logEntry *LogEntry) (changed bool, removalRequired
 		// Ensure this entry hasn't already been written by another writer
 		clockSequence := d.getClock()[logEntry.VbNo]
 		if logEntry.Sequence <= clockSequence {
-			base.Debugf(base.KeyChannelStorage, "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d] blockKey:[%s]",
+			base.Debugf(base.KeyAccel, "Index already has entries later than or matching sequence - skipping.  key:[%s] seq:[%d] index_seq[%d] blockKey:[%s]",
 				base.UD(logEntry.DocID), logEntry.Sequence, clockSequence, d.Key)
 			return false, false, nil
 		}
@@ -301,12 +301,12 @@ func (d *DenseBlock) RemoveEntrySet(entries []*LogEntry, bucket base.Bucket) (pe
 		return d.value, nil
 	})
 	if writeErr != nil {
-		base.Debugf(base.KeyChannelStorage, "Error writing block to database. %v", err)
+		base.Debugf(base.KeyAccel, "Error writing block to database. %v", err)
 		return entries, writeErr
 	}
 	d.cas = casOut
 	if len(pendingRemoval) != len(entries) {
-		base.Debugf(base.KeyChannelStorage, "Successfully removed set from block. key:[%s] #removed:[%d] #pending:[%d]",
+		base.Debugf(base.KeyAccel, "Successfully removed set from block. key:[%s] #removed:[%d] #pending:[%d]",
 			d.Key, len(entries)-len(pendingRemoval), len(pendingRemoval))
 	}
 	return pendingRemoval, nil
@@ -339,12 +339,12 @@ func (d *DenseBlock) RollbackTo(rollbackVbNo uint16, rollbackSeq uint64, bucket 
 		return d.value, nil
 	})
 	if writeErr != nil {
-		base.Debugf(base.KeyChannelStorage, "Error writing block to database. %v", err)
+		base.Debugf(base.KeyAccel, "Error writing block to database. %v", err)
 		return false, writeErr
 	}
 	d.cas = casOut
 	if numRemoved > 0 {
-		base.Debugf(base.KeyChannelStorage, "Successfully removed entries from block during rollback. key:[%s] #removed:[%d] complete?:[%v]",
+		base.Debugf(base.KeyAccel, "Successfully removed entries from block during rollback. key:[%s] #removed:[%d] complete?:[%v]",
 			d.Key, numRemoved, rollbackComplete)
 	}
 	return rollbackComplete, nil

@@ -20,31 +20,20 @@ const (
 	KeyAdmin
 	KeyAccel
 	KeyAccess
-	KeyAttach
 	KeyAuth
 	KeyBucket
 	KeyCache
 	KeyChanges
-	KeyChannelIndex
-	KeyChannelStorage
-	KeyCompact
 	KeyCRUD
 	KeyDCP
 	KeyEvents
-	KeyFeed
 	KeyGoCB
-	KeyHeartbeat
 	KeyHTTP
 	KeyHTTPResp
 	KeyImport
-	KeyIndex
-	KeyIndexEntries
 	KeyMigrate
-	KeyOIDC
 	KeyQuery
 	KeyReplicate
-	KeyRollback
-	KeySequences
 	KeyShadow
 	KeySync
 	KeySyncMsg
@@ -59,31 +48,20 @@ var (
 		KeyAdmin:          "Admin",
 		KeyAccel:          "Accel",
 		KeyAccess:         "Access",
-		KeyAttach:         "Attach",
 		KeyAuth:           "Auth",
 		KeyBucket:         "Bucket",
 		KeyCache:          "Cache",
 		KeyChanges:        "Changes",
-		KeyChannelIndex:   "ChannelIndex",
-		KeyChannelStorage: "ChannelStorage",
-		KeyCompact:        "Compact",
 		KeyCRUD:           "CRUD",
 		KeyDCP:            "DCP",
 		KeyEvents:         "Events",
-		KeyFeed:           "Feed",
 		KeyGoCB:           "gocb",
-		KeyHeartbeat:      "Heartbeat",
 		KeyHTTP:           "HTTP",
 		KeyHTTPResp:       "HTTP+", // Infof printed as HTTP+
 		KeyImport:         "Import",
-		KeyIndex:          "Index",
-		KeyIndexEntries:   "IndexEntries",
 		KeyMigrate:        "Migrate",
-		KeyOIDC:           "OIDC",
 		KeyQuery:          "Query",
 		KeyReplicate:      "Replicate",
-		KeyRollback:       "Rollback",
-		KeySequences:      "Sequences",
 		KeyShadow:         "Shadow",
 		KeySync:           "Sync",
 		KeySyncMsg:        "SyncMsg",

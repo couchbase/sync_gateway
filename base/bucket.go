@@ -647,7 +647,7 @@ func GetCouchbaseBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (buck
 func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Infof(KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
-		sgbucket.SetLogging(LogEnabled("Walrus"))
+		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
 		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
 		if spec.FeedType == "" || spec.FeedType != TapFeedType {

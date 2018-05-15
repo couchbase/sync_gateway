@@ -53,7 +53,8 @@ func TestRepairBucket(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against walrus (requires views)")
 	}
-	base.EnableLogKey("CRUD")
+
+	base.EnableTestLogKey("CRUD")
 
 	testBucket, numDocs := testBucketWithViewsAndBrokenDoc()
 	defer testBucket.Close()
@@ -85,7 +86,7 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 		t.Skip("This test only works against walrus (requires views)")
 	}
 
-	base.EnableLogKey("CRUD")
+	base.EnableTestLogKey("CRUD")
 
 	testBucket, _ := testBucketWithViewsAndBrokenDoc()
 	defer testBucket.Close()
@@ -134,7 +135,8 @@ func TestRepairBucketDryRun(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against walrus (requires views)")
 	}
-	base.EnableLogKey("CRUD")
+
+	base.EnableTestLogKey("CRUD")
 
 	testBucket, _ := testBucketWithViewsAndBrokenDoc()
 	defer testBucket.Close()

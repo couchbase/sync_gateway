@@ -720,7 +720,10 @@ func TestUnusedSequences(t *testing.T) {
 }
 
 func _testConcurrentDelete(t *testing.T) {
-	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
+
+	base.EnableTestLogKey("Cache+")
+	base.EnableTestLogKey("Changes+")
+	base.EnableTestLogKey("CRUD+")
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -759,7 +762,10 @@ func _testConcurrentDelete(t *testing.T) {
 }
 
 func _testConcurrentPutAsDelete(t *testing.T) {
-	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
+
+	base.EnableTestLogKey("Cache+")
+	base.EnableTestLogKey("Changes+")
+	base.EnableTestLogKey("CRUD+")
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -797,7 +803,10 @@ func _testConcurrentPutAsDelete(t *testing.T) {
 }
 
 func _testConcurrentUpdate(t *testing.T) {
-	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+"})
+
+	base.EnableTestLogKey("Cache+")
+	base.EnableTestLogKey("Changes+")
+	base.EnableTestLogKey("CRUD+")
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -835,7 +844,11 @@ func _testConcurrentUpdate(t *testing.T) {
 }
 
 func _testConcurrentNewEditsFalseDelete(t *testing.T) {
-	base.ParseLogFlags([]string{"Cache", "Cache+", "Changes+", "CRUD", "CRUD+", "HTTP", "HTTP+"})
+
+	base.EnableTestLogKey("Cache+")
+	base.EnableTestLogKey("Changes+")
+	base.EnableTestLogKey("CRUD+")
+	base.EnableTestLogKey("HTTP+")
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -2120,7 +2133,10 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 // Test _changes returning conflicts
 func TestChangesIncludeConflicts(t *testing.T) {
 
-	base.ParseLogFlags([]string{"Cache+", "Changes+", "CRUD+"})
+	base.EnableTestLogKey("Cache+")
+	base.EnableTestLogKey("Changes+")
+	base.EnableTestLogKey("CRUD+")
+
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
