@@ -2307,6 +2307,13 @@ func TestAccessOnTombstone(t *testing.T) {
 	base.EnableTestLogKey("Changes+")
 	base.EnableTestLogKey("CRUD+")
 	base.EnableTestLogKey("Accel+")
+	base.EnableTestLogKey("Query")
+
+	//base.ConsoleLogKey().Enable(base.KeyQuery)
+	//defer base.ConsoleLogKey().Disable(base.KeyQuery)
+
+	base.ConsoleLogLevel().Set(base.LevelTrace)
+
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 if (doc.owner) {
