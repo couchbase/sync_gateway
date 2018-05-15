@@ -545,8 +545,6 @@ func EnableTestLogKey(logKey string) {
 
 // ResetTestLogging return logging back to a standard state (Info level and HTTP log key)
 func ResetTestLogging() {
-	fmt.Println("resetting logging")
-
 	ConsoleLogLevel().Set(LevelInfo)
 	ConsoleLogKey().Set(KeyHTTP)
 }
