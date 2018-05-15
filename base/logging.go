@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -301,20 +302,22 @@ type LoggerWriter struct {
 	LogKey       LogKey        // The log key to log to, eg, KeyHTTP
 	SerialNumber uint64        // The request ID
 	Request      *http.Request // The request
+	QueryValues  url.Values    // A cached copy of the URL query values
 }
 
 // Write() method to satisfy the io.Writer interface
 func (lw *LoggerWriter) Write(p []byte) (n int, err error) {
-	Infof(lw.LogKey, " #%03d: %s %s %s", lw.SerialNumber, lw.Request.Method, SanitizeRequestURL(lw.Request), string(p))
+	Infof(lw.LogKey, " #%03d: %s %s %s", lw.SerialNumber, lw.Request.Method, SanitizeRequestURL(lw.Request, &lw.QueryValues), string(p))
 	return len(p), nil
 }
 
 // Create a new LoggerWriter
-func NewLoggerWriter(logKey LogKey, serialNumber uint64, req *http.Request) *LoggerWriter {
+func NewLoggerWriter(logKey LogKey, serialNumber uint64, req *http.Request, queryValues url.Values) *LoggerWriter {
 	return &LoggerWriter{
 		LogKey:       logKey,
 		SerialNumber: serialNumber,
 		Request:      req,
+		QueryValues:  queryValues,
 	}
 }
 

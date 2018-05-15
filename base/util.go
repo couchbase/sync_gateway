@@ -597,11 +597,18 @@ func IsFilePathWritable(fp string) (bool, error) {
 // - Tagging query parameters.
 // - Replacing sensitive data from the URL query string with ******.
 // Have to use string replacement instead of writing directly to the Values URL object, as only the URL's raw query is mutable.
-func SanitizeRequestURL(req *http.Request) string {
-	urlString := SanitizeRequestURLQueryParams(req.URL)
+func SanitizeRequestURL(req *http.Request, cachedQueryValues *url.Values) string {
+
+	// Populate a cached copy of query values if nothing is passed in.
+	if cachedQueryValues == nil {
+		v := req.URL.Query()
+		cachedQueryValues = &v
+	}
+
+	urlString := sanitizeRequestURLQueryParams(req.URL.String(), *cachedQueryValues)
 
 	if RedactSystemData || RedactMetadata || RedactUserData {
-		tagQueryParams(req, &urlString)
+		tagQueryParams(*cachedQueryValues, &urlString)
 		tagPathVars(req, &urlString)
 	}
 
@@ -625,7 +632,7 @@ var redactedPathVars = map[string]string{
 
 // tagPathVars will tag all redactble path variables in the urlString for the given request.
 func tagPathVars(req *http.Request, urlString *string) {
-	if urlString == nil {
+	if urlString == nil || req == nil {
 		return
 	}
 
@@ -659,16 +666,15 @@ var redactedQueryParams = map[string]string{
 	// "open_revs": "MD", // handleGetDoc
 }
 
-func tagQueryParams(req *http.Request, urlString *string) {
-	if urlString == nil {
+func tagQueryParams(values url.Values, urlString *string) {
+	if urlString == nil || len(values) == 0 {
 		return
 	}
 
 	str := *urlString
-	queryParams := req.URL.Query()
 	str, _ = url.QueryUnescape(str)
 
-	for k, vals := range queryParams {
+	for k, vals := range values {
 		// Query params can have more than one value (i.e: foo=bar&foo=buz)
 		for _, v := range vals {
 			switch redactedQueryParams[k] {
@@ -685,16 +691,18 @@ func tagQueryParams(req *http.Request, urlString *string) {
 	*urlString = str
 }
 
-// SanitizeRequestURLQueryParams replaces sensitive data from the URL query string with ******.
-func SanitizeRequestURLQueryParams(reqURL *url.URL) string {
-	urlStr := reqURL.String()
+// sanitizeRequestURLQueryParams replaces sensitive data from the URL query string with ******.
+func sanitizeRequestURLQueryParams(urlStr string, values url.Values) string {
+
+	if urlStr == "" || len(values) == 0 {
+		return urlStr
+	}
 
 	// Do a basic contains for the values we care about, to minimize performance impact on other requests.
 	if strings.Contains(urlStr, "code=") || strings.Contains(urlStr, "token=") {
 		// Iterate over the URL values looking for matches, and then do a string replacement of the found value
 		// into urlString.  Need to unescapte the urlString, as the values returned by URL.Query() get unescaped.
 		urlStr, _ = url.QueryUnescape(urlStr)
-		values := reqURL.Query()
 		for key, vals := range values {
 			if key == "code" || strings.Contains(key, "token") {
 				//In case there are multiple entries
