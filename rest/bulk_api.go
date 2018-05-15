@@ -233,7 +233,7 @@ func (h *handler) handleAllDocs() error {
 // HTTP handler for _dump
 func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
-	base.Infof(base.KeyHTTP, "Dump view %q", viewName)
+	base.Infof(base.KeyHTTP, "Dump view %q", base.MD(viewName))
 	opts := db.Body{"stale": false, "reduce": false}
 	result, err := h.db.Bucket.View(db.DesignDocSyncGateway(), viewName, opts)
 	if err != nil {

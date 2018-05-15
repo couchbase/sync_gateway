@@ -303,40 +303,22 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExistin
 
 func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 
-	server := "http://localhost:8091"
-	if config.Server != nil {
-		server = *config.Server
+	spec = config.MakeBucketSpec()
+
+	if spec.BucketName == "" {
+		spec.BucketName = config.Name
 	}
 
-	pool := "default"
-	if config.Pool != nil {
-		pool = *config.Pool
-	}
+	spec.Auth = config
+	spec.FeedType = strings.ToLower(config.FeedType)
 
-	bucketName := config.Name
-	if config.Bucket != nil {
-		bucketName = *config.Bucket
-	}
+	spec.CouchbaseDriver = base.ChooseCouchbaseDriver(base.DataBucket)
 
-	feedType := strings.ToLower(config.FeedType)
-
-	couchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket)
-
-	var viewQueryTimeoutSecs *uint32
 	if config.ViewQueryTimeoutSecs != nil {
-		viewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
+		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
-	spec = base.BucketSpec{
-		Server:               server,
-		PoolName:             pool,
-		BucketName:           bucketName,
-		FeedType:             feedType,
-		Auth:                 config,
-		CouchbaseDriver:      couchbaseDriver,
-		UseXattrs:            config.UseXattrs(),
-		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
-	}
+	spec.UseXattrs = config.UseXattrs()
 
 	if config.BucketOpTimeoutMs != nil {
 		operationTimeout := time.Millisecond * time.Duration(*config.BucketOpTimeoutMs)
@@ -521,31 +503,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	channelIndexOptions := &db.ChannelIndexOptions{}
 	sequenceHashOptions := &db.SequenceHashOptions{}
 	if config.ChannelIndex != nil {
-		indexServer := "http://localhost:8091"
-		indexPool := "default"
-		indexBucketName := ""
-
-		if config.ChannelIndex.Server != nil {
-			indexServer = *config.ChannelIndex.Server
-		}
-		if config.ChannelIndex.Pool != nil {
-			indexPool = *config.ChannelIndex.Pool
-		}
-		if config.ChannelIndex.Bucket != nil {
-			indexBucketName = *config.ChannelIndex.Bucket
-		}
 
 		// Index buckets always use DCP feed type
 		couchbaseDriverIndexBucket := base.ChooseCouchbaseDriver(base.IndexBucket)
 
-		indexSpec := base.BucketSpec{
-			Server:          indexServer,
-			PoolName:        indexPool,
-			BucketName:      indexBucketName,
-			CouchbaseDriver: couchbaseDriverIndexBucket,
-		}
-
-		indexSpec.Auth = config.ChannelIndex
+		indexSpec := config.ChannelIndex.MakeBucketSpec()
+		indexSpec.CouchbaseDriver = couchbaseDriverIndexBucket
 
 		if config.ChannelIndex.NumShards != 0 {
 			channelIndexOptions.NumShards = config.ChannelIndex.NumShards
@@ -564,15 +527,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		sequenceHashBucketSpec := indexSpec
 		hashConfig := config.ChannelIndex.SequenceHashConfig
 		if hashConfig != nil {
-			if hashConfig.Server != nil {
-				sequenceHashBucketSpec.Server = *hashConfig.Server
-			}
-			if hashConfig.Pool != nil {
-				sequenceHashBucketSpec.PoolName = *hashConfig.Pool
-			}
-			if hashConfig.Bucket != nil {
-				sequenceHashBucketSpec.BucketName = *hashConfig.Bucket
-			}
+			sequenceHashBucketSpec = config.ChannelIndex.SequenceHashConfig.MakeBucketSpec()
+			sequenceHashBucketSpec.CouchbaseDriver = couchbaseDriverIndexBucket
 			sequenceHashOptions.Expiry = hashConfig.Expiry
 			sequenceHashOptions.HashFrequency = hashConfig.Frequency
 		}
@@ -944,7 +900,7 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 		if isGuest {
 			base.Infof(base.KeyAll, "    Reset guest user to config")
 		} else if createdPrincipal {
-			base.Infof(base.KeyAll, "    Created %s %q", base.UD(what), base.UD(name))
+			base.Infof(base.KeyAll, "    Created %s %q", what, base.UD(name))
 		}
 
 	}

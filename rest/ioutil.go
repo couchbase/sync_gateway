@@ -51,6 +51,6 @@ func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKe
 }
 
 func (l *LoggingTeeResponseWriter) Write(b []byte) (int, error) {
-	base.Infof(l.LogKey, " #%03d: %s %s %s", l.SerialNumber, l.Request.Method, base.SanitizeRequestURL(l.Request.URL), string(b))
+	base.Infof(l.LogKey, " #%03d: %s %s %s", l.SerialNumber, l.Request.Method, base.SanitizeRequestURL(l.Request), base.UD(string(b)))
 	return l.ResponseWriter.Write(b)
 }

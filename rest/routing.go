@@ -199,7 +199,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, (*handler).handleGetLogging)).Methods("GET")
 	r.Handle("/_logging",
 		makeHandler(sc, adminPrivs, (*handler).handleSetLogging)).Methods("PUT", "POST")
-	r.Handle("/_profile/{name}",
+	r.Handle("/_profile/{profilename}",
 		makeHandler(sc, adminPrivs, (*handler).handleProfiling)).Methods("POST")
 	r.Handle("/_profile",
 		makeHandler(sc, adminPrivs, (*handler).handleProfiling)).Methods("POST")

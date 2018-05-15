@@ -10,8 +10,13 @@
 package base
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,6 +27,7 @@ import (
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/gomemcached/client"
 	"github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -96,6 +102,8 @@ type BucketSpec struct {
 	Server, PoolName, BucketName, FeedType string
 	Auth                                   AuthHandler
 	CouchbaseDriver                        CouchbaseDriver
+	Certpath, Keypath, CACertPath          string         // X.509 auth parameters
+	KvTLSPort                              int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
 	MaxNumRetries                          int            // max number of retries before giving up
 	InitialRetrySleepTimeMS                int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
 	UseXattrs                              bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
@@ -112,6 +120,49 @@ func (spec BucketSpec) IsWalrusBucket() bool {
 	return strings.Contains(spec.Server, "walrus:")
 }
 
+func (spec BucketSpec) IsTLS() bool {
+	return strings.HasPrefix(spec.Server, "couchbases") || strings.HasPrefix(spec.Server, "https")
+}
+
+func (spec BucketSpec) UseClientCert() bool {
+	if spec.Certpath == "" || spec.Keypath == "" {
+		return false
+	}
+	return true
+}
+
+// Builds a gocb connection string based on BucketSpec.Server.
+// Adds idle connection configuration, and X.509 auth settings when
+// certpath/keypath/cacertpath specified.
+func (spec BucketSpec) GetGoCBConnString() (string, error) {
+
+	connSpec, err := gocbconnstr.Parse(spec.Server)
+	if err != nil {
+		return "", err
+	}
+
+	// Increase the number of idle connections per-host to fix SG #3534
+	if connSpec.Options == nil {
+		connSpec.Options = map[string][]string{}
+	}
+	asValues := url.Values(connSpec.Options)
+	asValues.Set("http_max_idle_conns_per_host", DefaultHttpMaxIdleConnsPerHost)
+	asValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
+	asValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
+
+	if spec.Certpath != "" && spec.Keypath != "" {
+		asValues.Set("certpath", spec.Certpath)
+		asValues.Set("keypath", spec.Keypath)
+	}
+	if spec.CACertPath != "" {
+		asValues.Set("cacertpath", spec.CACertPath)
+	}
+
+	connSpec.Options = asValues
+	return connSpec.String(), nil
+
+}
+
 func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 
 	// If the user doesn't specify any timeout, default to 75s
@@ -126,6 +177,99 @@ func (b BucketSpec) GetViewQueryTimeout() time.Duration {
 
 	return time.Duration(*b.ViewQueryTimeoutSecs) * time.Second
 
+}
+
+// TLSConnect method is passed to cbdatasource, to be used when creating a TLS-enabled memcached connection.
+// Establishes a connection, then wraps w/ gomemcached Client for use by cbdatasource.
+// Will include client cert (x.509) authentication when specified in the BucketSpec.
+// Adheres to approach used by gocb - can be removed once SG switches to gocb's DCP client.
+func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err error) {
+
+	d := net.Dialer{
+		Deadline: time.Now().Add(30 * time.Second),
+	}
+
+	host, port, err := SplitHostPort(dest)
+	if err != nil {
+		return nil, err
+	}
+
+	port = fmt.Sprintf("%d", b.KvTLSPort)
+	dest = host + ":" + port
+
+	Infof(KeyAll, "Establishing TLS connection for DCP to destination %s", dest)
+
+	conn, err := d.Dial("tcp", dest)
+	if err != nil {
+		return nil, err
+	}
+
+	tcpConn, isTcpConn := conn.(*net.TCPConn)
+	if !isTcpConn {
+		return nil, fmt.Errorf("Unable to convert connection to TCPConn during DCP TLS connection (Connection type:%T)", conn)
+	} else {
+		err = tcpConn.SetNoDelay(false)
+		if err != nil {
+			return nil, pkgerrors.Wrapf(err, "Error setting NoDelay on tcpConn during TLS Connect")
+		}
+
+		tlsConfig := &tls.Config{}
+		if b.Certpath != "" && b.Keypath != "" {
+			var configErr error
+			tlsConfig, configErr = TLSConfigForX509(b.Certpath, b.Keypath, b.CACertPath)
+			if configErr != nil {
+				return nil, pkgerrors.Wrapf(configErr, "Error adding x509 to TLSConfig for DCP TLS connection")
+			}
+		}
+		tlsConfig.ServerName = host
+
+		tlsConn := tls.Client(tcpConn, tlsConfig)
+		tlsErr := tlsConn.Handshake()
+		if tlsErr != nil {
+			return nil, pkgerrors.Wrapf(tlsErr, "TLS handshake failed while establishing DCP TLS connection")
+		}
+		return memcached.Wrap(tlsConn)
+	}
+
+}
+
+func TLSConfigForX509(certpath, keypath, cacertpath string) (*tls.Config, error) {
+
+	cacertpaths := []string{cacertpath}
+
+	tlsConfig := &tls.Config{}
+
+	if len(cacertpaths) > 0 {
+		rootCerts := x509.NewCertPool()
+		for _, path := range cacertpaths {
+			cacert, err := ioutil.ReadFile(path)
+			if err != nil {
+				return nil, err
+			}
+
+			ok := rootCerts.AppendCertsFromPEM(cacert)
+			if !ok {
+				return nil, fmt.Errorf("can't append certs from PEM")
+			}
+		}
+		tlsConfig.RootCAs = rootCerts
+	} else {
+		// A root CA cert is required in order to secure TLS communication from a client that doesn't maintain it's own store
+		// of trusted CA certs (i.e. any SDK-based client).  If a root CA cert isn't provided, set InsecureSkipVerify=true to
+		// accept any cert provided by the server. This follows the pattern being used by the SDK for TLS connections:
+		// https://github.com/couchbase/gocbcore/blob/7b68c492c29f3f952a00a4ba97dac14cc4b2b57e/agent.go#L236
+		tlsConfig.InsecureSkipVerify = true
+	}
+
+	if certpath != "" && keypath != "" {
+		cert, err := tls.LoadX509KeyPair(certpath, keypath)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+	return tlsConfig, nil
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server

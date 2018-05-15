@@ -17,11 +17,77 @@ var (
 
 const NoSeq = uint64(0x7FFFFFFFFFFFFFFF)
 
+// Minimizes need to perform GSI/View queries to respond to the changes feed by keeping a per-channel
+// cache of the most recent changes in the channel.  Changes might be received over DCP won't necessarily
+// be in sequence order, but the changes are buffered and re-ordered before inserting into the cache, and
+// so the cache is always kept in ascending order by sequence.  (this is the global sync sequence, not the
+// per-vbucket sequence).
+//
+// Uniqueness guarantee: a given document should only have _one_ entry in the cache, which represents the
+// most recent revision (the revision with the highest sequence number).
+//
+// Completeness guarantee: the cache is guaranteed to have _every_ change in a channel from the validFrom sequence
+// up to the current known latest change in that channel.  Eg, there are no gaps/holes.
+//
+// The validFrom state variable tracks the oldest sequence for which the cache is complete.  This may be earlier
+// than the oldest entry in the cache.  Used to determine whether a GSI/View query is required for a given
+// getChanges request.
+//
+// Shortly after startup and receiving a few changes from DCP, the cache might look something like this:
+//
+// ┌───────────────────────────────────────────────────────────────────────────────────────┐
+// │                       Changes for Channel X (CBServer + Cache)                        │
+// │   ┌─────────────────────────────────────────────────┐                                 │
+// │   │            Cache Subset (MaxSize=3)             │                                 │
+// │   │                                                 │                                 │
+// │   │          ┌─────────┐  ┌─────────┐               │                                 │
+// │   │          │ Seq: 8  │  │ Seq: 25 │               │                                 │
+// │   │    ▲     │ Doc: A  │  │ Doc: B  │               │                                 │
+// │   │    │     │ Rev: 1  │  │ Rev: 4  │               │                                 │
+// │   │    │     └─────────┘  └─────────┘               │                                 │
+// │   │                                                 │                                 │
+// │   │       ValidFrom = Seq 5                         │                                 │
+// │   │     (_sync:Seq at Startup)                      │                                 │
+// │   │                                                 │                                 │
+// │   └─────────────────────────────────────────────────┘                                 │
+// │                                                                                       │
+// └───────────────────────────────────────────────────────────────────────────────────────┘
+//
+// All changes for the channel currently fit in the cache.  The validFrom is set to the value of the _sync:Seq that
+// was read on startup.
+//
+// Later after more data has been added that will fit in the cache, it will look more like this:
+//
+// ┌───────────────────────────────────────────────────────────────────────────────────────┐
+// │                       Changes for Channel X (CBServer + Cache)                        │
+// │                                     ┌─────────────────────────────────────────────┐   │
+// │                                     │          Cache Subset (MaxSize=3)           │   │
+// │                                     │                                             │   │
+// │ ┌─────────┐ ┌─────────┐ ┌─────────┐ │         ┌─────────┐┌─────────┐ ┌─────────┐  │   │
+// │ │ Seq: 8  │ │ Seq: 25 │ │Seq: ... │ │         │Seq: 6002││Seq: 7022│ │Seq: 7027│  │   │
+// │ │ Doc: A  │ │ Doc: B  │ │Doc: ... │ │   ▲     │ Doc: A  ││ Doc: H  │ │ Doc: M  │  │   │
+// │ │ Rev: 1  │ │ Rev: 4  │ │Rev: ... │ │   │     │Rev: 345 ││ Rev: 4  │ │ Rev: 47 │  │   │
+// │ └─────────┘ └─────────┘ └─────────┘ │   │     └─────────┘└─────────┘ └─────────┘  │   │
+// │                                     │                                             │   │
+// │                                     │  ValidFrom = Seq 5989 (cache known          │   │
+// │                                     │  to be complete + valid from seq)           │   │
+// │                                     │                                             │   │
+// │                                     └─────────────────────────────────────────────┘   │
+// │                                                                                       │
+// └───────────────────────────────────────────────────────────────────────────────────────┘
+//
+// If a calling function wanted to get all of the changes for the channel since Seq 3000, they would
+// be forced to issue a GSI/View backfill query for changes is in the channel between 3000 and 5989,
+// since the cache is only validFrom the sequence 5989.  In this case, none of those backfilled values
+// will fit in the cache, which is already full, however if it did have capacity available, then those
+// values would be _prepended_ to the front of the cache and the validFrom sequence would be lowered
+// to account for the fact that it's now valid from a lower sequence value.  Entries that violated
+// the guarantees described above would possibly be discarded.
 type channelCache struct {
 	channelName      string               // The channel name, duh
 	context          *DatabaseContext     // Database connection (used for view queries)
 	logs             LogEntries           // Log entries in sequence order
-	validFrom        uint64               // First sequence that logs is valid for
+	validFrom        uint64               // First sequence that logs is valid for, not necessarily the seq number of a change entry.
 	lock             sync.RWMutex         // Controls access to logs, validFrom
 	viewLock         sync.Mutex           // Ensures only one view query is made at a time
 	lateLogs         []*lateLogEntry      // Late arriving LogEntries, stored in the order they were received
@@ -343,8 +409,17 @@ func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 
 // Prepends an array of entries to this one, skipping ones that I already have.
 // The new array needs to overlap with my current log, i.e. must contain the same sequence as
-// c.logs[0], otherwise nothing will be added because the method can't confirm that there are no
-// missing sequences in between.
+// the oldest entry in the cache (c.logs[0]), otherwise nothing will be added because the
+// method can't confirm that there are no missing sequences in between.
+//
+// changesValidFrom represents the validfrom value of the query, and should always be LTE the
+// oldest value (lowest sequence number) in the set of changes being prepended, although this is not strictly enforced.
+//
+// If all of the changes don't fit in the cache, then only the most recent (highest sequence number)
+// changes will be added, and the oldest changes (lowest sequence numbers) will be discarded.  In that case, the validFrom
+// state variable will be updated to reflect the oldest (lowest sequence number) of the change that actually made it into
+// the cache.
+//
 // Returns the number of entries actually prepended.
 func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint64, openEnded bool) int {
 	c.lock.Lock()

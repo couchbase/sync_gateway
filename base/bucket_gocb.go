@@ -26,7 +26,6 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
@@ -105,30 +104,29 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		EnableGoCBLogging()
 	}
 
-	connSpec, err := gocbconnstr.Parse(spec.Server)
+	// TODO: Push the above down into spec.GetConnString
+	connString, err := spec.GetGoCBConnString()
 	if err != nil {
+		Warnf(KeyAuth, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
 	}
 
-	// Increase the number of idle connections per-host to fix SG #3534
-	if connSpec.Options == nil {
-		connSpec.Options = map[string][]string{}
-	}
-
-	asValues := url.Values(connSpec.Options)
-	asValues.Add("http_max_idle_conns_per_host", DefaultHttpMaxIdleConnsPerHost)
-	asValues.Add("http_max_idle_conns", DefaultHttpMaxIdleConns)
-	asValues.Add("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
-
-	connSpec.Options = asValues
-
-	cluster, err := gocb.Connect(connSpec.String())
+	cluster, err := gocb.Connect(connString)
 	if err != nil {
+		Infof(KeyAuth, "gocb connect returned error: %v", err)
 		return nil, err
 	}
 
 	password := ""
-	if spec.Auth != nil {
+	// Check for client cert (x.509) authentication
+	if spec.Certpath != "" {
+		certAuthErr := cluster.Authenticate(gocb.CertificateAuthenticator{})
+		if certAuthErr != nil {
+			Infof(KeyAuth, "Error Attempting certificate authentication %s", certAuthErr)
+			return nil, pkgerrors.WithStack(certAuthErr)
+		}
+	} else if spec.Auth != nil {
+		Infof(KeyAuth, "Attempting credential authentication %s", connString)
 		user, pass, _ := spec.Auth.GetCredentials()
 		authErr := cluster.Authenticate(gocb.PasswordAuthenticator{
 			Username: user,
@@ -143,8 +141,10 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
+		Infof(KeyAll, "Error opening bucket: %v", err)
 		return nil, pkgerrors.WithStack(err)
 	}
+	Infof(KeyAll, "Successfully opened bucket")
 
 	// Set the GoCB opTimeout which controls how long blocking GoCB ops remain blocked before
 	// returning an "operation timed out" error.  Defaults to 2.5 seconds.  (SG #3508)

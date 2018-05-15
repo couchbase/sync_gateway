@@ -22,6 +22,7 @@ import urllib2
 import base64
 import mmap
 import hashlib
+import traceback
 
 
 class LogRedactor:
@@ -987,13 +988,16 @@ def do_upload_and_exit(path, url):
     request = urllib2.Request(url.encode('utf-8'),data=filedata)
     request.add_header(str('Content-Type'), str('application/zip'))
     request.get_method = lambda: str('PUT')
-    url = opener.open(request)
 
     exit_code = 0
-    if url.getcode() == 200:
-        log('Done uploading')
-    else:
-        log('Error uploading.  HTTP status code: %s' % url.getcode())
+    try:
+        url = opener.open(request)
+        if url.getcode() == 200:
+            log('Done uploading')
+        else:
+            raise Exception('Error uploading, expected status code 200, got status code: {0}'.format(url.getcode()))
+    except Exception as e:
+        log(traceback.format_exc())
         exit_code = 1
 
     filedata.close()
