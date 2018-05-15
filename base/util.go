@@ -967,6 +967,20 @@ func Crc32cHashString(input []byte) string {
 	return fmt.Sprintf("0x%x", Crc32cHash(input))
 }
 
+func SplitHostPort(hostport string) (string, string, error) {
+	host, port, err := net.SplitHostPort(hostport)
+	if err != nil {
+		return "", "", err
+	}
+
+	// If this is an IPv6 address, we need to rewrap it in []
+	if strings.Contains(host, ":") {
+		host = fmt.Sprintf("[%s]", host)
+	}
+
+	return host, port, nil
+}
+
 var kBackquoteStringRegexp *regexp.Regexp
 
 // Preprocesses a string containing `...`-delimited strings. Converts the backquotes into double-quotes,

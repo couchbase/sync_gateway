@@ -214,7 +214,7 @@ func (c *channelIndexTest) readIndexBulk() error {
 		log.Printf("Unable to convert to couchbase bucket")
 		return errors.New("Unable to convert to couchbase bucket")
 	}
-	responses, _, err := couchbaseBucket.GetBulk(keys, time.Time{})
+	responses, err := couchbaseBucket.GetBulk(keys, time.Time{}, nil)
 	if err != nil {
 		return err
 	}
@@ -372,7 +372,6 @@ func MultiChannelIndexSimpleGet(b *testing.B, numChannels int) {
 	testIndexBucket := base.GetTestIndexBucketOrPanic()
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
-
 
 	indices := seedMultiChannelData(vbCount, indexBucket, numChannels)
 	b.ResetTimer()

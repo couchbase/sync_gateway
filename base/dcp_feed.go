@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -517,6 +518,16 @@ func (r *DCPLoggingReceiver) initFeed(feedType uint64) error {
 	return r.rec.initFeed(feedType)
 }
 
+// NoPasswordAuthHandler is used for client cert-based auth
+type NoPasswordAuthHandler struct {
+	handler AuthHandler
+}
+
+func (nph NoPasswordAuthHandler) GetCredentials() (username string, password string, bucketname string) {
+	_, _, bucketname = nph.handler.GetCredentials()
+	return "", "", bucketname
+}
+
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
 func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
@@ -566,6 +577,24 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 
 	dataSourceOptions.Name = GenerateDcpStreamName("SG")
 
+	auth := spec.Auth
+
+	// If using client certificate for authentication, configure go-couchbase for cbdatasource's initial
+	// connection to retrieve cluster configuration.
+	if spec.Certpath != "" {
+		couchbase.SetCertFile(spec.Certpath)
+		couchbase.SetKeyFile(spec.Keypath)
+		couchbase.SetRootFile(spec.CACertPath)
+		couchbase.SetSkipVerify(false)
+		auth = NoPasswordAuthHandler{handler: spec.Auth}
+	}
+
+	// If using TLS, pass a custom connect method to support using TLS for cbdatasource's memcached connections
+	if spec.IsTLS() {
+		dataSourceOptions.Connect = spec.TLSConnect
+
+	}
+
 	Debugf(KeyFeed, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
 	bds, err := cbdatasource.NewBucketDataSource(
 		urls,
@@ -573,7 +602,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		bucketName,
 		"",
 		vbucketIdsArr,
-		spec.Auth,
+		auth,
 		dcpReceiver,
 		dataSourceOptions,
 	)
