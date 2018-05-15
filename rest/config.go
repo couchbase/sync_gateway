@@ -107,7 +107,7 @@ type BucketConfig struct {
 	KvTLSPort  int     `json:"kv_tls_port,omitempty"` // Memcached TLS port, if not default (11207)
 }
 
-func (bc BucketConfig) MakeBucketSpec() base.BucketSpec {
+func (bc *BucketConfig) MakeBucketSpec() base.BucketSpec {
 
 	server := "http://localhost:8091"
 	pool := "default"
@@ -136,7 +136,13 @@ func (bc BucketConfig) MakeBucketSpec() base.BucketSpec {
 		Certpath:   bc.CertPath,
 		CACertPath: bc.CACertPath,
 		KvTLSPort:  tlsPort,
+		Auth:       bc,
 	}
+}
+
+// Implementation of AuthHandler interface for BucketConfig
+func (bucketConfig *BucketConfig) GetCredentials() (username string, password string, bucketname string) {
+	return base.TransformBucketCredentials(bucketConfig.Username, bucketConfig.Password, *bucketConfig.Bucket)
 }
 
 type ClusterConfig struct {
@@ -464,16 +470,6 @@ func (dbConfig *DbConfig) UseXattrs() bool {
 		return *dbConfig.EnableXattrs
 	}
 	return base.DefaultUseXattrs
-}
-
-// Implementation of AuthHandler interface for ShadowConfig
-func (shadowConfig *ShadowConfig) GetCredentials() (string, string, string) {
-	return base.TransformBucketCredentials(shadowConfig.Username, shadowConfig.Password, *shadowConfig.Bucket)
-}
-
-// Implementation of AuthHandler interface for ChannelIndexConfig
-func (channelIndexConfig *ChannelIndexConfig) GetCredentials() (string, string, string) {
-	return base.TransformBucketCredentials(channelIndexConfig.Username, channelIndexConfig.Password, *channelIndexConfig.Bucket)
 }
 
 // Implementation of AuthHandler interface for ClusterConfig
