@@ -309,7 +309,6 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 		spec.BucketName = config.Name
 	}
 
-	spec.Auth = config
 	spec.FeedType = strings.ToLower(config.FeedType)
 
 	spec.CouchbaseDriver = base.ChooseCouchbaseDriver(base.DataBucket)
