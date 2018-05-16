@@ -34,6 +34,9 @@ const (
 
 type Level int32
 
+// DeferredLog is a log function that can be logged at a later date.
+type DeferredLog func()
+
 //By setting DebugLevel to -1, if LogLevel is not set in the logging config it
 //will default to the zero value for int32 (0) which will disable debug
 //logging, InfoLevel logging will be the default output.

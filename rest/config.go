@@ -34,6 +34,9 @@ var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
+// defaultLogFilePath is populated by
+var defaultLogFilePath string
+
 var config *ServerConfig
 
 const (
@@ -577,65 +580,87 @@ func (config *ServerConfig) setupAndValidateDatabases() error {
 	return nil
 }
 
-func (config *ServerConfig) setupAndValidateLogging(verbose bool, defaultLogFilePath string) error {
+// setupAndValidateLogging sets up and validates logging,
+// and returns a slice of defferred logs to execute later.
+func (config *ServerConfig) setupAndValidateLogging() ([]base.DeferredLog, error) {
 
 	if config.Logging == nil {
 		config.Logging = &base.LoggingConfig{}
 	}
 
 	// populate values from deprecated config options if not set
-	config.deprecatedConfigLoggingFallback(verbose)
+	deferredLogs := config.deprecatedConfigLoggingFallback()
 
 	base.SetRedaction(config.Logging.RedactionLevel)
 
-	if err := config.Logging.Init(defaultLogFilePath); err != nil {
-		return err
+	deferredLogsInit, err := config.Logging.Init(defaultLogFilePath)
+	deferredLogs = append(deferredLogs, deferredLogsInit...)
+	if err != nil {
+		if err == base.ErrUnsetLogFilePath {
+			deferredLogs = append(deferredLogs, func() { base.Errorf(base.KeyAll, "%v", err) })
+		} else {
+			return deferredLogs, err
+		}
 	}
 
 	if config.Logging.DeprecatedDefaultLog == nil {
 		config.Logging.DeprecatedDefaultLog = &base.LogAppenderConfig{}
 	}
 
-	return nil
+	return deferredLogs, nil
 }
 
 // deprecatedConfigLoggingFallback will parse the ServerConfig and try to
 // use older logging config options for backwards compatibility.
-func (config *ServerConfig) deprecatedConfigLoggingFallback(verbose bool) {
+// It will return a slice of deferred log functions to execute at a later time.
+func (config *ServerConfig) deprecatedConfigLoggingFallback() []base.DeferredLog {
+
+	deferredLogs := make([]base.DeferredLog, 0)
 
 	if config.Logging.DeprecatedDefaultLog != nil {
 		// Fall back to the old logging.["default"].LogFilePath option
 		if config.Logging.LogFilePath == "" && config.Logging.DeprecatedDefaultLog.LogFilePath != nil {
-			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogFilePath. Use logging.log_file_path instead.")
+			deferredLogs = append(deferredLogs, func() {
+				base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogFilePath. Use logging.log_file_path instead.")
+			})
 			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
 			config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
 		}
 
 		// Fall back to the old logging.["default"].LogKeys option
 		if len(config.Logging.Console.LogKeys) == 0 && len(config.Logging.DeprecatedDefaultLog.LogKeys) > 0 {
-			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogKeys. Use logging.console.log_keys instead.")
+			deferredLogs = append(deferredLogs, func() {
+				base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogKeys. Use logging.console.log_keys instead.")
+			})
 			config.Logging.Console.LogKeys = config.Logging.DeprecatedDefaultLog.LogKeys
 		}
 
 		// Fall back to the old logging.["default"].LogLevel option
 		if config.Logging.Console.LogLevel == nil && config.Logging.DeprecatedDefaultLog.LogLevel != 0 {
-			base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogLevel. Use logging.console.log_level instead.")
+			deferredLogs = append(deferredLogs, func() {
+				base.Warnf(base.KeyAll, "Using deprecated config option: logging.[\"default\"].LogLevel. Use logging.console.log_level instead.")
+			})
 			config.Logging.Console.LogLevel = base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
 		}
 	}
 
 	// Fall back to the old LogFilePath option
 	if config.Logging.LogFilePath == "" && config.DeprecatedLogFilePath != nil {
-		base.Warnf(base.KeyAll, "Using deprecated config option: logFilePath. Use logging.log_file_path instead.")
+		deferredLogs = append(deferredLogs, func() {
+			base.Warnf(base.KeyAll, "Using deprecated config option: logFilePath. Use logging.log_file_path instead.")
+		})
 		config.Logging.LogFilePath = *config.DeprecatedLogFilePath
 	}
 
 	// Fall back to the old Log option
 	if config.Logging.Console.LogKeys == nil && len(config.DeprecatedLog) > 0 {
-		base.Warnf(base.KeyAll, "Using deprecated config option: log. Use logging.console.log_keys instead.")
+		deferredLogs = append(deferredLogs, func() {
+			base.Warnf(base.KeyAll, "Using deprecated config option: log. Use logging.console.log_keys instead.")
+		})
 		config.Logging.Console.LogKeys = config.DeprecatedLog
 	}
 
+	return deferredLogs
 }
 
 func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) error {
@@ -711,7 +736,7 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	keypath := flag.String("keypath", "", "Client certificate key path")
 
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
-	defaultLogFilePath := flag.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
+	defaultLogFilePathFlag := flag.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
 	flag.Parse()
 
@@ -773,6 +798,15 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 			config.SkipRunmodeValidation = *skipRunModeValidation
 		}
 
+		if defaultLogFilePathFlag != nil {
+			defaultLogFilePath = *defaultLogFilePathFlag
+		}
+
+		// Log HTTP Responses if verbose is enabled.
+		if verbose != nil && *verbose {
+			config.Logging.Console.LogKeys = append(config.Logging.Console.LogKeys, "HTTP+")
+		}
+
 	} else {
 		// If no config file is given, create a default config, filled in from command line flags:
 		if *dbName == "" {
@@ -813,13 +847,6 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 				},
 			},
 		}
-	}
-
-	// Logging config will now have been loaded from command line
-	// or from a sync_gateway config file so we can validate the
-	// configuration and setup logging now
-	if err := config.setupAndValidateLogging(*verbose, *defaultLogFilePath); err != nil {
-		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
 	}
 }
 
@@ -892,8 +919,6 @@ func (config *ServerConfig) NumIndexWriters() int {
 // Starts and runs the server given its configuration. (This function never returns.)
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
-
-	base.Broadcastf("==== %s ====", base.LongVersionString)
 
 	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKey().EnabledLogKeys())
 	base.Infof(base.KeyAll, "Console LogLevel: %v", base.ConsoleLogLevel())
@@ -972,6 +997,24 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain(runMode SyncGatewayRunMode) {
 	ParseCommandLine(runMode)
+
+	// Logging config will now have been loaded from command line
+	// or from a sync_gateway config file so we can validate the
+	// configuration and setup logging now
+	deferredLogs, err := config.setupAndValidateLogging()
+	if err != nil {
+		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
+	}
+
+	// This is the earliest opportunity to print a startup indicator
+	// that will be persisted in log files
+	base.Broadcastf("==== %s ====", base.LongVersionString)
+
+	// Execute any deferred logs from setup.
+	for _, logFn := range deferredLogs {
+		logFn()
+	}
+
 	ValidateConfigOrPanic(runMode)
 	RunServer(config)
 }

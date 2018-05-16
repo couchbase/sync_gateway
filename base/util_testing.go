@@ -544,7 +544,7 @@ func EnableTestLogKey(logKey string) {
 	if strings.HasSuffix(logKey, "+") {
 		ConsoleLogLevel().Set(LevelDebug)
 	}
-	newLogKey := ToLogKey([]string{logKey})
+	newLogKey, _ := ToLogKey([]string{logKey})
 	ConsoleLogKey().Enable(newLogKey)
 }
 
