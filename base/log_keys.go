@@ -157,17 +157,23 @@ func ToLogKey(keysStr []string) (LogKey, []DeferredLog) {
 		// Strip a single "+" suffix in log keys and warn (for backwards compatibility)
 		if strings.HasSuffix(name, "+") {
 			newName := strings.TrimSuffix(name, "+")
+
+			// Need to take a copy of name, as the loop will mutate the value
+			nameCpy := name
 			deferredLogs = append(deferredLogs, func() {
-				Warnf(KeyAll, "Deprecated log key: %q found. Changing to: %q.", name, newName)
+				Warnf(KeyAll, "Deprecated log key: %q found. Changing to: %q.", nameCpy, newName)
 			})
+
 			name = newName
 		}
 
 		if logKey, ok := logKeyNamesInverse[name]; ok {
 			logKeys.Enable(logKey)
 		} else {
+			// Need to take a copy of name, as the loop will mutate the value
+			nameCpy := name
 			deferredLogs = append(deferredLogs, func() {
-				Warnf(KeyAll, "Invalid log key: %v", name)
+				Warnf(KeyAll, "Invalid log key: %v", nameCpy)
 			})
 		}
 	}
