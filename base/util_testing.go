@@ -536,15 +536,10 @@ func NumOpenBuckets(bucketName string) int32 {
 // EnableTestLogKey will enable the given log key, if it exists,
 // and also enable debug level logging, if a + log key is provided.
 func EnableTestLogKey(logKey string) {
-	if strings.HasSuffix(logKey, "+") {
-		ConsoleLogLevel().Set(LevelDebug)
-	}
 	newLogKey := ToLogKey([]string{logKey})
 	ConsoleLogKey().Enable(newLogKey)
 }
 
 // ResetTestLogging return logging back to a standard state (Info level and HTTP log key)
 func ResetTestLogging() {
-	ConsoleLogLevel().Set(LevelInfo)
-	ConsoleLogKey().Set(KeyHTTP)
 }
