@@ -3,7 +3,6 @@ package rest
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -134,7 +134,12 @@ func (c *sgCollectOptions) Validate() error {
 	// This does not check for write permission, however sgcollect_info
 	// will fail with an error giving that reason, if this is the case.
 	if c.OutputDirectory != "" {
+		// Clean the given path first, for cross-platform paths.
+		c.OutputDirectory = filepath.Clean(c.OutputDirectory)
 		if fileInfo, err := os.Stat(c.OutputDirectory); err != nil {
+			if os.IsNotExist(err) {
+				return errors.Wrap(err, "no such file or directory")
+			}
 			return err
 		} else if !fileInfo.IsDir() {
 			return errors.New("not a directory")
