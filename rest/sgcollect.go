@@ -134,6 +134,8 @@ func (c *sgCollectOptions) Validate() error {
 	// This does not check for write permission, however sgcollect_info
 	// will fail with an error giving that reason, if this is the case.
 	if c.OutputDirectory != "" {
+		// Clean the given path first, for cross-platform paths.
+		c.OutputDirectory = filepath.Clean(c.OutputDirectory)
 		if fileInfo, err := os.Stat(c.OutputDirectory); err != nil {
 			return err
 		} else if !fileInfo.IsDir() {
