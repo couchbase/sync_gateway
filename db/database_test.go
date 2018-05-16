@@ -1417,7 +1417,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 func TestChannelView(t *testing.T) {
 
 	base.EnableTestLogKey("*")
-	base.ConsoleLogLevel().Set(base.LevelTrace)
+	base.ConsoleLogLevel().Set(base.LevelDebug)
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
@@ -1446,7 +1446,7 @@ func TestChannelView(t *testing.T) {
 	}
 
 	for i, entry := range entries {
-		log.Printf("View Query returned entry (%d): %v", i, entry)
+		log.Printf("getChangesInChannelFromQuery returned entry (%d): %v", i, entry)
 	}
 	assert.Equals(t, len(entries), 1)
 
