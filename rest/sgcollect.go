@@ -137,6 +137,9 @@ func (c *sgCollectOptions) Validate() error {
 		// Clean the given path first, for cross-platform paths.
 		c.OutputDirectory = filepath.Clean(c.OutputDirectory)
 		if fileInfo, err := os.Stat(c.OutputDirectory); err != nil {
+			if os.IsNotExist(err) {
+				return errors.New("no such file or directory")
+			}
 			return err
 		} else if !fileInfo.IsDir() {
 			return errors.New("not a directory")
