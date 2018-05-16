@@ -34,7 +34,7 @@ var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
 var DefaultServer = "walrus:"
 var DefaultPool = "default"
 
-// defaultLogFilePath is populated by
+// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 var defaultLogFilePath string
 
 var config *ServerConfig
