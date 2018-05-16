@@ -3,7 +3,6 @@ package rest
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -138,7 +138,7 @@ func (c *sgCollectOptions) Validate() error {
 		c.OutputDirectory = filepath.Clean(c.OutputDirectory)
 		if fileInfo, err := os.Stat(c.OutputDirectory); err != nil {
 			if os.IsNotExist(err) {
-				return errors.New("no such file or directory")
+				return errors.Wrap(err, "no such file or directory")
 			}
 			return err
 		} else if !fileInfo.IsDir() {
