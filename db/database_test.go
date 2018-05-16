@@ -1415,6 +1415,10 @@ func TestRecentSequenceHistory(t *testing.T) {
 }
 
 func TestChannelView(t *testing.T) {
+
+	base.EnableTestLogKey("*")
+	base.ConsoleLogLevel().Set(base.LevelTrace)
+
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)

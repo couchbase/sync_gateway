@@ -1213,12 +1213,10 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Access":  true,
-		"Access+": true,
-	}
+	base.EnableTestLogKey("Access+")
+	base.EnableTestLogKey("Query")
+	base.ConsoleLogLevel().Set(base.LevelTrace)
 
-	base.UpdateLogKeys(logKeys, true)
 
 	rt := RestTester{SyncFn: `
 		function(doc) {
@@ -2670,6 +2668,9 @@ func TestRoleAccessChanges(t *testing.T) {
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
+
+	base.EnableTestLogKey("Query")
+	base.ConsoleLogLevel().Set(base.LevelTrace)
 
 	type allDocsRow struct {
 		ID    string `json:"id"`
