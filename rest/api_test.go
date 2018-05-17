@@ -2669,8 +2669,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
-	base.EnableTestLogKey("Query")
-	base.ConsoleLogLevel().Set(base.LevelTrace)
+	base.EnableTestLogKey("*")
 
 	type allDocsRow struct {
 		ID    string `json:"id"`
@@ -2693,6 +2692,10 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
+	
+	// Must be _after_ test bucket is setup, due to SG #3579
+	base.ConsoleLogLevel().Set(base.LevelDebug)
+
 	guest, err := a.GetUser("")
 	assert.Equals(t, err, nil)
 	guest.SetDisabled(false)
