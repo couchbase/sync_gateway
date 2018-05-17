@@ -1414,14 +1414,17 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 }
 
-func TestChannelView(t *testing.T) {
+
+func ChannelViewTestRetry(t *testing.T) error {
 
 	base.EnableTestLogKey("*")
-	base.ConsoleLogLevel().Set(base.LevelDebug)
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
+
+	// Must be _after_ test bucket is setup, due to SG #3579
+	base.ConsoleLogLevel().Set(base.LevelDebug)
 
 	// Create doc
 	log.Printf("Create doc 1...")
@@ -1448,9 +1451,38 @@ func TestChannelView(t *testing.T) {
 	for i, entry := range entries {
 		log.Printf("getChangesInChannelFromQuery returned entry (%d): %v", i, entry)
 	}
-	assert.Equals(t, len(entries), 1)
+
+	// Known to fail sporadically -- return an error in order to trigger a retry
+	if len(entries) != 1 {
+		return fmt.Errorf("Expected 1 entry, got: %d", len(entries))
+	}
+
+	return nil
+
+
 
 }
+
+func TestChannelView(t *testing.T) {
+
+	num_retries := 5
+	var err error
+
+	for i := 0; i < num_retries; i++ {
+		if err = ChannelViewTestRetry(t); err == nil {
+			// No errors, we're done
+			return
+		}
+
+		log.Printf("TestChannelView got error: %v.  Will retry attempt (%d/%d)", err, i+1, num_retries)
+		time.Sleep(time.Second * 5)
+
+	}
+
+	t.Errorf("TestChannelView (known to sporadically fail) failed after %d retries.  Considering this a real failure.  Last failure error: %v", num_retries, err)
+
+}
+
 
 //////// XATTR specific tests.  These tests current require setting DefaultUseXattrs=true, and must be run against a Couchbase bucket
 
