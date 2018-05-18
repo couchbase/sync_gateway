@@ -471,7 +471,6 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 					entriesToPrepend := make(LogEntries, 0, cacheCapacity)
 					for changeIndex := i; changeIndex >= 0; changeIndex-- {
 						change := changes[changeIndex]
-						changesValidFrom = change.Sequence
 
 						// If docid is already in cache, existing revision must be for a later sequence; can ignore this revision.
 						if _, docIdExists := c.cachedDocIDs[change.DocID]; docIdExists {
@@ -483,6 +482,9 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 						c.cachedDocIDs[change.DocID] = struct{}{}
 
 						if len(entriesToPrepend) >= cacheCapacity {
+							// If we reach capacity before prepending the entire set of changes, set changesValidFrom to the oldest sequence
+							// that's been prepended to the cache
+							changesValidFrom = change.Sequence
 							break
 						}
 					}
