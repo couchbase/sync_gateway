@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
+	"time"
 )
 
 func TestDesignDocs(t *testing.T) {
@@ -125,7 +126,7 @@ func TestViewQueryMultipleViews(t *testing.T) {
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
 }
 
-func TestViewQueryUserAccess(t *testing.T) {
+func ViewQueryUserAccessTestRetry(t *testing.T) error {
 	var rt RestTester
 	defer rt.Close()
 
@@ -140,12 +141,17 @@ func TestViewQueryUserAccess(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
-	assertNoError(t, err, "Unexpected error")
+	if err != nil {
+		return err
+	}
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
+	if err != nil {
+		return err
+	}
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
@@ -157,6 +163,9 @@ func TestViewQueryUserAccess(t *testing.T) {
 	a.Save(testUser)
 
 	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
+	if err != nil {
+		return err
+	}
 	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
@@ -168,6 +177,29 @@ func TestViewQueryUserAccess(t *testing.T) {
 	request.SetBasicAuth(testUser.Name(), password)
 	userResponse := rt.Send(request)
 	assertStatus(t, userResponse, 403)
+
+	return nil
+
+}
+
+func TestViewQueryUserAccess(t *testing.T) {
+
+	num_retries := 5
+	var err error
+
+	for i := 0; i < num_retries; i++ {
+		if err = ViewQueryUserAccessTestRetry(t); err == nil {
+			// No errors, we're done
+			return
+		}
+
+		base.Infof(base.KeyAll, "TestChannelView got error: %v.  Will retry attempt (%d/%d)", err, i+1, num_retries)
+		time.Sleep(time.Second * 5)
+
+	}
+
+	t.Errorf("TestChannelView (known to sporadically fail) failed after %d retries.  Considering this a real failure.  Last failure error: %v", num_retries, err)
+
 }
 
 func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
