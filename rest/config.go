@@ -27,6 +27,7 @@ import (
 
 	// Register profiling handlers (see Go docs)
 	_ "net/http/pprof"
+	"math/rand"
 )
 
 var DefaultInterface = ":4984"
@@ -260,10 +261,37 @@ type SequenceHashConfig struct {
 
 type UnsupportedServerConfig struct {
 	Http2Config *Http2Config `json:"http2,omitempty"` // Config settings for HTTP2
+	FailureInjection FailureInjection         `json:"failure_injection,omitempty"` // Config settings for artificial failure injection
+
+}
+
+func (f *FailureInjection) ServiceUnavailable() bool {
+
+	if f.Probability503ServiceUnavailable == nil {
+		return false
+	}
+
+	probability503ServiceUnavailable := *f.Probability503ServiceUnavailable
+
+	probability503ServiceUnavailable *= 100
+
+	randNumber := rand.Intn(100)
+
+	return float32(randNumber) <= probability503ServiceUnavailable
+
+
 }
 
 type Http2Config struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether HTTP2 support is enabled
+}
+
+// Ability to inject artificial failures into Sync Gateway for the purposes of client integration testing
+type FailureInjection struct {
+
+	// The probability between 0 and 1.0 of REST and BLIP endpoints returning 503 Service Unavailable temporary error
+	Probability503ServiceUnavailable *float32 `json:"probability_503_service_unavailable"`
+
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
