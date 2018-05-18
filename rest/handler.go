@@ -97,9 +97,12 @@ func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod
 		runOffline := false
 		h := newHandler(server, privs, r, rq, runOffline)
 
-		if server.config.Unsupported != nil && server.config.Unsupported.FailureInjection.ServiceUnavailable() {
-			h.writeStatus(http.StatusServiceUnavailable, "ServiceUnavailable (Artificially injected error)")
-			return
+		// Possibly inject artificial failures
+		if privs == regularPrivs {
+			if server.config.Unsupported != nil && server.config.Unsupported.FailureInjection.ServiceUnavailable() {
+				h.writeStatus(http.StatusServiceUnavailable, "ServiceUnavailable (Artificially injected error)")
+				return
+			}
 		}
 
 		err := h.invoke(method)

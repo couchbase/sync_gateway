@@ -271,12 +271,14 @@ func (f *FailureInjection) ServiceUnavailable() bool {
 		return false
 	}
 
+	// Multiply the input probability (eg, 0.49) * 100 to get a number between 0 and 100
 	probability503ServiceUnavailable := *f.Probability503ServiceUnavailable
-
 	probability503ServiceUnavailable *= 100
 
+	// Generate a random number between 0 and 100
 	randNumber := rand.Intn(100)
 
+	// If the randomly generated number is LTE the setting, return true to cause a failure
 	return float32(randNumber) <= probability503ServiceUnavailable
 
 
