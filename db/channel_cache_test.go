@@ -222,12 +222,12 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended := cache.prependChanges(changesToPrepend, 10, true)
+	numPrepended := cache.prependChanges(changesToPrepend, 5, true)
 	assert.Equals(t, numPrepended, 3)
 
 	// Validate cache
 	validFrom, cachedChanges := cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(10))
+	assert.Equals(t, validFrom, uint64(5))
 	assert.Equals(t, len(cachedChanges), 3)
 
 	// 2. Test prepend to populated cache, with overlap and duplicates
@@ -244,12 +244,12 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(changesToPrepend, 10, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
 	assert.Equals(t, numPrepended, 2)
 
 	// Validate cache
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(10))
+	assert.Equals(t, validFrom, uint64(5))
 	assert.Equals(t, len(cachedChanges), 4)
 	if len(cachedChanges) == 4 {
 		assert.Equals(t, cachedChanges[0].DocID, "doc3")
@@ -265,7 +265,7 @@ func TestPrependChanges(t *testing.T) {
 	// Write a new revision for a prepended doc to the cache, validate that old entry is removed
 	cache.addToCache(e(24, "doc3", "3-a"), false)
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(10))
+	assert.Equals(t, validFrom, uint64(5))
 	assert.Equals(t, len(cachedChanges), 4)
 	if len(cachedChanges) == 4 {
 		assert.Equals(t, cachedChanges[0].DocID, "doc5")
@@ -301,7 +301,7 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(changesToPrepend, 10, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
 	assert.Equals(t, numPrepended, 1)
 
 	// Validate cache
@@ -335,10 +335,10 @@ func TestPrependChanges(t *testing.T) {
 		e(12, "doc4", "2-a"),
 		e(14, "doc1", "2-a"),
 	}
-	numPrepended = cache.prependChanges(changesToPrepend, 10, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
 	assert.Equals(t, numPrepended, 0)
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(8))
+	assert.Equals(t, validFrom, uint64(5))
 	assert.Equals(t, len(cachedChanges), 4)
 	if len(cachedChanges) == 5 {
 		assert.Equals(t, cachedChanges[0].DocID, "doc1")
@@ -369,7 +369,7 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(changesToPrepend, 10, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 6, true)
 	assert.Equals(t, numPrepended, 0)
 
 	// Validate cache
