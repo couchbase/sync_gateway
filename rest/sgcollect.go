@@ -155,8 +155,18 @@ func (c *sgCollectOptions) Validate() error {
 		if c.UploadHost == "" {
 			c.UploadHost = defaultSGUploadHost
 		}
-	} else if c.UploadHost != "" {
-		return errors.New("upload must be set to true if an upload_host is specified")
+	} else {
+		// These fields suggest the user actually wanted to upload,
+		// so we'll enforce "upload: true" if any of these are set.
+		if c.UploadHost != "" {
+			return errors.New("upload must be set to true if upload_host is specified")
+		}
+		if c.Customer != "" {
+			return errors.New("upload must be set to true if customer is specified")
+		}
+		if c.Ticket != "" {
+			return errors.New("upload must be set to true if ticket is specified")
+		}
 	}
 
 	return nil
