@@ -143,7 +143,7 @@ func (c *sgCollectOptions) Validate() error {
 			return err
 		} else if !fileInfo.IsDir() {
 			return errors.New("not a directory")
-		} else if writable := fileInfo.Mode().Perm()&100100100 != 0; !writable {
+		} else if writable := fileInfo.Mode().Perm()&100100100 != 0; writable {
 			return errors.New("directory not writable")
 		}
 	}
