@@ -101,10 +101,12 @@ func testBucket() base.TestBucket {
 	}
 
 	// Since GetTestBucketOrPanic() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
-	gocbBucket, _ := base.AsGoCBBucket(testBucket.Bucket)
-	waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec)
-	if waitForIndexRollbackErr != nil {
-		log.Fatalf("Error waiting for GSI indexes to rollback:%v", err)
+	gocbBucket, isGoCbBucket := base.AsGoCBBucket(testBucket.Bucket)
+	if isGoCbBucket {
+		waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec)
+		if waitForIndexRollbackErr != nil {
+			log.Fatalf("Error waiting for GSI indexes to rollback:%v", err)
+		}
 	}
 
 
