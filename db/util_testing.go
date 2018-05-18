@@ -8,6 +8,7 @@ import (
 )
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
+// Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
 func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, bucketSpec base.BucketSpec) error {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {

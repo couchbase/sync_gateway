@@ -100,6 +100,7 @@ func testBucket() base.TestBucket {
 		log.Fatalf("Unable to initialize GSI indexes for test:%v", err)
 	}
 
+	// Since GetTestBucketOrPanic() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
 	gocbBucket, _ := base.AsGoCBBucket(testBucket.Bucket)
 	waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec)
 	if waitForIndexRollbackErr != nil {

@@ -111,11 +111,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 		rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
-		// Wait for index to be empty (if this is a gocb bucket)
-		asGoCbBucket, isGoCbBucket := base.AsGoCBBucket(rt.RestTesterBucket)
-		if isGoCbBucket {
-			if err := db.WaitForIndexEmpty(asGoCbBucket, spec); err != nil {
-				panic(fmt.Sprintf("Error waiting for index to be empty: %v", err))
+		// As long as bucket flushing wasn't disabled, wait for index to be empty (if this is a gocb bucket)
+		if !rt.NoFlush {
+			asGoCbBucket, isGoCbBucket := base.AsGoCBBucket(rt.RestTesterBucket)
+			if isGoCbBucket {
+				if err := db.WaitForIndexEmpty(asGoCbBucket, spec); err != nil {
+					panic(fmt.Sprintf("Error waiting for index to be empty: %v", err))
+				}
 			}
 		}
 

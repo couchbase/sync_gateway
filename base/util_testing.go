@@ -354,7 +354,7 @@ func (tbm *TestBucketManager) FlushBucket() error {
 	// Ignore sporadic errors like:
 	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
 
-	log.Printf("Flushing bucket %s", tbm.Bucket.Name())
+	Infof(KeyAll, "Flushing bucket %s", tbm.Bucket.Name())
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = tbm.Bucket.Flush()
