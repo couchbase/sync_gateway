@@ -31,6 +31,11 @@ func TestInitializeIndexes(t *testing.T) {
 	validateErr := validateAllIndexesOnline(testBucket)
 	assertNoError(t, validateErr, "Error validating indexes online")
 
+	gocbBucket, _ := base.AsGoCBBucket(testBucket.Bucket)
+	waitForIndexRollbackErr := WaitForIndexRollback(gocbBucket, db.BucketSpec)
+	assertNoError(t, waitForIndexRollbackErr, "Error waiting for index rollback to possibly complete")
+
+
 }
 
 // Reset bucket state

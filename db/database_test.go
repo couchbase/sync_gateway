@@ -99,6 +99,14 @@ func testBucket() base.TestBucket {
 	if err != nil {
 		log.Fatalf("Unable to initialize GSI indexes for test:%v", err)
 	}
+
+	gocbBucket, _ := base.AsGoCBBucket(testBucket.Bucket)
+	waitForIndexRollbackErr := WaitForIndexRollback(gocbBucket, testBucket.BucketSpec)
+	if waitForIndexRollbackErr != nil {
+		log.Fatalf("Error waiting for GSI indexes to rollback:%v", err)
+	}
+
+
 	return testBucket
 }
 
@@ -1415,6 +1423,9 @@ func TestRecentSequenceHistory(t *testing.T) {
 }
 
 func TestChannelView(t *testing.T) {
+
+	// base.TestBucketPostFlushCallbackFn = WaitForIndexRollback
+
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)

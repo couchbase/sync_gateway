@@ -30,6 +30,7 @@ func init() {
 
 type TestBucket struct {
 	Bucket
+	BucketSpec BucketSpec
 }
 
 func (tb TestBucket) Close() {
@@ -137,7 +138,10 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 		panic(fmt.Sprintf("Could not open bucket: %v", err))
 	}
 
-	return TestBucket{Bucket: bucket}
+	return TestBucket{
+		Bucket:     bucket,
+		BucketSpec: spec,
+	}
 
 }
 
@@ -217,6 +221,9 @@ type TestAuthenticator struct {
 func (t TestAuthenticator) GetCredentials() (username, password, bucketname string) {
 	return t.Username, t.Password, t.BucketName
 }
+
+// Callback function that is called after the test bucket is flushed.
+// var TestBucketPostFlushCallbackFn func(bucket *CouchbaseBucketGoCB, bucketSpec BucketSpec) error
 
 type TestBucketManager struct {
 	AdministratorUsername string
@@ -404,6 +411,15 @@ func (tbm *TestBucketManager) RecreateOrEmptyBucket() error {
 	if err := tbm.FlushBucket(); err != nil {
 		return err
 	}
+
+	// If the TestBucketPostFlushCallbackFn is defined, call it back after flushing the bucket
+	// to give it a chance to do any post-flush operations, such as waiting for the GSI indexes
+	// to fully process the flush.
+	//if TestBucketPostFlushCallbackFn != nil {
+	//	if err := TestBucketPostFlushCallbackFn(tbm.Bucket, tbm.BucketSpec); err != nil {
+	//		return err
+	//	}
+	//}
 
 	return nil
 }
