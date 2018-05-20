@@ -139,8 +139,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.SetAdminParty(true)
 		}
 
+		return rt.RestTesterBucket
 	}
-	return rt.RestTesterBucket
+
 }
 
 func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {

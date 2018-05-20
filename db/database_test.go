@@ -111,7 +111,7 @@ func testBucket() base.TestBucket {
 			if waitForIndexRollbackErr != nil {
 				base.Infof(base.KeyAll, "Error WaitForIndexEmpty: %v.  Drop indexes and retry", waitForIndexRollbackErr)
 				if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
-					log.Fatalf("Unable to initialize GSI indexes for test: %v", err)
+					log.Fatalf("Unable to drop GSI indexes for test: %v", err)
 					// ^^ effectively panics
 				}
 				continue  // Goes to top of outer for loop to retry
