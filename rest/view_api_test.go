@@ -137,7 +137,7 @@ func TestViewQueryMultipleViews(t *testing.T) {
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
 }
 
-func ViewQueryUserAccessTestRetry(t *testing.T) error {
+func TestViewQueryUserAccess(t *testing.T) {
 
 	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
 	// to use views, since otherwise will default to GSI
@@ -146,8 +146,7 @@ func ViewQueryUserAccessTestRetry(t *testing.T) error {
 	}
 	rt := RestTester{DatabaseConfig: dbConfig}
 	defer rt.Close()
-
-
+	
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map":"function (doc, meta) { if (doc.type != 'type1') { return; } if (doc.state == 'state1' || doc.state == 'state2' || doc.state == 'state3') { emit(doc.state, meta.id); }}"}}}`)
 	assertStatus(t, response, 201)
@@ -159,17 +158,14 @@ func ViewQueryUserAccessTestRetry(t *testing.T) error {
 	assertStatus(t, response, 201)
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
-	if err != nil {
-		return err
-	}
+	assertNoError(t, err, "Unexpected error in WaitForNAdminViewResults")
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
-	if err != nil {
-		return err
-	}
+	assertNoError(t, err, "Unexpected error in WaitForNAdminViewResults")
+
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
@@ -181,10 +177,8 @@ func ViewQueryUserAccessTestRetry(t *testing.T) error {
 	a.Save(testUser)
 
 	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
-	if err != nil {
-		return err
-	}
-	assertNoError(t, err, "Unexpected error")
+	assertNoError(t, err, "Unexpected error in WaitForNUserViewResults")
+
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
@@ -195,28 +189,6 @@ func ViewQueryUserAccessTestRetry(t *testing.T) error {
 	request.SetBasicAuth(testUser.Name(), password)
 	userResponse := rt.Send(request)
 	assertStatus(t, userResponse, 403)
-
-	return nil
-
-}
-
-func TestViewQueryUserAccess(t *testing.T) {
-
-	num_retries := 5
-	var err error
-
-	for i := 0; i < num_retries; i++ {
-		if err = ViewQueryUserAccessTestRetry(t); err == nil {
-			// No errors, we're done
-			return
-		}
-
-		base.Infof(base.KeyAll, "TestChannelView got error: %v.  Will retry attempt (%d/%d)", err, i+1, num_retries)
-		time.Sleep(time.Second * 5)
-
-	}
-
-	t.Errorf("TestChannelView (known to sporadically fail) failed after %d retries.  Considering this a real failure.  Last failure error: %v", num_retries, err)
 
 }
 
