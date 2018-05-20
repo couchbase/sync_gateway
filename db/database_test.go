@@ -119,12 +119,11 @@ func testBucket() base.TestBucket {
 
 		}
 
+		return testBucket
+
 	}
 
 
-
-
-	return testBucket
 }
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
