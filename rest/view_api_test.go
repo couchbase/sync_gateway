@@ -59,7 +59,12 @@ func TestDesignDocs(t *testing.T) {
 
 func TestViewQuery(t *testing.T) {
 
-	var rt RestTester
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{DatabaseConfig: dbConfig}
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
@@ -98,7 +103,13 @@ func TestViewQuery(t *testing.T) {
 
 //Tests #1109, where design doc contains multiple views
 func TestViewQueryMultipleViews(t *testing.T) {
-	var rt RestTester
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{DatabaseConfig: dbConfig}
+
 	defer rt.Close()
 
 	//Define three views
@@ -127,8 +138,15 @@ func TestViewQueryMultipleViews(t *testing.T) {
 }
 
 func ViewQueryUserAccessTestRetry(t *testing.T) error {
-	var rt RestTester
+
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{DatabaseConfig: dbConfig}
 	defer rt.Close()
+
 
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map":"function (doc, meta) { if (doc.type != 'type1') { return; } if (doc.state == 'state1' || doc.state == 'state2' || doc.state == 'state3') { emit(doc.state, meta.id); }}"}}}`)
@@ -242,7 +260,13 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 }
 
 func TestUserViewQuery(t *testing.T) {
-	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: dbConfig}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -309,7 +333,12 @@ func TestUserViewQuery(t *testing.T) {
 // This includes a fix for #857
 func TestAdminReduceViewQuery(t *testing.T) {
 
-	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: dbConfig}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -354,7 +383,12 @@ func TestAdminReduceViewQuery(t *testing.T) {
 
 func TestAdminReduceSumQuery(t *testing.T) {
 
-	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: dbConfig}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -385,7 +419,12 @@ func TestAdminReduceSumQuery(t *testing.T) {
 
 func TestAdminGroupReduceSumQuery(t *testing.T) {
 
-	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: dbConfig}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -421,7 +460,12 @@ func TestViewQueryWithKeys(t *testing.T) {
 		t.Skip("Walrus does not support the 'keys' view parameter")
 	}
 
-	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: dbConfig}
 	defer rt.Close()
 
 	// Create a view
@@ -458,7 +502,12 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 		t.Skip("Walrus does not support the 'keys' view parameter")
 	}
 
-	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: dbConfig}
 	defer rt.Close()
 
 	// Create a view
@@ -494,7 +543,12 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 		t.Skip("Walrus does not support the 'keys' view parameter")
 	}
 
-	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: dbConfig}
 	defer rt.Close()
 
 	// Create a view
@@ -527,7 +581,12 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 
-	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: dbConfig}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -557,7 +616,13 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 }
 
 func TestPostInstallCleanup(t *testing.T) {
-	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
+
+	// Since this test uses views (and assumes no GSI indexes), then must explicitly tell the RestTester
+	// to use views, since otherwise will default to GSI
+	dbConfig := &DbConfig{
+		UseViews: true,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: dbConfig}
 	defer rt.Close()
 
 	bucket := rt.Bucket()
