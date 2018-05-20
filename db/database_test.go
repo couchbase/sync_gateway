@@ -89,25 +89,39 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 
 func testBucket() base.TestBucket {
 
-	testBucket := base.GetTestBucketOrPanic()
-	err := installViews(testBucket.Bucket)
-	if err != nil {
-		log.Fatalf("Couldn't connect to bucket: %v", err)
-	}
+	for {
 
-	err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0)
-	if err != nil {
-		log.Fatalf("Unable to initialize GSI indexes for test: %v", err)
-	}
-
-	// Since GetTestBucketOrPanic() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
-	gocbBucket, isGoCbBucket := base.AsGoCBBucket(testBucket.Bucket)
-	if isGoCbBucket {
-		waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec)
-		if waitForIndexRollbackErr != nil {
-			log.Fatalf("Error waiting for GSI indexes to rollback: %v", waitForIndexRollbackErr)
+		testBucket := base.GetTestBucketOrPanic()
+		err := installViews(testBucket.Bucket)
+		if err != nil {
+			log.Fatalf("Couldn't connect to bucket: %v", err)
+			// ^^ effectively panics
 		}
+
+		err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0)
+		if err != nil {
+			log.Fatalf("Unable to initialize GSI indexes for test: %v", err)
+			// ^^ effectively panics
+		}
+
+		// Since GetTestBucketOrPanic() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
+		gocbBucket, isGoCbBucket := base.AsGoCBBucket(testBucket.Bucket)
+		if isGoCbBucket {
+			waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec)
+			if waitForIndexRollbackErr != nil {
+				base.Infof(base.KeyAll, "Error WaitForIndexEmpty: %v.  Drop indexes and retry", waitForIndexRollbackErr)
+				if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
+					log.Fatalf("Unable to initialize GSI indexes for test: %v", err)
+					// ^^ effectively panics
+				}
+				continue  // Goes to top of outer for loop to retry
+			}
+
+		}
+
 	}
+
+
 
 
 	return testBucket

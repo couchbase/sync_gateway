@@ -46,7 +46,12 @@ type RestTester struct {
 
 func (rt *RestTester) Bucket() base.Bucket {
 
-	if rt.RestTesterBucket == nil {
+	if rt.RestTesterBucket != nil {
+		return rt.RestTesterBucket
+	}
+
+	// Put this in a loop in case certain operations fail, like waiting for GSI indexes to be empty
+	for {
 
 		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
 		if !rt.NoFlush {
@@ -109,8 +114,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.AllowConflicts = &boolVal
 		}
 
-
-
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 		if err != nil {
 			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
@@ -122,7 +125,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 			asGoCbBucket, isGoCbBucket := base.AsGoCBBucket(rt.RestTesterBucket)
 			if isGoCbBucket {
 				if err := db.WaitForIndexEmpty(asGoCbBucket, spec); err != nil {
-					panic(fmt.Sprintf("Error waiting for index to be empty: %v", err))
+					base.Infof(base.KeyAll, "WaitForIndexEmpty returned an error: %v.  Dropping indexes and retrying", err)
+					// if WaitForIndexEmpty returns error, drop the indexes and retry
+					if err := base.DropAllBucketIndexes(asGoCbBucket); err != nil {
+						panic(fmt.Sprintf("Failed to drop bucket indexes: %v", err))
+					}
+					continue
 				}
 			}
 		}

@@ -20,7 +20,6 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
-	"time"
 )
 
 func TestDesignDocs(t *testing.T) {
@@ -146,7 +145,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	}
 	rt := RestTester{DatabaseConfig: dbConfig}
 	defer rt.Close()
-	
+
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map":"function (doc, meta) { if (doc.type != 'type1') { return; } if (doc.state == 'state1' || doc.state == 'state2' || doc.state == 'state3') { emit(doc.state, meta.id); }}"}}}`)
 	assertStatus(t, response, 201)
