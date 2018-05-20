@@ -50,7 +50,7 @@ func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, bucketSpec base.BucketS
 	err, _ := base.RetryLoop(
 		"Wait for index to be empty",
 		retryWorker,
-		base.CreateMaxDoublingSleeperFunc(30, 100, 2000),
+		base.CreateMaxDoublingSleeperFunc(100, 100, 2000),
 	)
 	return err
 
