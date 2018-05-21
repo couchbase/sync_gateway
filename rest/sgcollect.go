@@ -30,7 +30,8 @@ const (
 	sgStopped uint32 = iota
 	sgRunning
 
-	defaultSGUploadHost = "https://s3.amazonaws.com/cb-customers"
+	defaultSGUploadHost    = "https://s3.amazonaws.com/cb-customers"
+	defaultOutputDirectory = "" // TODO
 )
 
 type sgCollect struct {
@@ -49,7 +50,8 @@ func (sg *sgCollect) Start(zipPath string, args ...string) error {
 		return err
 	}
 
-	args = append(args, "--sync-gateway-executable", sgPath, zipPath)
+	args = append(args, "--sync-gateway-executable", sgPath)
+	args = append(args, zipPath)
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	sg.cancel = cancelFunc
@@ -130,22 +132,25 @@ type sgCollectOptions struct {
 
 // Validate ensures the options are OK to use in sgcollect_info.
 func (c *sgCollectOptions) Validate() error {
+
+	// Fall back to a default output directory, if one is not specified.
+	if c.OutputDirectory == "" {
+		c.OutputDirectory = defaultOutputDirectory
+	}
+
+	// Clean the given path first, for cross-platform paths.
+	c.OutputDirectory = filepath.Clean(c.OutputDirectory)
+
 	// Validate given output directory exists, and is a directory.
 	// This does not check for write permission, however sgcollect_info
 	// will fail with an error giving that reason, if this is the case.
-	if c.OutputDirectory != "" {
-		// Clean the given path first, for cross-platform paths.
-		c.OutputDirectory = filepath.Clean(c.OutputDirectory)
-		if fileInfo, err := os.Stat(c.OutputDirectory); err != nil {
-			if os.IsNotExist(err) {
-				return errors.Wrap(err, "no such file or directory")
-			}
-			return err
-		} else if !fileInfo.IsDir() {
-			return errors.New("not a directory")
-		} else if writable := fileInfo.Mode().Perm()&100100100 != 0; writable {
-			return errors.New("directory not writable")
+	if fileInfo, err := os.Stat(c.OutputDirectory); err != nil {
+		if os.IsNotExist(err) {
+			return errors.Wrap(err, "no such file or directory")
 		}
+		return err
+	} else if !fileInfo.IsDir() {
+		return errors.New("not a directory")
 	}
 
 	if c.Upload {
