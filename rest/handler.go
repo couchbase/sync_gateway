@@ -96,7 +96,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod
 		h := newHandler(server, privs, r, rq, runOffline)
 		err := h.invoke(method)
 		h.writeError(err)
-		h.logDuration(true)
+		h.logDuration(true, err)
 	})
 }
 
@@ -107,7 +107,7 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, method handle
 		h := newHandler(server, privs, r, rq, runOffline)
 		err := h.invoke(method)
 		h.writeError(err)
-		h.logDuration(true)
+		h.logDuration(true, err)
 	})
 }
 
@@ -258,7 +258,7 @@ func (h *handler) logRequestBody() {
 
 }
 
-func (h *handler) logDuration(realTime bool) {
+func (h *handler) logDuration(realTime bool, err error) {
 	if h.loggedDuration {
 		return
 	}
@@ -276,6 +276,9 @@ func (h *handler) logDuration(realTime bool) {
 	logKey := base.KeyHTTPResp
 	if h.status >= 300 {
 		logKey = base.KeyHTTP
+		if err != nil {
+			base.Errorf(base.KeyAll, "%+v", err)
+		}
 	}
 
 	base.Infof(logKey, "#%03d:     --> %d %s  (%.1f ms)",
@@ -287,14 +290,14 @@ func (h *handler) logDuration(realTime bool) {
 // logStatusWithDuration will log the request status and the duration of the request.
 func (h *handler) logStatusWithDuration(status int, message string) {
 	h.setStatus(status, message)
-	h.logDuration(true)
+	h.logDuration(true, nil)
 }
 
 // logStatus will log the request status, but NOT the duration of the request.
 // This is used for indefinitely-long handlers like _changes that we don't want to track duration of
 func (h *handler) logStatus(status int, message string) {
 	h.setStatus(status, message)
-	h.logDuration(false) // don't track actual time
+	h.logDuration(false, nil) // don't track actual time
 }
 
 func (h *handler) checkAuth(context *db.DatabaseContext) error {
