@@ -130,7 +130,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 					if err := base.DropAllBucketIndexes(asGoCbBucket); err != nil {
 						panic(fmt.Sprintf("Failed to drop bucket indexes: %v", err))
 					}
-					continue
+
+					continue  // Go to the top of the for loop to retry
 				}
 			}
 		}

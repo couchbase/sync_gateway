@@ -114,6 +114,7 @@ func testBucket() base.TestBucket {
 					log.Fatalf("Unable to drop GSI indexes for test: %v", err)
 					// ^^ effectively panics
 				}
+				testBucket.Close()  // Close the bucket, it will get re-opened on next loop iteration
 				continue  // Goes to top of outer for loop to retry
 			}
 
