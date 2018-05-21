@@ -40,7 +40,7 @@ type sgCollect struct {
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
-func (sg *sgCollect) Start(zipPath string, args ...string) error {
+func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
 	}
@@ -50,6 +50,19 @@ func (sg *sgCollect) Start(zipPath string, args ...string) error {
 		return err
 	}
 
+	if params.OutputDirectory == "" {
+		// If no output directory specified, default to the directory sgcollect_info is in.
+		params.OutputDirectory = filepath.Dir(sgCollectPath)
+
+		// Validate the path, just in case were not getting sgCollectPath correctly.
+		if err := validateOutputDirectory(params.OutputDirectory); err != nil {
+			return err
+		}
+	}
+
+	zipPath := filepath.Join(params.OutputDirectory, zipFilename)
+
+	args := params.Args()
 	args = append(args, "--sync-gateway-executable", sgPath)
 	args = append(args, zipPath)
 
@@ -130,27 +143,32 @@ type sgCollectOptions struct {
 	Ticket          string `json:"ticket,omitempty"`
 }
 
-// Validate ensures the options are OK to use in sgcollect_info.
-func (c *sgCollectOptions) Validate() error {
-
-	// Fall back to a default output directory, if one is not specified.
-	if c.OutputDirectory == "" {
-		c.OutputDirectory = defaultOutputDirectory
-	}
-
-	// Clean the given path first, for cross-platform paths.
-	c.OutputDirectory = filepath.Clean(c.OutputDirectory)
+// validateOutputDirectory will check that the given path exists, and is a directory.
+func validateOutputDirectory(dir string) error {
+	// Clean the given path first, mainly for cross-platform compatability.
+	dir = filepath.Clean(dir)
 
 	// Validate given output directory exists, and is a directory.
 	// This does not check for write permission, however sgcollect_info
 	// will fail with an error giving that reason, if this is the case.
-	if fileInfo, err := os.Stat(c.OutputDirectory); err != nil {
+	if fileInfo, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
 			return errors.Wrap(err, "no such file or directory")
 		}
 		return err
 	} else if !fileInfo.IsDir() {
 		return errors.New("not a directory")
+	}
+
+	return nil
+}
+
+// Validate ensures the options are OK to use in sgcollect_info.
+func (c *sgCollectOptions) Validate() error {
+	if c.OutputDirectory != "" {
+		if err := validateOutputDirectory(c.OutputDirectory); err != nil {
+			return err
+		}
 	}
 
 	if c.Upload {
