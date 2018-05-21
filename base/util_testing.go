@@ -222,9 +222,6 @@ func (t TestAuthenticator) GetCredentials() (username, password, bucketname stri
 	return t.Username, t.Password, t.BucketName
 }
 
-// Callback function that is called after the test bucket is flushed.
-// var TestBucketPostFlushCallbackFn func(bucket *CouchbaseBucketGoCB, bucketSpec BucketSpec) error
-
 type TestBucketManager struct {
 	AdministratorUsername string
 	AdministratorPassword string
@@ -411,15 +408,6 @@ func (tbm *TestBucketManager) RecreateOrEmptyBucket() error {
 	if err := tbm.FlushBucket(); err != nil {
 		return err
 	}
-
-	// If the TestBucketPostFlushCallbackFn is defined, call it back after flushing the bucket
-	// to give it a chance to do any post-flush operations, such as waiting for the GSI indexes
-	// to fully process the flush.
-	//if TestBucketPostFlushCallbackFn != nil {
-	//	if err := TestBucketPostFlushCallbackFn(tbm.Bucket, tbm.BucketSpec); err != nil {
-	//		return err
-	//	}
-	//}
 
 	return nil
 }

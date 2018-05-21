@@ -101,19 +101,6 @@ var QueryStarChannel = SGQuery{
 	adhoc: false,
 }
 
-var QueryStarChannelNoStartSeqEndSeq = SGQuery{
-	name: QueryTypeChannelsStar,
-	statement: fmt.Sprintf(
-		"SELECT $sync.sequence AS seq, "+
-			"$sync.rev AS rev, "+
-			"$sync.flags AS flags, "+
-			"FROM `%s` "+
-			"WHERE $sync.sequence >= 0 AND $sync.sequence < 100 "+
-			"AND META().id NOT LIKE '%s'",
-		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
-	adhoc: false,
-}
-
 type QueryChannelsRow struct {
 	Id         string `json:"id,omitempty"`
 	Rev        string `json:"rev,omitempty"`

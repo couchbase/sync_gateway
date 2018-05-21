@@ -60,7 +60,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 
 		// Non-retry error - return
 		if !isIndexerError(queryErr) {
-			Warnf(KeyAll, "Error when querying index using statement: [%s].  Error: %+v", UD(bucketStatement), pkgerrors.WithStack(queryErr))
+			Warnf(KeyAll, "Error when querying index using statement: [%s]", UD(bucketStatement))
 			return queryResults, queryErr
 		}
 

@@ -1441,8 +1441,6 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 func TestChannelView(t *testing.T) {
 
-	// base.TestBucketPostFlushCallbackFn = WaitForIndexEmpty
-
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
