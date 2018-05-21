@@ -142,44 +142,58 @@ func (keyMask *LogKey) EnabledLogKeys() []string {
 }
 
 // ToLogKey takes a slice of case-sensitive log key names and will return a LogKey bitfield.
-func ToLogKey(keysStr []string) (LogKey, []DeferredLog) {
-	var logKeys LogKey
-	var deferredLogs []DeferredLog
+func ToLogKey(keysStr []string) (logKeys LogKey, deferredLogs []DeferredLog) {
+	return ConvertLogKeys(keysStr)
+}
 
-	for _, name := range keysStr {
+// ["DCP", "DCP+", "CRUD"] -> (a LogKey bitfield representing logKeyNames, deffered logs that arose during processing)
+func ConvertLogKeys(logKeyNames []string) (logKeysEnabled LogKey, deferredLogs []DeferredLog) {
 
-		// Some old log keys (like HTTP+), we want to handle slightly (map to a different key)
-		if newLogKey, ok := convertSpecialLogKey(name); ok {
-			logKeys.Enable(*newLogKey)
-			continue
-		}
+	deferredLogs = []DeferredLog{}
+	for _, logKeyName := range logKeyNames {
 
-		// Strip a single "+" suffix in log keys and warn (for backwards compatibility)
-		if strings.HasSuffix(name, "+") {
-			newName := strings.TrimSuffix(name, "+")
+		deferredLogsForKey := convertLogKey(logKeyName, &logKeysEnabled)
+		deferredLogs = append(deferredLogs, deferredLogsForKey...)
 
-			// Need to take a copy of name, as the loop will mutate the value
-			nameCpy := name
-			deferredLogs = append(deferredLogs, func() {
-				Warnf(KeyAll, "Deprecated log key: %q found. Changing to: %q.", nameCpy, newName)
-			})
-
-			name = newName
-		}
-
-		if logKey, ok := logKeyNamesInverse[name]; ok {
-			logKeys.Enable(logKey)
-		} else {
-			// Need to take a copy of name, as the loop will mutate the value
-			nameCpy := name
-			deferredLogs = append(deferredLogs, func() {
-				Warnf(KeyAll, "Invalid log key: %v", nameCpy)
-			})
-		}
 	}
 
-	return logKeys, deferredLogs
+	return logKeysEnabled, deferredLogs
+
 }
+
+func convertLogKey(logKeyName string, logKeysEnabled *LogKey) (deferredLogs []DeferredLog) {
+
+	deferredLogs = []DeferredLog{}
+
+	// Some old log keys (like HTTP+), we want to handle slightly (map to a different key)
+	if newLogKey, ok := convertSpecialLogKey(logKeyName); ok {
+		logKeysEnabled.Enable(*newLogKey)
+		return deferredLogs
+	}
+
+	// Strip a single "+" suffix in log keys and warn (for backwards compatibility)
+	if strings.HasSuffix(logKeyName, "+") {
+		logKeyName = strings.TrimSuffix(logKeyName, "+")
+
+		deferredLogs = append(deferredLogs, func() {
+			Warnf(KeyAll, "Deprecated log key: %q found. Changing to: %q.", logKeyName, logKeyName)
+		})
+	}
+
+	if logKey, ok := logKeyNamesInverse[logKeyName]; ok {
+		logKeysEnabled.Enable(logKey)
+	} else {
+		deferredLogs = append(deferredLogs, func() {
+			Warnf(KeyAll, "Invalid log key: %v", logKeyName)
+		})
+	}
+
+	return deferredLogs
+
+}
+
+
+
 
 func inverselogKeyNames(in map[LogKey]string) map[string]LogKey {
 	var out = make(map[string]LogKey, len(in))
