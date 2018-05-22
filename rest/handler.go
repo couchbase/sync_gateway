@@ -96,7 +96,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod
 		h := newHandler(server, privs, r, rq, runOffline)
 		err := h.invoke(method)
 		h.writeError(err)
-		h.logDuration(true, err)
+		h.logDuration(true)
 	})
 }
 
@@ -107,7 +107,7 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, method handle
 		h := newHandler(server, privs, r, rq, runOffline)
 		err := h.invoke(method)
 		h.writeError(err)
-		h.logDuration(true, err)
+		h.logDuration(true)
 	})
 }
 
@@ -258,7 +258,7 @@ func (h *handler) logRequestBody() {
 
 }
 
-func (h *handler) logDuration(realTime bool, err error) {
+func (h *handler) logDuration(realTime bool) {
 	if h.loggedDuration {
 		return
 	}
@@ -276,9 +276,6 @@ func (h *handler) logDuration(realTime bool, err error) {
 	logKey := base.KeyHTTPResp
 	if h.status >= 300 {
 		logKey = base.KeyHTTP
-		if err != nil {
-			base.Errorf(base.KeyAll, "%+v", err)
-		}
 	}
 
 	base.Infof(logKey, "#%03d:     --> %d %s  (%.1f ms)",
@@ -290,14 +287,14 @@ func (h *handler) logDuration(realTime bool, err error) {
 // logStatusWithDuration will log the request status and the duration of the request.
 func (h *handler) logStatusWithDuration(status int, message string) {
 	h.setStatus(status, message)
-	h.logDuration(true, nil)
+	h.logDuration(true)
 }
 
 // logStatus will log the request status, but NOT the duration of the request.
 // This is used for indefinitely-long handlers like _changes that we don't want to track duration of
 func (h *handler) logStatus(status int, message string) {
 	h.setStatus(status, message)
-	h.logDuration(false, nil) // don't track actual time
+	h.logDuration(false) // don't track actual time
 }
 
 func (h *handler) checkAuth(context *db.DatabaseContext) error {
@@ -685,6 +682,11 @@ func (h *handler) writeError(err error) {
 		err = auth.OIDCToHTTPError(err) // Map OIDC/OAuth2 errors to HTTP form
 		status, message := base.ErrorAsHTTPStatus(err)
 		h.writeStatus(status, message)
+		format := "%v"
+		if base.StacktraceOnAPIErrors {
+			format = "%+v"
+		}
+		base.Errorf(base.KeyAll, format, err)
 	}
 }
 

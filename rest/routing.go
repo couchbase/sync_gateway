@@ -335,7 +335,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 					h.writeStatus(http.StatusNoContent, "")
 				}
 			}
-			h.logDuration(true, nil)
+			h.logDuration(true)
 		}
 	})
 }
