@@ -89,7 +89,8 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 
 func testBucket() base.TestBucket {
 
-	for {
+	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
+	for i:= 0; i < 2; i++ {
 
 		testBucket := base.GetTestBucketOrPanic()
 		err := installViews(testBucket.Bucket)
@@ -107,7 +108,7 @@ func testBucket() base.TestBucket {
 		// Since GetTestBucketOrPanic() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
 		gocbBucket, isGoCbBucket := base.AsGoCBBucket(testBucket.Bucket)
 		if isGoCbBucket {
-			waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec)
+			waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec.UseXattrs)
 			if waitForIndexRollbackErr != nil {
 				base.Infof(base.KeyAll, "Error WaitForIndexEmpty: %v.  Drop indexes and retry", waitForIndexRollbackErr)
 				if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
@@ -123,6 +124,8 @@ func testBucket() base.TestBucket {
 		return testBucket
 
 	}
+
+	panic(fmt.Sprintf("Failed to create a testbucket after multiple attempts"))
 
 
 }

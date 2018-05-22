@@ -50,8 +50,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		return rt.RestTesterBucket
 	}
 
-	// Put this in a loop in case certain operations fail, like waiting for GSI indexes to be empty
-	for {
+	// Put this in a loop in case certain operations fail, like waiting for GSI indexes to be empty.
+	// Limit number of attempts to 2.
+	for i := 0; i < 2; i++ {
 
 		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
 		if !rt.NoFlush {
@@ -124,7 +125,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if !rt.NoFlush {
 			asGoCbBucket, isGoCbBucket := base.AsGoCBBucket(rt.RestTesterBucket)
 			if isGoCbBucket {
-				if err := db.WaitForIndexEmpty(asGoCbBucket, spec); err != nil {
+				if err := db.WaitForIndexEmpty(asGoCbBucket, spec.UseXattrs); err != nil {
 					base.Infof(base.KeyAll, "WaitForIndexEmpty returned an error: %v.  Dropping indexes and retrying", err)
 					// if WaitForIndexEmpty returns error, drop the indexes and retry
 					if err := base.DropAllBucketIndexes(asGoCbBucket); err != nil {
@@ -142,6 +143,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		return rt.RestTesterBucket
 	}
+
+	panic(fmt.Sprintf("Failed to create a RestTesterBucket after multiple attempts"))
 
 }
 

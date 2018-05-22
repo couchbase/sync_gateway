@@ -5,24 +5,32 @@ import (
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
+	"fmt"
 )
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
 // Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
-func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, bucketSpec base.BucketSpec) error {
+func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
 
 		var results gocb.QueryResults
 
 		// Create the star channel query
-		starChannelQueryStatement := replaceSyncTokensQuery(QueryStarChannel.statement, bucketSpec.UseXattrs)
+		statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement)  // append LIMIT 1 since we only care if there are any results or not
+		starChannelQueryStatement := replaceSyncTokensQuery(statement,useXattrs)
 		params := map[string]interface{}{}
 		params[QueryParamStartSeq] = 0
 		params[QueryParamEndSeq] = math.MaxInt64
 
 		// Execute the query
 		results, err = bucket.Query(starChannelQueryStatement, params, gocb.RequestPlus, true)
+		defer func() {
+			resultsCloseErr := results.Close()
+			if resultsCloseErr != nil {
+				base.Warnf(base.KeyQuery, "Error closing query: %+v.  (the error is being ignored apart from this warning)", resultsCloseErr)
+			}
+		}()
 
 		// If there was an error, then retry.  Assume it's an "index rollback" error which happens as
 		// the index processes the bucket flush operation
@@ -31,17 +39,14 @@ func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, bucketSpec base.BucketS
 			return true, err, nil
 		}
 
-		// Count how many results there are
-		count := CountQueryResults(results)
-
 		// If it's empty, we're done
-		if count == 0 {
+		if ResultsEmpty(results) {
 			base.Infof(base.KeyAll, "WaitForIndexEmpty found 0 results.  GSI index appears to be empty.")
 			return false, nil, nil
 		}
 
 		// Otherwise, retry
-		base.Infof(base.KeyAll, "WaitForIndexEmpty found non-zero results (%d).  Retrying until the GSI index is empty.", count)
+		base.Infof(base.KeyAll, "WaitForIndexEmpty found non-zero results.  Retrying until the GSI index is empty.")
 		return true, nil, nil
 
 	}
@@ -57,22 +62,12 @@ func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, bucketSpec base.BucketS
 }
 
 // Count how many rows are in gocb.QueryResults
-func CountQueryResults(results gocb.QueryResults) (count int) {
-
-	count = 0
+func ResultsEmpty(results gocb.QueryResults) (resultsEmpty bool) {
 
 	var queryRow AllDocsIndexQueryRow
-	var found bool
-
-	for {
-		found = results.Next(&queryRow)
-		if found {
-			count += 1
-		} else {
-			break
-		}
-	}
-
-	return count
+	found := results.Next(&queryRow)
+	return !found
 
 }
+
+
