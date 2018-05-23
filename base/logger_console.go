@@ -32,14 +32,14 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 		return nil, nil, err
 	}
 
-	logKey, deferredLogs := ToLogKey(config.LogKeys)
+	logKey, warnings := ToLogKey(config.LogKeys)
 
 	return &ConsoleLogger{
 		LogLevel:     config.LogLevel,
 		LogKey:       &logKey,
 		ColorEnabled: *config.ColorEnabled,
 		logger:       log.New(config.Output, "", 0),
-	}, deferredLogs, nil
+	}, warnings, nil
 }
 
 // shouldLog returns true if the given logLevel and logKey should get logged.
