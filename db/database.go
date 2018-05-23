@@ -211,6 +211,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
+
+
+
 	if options.IndexOptions == nil {
 		// In-memory channel cache
 		context.SequenceType = IntSequenceType
@@ -250,6 +253,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if context.UseXattrs() && context.autoImport {
 		feedMode = sgbucket.FeedResume
 	}
+
+
+	base.Infof(base.KeyAll, "Got last seq: %v. Sleeping for a while", lastSeq)
+	time.Sleep(time.Second * 60)
+	base.Infof(base.KeyAll, "Done sleeping.  ")
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {

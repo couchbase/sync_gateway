@@ -7,6 +7,13 @@ ENV COMMIT feature/issue_3558_int_cache_post_dcp
 RUN apt-get update && apt-get install -y \
   git
 
+
+ARG SOURCE_COMMIT
+ARG SOURCE_BRANCH
+
+RUN echo "SOURCE_COMMIT: $SOURCE_COMMIT"
+RUN echo "source branch: $SOURCE_BRANCH"
+
 RUN echo "source branch: $SOURCE_BRANCH"
 RUN echo "DOCKER_REPO: $DOCKER_REPO"
 RUN echo "DOCKER_TAG: $DOCKER_TAG"
