@@ -28,47 +28,49 @@ type LoggingConfig struct {
 	DeprecatedDefaultLog *LogAppenderConfig `json:"default,omitempty"` // Deprecated "default" logging option.
 }
 
-func (c *LoggingConfig) Init(defaultLogFilePath string) (deferredLogs []DeferredLog, err error) {
+// Init will initilize loging, return any warnings that need to be logged at a later time.
+func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogFn, err error) {
 	if c == nil {
-		return deferredLogs, errors.New("nil LoggingConfig")
+		return warnings, errors.New("nil LoggingConfig")
 	}
 
-	consoleLogger, deferredLogs, err = NewConsoleLogger(&c.Console)
+	consoleLogger, warnings, err = NewConsoleLogger(&c.Console)
 	if err != nil {
-		return
+		return warnings, err
 	}
 
-	// If there's nowhere to specified put log files, we'll log an error, but we'll continue anyway.
+	// If there's nowhere to specified put log files, we'll log an error, but continue anyway.
 	if !hasLogFilePath(&c.LogFilePath, defaultLogFilePath) {
-		return deferredLogs, ErrUnsetLogFilePath
+		warnings = append(warnings, func() { Errorf(KeyAll, "%v", ErrUnsetLogFilePath) })
+		return warnings, nil
 	}
 
 	err = validateLogFilePath(&c.LogFilePath, defaultLogFilePath)
 	if err != nil {
-		return
+		return warnings, err
 	}
 
 	errorLogger, err = NewFileLogger(c.Error, LevelError, c.LogFilePath, errorMinAge)
 	if err != nil {
-		return
+		return warnings, err
 	}
 
 	warnLogger, err = NewFileLogger(c.Warn, LevelWarn, c.LogFilePath, warnMinAge)
 	if err != nil {
-		return
+		return warnings, err
 	}
 
 	infoLogger, err = NewFileLogger(c.Info, LevelInfo, c.LogFilePath, infoMinAge)
 	if err != nil {
-		return
+		return warnings, err
 	}
 
 	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, c.LogFilePath, debugMinAge)
 	if err != nil {
-		return
+		return warnings, err
 	}
 
-	return deferredLogs, nil
+	return warnings, nil
 }
 
 // validateLogFilePath ensures the given path is created and is a directory.

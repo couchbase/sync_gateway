@@ -26,7 +26,7 @@ type ConsoleLoggerConfig struct {
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
-func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLog, error) {
+func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLogFn, error) {
 	// validate and set defaults
 	if err := config.init(); err != nil {
 		return nil, nil, err
