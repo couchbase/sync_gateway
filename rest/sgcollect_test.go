@@ -40,6 +40,10 @@ func TestSgcollectOptionsValidate(t *testing.T) {
 			errContains: "",
 		},
 		{
+			options:     &sgCollectOptions{Upload: true, Customer: "alice", Ticket: "abc"},
+			errContains: "ticket number must be",
+		},
+		{
 			options:     &sgCollectOptions{Upload: true, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
 			errContains: "",
 		},

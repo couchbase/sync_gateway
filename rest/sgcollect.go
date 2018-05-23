@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sync/atomic"
 	"time"
@@ -22,6 +23,8 @@ var (
 	ErrSGCollectInfoAlreadyRunning = errors.New("already running")
 	// ErrSGCollectInfoNotRunning is returned if sgcollect_info is not running.
 	ErrSGCollectInfoNotRunning = errors.New("not running")
+
+	validateTicketPattern = regexp.MustCompile(`\d{1,7}`)
 
 	sgcollectInstance = sgCollect{status: base.Uint32Ptr(sgStopped)}
 )
@@ -179,6 +182,12 @@ func (c *sgCollectOptions) Validate() error {
 	if c.OutputDirectory != "" {
 		if err := validateOutputDirectory(c.OutputDirectory); err != nil {
 			return err
+		}
+	}
+
+	if c.Ticket != "" {
+		if !validateTicketPattern.MatchString(c.Ticket) {
+			return errors.New("ticket number must be 1 to 7 digits")
 		}
 	}
 
