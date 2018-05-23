@@ -394,6 +394,14 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 		} else {
 			response = rt.SendAdminRequest("GET", viewUrlPath, ``)
 		}
+
+		// If the view is undefined, it might be a race condition where the view is still being created
+		// See https://github.com/couchbase/sync_gateway/issues/3570#issuecomment-390487982
+		if strings.Contains(response.Body.String(), "view_undefined") {
+			base.Infof(base.KeyAll, "view_undefined error: %v.  Retrying", response.Body.String())
+			return true, nil, nil
+		}
+
 		if response.Code != 200 {
 			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200.", response.Code), sgbucket.ViewResult{}
 		}
