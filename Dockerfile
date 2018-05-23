@@ -5,8 +5,14 @@ FROM golang:1.8-stretch
 ENV COMMIT feature/issue_3558_int_cache_post_dcp
 
 RUN apt-get update && apt-get install -y \
-  git \
+  git
 
+RUN echo "source branch: $SOURCE_BRANCH"
+RUN echo "DOCKER_REPO: $DOCKER_REPO"
+RUN echo "DOCKER_TAG: $DOCKER_TAG"
+RUN echo "SOURCE_URL: $SOURCE_URL"
+RUN echo "DOCKERFILE_PATH: $DOCKERFILE_PATH"
+RUN echo "PATH: $PATH"
 
 # Without these settings, the repo tool will fail (TODO: cleaner way to do this?)
 RUN git config --global user.email "you@example.com" && \
