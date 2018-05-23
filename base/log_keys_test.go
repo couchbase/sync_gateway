@@ -48,34 +48,40 @@ func TestLogKeyNames(t *testing.T) {
 	assert.Equals(t, name, fmt.Sprintf("LogKey(%b)", KeyDCP|KeyReplicate))
 
 	keys := []string{}
-	logKeys, _ := ToLogKey(keys)
+	logKeys, warnings := ToLogKey(keys)
+	assert.Equals(t, len(warnings), 0)
 	assert.Equals(t, logKeys, LogKey(0))
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{})
 
 	keys = append(keys, "DCP")
-	logKeys, _ = ToLogKey(keys)
+	logKeys, warnings = ToLogKey(keys)
+	assert.Equals(t, len(warnings), 0)
 	assert.Equals(t, logKeys, KeyDCP)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String()})
 
 	keys = append(keys, "Access")
-	logKeys, _ = ToLogKey(keys)
+	logKeys, warnings = ToLogKey(keys)
+	assert.Equals(t, len(warnings), 0)
 	assert.Equals(t, logKeys, KeyAccess|KeyDCP)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAccess.String(), KeyDCP.String()})
 
 	keys = []string{"*", "DCP"}
-	logKeys, _ = ToLogKey(keys)
+	logKeys, warnings = ToLogKey(keys)
+	assert.Equals(t, len(warnings), 0)
 	assert.Equals(t, logKeys, KeyAll|KeyDCP)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAll.String(), KeyDCP.String()})
 
 	// Special handling of log keys
 	keys = []string{"HTTP+"}
-	logKeys, _ = ToLogKey(keys)
+	logKeys, warnings = ToLogKey(keys)
+	assert.Equals(t, len(warnings), 0)
 	assert.Equals(t, logKeys, KeyHTTP|KeyHTTPResp)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyHTTP.String(), KeyHTTPResp.String()})
 
 	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
 	keys = []string{"DCP", "WS+", "InvalidLogKey"}
-	logKeys, _ = ToLogKey(keys)
+	logKeys, warnings = ToLogKey(keys)
+	assert.Equals(t, len(warnings), 2)
 	assert.Equals(t, logKeys, KeyDCP|KeyWebSocket)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String(), KeyWebSocket.String()})
 }
