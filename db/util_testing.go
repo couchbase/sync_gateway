@@ -25,12 +25,6 @@ func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 
 		// Execute the query
 		results, err = bucket.Query(starChannelQueryStatement, params, gocb.RequestPlus, true)
-		defer func() {
-			resultsCloseErr := results.Close()
-			if resultsCloseErr != nil {
-				base.Warnf(base.KeyQuery, "Error closing query: %+v.  (the error is being ignored apart from this warning)", resultsCloseErr)
-			}
-		}()
 
 		// If there was an error, then retry.  Assume it's an "index rollback" error which happens as
 		// the index processes the bucket flush operation
@@ -40,7 +34,13 @@ func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 		}
 
 		// If it's empty, we're done
-		if ResultsEmpty(results) {
+		var queryRow AllDocsIndexQueryRow
+		found := results.Next(&queryRow)
+		resultsCloseErr := results.Close()
+		if resultsCloseErr != nil {
+			return false, resultsCloseErr, nil
+		}
+		if !found {
 			base.Infof(base.KeyAll, "WaitForIndexEmpty found 0 results.  GSI index appears to be empty.")
 			return false, nil, nil
 		}
