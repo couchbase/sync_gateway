@@ -30,8 +30,7 @@ const (
 	sgStopped uint32 = iota
 	sgRunning
 
-	defaultSGUploadHost    = "https://s3.amazonaws.com/cb-customers"
-	defaultOutputDirectory = "" // TODO
+	defaultSGUploadHost = "https://s3.amazonaws.com/cb-customers"
 )
 
 type sgCollect struct {
