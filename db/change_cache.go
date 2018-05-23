@@ -39,6 +39,7 @@ type changeCache struct {
 	context         *DatabaseContext
 	logsDisabled    bool                     // If true, ignore incoming tap changes
 	nextSequence    uint64                   // Next consecutive sequence number to add
+	initialSequenceLazyLoaded bool // Has initialSequence been lazy loaded yet?  (SG #3558)
 	initialSequence uint64                   // DB's current sequence at startup time
 	receivedSeqs    map[uint64]struct{}      // Set of all sequences received
 	pendingLogs     LogPriorityQueue         // Out-of-sequence entries waiting to be cached
@@ -172,7 +173,8 @@ func (c *changeCache) IsStopped() bool {
 // Forgets all cached changes for all channels.
 func (c *changeCache) Clear() {
 	c.lock.Lock()
-	c.initialSequence, _ = c.context.LastSequence()
+	c.initialSequence, _ = c.context.LastSequence()  // TODO: this should at least log a warning if there is an error
+	                                                 // TODO: does it need to update c.nextSequence too?
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
@@ -356,6 +358,20 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime ti
 // Given a newly changed document (received from the tap feed), adds change entries to channels.
 // The JSON must be the raw document from the bucket, with the metadata and all.
 func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
+
+	if !c.initialSequenceLazyLoaded {
+		c.lock.Lock()
+		lastSequence, err := c.context.LastSequence()
+		if err != nil {
+			base.Warnf(base.KeyAll, "changeCache had error getting lastSequence: %v.  This could cause undefined invalid behavior in the change cache", err)
+		}
+		c.initialSequence = lastSequence
+		c.nextSequence = lastSequence + 1
+		c.initialSequenceLazyLoaded = true
+		c.lock.Unlock()
+	}
+
+
 	if event.Synchronous {
 		c.DocChangedSynchronous(event)
 	} else {
