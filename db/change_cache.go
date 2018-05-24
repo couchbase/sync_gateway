@@ -37,21 +37,21 @@ func init() {
 // Manages a cache of the recent change history of all channels.
 type changeCache struct {
 	context         *DatabaseContext
-	logsDisabled    bool                     // If true, ignore incoming tap changes
-	nextSequence    uint64                   // Next consecutive sequence number to add
-	initialSequenceLazyLoaded bool // Has initialSequence been lazy loaded yet?  (SG #3558)
-	initialSequence uint64                   // DB's current sequence at startup time
-	receivedSeqs    map[uint64]struct{}      // Set of all sequences received
-	pendingLogs     LogPriorityQueue         // Out-of-sequence entries waiting to be cached
-	channelCaches   map[string]*channelCache // A cache of changes for each channel
-	onChange        func(base.Set)           // Client callback that notifies of channel changes
-	stopped         bool                     // Set by the Stop method
-	skippedSeqs     SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
-	skippedSeqLock  sync.RWMutex             // Coordinates access to skippedSeqs queue
-	lock            sync.RWMutex             // Coordinates access to struct fields
-	lateSeqLock     sync.RWMutex             // Coordinates access to late sequence caches
-	options         CacheOptions             // Cache config
-	terminator      chan bool                // Signal termination of background goroutines
+	logsDisabled    bool                               // If true, ignore incoming tap changes
+	nextSequence              uint64                   // Next consecutive sequence number to add
+	initialSequenceLazyLoaded bool                     // Has initialSequence been lazy loaded yet?  (SG #3558)
+	initialSequence           uint64                   // DB's current sequence at startup time
+	receivedSeqs              map[uint64]struct{}      // Set of all sequences received
+	pendingLogs               LogPriorityQueue         // Out-of-sequence entries waiting to be cached
+	channelCaches             map[string]*channelCache // A cache of changes for each channel
+	notifyChange              func(base.Set)           // Client callback that notifies of channel changes
+	stopped                   bool                     // Set by the Stop method
+	skippedSeqs               SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
+	skippedSeqLock            sync.RWMutex             // Coordinates access to skippedSeqs queue
+	lock                      sync.RWMutex             // Coordinates access to struct fields
+	lateSeqLock               sync.RWMutex             // Coordinates access to late sequence caches
+	options                   CacheOptions             // Cache config
+	terminator      chan bool                          // Signal termination of background goroutines
 }
 
 type LogEntry channels.LogEntry
@@ -84,12 +84,14 @@ type CacheOptions struct {
 
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
-// onChange is an optional function that will be called to notify of channel changes.
-func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) error {
+// notifyChange is an optional function that will be called to notify of channel changes.
+func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, notifyChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) error {
 	c.context = context
-	c.initialSequence = lastSequence.Seq
-	c.nextSequence = lastSequence.Seq + 1
-	c.onChange = onChange
+
+	//c.initialSequence = lastSequence.Seq
+	//c.nextSequence = lastSequence.Seq + 1
+
+	c.notifyChange = notifyChange
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
@@ -173,8 +175,10 @@ func (c *changeCache) IsStopped() bool {
 // Forgets all cached changes for all channels.
 func (c *changeCache) Clear() {
 	c.lock.Lock()
+	// TODO: reset the lazy load flag
 	c.initialSequence, _ = c.context.LastSequence()  // TODO: this should at least log a warning if there is an error
 	                                                 // TODO: does it need to update c.nextSequence too?
+
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
@@ -201,8 +205,8 @@ func (c *changeCache) CleanUp() bool {
 
 	// If entries have been pending too long, add them to the cache:
 	changedChannels := c._addPendingLogs()
-	if c.onChange != nil && len(changedChannels) > 0 {
-		c.onChange(changedChannels)
+	if c.notifyChange != nil && len(changedChannels) > 0 {
+		c.notifyChange(changedChannels)
 	}
 
 	// Remove old cache entries:
@@ -277,8 +281,8 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	// Since the calls to processEntry() above may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
-	if c.onChange != nil && len(changedChannelsCombined) > 0 {
-		c.onChange(changedChannelsCombined)
+	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
+		c.notifyChange(changedChannelsCombined)
 	}
 
 	// Purge pending deletes
@@ -352,6 +356,37 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime ti
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+
+
+
+func (c *changeCache) _getInitialSequence() (uint64,error) {
+
+	// TODO: if not lazy loaded, throw error and let caller deal
+
+	return c.initialSequence
+
+
+}
+
+
+// TODO: might not even need
+func (c *changeCache) getInitialSequence() error {
+	c.lock.Lock()..
+
+
+
+}
+
+func (c *changeCache) _getNextSequence() (uint64,error) {
+
+	// TODO: if not lazy loaded, throw error and let caller deal
+
+	return c.nextSequence
+
+
+}
+
+
 
 //////// ADDING CHANGES:
 
@@ -538,8 +573,8 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
 
 	// Notify change listeners for all of the changed channels
-	if c.onChange != nil && len(changedChannelsCombined) > 0 {
-		c.onChange(changedChannelsCombined)
+	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
+		c.notifyChange(changedChannelsCombined)
 	}
 
 }
@@ -572,8 +607,8 @@ func (c *changeCache) processUnusedSequence(docID string) {
 	// Since processEntry may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
 	changedChannels := c.processEntry(change)
-	if c.onChange != nil && len(changedChannels) > 0 {
-		c.onChange(changedChannels)
+	if c.notifyChange != nil && len(changedChannels) > 0 {
+		c.notifyChange(changedChannels)
 	}
 
 }
@@ -609,8 +644,8 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	base.Infof(base.KeyCache, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
 	changedChannels := c.processEntry(change)
-	if c.onChange != nil && len(changedChannels) > 0 {
-		c.onChange(changedChannels)
+	if c.notifyChange != nil && len(changedChannels) > 0 {
+		c.notifyChange(changedChannels)
 	}
 }
 
@@ -772,7 +807,11 @@ func (c *changeCache) GetStableClock(stale bool) (clock base.SequenceClock, err 
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
-		cache = newChannelCacheWithOptions(c.context, channelName, c.initialSequence+1, c.options)
+
+		// expect to see everything _after_ the sequence at the time of cache init, but not the sequence itself since it not expected to appear on DCP
+		validFrom := c.initialSequence+1
+
+		cache = newChannelCacheWithOptions(c.context, channelName, validFrom, c.options)
 		c.channelCaches[channelName] = cache
 	}
 	return cache

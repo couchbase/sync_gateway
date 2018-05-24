@@ -242,7 +242,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		options.IndexOptions,
 	)
 
-	// Set the DB Context onChange callback to call back the changecache DocChanged callback
+	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
 	context.SetOnChangeCallback(context.changeCache.DocChanged)
 
 	// Initialize the tap Listener for notify handling
