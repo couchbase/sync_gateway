@@ -8,7 +8,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"regexp"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -33,9 +32,6 @@ type Webhook struct {
 
 // default HTTP post timeout
 const kDefaultWebhookTimeout = 60
-
-// used to match the HTTP basic auth component of a URL
-var kBasicAuthUrlRegexp = regexp.MustCompilePOSIX(`:\/\/[^:/]+:[^@/]+@`)
 
 // Creates a new webhook handler based on the url and filter function.
 func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, error) {
@@ -148,5 +144,5 @@ func (wh *Webhook) String() string {
 
 func (wh *Webhook) SanitizedUrl() string {
 	// Basic auth credentials may have been included in the URL, in which case obscure them
-	return kBasicAuthUrlRegexp.ReplaceAllLiteralString(wh.url, "://****:****@")
+	return base.RedactBasicAuthURL(wh.url)
 }
