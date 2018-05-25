@@ -677,7 +677,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 // Returns the channels that changed.
 func (c *changeCache) _addPendingLogs() base.Set {
 	var changedChannels base.Set
-	
+
 	for len(c.pendingLogs) > 0 {
 		change := c.pendingLogs[0]
 		isNext := change.Sequence == c.nextSequence
@@ -784,12 +784,14 @@ func (c *changeCache) SetInitialSequence(initialSequence uint64) {
 	c.nextSequence = initialSequence + 1
 }
 
+// Concurrent-safe get value of nextSequence 
 func (c *changeCache) getNextSequence() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.nextSequence
 }
 
+// Concurrent-safe get value of initialSequence
 func (c *changeCache) getInitialSequence() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
