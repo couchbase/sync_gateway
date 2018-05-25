@@ -247,15 +247,16 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 
-	base.Infof(base.KeyAll, "Sleeping for a while")
-	time.Sleep(time.Second * 60)
-	base.Infof(base.KeyAll, "Done sleeping.  ")
+
+
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
-		if err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
+		context.changeCache.StartupLock()  // so we don't try to cache dcp events before cache is ready
+
+		err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
 			msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
 			base.Warnf(base.KeyAll, msgFormat, base.UD(bucket), err)
@@ -303,9 +304,33 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 			// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
 
-		}); err != nil {
+		});
+
+
+
+		if err != nil {
+			context.changeCache.ReleaseStartupLock()
 			return nil, err
 		}
+
+
+
+		// Safe to tell the cache to initialize w/ LastSeq
+
+		// Getting Last Seq  _init
+
+		// Init'ing Last Seq
+
+
+		context.changeCache.ReleaseStartupLock()
+
+		if dbName == "db_no_xattr" {
+			base.Infof(base.KeyAll, "Sleeping for a while")
+			time.Sleep(time.Second * 60)
+			base.Infof(base.KeyAll, "Done sleeping.  ")
+		}
+
+
 	}
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.

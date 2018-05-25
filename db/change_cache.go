@@ -190,8 +190,6 @@ func (c *changeCache) Clear() error {
 		return err
 	}
 
-	// TODO: should initialSequenceLazyLoaded be reset to false here?   In that case, why even reset c.initialSequence to c.context.LastSequence() here?
-
 
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.pendingLogs = nil
@@ -860,7 +858,7 @@ func (c *changeCache) LastSequence() uint64 {
 
 	// Without this, after SG starts up, but before any DCP messages received, _getNextSequence() will return an error
 	// and a warning will be logged, and LastSequence() will return 0
-	c.lazyLoadInitialSequence()
+	// c.lazyLoadInitialSequence()
 
 	c.lock.RLock()
 	defer c.lock.RUnlock()
