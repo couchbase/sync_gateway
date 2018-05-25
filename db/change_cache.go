@@ -35,12 +35,19 @@ func init() {
 }
 
 // Manages a cache of the recent change history of all channels.
+//
+// Core responsibilities:
+//
+// - Manage collection of channel caches
+// - Receive DCP changes via callbacks
+//    - Perform sequence buffering to handle skipped sequences
+//    - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
-	context         *DatabaseContext
-	logsDisabled    bool                               // If true, ignore incoming tap changes
-	nextSequence              uint64                   // Next consecutive sequence number to add
-	initialSequenceLazyLoaded bool                     // Has initialSequence been lazy loaded yet?  (SG #3558)
-	initialSequence           uint64                   // DB's current sequence at startup time
+	context                   *DatabaseContext
+	logsDisabled              bool                     // If true, ignore incoming tap changes
+	nextSequence              uint64                   // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use _getNextSequence() rather than accessing directly.
+	initialSequenceLazyLoaded bool                     // Has initialSequence been lazy loaded yet?
+	initialSequence           uint64                   // DB's current sequence at startup time. Should use _getInititalSequence() rather than accessing directly.
 	receivedSeqs              map[uint64]struct{}      // Set of all sequences received
 	pendingLogs               LogPriorityQueue         // Out-of-sequence entries waiting to be cached
 	channelCaches             map[string]*channelCache // A cache of changes for each channel
@@ -51,7 +58,7 @@ type changeCache struct {
 	lock                      sync.RWMutex             // Coordinates access to struct fields
 	lateSeqLock               sync.RWMutex             // Coordinates access to late sequence caches
 	options                   CacheOptions             // Cache config
-	terminator      chan bool                          // Signal termination of background goroutines
+	terminator                chan bool                // Signal termination of background goroutines
 }
 
 type LogEntry channels.LogEntry
@@ -85,11 +92,8 @@ type CacheOptions struct {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // notifyChange is an optional function that will be called to notify of channel changes.
-func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, notifyChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) error {
+func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) error {
 	c.context = context
-
-	//c.initialSequence = lastSequence.Seq
-	//c.nextSequence = lastSequence.Seq + 1
 
 	c.notifyChange = notifyChange
 	c.channelCaches = make(map[string]*channelCache, 10)
@@ -121,7 +125,7 @@ func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, no
 	base.Infof(base.KeyCache, "Initializing changes cache with options %+v", c.options)
 
 	if context.UseGlobalSequence() {
-		base.Infof(base.KeyAll, "Initializing changes cache for database %s with sequence: %d", base.UD(context.Name), c.initialSequence)
+		base.Infof(base.KeyAll, "Initializing changes cache for database %s", base.UD(context.Name))
 	}
 
 	heap.Init(&c.pendingLogs)
@@ -172,17 +176,28 @@ func (c *changeCache) IsStopped() bool {
 	return c.stopped
 }
 
-// Forgets all cached changes for all channels.
-func (c *changeCache) Clear() {
+// Empty out all channel caches.  This doesn't touch
+func (c *changeCache) Clear() error {
 	c.lock.Lock()
-	// TODO: reset the lazy load flag
-	c.initialSequence, _ = c.context.LastSequence()  // TODO: this should at least log a warning if there is an error
-	                                                 // TODO: does it need to update c.nextSequence too?
+	defer c.lock.Unlock()
+
+	// Reset initialSequence so that any new channel caches have their validFrom set to the current last sequence
+	// the point at which the change cache was initialized / re-initialized.
+	// No need to touch c.nextSequence here, because we don't want to touch the sequence buffering state.
+	var err error
+	c.initialSequence, err = c.context.LastSequence()
+	if err != nil {
+		return err
+	}
+
+	// TODO: should initialSequenceLazyLoaded be reset to false here?   In that case, why even reset c.initialSequence to c.context.LastSequence() here?
+
 
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
-	c.lock.Unlock()
+
+	return nil
 }
 
 // If set to false, DocChanged() becomes a no-op.
@@ -298,94 +313,42 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 	return true
 }
 
-// FOR TESTS ONLY: Blocks until the given sequence has been received.
-func (c *changeCache) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration) {
-	c.waitForSequence(sequence.Seq, maxWaitTime)
-}
 
-func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration) {
+// Get's the initial sequence, but first verifies that it's been loaded by checking the lazy loading flag
+// Locking: assumes that c.Lock() is already being held by the caller.
+func (c *changeCache) _getInitialSequence() (uint64, error) {
 
-	startTime := time.Now()
-
-	for {
-
-		if time.Since(startTime) >= maxWaitTime {
-			panic(fmt.Sprintf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime)))
-		}
-
-		c.lock.RLock()
-		nextSequence := c.nextSequence
-		c.lock.RUnlock()
-		if nextSequence >= sequence+1 {
-			base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
+	if !c.initialSequenceLazyLoaded {
+		return 0, fmt.Errorf("changeCache._getInitialSequence() called before c.initialSequenceLazyLoaded set to true.  This violates an expected internal invariant.")
 	}
+
+	return c.initialSequence, nil
+
 }
 
-// FOR TESTS ONLY: Blocks until the given sequence has been received.
-func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration) {
+// Concurrent-safe version of getInitialSequence()
+func (c *changeCache) getInitialSequence() (uint64, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c._getInitialSequence()
+}
 
-	startTime := time.Now()
 
-	for {
-
-		if time.Since(startTime) >= maxWaitTime {
-			panic(fmt.Sprintf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime)))
-		}
-
-		c.lock.RLock()
-		nextSequence := c.nextSequence
-		c.lock.RUnlock()
-		if nextSequence >= sequence+1 {
-			foundInMissing := false
-			c.skippedSeqLock.RLock()
-			for _, skippedSeq := range c.skippedSeqs {
-				if skippedSeq.seq == sequence {
-					foundInMissing = true
-					break
-				}
-			}
-			c.skippedSeqLock.RUnlock()
-			if !foundInMissing {
-				base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
-				return
-			}
-		}
-		time.Sleep(100 * time.Millisecond)
+// Get's the next sequence, but first verifies that it's been loaded by checking the lazy loading flag
+// Locking: assumes that c.Lock() is already being held by the caller.
+func (c *changeCache) _getNextSequence() (uint64, error) {
+	if !c.initialSequenceLazyLoaded {
+		return 0, fmt.Errorf("changeCache._getNextSequence() called before c.initialSequenceLazyLoaded set to true.  This violates an expected internal invariant.")
 	}
-}
-
-
-
-func (c *changeCache) _getInitialSequence() (uint64,error) {
-
-	// TODO: if not lazy loaded, throw error and let caller deal
-
-	return c.initialSequence
-
+	return c.nextSequence, nil
 
 }
 
-
-// TODO: might not even need
-func (c *changeCache) getInitialSequence() error {
-	c.lock.Lock()..
-
-
-
+func (c *changeCache) getNextSequence() (uint64, error) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c._getNextSequence()
 }
-
-func (c *changeCache) _getNextSequence() (uint64,error) {
-
-	// TODO: if not lazy loaded, throw error and let caller deal
-
-	return c.nextSequence
-
-
-}
-
 
 
 //////// ADDING CHANGES:
@@ -394,24 +357,33 @@ func (c *changeCache) _getNextSequence() (uint64,error) {
 // The JSON must be the raw document from the bucket, with the metadata and all.
 func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
+	// Check if the initial sequence has been lazy-loaded, and if not, lazy-loaded.
+	// No need to lock when checking initialSequenceLazyLoaded due to (TODO: add reasons for guarantee here)
 	if !c.initialSequenceLazyLoaded {
-		c.lock.Lock()
-		lastSequence, err := c.context.LastSequence()
-		if err != nil {
-			base.Warnf(base.KeyAll, "changeCache had error getting lastSequence: %v.  This could cause undefined invalid behavior in the change cache", err)
-		}
-		c.initialSequence = lastSequence
-		c.nextSequence = lastSequence + 1
-		c.initialSequenceLazyLoaded = true
-		c.lock.Unlock()
+		c.lazyLoadInitialSequence()
 	}
-
 
 	if event.Synchronous {
 		c.DocChangedSynchronous(event)
 	} else {
 		go c.DocChangedSynchronous(event)
 	}
+}
+
+func (c *changeCache) lazyLoadInitialSequence() {
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	lastSequence, err := c.context.LastSequence()
+	if err != nil {
+		base.Warnf(base.KeyAll, "changeCache had error getting lastSequence: %v.  This could cause undefined invalid behavior in the change cache", err)
+	}
+	c.initialSequence = lastSequence
+	c.nextSequence = lastSequence + 1
+	base.Infof(base.KeyAll, "Setting changes cache for database %s with initial sequence: %d", base.UD(c.context.Name), c.initialSequence)
+	c.initialSequenceLazyLoaded = true
+
 }
 
 // Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
@@ -503,7 +475,13 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		}
 	}
 
-	if syncData.Sequence <= c.initialSequence {
+	initialSequence, err := c.getInitialSequence()
+	if err != nil {
+		base.Warnf(base.KeyAll, "changeCache: Error processing Doc %q -- got error trying to get initial sequence: %+v", base.UD(docID), err)
+		return
+	}
+
+	if syncData.Sequence <= initialSequence {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
@@ -534,7 +512,12 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	}
 
 	if len(syncData.RecentSequences) > 0 {
-		nextSeq := c.getNextSequence()
+		nextSeq, err := c.getNextSequence()
+		if err != nil {
+			base.Warnf(base.KeyAll, "changeCache: Error processing Doc %q -- got error trying to get next sequence: %+v", base.UD(event.Key), err)
+			return
+		}
+
 		for _, seq := range syncData.RecentSequences {
 			if seq >= nextSeq && seq < currentSequence {
 				base.Infof(base.KeyCache, "Received deduplicated #%d for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
@@ -623,9 +606,13 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		return
 	}
 	sequence := princ.Sequence()
-	c.lock.RLock()
-	initialSequence := c.initialSequence
-	c.lock.RUnlock()
+
+	initialSequence, err := c.getInitialSequence()
+	if err != nil {
+		base.Warnf(base.KeyAll, "changeCache: Error processing Doc %q -- got error trying to get initial sequence: %+v", base.UD(docID), err)
+		return
+	}
+
 	if sequence <= initialSequence {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
@@ -658,13 +645,26 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	}
 
 	sequence := change.Sequence
-	nextSequence := c.nextSequence
+
+	nextSequence, err := c._getNextSequence()
+	if err != nil {
+		base.Warnf(base.KeyAll, "changeCache: Error processing Doc %q -- got error trying to get next sequence: %+v", base.UD(change.DocID), err)
+		return nil
+	}
+
+
 	if _, found := c.receivedSeqs[sequence]; found {
 		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
 	c.receivedSeqs[sequence] = struct{}{}
 	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
+
+	initialSequence, err := c._getInitialSequence()
+	if err != nil {
+		base.Warnf(base.KeyAll, "changeCache: Error processing Doc %q -- got error trying to get initial sequence: %+v", base.UD(change.DocID), err)
+		return nil
+	}
 
 	var changedChannels base.Set
 	if sequence == nextSequence || nextSequence == 0 {
@@ -683,7 +683,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 			// Too many pending; add the oldest one:
 			changedChannels = c._addPendingLogs()
 		}
-	} else if sequence > c.initialSequence {
+	} else if sequence > initialSequence {
 		// Out-of-order sequence received!
 		// Remove from skipped sequence queue
 		if !c.WasSkipped(sequence) {
@@ -705,7 +705,14 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
 func (c *changeCache) _addToCache(change *LogEntry) base.Set {
-	if change.Sequence >= c.nextSequence {
+
+	nextSequence, err := c._getNextSequence()
+	if err != nil {
+		base.Warnf(base.KeyAll, "changeCache: Error processing Doc %q -- got error trying to get next sequence: %+v", base.UD(change.DocID), err)
+		return nil
+	}
+
+	if change.Sequence >= nextSequence {
 		c.nextSequence = change.Sequence + 1
 	}
 	if change.DocID == "" {
@@ -764,15 +771,26 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 func (c *changeCache) _addPendingLogs() base.Set {
 	var changedChannels base.Set
 
+	// No point in continuing if there aren't any pending logs
+	if len(c.pendingLogs) == 0 {
+		return nil
+	}
+
+	nextSequence, err := c._getNextSequence()
+	if err != nil {
+		base.Warnf(base.KeyAll, "changeCache: Error adding pending logs -- got error trying to get next sequence: %+v", err)
+		return nil
+	}
+
 	for len(c.pendingLogs) > 0 {
 		change := c.pendingLogs[0]
-		isNext := change.Sequence == c.nextSequence
+		isNext := change.Sequence == nextSequence
 		if isNext {
 			heap.Pop(&c.pendingLogs)
 			changedChannels = changedChannels.Union(c._addToCache(change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			changeCacheExpvars.Add("outOfOrder", 1)
-			c.PushSkipped(c.nextSequence)
+			c.PushSkipped(nextSequence)
 			c.nextSequence++
 		} else {
 			break
@@ -787,17 +805,10 @@ func (c *changeCache) getChannelCache(channelName string) *channelCache {
 	return c._getChannelCache(channelName)
 }
 
-func (c *changeCache) getNextSequence() uint64 {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.nextSequence
-}
 
 func (c *changeCache) GetStableSequence(docID string) SequenceID {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
 	// Stable sequence is independent of docID in changeCache
-	return SequenceID{Seq: c.nextSequence - 1}
+	return SequenceID{Seq: c.LastSequence()}
 }
 
 func (c *changeCache) GetStableClock(stale bool) (clock base.SequenceClock, err error) {
@@ -808,8 +819,14 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
 
+		initialSequence, err := c.getInitialSequence()
+		if err != nil {
+			base.Warnf(base.KeyAll, "changeCache: Error getting channel cache for channel: %v", base.UD(channelName), err)
+			return nil
+		}
+
 		// expect to see everything _after_ the sequence at the time of cache init, but not the sequence itself since it not expected to appear on DCP
-		validFrom := c.initialSequence+1
+		validFrom := initialSequence + 1
 
 		cache = newChannelCacheWithOptions(c.context, channelName, validFrom, c.options)
 		c.channelCaches[channelName] = cache
@@ -835,7 +852,15 @@ func (c *changeCache) GetCachedChanges(channelName string, options ChangesOption
 func (c *changeCache) LastSequence() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.nextSequence - 1
+
+	nextSequence, err := c._getNextSequence()
+	if err != nil {
+		base.Warnf(base.KeyAll, "changeCache: Error trying to get next sequence: %+v", err)
+		return 0
+	}
+
+	lastSequence := nextSequence - 1
+	return lastSequence
 }
 
 func (c *changeCache) _allChannels() base.Set {

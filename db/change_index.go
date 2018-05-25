@@ -27,13 +27,13 @@ import (
 type ChangeIndex interface {
 
 	// Initialize the index
-	Init(context *DatabaseContext, lastSequence SequenceID, notifyChange func(base.Set), cacheOptions *CacheOptions, indexOptions *ChannelIndexOptions) error
+	Init(context *DatabaseContext, notifyChange func(base.Set), cacheOptions *CacheOptions, indexOptions *ChannelIndexOptions) error
 
 	// Stop the index
 	Stop()
 
 	// Clear the index
-	Clear()
+	Clear() error
 
 	// Enable/Disable indexing
 	EnableChannelIndexing(enable bool)

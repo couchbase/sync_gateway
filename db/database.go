@@ -206,13 +206,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if err != nil {
 		return nil, err
 	}
-	lastSeq, err := context.sequences.lastSequence()
-	if err != nil {
-		return nil, err
-	}
-
-
-
 
 	if options.IndexOptions == nil {
 		// In-memory channel cache
@@ -229,15 +222,14 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
-	onChange := func(changedChannels base.Set) {
+	notifyChange := func(changedChannels base.Set) {
 		context.mutationListener.Notify(changedChannels)
 	}
 
 	// Initialize the ChangeCache
 	context.changeCache.Init(
 		context,
-		SequenceID{Seq: lastSeq},
-		onChange,
+		notifyChange,
 		options.CacheOptions,
 		options.IndexOptions,
 	)
@@ -255,7 +247,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 
-	base.Infof(base.KeyAll, "Got last seq: %v. Sleeping for a while", lastSeq)
+	base.Infof(base.KeyAll, "Sleeping for a while")
 	time.Sleep(time.Second * 60)
 	base.Infof(base.KeyAll, "Done sleeping.  ")
 
@@ -488,9 +480,9 @@ func (context *DatabaseContext) RestartListener() error {
 }
 
 // Cache flush support.  Currently test-only - added for unit test access from rest package
-func (context *DatabaseContext) FlushChannelCache() {
+func (context *DatabaseContext) FlushChannelCache() error {
 	base.Infof(base.KeyCache, "Flushing channel cache")
-	context.changeCache.Clear()
+	return context.changeCache.Clear()
 }
 
 // Removes previous versions of Sync Gateway's design docs found on the server
@@ -859,7 +851,11 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 	// really confuse the changeCache, so turn it off until we're done:
 	db.changeCache.EnableChannelIndexing(false)
 	defer db.changeCache.EnableChannelIndexing(true)
-	db.changeCache.Clear()
+
+	err = db.changeCache.Clear()
+	if err != nil {
+		return 0, err
+	}
 
 	base.Infof(base.KeyAll, "Re-running sync function on all documents...")
 	changeCount := 0
