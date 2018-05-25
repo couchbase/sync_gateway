@@ -214,6 +214,7 @@ func (c *changeCache) EnableChannelIndexing(enable bool) {
 func (c *changeCache) CleanUp() bool {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+
 	if c.channelCaches == nil {
 		return false
 	}
@@ -370,10 +371,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 }
 
-func (c *changeCache) lazyLoadInitialSequence() {
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
+func (c *changeCache) _lazyLoadInitialSequence() {
 
 	lastSequence, err := c.context.LastSequence()
 	if err != nil {
@@ -383,6 +381,15 @@ func (c *changeCache) lazyLoadInitialSequence() {
 	c.nextSequence = lastSequence + 1
 	base.Infof(base.KeyAll, "Setting changes cache for database %s with initial sequence: %d", base.UD(c.context.Name), c.initialSequence)
 	c.initialSequenceLazyLoaded = true
+
+}
+
+func (c *changeCache) lazyLoadInitialSequence() {
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	c._lazyLoadInitialSequence()
 
 }
 
@@ -819,7 +826,7 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
 
-		initialSequence, err := c.getInitialSequence()
+		initialSequence, err := c._getInitialSequence()
 		if err != nil {
 			base.Warnf(base.KeyAll, "changeCache: Error getting channel cache for channel: %v", base.UD(channelName), err)
 			return nil
@@ -850,6 +857,9 @@ func (c *changeCache) GetCachedChanges(channelName string, options ChangesOption
 
 // Returns the sequence number the cache is up-to-date with.
 func (c *changeCache) LastSequence() uint64 {
+
+	c.lazyLoadInitialSequence()
+
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
