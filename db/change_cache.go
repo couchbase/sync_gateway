@@ -858,6 +858,8 @@ func (c *changeCache) GetCachedChanges(channelName string, options ChangesOption
 // Returns the sequence number the cache is up-to-date with.
 func (c *changeCache) LastSequence() uint64 {
 
+	// Without this, after SG starts up, but before any DCP messages received, _getNextSequence() will return an error
+	// and a warning will be logged, and LastSequence() will return 0
 	c.lazyLoadInitialSequence()
 
 	c.lock.RLock()
