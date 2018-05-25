@@ -677,12 +677,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 // Returns the channels that changed.
 func (c *changeCache) _addPendingLogs() base.Set {
 	var changedChannels base.Set
-
-	// No point in continuing if there aren't any pending logs
-	if len(c.pendingLogs) == 0 {
-		return nil
-	}
-
+	
 	for len(c.pendingLogs) > 0 {
 		change := c.pendingLogs[0]
 		isNext := change.Sequence == c.nextSequence
