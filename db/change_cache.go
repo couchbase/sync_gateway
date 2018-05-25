@@ -189,7 +189,6 @@ func (c *changeCache) Clear() error {
 		return err
 	}
 
-
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
@@ -480,7 +479,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	}
 
 
-	if syncData.Sequence <= c.initialSequence {
+	if syncData.Sequence <= c.getInitialSequence() {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
@@ -601,7 +600,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	}
 	sequence := princ.Sequence()
 
-	if sequence <= c.initialSequence {
+	if sequence <= c.getInitialSequence() {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
@@ -849,7 +848,9 @@ func (c *changeCache) StartupUnlock() {
 	c.lock.Unlock()
 }
 
-// Set the initial sequence.  Presumed that the change cache is _locked_, since if not, will introduce data races.
+// Set the initial sequence.
+// Think of this as _SetInitialSequence() -- since it premumes that change chache is locked.  It is not safe to
+// call c.lock.Lock() here, it will cause a deadlock.
 func (c *changeCache) SetInitialSequence(initialSequence uint64) {
 	c.initialSequence = initialSequence
 	c.nextSequence = initialSequence + 1
@@ -859,6 +860,12 @@ func (c *changeCache) getNextSequence() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.nextSequence
+}
+
+func (c *changeCache) getInitialSequence() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.initialSequence
 }
 
 //////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()
