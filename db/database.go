@@ -246,15 +246,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		feedMode = sgbucket.FeedResume
 	}
 
-
-
-
-
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
-		context.changeCache.StartupLock()  // so we don't try to cache dcp events before cache is ready
+		changeCacheNonAccel := context.changeCache.(*changeCache)
+
+		changeCacheNonAccel.StartupLock() // so we don't try to cache dcp events before cache is ready
 
 		err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
@@ -304,25 +302,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 			// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
 
-		});
-
-
+		})
 
 		if err != nil {
-			context.changeCache.ReleaseStartupLock()
+			changeCacheNonAccel.ReleaseStartupLock()
 			return nil, err
 		}
-
-
-
-		// Safe to tell the cache to initialize w/ LastSeq
-
-		// Getting Last Seq  _init
-
-		// Init'ing Last Seq
-
-
-		context.changeCache.ReleaseStartupLock()
 
 		if dbName == "db_no_xattr" {
 			base.Infof(base.KeyAll, "Sleeping for a while")
@@ -330,6 +315,24 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			base.Infof(base.KeyAll, "Done sleeping.  ")
 		}
 
+		// Safe to tell the cache to initialize w/ LastSeq
+
+		lastSequence, err := context.LastSequence()
+		if err != nil {
+			return nil, err
+		}
+
+		//
+		//c.initialSequence = lastSequence
+		//c.nextSequence = lastSequence + 1
+
+		// Getting Last Seq  _init
+
+		// Init'ing Last Seq
+
+		changeCacheNonAccel.SetInitialSequence(lastSequence)
+
+		changeCacheNonAccel.ReleaseStartupLock()
 
 	}
 

@@ -86,12 +86,8 @@ func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration
 			panic(fmt.Sprintf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime)))
 		}
 
-		nextSequence, err := c.getNextSequence()
-		if err != nil {
-			panic(fmt.Sprintf("Error getting next sequence: %v", err))
-		}
 
-		if nextSequence >= sequence+1 {
+		if c.nextSequence >= sequence+1 {
 			base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
 			return
 		}
@@ -110,12 +106,7 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime ti
 			panic(fmt.Sprintf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime)))
 		}
 
-		nextSequence, err := c.getNextSequence()
-		if err != nil {
-			panic(fmt.Sprintf("Error getting next sequence: %v", err))
-		}
-
-		if nextSequence >= sequence+1 {
+		if c.nextSequence >= sequence+1 {
 			foundInMissing := false
 			c.skippedSeqLock.RLock()
 			for _, skippedSeq := range c.skippedSeqs {
