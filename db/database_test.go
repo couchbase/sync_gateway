@@ -89,17 +89,45 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 
 func testBucket() base.TestBucket {
 
-	testBucket := base.GetTestBucketOrPanic()
-	err := installViews(testBucket.Bucket)
-	if err != nil {
-		log.Fatalf("Couldn't connect to bucket: %v", err)
+	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
+	for i:= 0; i < 2; i++ {
+
+		testBucket := base.GetTestBucketOrPanic()
+		err := installViews(testBucket.Bucket)
+		if err != nil {
+			log.Fatalf("Couldn't connect to bucket: %v", err)
+			// ^^ effectively panics
+		}
+
+		err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0)
+		if err != nil {
+			log.Fatalf("Unable to initialize GSI indexes for test: %v", err)
+			// ^^ effectively panics
+		}
+
+		// Since GetTestBucketOrPanic() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
+		gocbBucket, isGoCbBucket := base.AsGoCBBucket(testBucket.Bucket)
+		if isGoCbBucket {
+			waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec.UseXattrs)
+			if waitForIndexRollbackErr != nil {
+				base.Infof(base.KeyAll, "Error WaitForIndexEmpty: %v.  Drop indexes and retry", waitForIndexRollbackErr)
+				if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
+					log.Fatalf("Unable to drop GSI indexes for test: %v", err)
+					// ^^ effectively panics
+				}
+				testBucket.Close()  // Close the bucket, it will get re-opened on next loop iteration
+				continue  // Goes to top of outer for loop to retry
+			}
+
+		}
+
+		return testBucket
+
 	}
 
-	err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0)
-	if err != nil {
-		log.Fatalf("Unable to initialize GSI indexes for test:%v", err)
-	}
-	return testBucket
+	panic(fmt.Sprintf("Failed to create a testbucket after multiple attempts"))
+
+
 }
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
@@ -1419,6 +1447,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 }
 
 func TestChannelView(t *testing.T) {
+
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
