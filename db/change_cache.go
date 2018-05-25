@@ -45,8 +45,8 @@ func init() {
 type changeCache struct {
 	context         *DatabaseContext
 	logsDisabled    bool                     // If true, ignore incoming tap changes
-	nextSequence    uint64                   // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use _getNextSequence() rather than accessing directly.
-	initialSequence uint64                   // DB's current sequence at startup time. Should use _getInititalSequence() rather than accessing directly.
+	nextSequence    uint64                   // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
+	initialSequence uint64                   // DB's current sequence at startup time. Should use getInititalSequence() rather than accessing directly.
 	receivedSeqs    map[uint64]struct{}      // Set of all sequences received
 	pendingLogs     LogPriorityQueue         // Out-of-sequence entries waiting to be cached
 	channelCaches   map[string]*channelCache // A cache of changes for each channel
@@ -309,42 +309,6 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	return true
 }
-
-//// Get's the initial sequence, but first verifies that it's been loaded by checking the lazy loading flag
-//// Locking: assumes that c.Lock() is already being held by the caller.
-//func (c *changeCache) _getInitialSequence() (uint64, error) {
-//
-//	if !c.initialSequenceLazyLoaded {
-//		return 0, fmt.Errorf("changeCache._getInitialSequence() called before c.initialSequenceLazyLoaded set to true.  This violates an expected internal invariant.")
-//	}
-//
-//	return c.initialSequence, nil
-//
-//}
-//
-//// Concurrent-safe version of getInitialSequence()
-//func (c *changeCache) getInitialSequence() (uint64, error) {
-//	c.lock.Lock()
-//	defer c.lock.Unlock()
-//	return c._getInitialSequence()
-//}
-//
-//
-//// Get's the next sequence, but first verifies that it's been loaded by checking the lazy loading flag
-//// Locking: assumes that c.Lock() is already being held by the caller.
-//func (c *changeCache) _getNextSequence() (uint64, error) {
-//	if !c.initialSequenceLazyLoaded {
-//		return 0, fmt.Errorf("changeCache._getNextSequence() called before c.initialSequenceLazyLoaded set to true.  This violates an expected internal invariant.")
-//	}
-//	return c.nextSequence, nil
-//
-//}
-//
-//func (c *changeCache) getNextSequence() (uint64, error) {
-//	c.lock.RLock()
-//	defer c.lock.RUnlock()
-//	return c._getNextSequence()
-//}
 
 //////// ADDING CHANGES:
 
