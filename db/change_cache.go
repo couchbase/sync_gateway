@@ -513,7 +513,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	if len(syncData.RecentSequences) > 0 {
 
 		for _, seq := range syncData.RecentSequences {
-			if seq >= c.nextSequence && seq < currentSequence {
+			if seq >= c.getNextSequence() && seq < currentSequence {
 				base.Infof(base.KeyCache, "Received deduplicated #%d for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
@@ -813,14 +813,7 @@ func (c *changeCache) GetCachedChanges(channelName string, options ChangesOption
 // Returns the sequence number the cache is up-to-date with.
 func (c *changeCache) LastSequence() uint64 {
 
-	// Without this, after SG starts up, but before any DCP messages received, _getNextSequence() will return an error
-	// and a warning will be logged, and LastSequence() will return 0
-	// c.lazyLoadInitialSequence()
-
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-
-	lastSequence := c.nextSequence - 1
+	lastSequence := c.getNextSequence() - 1
 	return lastSequence
 }
 
