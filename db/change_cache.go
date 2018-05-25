@@ -43,21 +43,21 @@ func init() {
 //    - Perform sequence buffering to handle skipped sequences
 //    - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
-	context                   *DatabaseContext
-	logsDisabled              bool                     // If true, ignore incoming tap changes
-	nextSequence              uint64                   // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use _getNextSequence() rather than accessing directly.
-	initialSequence           uint64                   // DB's current sequence at startup time. Should use _getInititalSequence() rather than accessing directly.
-	receivedSeqs              map[uint64]struct{}      // Set of all sequences received
-	pendingLogs               LogPriorityQueue         // Out-of-sequence entries waiting to be cached
-	channelCaches             map[string]*channelCache // A cache of changes for each channel
-	notifyChange              func(base.Set)           // Client callback that notifies of channel changes
-	stopped                   bool                     // Set by the Stop method
-	skippedSeqs               SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
-	skippedSeqLock            sync.RWMutex             // Coordinates access to skippedSeqs queue
-	lock                      sync.RWMutex             // Coordinates access to struct fields
-	lateSeqLock               sync.RWMutex             // Coordinates access to late sequence caches
-	options                   CacheOptions             // Cache config
-	terminator                chan bool                // Signal termination of background goroutines
+	context         *DatabaseContext
+	logsDisabled    bool                     // If true, ignore incoming tap changes
+	nextSequence    uint64                   // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use _getNextSequence() rather than accessing directly.
+	initialSequence uint64                   // DB's current sequence at startup time. Should use _getInititalSequence() rather than accessing directly.
+	receivedSeqs    map[uint64]struct{}      // Set of all sequences received
+	pendingLogs     LogPriorityQueue         // Out-of-sequence entries waiting to be cached
+	channelCaches   map[string]*channelCache // A cache of changes for each channel
+	notifyChange    func(base.Set)           // Client callback that notifies of channel changes
+	stopped         bool                     // Set by the Stop method
+	skippedSeqs     SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
+	skippedSeqLock  sync.RWMutex             // Coordinates access to skippedSeqs queue
+	lock            sync.RWMutex             // Coordinates access to struct fields
+	lateSeqLock     sync.RWMutex             // Coordinates access to late sequence caches
+	options         CacheOptions             // Cache config
+	terminator      chan bool                // Signal termination of background goroutines
 }
 
 type LogEntry channels.LogEntry
@@ -310,7 +310,6 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 	return true
 }
 
-
 //// Get's the initial sequence, but first verifies that it's been loaded by checking the lazy loading flag
 //// Locking: assumes that c.Lock() is already being held by the caller.
 //func (c *changeCache) _getInitialSequence() (uint64, error) {
@@ -346,7 +345,6 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 //	defer c.lock.RUnlock()
 //	return c._getNextSequence()
 //}
-
 
 //////// ADDING CHANGES:
 
@@ -477,7 +475,6 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 			return
 		}
 	}
-
 
 	if syncData.Sequence <= c.getInitialSequence() {
 		return // Tap is sending us an old value from before I started up; ignore it
@@ -633,15 +630,12 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 	sequence := change.Sequence
 
-
-
 	if _, found := c.receivedSeqs[sequence]; found {
 		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
 	c.receivedSeqs[sequence] = struct{}{}
 	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
-
 
 	var changedChannels base.Set
 	if sequence == c.nextSequence || c.nextSequence == 0 {
@@ -682,7 +676,6 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
 func (c *changeCache) _addToCache(change *LogEntry) base.Set {
-
 
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
@@ -748,7 +741,6 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		return nil
 	}
 
-
 	for len(c.pendingLogs) > 0 {
 		change := c.pendingLogs[0]
 		isNext := change.Sequence == c.nextSequence
@@ -771,7 +763,6 @@ func (c *changeCache) getChannelCache(channelName string) *channelCache {
 	defer c.lock.Unlock()
 	return c._getChannelCache(channelName)
 }
-
 
 func (c *changeCache) GetStableSequence(docID string) SequenceID {
 	// Stable sequence is independent of docID in changeCache
