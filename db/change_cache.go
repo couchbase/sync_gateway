@@ -862,6 +862,11 @@ func (c *changeCache) SetInitialSequence(initialSequence uint64) {
 	c.nextSequence = initialSequence + 1
 }
 
+func (c *changeCache) getNextSequence() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.nextSequence
+}
 
 //////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()
 
