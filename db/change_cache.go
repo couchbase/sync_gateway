@@ -46,7 +46,6 @@ type changeCache struct {
 	context                   *DatabaseContext
 	logsDisabled              bool                     // If true, ignore incoming tap changes
 	nextSequence              uint64                   // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use _getNextSequence() rather than accessing directly.
-	//initialSequenceLazyLoaded bool                     // Has initialSequence been lazy loaded yet?
 	initialSequence           uint64                   // DB's current sequence at startup time. Should use _getInititalSequence() rather than accessing directly.
 	receivedSeqs              map[uint64]struct{}      // Set of all sequences received
 	pendingLogs               LogPriorityQueue         // Out-of-sequence entries waiting to be cached
@@ -846,19 +845,22 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	}
 }
 
-// TODO: document this
+// Lock the cache during startup.  While locked, incoming DCP changes will not be processed since they will be waiting for the lock.
 func (c *changeCache) StartupLock() {
 	c.lock.Lock()
 }
-func (c *changeCache) ReleaseStartupLock() {
+
+// Unlock the cache after it's ready to receive DCP changes.  Typically called after SetInitialSequence() has
+// initialized the cache with the initialSequence
+func (c *changeCache) StartupUnlock() {
 	c.lock.Unlock()
 }
+
+// Set the initial sequence.  Presumed that the change cache is _locked_, since if not, will introduce data races.
 func (c *changeCache) SetInitialSequence(initialSequence uint64) {
 	c.initialSequence = initialSequence
 	c.nextSequence = initialSequence + 1
 }
-
-
 
 
 //////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()

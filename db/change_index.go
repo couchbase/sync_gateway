@@ -61,6 +61,14 @@ type ChangeIndex interface {
 	getOldestSkippedSequence() uint64
 	getChannelCache(channelName string) *channelCache
 
+	// Explicitly lock the index so that DCP changes will not be processed.
+	StartupLock()
+	StartupUnlock()
+
+	// Set the initial sequence, which represents the current "latest global document sequence number".
+	// Only valid for non-accel scenarios.
+	SetInitialSequence(sequence uint64)
+
 	// Unit test support
 	waitForSequence(sequence uint64, maxWaitTime time.Duration)
 	waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration)

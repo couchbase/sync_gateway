@@ -250,9 +250,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
-		changeCacheNonAccel := context.changeCache.(*changeCache)
-
-		changeCacheNonAccel.StartupLock() // so we don't try to cache dcp events before cache is ready
+		// Lock the change cache so we don't process any incoming DCP events before the
+		// cache is ready.  (SG #3558)
+		context.changeCache.StartupLock()
 
 		err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
@@ -305,34 +305,22 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		})
 
 		if err != nil {
-			changeCacheNonAccel.ReleaseStartupLock()
+			// In the case of an error, unlock the change cache despite the fact it's in an unitialized state.
+			context.changeCache.StartupUnlock()
 			return nil, err
 		}
 
-		if dbName == "db_no_xattr" {
-			base.Infof(base.KeyAll, "Sleeping for a while")
-			time.Sleep(time.Second * 60)
-			base.Infof(base.KeyAll, "Done sleeping.  ")
-		}
-
-		// Safe to tell the cache to initialize w/ LastSeq
-
+		// Find the current global doc sequence and use that for the initial sequence for the change cache
 		lastSequence, err := context.LastSequence()
 		if err != nil {
 			return nil, err
 		}
 
-		//
-		//c.initialSequence = lastSequence
-		//c.nextSequence = lastSequence + 1
+		// Set the initial sequence
+		context.changeCache.SetInitialSequence(lastSequence)
 
-		// Getting Last Seq  _init
-
-		// Init'ing Last Seq
-
-		changeCacheNonAccel.SetInitialSequence(lastSequence)
-
-		changeCacheNonAccel.ReleaseStartupLock()
+		// Unlock change cache
+		context.changeCache.StartupUnlock()
 
 	}
 
