@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/couchbaselabs/go.assert"
@@ -123,8 +125,11 @@ func BenchmarkLogRotation(b *testing.B) {
 	}
 
 	for _, test := range tests {
-		b.Run(fmt.Sprintf("rotate:%t-compress:%t-Bytes:%v", test.rotate, test.compress, test.numBytes), func(bm *testing.B) {
-			logger := lumberjack.Logger{Compress: test.compress}
+		b.Run(fmt.Sprintf("rotate:%t-compress:%t-bytes:%v", test.rotate, test.compress, test.numBytes), func(bm *testing.B) {
+			logPath := filepath.Join(os.TempDir(), "benchmark-logrotate")
+			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
+			defer logger.Close()
+			defer os.RemoveAll(logPath)
 
 			data := make([]byte, test.numBytes)
 			_, err := rand.Read(data)
