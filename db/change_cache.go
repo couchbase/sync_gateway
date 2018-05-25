@@ -329,28 +329,6 @@ func (c *changeCache) _setInitialSequence(initialSequence uint64) {
 	c.nextSequence = initialSequence + 1
 }
 
-//func (c *changeCache) _lazyLoadInitialSequence() {
-//
-//	lastSequence, err := c.context.LastSequence()
-//	if err != nil {
-//		base.Warnf(base.KeyAll, "changeCache had error getting lastSequence: %v.  This could cause undefined invalid behavior in the change cache", err)
-//	}
-//	c.initialSequence = lastSequence
-//	c.nextSequence = lastSequence + 1
-//	base.Infof(base.KeyAll, "Setting changes cache for database %s with initial sequence: %d", base.UD(c.context.Name), c.initialSequence)
-//	c.initialSequenceLazyLoaded = true
-//
-//}
-
-//func (c *changeCache) lazyLoadInitialSequence() {
-//
-//	c.lock.Lock()
-//	defer c.lock.Unlock()
-//
-//	c._lazyLoadInitialSequence()
-//
-//}
-
 // Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.
