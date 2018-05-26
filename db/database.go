@@ -185,6 +185,9 @@ type DBOnlineCallback func(dbContext *DatabaseContext)
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
 func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (*DatabaseContext, error) {
+
+	var err error
+
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
@@ -201,50 +204,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	context.EventMgr = NewEventManager()
 
-	var err error
-	context.sequences, err = newSequenceAllocator(bucket)
-	if err != nil {
-		return nil, err
-	}
-	lastSeq, err := context.sequences.lastSequence()
-	if err != nil {
-		return nil, err
-	}
-
-	if options.IndexOptions == nil {
-		// In-memory channel cache
-		context.SequenceType = IntSequenceType
-		context.changeCache = &changeCache{}
-	} else {
-		// KV channel index
-		context.SequenceType = ClockSequenceType
-		context.changeCache = &kvChangeIndex{}
-		context.SequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
-	onChange := func(changedChannels base.Set) {
-		context.mutationListener.Notify(changedChannels)
-	}
-
-	// Initialize the ChangeCache
-	context.changeCache.Init(
-		context,
-		SequenceID{Seq: lastSeq},
-		onChange,
-		options.CacheOptions,
-		options.IndexOptions,
-	)
-
-	// Set the DB Context onChange callback to call back the changecache DocChanged callback
-	context.SetOnChangeCallback(context.changeCache.DocChanged)
-
-	// Initialize the tap Listener for notify handling
-	context.mutationListener.Init(bucket.GetName())
-
 	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
 	feedMode := uint64(sgbucket.FeedNoBackfill)
 	if context.UseXattrs() && context.autoImport {
@@ -252,6 +211,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
+	// NOTE: should be started _before_ the lastSequence() is retrieved, due to races described in SG #3558
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
@@ -307,6 +267,49 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			return nil, err
 		}
 	}
+
+	context.sequences, err = newSequenceAllocator(bucket)
+	if err != nil {
+		return nil, err
+	}
+	lastSeq, err := context.sequences.lastSequence()
+	if err != nil {
+		return nil, err
+	}
+
+	if options.IndexOptions == nil {
+		// In-memory channel cache
+		context.SequenceType = IntSequenceType
+		context.changeCache = &changeCache{}
+	} else {
+		// KV channel index
+		context.SequenceType = ClockSequenceType
+		context.changeCache = &kvChangeIndex{}
+		context.SequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
+	onChange := func(changedChannels base.Set) {
+		context.mutationListener.Notify(changedChannels)
+	}
+
+	// Initialize the ChangeCache
+	context.changeCache.Init(
+		context,
+		SequenceID{Seq: lastSeq},
+		onChange,
+		options.CacheOptions,
+		options.IndexOptions,
+	)
+
+	// Set the DB Context onChange callback to call back the changecache DocChanged callback
+	context.SetOnChangeCallback(context.changeCache.DocChanged)
+
+	// Initialize the tap Listener for notify handling
+	context.mutationListener.Init(bucket.GetName())
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
 	if options.OIDCOptions != nil {
