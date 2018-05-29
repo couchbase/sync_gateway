@@ -5,9 +5,7 @@ import sys
 import tempfile
 import time
 import subprocess
-import string
 import re
-import platform
 import glob
 import gzip
 import socket
@@ -104,17 +102,18 @@ class AltExitC(object):
         for f in self.list:
             try:
                 f()
-            except:
+            except Exception:
                 pass
 
     def exit(self, status):
         self.at_exit_handler()
         os._exit(status)
 
+
 AltExit = AltExitC()
 
 
-def log(message, end = '\n'):
+def log(message, end='\n'):
     sys.stderr.write(message + end)
     sys.stderr.flush()
 
@@ -124,6 +123,7 @@ class Task(object):
     no_header = False
     num_samples = 1
     interval = 0
+
     def __init__(self, description, command, timeout=None, **kwargs):
         self.description = description
         self.command = command
@@ -148,7 +148,7 @@ class Task(object):
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT,
                                  shell=use_shell, env=env)
-        except OSError, e:
+        except OSError as e:
             # if use_shell is False then Popen may raise exception
             # if binary is missing. In this case we mimic what
             # shell does. Namely, complaining to stderr and
@@ -206,6 +206,7 @@ class PythonTask(object):
     no_header = False
     num_samples = 1
     interval = 0
+
     def __init__(self, description, callable, timeout=None, **kwargs):
         self.description = description
         self.callable = callable
@@ -246,7 +247,7 @@ class TaskRunner(object):
         try:
             for fp in self.files.iteritems():
                 fp.close()
-        except:
+        except Exception:
             pass
 
         shutil.rmtree(self.tmpdir, ignore_errors=True)
@@ -256,7 +257,7 @@ class TaskRunner(object):
         file (including timestamps) from the Couchbase instance.
         filename - Absolute path to file to collect.
         """
-        if not filename in self.files:
+        if filename not in self.files:
             self.files[filename] = open(filename, 'r')
         else:
             log("Unable to collect file '{0}' - already collected.".format(
@@ -307,7 +308,7 @@ class TaskRunner(object):
             if not task.no_header:
                 self.header(fp, task.description, command_to_print)
 
-            for i in xrange(task.num_samples):
+            for i in range(task.num_samples):
                 if i > 0:
                     log("Taking sample %d after %f seconds - " % (i+1, task.interval), end='')
                     time.sleep(task.interval)
@@ -355,7 +356,7 @@ class TaskRunner(object):
 
             if status != 0:
                 log("gozip terminated with non-zero exit code (%d)" % status)
-        except OSError, e:
+        except OSError as e:
             log("Exception during compression: %s" % e)
             fallback = True
 
@@ -376,6 +377,7 @@ class TaskRunner(object):
                          "%s/%s" % (prefix, os.path.basename(name)))
         finally:
             zf.close()
+
 
 class SolarisTask(Task):
     platforms = ['sunos5', 'solaris']
@@ -440,6 +442,7 @@ def make_curl_task(name, url, user="", password="", content_postprocessors=[],
         **kwargs
     )
 
+
 def add_gzip_file_task(sourcefile_path, log_file_name, content_postprocessors=[]):
     """
     Adds the extracted contents of a file to the output zip
@@ -461,6 +464,7 @@ def add_gzip_file_task(sourcefile_path, log_file_name, content_postprocessors=[]
     )
 
     return task
+
 
 def add_file_task(sourcefile_path, content_postprocessors=[]):
     """
@@ -484,17 +488,20 @@ def add_file_task(sourcefile_path, content_postprocessors=[]):
 
     return task
 
+
 def make_query_task(statement, user, password, port):
     url = "http://127.0.0.1:%s/query/service?statement=%s" % (port, urllib.quote(statement))
 
     return make_curl_task(name="Result of query statement \'%s\'" % statement,
                           user=user, password=password, url=url)
 
+
 def basedir():
     mydir = os.path.dirname(sys.argv[0])
     if mydir == "":
         mydir = "."
     return mydir
+
 
 def make_event_log_task():
     from datetime import datetime, timedelta
@@ -639,6 +646,7 @@ def make_os_tasks(processes):
 
     return _tasks
 
+
 # stolen from http://rightfootin.blogspot.com/2006/09/more-on-python-flatten.html
 def iter_flatten(iterable):
     it = iter(iterable)
@@ -649,14 +657,18 @@ def iter_flatten(iterable):
         else:
             yield e
 
+
 def flatten(iterable):
     return [e for e in iter_flatten(iterable)]
+
 
 def read_guts(guts, key):
     return guts.get(key, "")
 
+
 def winquote_path(s):
     return '"'+s.replace("\\\\", "\\").replace('/', "\\")+'"'
+
 
 # python's split splits empty string to [''] which doesn't make any
 # sense. So this function works around that.
@@ -665,6 +677,7 @@ def correct_split(string, splitchar):
     if rv == ['']:
         rv = []
     return rv
+
 
 def make_stats_archives_task(guts, initargs_path):
     escript = exec_name("escript")
@@ -683,6 +696,7 @@ def make_stats_archives_task(guts, initargs_path):
                      no_header=True,
                      log_file="stats_archives.json")
 
+
 def make_product_task(guts, initargs_path, options):
     root = os.path.abspath(os.path.join(initargs_path, "..", "..", "..", ".."))
     dbdir = read_guts(guts, "db_dir")
@@ -691,7 +705,6 @@ def make_product_task(guts, initargs_path, options):
     diag_url = "http://127.0.0.1:%s/diag?noLogs=1" % read_guts(guts, "rest_port")
     if options.single_node_diag:
         diag_url += "&oneNode=1"
-
 
     from distutils.spawn import find_executable
 
@@ -723,16 +736,16 @@ def make_product_task(guts, initargs_path, options):
     index_tasks = []
     index_port = read_guts(guts, "indexer_http_port")
     if index_port:
-        url='http://127.0.0.1:%s/getIndexStatus' % index_port
+        url = 'http://127.0.0.1:%s/getIndexStatus' % index_port
         index_tasks = [make_curl_task(name="Index definitions are: ",
-                          user="@", password=read_guts(guts, "memcached_pass"), url=url)]
+                       user="@", password=read_guts(guts, "memcached_pass"), url=url)]
 
     fts_tasks = []
     fts_port = read_guts(guts, "fts_http_port")
     if fts_port:
-        url='http://127.0.0.1:%s/api/diag' % fts_port
+        url = 'http://127.0.0.1:%s/api/diag' % fts_port
         fts_tasks = [make_curl_task(name="FTS /api/diag: ",
-                       user="@", password=read_guts(guts, "memcached_pass"), url=url)]
+                     user="@", password=read_guts(guts, "memcached_pass"), url=url)]
 
     _tasks = [
         UnixTask("Directory structure",
@@ -762,9 +775,9 @@ def make_product_task(guts, initargs_path, options):
         LinuxTask("Version file", "cat '%s/VERSION.txt'" % root),
         LinuxTask("Manifest file", "cat '%s/manifest.txt'" % root),
         LinuxTask("Manifest file", "cat '%s/manifest.xml'" % root),
-        AllOsTask("Couchbase config", "", literal = read_guts(guts, "ns_config")),
-        AllOsTask("Couchbase static config", "", literal = read_guts(guts, "static_config")),
-        AllOsTask("Raw ns_log", "", literal = read_guts(guts, "ns_log")),
+        AllOsTask("Couchbase config", "", literal=read_guts(guts, "ns_config")),
+        AllOsTask("Couchbase static config", "", literal=read_guts(guts, "static_config")),
+        AllOsTask("Raw ns_log", "", literal=read_guts(guts, "ns_log")),
         # TODO: just gather those in python
         WindowsTask("Memcached logs",
                     "cd " + winquote_path(read_guts(guts, "memcached_logs_path")) + " && " +
@@ -776,7 +789,7 @@ def make_product_task(guts, initargs_path, options):
         [WindowsTask("Ini files (%s)" % p,
                      "type " + winquote_path(p),
                      log_file="ini.log")
-         for  p in read_guts(guts, "couch_inis").split(";")],
+         for p in read_guts(guts, "couch_inis").split(";")],
         UnixTask("Ini files",
                  ["sh", "-c", 'for i in "$@"; do echo "file: $i"; cat "$i"; done', "--"] + read_guts(guts, "couch_inis").split(";"),
                  log_file="ini.log"),
@@ -803,7 +816,7 @@ def make_product_task(guts, initargs_path, options):
                        log_file="couchbase.log"),
 
         [AllOsTask("couchbase logs (%s)" % name, "cbbrowse_logs %s" % name,
-                   addenv = [("REPORT_DIR", read_guts(guts, "log_path"))],
+                   addenv=[("REPORT_DIR", read_guts(guts, "log_path"))],
                    log_file="ns_server.%s" % name)
          for name in ["debug.log", "info.log", "error.log", "couchdb.log",
                       "xdcr.log", "xdcr_errors.log",
@@ -841,19 +854,19 @@ def make_product_task(guts, initargs_path, options):
 
         [AllOsTask("ddocs for %s (%s)" % (bucket, path),
                    ["couch_dbdump", path],
-                   log_file = "ddocs.log")
+                   log_file="ddocs.log")
          for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
          for path in glob.glob(os.path.join(dbdir, bucket, "master.couch*"))],
         [AllOsTask("replication docs (%s)" % (path),
                    ["couch_dbdump", path],
-                   log_file = "ddocs.log")
+                   log_file="ddocs.log")
          for path in glob.glob(os.path.join(dbdir, "_replicator.couch*"))],
 
         [AllOsTask("Couchstore local documents (%s, %s)" % (bucket, os.path.basename(path)),
                    ["couch_dbdump", "--local", path],
-                   log_file = "couchstore_local.log")
-        for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
-        for path in glob.glob(os.path.join(dbdir, bucket, "*.couch.*"))],
+                   log_file="couchstore_local.log")
+         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - set(correct_split(read_guts(guts, "memcached_buckets"), ","))
+         for path in glob.glob(os.path.join(dbdir, bucket, "*.couch.*"))],
 
         [UnixTask("moxi stats (port %s)" % port,
                   "echo stats proxy | nc 127.0.0.1 %s" % port,
@@ -878,6 +891,7 @@ def make_product_task(guts, initargs_path, options):
 
     return _tasks
 
+
 def find_script(name):
     dirs = [basedir(), os.path.join(basedir(), "scripts")]
     for d in dirs:
@@ -887,6 +901,7 @@ def find_script(name):
             return path
 
     return None
+
 
 def get_server_guts(initargs_path):
     dump_guts_path = find_script("dump-guts")
@@ -901,17 +916,17 @@ def get_server_guts(initargs_path):
     if extra_args:
         args = args + extra_args.split(";")
     print("Checking for server guts in %s..." % initargs_path)
-    p = subprocess.Popen(args, stdout = subprocess.PIPE)
+    p = subprocess.Popen(args, stdout=subprocess.PIPE)
     output = p.stdout.read()
     p.wait()
-    rc = p.returncode
     # print("args: %s gave rc: %d and:\n\n%s\n" % (args, rc, output))
     tokens = output.rstrip("\0").split("\0")
     d = {}
     if len(tokens) > 1:
-        for i in xrange(0, len(tokens), 2):
+        for i in range(0, len(tokens), 2):
             d[tokens[i]] = tokens[i+1]
     return d
+
 
 def guess_utility(command):
     if isinstance(command, list):
@@ -926,11 +941,12 @@ def guess_utility(command):
     else:
         return command.split()[0]
 
+
 def dump_utilities(*args, **kwargs):
-    specific_platforms = { SolarisTask : 'Solaris',
-                           LinuxTask :  'Linux',
-                           WindowsTask : 'Windows',
-                           MacOSXTask : 'Mac OS X' }
+    specific_platforms = {SolarisTask: 'Solaris',
+                          LinuxTask: 'Linux',
+                          WindowsTask: 'Windows',
+                          MacOSXTask: 'Mac OS X'}
     platform_utils = dict((name, set()) for name in specific_platforms.values())
 
     class FakeOptions(object):
@@ -948,35 +964,39 @@ def dump_utilities(*args, **kwargs):
             if isinstance(task, platform):
                 platform_utils[name].add(utility)
 
-    print '''This is an autogenerated, possibly incomplete and flawed list
-of utilites used by cbcollect_info'''
+    print("This is an autogenerated, possibly incomplete and flawed list of utilites used by cbcollect_info")
 
     for (name, utilities) in sorted(platform_utils.items(), key=lambda x: x[0]):
-        print "\n%s:" % name
+        print("\n%s:" % name)
 
         for utility in sorted(utilities):
-            print "        - %s" % utility
+            print("        - %s" % utility)
 
     sys.exit(0)
+
 
 def setup_stdin_watcher():
     def _in_thread():
         sys.stdin.readline()
         AltExit.exit(2)
-    th = threading.Thread(target = _in_thread)
+    th = threading.Thread(target=_in_thread)
     th.setDaemon(True)
     th.start()
+
 
 class CurlKiller:
     def __init__(self, p):
         self.p = p
+
     def cleanup(self):
-        if self.p != None:
+        if self.p is not None:
             print("Killing curl...")
             os.kill(self.p.pid, signal.SIGKILL)
             print("done")
+
     def disarm(self):
         self.p = None
+
 
 def do_upload_and_exit(path, url):
 
@@ -985,7 +1005,7 @@ def do_upload_and_exit(path, url):
     # mmap the file to reduce the amount of memory required (see bit.ly/2aNENXC)
     filedata = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
     opener = urllib2.build_opener()
-    request = urllib2.Request(url.encode('utf-8'),data=filedata)
+    request = urllib2.Request(url.encode('utf-8'), data=filedata)
     request.add_header(str('Content-Type'), str('application/zip'))
     request.get_method = lambda: str('PUT')
 
@@ -1005,12 +1025,14 @@ def do_upload_and_exit(path, url):
 
     sys.exit(exit_code)
 
+
 def parse_host(host):
     url = urlparse.urlsplit(host)
     if not url.scheme:
         url = urlparse.urlsplit('https://' + host)
 
     return url.scheme, url.netloc, url.path
+
 
 def generate_upload_url(parser, options, zip_filename):
     upload_url = None
@@ -1031,12 +1053,14 @@ def generate_upload_url(parser, options, zip_filename):
         log("Will upload collected .zip file into %s" % upload_url)
     return upload_url
 
+
 def check_ticket(option, opt, value):
     if re.match('^\d{1,7}$', value):
         return int(value)
     else:
         raise optparse.OptionValueError(
             "option %s: invalid ticket number: %r" % (opt, value))
+
 
 class CbcollectInfoOptions(optparse.Option):
     from copy import copy
@@ -1045,7 +1069,8 @@ class CbcollectInfoOptions(optparse.Option):
     TYPE_CHECKER = copy(optparse.Option.TYPE_CHECKER)
     TYPE_CHECKER["ticket"] = check_ticket
 
-def find_primary_addr(default = None):
+
+def find_primary_addr(default=None):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         try:
@@ -1056,6 +1081,7 @@ def find_primary_addr(default = None):
             return default
     finally:
         s.close()
+
 
 def exec_name(name):
     if sys.platform == 'win32':
