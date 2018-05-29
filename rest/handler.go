@@ -92,8 +92,19 @@ type handlerMethod func(*handler) error
 // Creates an http.Handler that will run a handler with the given method
 func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
+
+
 		runOffline := false
 		h := newHandler(server, privs, r, rq, runOffline)
+
+		// Possibly inject artificial failures
+		if privs == regularPrivs {
+			if server.config.Unsupported != nil && server.config.Unsupported.FailureInjection.ServiceUnavailable() {
+				h.writeStatus(http.StatusServiceUnavailable, "ServiceUnavailable (Artificially injected error)")
+				return
+			}
+		}
+
 		err := h.invoke(method)
 		h.writeError(err)
 		h.logDuration(true)
