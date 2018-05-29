@@ -1,4 +1,6 @@
-FROM golang:1.8-stretch
+
+# Stage to build Sync Gateway binary
+FROM golang:1.8-stretch as builder
 
 # Customize this with the commit hash or branch name you want to build
 ENV COMMIT master
@@ -24,5 +26,10 @@ RUN wget https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/bootst
 # Build the Sync Gateway binary
 RUN ./build.sh -v
 
-# Deploy to a directory in the path
-RUN mv godeps/bin/sync_gateway $GOPATH/bin/
+
+# Stage to run the SG binary from the previous stage
+FROM ubuntu:latest as runner
+
+COPY --from=builder /go/godeps/bin/sync_gateway .
+
+ENTRYPOINT ["/sync_gateway"]
