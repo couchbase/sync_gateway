@@ -6,6 +6,7 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/gocb"
 )
 
 // A wrapper around a Bucket to support forced errors.  For testing use only.
@@ -19,18 +20,20 @@ type LeakyBucket struct {
 type LeakyBucketConfig struct {
 
 	// Incr() fails 3 times before finally succeeding
-	IncrTemporaryFailCount uint16
+	IncrTemporaryFailCount uint16 `json:"incr_temporary_fail_count,omitempty"`
 
 	// Emulate TAP/DCP feed de-dupliation behavior, such that within a
 	// window of # of mutations or a timeout, mutations for a given document
 	// will be filtered such that only the _latest_ mutation will make it through.
-	TapFeedDeDuplication bool
-	TapFeedVbuckets      bool     // Emulate vbucket numbers on feed
+	TapFeedDeDuplication bool     `json:"tap_feed_deduplication,omitempty"`
+	TapFeedVbuckets      bool     `json:"tap_feed_vbuckets,omitempty"` // Emulate vbucket numbers on feed
 	TapFeedMissingDocs   []string // Emulate entry not appearing on tap feed
 
 	// Returns a partial error the first time ViewCustom is called
-	FirstTimeViewCustomPartialError bool
-	PostQueryCallback               func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
+	FirstTimeViewCustomPartialError    bool                                                       `json:"first_time_view_custom_partial_error,omitempty"`
+	PostQueryCallback                  func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
+	InjectNthOpBucketOpTemporaryErrors uint                                                       `json:"inject_nth_op_bucket_op_temporary_errors"` // Every Nth bucket op will emulate a temporary/recoverable Couchbase Server errors.  0 means no errors.
+
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
@@ -159,6 +162,10 @@ func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, p
 }
 
 func (b *LeakyBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
+
+	//if b.config.InjectNthOpBucketOpTemporaryErrors > 0 {
+	//	return 0, gocb.ErrTmpFail
+	//}
 	return b.bucket.GetWithXattr(k, xattr, rv, xv)
 }
 

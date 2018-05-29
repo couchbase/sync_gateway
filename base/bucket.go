@@ -697,7 +697,15 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 	}
 
-	if LogDebugEnabled(KeyBucket) {
+	isLeakyBucket := true  // TODO: get this from the bucketspec
+	if isLeakyBucket {
+		bucket = &LeakyBucket{
+			bucket: bucket,
+			config: LeakyBucketConfig{
+				InjectNthOpBucketOpTemporaryErrors: 5,
+			},
+		}
+	} else if LogDebugEnabled(KeyBucket) {
 		bucket = &LoggingBucket{bucket: bucket}
 	}
 	return
