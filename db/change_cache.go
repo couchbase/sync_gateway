@@ -40,13 +40,13 @@ func init() {
 //
 // - Manage collection of channel caches
 // - Receive DCP changes via callbacks
-//    - Perform sequence buffering to handle skipped sequences
+//    - Perform sequence buffering to ensure documents are received in sequence order
 //    - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
 	context         *DatabaseContext
 	logsDisabled    bool                     // If true, ignore incoming tap changes
 	nextSequence    uint64                   // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
-	initialSequence uint64                   // DB's current sequence at startup time. Should use getInititalSequence() rather than accessing directly.
+	initialSequence uint64                   // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
 	receivedSeqs    map[uint64]struct{}      // Set of all sequences received
 	pendingLogs     LogPriorityQueue         // Out-of-sequence entries waiting to be cached
 	channelCaches   map[string]*channelCache // A cache of changes for each channel
@@ -175,7 +175,7 @@ func (c *changeCache) IsStopped() bool {
 	return c.stopped
 }
 
-// Empty out all channel caches.  This doesn't touch
+// Empty out all channel caches.
 func (c *changeCache) Clear() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -323,11 +323,6 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 }
 
-// Set's the initial sequence, assume's that the caller is already holding a lock on the changeCache
-func (c *changeCache) _setInitialSequence(initialSequence uint64) {
-	c.initialSequence = initialSequence
-	c.nextSequence = initialSequence + 1
-}
 
 // Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
@@ -777,7 +772,7 @@ func (c *changeCache) StartupUnlock() {
 }
 
 // Set the initial sequence.
-// Think of this as _SetInitialSequence() -- since it premumes that change chache is locked.  It is not safe to
+// Think of this as _SetInitialSequence() -- since it presumes that change chache is locked.  It is not safe to
 // call c.lock.Lock() here, it will cause a deadlock.
 func (c *changeCache) SetInitialSequence(initialSequence uint64) {
 	c.initialSequence = initialSequence

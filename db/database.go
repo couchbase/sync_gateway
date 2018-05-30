@@ -313,6 +313,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		// Find the current global doc sequence and use that for the initial sequence for the change cache
 		lastSequence, err := context.LastSequence()
 		if err != nil {
+			context.changeCache.StartupUnlock()
 			return nil, err
 		}
 
