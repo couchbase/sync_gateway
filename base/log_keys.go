@@ -146,7 +146,8 @@ func (keyMask *LogKey) EnabledLogKeys() []string {
 func ToLogKey(keysStr []string) (logKeys LogKey, warnings []DeferredLogFn) {
 
 	for _, key := range keysStr {
-		// Copy the original key, so we can still refer to it after modification.
+		// Take a copy of key, so we can use it in a closure outside the scope
+		// of this loop (the warnings returned are logged asyncronously)
 		originalKey := key
 
 		// Some old log keys (like HTTP+), we want to handle slightly (map to a different key)
