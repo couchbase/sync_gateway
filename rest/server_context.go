@@ -323,6 +323,11 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 		operationTimeout := time.Millisecond * time.Duration(*config.BucketOpTimeoutMs)
 		spec.BucketOpTimeout = &operationTimeout
 	}
+
+	if config.Unsupported.LeakyBucketConfig != nil {
+		spec.LeakyBucketConfig = config.Unsupported.LeakyBucketConfig
+	}
+
 	return spec, nil
 }
 

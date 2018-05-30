@@ -109,7 +109,9 @@ type BucketSpec struct {
 	UseXattrs                              bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
 	ViewQueryTimeoutSecs                   *uint32        // the view query timeout in seconds (default: 75 seconds)
 	BucketOpTimeout                        *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
-}
+	LeakyBucketConfig *LeakyBucketConfig // LeakyBucket config, if any
+
+	}
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
 func (spec BucketSpec) RetrySleeper() RetrySleeper {
@@ -697,17 +699,13 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 	}
 
-	isLeakyBucket := true  // TODO: get this from the bucketspec
-	if isLeakyBucket {
-		bucket = &LeakyBucket{
-			bucket: bucket,
-			config: LeakyBucketConfig{
-				InjectNthOpBucketOpTemporaryErrors: 5,
-			},
-		}
-	} else if LogDebugEnabled(KeyBucket) {
+	// Possibly wrap the bucket in a LeakyBucket or a LoggingBucket
+	if spec.LeakyBucketConfig != nil {
+			bucket, err = NewLeakyBucket(bucket, *spec.LeakyBucketConfig)
+	} else if LogDebugEnabled(KeyBucket) {  // This is in an "else if" in order to avoid "double wrapping" the bucket.  LeakyBucket takes precedence over LoggingBucket.
 		bucket = &LoggingBucket{bucket: bucket}
 	}
+
 	return
 }
 

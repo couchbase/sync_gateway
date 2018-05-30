@@ -121,7 +121,7 @@ type UnsupportedOptions struct {
 	UserViews         UserViewsOptions        `json:"user_views,omitempty"`          // Config settings for user views
 	OidcTestProvider  OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`  // Config settings for OIDC Provider
 	APIEndpoints      APIEndpoints            `json:"api_endpoints,omitempty"`       // Config settings for API endpoints
-	LeakyBucketConfig base.LeakyBucketConfig  `json:"leaky_bucket_config,omitempty"` // Config settings for leaky bucket
+	LeakyBucketConfig *base.LeakyBucketConfig  `json:"leaky_bucket_config,omitempty"` // Config settings for leaky bucket
 }
 
 // Options associated with the import of documents not written by Sync Gateway

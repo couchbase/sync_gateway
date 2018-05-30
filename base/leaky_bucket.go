@@ -3,17 +3,20 @@ package base
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/gocb"
+	sgbucket "github.com/couchbase/sg-bucket"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // A wrapper around a Bucket to support forced errors.  For testing use only.
 type LeakyBucket struct {
-	bucket    Bucket
-	incrCount uint16
-	config    LeakyBucketConfig
+	bucket       Bucket
+	incrCount    uint16
+	config       LeakyBucketConfig
+	numBucketOps uint64 // Track the total number of bucket ops
 }
 
 // The config object that controls the LeakyBucket behavior
@@ -32,71 +35,138 @@ type LeakyBucketConfig struct {
 	// Returns a partial error the first time ViewCustom is called
 	FirstTimeViewCustomPartialError    bool                                                       `json:"first_time_view_custom_partial_error,omitempty"`
 	PostQueryCallback                  func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
-	InjectNthOpBucketOpTemporaryErrors uint                                                       `json:"inject_nth_op_bucket_op_temporary_errors"` // Every Nth bucket op will emulate a temporary/recoverable Couchbase Server errors.  0 means no errors.
+
+	// Every Nth bucket op will emulate a temporary/recoverable Couchbase Server errors.  0 means no errors.  This should
+	// be set to a number high enough to get past the startup ops.  Currently, that is > 3.
+	InjectNthOpBucketOpTemporaryErrors uint                                                       `json:"inject_nth_op_bucket_op_temporary_errors"`
 
 }
 
-func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
+func (c LeakyBucketConfig) Validate() error {
+	minNthBucketOpTempError := uint(6)  // Discovered by trial and error and set to 2x higher than required.  May change as the codebase evolves.
+	if c.InjectNthOpBucketOpTemporaryErrors > 0 && c.InjectNthOpBucketOpTemporaryErrors < minNthBucketOpTempError {
+		// Since SG does certain bucket operations during startup, the "Nth temporary errors" must be set high enough to
+		// get past those.
+		return fmt.Errorf("Invalid config.  Make InjectNthOpBucketOpTemporaryErrors > %d to avoid returning temporary errors during startup related bucket ops", minNthBucketOpTempError)
+	}
+	return nil
+}
+
+func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) (Bucket, error) {
+	if err := config.Validate(); err != nil {
+		Warnf(KeyAll, "Leaky bucket config validation error: %v", err)
+		return nil, ErrFatalBucketConnection
+	}
 	return &LeakyBucket{
 		bucket: bucket,
 		config: config,
-	}
+	}, nil
 }
 
 func (b *LeakyBucket) GetName() string {
 	return b.bucket.GetName()
 }
 func (b *LeakyBucket) Get(k string, rv interface{}) (cas uint64, err error) {
+	if b.injectTemporaryError() {
+		return 0, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.Get(k, rv)
 }
 func (b *LeakyBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
+	if b.injectTemporaryError() {
+		return nil, 0, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.GetRaw(k)
 }
 func (b *LeakyBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
+	if b.injectTemporaryError() {
+		return nil, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.GetBulkRaw(keys)
 }
 func (b *LeakyBucket) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {
+	if b.injectTemporaryError() {
+		return nil, 0, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.GetAndTouchRaw(k, exp)
 }
 func (b *LeakyBucket) Add(k string, exp uint32, v interface{}) (added bool, err error) {
+	if b.injectTemporaryError() {
+		return false, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.Add(k, exp, v)
 }
 func (b *LeakyBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
+	if b.injectTemporaryError() {
+		return false, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.AddRaw(k, exp, v)
 }
 func (b *LeakyBucket) Append(k string, data []byte) error {
+	if b.injectTemporaryError() {
+		return pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.Append(k, data)
 }
 func (b *LeakyBucket) Set(k string, exp uint32, v interface{}) error {
+	if b.injectTemporaryError() {
+		return pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.Set(k, exp, v)
 }
 func (b *LeakyBucket) SetRaw(k string, exp uint32, v []byte) error {
+	if b.injectTemporaryError() {
+		return pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.SetRaw(k, exp, v)
 }
 func (b *LeakyBucket) Delete(k string) error {
+	if b.injectTemporaryError() {
+		return pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.Delete(k)
 }
 func (b *LeakyBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
+	if b.injectTemporaryError() {
+		return 0, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.Remove(k, cas)
 }
 func (b *LeakyBucket) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
+	if b.injectTemporaryError() {
+		return pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.Write(k, flags, exp, v, opt)
 }
 func (b *LeakyBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
+	if b.injectTemporaryError() {
+		return 0, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
 func (b *LeakyBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (err error) {
+	if b.injectTemporaryError() {
+		return pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.Update(k, exp, callback)
 }
 func (b *LeakyBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
+	if b.injectTemporaryError() {
+		return pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
 func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
+	if b.injectTemporaryError() {
+		return pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.SetBulk(entries)
 }
 
 func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
-
+	if b.injectTemporaryError() {
+		return 0, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	if b.config.IncrTemporaryFailCount > 0 {
 		if b.incrCount < b.config.IncrTemporaryFailCount {
 			b.incrCount++
@@ -132,6 +202,7 @@ func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{
 }
 
 func (b *LeakyBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
+
 	iterator, err := b.bucket.ViewQuery(ddoc, name, params)
 
 	if b.config.FirstTimeViewCustomPartialError {
@@ -154,22 +225,30 @@ func (b *LeakyBucket) Refresh() error {
 }
 
 func (b *LeakyBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
+	if b.injectTemporaryError() {
+		return 0, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
 }
 
 func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+	if b.injectTemporaryError() {
+		return 0, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, callback)
 }
 
 func (b *LeakyBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
-
-	//if b.config.InjectNthOpBucketOpTemporaryErrors > 0 {
-	//	return 0, gocb.ErrTmpFail
-	//}
+	if b.injectTemporaryError() {
+		return 0, pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.GetWithXattr(k, xattr, rv, xv)
 }
 
 func (b *LeakyBucket) DeleteWithXattr(k string, xattr string) error {
+	if b.injectTemporaryError() {
+		return pkgerrors.WithStack(gocb.ErrTmpFail)
+	}
 	return b.bucket.DeleteWithXattr(k, xattr)
 }
 
@@ -358,6 +437,27 @@ func (b *LeakyBucket) SetFirstTimeViewCustomPartialError(val bool) {
 
 func (b *LeakyBucket) SetPostQueryCallback(callback func(ddoc, viewName string, params map[string]interface{})) {
 	b.config.PostQueryCallback = callback
+}
+
+func (b *LeakyBucket) injectTemporaryError() bool {
+
+	// If InjectNthOpBucketOpTemporaryErrors is disabled, no point in checking further
+	if b.config.InjectNthOpBucketOpTemporaryErrors == 0 {
+		return false
+	}
+
+	// Increment the number of bucket ops, and get the latest value
+	delta := uint64(1)
+	updatedNumBucketOps := atomic.AddUint64(&b.numBucketOps, delta)
+
+	// If the number of bucket ops is a multiple of InjectNthOpBucketOpTemporaryErrors, return true to introduce a temporary error
+	if updatedNumBucketOps%uint64(b.config.InjectNthOpBucketOpTemporaryErrors) == 0 {
+		return true
+	}
+
+	// Otherwise
+	return false
+
 }
 
 // An implementation of a sgbucket tap feed that wraps
