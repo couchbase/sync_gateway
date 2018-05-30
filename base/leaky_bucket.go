@@ -33,17 +33,16 @@ type LeakyBucketConfig struct {
 	TapFeedMissingDocs   []string // Emulate entry not appearing on tap feed
 
 	// Returns a partial error the first time ViewCustom is called
-	FirstTimeViewCustomPartialError    bool                                                       `json:"first_time_view_custom_partial_error,omitempty"`
-	PostQueryCallback                  func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
+	FirstTimeViewCustomPartialError bool                                                       `json:"first_time_view_custom_partial_error,omitempty"`
+	PostQueryCallback               func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
 
 	// Every Nth bucket op will emulate a temporary/recoverable Couchbase Server errors.  0 means no errors.  This should
 	// be set to a number high enough to get past the startup ops.  Currently, that is > 3.
-	InjectNthOpBucketOpTemporaryErrors uint                                                       `json:"inject_nth_op_bucket_op_temporary_errors"`
-
+	InjectNthOpBucketOpTemporaryErrors uint `json:"inject_nth_op_bucket_op_temporary_errors"`
 }
 
 func (c LeakyBucketConfig) Validate() error {
-	minNthBucketOpTempError := uint(6)  // Discovered by trial and error and set to 2x higher than required.  May change as the codebase evolves.
+	minNthBucketOpTempError := uint(6) // Discovered by trial and error and set to 2x higher than required.  May change as the codebase evolves.
 	if c.InjectNthOpBucketOpTemporaryErrors > 0 && c.InjectNthOpBucketOpTemporaryErrors < minNthBucketOpTempError {
 		// Since SG does certain bucket operations during startup, the "Nth temporary errors" must be set high enough to
 		// get past those.
@@ -447,8 +446,7 @@ func (b *LeakyBucket) injectTemporaryError() bool {
 	}
 
 	// Increment the number of bucket ops, and get the latest value
-	delta := uint64(1)
-	updatedNumBucketOps := atomic.AddUint64(&b.numBucketOps, delta)
+	updatedNumBucketOps := atomic.AddUint64(&b.numBucketOps, uint64(1))
 
 	// If the number of bucket ops is a multiple of InjectNthOpBucketOpTemporaryErrors, return true to introduce a temporary error
 	if updatedNumBucketOps%uint64(b.config.InjectNthOpBucketOpTemporaryErrors) == 0 {
