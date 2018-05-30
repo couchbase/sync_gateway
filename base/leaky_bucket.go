@@ -38,15 +38,15 @@ type LeakyBucketConfig struct {
 
 	// Every Nth bucket op will emulate a temporary/recoverable Couchbase Server errors.  0 means no errors.  This should
 	// be set to a number high enough to get past the startup ops.  Currently, that is > 3.
-	InjectNthOpBucketOpTemporaryErrors uint `json:"inject_nth_op_bucket_op_temporary_errors"`
+	InjectNthBucketOpArtificialErrors uint `json:"inject_nth_bucket_op_artificial_errors"`
 }
 
 func (c LeakyBucketConfig) Validate() error {
 	minNthBucketOpTempError := uint(6) // Discovered by trial and error and set to 2x higher than required.  May change as the codebase evolves.
-	if c.InjectNthOpBucketOpTemporaryErrors > 0 && c.InjectNthOpBucketOpTemporaryErrors < minNthBucketOpTempError {
+	if c.InjectNthBucketOpArtificialErrors > 0 && c.InjectNthBucketOpArtificialErrors < minNthBucketOpTempError {
 		// Since SG does certain bucket operations during startup, the "Nth temporary errors" must be set high enough to
 		// get past those.
-		return fmt.Errorf("Invalid config.  Make InjectNthOpBucketOpTemporaryErrors > %d to avoid returning temporary errors during startup related bucket ops", minNthBucketOpTempError)
+		return fmt.Errorf("Invalid config.  Make inject_nth_bucket_op_artificial_errors > %d to avoid returning temporary errors during startup related bucket ops", minNthBucketOpTempError)
 	}
 	return nil
 }
@@ -440,16 +440,16 @@ func (b *LeakyBucket) SetPostQueryCallback(callback func(ddoc, viewName string, 
 
 func (b *LeakyBucket) injectTemporaryError() bool {
 
-	// If InjectNthOpBucketOpTemporaryErrors is disabled, no point in checking further
-	if b.config.InjectNthOpBucketOpTemporaryErrors == 0 {
+	// If InjectNthBucketOpArtificialErrors is disabled, no point in checking further
+	if b.config.InjectNthBucketOpArtificialErrors == 0 {
 		return false
 	}
 
 	// Increment the number of bucket ops, and get the latest value
 	updatedNumBucketOps := atomic.AddUint64(&b.numBucketOps, uint64(1))
 
-	// If the number of bucket ops is a multiple of InjectNthOpBucketOpTemporaryErrors, return true to introduce a temporary error
-	if updatedNumBucketOps%uint64(b.config.InjectNthOpBucketOpTemporaryErrors) == 0 {
+	// If the number of bucket ops is a multiple of InjectNthBucketOpArtificialErrors, return true to introduce a temporary error
+	if updatedNumBucketOps%uint64(b.config.InjectNthBucketOpArtificialErrors) == 0 {
 		return true
 	}
 
