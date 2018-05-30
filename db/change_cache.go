@@ -91,6 +91,8 @@ type CacheOptions struct {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // notifyChange is an optional function that will be called to notify of channel changes.
+// After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
+// and callers will block on trying to obtain the lock.
 func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) error {
 	c.context = context
 
@@ -153,6 +155,24 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 		}
 	}()
 
+	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
+	c.lock.Lock()
+
+	return nil
+}
+
+func (c *changeCache) Start() error {
+
+	// Unlock the cache after this function returns.
+	defer c.lock.Unlock()
+
+	// Find the current global doc sequence and use that for the initial sequence for the change cache
+	lastSequence, err := c.context.LastSequence()
+	if err != nil {
+		return err
+	}
+
+	c._setInitialSequence(lastSequence)
 	return nil
 }
 
@@ -760,21 +780,8 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	}
 }
 
-// Lock the cache during startup.  While locked, incoming DCP changes will not be processed since they will be waiting for the lock.
-func (c *changeCache) StartupLock() {
-	c.lock.Lock()
-}
-
-// Unlock the cache after it's ready to receive DCP changes.  Typically called after SetInitialSequence() has
-// initialized the cache with the initialSequence
-func (c *changeCache) StartupUnlock() {
-	c.lock.Unlock()
-}
-
-// Set the initial sequence.
-// Think of this as _SetInitialSequence() -- since it presumes that change chache is locked.  It is not safe to
-// call c.lock.Lock() here, it will cause a deadlock.
-func (c *changeCache) SetInitialSequence(initialSequence uint64) {
+// Set the initial sequence.  Presumes that change chache is already locked.
+func (c *changeCache) _setInitialSequence(initialSequence uint64) {
 	c.initialSequence = initialSequence
 	c.nextSequence = initialSequence + 1
 }
