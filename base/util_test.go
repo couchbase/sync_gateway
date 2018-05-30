@@ -504,7 +504,7 @@ type A struct {
 }
 
 // Copied from https://github.com/getlantern/deepcopy, commit 7f45deb8130a0acc553242eb0e009e3f6f3d9ce3 (Apache 2 licensed)
-func TestDeepCopy(t *testing.T) {
+func TestDeepCopyInefficient(t *testing.T) {
 	src := map[string]interface{}{
 		"String":  "Hello World",
 		"Int":     5,
@@ -533,7 +533,7 @@ func TestDeepCopy(t *testing.T) {
 			"Two": &A{String: "3"},
 		},
 	}
-	err := DeepCopy(dst, src)
+	err := DeepCopyInefficient(dst, src)
 	if err != nil {
 		t.Errorf("Unable to copy!")
 	}

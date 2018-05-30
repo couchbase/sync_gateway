@@ -864,7 +864,8 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	// For the second rest tester, create a copy of the original database config and
 	// clear out the sync function.
-	dbConfigCopy := rt1.DatabaseConfig.MustDeepCopy()
+	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
+	assertNoError(t, err, "Unexpected error")
 	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
@@ -952,7 +953,8 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	// For the second rest tester, create a copy of the original database config and
 	// clear out the sync function.
-	dbConfigCopy := rt1.DatabaseConfig.MustDeepCopy()
+	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
+	assertNoError(t, err, "Unexpected error calling DeepCopy()")
 	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
@@ -1047,7 +1049,8 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	// For the second rest tester, create a copy of the original database config and
 	// clear out the sync function.
-	dbConfigCopy := rt1.DatabaseConfig.MustDeepCopy()
+	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
+	assertNoError(t, err, "Unexpected error calling DeepCopy()")
 	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
