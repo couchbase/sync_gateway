@@ -651,7 +651,13 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
 		if spec.FeedType == "" || spec.FeedType != TapFeedType {
-			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
+			var leakyBucketConfig LeakyBucketConfig
+			if spec.LeakyBucketConfig != nil {
+				// If a LeakyBucketConfig was passed in the bucketspec, use it. 
+				leakyBucketConfig = *spec.LeakyBucketConfig
+			}
+			leakyBucketConfig.TapFeedVbuckets = true
+			bucket = &LeakyBucket{bucket: bucket, config: leakyBucketConfig}
 		}
 	} else {
 
