@@ -1,11 +1,12 @@
 package db
 
 import (
+	"fmt"
 	"math"
+	"time"
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
-	"fmt"
 )
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
@@ -17,8 +18,8 @@ func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 		var results gocb.QueryResults
 
 		// Create the star channel query
-		statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement)  // append LIMIT 1 since we only care if there are any results or not
-		starChannelQueryStatement := replaceSyncTokensQuery(statement,useXattrs)
+		statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement) // append LIMIT 1 since we only care if there are any results or not
+		starChannelQueryStatement := replaceSyncTokensQuery(statement, useXattrs)
 		params := map[string]interface{}{}
 		params[QueryParamStartSeq] = 0
 		params[QueryParamEndSeq] = math.MaxInt64
@@ -70,4 +71,55 @@ func ResultsEmpty(results gocb.QueryResults) (resultsEmpty bool) {
 
 }
 
+// FOR TESTS ONLY: Blocks until the given sequence has been received.
+func (c *changeCache) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration) {
+	c.waitForSequence(sequence.Seq, maxWaitTime)
+}
 
+func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration) {
+
+	startTime := time.Now()
+
+	for {
+
+		if time.Since(startTime) >= maxWaitTime {
+			panic(fmt.Sprintf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime)))
+		}
+
+		if c.getNextSequence() >= sequence+1 {
+			base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// FOR TESTS ONLY: Blocks until the given sequence has been received.
+func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration) {
+
+	startTime := time.Now()
+
+	for {
+
+		if time.Since(startTime) >= maxWaitTime {
+			panic(fmt.Sprintf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime)))
+		}
+
+		if c.getNextSequence() >= sequence+1 {
+			foundInMissing := false
+			c.skippedSeqLock.RLock()
+			for _, skippedSeq := range c.skippedSeqs {
+				if skippedSeq.seq == sequence {
+					foundInMissing = true
+					break
+				}
+			}
+			c.skippedSeqLock.RUnlock()
+			if !foundInMissing {
+				base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
+				return
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
