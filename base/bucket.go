@@ -102,16 +102,16 @@ type BucketSpec struct {
 	Server, PoolName, BucketName, FeedType string
 	Auth                                   AuthHandler
 	CouchbaseDriver                        CouchbaseDriver
-	Certpath, Keypath, CACertPath          string         // X.509 auth parameters
-	KvTLSPort                              int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
-	MaxNumRetries                          int            // max number of retries before giving up
-	InitialRetrySleepTimeMS                int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
-	UseXattrs                              bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
-	ViewQueryTimeoutSecs                   *uint32        // the view query timeout in seconds (default: 75 seconds)
-	BucketOpTimeout                        *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
-	LeakyBucketConfig *LeakyBucketConfig // LeakyBucket config, if any
+	Certpath, Keypath, CACertPath          string             // X.509 auth parameters
+	KvTLSPort                              int                // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
+	MaxNumRetries                          int                // max number of retries before giving up
+	InitialRetrySleepTimeMS                int                // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
+	UseXattrs                              bool               // Whether to use xattrs to store _sync metadata.  Used during view initialization
+	ViewQueryTimeoutSecs                   *uint32            // the view query timeout in seconds (default: 75 seconds)
+	BucketOpTimeout                        *time.Duration     // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+	LeakyBucketConfig                      *LeakyBucketConfig // LeakyBucket config, if any
 
-	}
+}
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
 func (spec BucketSpec) RetrySleeper() RetrySleeper {
@@ -701,8 +701,8 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 	// Possibly wrap the bucket in a LeakyBucket or a LoggingBucket
 	if spec.LeakyBucketConfig != nil {
-			bucket, err = NewLeakyBucket(bucket, *spec.LeakyBucketConfig)
-	} else if LogDebugEnabled(KeyBucket) {  // This is in an "else if" in order to avoid "double wrapping" the bucket.  LeakyBucket takes precedence over LoggingBucket.
+		bucket, err = NewLeakyBucket(bucket, *spec.LeakyBucketConfig)
+	} else if LogDebugEnabled(KeyBucket) { // This is in an "else if" in order to avoid "double wrapping" the bucket.  LeakyBucket takes precedence over LoggingBucket.
 		bucket = &LoggingBucket{bucket: bucket}
 	}
 
