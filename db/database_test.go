@@ -47,11 +47,7 @@ func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
 	// decrementing counter
 	base.DecrNumOpenBuckets(testBucket.Bucket.GetName())
 
-	leakyBucket, err := base.NewLeakyBucket(testBucket.Bucket, config)
-	if err != nil {
-		panic(fmt.Sprintf("Error creating leakybucket: %v", err))
-	}
-	return leakyBucket
+	return base.NewLeakyBucket(testBucket.Bucket, config)
 }
 
 func setupTestDBForShadowing(t *testing.T) *Database {

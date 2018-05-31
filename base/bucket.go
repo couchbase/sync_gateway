@@ -653,7 +653,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		if spec.FeedType == "" || spec.FeedType != TapFeedType {
 			var leakyBucketConfig LeakyBucketConfig
 			if spec.LeakyBucketConfig != nil {
-				// If a LeakyBucketConfig was passed in the bucketspec, use it. 
+				// If a LeakyBucketConfig was passed in the bucketspec, use it.
 				leakyBucketConfig = *spec.LeakyBucketConfig
 			}
 			leakyBucketConfig.TapFeedVbuckets = true
@@ -707,7 +707,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 	// Possibly wrap the bucket in a LeakyBucket or a LoggingBucket
 	if spec.LeakyBucketConfig != nil {
-		bucket, err = NewLeakyBucket(bucket, *spec.LeakyBucketConfig)
+		bucket = NewLeakyBucket(bucket, *spec.LeakyBucketConfig)
 	} else if LogDebugEnabled(KeyBucket) { // This is in an "else if" in order to avoid "double wrapping" the bucket.  LeakyBucket takes precedence over LoggingBucket.
 		bucket = &LoggingBucket{bucket: bucket}
 	}

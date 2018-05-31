@@ -41,25 +41,11 @@ type LeakyBucketConfig struct {
 	InjectNthBucketOpArtificialErrors uint `json:"inject_nth_bucket_op_artificial_errors"`
 }
 
-func (c LeakyBucketConfig) Validate() error {
-	minNthBucketOpTempError := uint(6) // Discovered by trial and error and set to 2x higher than required.  May change as the codebase evolves.
-	if c.InjectNthBucketOpArtificialErrors > 0 && c.InjectNthBucketOpArtificialErrors < minNthBucketOpTempError {
-		// Since SG does certain bucket operations during startup, the "Nth temporary errors" must be set high enough to
-		// get past those.
-		return fmt.Errorf("Invalid config.  Make inject_nth_bucket_op_artificial_errors > %d to avoid returning temporary errors during startup related bucket ops", minNthBucketOpTempError)
-	}
-	return nil
-}
-
-func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) (Bucket, error) {
-	if err := config.Validate(); err != nil {
-		Warnf(KeyAll, "Leaky bucket config validation error: %v", err)
-		return nil, ErrFatalBucketConnection
-	}
+func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
 	return &LeakyBucket{
 		bucket: bucket,
 		config: config,
-	}, nil
+	}
 }
 
 func (b *LeakyBucket) GetName() string {
