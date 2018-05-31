@@ -73,10 +73,12 @@ func (l FileLogger) String() string {
 }
 
 // shouldLog returns true if we can log.
-func (l *FileLogger) shouldLog() bool {
+func (l *FileLogger) shouldLog(logLevel LogLevel) bool {
 	return l != nil && l.logger != nil &&
 		// Check the log file is enabled
-		l.Enabled
+		l.Enabled &&
+		// Check the log level is enabled
+		l.level.Enabled(logLevel)
 }
 
 func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int) error {

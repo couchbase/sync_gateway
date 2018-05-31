@@ -409,10 +409,10 @@ func Tracef(logKey LogKey, format string, args ...interface{}) {
 
 func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
 	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
-	shouldLogError := errorLogger.shouldLog()
-	shouldLogWarn := warnLogger.shouldLog()
-	shouldLogInfo := infoLogger.shouldLog()
-	shouldLogDebug := debugLogger.shouldLog()
+	shouldLogError := errorLogger.shouldLog(logLevel)
+	shouldLogWarn := warnLogger.shouldLog(logLevel)
+	shouldLogInfo := infoLogger.shouldLog(logLevel)
+	shouldLogDebug := debugLogger.shouldLog(logLevel)
 
 	shouldLog := shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug
 
@@ -466,16 +466,16 @@ func Broadcastf(format string, args ...interface{}) {
 	if consoleLogger.logger != nil {
 		consoleLogger.logger.Printf(color(format, LevelNone), args...)
 	}
-	if errorLogger.shouldLog() {
+	if errorLogger.shouldLog(LevelError) {
 		errorLogger.logger.Printf(format, args...)
 	}
-	if warnLogger.shouldLog() {
+	if warnLogger.shouldLog(LevelWarn) {
 		warnLogger.logger.Printf(format, args...)
 	}
-	if infoLogger.shouldLog() {
+	if infoLogger.shouldLog(LevelInfo) {
 		infoLogger.logger.Printf(format, args...)
 	}
-	if debugLogger.shouldLog() {
+	if debugLogger.shouldLog(LevelDebug) {
 		debugLogger.logger.Printf(format, args...)
 	}
 }
@@ -546,11 +546,11 @@ func ConsoleLogKey() *LogKey {
 // LogInfoEnabled returns true if either the console should log at info level,
 // or if the infoLogger is enabled.
 func LogInfoEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(LevelInfo, logKey) || infoLogger.shouldLog()
+	return consoleLogger.shouldLog(LevelInfo, logKey) || infoLogger.shouldLog(LevelInfo)
 }
 
 // LogDebugEnabled returns true if either the console should log at debug level,
 // or if the debugLogger is enabled.
 func LogDebugEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(LevelDebug, logKey) || debugLogger.shouldLog()
+	return consoleLogger.shouldLog(LevelDebug, logKey) || debugLogger.shouldLog(LevelDebug)
 }

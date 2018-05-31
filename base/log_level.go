@@ -82,3 +82,8 @@ func (l *LogLevel) UnmarshalText(text []byte) error {
 	}
 	return fmt.Errorf("unrecognized log level: %q (valid options: %v)", string(text), logLevelNames)
 }
+
+// logLevelPtr is a convenience function that returns a pointer to the given logKey
+func logLevelPtr(logLevel LogLevel) *LogLevel {
+	return &logLevel
+}

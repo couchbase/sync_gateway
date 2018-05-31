@@ -8,10 +8,6 @@ import (
 	assert "github.com/couchbaselabs/go.assert"
 )
 
-func logLevelPtr(l LogLevel) *LogLevel {
-	return &l
-}
-
 func TestConsoleShouldLog(t *testing.T) {
 	tests := []struct {
 		loggerLevel LogLevel
