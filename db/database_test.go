@@ -1335,6 +1335,11 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 }
 
 func TestIncrRetrySuccess(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Test only works against Walrus, due to incrWithRetry being short-circuited in the LeakyBucket + CouchbaseBucketGoCB case")
+	}
+
 	leakyBucketConfig := base.LeakyBucketConfig{
 		IncrTemporaryFailCount: 2,
 	}
@@ -1347,6 +1352,11 @@ func TestIncrRetrySuccess(t *testing.T) {
 }
 
 func TestIncrRetryUnsuccessful(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Test only works against Walrus, due to incrWithRetry being short-circuited in the LeakyBucket + CouchbaseBucketGoCB case")
+	}
+
 	leakyBucketConfig := base.LeakyBucketConfig{
 		IncrTemporaryFailCount: 10,
 	}
