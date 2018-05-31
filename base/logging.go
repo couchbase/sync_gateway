@@ -408,20 +408,23 @@ func Tracef(logKey LogKey, format string, args ...interface{}) {
 }
 
 func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+	// Defensive bounds-check for log level. All callers of this funcion should be within this range.
+	if logLevel <= LevelNone || logLevel >= levelCount {
+		return
+	}
+
 	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
 	shouldLogError := errorLogger.shouldLog(logLevel)
 	shouldLogWarn := warnLogger.shouldLog(logLevel)
 	shouldLogInfo := infoLogger.shouldLog(logLevel)
 	shouldLogDebug := debugLogger.shouldLog(logLevel)
 
-	shouldLog := shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug
-
-	// exit early if we aren't going to log anything
-	if !shouldLog || logLevel <= LevelNone {
+	// exit early if we aren't going to log anything anywhere.
+	if !(shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug) {
 		return
 	}
 
-	// Prepend timestamp, level, log key
+	// Prepend timestamp, level, log key.
 	format = addPrefixes(format, logLevel, logKey)
 
 	// Warn and error logs also append caller name/line numbers.
