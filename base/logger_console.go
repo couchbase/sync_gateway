@@ -17,6 +17,7 @@ type ConsoleLogger struct {
 }
 
 type ConsoleLoggerConfig struct {
+	Enabled      *bool     `json:"enabled,omitempty"`       // Overall console output toggle
 	LogLevel     *LogLevel `json:"log_level,omitempty"`     // Log Level for the console output
 	LogKeys      []string  `json:"log_keys,omitempty"`      // Log Keys for the console output
 	ColorEnabled bool      `json:"color_enabled,omitempty"` // Log with color for the console output
@@ -61,6 +62,16 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	// Default to os.Stderr if alternative output is not set
 	if lcc.Output == nil {
 		lcc.Output = os.Stderr
+	}
+
+	// Default to true if 'enabled' is not explicitly set
+	if lcc.Enabled == nil {
+		lcc.Enabled = BoolPtr(true)
+	} else if !*lcc.Enabled {
+		// If 'enabled' is explicitly set to false, override the log level and log keys
+		newLevel := LevelNone
+		lcc.LogLevel = &newLevel
+		lcc.LogKeys = []string{}
 	}
 
 	// Default log level
