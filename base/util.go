@@ -769,6 +769,10 @@ func BooleanPointer(booleanValue bool) *bool {
 	return &booleanValue
 }
 
+func StringPointer(value string) *string {
+	return &value
+}
+
 // Convert a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
 // Primary use case is for backwards compatibility with go-couchbase, cbdatasource, and CBGT. Supports secure URI's as well (couchbases://).
 // Related CBGT ticket: https://issues.couchbase.com/browse/MB-25522
