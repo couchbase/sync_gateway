@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
+	"encoding/json"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -551,4 +552,24 @@ func EnableTestLogKey(logKey string) {
 func ResetTestLogging() {
 	ConsoleLogLevel().Set(LevelInfo)
 	ConsoleLogKey().Set(KeyHTTP)
+}
+
+// Make a deep copy from src into dst.
+// Copied from https://github.com/getlantern/deepcopy, commit 7f45deb8130a0acc553242eb0e009e3f6f3d9ce3 (Apache 2 licensed)
+func DeepCopyInefficient(dst interface{}, src interface{}) error {
+	if dst == nil {
+		return fmt.Errorf("dst cannot be nil")
+	}
+	if src == nil {
+		return fmt.Errorf("src cannot be nil")
+	}
+	bytes, err := json.Marshal(src)
+	if err != nil {
+		return fmt.Errorf("Unable to marshal src: %s", err)
+	}
+	err = json.Unmarshal(bytes, dst)
+	if err != nil {
+		return fmt.Errorf("Unable to unmarshal into dst: %s", err)
+	}
+	return nil
 }
