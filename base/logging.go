@@ -435,27 +435,17 @@ func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 	if shouldLogConsole {
 		consoleLogger.logger.Printf(color(format, logLevel), args...)
 	}
-
-	switch logLevel {
-	case LevelError:
-		if shouldLogError {
-			errorLogger.logger.Printf(format, args...)
-		}
-		fallthrough
-	case LevelWarn:
-		if shouldLogWarn {
-			warnLogger.logger.Printf(format, args...)
-		}
-		fallthrough
-	case LevelInfo:
-		if shouldLogInfo {
-			infoLogger.logger.Printf(format, args...)
-		}
-		fallthrough
-	case LevelDebug:
-		if shouldLogDebug {
-			debugLogger.logger.Printf(format, args...)
-		}
+	if shouldLogError {
+		errorLogger.logger.Printf(format, args...)
+	}
+	if shouldLogWarn {
+		warnLogger.logger.Printf(format, args...)
+	}
+	if shouldLogInfo {
+		infoLogger.logger.Printf(format, args...)
+	}
+	if shouldLogDebug {
+		debugLogger.logger.Printf(format, args...)
 	}
 }
 
