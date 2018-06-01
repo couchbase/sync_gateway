@@ -29,50 +29,57 @@ func TestSgcollectOptionsValidate(t *testing.T) {
 
 	tests := []struct {
 		options     *sgCollectOptions
-		hasError    bool
 		errContains string
 	}{
 		{
 			options:     &sgCollectOptions{},
-			hasError:    false,
+			errContains: "",
+		},
+		{
+			options:     &sgCollectOptions{Upload: true, Customer: "alice"},
+			errContains: "",
+		},
+		{
+			options:     &sgCollectOptions{Upload: true, Customer: "alice", Ticket: "abc"},
+			errContains: "ticket number must be",
+		},
+		{
+			options:     &sgCollectOptions{Upload: true, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
 			errContains: "",
 		},
 		{
 			options:     &sgCollectOptions{Upload: true},
-			hasError:    true,
 			errContains: "customer must be set",
 		},
 		{
-			options:     &sgCollectOptions{Upload: true, Customer: "alice"},
-			hasError:    false,
-			errContains: "",
+			options:     &sgCollectOptions{Upload: true, Ticket: "12345"},
+			errContains: "customer must be set",
 		},
 		{
-			options:     &sgCollectOptions{Upload: true, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
-			hasError:    false,
-			errContains: "",
+			options:     &sgCollectOptions{Upload: false, Customer: "alice"},
+			errContains: "upload must be set to true",
+		},
+		{
+			options:     &sgCollectOptions{Upload: false, Ticket: "12345"},
+			errContains: "upload must be set to true",
 		},
 		{
 			options:     &sgCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
-			hasError:    true,
 			errContains: "upload must be set to true",
 		},
 		{
 			// Directory exists
 			options:     &sgCollectOptions{OutputDirectory: "."},
-			hasError:    false,
 			errContains: "",
 		},
 		{
 			// Directory doesn't exist
 			options:     &sgCollectOptions{OutputDirectory: "/path/to/output/dir"},
-			hasError:    true,
 			errContains: "no such file or directory",
 		},
 		{
 			// Path not a directory
 			options:     &sgCollectOptions{OutputDirectory: binPath},
-			hasError:    true,
 			errContains: "not a directory",
 		},
 	}
@@ -86,7 +93,7 @@ func TestSgcollectOptionsValidate(t *testing.T) {
 				errStr = err.Error()
 			}
 
-			assert.Equals(ts, err != nil, test.hasError)
+			assert.Equals(ts, err != nil, test.errContains != "")
 			assert.StringContains(ts, errStr, test.errContains)
 
 		})
