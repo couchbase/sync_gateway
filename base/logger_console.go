@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 )
 
 type ConsoleLogger struct {
@@ -74,10 +75,11 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	// Always enable the HTTP log key
 	lcc.LogKeys = append(lcc.LogKeys, logKeyNames[KeyHTTP])
 
-	// If ColorEnabled is not explicitly set, use the value of the default consoleLogger
-	// This is set from the $SG_COLOR env var on startup.
+	// If ColorEnabled is not explicitly set, use the value of $SG_COLOR
 	if lcc.ColorEnabled == nil {
-		lcc.ColorEnabled = &consoleLogger.ColorEnabled
+		// Ignore error parsing this value to treat it as false.
+		color, _ := strconv.ParseBool(os.Getenv("SG_COLOR"))
+		lcc.ColorEnabled = &color
 	}
 
 	return nil
