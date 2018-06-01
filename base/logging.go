@@ -506,17 +506,15 @@ func color(str string, logLevel LogLevel) string {
 
 	switch logLevel {
 	case LevelError:
-		color = "\033[1;31m" // Red
+		color = "\033[1;31m"
 	case LevelWarn:
-		color = "\033[1;33m" // Yellow
+		color = "\033[1;33m"
 	case LevelInfo:
-		color = "\033[1;34m" // Blue
+		color = "\033[1;34m"
 	case LevelDebug:
-		color = "\033[0;36m" // Cyan
-	case LevelTrace:
-		color = "\033[0;37m" // White
-	default:
-		color = "\033[0m" // None
+		color = "\033[0;36m"
+	case LevelNone:
+		color = "\033[0;32m"
 	}
 
 	return color + str + "\033[0m"

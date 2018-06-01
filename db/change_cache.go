@@ -35,22 +35,15 @@ func init() {
 }
 
 // Manages a cache of the recent change history of all channels.
-//
-// Core responsibilities:
-//
-// - Manage collection of channel caches
-// - Receive DCP changes via callbacks
-//    - Perform sequence buffering to ensure documents are received in sequence order
-//    - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
 	context         *DatabaseContext
 	logsDisabled    bool                     // If true, ignore incoming tap changes
-	nextSequence    uint64                   // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
-	initialSequence uint64                   // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
+	nextSequence    uint64                   // Next consecutive sequence number to add
+	initialSequence uint64                   // DB's current sequence at startup time
 	receivedSeqs    map[uint64]struct{}      // Set of all sequences received
 	pendingLogs     LogPriorityQueue         // Out-of-sequence entries waiting to be cached
 	channelCaches   map[string]*channelCache // A cache of changes for each channel
-	notifyChange    func(base.Set)           // Client callback that notifies of channel changes
+	onChange        func(base.Set)           // Client callback that notifies of channel changes
 	stopped         bool                     // Set by the Stop method
 	skippedSeqs     SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
 	skippedSeqLock  sync.RWMutex             // Coordinates access to skippedSeqs queue
@@ -90,13 +83,12 @@ type CacheOptions struct {
 
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
-// notifyChange is an optional function that will be called to notify of channel changes.
-// After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
-// and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) error {
+// onChange is an optional function that will be called to notify of channel changes.
+func (c *changeCache) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) error {
 	c.context = context
-
-	c.notifyChange = notifyChange
+	c.initialSequence = lastSequence.Seq
+	c.nextSequence = lastSequence.Seq + 1
+	c.onChange = onChange
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
@@ -126,7 +118,7 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 	base.Infof(base.KeyCache, "Initializing changes cache with options %+v", c.options)
 
 	if context.UseGlobalSequence() {
-		base.Infof(base.KeyAll, "Initializing changes cache for database %s", base.UD(context.Name))
+		base.Infof(base.KeyAll, "Initializing changes cache for database %s with sequence: %d", base.UD(context.Name), c.initialSequence)
 	}
 
 	heap.Init(&c.pendingLogs)
@@ -155,24 +147,6 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 		}
 	}()
 
-	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
-	c.lock.Lock()
-
-	return nil
-}
-
-func (c *changeCache) Start() error {
-
-	// Unlock the cache after this function returns.
-	defer c.lock.Unlock()
-
-	// Find the current global doc sequence and use that for the initial sequence for the change cache
-	lastSequence, err := c.context.LastSequence()
-	if err != nil {
-		return err
-	}
-
-	c._setInitialSequence(lastSequence)
 	return nil
 }
 
@@ -195,25 +169,14 @@ func (c *changeCache) IsStopped() bool {
 	return c.stopped
 }
 
-// Empty out all channel caches.
-func (c *changeCache) Clear() error {
+// Forgets all cached changes for all channels.
+func (c *changeCache) Clear() {
 	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	// Reset initialSequence so that any new channel caches have their validFrom set to the current last sequence
-	// the point at which the change cache was initialized / re-initialized.
-	// No need to touch c.nextSequence here, because we don't want to touch the sequence buffering state.
-	var err error
-	c.initialSequence, err = c.context.LastSequence()
-	if err != nil {
-		return err
-	}
-
+	c.initialSequence, _ = c.context.LastSequence()
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
-
-	return nil
+	c.lock.Unlock()
 }
 
 // If set to false, DocChanged() becomes a no-op.
@@ -230,15 +193,14 @@ func (c *changeCache) EnableChannelIndexing(enable bool) {
 func (c *changeCache) CleanUp() bool {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
 	if c.channelCaches == nil {
 		return false
 	}
 
 	// If entries have been pending too long, add them to the cache:
 	changedChannels := c._addPendingLogs()
-	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(changedChannels)
+	if c.onChange != nil && len(changedChannels) > 0 {
+		c.onChange(changedChannels)
 	}
 
 	// Remove old cache entries:
@@ -313,8 +275,8 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 
 	// Since the calls to processEntry() above may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
-	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
-		c.notifyChange(changedChannelsCombined)
+	if c.onChange != nil && len(changedChannelsCombined) > 0 {
+		c.onChange(changedChannelsCombined)
 	}
 
 	// Purge pending deletes
@@ -330,19 +292,76 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 	return true
 }
 
+// FOR TESTS ONLY: Blocks until the given sequence has been received.
+func (c *changeCache) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration) {
+	c.waitForSequence(sequence.Seq, maxWaitTime)
+}
+
+func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration) {
+
+	startTime := time.Now()
+
+	for {
+
+		if time.Since(startTime) >= maxWaitTime {
+			panic(fmt.Sprintf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime)))
+		}
+
+		c.lock.RLock()
+		nextSequence := c.nextSequence
+		c.lock.RUnlock()
+		if nextSequence >= sequence+1 {
+			base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// FOR TESTS ONLY: Blocks until the given sequence has been received.
+func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration) {
+
+	startTime := time.Now()
+
+	for {
+
+		if time.Since(startTime) >= maxWaitTime {
+			panic(fmt.Sprintf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime)))
+		}
+
+		c.lock.RLock()
+		nextSequence := c.nextSequence
+		c.lock.RUnlock()
+		if nextSequence >= sequence+1 {
+			foundInMissing := false
+			c.skippedSeqLock.RLock()
+			for _, skippedSeq := range c.skippedSeqs {
+				if skippedSeq.seq == sequence {
+					foundInMissing = true
+					break
+				}
+			}
+			c.skippedSeqLock.RUnlock()
+			if !foundInMissing {
+				base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
+				return
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 //////// ADDING CHANGES:
 
 // Given a newly changed document (received from the tap feed), adds change entries to channels.
 // The JSON must be the raw document from the bucket, with the metadata and all.
 func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
-
 	if event.Synchronous {
 		c.DocChangedSynchronous(event)
 	} else {
 		go c.DocChangedSynchronous(event)
 	}
 }
-
 
 // Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
@@ -433,7 +452,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		}
 	}
 
-	if syncData.Sequence <= c.getInitialSequence() {
+	if syncData.Sequence <= c.initialSequence {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
@@ -464,9 +483,9 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	}
 
 	if len(syncData.RecentSequences) > 0 {
-
+		nextSeq := c.getNextSequence()
 		for _, seq := range syncData.RecentSequences {
-			if seq >= c.getNextSequence() && seq < currentSequence {
+			if seq >= nextSeq && seq < currentSequence {
 				base.Infof(base.KeyCache, "Received deduplicated #%d for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
@@ -503,8 +522,8 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
 
 	// Notify change listeners for all of the changed channels
-	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
-		c.notifyChange(changedChannelsCombined)
+	if c.onChange != nil && len(changedChannelsCombined) > 0 {
+		c.onChange(changedChannelsCombined)
 	}
 
 }
@@ -537,8 +556,8 @@ func (c *changeCache) processUnusedSequence(docID string) {
 	// Since processEntry may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
 	changedChannels := c.processEntry(change)
-	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(changedChannels)
+	if c.onChange != nil && len(changedChannels) > 0 {
+		c.onChange(changedChannels)
 	}
 
 }
@@ -553,8 +572,10 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		return
 	}
 	sequence := princ.Sequence()
-
-	if sequence <= c.getInitialSequence() {
+	c.lock.RLock()
+	initialSequence := c.initialSequence
+	c.lock.RUnlock()
+	if sequence <= initialSequence {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
@@ -572,8 +593,8 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	base.Infof(base.KeyCache, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
 	changedChannels := c.processEntry(change)
-	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(changedChannels)
+	if c.onChange != nil && len(changedChannels) > 0 {
+		c.onChange(changedChannels)
 	}
 }
 
@@ -586,7 +607,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	}
 
 	sequence := change.Sequence
-
+	nextSequence := c.nextSequence
 	if _, found := c.receivedSeqs[sequence]; found {
 		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
@@ -595,17 +616,17 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
 
 	var changedChannels base.Set
-	if sequence == c.nextSequence || c.nextSequence == 0 {
+	if sequence == nextSequence || nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
 		changedChannels = c._addToCache(change)
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Union(c._addPendingLogs())
-	} else if sequence > c.nextSequence {
+	} else if sequence > nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
 		base.Infof(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d)",
-			sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1)
+			sequence, numPending, nextSequence, c.pendingLogs[0].Sequence-1)
 		changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
 		if numPending > c.options.CachePendingSeqMaxNum {
 			// Too many pending; add the oldest one:
@@ -616,9 +637,9 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// Remove from skipped sequence queue
 		if !c.WasSkipped(sequence) {
 			// Error removing from skipped sequences
-			base.Infof(base.KeyCache, "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
+			base.Infof(base.KeyCache, "  Received unexpected out-of-order change - not in skippedSeqs (seq %d, expecting %d) doc %q / %q", sequence, nextSequence, base.UD(change.DocID), change.RevID)
 		} else {
-			base.Infof(base.KeyCache, "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, c.nextSequence, base.UD(change.DocID), change.RevID)
+			base.Infof(base.KeyCache, "  Received previously skipped out-of-order change (seq %d, expecting %d) doc %q / %q ", sequence, nextSequence, base.UD(change.DocID), change.RevID)
 			change.Skipped = true
 		}
 
@@ -633,7 +654,6 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
 func (c *changeCache) _addToCache(change *LogEntry) base.Set {
-
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
 	}
@@ -716,9 +736,17 @@ func (c *changeCache) getChannelCache(channelName string) *channelCache {
 	return c._getChannelCache(channelName)
 }
 
+func (c *changeCache) getNextSequence() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.nextSequence
+}
+
 func (c *changeCache) GetStableSequence(docID string) SequenceID {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 	// Stable sequence is independent of docID in changeCache
-	return SequenceID{Seq: c.LastSequence()}
+	return SequenceID{Seq: c.nextSequence - 1}
 }
 
 func (c *changeCache) GetStableClock(stale bool) (clock base.SequenceClock, err error) {
@@ -728,11 +756,7 @@ func (c *changeCache) GetStableClock(stale bool) (clock base.SequenceClock, err 
 func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
-
-		// expect to see everything _after_ the sequence at the time of cache init, but not the sequence itself since it not expected to appear on DCP
-		validFrom := c.initialSequence + 1
-
-		cache = newChannelCacheWithOptions(c.context, channelName, validFrom, c.options)
+		cache = newChannelCacheWithOptions(c.context, channelName, c.initialSequence+1, c.options)
 		c.channelCaches[channelName] = cache
 	}
 	return cache
@@ -754,9 +778,9 @@ func (c *changeCache) GetCachedChanges(channelName string, options ChangesOption
 
 // Returns the sequence number the cache is up-to-date with.
 func (c *changeCache) LastSequence() uint64 {
-
-	lastSequence := c.getNextSequence() - 1
-	return lastSequence
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.nextSequence - 1
 }
 
 func (c *changeCache) _allChannels() base.Set {
@@ -778,26 +802,6 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	} else {
 		return uint64(0)
 	}
-}
-
-// Set the initial sequence.  Presumes that change chache is already locked.
-func (c *changeCache) _setInitialSequence(initialSequence uint64) {
-	c.initialSequence = initialSequence
-	c.nextSequence = initialSequence + 1
-}
-
-// Concurrent-safe get value of nextSequence 
-func (c *changeCache) getNextSequence() uint64 {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.nextSequence
-}
-
-// Concurrent-safe get value of initialSequence
-func (c *changeCache) getInitialSequence() uint64 {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.initialSequence
 }
 
 //////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()

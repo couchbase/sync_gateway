@@ -95,10 +95,9 @@ func TestViewQuery(t *testing.T) {
 
 }
 
-//Tests #1109, wh ere design doc contains multiple views
+//Tests #1109, where design doc contains multiple views
 func TestViewQueryMultipleViews(t *testing.T) {
-
-	rt := RestTester{}
+	var rt RestTester
 	defer rt.Close()
 
 	//Define three views
@@ -127,7 +126,6 @@ func TestViewQueryMultipleViews(t *testing.T) {
 }
 
 func TestViewQueryUserAccess(t *testing.T) {
-
 	var rt RestTester
 	defer rt.Close()
 
@@ -142,14 +140,12 @@ func TestViewQueryUserAccess(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
-	assertNoError(t, err, "Unexpected error in WaitForNAdminViewResults")
+	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
-	assertNoError(t, err, "Unexpected error in WaitForNAdminViewResults")
-
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
@@ -161,8 +157,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	a.Save(testUser)
 
 	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
-	assertNoError(t, err, "Unexpected error in WaitForNUserViewResults")
-
+	assertNoError(t, err, "Unexpected error")
 	assert.Equals(t, len(result.Rows), 2)
 	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
@@ -173,7 +168,6 @@ func TestViewQueryUserAccess(t *testing.T) {
 	request.SetBasicAuth(testUser.Name(), password)
 	userResponse := rt.Send(request)
 	assertStatus(t, userResponse, 403)
-
 }
 
 func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
@@ -216,7 +210,6 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 }
 
 func TestUserViewQuery(t *testing.T) {
-
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
@@ -532,7 +525,6 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 }
 
 func TestPostInstallCleanup(t *testing.T) {
-
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
