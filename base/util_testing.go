@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
+	"encoding/json"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -30,6 +31,7 @@ func init() {
 
 type TestBucket struct {
 	Bucket
+	BucketSpec BucketSpec
 }
 
 func (tb TestBucket) Close() {
@@ -137,7 +139,10 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 		panic(fmt.Sprintf("Could not open bucket: %v", err))
 	}
 
-	return TestBucket{Bucket: bucket}
+	return TestBucket{
+		Bucket:     bucket,
+		BucketSpec: spec,
+	}
 
 }
 
@@ -347,7 +352,7 @@ func (tbm *TestBucketManager) FlushBucket() error {
 	// Ignore sporadic errors like:
 	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
 
-	log.Printf("Flushing bucket %s", tbm.Bucket.Name())
+	Infof(KeyAll, "Flushing bucket %s", tbm.Bucket.Name())
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = tbm.Bucket.Flush()
@@ -547,4 +552,24 @@ func EnableTestLogKey(logKey string) {
 func ResetTestLogging() {
 	ConsoleLogLevel().Set(LevelInfo)
 	ConsoleLogKey().Set(KeyHTTP)
+}
+
+// Make a deep copy from src into dst.
+// Copied from https://github.com/getlantern/deepcopy, commit 7f45deb8130a0acc553242eb0e009e3f6f3d9ce3 (Apache 2 licensed)
+func DeepCopyInefficient(dst interface{}, src interface{}) error {
+	if dst == nil {
+		return fmt.Errorf("dst cannot be nil")
+	}
+	if src == nil {
+		return fmt.Errorf("src cannot be nil")
+	}
+	bytes, err := json.Marshal(src)
+	if err != nil {
+		return fmt.Errorf("Unable to marshal src: %s", err)
+	}
+	err = json.Unmarshal(bytes, dst)
+	if err != nil {
+		return fmt.Errorf("Unable to unmarshal into dst: %s", err)
+	}
+	return nil
 }

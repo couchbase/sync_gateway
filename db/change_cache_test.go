@@ -1199,10 +1199,10 @@ func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*Chang
 //
 // Create doc1 w/ unused sequences 1, actual sequence 3.
 // Create doc2 w/ sequence 2, channel ABC
-// Send feed event for doc2. This won't trigger onChange, as buffering is waiting for seq 1
-// Send feed event for doc1. This should trigger caching for doc2, and trigger onChange for channel ABC.
+// Send feed event for doc2. This won't trigger notifyChange, as buffering is waiting for seq 1
+// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChange for channel ABC.
 //
-// Verify that onChange for channel ABC was sent.
+// Verify that notifyChange for channel ABC was sent.
 func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 	// -------- Test setup ----------------
@@ -1227,15 +1227,15 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
 
-	// -------- Setup onChange callback ----------------
+	// -------- Setup notifyChange callback ----------------
 
 	// type assert this from ChangeIndex interface -> concrete changeCache implementation
 	changeCacheImpl := db.changeCache.(*changeCache)
 
-	//  Detect whether the 2nd was ignored using an onChange listener callback and make sure it was not added to the ABC channel
+	//  Detect whether the 2nd was ignored using an notifyChange listener callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
-	changeCacheImpl.onChange = func(channels base.Set) {
+	changeCacheImpl.notifyChange = func(channels base.Set) {
 		// defer waitForOnChangeCallback.Done()
 		log.Printf("channelsChanged: %v", channels)
 		// assert.True(t, channels.Contains("ABC"))
@@ -1278,7 +1278,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	doc2Bytes, err := doc2.MarshalJSON()
 	assertNoError(t, err, "Unexpected error")
 
-	// Send feed event for doc2. This won't trigger onChange, as buffering is waiting for seq 1
+	// Send feed event for doc2. This won't trigger notifyChange, as buffering is waiting for seq 1
 	feedEventDoc2 := sgbucket.FeedEvent{
 		Synchronous: true,
 		Key:         []byte(doc2Id),
@@ -1286,7 +1286,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 	db.changeCache.DocChanged(feedEventDoc2)
 
-	// Send feed event for doc1. This should trigger caching for doc2, and trigger onChange for channel ABC.
+	// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChange for channel ABC.
 	feedEventDoc1 := sgbucket.FeedEvent{
 		Synchronous: true,
 		Key:         []byte(doc1Id),
@@ -1296,7 +1296,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 	// -------- Wait for waitgroup ----------------
 
-	// Block until the onChange callback was invoked with the expected channels.
+	// Block until the notifyChange callback was invoked with the expected channels.
 	// If the callback is never called back with expected, will block forever.
 	waitForOnChangeCallback.Wait()
 

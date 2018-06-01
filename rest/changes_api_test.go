@@ -629,12 +629,14 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
 
+	numIndexReplicas := uint(0)
 	shortWaitConfig := &DbConfig{
 		CacheConfig: &CacheConfig{
 			CachePendingSeqMaxWait: &pendingMaxWait,
 			CachePendingSeqMaxNum:  &maxNum,
 			CacheSkippedSeqMaxWait: &skippedMaxWait,
 		},
+		NumIndexReplicas:&numIndexReplicas,
 	}
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	defer rt.Close()
