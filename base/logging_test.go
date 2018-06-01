@@ -99,3 +99,17 @@ func TestPrependContextID(t *testing.T) {
 
 	log.Printf("testInputsOutputs: %+v", testInputsOutputs)
 }
+
+func BenchmarkAddPrefixes(b *testing.B) {
+	tests := []struct{}{
+		{},
+	}
+
+	for _, _ = range tests {
+		b.Run("", func(bn *testing.B) {
+			for i := 0; i < bn.N; i++ {
+				addPrefixes("str", LevelInfo, KeyDCP)
+			}
+		})
+	}
+}

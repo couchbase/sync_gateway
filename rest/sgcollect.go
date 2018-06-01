@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sync/atomic"
 	"time"
@@ -22,6 +23,8 @@ var (
 	ErrSGCollectInfoAlreadyRunning = errors.New("already running")
 	// ErrSGCollectInfoNotRunning is returned if sgcollect_info is not running.
 	ErrSGCollectInfoNotRunning = errors.New("not running")
+
+	validateTicketPattern = regexp.MustCompile(`\d{1,7}`)
 
 	sgcollectInstance = sgCollect{status: base.Uint32Ptr(sgStopped)}
 )
@@ -39,7 +42,7 @@ type sgCollect struct {
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
-func (sg *sgCollect) Start(zipPath string, args ...string) error {
+func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
 	}
@@ -49,16 +52,31 @@ func (sg *sgCollect) Start(zipPath string, args ...string) error {
 		return err
 	}
 
-	args = append(args, "--sync-gateway-executable", sgPath, zipPath)
+	if params.OutputDirectory == "" {
+		// If no output directory specified, default to the directory sgcollect_info is in.
+		params.OutputDirectory = filepath.Dir(sgCollectPath)
+
+		// Validate the path, just in case were not getting sgCollectPath correctly.
+		if err := validateOutputDirectory(params.OutputDirectory); err != nil {
+			return err
+		}
+	}
+
+	zipPath := filepath.Join(params.OutputDirectory, zipFilename)
+
+	args := params.Args()
+	args = append(args, "--sync-gateway-executable", sgPath)
+	args = append(args, zipPath)
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	sg.cancel = cancelFunc
 	cmd := exec.CommandContext(ctx, sgCollectPath, args...)
 
-	// Send command stderr/stdout to pipe
-	pipeReader, pipeWriter := io.Pipe()
-	cmd.Stderr = pipeWriter
-	cmd.Stdout = pipeWriter
+	// Send command stderr/stdout to pipes
+	stderrPipeReader, stderrPipeWriter := io.Pipe()
+	cmd.Stderr = stderrPipeWriter
+	stdoutPipeReader, stdoutpipeWriter := io.Pipe()
+	cmd.Stdout = stdoutpipeWriter
 
 	if err := cmd.Start(); err != nil {
 		return err
@@ -67,14 +85,25 @@ func (sg *sgCollect) Start(zipPath string, args ...string) error {
 	atomic.StoreUint32(sg.status, sgRunning)
 	base.Infof(base.KeyAdmin, "sgcollect_info started with args: %v", base.UD(args))
 
-	// Stream sgcollect_info output to the logs
+	// Stream sgcollect_info stderr to warn logs
 	go func() {
-		scanner := bufio.NewScanner(pipeReader)
+		scanner := bufio.NewScanner(stderrPipeReader)
+		for scanner.Scan() {
+			base.Warnf(base.KeyAll, "sgcollect_info: %v", scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			base.Errorf(base.KeyAll, "sgcollect_info: unexpected error: %v", err)
+		}
+	}()
+
+	// Stream sgcollect_info stdout to debug logs
+	go func() {
+		scanner := bufio.NewScanner(stdoutPipeReader)
 		for scanner.Scan() {
 			base.Debugf(base.KeyAdmin, "sgcollect_info: %v", scanner.Text())
 		}
 		if err := scanner.Err(); err != nil {
-			base.Warnf(base.KeyAdmin, "sgcollect_info: unexpected error: %v", err)
+			base.Errorf(base.KeyAll, "sgcollect_info: unexpected error: %v", err)
 		}
 	}()
 
@@ -91,7 +120,7 @@ func (sg *sgCollect) Start(zipPath string, args ...string) error {
 				return
 			}
 
-			base.Warnf(base.KeyAdmin, "sgcollect_info failed after %v with reason: %v. Check debug logs with log key 'Admin' for more detail.", duration, err)
+			base.Errorf(base.KeyAll, "sgcollect_info failed after %v with reason: %v. Check warning level logs for more information.", duration, err)
 			return
 		}
 
@@ -128,21 +157,37 @@ type sgCollectOptions struct {
 	Ticket          string `json:"ticket,omitempty"`
 }
 
-// Validate ensures the options are OK to use in sgcollect_info.
-func (c *sgCollectOptions) Validate() error {
+// validateOutputDirectory will check that the given path exists, and is a directory.
+func validateOutputDirectory(dir string) error {
+	// Clean the given path first, mainly for cross-platform compatability.
+	dir = filepath.Clean(dir)
+
 	// Validate given output directory exists, and is a directory.
 	// This does not check for write permission, however sgcollect_info
 	// will fail with an error giving that reason, if this is the case.
+	if fileInfo, err := os.Stat(dir); err != nil {
+		if os.IsNotExist(err) {
+			return errors.Wrap(err, "no such file or directory")
+		}
+		return err
+	} else if !fileInfo.IsDir() {
+		return errors.New("not a directory")
+	}
+
+	return nil
+}
+
+// Validate ensures the options are OK to use in sgcollect_info.
+func (c *sgCollectOptions) Validate() error {
 	if c.OutputDirectory != "" {
-		// Clean the given path first, for cross-platform paths.
-		c.OutputDirectory = filepath.Clean(c.OutputDirectory)
-		if fileInfo, err := os.Stat(c.OutputDirectory); err != nil {
-			if os.IsNotExist(err) {
-				return errors.Wrap(err, "no such file or directory")
-			}
+		if err := validateOutputDirectory(c.OutputDirectory); err != nil {
 			return err
-		} else if !fileInfo.IsDir() {
-			return errors.New("not a directory")
+		}
+	}
+
+	if c.Ticket != "" {
+		if !validateTicketPattern.MatchString(c.Ticket) {
+			return errors.New("ticket number must be 1 to 7 digits")
 		}
 	}
 
@@ -155,8 +200,18 @@ func (c *sgCollectOptions) Validate() error {
 		if c.UploadHost == "" {
 			c.UploadHost = defaultSGUploadHost
 		}
-	} else if c.UploadHost != "" {
-		return errors.New("upload must be set to true if an upload_host is specified")
+	} else {
+		// These fields suggest the user actually wanted to upload,
+		// so we'll enforce "upload: true" if any of these are set.
+		if c.UploadHost != "" {
+			return errors.New("upload must be set to true if upload_host is specified")
+		}
+		if c.Customer != "" {
+			return errors.New("upload must be set to true if customer is specified")
+		}
+		if c.Ticket != "" {
+			return errors.New("upload must be set to true if ticket is specified")
+		}
 	}
 
 	return nil
