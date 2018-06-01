@@ -19,7 +19,7 @@ type ConsoleLogger struct {
 type ConsoleLoggerConfig struct {
 	LogLevel     *LogLevel `json:"log_level,omitempty"`     // Log Level for the console output
 	LogKeys      []string  `json:"log_keys,omitempty"`      // Log Keys for the console output
-	ColorEnabled bool      `json:"color_enabled,omitempty"` // Log with color for the console output
+	ColorEnabled *bool     `json:"color_enabled,omitempty"` // Log with color for the console output
 
 	Output io.Writer `json:"-"` // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
 }
@@ -36,7 +36,7 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	return &ConsoleLogger{
 		LogLevel:     config.LogLevel,
 		LogKey:       &logKey,
-		ColorEnabled: config.ColorEnabled,
+		ColorEnabled: *config.ColorEnabled,
 		logger:       log.New(config.Output, "", 0),
 	}, nil
 }
@@ -73,6 +73,12 @@ func (lcc *ConsoleLoggerConfig) init() error {
 
 	// Always enable the HTTP log key
 	lcc.LogKeys = append(lcc.LogKeys, logKeyNames[KeyHTTP])
+
+	// If ColorEnabled is not explicitly set, use the value of the default consoleLogger
+	// This is set from the $SG_COLOR env var on startup.
+	if lcc.ColorEnabled == nil {
+		lcc.ColorEnabled = &consoleLogger.ColorEnabled
+	}
 
 	return nil
 }

@@ -371,7 +371,7 @@ func init() {
 	// We'll initilise a default consoleLogger so we can still log stuff before/during parsing logging configs.
 	// This maintains consistent formatting (timestamps, levels, etc) in the output,
 	// and allows a single set of logging functions to be used, rather than fmt.Printf()
-	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{ColorEnabled: color})
+	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{ColorEnabled: &color})
 }
 
 // Panicf logs the given formatted string and args to the error log level and given log key and then panics.
