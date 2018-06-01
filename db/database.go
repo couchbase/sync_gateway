@@ -206,6 +206,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if err != nil {
 		return nil, err
 	}
+	lastSeq, err := context.sequences.lastSequence()
+	if err != nil {
+		return nil, err
+	}
 
 	if options.IndexOptions == nil {
 		// In-memory channel cache
@@ -222,19 +226,20 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
-	notifyChange := func(changedChannels base.Set) {
+	onChange := func(changedChannels base.Set) {
 		context.mutationListener.Notify(changedChannels)
 	}
 
-	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
+	// Initialize the ChangeCache
 	context.changeCache.Init(
 		context,
-		notifyChange,
+		SequenceID{Seq: lastSeq},
+		onChange,
 		options.CacheOptions,
 		options.IndexOptions,
 	)
 
-	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
+	// Set the DB Context onChange callback to call back the changecache DocChanged callback
 	context.SetOnChangeCallback(context.changeCache.DocChanged)
 
 	// Initialize the tap Listener for notify handling
@@ -250,7 +255,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
-		err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
+		if err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
 			msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
 			base.Warnf(base.KeyAll, msgFormat, base.UD(bucket), err)
@@ -298,20 +303,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 			// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
 
-		})
-
-		// Check if there is an error starting the DCP feed
-		if err != nil {
-			context.changeCache = nil
+		}); err != nil {
 			return nil, err
 		}
-
-		// Unlock change cache
-		err := context.changeCache.Start()
-		if err != nil {
-			return nil, err
-		}
-
 	}
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
@@ -486,9 +480,9 @@ func (context *DatabaseContext) RestartListener() error {
 }
 
 // Cache flush support.  Currently test-only - added for unit test access from rest package
-func (context *DatabaseContext) FlushChannelCache() error {
+func (context *DatabaseContext) FlushChannelCache() {
 	base.Infof(base.KeyCache, "Flushing channel cache")
-	return context.changeCache.Clear()
+	context.changeCache.Clear()
 }
 
 // Removes previous versions of Sync Gateway's design docs found on the server
@@ -857,11 +851,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 	// really confuse the changeCache, so turn it off until we're done:
 	db.changeCache.EnableChannelIndexing(false)
 	defer db.changeCache.EnableChannelIndexing(true)
-
-	err = db.changeCache.Clear()
-	if err != nil {
-		return 0, err
-	}
+	db.changeCache.Clear()
 
 	base.Infof(base.KeyAll, "Re-running sync function on all documents...")
 	changeCount := 0

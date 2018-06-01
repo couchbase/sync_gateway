@@ -43,6 +43,14 @@ const (
 	kMaxDeltaTtlDuration = 60 * 60 * 24 * 30 * time.Second
 )
 
+// basicAuthURLRegexp is used to match the HTTP basic auth component of a URL
+var basicAuthURLRegexp = regexp.MustCompilePOSIX(`:\/\/[^:/]+:[^@/]+@`)
+
+// RedactBasicAuthURL returns the given string, with a redacted HTTP basic auth component.
+func RedactBasicAuthURL(url string) string {
+	return basicAuthURLRegexp.ReplaceAllLiteralString(url, "://****:****@")
+}
+
 func GenerateRandomSecret() string {
 	randomBytes := make([]byte, 20)
 	n, err := io.ReadFull(rand.Reader, randomBytes)
@@ -767,10 +775,6 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 
 func BooleanPointer(booleanValue bool) *bool {
 	return &booleanValue
-}
-
-func StringPointer(value string) *string {
-	return &value
 }
 
 // Convert a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])

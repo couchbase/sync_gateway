@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"strconv"
 )
 
 type ConsoleLogger struct {
@@ -18,14 +17,15 @@ type ConsoleLogger struct {
 }
 
 type ConsoleLoggerConfig struct {
+	Enabled      *bool     `json:"enabled,omitempty"`       // Overall console output toggle
 	LogLevel     *LogLevel `json:"log_level,omitempty"`     // Log Level for the console output
 	LogKeys      []string  `json:"log_keys,omitempty"`      // Log Keys for the console output
-	ColorEnabled *bool     `json:"color_enabled,omitempty"` // Log with color for the console output
+	ColorEnabled bool      `json:"color_enabled,omitempty"` // Log with color for the console output
 
 	Output io.Writer `json:"-"` // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
 }
 
-// NewConsoleLogger returns a new ConsoleLogger from a config.
+// NewConsoleLogger returms a new ConsoleLogger from a config.
 func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	// validate and set defaults
 	if err := config.init(); err != nil {
@@ -37,7 +37,7 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	return &ConsoleLogger{
 		LogLevel:     config.LogLevel,
 		LogKey:       &logKey,
-		ColorEnabled: *config.ColorEnabled,
+		ColorEnabled: config.ColorEnabled,
 		logger:       log.New(config.Output, "", 0),
 	}, nil
 }
@@ -64,6 +64,16 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		lcc.Output = os.Stderr
 	}
 
+	// Default to true if 'enabled' is not explicitly set
+	if lcc.Enabled == nil {
+		lcc.Enabled = BoolPtr(true)
+	} else if !*lcc.Enabled {
+		// If 'enabled' is explicitly set to false, override the log level and log keys
+		newLevel := LevelNone
+		lcc.LogLevel = &newLevel
+		lcc.LogKeys = []string{}
+	}
+
 	// Default log level
 	if lcc.LogLevel == nil {
 		newLevel := LevelInfo
@@ -74,13 +84,6 @@ func (lcc *ConsoleLoggerConfig) init() error {
 
 	// Always enable the HTTP log key
 	lcc.LogKeys = append(lcc.LogKeys, logKeyNames[KeyHTTP])
-
-	// If ColorEnabled is not explicitly set, use the value of $SG_COLOR
-	if lcc.ColorEnabled == nil {
-		// Ignore error parsing this value to treat it as false.
-		color, _ := strconv.ParseBool(os.Getenv("SG_COLOR"))
-		lcc.ColorEnabled = &color
-	}
 
 	return nil
 }

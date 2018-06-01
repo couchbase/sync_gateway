@@ -47,7 +47,7 @@ func init() {
 	IndexExpvars = expvar.NewMap("syncGateway_index")
 }
 
-func (k *kvChangeIndex) Init(context *DatabaseContext, onChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) (err error) {
+func (k *kvChangeIndex) Init(context *DatabaseContext, lastSequence SequenceID, onChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) (err error) {
 
 	k.context = context
 	k.reader = &kvChangeIndexReader{}
@@ -63,9 +63,8 @@ func (k *kvChangeIndex) Prune() {
 	// TODO: currently no pruning of channel indexes
 }
 
-func (k *kvChangeIndex) Clear() error {
+func (k *kvChangeIndex) Clear() {
 	k.reader.Clear()
-	return nil
 }
 
 func (k *kvChangeIndex) Stop() {
@@ -408,9 +407,6 @@ func (k *kvChangeIndex) generatePartitionStats() (PartitionStats, error) {
 	partitionStats.PartitionsMatch = reflect.DeepEqual(partitionStats.PartitionMap, partitionStats.CBGTMap)
 	return partitionStats, nil
 }
-
-// The following are no-ops for kvChangeIndex.
-func (k *kvChangeIndex) Start() (error) { return nil }
 
 func IsNotFoundError(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "not found")

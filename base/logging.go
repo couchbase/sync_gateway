@@ -408,20 +408,23 @@ func Tracef(logKey LogKey, format string, args ...interface{}) {
 }
 
 func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
-	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
-	shouldLogError := errorLogger.shouldLog()
-	shouldLogWarn := warnLogger.shouldLog()
-	shouldLogInfo := infoLogger.shouldLog()
-	shouldLogDebug := debugLogger.shouldLog()
-
-	shouldLog := shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug
-
-	// exit early if we aren't going to log anything
-	if !shouldLog || logLevel <= LevelNone {
+	// Defensive bounds-check for log level. All callers of this funcion should be within this range.
+	if logLevel <= LevelNone || logLevel >= levelCount {
 		return
 	}
 
-	// Prepend timestamp, level, log key
+	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
+	shouldLogError := errorLogger.shouldLog(logLevel)
+	shouldLogWarn := warnLogger.shouldLog(logLevel)
+	shouldLogInfo := infoLogger.shouldLog(logLevel)
+	shouldLogDebug := debugLogger.shouldLog(logLevel)
+
+	// exit early if we aren't going to log anything anywhere.
+	if !(shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug) {
+		return
+	}
+
+	// Prepend timestamp, level, log key.
 	format = addPrefixes(format, logLevel, logKey)
 
 	// Warn and error logs also append caller name/line numbers.
@@ -435,27 +438,17 @@ func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 	if shouldLogConsole {
 		consoleLogger.logger.Printf(color(format, logLevel), args...)
 	}
-
-	switch logLevel {
-	case LevelError:
-		if shouldLogError {
-			errorLogger.logger.Printf(format, args...)
-		}
-		fallthrough
-	case LevelWarn:
-		if shouldLogWarn {
-			warnLogger.logger.Printf(format, args...)
-		}
-		fallthrough
-	case LevelInfo:
-		if shouldLogInfo {
-			infoLogger.logger.Printf(format, args...)
-		}
-		fallthrough
-	case LevelDebug:
-		if shouldLogDebug {
-			debugLogger.logger.Printf(format, args...)
-		}
+	if shouldLogError {
+		errorLogger.logger.Printf(format, args...)
+	}
+	if shouldLogWarn {
+		warnLogger.logger.Printf(format, args...)
+	}
+	if shouldLogInfo {
+		infoLogger.logger.Printf(format, args...)
+	}
+	if shouldLogDebug {
+		debugLogger.logger.Printf(format, args...)
 	}
 }
 
@@ -466,16 +459,16 @@ func Broadcastf(format string, args ...interface{}) {
 	if consoleLogger.logger != nil {
 		consoleLogger.logger.Printf(color(format, LevelNone), args...)
 	}
-	if errorLogger.shouldLog() {
+	if errorLogger.shouldLog(LevelError) {
 		errorLogger.logger.Printf(format, args...)
 	}
-	if warnLogger.shouldLog() {
+	if warnLogger.shouldLog(LevelWarn) {
 		warnLogger.logger.Printf(format, args...)
 	}
-	if infoLogger.shouldLog() {
+	if infoLogger.shouldLog(LevelInfo) {
 		infoLogger.logger.Printf(format, args...)
 	}
-	if debugLogger.shouldLog() {
+	if debugLogger.shouldLog(LevelDebug) {
 		debugLogger.logger.Printf(format, args...)
 	}
 }
@@ -513,17 +506,15 @@ func color(str string, logLevel LogLevel) string {
 
 	switch logLevel {
 	case LevelError:
-		color = "\033[1;31m" // Red
+		color = "\033[1;31m"
 	case LevelWarn:
-		color = "\033[1;33m" // Yellow
+		color = "\033[1;33m"
 	case LevelInfo:
-		color = "\033[1;34m" // Blue
+		color = "\033[1;34m"
 	case LevelDebug:
-		color = "\033[0;36m" // Cyan
-	case LevelTrace:
-		color = "\033[0;37m" // White
-	default:
-		color = "\033[0m" // None
+		color = "\033[0;36m"
+	case LevelNone:
+		color = "\033[0;32m"
 	}
 
 	return color + str + "\033[0m"
@@ -548,11 +539,11 @@ func ConsoleLogKey() *LogKey {
 // LogInfoEnabled returns true if either the console should log at info level,
 // or if the infoLogger is enabled.
 func LogInfoEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(LevelInfo, logKey) || infoLogger.shouldLog()
+	return consoleLogger.shouldLog(LevelInfo, logKey) || infoLogger.shouldLog(LevelInfo)
 }
 
 // LogDebugEnabled returns true if either the console should log at debug level,
 // or if the debugLogger is enabled.
 func LogDebugEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(LevelDebug, logKey) || debugLogger.shouldLog()
+	return consoleLogger.shouldLog(LevelDebug, logKey) || debugLogger.shouldLog(LevelDebug)
 }

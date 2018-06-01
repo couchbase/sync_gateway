@@ -6,7 +6,8 @@ Redacts sensitive data in config files
 
 import unittest
 import json
-from urlparse import urlparse
+import re
+from urlparse import urlparse, urlunparse
 import traceback
 
 
@@ -21,7 +22,7 @@ def is_valid_json(invalid_json):
     except Exception as e:
         pass
 
-    return got_exception is False
+    return got_exception == False
 
 
 def tag_userdata_in_server_config(json_text, log_json_parsing_exceptions=True):
@@ -192,8 +193,8 @@ def strip_password_from_url(url_string):
     """
 
     parsed_url = urlparse(url_string)
-    if parsed_url.username is None and parsed_url.password is None:
-        return url_string
+    if parsed_url.username == None and parsed_url.password == None:
+       return url_string
 
     new_url = "{0}://{1}:*****@{2}:{3}/{4}".format(
         parsed_url.scheme,
@@ -344,6 +345,7 @@ class TestRemovePasswords(unittest.TestCase):
         with_passwords_removed = remove_passwords(json_with_passwords)
         assert "foobar" not in with_passwords_removed
 
+
     def test_alternative_config(self):
 
         sg_config = '{"Interface":":4984","AdminInterface":":4985","Facebook":{"Register":true},"Log":["*"],"Databases":{"todolite":{"server":"http://localhost:8091","pool":"default","bucket":"default","password":"foobar","name":"todolite","sync":"\\nfunction(doc, oldDoc) {\\n  // NOTE this function is the same across the iOS, Android, and PhoneGap versions.\\n  if (doc.type == \\"task\\") {\\n    if (!doc.list_id) {\\n      throw({forbidden : \\"Items must have a list_id.\\"});\\n    }\\n    channel(\\"list-\\"+doc.list_id);\\n  } else if (doc.type == \\"list\\" || (doc._deleted \\u0026\\u0026 oldDoc \\u0026\\u0026 oldDoc.type == \\"list\\")) {\\n    // Make sure that the owner propery exists:\\n    var owner = oldDoc ? oldDoc.owner : doc.owner;\\n    if (!owner) {\\n      throw({forbidden : \\"List must have an owner.\\"});\\n    }\\n\\n    // Make sure that only the owner of the list can update the list:\\n    if (doc.owner \\u0026\\u0026 owner != doc.owner) {\\n      throw({forbidden : \\"Cannot change owner for lists.\\"});\\n    }\\n\\n    var ownerName = owner.substring(owner.indexOf(\\":\\")+1);\\n    requireUser(ownerName);\\n\\n    var ch = \\"list-\\"+doc._id;\\n    if (!doc._deleted) {\\n      channel(ch);\\n    }\\n\\n    // Grant owner access to the channel:\\n    access(ownerName, ch);\\n\\n    // Grant shared members access to the channel:\\n    var members = !doc._deleted ? doc.members : oldDoc.members;\\n    if (Array.isArray(members)) {\\n      var memberNames = [];\\n      for (var i = members.length - 1; i \\u003e= 0; i--) {\\n        memberNames.push(members[i].substring(members[i].indexOf(\\":\\")+1))\\n      };\\n      access(memberNames, ch);\\n    }\\n  } else if (doc.type == \\"profile\\") {\\n    channel(\\"profiles\\");\\n    var user = doc._id.substring(doc._id.indexOf(\\":\\")+1);\\n    if (user !== doc.user_id) {\\n      throw({forbidden : \\"Profile user_id must match docid.\\"});\\n    }\\n    requireUser(user);\\n    access(user, \\"profiles\\");\\n  }\\n}\\n","users":{"GUEST":{"name":"","admin_channels":["*"],"all_channels":null,"disabled":true}}}}}'
@@ -448,11 +450,11 @@ class TestTagUserData(unittest.TestCase):
         """
         tagged = tag_userdata_in_server_config(json_with_userdata)
         assert "<ud>uber_secret_channel</ud>" in tagged
-        assert "<ud>foo</ud>" in tagged           # everything is lowercased
+        assert "<ud>foo</ud>" in tagged # everything is lowercased
         assert "<ud>bucket-user</ud>" in tagged
 
-        assert "<ud>baz</ud>" not in tagged       # passwords shouldn't be tagged, they get removed
-        assert "<ud>bucket-1</ud>" not in tagged  # bucket name is acutally metadata
+        assert "<ud>baz</ud>" not in tagged # passwords shouldn't be tagged, they get removed
+        assert "<ud>bucket-1</ud>" not in tagged # bucket name is acutally metadata
 
 
 class TestConvertToValidJSON(unittest.TestCase):
@@ -494,12 +496,12 @@ class TestConvertToValidJSON(unittest.TestCase):
         got_exception = True
         try:
             parsed_json = json.loads(valid_json)
-            json.dumps(parsed_json, indent=4)
+            formatted_json_string = json.dumps(parsed_json, indent=4)
             got_exception = False
         except Exception as e:
             print("Exception: {0}".format(e))
 
-        assert got_exception is False, "Failed to convert to valid JSON"
+        assert got_exception == False, "Failed to convert to valid JSON"
 
     def basic_test_two_sync_functions(self):
 
@@ -560,12 +562,12 @@ class TestConvertToValidJSON(unittest.TestCase):
         got_exception = True
         try:
             parsed_json = json.loads(valid_json)
-            json.dumps(parsed_json, indent=4)
+            formatted_json_string = json.dumps(parsed_json, indent=4)
             got_exception = False
         except Exception as e:
             print("Exception: {0}".format(e))
 
-        assert got_exception is False, "Failed to convert to valid JSON"
+        assert got_exception == False, "Failed to convert to valid JSON"
 
 
 if __name__ == "__main__":
