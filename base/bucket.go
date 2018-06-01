@@ -839,6 +839,10 @@ func GetFeedType(bucket Bucket) (feedType string) {
 		}
 	case *LeakyBucket:
 		return GetFeedType(typedBucket.bucket)
+	case *LoggingBucket:
+		return GetFeedType(typedBucket.bucket)
+	case *StatsBucket:
+		return GetFeedType(typedBucket.bucket)
 	default:
 		return TapFeedType
 	}

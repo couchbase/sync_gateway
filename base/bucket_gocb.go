@@ -2206,7 +2206,8 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sg
 
 	callback := func(dcpFeedEvent sgbucket.FeedEvent) bool {
 		eventFeed <- dcpFeedEvent
-		return true
+		// TAP feed should not persist checkpoints
+		return false
 	}
 
 	err := bucket.StartDCPFeed(args, callback)
