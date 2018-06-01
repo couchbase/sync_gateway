@@ -24,7 +24,7 @@ type ConsoleLoggerConfig struct {
 	Output io.Writer `json:"-"` // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
 }
 
-// NewConsoleLogger returms a new ConsoleLogger from a config.
+// NewConsoleLogger returns a new ConsoleLogger from a config.
 func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	// validate and set defaults
 	if err := config.init(); err != nil {
