@@ -15,7 +15,8 @@ var (
 	ErrInvalidLoggingMaxAge = errors.New("Invalid MaxAge")
 
 	maxAgeLimit             = 9999 // days
-	defaultMaxSize          = 100  // megabytes
+	maxSizeLimit            = 2048 // 2 GB
+	defaultMaxSize          = 100  // 100 MB
 	defaultMaxAgeMultiplier = 2    // e.g. 90 minimum == 180 default maxAge
 )
 
@@ -91,6 +92,8 @@ func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int
 
 	if lfc.Rotation.MaxSize == nil {
 		lfc.Rotation.MaxSize = &defaultMaxSize
+	} else if *lfc.Rotation.MaxSize > maxSizeLimit {
+		return fmt.Errorf("MaxSize for %v was set to %d which is above the maximum of %d", level, *lfc.Rotation.MaxSize, maxSizeLimit)
 	}
 
 	if lfc.Rotation.MaxAge == nil {
