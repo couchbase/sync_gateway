@@ -2106,10 +2106,7 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 func TestChannelAccessChanges(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
-	base.EnableTestLogKey("Accel+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD|base.KeyAccel)()
 
 	rt := RestTester{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	defer rt.Close()
@@ -2279,10 +2276,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 func TestAccessOnTombstone(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
-	base.EnableTestLogKey("Accel+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD|base.KeyAccel)()
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 if (doc.owner) {
@@ -2352,9 +2346,7 @@ func TestAccessOnTombstone(t *testing.T) {
 //Test for wrong _changes entries for user joining a populated channel
 func TestUserJoiningPopulatedChannel(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD)()
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()

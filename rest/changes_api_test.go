@@ -636,7 +636,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 			CachePendingSeqMaxNum:  &maxNum,
 			CacheSkippedSeqMaxWait: &skippedMaxWait,
 		},
-		NumIndexReplicas:&numIndexReplicas,
+		NumIndexReplicas: &numIndexReplicas,
 	}
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	defer rt.Close()
@@ -706,6 +706,8 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 func TestUnusedSequences(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD|base.KeyHTTP)()
+
 	// Only do 10 iterations if running against walrus.  If against a live couchbase server,
 	// just do single iteration.  (Takes approx 30s)
 	numIterations := 10
@@ -722,10 +724,6 @@ func TestUnusedSequences(t *testing.T) {
 }
 
 func _testConcurrentDelete(t *testing.T) {
-
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -765,10 +763,6 @@ func _testConcurrentDelete(t *testing.T) {
 
 func _testConcurrentPutAsDelete(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
-
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
@@ -806,10 +800,6 @@ func _testConcurrentPutAsDelete(t *testing.T) {
 
 func _testConcurrentUpdate(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
-
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
@@ -846,11 +836,6 @@ func _testConcurrentUpdate(t *testing.T) {
 }
 
 func _testConcurrentNewEditsFalseDelete(t *testing.T) {
-
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
-	base.EnableTestLogKey("HTTP+")
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -2135,9 +2120,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 // Test _changes returning conflicts
 func TestChangesIncludeConflicts(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD)()
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)

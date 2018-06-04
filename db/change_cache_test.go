@@ -277,13 +277,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("DCP+")
-
-	defer func() {
-		base.ResetTestLogging()
-	}()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyDCP)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer tearDownTestDB(t, db)
@@ -322,8 +316,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -389,10 +382,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Sequences")
-	base.EnableTestLogKey("Cache")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("DCP")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache|base.KeyChanges|base.KeyDCP)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -949,8 +939,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 // Test that housekeeping goroutines get terminated when change cache is stopped
 func TestStopChangeCache(t *testing.T) {
 
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("DCP+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges|base.KeyDCP)()
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -996,7 +985,7 @@ func TestChannelCacheSize(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Cache+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
 
 	channelOptions := ChannelCacheOptions{
 		ChannelCacheMinLength: 600,
@@ -1212,8 +1201,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 
 	// Enable relevant logging
-	base.EnableTestLogKey("Cache")
-	base.EnableTestLogKey("Changes")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache|base.KeyChanges)()
 
 	// Create a test db that uses channel cache
 	channelOptions := ChannelCacheOptions{

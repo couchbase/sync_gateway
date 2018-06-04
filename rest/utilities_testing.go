@@ -132,7 +132,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 						panic(fmt.Sprintf("Failed to drop bucket indexes: %v", err))
 					}
 
-					continue  // Go to the top of the for loop to retry
+					continue // Go to the top of the for loop to retry
 				}
 			}
 		}

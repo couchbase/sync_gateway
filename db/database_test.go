@@ -90,7 +90,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 func testBucket() base.TestBucket {
 
 	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
-	for i:= 0; i < 2; i++ {
+	for i := 0; i < 2; i++ {
 
 		testBucket := base.GetTestBucketOrPanic()
 		err := installViews(testBucket.Bucket)
@@ -115,8 +115,8 @@ func testBucket() base.TestBucket {
 					log.Fatalf("Unable to drop GSI indexes for test: %v", err)
 					// ^^ effectively panics
 				}
-				testBucket.Close()  // Close the bucket, it will get re-opened on next loop iteration
-				continue  // Goes to top of outer for loop to retry
+				testBucket.Close() // Close the bucket, it will get re-opened on next loop iteration
+				continue           // Goes to top of outer for loop to retry
 			}
 
 		}
@@ -126,7 +126,6 @@ func testBucket() base.TestBucket {
 	}
 
 	panic(fmt.Sprintf("Failed to create a testbucket after multiple attempts"))
-
 
 }
 
@@ -1489,7 +1488,7 @@ func TestConcurrentImport(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	base.EnableTestLogKey("Import")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
 
 	// Add doc to the underlying bucket:
 	db.Bucket.Add("directWrite", 0, Body{"value": "hi"})
@@ -1553,7 +1552,8 @@ func TestViewCustom(t *testing.T) {
 //////// BENCHMARKS
 
 func BenchmarkDatabase(b *testing.B) {
-	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
+	defer base.SetUpTestLogging(base.LevelNone, base.KeyNone)() // disables logging
+
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:          base.UnitTestUrl(),
