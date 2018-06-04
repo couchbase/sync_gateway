@@ -15,7 +15,6 @@ var (
 	ErrInvalidLoggingMaxAge = errors.New("Invalid MaxAge")
 
 	maxAgeLimit             = 9999 // days
-	maxSizeLimit            = 2048 // 2 GB
 	defaultMaxSize          = 100  // 100 MB
 	defaultMaxAgeMultiplier = 2    // e.g. 90 minimum == 180 default maxAge
 
@@ -99,8 +98,6 @@ func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int
 		// A value of zero disables the log file rotation in Lumberjack.
 	} else if *lfc.Rotation.MaxSize < 0 {
 		return fmt.Errorf(belowMinValueFmt, "MaxSize", level, *lfc.Rotation.MaxSize, 0)
-	} else if *lfc.Rotation.MaxSize > maxSizeLimit {
-		return fmt.Errorf(aboveMaxValueFmt, "MaxSize", level, *lfc.Rotation.MaxSize, maxSizeLimit)
 	}
 
 	if lfc.Rotation.MaxAge == nil {
