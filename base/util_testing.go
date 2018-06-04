@@ -549,7 +549,7 @@ func NumOpenBuckets(bucketName string) int32 {
 //     defer SetUpTestLogging(LevelDebug, KeyCache|KeyDCP|KeySync)()
 func SetUpTestLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
 	caller := GetCallersName(1, false)
-	Infof(KeyAll, "%s: Log Level: %v - Log Keys: %v", caller, logLevel, logKeys)
+	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
 
 	// Set the console logger settings
 	consoleLogger.LogLevel.Set(logLevel)
