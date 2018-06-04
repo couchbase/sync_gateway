@@ -650,13 +650,7 @@ func TestAllDocsOnly(t *testing.T) {
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Cache":    true,
-		"Changes":  true,
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
@@ -733,16 +727,6 @@ func TestConflicts(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
-
-	/*
-		var logKeys = map[string]bool {
-			"Cache": true,
-			"Changes": true,
-			"Changes+": true,
-		}
-
-		base.UpdateLogKeys(logKeys, true)
-	*/
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -840,16 +824,6 @@ func TestNoConflictsMode(t *testing.T) {
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
 	db.Options.AllowConflicts = base.BooleanPointer(false)
-
-	/*
-		var logKeys = map[string]bool {
-			"Cache": true,
-			"Changes": true,
-			"Changes+": true,
-		}
-
-		base.UpdateLogKeys(logKeys, true)
-	*/
 
 	// Create revs 1 and 2 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}

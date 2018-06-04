@@ -882,11 +882,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 
 func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"TEST": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
@@ -1081,11 +1077,8 @@ func updateTestDoc(rt RestTester, docid string, revid string, body string) (newR
 
 // Validate retrieval of various document body types using include_docs.
 func TestChangesIncludeDocs(t *testing.T) {
-	var logKeys = map[string]bool{
-		"TEST": true,
-	}
 
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	testDB := rt.GetDatabase()
