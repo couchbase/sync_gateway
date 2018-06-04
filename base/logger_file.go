@@ -92,6 +92,10 @@ func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int
 
 	if lfc.Rotation.MaxSize == nil {
 		lfc.Rotation.MaxSize = &defaultMaxSize
+	} else if *lfc.Rotation.MaxSize == 0 {
+		// A value of zero disables the log file rotation in Lumberjack.
+	} else if *lfc.Rotation.MaxSize < 0 {
+		return fmt.Errorf("MaxSize for %v was set to %d which is below the minimum of %d", level, *lfc.Rotation.MaxSize, 0)
 	} else if *lfc.Rotation.MaxSize > maxSizeLimit {
 		return fmt.Errorf("MaxSize for %v was set to %d which is above the maximum of %d", level, *lfc.Rotation.MaxSize, maxSizeLimit)
 	}
