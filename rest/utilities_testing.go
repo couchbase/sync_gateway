@@ -255,7 +255,6 @@ func (rt *RestTester) Close() {
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close()
 	}
-	base.ResetTestLogging()
 }
 
 func (rt *RestTester) SendRequest(method, resource string, body string) *TestResponse {
