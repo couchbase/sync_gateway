@@ -1,6 +1,7 @@
 package base
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
-	"encoding/json"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -39,9 +39,6 @@ func (tb TestBucket) Close() {
 	tb.Bucket.Close()
 
 	DecrNumOpenBuckets(tb.Bucket.GetName())
-
-	ResetTestLogging()
-
 }
 
 func GetTestBucketOrPanic() TestBucket {
