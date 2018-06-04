@@ -1,7 +1,6 @@
 package base
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -43,9 +42,10 @@ func TestLogKeyNames(t *testing.T) {
 	name := KeyDCP.String()
 	assert.Equals(t, name, "DCP")
 
-	// Combined log keys, or key masks print the binary representation.
+	// Combined log keys, will pretty-print a set of log keys
 	name = LogKey(KeyDCP | KeyReplicate).String()
-	assert.Equals(t, name, fmt.Sprintf("LogKey(%b)", KeyDCP|KeyReplicate))
+	assert.StringContains(t, name, "DCP")
+	assert.StringContains(t, name, "Replicate")
 
 	keys := []string{}
 	logKeys := ToLogKey(keys)
