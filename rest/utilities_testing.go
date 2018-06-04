@@ -627,11 +627,14 @@ type BlipTester struct {
 
 	// The blip sender that can be used for sending messages over the websocket connection
 	sender *blip.Sender
+
+	// logTeardownFn can be run on Close() when we want to reset the logging to a known state.
+	logTeardownFn func()
 }
 
 // Close the bliptester
 func (bt BlipTester) Close() {
-	defer DisableBlipSyncLogs()
+	defer bt.logTeardownFn()
 	bt.restTester.Close()
 }
 
@@ -644,9 +647,9 @@ func NewBlipTester() (*BlipTester, error) {
 // Create a BlipTester using the given spec
 func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
-	EnableBlipSyncLogs()
-
 	bt := &BlipTester{}
+
+	bt.logTeardownFn = base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)
 
 	if spec.restTester != nil {
 		bt.restTester = spec.restTester
@@ -1264,14 +1267,6 @@ func (e ExpectedChange) Equals(change []interface{}) error {
 	}
 
 	return nil
-}
-
-func EnableBlipSyncLogs() {
-	base.ConsoleLogKey().Enable(base.KeyHTTP | base.KeySync | base.KeySyncMsg)
-}
-
-func DisableBlipSyncLogs() {
-	base.ConsoleLogKey().Disable(base.KeyHTTP | base.KeySync | base.KeySyncMsg)
 }
 
 // Model "CouchDB" style REST documents which define the following special fields:
