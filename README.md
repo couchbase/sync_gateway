@@ -2,8 +2,6 @@
 
 # Sync Gateway
 
-update
-
 *Features*
 
 * Manages HTTP-based data access for [Couchbase Lite][COUCHBASE_LITE] mobile clients 
