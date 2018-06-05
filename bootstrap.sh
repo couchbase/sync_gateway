@@ -19,11 +19,17 @@
 # Default to SG product 
 PRODUCT="sg"
 
+# By default, use the couchbase/sync_gateway repo... Can be overridden with -r for forks.
+REPO="couchbase/sync_gateway"
+
 # Even when we build sg-accel, we want to grab the sync_gateway
 # repo since it includes sg-accel in it's manifest and will
 # build *both* sync gateway and sg-accel
-TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
-			
+TARGET_REPO="https://github.com/$REPO.git"
+
+# By default, unless overridden by commit getopt arg, use the master branch everywhere
+COMMIT="master"
+
 # By default, will run "repo init" followed by "repo sync".
 # If this is set to 1, skips "repo sync" 
 INIT_ONLY=0
@@ -33,7 +39,7 @@ parseOptions () {
 
     local product_arg_specified=0
     
-    while getopts "p:c:u:t:ihd" opt; do
+    while getopts "p:c:r:u:t:ihd" opt; do
 	case $opt in
 	    i)
 		# If the -i option is set, skip the "repo sync".
@@ -43,6 +49,10 @@ parseOptions () {
 	    c)
 		COMMIT=$OPTARG
 		echo "Using commit: $COMMIT"
+		;;
+	    r)
+		REPO=$OPTARG
+		echo "Using repo: $REPO"
 		;;
 	    d)
 		set -x  # print out all commands executed
@@ -160,9 +170,6 @@ repoInit () {
 
 
 # --------------------------------------- Main -------------------------------------------
-
-# By default, unless overridden by commit getopt arg, use the master branch everywhere
-COMMIT="master"
 
 # Parse the getopt options and set variables
 parseOptions "$@"
