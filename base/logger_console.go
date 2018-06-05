@@ -27,20 +27,20 @@ type ConsoleLoggerConfig struct {
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
-func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
+func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLogFn, error) {
 	// validate and set defaults
 	if err := config.init(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	logKey := ToLogKey(config.LogKeys)
+	logKey, warnings := ToLogKey(config.LogKeys)
 
 	return &ConsoleLogger{
 		LogLevel:     config.LogLevel,
 		LogKey:       &logKey,
 		ColorEnabled: *config.ColorEnabled,
 		logger:       log.New(config.Output, "", 0),
-	}, nil
+	}, warnings, nil
 }
 
 // shouldLog returns true if the given logLevel and logKey should get logged.
@@ -97,7 +97,7 @@ func (lcc *ConsoleLoggerConfig) init() error {
 }
 
 func newConsoleLoggerOrPanic(config *ConsoleLoggerConfig) *ConsoleLogger {
-	logger, err := NewConsoleLogger(config)
+	logger, _, err := NewConsoleLogger(config)
 	if err != nil {
 		panic(err)
 	}

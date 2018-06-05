@@ -34,6 +34,9 @@ const (
 
 type Level int32
 
+// DeferredLogFn is an anonymous function that can be executed at a later date to log something.
+type DeferredLogFn func()
+
 //By setting DebugLevel to -1, if LogLevel is not set in the logging config it
 //will default to the zero value for int32 (0) which will disable debug
 //logging, InfoLevel logging will be the default output.
@@ -456,24 +459,25 @@ func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 	}
 }
 
-// Broadcastf will print the same log to ALL outputs, ignoring logLevel and logKey settings.
-// This can be useful for printing an indicator of app restarts, version numbers, etc. but MUST be used sparingly.
-func Broadcastf(format string, args ...interface{}) {
-	format = addPrefixes(format, LevelNone, KeyNone)
+// LogSyncGatewayVersion will print the startup indicator and version number to all log outputs.
+func LogSyncGatewayVersion() {
+	format := addPrefixes("==== %s ====", LevelNone, KeyNone)
+	msg := fmt.Sprintf(format, LongVersionString)
+
 	if consoleLogger.logger != nil {
-		consoleLogger.logger.Printf(color(format, LevelNone), args...)
+		consoleLogger.logger.Print(color(msg, LevelNone))
 	}
-	if errorLogger.shouldLog(LevelError) {
-		errorLogger.logger.Printf(format, args...)
+	if errorLogger.shouldLog(LevelNone) {
+		errorLogger.logger.Printf(msg)
 	}
-	if warnLogger.shouldLog(LevelWarn) {
-		warnLogger.logger.Printf(format, args...)
+	if warnLogger.shouldLog(LevelNone) {
+		warnLogger.logger.Printf(msg)
 	}
-	if infoLogger.shouldLog(LevelInfo) {
-		infoLogger.logger.Printf(format, args...)
+	if infoLogger.shouldLog(LevelNone) {
+		infoLogger.logger.Printf(msg)
 	}
-	if debugLogger.shouldLog(LevelDebug) {
-		debugLogger.logger.Printf(format, args...)
+	if debugLogger.shouldLog(LevelNone) {
+		debugLogger.logger.Printf(msg)
 	}
 }
 
