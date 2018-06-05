@@ -15,8 +15,11 @@ var (
 	ErrInvalidLoggingMaxAge = errors.New("Invalid MaxAge")
 
 	maxAgeLimit             = 9999 // days
-	defaultMaxSize          = 100  // megabytes
+	defaultMaxSize          = 100  // 100 MB
 	defaultMaxAgeMultiplier = 2    // e.g. 90 minimum == 180 default maxAge
+
+	belowMinValueFmt = "%s for %v was set to %d which is below the minimum of %d"
+	aboveMaxValueFmt = "%s for %v was set to %d which is above the maximum of %d"
 )
 
 type FileLogger struct {
@@ -91,6 +94,10 @@ func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int
 
 	if lfc.Rotation.MaxSize == nil {
 		lfc.Rotation.MaxSize = &defaultMaxSize
+	} else if *lfc.Rotation.MaxSize == 0 {
+		// A value of zero disables the log file rotation in Lumberjack.
+	} else if *lfc.Rotation.MaxSize < 0 {
+		return fmt.Errorf(belowMinValueFmt, "MaxSize", level, *lfc.Rotation.MaxSize, 0)
 	}
 
 	if lfc.Rotation.MaxAge == nil {
@@ -99,9 +106,9 @@ func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int
 	} else if *lfc.Rotation.MaxAge == 0 {
 		// A value of zero disables the age-based log cleanup in Lumberjack.
 	} else if *lfc.Rotation.MaxAge < minAge {
-		return fmt.Errorf("MaxAge for %v was set to %d which is below the minimum of %d", level, *lfc.Rotation.MaxAge, minAge)
+		return fmt.Errorf(belowMinValueFmt, "MaxAge", level, *lfc.Rotation.MaxAge, minAge)
 	} else if *lfc.Rotation.MaxAge > maxAgeLimit {
-		return fmt.Errorf("MaxAge for %v was set to %d which is above the maximum of %d", level, *lfc.Rotation.MaxAge, maxAgeLimit)
+		return fmt.Errorf(aboveMaxValueFmt, "MaxAge", level, *lfc.Rotation.MaxAge, maxAgeLimit)
 	}
 
 	if lfc.Output == nil {
