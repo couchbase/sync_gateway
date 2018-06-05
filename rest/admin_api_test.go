@@ -1591,15 +1591,15 @@ func TestReplicateErrorConditions(t *testing.T) {
 // - Functional tests in mobile-testkit repo
 func TestDocumentChangeReplicate(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
+	base.EnableSgReplicateLogging()
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
 	}
 
 	var rt RestTester
 	defer rt.Close() // Close RestTester, which closes ServerContext, which stops all replications
-
-	base.EnableTestLogKey("Replicate")
-	base.EnableSgReplicateLogging()
 
 	//Initiate synchronous one shot replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db", "target":"http://myhost:4985/db"}`), 500)

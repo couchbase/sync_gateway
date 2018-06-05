@@ -160,11 +160,7 @@ func TestShadowerPush(t *testing.T) {
 		t.Skip("BucketShadowing with XATTRS is not a supported configuration")
 	}
 
-	var logKeys = map[string]bool{
-		"Shadow": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyShadow)()
 
 	testBucket := makeExternalBucket()
 	defer testBucket.Close()
@@ -214,12 +210,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 		t.Skip("BucketShadowing with XATTRS is not a supported configuration")
 	}
 
-	var logKeys = map[string]bool{
-		"Shadow":  true,
-		"Shadow+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyShadow)()
 
 	testBucket := makeExternalBucket()
 	defer testBucket.Close()
@@ -253,12 +244,7 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 			"Logs: https://gist.github.com/tleyden/795df447314a521aba5bd1aa6d0ed42e")
 	}
 
-	var logKeys = map[string]bool{
-		"Shadow":  true,
-		"Shadow+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyShadow)()
 
 	testBucket := makeExternalBucket()
 	defer testBucket.Close()

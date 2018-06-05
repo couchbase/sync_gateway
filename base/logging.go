@@ -269,7 +269,7 @@ func UpdateLogKeys(keys map[string]bool, replace bool) {
 
 // Returns a string identifying a function on the call stack.
 // Use depth=1 for the caller of the function that calls GetCallersName, etc.
-func GetCallersName(depth int) string {
+func GetCallersName(depth int, includeLine bool) string {
 	pc, file, line, ok := runtime.Caller(depth + 1)
 	if !ok {
 		return "???"
@@ -277,10 +277,14 @@ func GetCallersName(depth int) string {
 
 	fnname := ""
 	if fn := runtime.FuncForPC(pc); fn != nil {
-		fnname = fn.Name()
+		fnname = lastComponent(fn.Name())
 	}
 
-	return fmt.Sprintf("%s() at %s:%d", lastComponent(fnname), lastComponent(file), line)
+	if !includeLine {
+		return fnname
+	}
+
+	return fmt.Sprintf("%s() at %s:%d", fnname, lastComponent(file), line)
 }
 
 // Partial interface for the SGLogger
@@ -429,7 +433,7 @@ func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 
 	// Warn and error logs also append caller name/line numbers.
 	if logLevel <= LevelWarn {
-		format += " -- " + GetCallersName(2)
+		format += " -- " + GetCallersName(2, true)
 	}
 
 	// Perform log redaction, if necessary.

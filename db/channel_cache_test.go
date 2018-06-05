@@ -21,7 +21,7 @@ import (
 
 func TestDuplicateDocID(t *testing.T) {
 
-	base.EnableTestLogKey("Cache")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	context := testBucketContext()
 	defer context.Close()
@@ -68,7 +68,7 @@ func TestDuplicateDocID(t *testing.T) {
 
 func TestLateArrivingSequence(t *testing.T) {
 
-	base.EnableTestLogKey("Cache")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	context := testBucketContext()
 	defer context.Close()
@@ -101,7 +101,7 @@ func TestLateArrivingSequence(t *testing.T) {
 
 func TestLateSequenceAsFirst(t *testing.T) {
 
-	base.EnableTestLogKey("Cache")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	context := testBucketContext()
 	defer context.Close()
@@ -134,7 +134,7 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 func TestDuplicateLateArrivingSequence(t *testing.T) {
 
-	base.EnableTestLogKey("Cache")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	context := testBucketContext()
 	defer context.Close()
@@ -208,8 +208,8 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 
 func TestPrependChanges(t *testing.T) {
 
-	base.EnableTestLogKey("Cache")
-	defer base.ResetTestLogging()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -430,7 +430,7 @@ func writeEntries(entries []*LogEntry) {
 
 func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
-	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
+	defer base.SetUpTestLogging(base.LevelNone, base.KeyNone)() // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -449,7 +449,7 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
-	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
+	defer base.SetUpTestLogging(base.LevelNone, base.KeyNone)() // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -466,7 +466,7 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
-	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
+	defer base.SetUpTestLogging(base.LevelNone, base.KeyNone)() // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -483,7 +483,7 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
-	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
+	defer base.SetUpTestLogging(base.LevelNone, base.KeyNone)() // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -500,7 +500,7 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
-	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
+	defer base.SetUpTestLogging(base.LevelNone, base.KeyNone)() // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -517,9 +517,8 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
-	base.EnableTestLogKey("Cache")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	//base.SetLogLevel(2) // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
@@ -536,7 +535,7 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
 func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
-	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
+	defer base.SetUpTestLogging(base.LevelNone, base.KeyNone)() // disables logging
 	context := testBucketContext()
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
