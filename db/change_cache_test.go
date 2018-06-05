@@ -277,13 +277,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("DCP+")
-
-	defer func() {
-		base.ResetTestLogging()
-	}()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyDCP)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer tearDownTestDB(t, db)
@@ -322,8 +316,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -389,10 +382,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Sequences")
-	base.EnableTestLogKey("Cache")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("DCP")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache|base.KeyChanges|base.KeyDCP)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -489,18 +479,11 @@ func TestContinuousChangesBackfill(t *testing.T) {
 // Test low sequence handling of late arriving sequences to a continuous changes feed
 func TestLowSequenceHandling(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyQuery)()
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
-
-	var logKeys = map[string]bool{
-		"Cache":                true,
-		"Changes":              true,
-		"Changes+":             true,
-		base.KeyQuery.String(): true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -562,18 +545,11 @@ func TestLowSequenceHandling(t *testing.T) {
 // user doesn't have visibility to some of the late arriving sequences
 func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyQuery)()
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
-
-	var logKeys = map[string]bool{
-		"Cache":                true,
-		"Changes":              true,
-		"Changes+":             true,
-		base.KeyQuery.String(): true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -623,15 +599,11 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges|base.KeyQuery)()
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
-
-	var logKeys = map[string]bool{
-		"Sequence":             true,
-		base.KeyQuery.String(): true,
-	}
-	base.UpdateLogKeys(logKeys, true)
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -705,17 +677,11 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	// TODO: Disabled until https://github.com/couchbase/sync_gateway/issues/3056 is fixed.
 	t.Skip("WARNING: TEST DISABLED")
 
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges|base.KeyCache)()
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
-
-	var logKeys = map[string]bool{
-		"Cache":    true,
-		"Changes":  true,
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -804,15 +770,11 @@ func TestChannelRace(t *testing.T) {
 	// Disabling for now - should be refactored.
 	t.Skip("WARNING: TEST DISABLED")
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
-
-	var logKeys = map[string]bool{
-		"Sequences": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -906,12 +868,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	var logKeys = map[string]bool{
-		"Cache":  true,
-		"Cache+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
 
 	// Use leaky bucket to have the tap feed 'lose' document 3
 	leakyConfig := base.LeakyBucketConfig{
@@ -949,8 +906,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 // Test that housekeeping goroutines get terminated when change cache is stopped
 func TestStopChangeCache(t *testing.T) {
 
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("DCP+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges|base.KeyDCP)()
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -996,7 +952,7 @@ func TestChannelCacheSize(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Cache+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
 
 	channelOptions := ChannelCacheOptions{
 		ChannelCacheMinLength: 600,
@@ -1212,8 +1168,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 
 	// Enable relevant logging
-	base.EnableTestLogKey("Cache")
-	base.EnableTestLogKey("Changes")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache|base.KeyChanges)()
 
 	// Create a test db that uses channel cache
 	channelOptions := ChannelCacheOptions{

@@ -153,14 +153,10 @@ func TestDBStateChangeEvent(t *testing.T) {
 // the max concurrent goroutines
 func TestSlowExecutionProcessing(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyEvents)()
+
 	em := NewEventManager()
 	em.Start(0, -1)
-
-	var logKeys = map[string]bool{
-		"Events": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
 
 	ids := make([]string, 20)
 	for i := 0; i < 20; i++ {
@@ -581,16 +577,11 @@ func TestWebhookOldDoc(t *testing.T) {
 }
 
 func TestWebhookTimeout(t *testing.T) {
-
 	if !testLiveHTTP {
 		return
 	}
 
-	var logKeys = map[string]bool{
-		"Events+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyEvents)()
 
 	count, sum, _ := InitWebhookTest()
 	ids := make([]string, 200)

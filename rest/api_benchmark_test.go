@@ -297,7 +297,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 }
 
 func initBenchmarkLogging() {
-	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
+	base.SetUpTestLogging(base.LevelNone, base.KeyNone) // disables logging
 }
 
 func PurgeDoc(rt RestTester, docid string) {

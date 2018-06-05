@@ -1,6 +1,7 @@
 package base
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
-	"encoding/json"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -39,9 +39,6 @@ func (tb TestBucket) Close() {
 	tb.Bucket.Close()
 
 	DecrNumOpenBuckets(tb.Bucket.GetName())
-
-	ResetTestLogging()
-
 }
 
 func GetTestBucketOrPanic() TestBucket {
@@ -538,20 +535,33 @@ func NumOpenBuckets(bucketName string) int32 {
 	return numOpen
 }
 
-// EnableTestLogKey will enable the given log key, if it exists,
-// and also enable debug level logging, if a + log key is provided.
-func EnableTestLogKey(logKey string) {
-	if strings.HasSuffix(logKey, "+") {
-		ConsoleLogLevel().Set(LevelDebug)
-	}
-	newLogKey := ToLogKey([]string{logKey})
-	ConsoleLogKey().Enable(newLogKey)
-}
+// SetUpTestLogging will set the given log level and log keys,
+// and return a function that can be deferred for teardown.
+//
+// To set multiple log keys, use the bitwise OR operator.
+// E.g. KeyCache|KeyDCP|KeySync
+//
+// Usage:
+//     teardownFn := SetUpTestLogging(LevelDebug, KeyCache|KeyDCP|KeySync)
+//     defer teardownFn()
+//
+// Shorthand style:
+//     defer SetUpTestLogging(LevelDebug, KeyCache|KeyDCP|KeySync)()
+func SetUpTestLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
+	caller := GetCallersName(1, false)
+	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
 
-// ResetTestLogging return logging back to a standard state (Info level and HTTP log key)
-func ResetTestLogging() {
-	ConsoleLogLevel().Set(LevelInfo)
-	ConsoleLogKey().Set(KeyHTTP)
+	// Set the console logger settings
+	consoleLogger.LogLevel.Set(logLevel)
+	consoleLogger.LogKey.Set(logKeys)
+
+	return func() {
+		// Return to default state
+		consoleLogger.LogLevel.Set(LevelInfo)
+		consoleLogger.LogKey.Set(KeyHTTP)
+
+		Infof(KeyAll, "%v: Reset logging", caller)
+	}
 }
 
 // Make a deep copy from src into dst.
