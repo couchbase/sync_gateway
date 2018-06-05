@@ -1256,8 +1256,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
-		log.Printf("Can't cast to bucket")
-		return
+		t.Error("Can't cast to bucket")
 	}
 
 	// Create document with XATTR
@@ -1306,7 +1305,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	EnableTestLogKey("CRUD+")
+	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
 
 	testBucket := GetTestBucketOrPanic()
 	defer testBucket.Close()
@@ -1406,7 +1405,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	EnableTestLogKey("CRUD+")
+	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
 
 	testBucket := GetTestBucketOrPanic()
 	defer testBucket.Close()

@@ -132,7 +132,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 						panic(fmt.Sprintf("Failed to drop bucket indexes: %v", err))
 					}
 
-					continue  // Go to the top of the for loop to retry
+					continue // Go to the top of the for loop to retry
 				}
 			}
 		}
@@ -255,7 +255,6 @@ func (rt *RestTester) Close() {
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close()
 	}
-	base.ResetTestLogging()
 }
 
 func (rt *RestTester) SendRequest(method, resource string, body string) *TestResponse {
@@ -632,7 +631,6 @@ type BlipTester struct {
 
 // Close the bliptester
 func (bt BlipTester) Close() {
-	defer DisableBlipSyncLogs()
 	bt.restTester.Close()
 }
 
@@ -644,8 +642,6 @@ func NewBlipTester() (*BlipTester, error) {
 
 // Create a BlipTester using the given spec
 func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
-
-	EnableBlipSyncLogs()
 
 	bt := &BlipTester{}
 
@@ -1265,14 +1261,6 @@ func (e ExpectedChange) Equals(change []interface{}) error {
 	}
 
 	return nil
-}
-
-func EnableBlipSyncLogs() {
-	base.ConsoleLogKey().Enable(base.KeyHTTP | base.KeySync | base.KeySyncMsg)
-}
-
-func DisableBlipSyncLogs() {
-	base.ConsoleLogKey().Disable(base.KeyHTTP | base.KeySync | base.KeySyncMsg)
 }
 
 // Model "CouchDB" style REST documents which define the following special fields:

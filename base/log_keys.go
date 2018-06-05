@@ -117,12 +117,25 @@ func (keyMask *LogKey) enabled(logKey LogKey, checkWildcards bool) bool {
 	return flag&uint64(logKey) != 0
 }
 
-// String returns the string representation of a single log key.
+// String returns the string representation of one or more log keys.
 func (logKey LogKey) String() string {
 	// No lock required to read concurrently, as long as nobody writes to logKeyNames.
 	if str, ok := logKeyNames[logKey]; ok {
 		return str
 	}
+
+	// Try to pretty-print a set of log keys.
+	names := []string{}
+	for k, v := range logKeyNames {
+		if logKey&k != 0 {
+			names = append(names, v)
+		}
+	}
+	if len(names) > 0 {
+		return strings.Join(names, ", ")
+	}
+
+	// Fall back to a binary representation.
 	return fmt.Sprintf("LogKey(%b)", logKey)
 }
 

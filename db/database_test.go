@@ -90,7 +90,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 func testBucket() base.TestBucket {
 
 	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
-	for i:= 0; i < 2; i++ {
+	for i := 0; i < 2; i++ {
 
 		testBucket := base.GetTestBucketOrPanic()
 		err := installViews(testBucket.Bucket)
@@ -115,8 +115,8 @@ func testBucket() base.TestBucket {
 					log.Fatalf("Unable to drop GSI indexes for test: %v", err)
 					// ^^ effectively panics
 				}
-				testBucket.Close()  // Close the bucket, it will get re-opened on next loop iteration
-				continue  // Goes to top of outer for loop to retry
+				testBucket.Close() // Close the bucket, it will get re-opened on next loop iteration
+				continue           // Goes to top of outer for loop to retry
 			}
 
 		}
@@ -126,7 +126,6 @@ func testBucket() base.TestBucket {
 	}
 
 	panic(fmt.Sprintf("Failed to create a testbucket after multiple attempts"))
-
 
 }
 
@@ -651,13 +650,7 @@ func TestAllDocsOnly(t *testing.T) {
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Cache":    true,
-		"Changes":  true,
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
@@ -734,16 +727,6 @@ func TestConflicts(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
-
-	/*
-		var logKeys = map[string]bool {
-			"Cache": true,
-			"Changes": true,
-			"Changes+": true,
-		}
-
-		base.UpdateLogKeys(logKeys, true)
-	*/
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -841,16 +824,6 @@ func TestNoConflictsMode(t *testing.T) {
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
 	db.Options.AllowConflicts = base.BooleanPointer(false)
-
-	/*
-		var logKeys = map[string]bool {
-			"Cache": true,
-			"Changes": true,
-			"Changes+": true,
-		}
-
-		base.UpdateLogKeys(logKeys, true)
-	*/
 
 	// Create revs 1 and 2 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -1489,7 +1462,7 @@ func TestConcurrentImport(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	base.EnableTestLogKey("Import")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
 
 	// Add doc to the underlying bucket:
 	db.Bucket.Add("directWrite", 0, Body{"value": "hi"})
@@ -1553,7 +1526,8 @@ func TestViewCustom(t *testing.T) {
 //////// BENCHMARKS
 
 func BenchmarkDatabase(b *testing.B) {
-	base.ConsoleLogLevel().Set(base.LevelNone) // disables logging
+	defer base.SetUpTestLogging(base.LevelNone, base.KeyNone)() // disables logging
+
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{
 			Server:          base.UnitTestUrl(),

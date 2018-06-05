@@ -1153,11 +1153,7 @@ func TestBulkGetEmptyDocs(t *testing.T) {
 
 func TestBulkDocsChangeToAccess(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Access": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccess)()
 
 	rt := RestTester{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
 	defer rt.Close()
@@ -1189,12 +1185,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Access":  true,
-		"Access+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess)()
 
 	rt := RestTester{SyncFn: `
 		function(doc) {
@@ -2106,10 +2097,7 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 func TestChannelAccessChanges(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
-	base.EnableTestLogKey("Accel+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD|base.KeyAccel)()
 
 	rt := RestTester{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	defer rt.Close()
@@ -2279,10 +2267,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 func TestAccessOnTombstone(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
-	base.EnableTestLogKey("Accel+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD|base.KeyAccel)()
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 if (doc.owner) {
@@ -2352,9 +2337,7 @@ func TestAccessOnTombstone(t *testing.T) {
 //Test for wrong _changes entries for user joining a populated channel
 func TestUserJoiningPopulatedChannel(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD)()
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
@@ -2443,13 +2426,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Access":   true,
-		"CRUD":     true,
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
 
 	rt := RestTester{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	defer rt.Close()
@@ -2494,13 +2471,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 func TestRoleAccessChanges(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Access":   true,
-		"CRUD":     true,
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
 
 	rt := RestTester{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	defer rt.Close()
@@ -2623,12 +2594,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
-	var additionalLogKeys = map[string]bool{
-		"Changes": true,
-		"Cache":   true,
-	}
-
-	base.UpdateLogKeys(additionalLogKeys, false)
+	base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyAccess|base.KeyCRUD|base.KeyChanges)
 
 	response = rt.Send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
@@ -2824,6 +2790,9 @@ func TestOldDocHandling(t *testing.T) {
 }
 
 func TestStarAccess(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`
@@ -2844,12 +2813,6 @@ func TestStarAccess(t *testing.T) {
 	// Create some docs:
 	var rt RestTester
 	defer rt.Close()
-
-	var logKeys = map[string]bool{
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	var changes struct {
