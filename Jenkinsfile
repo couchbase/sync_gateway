@@ -34,4 +34,10 @@ pipeline {
             }
         }
     }
+
+    post {
+        always {
+            step([$class: 'WsCleanup'])
+        }
+    }
 }
