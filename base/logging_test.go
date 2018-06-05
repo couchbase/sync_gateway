@@ -11,10 +11,15 @@ package base
 
 import (
 	"bytes"
+	"fmt"
 	"log"
+	"math/rand"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/couchbaselabs/go.assert"
+	"github.com/natefinch/lumberjack"
 )
 
 // asserts that the logs produced by function f contain string s.
@@ -100,16 +105,46 @@ func TestPrependContextID(t *testing.T) {
 	log.Printf("testInputsOutputs: %+v", testInputsOutputs)
 }
 
-func BenchmarkAddPrefixes(b *testing.B) {
-	tests := []struct{}{
-		{},
+// Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.
+func BenchmarkLogRotation(b *testing.B) {
+
+	tests := []struct {
+		rotate   bool
+		compress bool
+		numBytes int
+	}{
+		{rotate: false, compress: false, numBytes: 0},
+		{rotate: false, compress: false, numBytes: 1024 * 1000},   // 1MB
+		{rotate: false, compress: false, numBytes: 1024 * 100000}, // 100MB
+		{rotate: true, compress: false, numBytes: 0},
+		{rotate: true, compress: false, numBytes: 1024 * 1000},   // 1MB
+		{rotate: true, compress: false, numBytes: 1024 * 100000}, // 100MB
+		{rotate: true, compress: true, numBytes: 0},
+		{rotate: true, compress: true, numBytes: 1024 * 1000},   // 1MB
+		{rotate: true, compress: true, numBytes: 1024 * 100000}, // 100MB
 	}
 
-	for _, _ = range tests {
-		b.Run("", func(bn *testing.B) {
-			for i := 0; i < bn.N; i++ {
-				addPrefixes("str", LevelInfo, KeyDCP)
+	for _, test := range tests {
+		b.Run(fmt.Sprintf("rotate:%t-compress:%t-bytes:%v", test.rotate, test.compress, test.numBytes), func(bm *testing.B) {
+			logPath := filepath.Join(os.TempDir(), "benchmark-logrotate")
+			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
+			defer logger.Close()
+			defer os.RemoveAll(logPath)
+
+			data := make([]byte, test.numBytes)
+			_, err := rand.Read(data)
+			if err != nil {
+				bm.Error(err)
+			}
+
+			bm.ResetTimer()
+			for i := 0; i < bm.N; i++ {
+				_, _ = logger.Write(data)
+				if test.rotate {
+					_ = logger.Rotate()
+				}
 			}
 		})
 	}
+
 }
