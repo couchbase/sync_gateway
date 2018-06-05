@@ -19,11 +19,17 @@
 # Default to SG product 
 PRODUCT="sg"
 
+# By default, use the couchbase/sync_gateway repo... Can be overridden with -r for forks.
+REPO="couchbase/sync_gateway"
+
 # Even when we build sg-accel, we want to grab the sync_gateway
 # repo since it includes sg-accel in it's manifest and will
 # build *both* sync gateway and sg-accel
-TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
-			
+TARGET_REPO="https://github.com/$REPO.git"
+
+# By default, unless overridden by commit getopt arg, use the master branch everywhere
+COMMIT="master"
+
 # By default, will run "repo init" followed by "repo sync".
 # If this is set to 1, skips "repo sync" 
 INIT_ONLY=0
@@ -33,7 +39,7 @@ parseOptions () {
 
     local product_arg_specified=0
     
-    while getopts "p:c:u:t:ihd" opt; do
+    while getopts "p:c:r:u:t:ihd" opt; do
 	case $opt in
 	    i)
 		# If the -i option is set, skip the "repo sync".
@@ -43,6 +49,10 @@ parseOptions () {
 	    c)
 		COMMIT=$OPTARG
 		echo "Using commit: $COMMIT"
+		;;
+	    r)
+		REPO=$OPTARG
+		echo "Using repo: $REPO"
 		;;
 	    d)
 		set -x  # print out all commands executed
@@ -95,14 +105,14 @@ parseOptions () {
 # in that case.  I have left that in for now since it enables certain testing.
 rewriteManifest () {
 
-    curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/rewrite-manifest.sh" > rewrite-manifest.sh
+    curl "https://raw.githubusercontent.com/$REPO/$COMMIT/rewrite-manifest.sh" > rewrite-manifest.sh
     chmod +x rewrite-manifest.sh
 
-    MANIFEST_URL="https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml"
+    MANIFEST_URL="https://raw.githubusercontent.com/$REPO/$COMMIT/manifest/default.xml"
     PROJECT_NAME="sync_gateway"
 
     echo "Using manifest: $MANIFEST_URL on commit $COMMIT for project $PROJECT_NAME with username: $GITHUB_USERNAME"
-    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" > .repo/manifest.xml
+    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" --set-repo "$REPO" > .repo/manifest.xml
 
 }
 
@@ -160,9 +170,6 @@ repoInit () {
 
 
 # --------------------------------------- Main -------------------------------------------
-
-# By default, unless overridden by commit getopt arg, use the master branch everywhere
-COMMIT="master"
 
 # Parse the getopt options and set variables
 parseOptions "$@"
