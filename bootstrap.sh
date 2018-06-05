@@ -105,14 +105,14 @@ parseOptions () {
 # in that case.  I have left that in for now since it enables certain testing.
 rewriteManifest () {
 
-    curl "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/rewrite-manifest.sh" > rewrite-manifest.sh
+    curl "https://raw.githubusercontent.com/$REPO/$COMMIT/rewrite-manifest.sh" > rewrite-manifest.sh
     chmod +x rewrite-manifest.sh
 
-    MANIFEST_URL="https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/manifest/default.xml"
+    MANIFEST_URL="https://raw.githubusercontent.com/$REPO/$COMMIT/manifest/default.xml"
     PROJECT_NAME="sync_gateway"
 
     echo "Using manifest: $MANIFEST_URL on commit $COMMIT for project $PROJECT_NAME with username: $GITHUB_USERNAME"
-    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" > .repo/manifest.xml
+    ./rewrite-manifest.sh --manifest-url "$MANIFEST_URL" --project-name "$PROJECT_NAME" --set-revision "$COMMIT" --set-repo "$REPO" > .repo/manifest.xml
 
 }
 

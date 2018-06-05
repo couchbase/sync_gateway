@@ -1,5 +1,6 @@
 pipeline {
     // Build on this uberjenkins node, as it has the Go environment set up in a known-state
+    // We could potentially change this to use a dockerfile agent instead so it can be portable.
     agent { label 'sync-gateway-ami-builder' }
 
     environment {
@@ -7,7 +8,7 @@ pipeline {
         GO_VERSION = 'go1.8.5'
         GOBIN = "/root/.gvm/gos/${GO_VERSION}/bin/go"
         GOPATH = "${WORKSPACE}/godeps"
-        SG_REPO = 'bbrks/sync_gateway' // TODO Fixme
+        SG_REPO = 'bbrks/sync_gateway' // TODO: Get this automatically
     }
 
     stages {
@@ -39,7 +40,7 @@ pipeline {
                 sh 'cp .scm-checkout/bootstrap.sh .'
                 sh 'chmod +x bootstrap.sh'
                 // TODO: running shell scripts taken from the repo seems dangerous? Could this be modified by anyone?
-                sh "./bootstrap.sh -c ${SG_COMMIT} -p sg -r ${SG_REPO}"
+                sh "./bootstrap.sh -r ${SG_REPO} -c ${SG_COMMIT} -p sg"
                 sh 'ls -la'
                 sh 'ls -la godeps/src/github.com/couchbase/sync_gateway'
                 sh 'ls -la godeps/src/github.com/couchbaselabs/sync-gateway-accel'
