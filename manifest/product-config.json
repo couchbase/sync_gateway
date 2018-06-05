@@ -50,6 +50,13 @@
             "interval": 120,
             "start_build": 838
         },
+        "manifest/2.1.0.xml": {
+            "release": "2.1.0.0",
+            "release_name": "Couchbase Sync Gateway 2.1.0.0",
+            "production": true,
+            "interval": 120,
+            "start_build": 107
+        },
         "manifest/dev.xml": {
             "release": "dev",
             "release_name": "Couchbase Sync Gateway Dev",
