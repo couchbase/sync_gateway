@@ -53,10 +53,22 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	}
 
 	if params.OutputDirectory == "" {
-		// If no output directory specified, default to the directory sgcollect_info is in.
-		params.OutputDirectory = filepath.Dir(sgCollectPath)
+		// If no output directory specified, default to the server's configured LogFilePath
+		if config != nil && config.Logging != nil {
+			params.OutputDirectory = config.Logging.LogFilePath
+			base.Debugf(base.KeyAdmin, "sgcollect_info: no output directory specified, using LogFilePath: %v", params.OutputDirectory)
+		} else {
+			// We couldn't use the configured LogFilePath for some reason,
+			// so fall back to the working directory of SG (usually /home/sync_gateway)
+			// Windows services run in 'Windows\System32' by default,
+			// so let's not write there. Instead use the 'Program Files' directory.
+			if runtime.GOOS == "windows" {
+				params.OutputDirectory = filepath.Join(os.Getenv("ProgramFiles"), "\\Couchbase\\Sync Gateway\\")
+			}
+			base.Debugf(base.KeyAdmin, "sgcollect_info: no LogFilePath configured, falling back to: %v", params.OutputDirectory)
+		}
 
-		// Validate the path, just in case were not getting sgCollectPath correctly.
+		// Validate the path, just in case were not getting it correctly.
 		if err := validateOutputDirectory(params.OutputDirectory); err != nil {
 			return err
 		}
