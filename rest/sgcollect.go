@@ -78,10 +78,11 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	sg.cancel = cancelFunc
 	cmd := exec.CommandContext(ctx, sgCollectPath, args...)
 
-	// Send command stderr/stdout to pipe
-	pipeReader, pipeWriter := io.Pipe()
-	cmd.Stderr = pipeWriter
-	cmd.Stdout = pipeWriter
+	// Send command stderr/stdout to pipes
+	stderrPipeReader, stderrPipeWriter := io.Pipe()
+	cmd.Stderr = stderrPipeWriter
+	stdoutPipeReader, stdoutpipeWriter := io.Pipe()
+	cmd.Stdout = stdoutpipeWriter
 
 	if err := cmd.Start(); err != nil {
 		return err
@@ -90,9 +91,20 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	atomic.StoreUint32(sg.status, sgRunning)
 	base.Infof(base.KeyAdmin, "sgcollect_info started with args: %v", base.UD(args))
 
-	// Stream sgcollect_info stdout/stderr to debug logs
+	// Stream sgcollect_info stderr to warn logs
 	go func() {
-		scanner := bufio.NewScanner(pipeReader)
+		scanner := bufio.NewScanner(stderrPipeReader)
+		for scanner.Scan() {
+			base.Warnf(base.KeyAll, "sgcollect_info: %v", scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			base.Errorf(base.KeyAll, "sgcollect_info: unexpected error: %v", err)
+		}
+	}()
+
+	// Stream sgcollect_info stdout to debug logs
+	go func() {
+		scanner := bufio.NewScanner(stdoutPipeReader)
 		for scanner.Scan() {
 			base.Debugf(base.KeyAdmin, "sgcollect_info: %v", scanner.Text())
 		}
@@ -114,7 +126,7 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 				return
 			}
 
-			base.Errorf(base.KeyAll, "sgcollect_info failed after %v with reason: %v. Check debug level logs with Admin key for more information.", duration, err)
+			base.Errorf(base.KeyAll, "sgcollect_info failed after %v with reason: %v. Check warning level logs for more information.", duration, err)
 			return
 		}
 
@@ -267,6 +279,7 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 		}
 
 		// Check sgcollect_info exists at the path we guessed.
+		base.Debugf(base.KeyAdmin, "Checking sgcollect_info binary exists at: %v", sgCollectBinary)
 		_, err = os.Stat(sgCollectBinary)
 		if err != nil {
 
@@ -279,7 +292,6 @@ func sgCollectPaths() (sgBinary, sgCollectBinary string, err error) {
 			return "", "", err
 		}
 
-		base.Debugf(base.KeyAdmin, "Found sgcollect_info at: %v", sgCollectBinary)
 		return sgBinary, sgCollectBinary, nil
 	}
 }
