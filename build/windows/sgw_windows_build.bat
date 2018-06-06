@@ -159,6 +159,8 @@ if EXIST %SGW_DIR%\pkg           rmdir /s/q %SGW_DIR%\pkg
 
 echo go install github.com\couchbase\sync_gateway\...
 go install github.com\couchbase\sync_gateway\...
+echo go install github.com\couchbase\ns_server\deps\gocode\src\gozip
+go install github.com\couchbase\ns_server\deps\gocode\src\gozip
 
 if NOT EXIST %BIN_DIR%\%SGW_EXEC% (
     echo "############################# Sync-Gateway FAIL! no such file: %BIN_DIR%\%SGW_EXEC%"
@@ -276,6 +278,7 @@ echo ======== sync-gateway package ==========================
 echo ".................staging sgw files to %SGW_INSTALL_DIR%"
 copy  %DEST_DIR%\%SGW_EXEC%             %SGW_INSTALL_DIR%\sync_gateway.exe
 copy  %COLLECTINFO_DIST%                %SGW_INSTALL_DIR%\tools\
+copy  %BIN_DIR%\gozip.exe               %SGW_INSTALL_DIR%\tools\
 copy  %BLD_DIR%\README.txt              %SGW_INSTALL_DIR%\README.txt
 echo  %VERSION%                       > %SGW_INSTALL_DIR%\VERSION.txt
 copy  %LIC_DIR%\LICENSE_%EDITION%.txt   %SGW_INSTALL_DIR%\LICENSE.txt
