@@ -293,6 +293,10 @@ func TestUserAllowEmptyPassword(t *testing.T) {
 // Test user access grant while that user has an active changes feed.  (see issue #880)
 func TestUserAccessRace(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	// This test only runs against Walrus due to known sporadic failures.
 	// See https://github.com/couchbase/sync_gateway/issues/3006
 	if !base.UnitTestUrlIsWalrus() {
@@ -752,6 +756,10 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 func TestSessionExtension(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -1081,6 +1089,10 @@ func TestDBGetConfigNames(t *testing.T) {
 //Take DB offline and ensure can post _resync
 func TestDBOfflinePostResync(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	var rt RestTester
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
@@ -1242,6 +1254,10 @@ func TestDBOnlineConcurrent(t *testing.T) {
 // Test bring DB online with delay of 1 second
 func TestSingleDBOnlineWithDelay(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	var rt RestTester
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
@@ -1282,6 +1298,10 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 // BD should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
 
 	var rt RestTester
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
@@ -1332,6 +1352,10 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 // BD should should only be brought online once
 // there should be no errors
 func TestDBOnlineWithTwoDelays(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
 
 	var rt RestTester
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket

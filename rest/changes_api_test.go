@@ -312,6 +312,10 @@ func postChanges(t *testing.T, it indexTester) {
 // Tests race between waking up the changes feed, and detecting that the user doc has changed
 func TestPostChangesUserTiming(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel)}`)
 	defer it.Close()
 
@@ -367,6 +371,11 @@ func TestPostChangesUserTiming(t *testing.T) {
 }
 
 func TestPostChangesSinceInteger(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	postChangesSince(t, it)
@@ -703,6 +712,10 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 }
 
 func TestUnusedSequences(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
 
 	// Only do 10 iterations if running against walrus.  If against a live couchbase server,
 	// just do single iteration.  (Takes approx 30s)
