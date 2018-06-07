@@ -83,6 +83,14 @@ pipeline {
                 }
             }
         }
+        stage('Test Race') {
+            steps {
+                echo 'Testing with -race..'
+                withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                    sh 'go test -race github.com/couchbase/sync_gateway/...'
+                }
+            }
+        }
     }
 
     post {
