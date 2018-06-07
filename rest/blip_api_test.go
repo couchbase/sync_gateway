@@ -88,7 +88,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	receivedChangesRequestWg := sync.WaitGroup{}
 
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.blipContext.HandlerForProfile.SetHandler("changes", func(request *blip.Message) {
 
 		log.Printf("got changes message: %+v", request)
 		body, err := request.Body()
@@ -120,7 +120,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 
 		receivedChangesRequestWg.Done()
 
-	}
+	})
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := blip.NewRequest()
@@ -158,7 +158,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.blipContext.HandlerForProfile.SetHandler("changes", func(request *blip.Message) {
 
 		body, err := request.Body()
 
@@ -205,7 +205,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 			response.SetBody(emptyResponseValBytes)
 		}
 
-	}
+	})
 
 	// Increment waitgroup since just the act of subscribing to continuous changes will cause
 	// the callback changes handler to be invoked with an initial change w/ empty body, signaling that
@@ -278,7 +278,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.blipContext.HandlerForProfile.SetHandler("changes", func(request *blip.Message) {
 
 		body, err := request.Body()
 
@@ -325,7 +325,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 			response.SetBody(emptyResponseValBytes)
 		}
 
-	}
+	})
 
 	// Increment waitgroup to account for the expected 'caught up' nil changes entry.
 	receivedChangesWg.Add(1)
@@ -432,7 +432,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.blipContext.HandlerForProfile.SetHandler("changes", func(request *blip.Message) {
 
 		body, err := request.Body()
 
@@ -489,7 +489,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 			response.SetBody(emptyResponseValBytes)
 		}
 
-	}
+	})
 
 	// Increment waitgroup to account for the expected 'caught up' nil changes entry.
 	receivedChangesWg.Add(1)
@@ -1300,7 +1300,7 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 	assertNoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.blipContext.HandlerForProfile.SetHandler("changes", func(request *blip.Message) {
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
@@ -1309,7 +1309,7 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 			assertNoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
 		}
-	}
+	})
 
 	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := blip.NewRequest()

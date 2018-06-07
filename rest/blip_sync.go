@@ -167,7 +167,7 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 		}
 	}
 
-	ctx.blipContext.HandlerForProfile[profile] = handlerFnWrapper
+	ctx.blipContext.HandlerForProfile.SetHandler(profile, handlerFnWrapper)
 
 }
 
