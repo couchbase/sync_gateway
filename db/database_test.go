@@ -701,6 +701,10 @@ func TestRepeatedConflict(t *testing.T) {
 
 func TestConflicts(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
@@ -1481,6 +1485,10 @@ func TestConcurrentImport(t *testing.T) {
 }
 
 func TestViewCustom(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test may not pass under non-walrus, if views aren't enabled, as ViewAllDocs won't exist")

@@ -28,6 +28,10 @@ import (
 
 func TestChangesAccessNotifyInteger(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`)
 	defer it.Close()
 
@@ -78,6 +82,10 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 // channels in the filter were being included in the waiter initialization, but not in the subsequent wait.  Resulting difference in count was resulting
 // in longpoll terminating without any changes.
 func TestChangesNotifyChannelFilter(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
 
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()

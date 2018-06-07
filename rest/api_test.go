@@ -2376,6 +2376,10 @@ func TestAccessOnTombstone(t *testing.T) {
 //Test for wrong _changes entries for user joining a populated channel
 func TestUserJoiningPopulatedChannel(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	base.EnableTestLogKey("Cache+")
 	base.EnableTestLogKey("Changes+")
 	base.EnableTestLogKey("CRUD+")
