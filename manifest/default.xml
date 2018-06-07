@@ -128,4 +128,7 @@
 
   <project name="opentracing-go" path="godeps/src/github.com/opentracing/opentracing-go" remote="couchbasedeps" revision="6c572c00d1830223701e155de97408483dfcd14a"/>
 
+  <!-- gozip tools -->
+  <project name="ns_server" path="godeps/src/github.com/couchbase/ns_server" remote="couchbase" revision="6d835931f574f25e3781192c09e45a3ee30deb51"/>
+
 </manifest>
