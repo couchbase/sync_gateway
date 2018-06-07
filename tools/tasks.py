@@ -342,7 +342,13 @@ class TaskRunner(object):
 
     def _zip_helper(self, prefix, filename, files):
         """Write all our logs to a zipfile"""
-        exe = exec_name("gozip")
+
+        # Get absolute path to gozip relative to this file
+        exe = os.path.abspath(os.path.join(os.path.dirname(__file__), exec_name("gozip")))
+
+        # Don't have gozip relative to this file, try and see if there's one elsewhere in $PATH
+        if not os.path.isfile(exe):
+            exe = exec_name("gozip")
 
         fallback = False
 
