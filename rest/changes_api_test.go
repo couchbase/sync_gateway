@@ -540,6 +540,11 @@ func postChangesChannelFilter(t *testing.T, it indexTester) {
 }
 
 func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	postChangesAdminChannelGrant(t, it)
@@ -907,6 +912,10 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 }
 
 func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
 
 	var logKeys = map[string]bool{
 		"TEST": true,

@@ -1119,6 +1119,10 @@ func TestDBOfflinePostResync(t *testing.T) {
 // or even that they execute at the same time.  Disabling test
 func TestDBOfflineSingleResync(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	var rt RestTester
 	defer rt.Close()
 

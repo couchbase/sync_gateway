@@ -221,6 +221,10 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
 	}
