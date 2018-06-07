@@ -53,10 +53,16 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	}
 
 	if params.OutputDirectory == "" {
-		// If no output directory specified, default to the directory sgcollect_info is in.
-		params.OutputDirectory = filepath.Dir(sgCollectPath)
+		// If no output directory specified, default to the configured LogFilePath
+		if config != nil && config.Logging != nil && config.Logging.LogFilePath != "" {
+			params.OutputDirectory = config.Logging.LogFilePath
+			base.Debugf(base.KeyAdmin, "sgcollect_info: no output directory specified, using LogFilePath: %v", params.OutputDirectory)
+		} else {
+			// If LogFilePath is not set, and DefaultLogFilePath is not set via a service script, error out.
+			return errors.New("no output directory or LogFilePath specified")
+		}
 
-		// Validate the path, just in case were not getting sgCollectPath correctly.
+		// Validate the path, just in case were not getting it correctly.
 		if err := validateOutputDirectory(params.OutputDirectory); err != nil {
 			return err
 		}
