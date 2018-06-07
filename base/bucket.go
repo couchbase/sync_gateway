@@ -387,9 +387,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		switch spec.CouchbaseDriver {
 		case GoCB, GoCBCustomSGTranscoder:
 			if strings.ToLower(spec.FeedType) == TapFeedType {
-				Warnf(KeyAll, "Cannot use TAP feed in conjunction with GoCB driver, reverting to go-couchbase")
-				// FIXME: What do do here?!
-				// bucket, err = GetCouchbaseBucket(spec, callback)
+				return nil, fmt.Errorf("unsupported feed type: %v", spec.FeedType)
 			} else {
 				bucket, err = GetCouchbaseBucketGoCB(spec)
 			}
