@@ -209,20 +209,13 @@ func (c *channelIndexTest) readIndexBulk() error {
 	for i := 0; i < c.numVbuckets; i++ {
 		keys[i] = c.getIndexDocName(i)
 	}
-	couchbaseBucket, ok := c.indexBucket.(*base.CouchbaseBucket)
-	if !ok {
-		log.Printf("Unable to convert to couchbase bucket")
-		return errors.New("Unable to convert to couchbase bucket")
-	}
-	responses, err := couchbaseBucket.GetBulk(keys, time.Time{}, nil)
+	responses, err := c.indexBucket.GetBulkRaw(keys)
 	if err != nil {
 		return err
 	}
 
 	for _, response := range responses {
-		body := response.Body
-		// read last from body
-		size := len(body)
+		size := len(response)
 		if size <= 0 {
 			return errors.New(fmt.Sprintf("Empty body for response %v", response))
 		}
