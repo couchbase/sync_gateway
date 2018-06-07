@@ -35,7 +35,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	base.EnableTestLogKey("Accel")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccel)()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -139,7 +139,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://gist.github.com/tleyden/a41632355fadde54f19e84ba68015512")
 	}
 
-	base.EnableTestLogKey("*")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer testBucket.Close()

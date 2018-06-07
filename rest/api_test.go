@@ -862,22 +862,14 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 		AdminInterface: &DefaultAdminInterface,
 	})
 
-	server := base.UnitTestUrl()
-	bucketName := rt1.RestTesterBucket.GetName()
-	spec := base.GetTestBucketSpec(base.DataBucket)
-	username, password, _ := spec.Auth.GetCredentials()
+	// For the second rest tester, create a copy of the original database config and
+	// clear out the sync function.
+	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
+	assertNoError(t, err, "Unexpected error")
+	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
-	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
-		BucketConfig: BucketConfig{
-			Server:   &server,
-			Bucket:   &bucketName,
-			Username: username,
-			Password: password,
-		},
-		NumIndexReplicas: rt1.DatabaseConfig.NumIndexReplicas, // Use the same NumIndexReplicas as original test bucket (0)
-		Name:             "db",
-	})
+	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
 	assertNoError(t, err, "Failed to add database to rest tester")
 
@@ -959,22 +951,14 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 		AdminInterface: &DefaultAdminInterface,
 	})
 
-	server := base.UnitTestUrl()
-	bucketName := rt1.RestTesterBucket.GetName()
-	spec := base.GetTestBucketSpec(base.DataBucket)
-	username, password, _ := spec.Auth.GetCredentials()
+	// For the second rest tester, create a copy of the original database config and
+	// clear out the sync function.
+	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
+	assertNoError(t, err, "Unexpected error calling DeepCopy()")
+	dbConfigCopy.Sync = base.StringPointer("")
 
-	rt1UseXattrs := rt1.GetDatabase().UseXattrs()
-	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
-		BucketConfig: BucketConfig{
-			Server:   &server,
-			Bucket:   &bucketName,
-			Username: username,
-			Password: password,
-		},
-		Name:         "db",
-		EnableXattrs: &rt1UseXattrs,
-	})
+	// Add a second database that uses the same underlying bucket.
+	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
 	assertNoError(t, err, "Failed to add database to rest tester")
 
@@ -1063,22 +1047,14 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 		AdminInterface: &DefaultAdminInterface,
 	})
 
-	server := base.UnitTestUrl()
-	bucketName := rt1.RestTesterBucket.GetName()
-	spec := base.GetTestBucketSpec(base.DataBucket)
-	username, password, _ := spec.Auth.GetCredentials()
+	// For the second rest tester, create a copy of the original database config and
+	// clear out the sync function.
+	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
+	assertNoError(t, err, "Unexpected error calling DeepCopy()")
+	dbConfigCopy.Sync = base.StringPointer("")
 
-	rt1UseXattrs := rt1.GetDatabase().UseXattrs()
-	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(&DbConfig{
-		BucketConfig: BucketConfig{
-			Server:   &server,
-			Bucket:   &bucketName,
-			Username: username,
-			Password: password,
-		},
-		Name:         "db",
-		EnableXattrs: &rt1UseXattrs,
-	})
+	// Add a second database that uses the same underlying bucket.
+	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
 	assertNoError(t, err, "Failed to add database to rest tester")
 
@@ -1177,11 +1153,7 @@ func TestBulkGetEmptyDocs(t *testing.T) {
 
 func TestBulkDocsChangeToAccess(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Access": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccess)()
 
 	rt := RestTester{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
 	defer rt.Close()
@@ -1213,12 +1185,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Access":  true,
-		"Access+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess)()
 
 	rt := RestTester{SyncFn: `
 		function(doc) {
@@ -2130,10 +2097,7 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 func TestChannelAccessChanges(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
-	base.EnableTestLogKey("Accel+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD|base.KeyAccel)()
 
 	rt := RestTester{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	defer rt.Close()
@@ -2303,10 +2267,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 func TestAccessOnTombstone(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
-	base.EnableTestLogKey("Accel+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD|base.KeyAccel)()
 
 	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 if (doc.owner) {
@@ -2380,9 +2341,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("CRUD+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD)()
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
@@ -2471,13 +2430,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Access":   true,
-		"CRUD":     true,
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
 
 	rt := RestTester{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	defer rt.Close()
@@ -2522,13 +2475,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 func TestRoleAccessChanges(t *testing.T) {
 
-	var logKeys = map[string]bool{
-		"Access":   true,
-		"CRUD":     true,
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
 
 	rt := RestTester{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	defer rt.Close()
@@ -2651,12 +2598,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
-	var additionalLogKeys = map[string]bool{
-		"Changes": true,
-		"Cache":   true,
-	}
-
-	base.UpdateLogKeys(additionalLogKeys, false)
+	base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyAccess|base.KeyCRUD|base.KeyChanges)
 
 	response = rt.Send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
@@ -2852,6 +2794,9 @@ func TestOldDocHandling(t *testing.T) {
 }
 
 func TestStarAccess(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`
@@ -2872,12 +2817,6 @@ func TestStarAccess(t *testing.T) {
 	// Create some docs:
 	var rt RestTester
 	defer rt.Close()
-
-	var logKeys = map[string]bool{
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	var changes struct {

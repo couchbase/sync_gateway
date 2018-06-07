@@ -46,7 +46,13 @@ type RestTester struct {
 
 func (rt *RestTester) Bucket() base.Bucket {
 
-	if rt.RestTesterBucket == nil {
+	if rt.RestTesterBucket != nil {
+		return rt.RestTesterBucket
+	}
+
+	// Put this in a loop in case certain operations fail, like waiting for GSI indexes to be empty.
+	// Limit number of attempts to 2.
+	for i := 0; i < 2; i++ {
 
 		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
 		if !rt.NoFlush {
@@ -82,7 +88,17 @@ func (rt *RestTester) Bucket() base.Bucket {
 		useXattrs := base.TestUseXattrs()
 
 		if rt.DatabaseConfig == nil {
+
+			// If no db config was passed in, create one
 			rt.DatabaseConfig = &DbConfig{}
+
+			// By default, does NOT use views when running against couchbase server, since should use GSI
+			rt.DatabaseConfig.UseViews = base.TestUseViews()
+
+			// numReplicas set to 0 for test buckets, since it should assume that there is only one node.
+			numReplicas := uint(0)
+			rt.DatabaseConfig.NumIndexReplicas = &numReplicas
+
 		}
 
 		rt.DatabaseConfig.BucketConfig = BucketConfig{
@@ -99,24 +115,37 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.AllowConflicts = &boolVal
 		}
 
-		// Set to 0 for test buckets, since it should assume that there is only one node.
-		numReplicas := uint(0)
-
-		rt.DatabaseConfig.UseViews = base.TestUseViews()
-		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
-
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 		if err != nil {
 			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 		}
 		rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
+		// As long as bucket flushing wasn't disabled, wait for index to be empty (if this is a gocb bucket)
+		if !rt.NoFlush {
+			asGoCbBucket, isGoCbBucket := base.AsGoCBBucket(rt.RestTesterBucket)
+			if isGoCbBucket {
+				if err := db.WaitForIndexEmpty(asGoCbBucket, spec.UseXattrs); err != nil {
+					base.Infof(base.KeyAll, "WaitForIndexEmpty returned an error: %v.  Dropping indexes and retrying", err)
+					// if WaitForIndexEmpty returns error, drop the indexes and retry
+					if err := base.DropAllBucketIndexes(asGoCbBucket); err != nil {
+						panic(fmt.Sprintf("Failed to drop bucket indexes: %v", err))
+					}
+
+					continue // Go to the top of the for loop to retry
+				}
+			}
+		}
+
 		if !rt.noAdminParty {
 			rt.SetAdminParty(true)
 		}
 
+		return rt.RestTesterBucket
 	}
-	return rt.RestTesterBucket
+
+	panic(fmt.Sprintf("Failed to create a RestTesterBucket after multiple attempts"))
+
 }
 
 func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
@@ -226,7 +255,6 @@ func (rt *RestTester) Close() {
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close()
 	}
-	base.ResetTestLogging()
 }
 
 func (rt *RestTester) SendRequest(method, resource string, body string) *TestResponse {
@@ -365,6 +393,14 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 		} else {
 			response = rt.SendAdminRequest("GET", viewUrlPath, ``)
 		}
+
+		// If the view is undefined, it might be a race condition where the view is still being created
+		// See https://github.com/couchbase/sync_gateway/issues/3570#issuecomment-390487982
+		if strings.Contains(response.Body.String(), "view_undefined") {
+			base.Infof(base.KeyAll, "view_undefined error: %v.  Retrying", response.Body.String())
+			return true, nil, nil
+		}
+
 		if response.Code != 200 {
 			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200.", response.Code), sgbucket.ViewResult{}
 		}
@@ -595,7 +631,6 @@ type BlipTester struct {
 
 // Close the bliptester
 func (bt BlipTester) Close() {
-	defer DisableBlipSyncLogs()
 	bt.restTester.Close()
 }
 
@@ -607,8 +642,6 @@ func NewBlipTester() (*BlipTester, error) {
 
 // Create a BlipTester using the given spec
 func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
-
-	EnableBlipSyncLogs()
 
 	bt := &BlipTester{}
 
@@ -1228,14 +1261,6 @@ func (e ExpectedChange) Equals(change []interface{}) error {
 	}
 
 	return nil
-}
-
-func EnableBlipSyncLogs() {
-	base.ConsoleLogKey().Enable(base.KeyHTTP | base.KeySync | base.KeySyncMsg)
-}
-
-func DisableBlipSyncLogs() {
-	base.ConsoleLogKey().Disable(base.KeyHTTP | base.KeySync | base.KeySyncMsg)
 }
 
 // Model "CouchDB" style REST documents which define the following special fields:

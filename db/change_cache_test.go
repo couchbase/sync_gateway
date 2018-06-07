@@ -13,10 +13,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"testing"
 	"time"
-
-	"sync"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -277,13 +276,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("DCP+")
-
-	defer func() {
-		base.ResetTestLogging()
-	}()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyDCP)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer tearDownTestDB(t, db)
@@ -322,8 +315,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Cache+")
-	base.EnableTestLogKey("Changes+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -389,10 +381,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Sequences")
-	base.EnableTestLogKey("Cache")
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("DCP")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache|base.KeyChanges|base.KeyDCP)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -493,14 +482,7 @@ func TestLowSequenceHandling(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	var logKeys = map[string]bool{
-		"Cache":                true,
-		"Changes":              true,
-		"Changes+":             true,
-		base.KeyQuery.String(): true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyQuery)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -566,14 +548,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	var logKeys = map[string]bool{
-		"Cache":                true,
-		"Changes":              true,
-		"Changes+":             true,
-		base.KeyQuery.String(): true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyQuery)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -631,11 +606,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	var logKeys = map[string]bool{
-		"Sequence":             true,
-		base.KeyQuery.String(): true,
-	}
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges|base.KeyQuery)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -713,13 +684,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	var logKeys = map[string]bool{
-		"Cache":    true,
-		"Changes":  true,
-		"Changes+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges|base.KeyCache)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -812,11 +777,7 @@ func TestChannelRace(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	var logKeys = map[string]bool{
-		"Sequences": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer tearDownTestDB(t, db)
@@ -910,12 +871,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	var logKeys = map[string]bool{
-		"Cache":  true,
-		"Cache+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
 
 	// Use leaky bucket to have the tap feed 'lose' document 3
 	leakyConfig := base.LeakyBucketConfig{
@@ -957,8 +913,7 @@ func TestStopChangeCache(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	base.EnableTestLogKey("Changes+")
-	base.EnableTestLogKey("DCP+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges|base.KeyDCP)()
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -1004,7 +959,7 @@ func TestChannelCacheSize(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.EnableTestLogKey("Cache+")
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
 
 	channelOptions := ChannelCacheOptions{
 		ChannelCacheMinLength: 600,
@@ -1207,10 +1162,10 @@ func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*Chang
 //
 // Create doc1 w/ unused sequences 1, actual sequence 3.
 // Create doc2 w/ sequence 2, channel ABC
-// Send feed event for doc2. This won't trigger onChange, as buffering is waiting for seq 1
-// Send feed event for doc1. This should trigger caching for doc2, and trigger onChange for channel ABC.
+// Send feed event for doc2. This won't trigger notifyChange, as buffering is waiting for seq 1
+// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChange for channel ABC.
 //
-// Verify that onChange for channel ABC was sent.
+// Verify that notifyChange for channel ABC was sent.
 func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 	// -------- Test setup ----------------
@@ -1220,8 +1175,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 
 	// Enable relevant logging
-	base.EnableTestLogKey("Cache")
-	base.EnableTestLogKey("Changes")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache|base.KeyChanges)()
 
 	// Create a test db that uses channel cache
 	channelOptions := ChannelCacheOptions{
@@ -1235,15 +1189,15 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
 
-	// -------- Setup onChange callback ----------------
+	// -------- Setup notifyChange callback ----------------
 
 	// type assert this from ChangeIndex interface -> concrete changeCache implementation
 	changeCacheImpl := db.changeCache.(*changeCache)
 
-	//  Detect whether the 2nd was ignored using an onChange listener callback and make sure it was not added to the ABC channel
+	//  Detect whether the 2nd was ignored using an notifyChange listener callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
-	changeCacheImpl.onChange = func(channels base.Set) {
+	changeCacheImpl.notifyChange = func(channels base.Set) {
 		// defer waitForOnChangeCallback.Done()
 		log.Printf("channelsChanged: %v", channels)
 		// assert.True(t, channels.Contains("ABC"))
@@ -1286,7 +1240,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	doc2Bytes, err := doc2.MarshalJSON()
 	assertNoError(t, err, "Unexpected error")
 
-	// Send feed event for doc2. This won't trigger onChange, as buffering is waiting for seq 1
+	// Send feed event for doc2. This won't trigger notifyChange, as buffering is waiting for seq 1
 	feedEventDoc2 := sgbucket.FeedEvent{
 		Synchronous: true,
 		Key:         []byte(doc2Id),
@@ -1294,7 +1248,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	}
 	db.changeCache.DocChanged(feedEventDoc2)
 
-	// Send feed event for doc1. This should trigger caching for doc2, and trigger onChange for channel ABC.
+	// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChange for channel ABC.
 	feedEventDoc1 := sgbucket.FeedEvent{
 		Synchronous: true,
 		Key:         []byte(doc1Id),
@@ -1304,7 +1258,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 	// -------- Wait for waitgroup ----------------
 
-	// Block until the onChange callback was invoked with the expected channels.
+	// Block until the notifyChange callback was invoked with the expected channels.
 	// If the callback is never called back with expected, will block forever.
 	waitForOnChangeCallback.Wait()
 

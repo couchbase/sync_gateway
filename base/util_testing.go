@@ -1,6 +1,7 @@
 package base
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -30,6 +31,7 @@ func init() {
 
 type TestBucket struct {
 	Bucket
+	BucketSpec BucketSpec
 }
 
 func (tb TestBucket) Close() {
@@ -37,9 +39,6 @@ func (tb TestBucket) Close() {
 	tb.Bucket.Close()
 
 	DecrNumOpenBuckets(tb.Bucket.GetName())
-
-	ResetTestLogging()
-
 }
 
 func GetTestBucketOrPanic() TestBucket {
@@ -137,7 +136,10 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 		panic(fmt.Sprintf("Could not open bucket: %v", err))
 	}
 
-	return TestBucket{Bucket: bucket}
+	return TestBucket{
+		Bucket:     bucket,
+		BucketSpec: spec,
+	}
 
 }
 
@@ -347,7 +349,7 @@ func (tbm *TestBucketManager) FlushBucket() error {
 	// Ignore sporadic errors like:
 	// Error trying to empty bucket. err: {"_":"Flush failed with unexpected error. Check server logs for details."}
 
-	log.Printf("Flushing bucket %s", tbm.Bucket.Name())
+	Infof(KeyAll, "Flushing bucket %s", tbm.Bucket.Name())
 
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = tbm.Bucket.Flush()
@@ -533,18 +535,51 @@ func NumOpenBuckets(bucketName string) int32 {
 	return numOpen
 }
 
-// EnableTestLogKey will enable the given log key, if it exists,
-// and also enable debug level logging, if a + log key is provided.
-func EnableTestLogKey(logKey string) {
-	if strings.HasSuffix(logKey, "+") {
-		ConsoleLogLevel().Set(LevelDebug)
+// SetUpTestLogging will set the given log level and log keys,
+// and return a function that can be deferred for teardown.
+//
+// To set multiple log keys, use the bitwise OR operator.
+// E.g. KeyCache|KeyDCP|KeySync
+//
+// Usage:
+//     teardownFn := SetUpTestLogging(LevelDebug, KeyCache|KeyDCP|KeySync)
+//     defer teardownFn()
+//
+// Shorthand style:
+//     defer SetUpTestLogging(LevelDebug, KeyCache|KeyDCP|KeySync)()
+func SetUpTestLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
+	caller := GetCallersName(1, false)
+	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
+
+	// Set the console logger settings
+	consoleLogger.LogLevel.Set(logLevel)
+	consoleLogger.LogKey.Set(logKeys)
+
+	return func() {
+		// Return to default state
+		consoleLogger.LogLevel.Set(LevelInfo)
+		consoleLogger.LogKey.Set(KeyHTTP)
+
+		Infof(KeyAll, "%v: Reset logging", caller)
 	}
-	newLogKey := ToLogKey([]string{logKey})
-	ConsoleLogKey().Enable(newLogKey)
 }
 
-// ResetTestLogging return logging back to a standard state (Info level and HTTP log key)
-func ResetTestLogging() {
-	ConsoleLogLevel().Set(LevelInfo)
-	ConsoleLogKey().Set(KeyHTTP)
+// Make a deep copy from src into dst.
+// Copied from https://github.com/getlantern/deepcopy, commit 7f45deb8130a0acc553242eb0e009e3f6f3d9ce3 (Apache 2 licensed)
+func DeepCopyInefficient(dst interface{}, src interface{}) error {
+	if dst == nil {
+		return fmt.Errorf("dst cannot be nil")
+	}
+	if src == nil {
+		return fmt.Errorf("src cannot be nil")
+	}
+	bytes, err := json.Marshal(src)
+	if err != nil {
+		return fmt.Errorf("Unable to marshal src: %s", err)
+	}
+	err = json.Unmarshal(bytes, dst)
+	if err != nil {
+		return fmt.Errorf("Unable to unmarshal into dst: %s", err)
+	}
+	return nil
 }

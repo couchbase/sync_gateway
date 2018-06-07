@@ -431,7 +431,7 @@ function(doc, oldDoc) {
 	wg.Wait()
 }
 
-func TestLogging(t *testing.T) {
+func TestLoggingKeys(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
@@ -539,6 +539,27 @@ func TestLoggingLevels(t *testing.T) {
 
 	// Trying to set log level via the body will not work (the endpoint expects a log key map)
 	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"logLevel": "debug"}`), http.StatusBadRequest)
+}
+
+func TestLoggingCombined(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+
+	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
+	rt.SendAdminRequest("PUT", "/_logging?logLevel=info", `{}`)
+
+	// Log keys should be blank
+	response := rt.SendAdminRequest("GET", "/_logging", "")
+	var logKeys map[string]bool
+	json.Unmarshal(response.Body.Bytes(), &logKeys)
+	assert.DeepEquals(t, logKeys, map[string]bool{})
+
+	// Set log keys and log level in a single request
+	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=trace", `{"Changes":true, "Cache":true, "HTTP":true}`), http.StatusOK)
+
+	response = rt.SendAdminRequest("GET", "/_logging", "")
+	json.Unmarshal(response.Body.Bytes(), &logKeys)
+	assert.DeepEquals(t, logKeys, map[string]bool{"Changes": true, "Cache": true, "HTTP": true})
 }
 
 // Test user delete while that user has an active changes feed (see issue 809)
@@ -1591,15 +1612,15 @@ func TestReplicateErrorConditions(t *testing.T) {
 // - Functional tests in mobile-testkit repo
 func TestDocumentChangeReplicate(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
+	base.EnableSgReplicateLogging()
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
 	}
 
 	var rt RestTester
 	defer rt.Close() // Close RestTester, which closes ServerContext, which stops all replications
-
-	base.EnableTestLogKey("Replicate")
-	base.EnableSgReplicateLogging()
 
 	//Initiate synchronous one shot replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db", "target":"http://myhost:4985/db"}`), 500)

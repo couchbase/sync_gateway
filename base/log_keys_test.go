@@ -1,7 +1,6 @@
 package base
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -43,39 +42,46 @@ func TestLogKeyNames(t *testing.T) {
 	name := KeyDCP.String()
 	assert.Equals(t, name, "DCP")
 
-	// Combined log keys, or key masks print the binary representation.
+	// Combined log keys, will pretty-print a set of log keys
 	name = LogKey(KeyDCP | KeyReplicate).String()
-	assert.Equals(t, name, fmt.Sprintf("LogKey(%b)", KeyDCP|KeyReplicate))
+	assert.StringContains(t, name, "DCP")
+	assert.StringContains(t, name, "Replicate")
 
 	keys := []string{}
-	logKeys := ToLogKey(keys)
+	logKeys, warnings := ToLogKey(keys)
+	assert.Equals(t, len(warnings), 0)
 	assert.Equals(t, logKeys, LogKey(0))
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{})
 
 	keys = append(keys, "DCP")
-	logKeys = ToLogKey(keys)
+	logKeys, warnings = ToLogKey(keys)
+	assert.Equals(t, len(warnings), 0)
 	assert.Equals(t, logKeys, KeyDCP)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String()})
 
 	keys = append(keys, "Access")
-	logKeys = ToLogKey(keys)
+	logKeys, warnings = ToLogKey(keys)
+	assert.Equals(t, len(warnings), 0)
 	assert.Equals(t, logKeys, KeyAccess|KeyDCP)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAccess.String(), KeyDCP.String()})
 
 	keys = []string{"*", "DCP"}
-	logKeys = ToLogKey(keys)
+	logKeys, warnings = ToLogKey(keys)
+	assert.Equals(t, len(warnings), 0)
 	assert.Equals(t, logKeys, KeyAll|KeyDCP)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAll.String(), KeyDCP.String()})
 
 	// Special handling of log keys
 	keys = []string{"HTTP+"}
-	logKeys = ToLogKey(keys)
+	logKeys, warnings = ToLogKey(keys)
+	assert.Equals(t, len(warnings), 0)
 	assert.Equals(t, logKeys, KeyHTTP|KeyHTTPResp)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyHTTP.String(), KeyHTTPResp.String()})
 
 	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
 	keys = []string{"DCP", "WS+", "InvalidLogKey"}
-	logKeys = ToLogKey(keys)
+	logKeys, warnings = ToLogKey(keys)
+	assert.Equals(t, len(warnings), 2)
 	assert.Equals(t, logKeys, KeyDCP|KeyWebSocket)
 	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String(), KeyWebSocket.String()})
 }
@@ -181,7 +187,7 @@ func BenchmarkLogKeyName(b *testing.B) {
 
 func BenchmarkToLogKey(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_ = ToLogKey([]string{"CRUD", "DCP", "Replicate"})
+		_, _ = ToLogKey([]string{"CRUD", "DCP", "Replicate"})
 	}
 }
 
