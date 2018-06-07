@@ -251,6 +251,10 @@ func TestContinuousChangesSubscription(t *testing.T) {
 // Validate we get the expected updates and changes ends
 func TestBlipOneShotChangesSubscription(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	bt, err := NewBlipTester()
 	assertNoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -1307,6 +1311,5 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 	errorCode3 := subChangesResponse3.Properties["Error-Code"]
 	log.Printf("errorCode: %v", errorCode3)
 	assert.True(t, errorCode == "")
-
 
 }
