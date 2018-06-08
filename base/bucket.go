@@ -39,7 +39,7 @@ const (
 )
 
 const (
-	GoCouchbase            CouchbaseDriver = iota
+	_                      CouchbaseDriver = iota
 	GoCB                                   // Use GoCB driver with default Transcoder
 	GoCBCustomSGTranscoder                 // Use GoCB driver with a custom Transcoder
 )
@@ -71,8 +71,6 @@ func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 
 func (couchbaseDriver CouchbaseDriver) String() string {
 	switch couchbaseDriver {
-	case GoCouchbase:
-		return "GoCouchbase"
 	case GoCB:
 		return "GoCB"
 	case GoCBCustomSGTranscoder:
