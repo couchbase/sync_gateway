@@ -42,6 +42,13 @@ type LeakyBucketConfig struct {
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
+
+
+	_, ok := bucket.(*LeakyBucket)
+	if ok {
+		panic(fmt.Sprintf("Cannot wrap bucket in a LeakyBucket, would be double wrapping: %+v", bucket))
+	}
+
 	return &LeakyBucket{
 		bucket: bucket,
 		config: config,

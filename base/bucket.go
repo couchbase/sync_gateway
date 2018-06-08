@@ -707,7 +707,11 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 
 	// Possibly wrap the bucket in a LeakyBucket or a LoggingBucket
 	if spec.LeakyBucketConfig != nil {
-		bucket = NewLeakyBucket(bucket, *spec.LeakyBucketConfig)
+		// Make sure it wasn't already wrapped above in the Walrus case handling
+		_, ok := bucket.(*LeakyBucket)
+		if !ok {
+			bucket = NewLeakyBucket(bucket, *spec.LeakyBucketConfig)
+		}
 	} else if LogDebugEnabled(KeyBucket) { // This is in an "else if" in order to avoid "double wrapping" the bucket.  LeakyBucket takes precedence over LoggingBucket.
 		bucket = &LoggingBucket{bucket: bucket}
 	}
