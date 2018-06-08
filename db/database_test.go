@@ -1333,6 +1333,13 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 func TestIncrRetrySuccess(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
+		// The reason this test doesn't work against walrus is due to following:
+		// 1. This test creates a LeakyBucket wrapper around a GoCBBucket bucket with artificial temp failures on Incr
+		// 2. In sequenceAllocator.incrWithRetry() it calls AsGoCBBucket() to get underlying bucket, to see how many retries are needed
+		// 3. AsGoCBBucket() sees that it's a GoCBBucket wrapped in a LeakyBucket, and returns the underlying GoCBBucket()
+		// 4. Since AsGoCBBucket() returns OK, sequenceAllocator.incrWithRetry() sets num retries = 1 (no retrying), as it assumes GoCBBucket() will do the retrying
+		// 5. The leaky bucket introduces artificial failures, *before* calling down to GoCBBucket()'s Incr() method, short-circuiting GoCBBucket's retry mechanism
+		// 6. Since sequenceAllocator.incrWithRetry() assumes GoCBBucket will retry, but it's retry mechanism can never kick in, the test fails.
 		t.Skip("Test only works against Walrus, due to incrWithRetry being short-circuited in the LeakyBucket + CouchbaseBucketGoCB case")
 	}
 
