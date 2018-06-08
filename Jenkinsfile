@@ -47,7 +47,7 @@ pipeline {
                 echo "Bootstrapping commit ${SG_COMMIT}"
                 sh 'cp .scm-checkout/bootstrap.sh .'
                 sh 'chmod +x bootstrap.sh'
-                sh "./bootstrap.sh -p sg -c ${SG_COMMIT}"
+                sh "./bootstrap.sh -p sg-accel -c ${SG_COMMIT}"
             }
         }
         stage('Build') {
@@ -58,22 +58,25 @@ pipeline {
                 }
             }
         }
-        stage('Test') {
+        stage('Test with coverage') {
             steps {
-                echo 'Testing..'
+                echo 'Testing with coverage..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                     // gocoverutil is required until we upgrade to Go 1.10, and can use -coverprofile with ./...
                     sh 'gocoverutil -coverprofile=cover_sg.out test -covermode=count github.com/couchbase/sync_gateway/...'
+                    sh 'gocoverutil -coverprofile=cover_sga.out test -covermode=count github.com/couchbaselabs/sync-gateway-accel/...'
 
-                    // Publish HTML coverage report
+                    sg 'gocoverutil -coverprofile=cover_merged.out merge cover_sg.out cover_sga.out'
+
+                    // Publish combined HTML coverage report
                     sh 'mkdir reports'
-                    sh 'go tool cover -html=cover_sg.out -o reports/coverage.html'
+                    sh 'go tool cover -html=cover_merged.out -o reports/coverage.html'
                     publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: 'coverage.html', keepAll: false, reportDir: 'reports', reportFiles: 'coverage.html', reportName: 'Code Coverage', reportTitles: ''])
                 }
 
                 // Travis-related variables are required as coveralls only officially supports a certain set of CI tools.
                 withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH_NAME}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
-                    // Send coverage report to coveralls.io
+                    // Send just the SG coverage report to coveralls.io - **NOT** accel! It will expose the codebase!!!
                     sh "goveralls -coverprofile=cover_sg.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN}"
 
                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
@@ -87,7 +90,7 @@ pipeline {
             steps {
                 echo 'Testing with -race..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    sh 'go test -race github.com/couchbase/sync_gateway/...'
+                    sh './test.sh -race'
                 }
             }
         }
