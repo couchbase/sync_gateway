@@ -38,7 +38,7 @@ type LeakyBucketConfig struct {
 
 	// Every Nth bucket op will emulate a temporary/recoverable Couchbase Server errors.  0 means no errors.  This should
 	// be set to a number high enough to get past the startup ops.  Currently, that is > 3.
-	InjectNthBucketOpArtificialErrors uint `json:"inject_nth_bucket_op_artificial_errors"`
+	Bucket503InjectedErrorFrequency uint `json:"bucket_503_injected_error_frequency"`
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
@@ -433,16 +433,16 @@ func (b *LeakyBucket) SetPostQueryCallback(callback func(ddoc, viewName string, 
 
 func (b *LeakyBucket) injectTemporaryError() bool {
 
-	// If InjectNthBucketOpArtificialErrors is disabled, no point in checking further
-	if b.config.InjectNthBucketOpArtificialErrors == 0 {
+	// If Bucket503InjectedErrorFrequency is disabled, no point in checking further
+	if b.config.Bucket503InjectedErrorFrequency == 0 {
 		return false
 	}
 
 	// Increment the number of bucket ops, and get the latest value
 	updatedNumBucketOps := atomic.AddUint64(&b.numBucketOps, uint64(1))
 
-	// If the number of bucket ops is a multiple of InjectNthBucketOpArtificialErrors, return true to introduce a temporary error
-	if updatedNumBucketOps%uint64(b.config.InjectNthBucketOpArtificialErrors) == 0 {
+	// If the number of bucket ops is a multiple of Bucket503InjectedErrorFrequency, return true to introduce a temporary error
+	if updatedNumBucketOps%uint64(b.config.Bucket503InjectedErrorFrequency) == 0 {
 		return true
 	}
 
