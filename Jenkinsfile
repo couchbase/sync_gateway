@@ -66,7 +66,7 @@ pipeline {
                     sh 'gocoverutil -coverprofile=cover_sg.out test -covermode=count github.com/couchbase/sync_gateway/...'
                     sh 'gocoverutil -coverprofile=cover_sga.out test -covermode=count github.com/couchbaselabs/sync-gateway-accel/...'
 
-                    sg 'gocoverutil -coverprofile=cover_merged.out merge cover_sg.out cover_sga.out'
+                    sh 'gocoverutil -coverprofile=cover_merged.out merge cover_sg.out cover_sga.out'
 
                     // Publish combined HTML coverage report
                     sh 'mkdir reports'
