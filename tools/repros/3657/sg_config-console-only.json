@@ -1,0 +1,24 @@
+{
+  "logging": {
+    "log_file_path": "/tmp/sglog20180614",
+    "console": {
+      "log_keys": ["*"],
+      "log_level": "info"
+    },
+    "error": {
+      "enabled": false
+    },
+    "warn": {
+      "enabled": false
+    },
+    "info": {
+      "enabled": false
+    },
+    "debug": {
+      "enabled": false
+    }
+  },
+  "databases": {
+    "db": {}
+  }
+}
