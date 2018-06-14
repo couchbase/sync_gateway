@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math"
 	"net/http"
 	"os"
@@ -73,17 +72,17 @@ func writeAndWaitLoop(wg *sync.WaitGroup, workerID string) {
 
 	for i := int64(0); i < math.MaxInt64; i++ {
 		key := workerID + ":" + strconv.FormatInt(i, 10)
-		seq, err := writeDoc(key)
+		_, err := writeDoc(key)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%2s - Error writing doc: %v - err: %v\n", workerID, key, err)
 			continue
 		}
 
-		err = waitForDoc(key, seq)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%2s - Error waiting for doc: %v - seq: %v - err: %v\n", workerID, key, seq, err)
-			continue
-		}
+		// err = waitForDoc(key, seq)
+		// if err != nil {
+		// 	fmt.Fprintf(os.Stderr, "%2s - Error waiting for doc: %v - seq: %v - err: %v\n", workerID, key, seq, err)
+		// 	continue
+		// }
 
 		atomic.AddUint64(&totalDocsWritten, 1)
 	}
@@ -94,7 +93,7 @@ func writeAndWaitLoop(wg *sync.WaitGroup, workerID string) {
 func writeDoc(key string) (seq string, err error) {
 
 	resp, err := httpClient.Post(
-		sgAdminAddr+"/"+db,
+		sgAdminAddr+"/"+db+"/",
 		"application/json",
 		bytes.NewBufferString(`{"_id":"`+key+`", "a":1}`),
 	)
@@ -103,22 +102,23 @@ func writeDoc(key string) (seq string, err error) {
 	}
 
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	_, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
-
-	log.Printf("body: %s\n", body)
-
+	//
+	// log.Printf("body: %s\n", body)
+	// log.Printf("headers: %+v\n", resp.Header)
+	//
 	// data := map[string]interface{}{}
 	// err = json.Unmarshal(body, &data)
 	// if err != nil {
 	// 	return "", err
 	// }
-
+	//
 	// log.Printf("data: %+v\n", data)
 
-	// FIXME: hardcoded seq
+	// FIXME: hardcoded seq - pull out of "data"
 	return "1", nil
 
 }
