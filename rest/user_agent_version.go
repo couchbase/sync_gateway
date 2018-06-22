@@ -3,9 +3,16 @@ package rest
 import (
 	"regexp"
 	"strconv"
-
-	"github.com/couchbase/sync_gateway/base"
 )
+
+// userAgentRegexp is a regular expression that matches a CBL user-agent
+// A word
+// A forward slash
+// A (captured) series of numbers -- major version
+// A dot (needs to be escaped)
+// A (captured) series of numbers -- minor version
+// A bunch of whatever (.*)
+var userAgentRegexp = regexp.MustCompile(`CouchbaseLite/([0-9]*)\.([0-9]*).*`)
 
 type UserAgentVersion struct {
 	requestHeader string
@@ -28,23 +35,8 @@ func (uav *UserAgentVersion) parse() {
 		return
 	}
 
-	// A word
-	// A forward slash
-	// A (captured) series of numbers -- major version
-	// A dot (needs to be escaped)
-	// A (captured) series of numbers -- minor version
-	// A bunch of whatever (.*)
-	regex := `CouchbaseLite/([0-9]*)\.([0-9]*).*`
-
-	// Compile regex
-	re1, err := regexp.Compile(regex)
-	if err != nil {
-		base.Warnf(base.KeyAll, "Error compiling regex: %v.  Err: %v", regex, err)
-		return
-	}
-
 	// Find match and extract groups
-	result := re1.FindStringSubmatch(uav.requestHeader)
+	result := userAgentRegexp.FindStringSubmatch(uav.requestHeader)
 
 	// We should have at least three things captured
 	if len(result) < 3 {
