@@ -213,14 +213,11 @@ func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err err
 			return nil, pkgerrors.Wrapf(err, "Error setting NoDelay on tcpConn during TLS Connect")
 		}
 
-		tlsConfig := &tls.Config{}
-		if b.Certpath != "" && b.Keypath != "" {
-			var configErr error
-			tlsConfig, configErr = TLSConfigForX509(b.Certpath, b.Keypath, b.CACertPath)
-			if configErr != nil {
-				return nil, pkgerrors.Wrapf(configErr, "Error adding x509 to TLSConfig for DCP TLS connection")
-			}
+		tlsConfig, configErr := TLSConfigForX509(b.Certpath, b.Keypath, b.CACertPath)
+		if configErr != nil {
+			return nil, pkgerrors.Wrapf(configErr, "Error creating TLSConfig for DCP TLS connection")
 		}
+
 		tlsConfig.ServerName = host
 
 		tlsConn := tls.Client(tcpConn, tlsConfig)
@@ -233,20 +230,19 @@ func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err err
 
 }
 
+// Returns a TLSConfig based on the specified certificate paths.  If none are provided, returns tlsConfig with
+// InsecureSkipVerify:true.
 func TLSConfigForX509(certpath, keypath, cacertpath string) (*tls.Config, error) {
 
-	cacertpaths := []string{cacertpath}
-
 	tlsConfig := &tls.Config{}
-
-	if len(cacertpaths) > 0 {
+	if cacertpath != "" {
+		cacertpaths := []string{cacertpath}
 		rootCerts := x509.NewCertPool()
 		for _, path := range cacertpaths {
 			cacert, err := ioutil.ReadFile(path)
 			if err != nil {
 				return nil, err
 			}
-
 			ok := rootCerts.AppendCertsFromPEM(cacert)
 			if !ok {
 				return nil, fmt.Errorf("can't append certs from PEM")
@@ -261,6 +257,7 @@ func TLSConfigForX509(certpath, keypath, cacertpath string) (*tls.Config, error)
 		tlsConfig.InsecureSkipVerify = true
 	}
 
+	// If client cert and key are provided, add to config as x509 key pair
 	if certpath != "" && keypath != "" {
 		cert, err := tls.LoadX509KeyPair(certpath, keypath)
 		if err != nil {
@@ -269,6 +266,7 @@ func TLSConfigForX509(certpath, keypath, cacertpath string) (*tls.Config, error)
 
 		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
+
 	return tlsConfig, nil
 }
 
