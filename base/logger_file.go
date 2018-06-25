@@ -5,6 +5,8 @@ import (
 	"io"
 	"log"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/natefinch/lumberjack"
 	"github.com/pkg/errors"
@@ -25,16 +27,19 @@ var (
 type FileLogger struct {
 	Enabled bool
 
-	level  LogLevel
-	output io.Writer
-	logger *log.Logger
+	// collateBuffer is used to store log entries to batch up multiple logs.
+	collateBuffer chan string
+	level         LogLevel
+	output        io.Writer
+	logger        *log.Logger
 }
 
 type FileLoggerConfig struct {
 	Enabled  *bool             `json:"enabled,omitempty"`  // Toggle for this log output
 	Rotation logRotationConfig `json:"rotation,omitempty"` // Log rotation settings
 
-	Output io.Writer `json:"-"` // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
+	CollationBufferSize *int      `json:"collation_buffer_size,omitempty"` // The size of the log collation buffer.
+	Output              io.Writer `json:"-"`                               // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
 }
 
 type logRotationConfig struct {
@@ -50,12 +55,42 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, logFilePath string, 
 		return nil, err
 	}
 
-	return &FileLogger{
+	logger := &FileLogger{
 		Enabled: *config.Enabled,
 		level:   level,
 		output:  config.Output,
 		logger:  log.New(config.Output, "", 0),
-	}, nil
+	}
+
+	// Only create the collateBuffer channel and worker if required.
+	if *config.CollationBufferSize > 1 {
+		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
+
+		// Start up a single worker to consume messages from the buffer
+		go func() {
+			// This is the temporary buffer we'll store logs in.
+			logBuffer := []string{}
+			for {
+				select {
+				// Add log to buffer and flush to output if it's full.
+				case l := <-logger.collateBuffer:
+					logBuffer = append(logBuffer, l)
+					if len(logBuffer) >= *config.CollationBufferSize {
+						logger.logger.Print(strings.Join(logBuffer, "\n"))
+						logBuffer = []string{}
+					}
+				// Flush the buffer to the output after this time, even if we don't fill it.
+				case <-time.After(LoggerCollateFlushTimeout):
+					if len(logBuffer) > 0 {
+						logger.logger.Print(strings.Join(logBuffer, "\n"))
+						logBuffer = []string{}
+					}
+				}
+			}
+		}()
+	}
+
+	return logger, nil
 }
 
 // Rotate will rotate the active log file.
@@ -73,6 +108,16 @@ func (l *FileLogger) Rotate() error {
 
 func (l FileLogger) String() string {
 	return "FileLogger(" + l.level.String() + ")"
+}
+
+// logf will put the given message into the collation buffer if it exists,
+// otherwise will log the message directly.
+func (l *FileLogger) logf(format string, args ...interface{}) {
+	if l.collateBuffer != nil {
+		l.collateBuffer <- fmt.Sprintf(format, args...)
+	} else {
+		l.logger.Printf(format, args...)
+	}
 }
 
 // shouldLog returns true if we can log.
@@ -119,6 +164,15 @@ func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int
 			*lfc.Rotation.MaxSize,
 			*lfc.Rotation.MaxAge,
 		)
+	}
+
+	if lfc.CollationBufferSize == nil {
+		bufferSize := 0
+		// Set a default CollationBufferSize for verbose logs.
+		if level >= LevelInfo {
+			bufferSize = defaultFileLoggerCollateBufferSize
+		}
+		lfc.CollationBufferSize = &bufferSize
 	}
 
 	return nil

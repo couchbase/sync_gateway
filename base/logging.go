@@ -443,19 +443,19 @@ func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 	args = redact(args)
 
 	if shouldLogConsole {
-		consoleLogger.logger.Printf(color(format, logLevel), args...)
+		consoleLogger.logf(color(format, logLevel), args...)
 	}
 	if shouldLogError {
-		errorLogger.logger.Printf(format, args...)
+		errorLogger.logf(format, args...)
 	}
 	if shouldLogWarn {
-		warnLogger.logger.Printf(format, args...)
+		warnLogger.logf(format, args...)
 	}
 	if shouldLogInfo {
-		infoLogger.logger.Printf(format, args...)
+		infoLogger.logf(format, args...)
 	}
 	if shouldLogDebug {
-		debugLogger.logger.Printf(format, args...)
+		debugLogger.logf(format, args...)
 	}
 }
 

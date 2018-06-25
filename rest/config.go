@@ -17,9 +17,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -51,6 +54,10 @@ const (
 
 	// Default number of index replicas
 	DefaultNumIndexReplicas = uint(1)
+
+	// Take the LoggerCollateFlushTimeout and multiply it to give plenty of time to allow
+	// the log collation buffers to be flushed to outputs before exiting Sync Gateway.
+	logCollationBufferFlushDelay = 100 * base.LoggerCollateFlushTimeout
 )
 
 type SyncGatewayRunMode uint8
@@ -989,9 +996,44 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 
 }
 
+func RegisterSignalHandler() {
+	signalchannel := make(chan os.Signal, 1)
+	signal.Notify(signalchannel, syscall.SIGHUP, os.Interrupt, os.Kill)
+
+	go func() {
+		for sig := range signalchannel {
+			base.Infof(base.KeyAll, "Handling signal: %v", sig)
+			switch sig {
+			case syscall.SIGHUP:
+				HandleSighup()
+			case os.Interrupt, os.Kill:
+				// We'll add a small delay here for graceful shutdown so that any
+				// log collation buffers have time to be flushed to the outputs.
+				time.Sleep(logCollationBufferFlushDelay)
+				os.Exit(130) // 130 == exit code 128 + 2 (interrupt)
+			}
+		}
+	}()
+}
+
+func panicHandler() (panicHandler func()) {
+	return func() {
+		// Delay any panics to allow log collation buffers to flush to the outputs.
+		if r := recover(); r != nil {
+			base.Errorf(base.KeyAll, "Handling panic: %v", r)
+			time.Sleep(logCollationBufferFlushDelay)
+			panic(r)
+		}
+	}
+
+}
+
 // Main entry point for a simple server; you can have your main() function just call this.
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain(runMode SyncGatewayRunMode) {
+	RegisterSignalHandler()
+	defer panicHandler()()
+
 	ParseCommandLine(runMode)
 
 	// Logging config will now have been loaded from command line
