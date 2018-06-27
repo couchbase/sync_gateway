@@ -5,8 +5,6 @@ import (
 	"io"
 	"log"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/natefinch/lumberjack"
 	"github.com/pkg/errors"
@@ -67,29 +65,7 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, logFilePath string, 
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
 
 		// Start up a single worker to consume messages from the buffer
-		go func() {
-			// This is the temporary buffer we'll store logs in.
-			logBuffer := []string{}
-			for {
-				select {
-				// Add log to buffer and flush to output if it's full.
-				case l := <-logger.collateBuffer:
-					logBuffer = append(logBuffer, l)
-					if len(logBuffer) >= *config.CollationBufferSize {
-						logger.logger.Print(strings.Join(logBuffer, "\n"))
-						// Empty buffer
-						logBuffer = logBuffer[:0]
-					}
-				// Flush the buffer to the output after this time, even if we don't fill it.
-				case <-time.After(loggerCollateFlushTimeout):
-					if len(logBuffer) > 0 {
-						logger.logger.Print(strings.Join(logBuffer, "\n"))
-						// Empty buffer
-						logBuffer = logBuffer[:0]
-					}
-				}
-			}
-		}()
+		go logCollationWorker(logger.collateBuffer, logger.logger, *config.CollationBufferSize)
 	}
 
 	return logger, nil

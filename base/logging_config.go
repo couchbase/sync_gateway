@@ -39,11 +39,6 @@ type LoggingConfig struct {
 	DeprecatedDefaultLog *LogAppenderConfig `json:"default,omitempty"` // Deprecated "default" logging option.
 }
 
-// FlushLogBuffers will cause all log collation buffers to be flushed to the output.
-func FlushLogBuffers() {
-	time.Sleep(loggerCollateFlushDelay)
-}
-
 // Init will initilize loging, return any warnings that need to be logged at a later time.
 func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogFn, err error) {
 	if c == nil {
