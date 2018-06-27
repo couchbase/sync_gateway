@@ -385,7 +385,7 @@ func (r *DCPReceiver) initMetadata(maxVbNo uint16) {
 	backfillSeqs, err := r.backfill.loadBackfillSequences(r.bucket)
 	if err != nil {
 		// Backfill sequences not present or invalid - will use metadata only
-		return
+		backfillSeqs = nil
 	}
 
 	// Load persisted metadata
@@ -399,17 +399,19 @@ func (r *DCPReceiver) initMetadata(maxVbNo uint16) {
 			r.meta[i] = metadata
 			r.seqs[i] = snapStart
 			// Check whether we persisted a sequence midway through a previous incomplete backfill
-			var partialBackfillSequence uint64
-			if backfillSeqs != nil && backfillSeqs.Seqs[i] < backfillSeqs.SnapEnd[i] {
-				partialBackfillSequence = backfillSeqs.Seqs[i]
-			}
-			// If we have a backfill sequence later than the DCP checkpoint's snapStart, start from there
-			if partialBackfillSequence > snapStart {
-				Infof(KeyDCP, "Restarting vb %d using backfill sequence %d ([%d-%d])", i, partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
-				r.seqs[i] = partialBackfillSequence
-				r.meta[i] = makeVbucketMetadata(r.vbuuids[i], partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
-			} else {
-				Infof(KeyDCP, "Restarting vb %d using metadata sequence %d  (backfill %d not in [%d-%d])", i, snapStart, partialBackfillSequence, snapStart, snapEnd)
+			if backfillSeqs != nil {
+				var partialBackfillSequence uint64
+				if backfillSeqs.Seqs[i] < backfillSeqs.SnapEnd[i] {
+					partialBackfillSequence = backfillSeqs.Seqs[i]
+				}
+				// If we have a backfill sequence later than the DCP checkpoint's snapStart, start from there
+				if partialBackfillSequence > snapStart {
+					Infof(KeyDCP, "Restarting vb %d using backfill sequence %d ([%d-%d])", i, partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
+					r.seqs[i] = partialBackfillSequence
+					r.meta[i] = makeVbucketMetadata(r.vbuuids[i], partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
+				} else {
+					Infof(KeyDCP, "Restarting vb %d using metadata sequence %d  (backfill %d not in [%d-%d])", i, snapStart, partialBackfillSequence, snapStart, snapEnd)
+				}
 			}
 		}
 	}
