@@ -17,9 +17,11 @@ const (
 	// buffer and collate, before flushing the buffer to the output.
 	defaultConsoleLoggerCollateBufferSize = 10
 	defaultFileLoggerCollateBufferSize    = defaultConsoleLoggerCollateBufferSize
-	// LoggerCollateFlushTimeout is the amount of time to wait before
+	// loggerCollateFlushTimeout is the amount of time to wait before
 	// we flush to the output if we don't fill the buffer.
-	LoggerCollateFlushTimeout = 1 * time.Millisecond
+	loggerCollateFlushTimeout = 1 * time.Millisecond
+	// loggerCollateFlushDelay is the duration to wait to allow the log collation buffers to be flushed to outputs.
+	loggerCollateFlushDelay = 1 * time.Second
 )
 
 // ErrUnsetLogFilePath is returned when no logFilePath, or --defaultLogFilePath fallback can be used.
@@ -35,6 +37,11 @@ type LoggingConfig struct {
 	Debug          FileLoggerConfig    `json:"debug,omitempty"`           // Debug log file output
 
 	DeprecatedDefaultLog *LogAppenderConfig `json:"default,omitempty"` // Deprecated "default" logging option.
+}
+
+// FlushLogBuffers will cause all log collation buffers to be flushed to the output.
+func FlushLogBuffers() {
+	time.Sleep(loggerCollateFlushDelay)
 }
 
 // Init will initilize loging, return any warnings that need to be logged at a later time.

@@ -77,13 +77,15 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, logFilePath string, 
 					logBuffer = append(logBuffer, l)
 					if len(logBuffer) >= *config.CollationBufferSize {
 						logger.logger.Print(strings.Join(logBuffer, "\n"))
-						logBuffer = []string{}
+						// Empty buffer
+						logBuffer = logBuffer[:0]
 					}
 				// Flush the buffer to the output after this time, even if we don't fill it.
-				case <-time.After(LoggerCollateFlushTimeout):
+				case <-time.After(loggerCollateFlushTimeout):
 					if len(logBuffer) > 0 {
 						logger.logger.Print(strings.Join(logBuffer, "\n"))
-						logBuffer = []string{}
+						// Empty buffer
+						logBuffer = logBuffer[:0]
 					}
 				}
 			}

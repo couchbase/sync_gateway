@@ -22,7 +22,6 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -54,10 +53,6 @@ const (
 
 	// Default number of index replicas
 	DefaultNumIndexReplicas = uint(1)
-
-	// Take the LoggerCollateFlushTimeout and multiply it to give plenty of time to allow
-	// the log collation buffers to be flushed to outputs before exiting Sync Gateway.
-	logCollationBufferFlushDelay = 100 * base.LoggerCollateFlushTimeout
 )
 
 type SyncGatewayRunMode uint8
@@ -1007,9 +1002,8 @@ func RegisterSignalHandler() {
 			case syscall.SIGHUP:
 				HandleSighup()
 			case os.Interrupt, os.Kill:
-				// We'll add a small delay here for graceful shutdown so that any
-				// log collation buffers have time to be flushed to the outputs.
-				time.Sleep(logCollationBufferFlushDelay)
+				// Ensure log buffers are flushed before exiting.
+				base.FlushLogBuffers()
 				os.Exit(130) // 130 == exit code 128 + 2 (interrupt)
 			}
 		}
@@ -1018,10 +1012,12 @@ func RegisterSignalHandler() {
 
 func panicHandler() (panicHandler func()) {
 	return func() {
-		// Delay any panics to allow log collation buffers to flush to the outputs.
+		// Recover from any panics to allow for graceful shutdown.
 		if r := recover(); r != nil {
 			base.Errorf(base.KeyAll, "Handling panic: %v", r)
-			time.Sleep(logCollationBufferFlushDelay)
+			// Ensure log buffers are flushed before exiting.
+			base.FlushLogBuffers()
+
 			panic(r)
 		}
 	}
