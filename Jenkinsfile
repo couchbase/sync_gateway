@@ -7,6 +7,7 @@ pipeline {
         GO_VERSION = 'go1.8.5'
         GO = "/root/.gvm/gos/${GO_VERSION}/bin"
         GOPATH = "${WORKSPACE}/godeps"
+        BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
     }
 
@@ -16,6 +17,10 @@ pipeline {
                 sh "git rev-parse HEAD > .git/commit-id"
                 script {
                     env.SG_COMMIT = readFile '.git/commit-id'
+                    // Set BRANCH variable to target branch if this build is a PR
+                    if (env.CHANGE_TARGET) {
+                        env.BRANCH = env.CHANGE_TARGET
+                    }
                 }
                 
                 // Make a hidden directory to move scm
@@ -75,7 +80,7 @@ pipeline {
                 }
 
                 // Travis-related variables are required as coveralls only officially supports a certain set of CI tools.
-                withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH_NAME}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                     // Send just the SG coverage report to coveralls.io - **NOT** accel! It will expose the codebase!!!
                     sh "goveralls -coverprofile=cover_sg.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN}"
 
