@@ -14,7 +14,9 @@ type ConsoleLogger struct {
 	LogKey       *LogKey
 	ColorEnabled bool
 
-	logger *log.Logger
+	// collateBuffer is used to store log entries to batch up multiple logs.
+	collateBuffer chan string
+	logger        *log.Logger
 }
 
 type ConsoleLoggerConfig struct {
@@ -23,7 +25,8 @@ type ConsoleLoggerConfig struct {
 	LogKeys      []string  `json:"log_keys,omitempty"`      // Log Keys for the console output
 	ColorEnabled *bool     `json:"color_enabled,omitempty"` // Log with color for the console output
 
-	Output io.Writer `json:"-"` // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
+	CollationBufferSize *int      `json:"collation_buffer_size,omitempty"` // The size of the log collation buffer.
+	Output              io.Writer `json:"-"`                               // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
@@ -35,12 +38,30 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 
 	logKey, warnings := ToLogKey(config.LogKeys)
 
-	return &ConsoleLogger{
+	logger := &ConsoleLogger{
 		LogLevel:     config.LogLevel,
 		LogKey:       &logKey,
 		ColorEnabled: *config.ColorEnabled,
 		logger:       log.New(config.Output, "", 0),
-	}, warnings, nil
+	}
+
+	// Only create the collateBuffer channel and worker if required.
+	if *config.CollationBufferSize > 1 {
+		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
+
+		// Start up a single worker to consume messages from the buffer
+		go logCollationWorker(logger.collateBuffer, logger.logger, *config.CollationBufferSize)
+	}
+
+	return logger, warnings, nil
+}
+
+func (l *ConsoleLogger) logf(format string, args ...interface{}) {
+	if l.collateBuffer != nil {
+		l.collateBuffer <- fmt.Sprintf(format, args...)
+	} else {
+		l.logger.Printf(format, args...)
+	}
 }
 
 // shouldLog returns true if the given logLevel and logKey should get logged.
@@ -91,6 +112,15 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		// Ignore error parsing this value to treat it as false.
 		color, _ := strconv.ParseBool(os.Getenv("SG_COLOR"))
 		lcc.ColorEnabled = &color
+	}
+
+	// Default to consoleLoggerCollateBufferSize if a collation buffer size is not set
+	if lcc.CollationBufferSize == nil {
+		bufferSize := 0
+		if *lcc.LogLevel >= LevelInfo {
+			bufferSize = defaultConsoleLoggerCollateBufferSize
+		}
+		lcc.CollationBufferSize = &bufferSize
 	}
 
 	return nil

@@ -2,6 +2,7 @@ package base
 
 import (
 	"os"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -11,6 +12,16 @@ const (
 	warnMinAge  = 90
 	infoMinAge  = 3
 	debugMinAge = 1
+
+	// defaultConsoleLoggerCollateBufferSize is the number of console logs we'll
+	// buffer and collate, before flushing the buffer to the output.
+	defaultConsoleLoggerCollateBufferSize = 10
+	defaultFileLoggerCollateBufferSize    = defaultConsoleLoggerCollateBufferSize
+	// loggerCollateFlushTimeout is the amount of time to wait before
+	// we flush to the output if we don't fill the buffer.
+	loggerCollateFlushTimeout = 1 * time.Millisecond
+	// loggerCollateFlushDelay is the duration to wait to allow the log collation buffers to be flushed to outputs.
+	loggerCollateFlushDelay = 1 * time.Second
 )
 
 // ErrUnsetLogFilePath is returned when no logFilePath, or --defaultLogFilePath fallback can be used.

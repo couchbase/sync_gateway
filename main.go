@@ -11,12 +11,8 @@ package main
 
 import (
 	"math/rand"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
 )
 
@@ -26,16 +22,5 @@ func init() {
 
 // Simple Sync Gateway launcher tool.
 func main() {
-
-	signalchannel := make(chan os.Signal, 1)
-	signal.Notify(signalchannel, syscall.SIGHUP)
-
-	go func() {
-		for range signalchannel {
-			base.Infof(base.KeyAll, "Handling SIGHUP signal.")
-			rest.HandleSighup()
-		}
-	}()
-
 	rest.ServerMain(rest.SyncGatewayRunModeNormal)
 }
