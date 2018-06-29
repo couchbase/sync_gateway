@@ -386,6 +386,7 @@ func Panicf(logKey LogKey, format string, args ...interface{}) {
 // Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
 func Fatalf(logKey LogKey, format string, args ...interface{}) {
 	logTo(LevelError, logKey, format, args...)
+	FlushLogBuffers()
 	os.Exit(1)
 }
 
