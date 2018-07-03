@@ -573,7 +573,6 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
 	assertStatus(t, response, 201)
 
-	changesClosed := false
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -588,7 +587,6 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 		//  by the client.  This should be fixed more generally (to terminate all active user sessions when the user is deleted, not just
 		//  changes feeds) but that enhancement is too high risk to introduce at this time.  The timeout on changes will terminate the unit
 		//  test.
-		changesClosed = true
 		if changesResponse.Code == 401 {
 			// case 1 - ok
 		} else {
