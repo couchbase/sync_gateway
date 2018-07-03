@@ -277,8 +277,8 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	// the cache, so repeat the above:
 	cacheValidFrom, resultFromCache = c.getCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
-		base.Infof(base.KeyCache, "2nd getCachedChanges(%q, %d) got %d more, valid from #%d!",
-			base.UD(c.channelName), options.Since, len(resultFromCache)-numFromCache, cacheValidFrom)
+		base.Infof(base.KeyCache, "2nd getCachedChanges(%q, %s) got %d more, valid from #%d!",
+			base.UD(c.channelName), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
 		return resultFromCache, nil

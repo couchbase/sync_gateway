@@ -193,7 +193,7 @@ func (s *sequenceHasher) GetHash(clock base.SequenceClock) (string, error) {
 			var sClocks storedClocks
 			err = sClocks.Unmarshal(value)
 			if err != nil {
-				base.Warnf(base.KeyAll, "Error unmarshalling hash storage during update", err)
+				base.Warnf(base.KeyAll, "Error unmarshalling hash storage during update: %v", err)
 				return nil, err
 			}
 			exists, index = sClocks.Contains(clockValue)

@@ -197,7 +197,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 			//  2. SG previously crashed between index creation and index build.
 			// GSI doesn't like concurrent build requests, so wait and recheck index state before treating as option 2.
 			// (see known issue documented https://developer.couchbase.com/documentation/server/current/n1ql/n1ql-language-reference/build-index.html)
-			base.Infof(base.KeyQuery, "Index %s already in deferred state - waiting 10s to re-evaluate before issuing build to avoid concurrent build requests.")
+			base.Infof(base.KeyQuery, "Index %s already in deferred state - waiting 10s to re-evaluate before issuing build to avoid concurrent build requests.", indexName)
 			time.Sleep(10 * time.Second)
 			exists, indexMeta, metaErr = bucket.GetIndexMeta(indexName)
 			if metaErr != nil || indexMeta == nil {

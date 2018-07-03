@@ -132,6 +132,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
 	changesResponse := it.Send(requestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))
 	err := json.Unmarshal(changesResponse.Body.Bytes(), &initialChanges)
+	assertNoError(t, err, "Unexpected error unmarshalling initialChanges")
 	lastSeq := initialChanges.Last_Seq.String()
 	assert.Equals(t, lastSeq, "1")
 

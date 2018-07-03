@@ -525,7 +525,7 @@ func (c *changeCache) processUnusedSequence(docID string) {
 	sequenceStr := strings.TrimPrefix(docID, UnusedSequenceKeyPrefix)
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to identify sequence number for unused sequence notification with key: %s, error:", base.UD(docID), err)
+		base.Warnf(base.KeyAll, "Unable to identify sequence number for unused sequence notification with key: %s, error: %v", base.UD(docID), err)
 		return
 	}
 	change := &LogEntry{

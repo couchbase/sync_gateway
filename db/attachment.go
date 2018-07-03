@@ -422,7 +422,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 		}
 		if ok {
 			if length != int64(len(data)) {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, "Attachment length mismatch for %q: read %d bytes, should be %g", name, len(data), length)
+				return nil, base.HTTPErrorf(http.StatusBadRequest, "Attachment length mismatch for %q: read %d bytes, should be %d", name, len(data), length)
 			}
 		}
 

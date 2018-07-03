@@ -125,7 +125,7 @@ func (wh *Webhook) HandleEvent(event Event) {
 		}()
 
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error attempting to post %s to url %s: %s -- %+v", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
+			base.Warnf(base.KeyAll, "Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
 			return
 		}
 
