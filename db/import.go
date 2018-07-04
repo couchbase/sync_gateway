@@ -323,7 +323,7 @@ func (i *ImportFilterFunction) EvaluateFunction(doc Body) (bool, error) {
 
 	result, err := i.Call(doc)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", err)
+		base.Warnf(base.KeyAll, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
 		return false, err
 	}
 	switch result := result.(type) {

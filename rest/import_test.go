@@ -1034,7 +1034,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 
 			rt = RestTester{
 				SyncFn:         `function(doc, oldDoc) { channel(doc.channels) }`,

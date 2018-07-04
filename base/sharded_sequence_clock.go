@@ -342,7 +342,7 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 				// Note: The following is invoked upon cas failure - may be called multiple times
 				err = p.Unmarshal(value)
 				if err != nil {
-					Warnf(KeyAll, "Error unmarshalling clock during update", err)
+					Warnf(KeyAll, "Error unmarshalling clock during update: %v", err)
 					return nil, err
 				}
 				// Reapply sequences to partition
@@ -352,7 +352,7 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 				return p.Marshal()
 			})
 			if err != nil {
-				Warnf(KeyAll, "Error writing sharded clock partition [%d]:%v", UD(p.Key), err)
+				Warnf(KeyAll, "Error writing sharded clock partition [%v]:%v", UD(p.Key), err)
 				shardedClockExpvars.Add("partition_cas_failures", 1)
 				return
 			}

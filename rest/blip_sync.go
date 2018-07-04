@@ -713,8 +713,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 }
 
 func (ctx *blipSyncContext) incrementSerialNumber() uint64 {
-	ctx.handlerSerialNumber = atomic.AddUint64(&ctx.handlerSerialNumber, 1)
-	return atomic.LoadUint64(&ctx.handlerSerialNumber)
+	return atomic.AddUint64(&ctx.handlerSerialNumber, 1)
 }
 
 func (ctx *blipSyncContext) addAllowedAttachments(atts map[string]interface{}) {
