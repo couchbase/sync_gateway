@@ -107,6 +107,7 @@ func (CBGoUtilsLogger) Logf(level logging.Level, fmt string, args ...interface{}
 	Infof(KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
+// go-couchbase/gomemcached don't use Pair/Map logs, so these are all stubs
 func (CBGoUtilsLogger) Fatalm(msg string, kv logging.Map) {
 	Warnf(KeyAll, "CBGoUtilsLogger: Fatalm not implemented! "+msg)
 }
