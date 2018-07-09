@@ -25,7 +25,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/gocb"
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
@@ -71,38 +71,8 @@ type CouchbaseBucketGoCB struct {
 	viewOps      chan struct{} // Manages max concurrent view ops (per kv node)
 }
 
-type GoCBLogger struct{}
-
-func (l GoCBLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
-	switch level {
-	case gocbcore.LogError:
-		Errorf(KeyGoCB, format, v...)
-	case gocbcore.LogWarn:
-		Warnf(KeyGoCB, format, v...)
-	default:
-		Infof(KeyGoCB, format, v...)
-	}
-	return nil
-}
-
-func EnableGoCBLogging() {
-	gocbcore.SetLogger(GoCBLogger{})
-}
-
-func DisableGoCBLogging() {
-	gocbcore.SetLogger(nil)
-}
-
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
-
-	// Only wrap the gocb logging when the log key is set, to avoid the overhead of a log keys
-	// map lookup for every gocb log call
-
-	logKeys := GetLogKeys()
-	if logKeys["gocb"] {
-		EnableGoCBLogging()
-	}
 
 	// TODO: Push the above down into spec.GetConnString
 	connString, err := spec.GetGoCBConnString()
