@@ -679,7 +679,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 // upload it if necessary. This method blocks until all the attachments have been processed.
 func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, sender *blip.Sender) error {
 	return bh.db.ForEachStubAttachment(body, minRevpos,
-		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
+		func(name string, digest string, knownData []byte, meta *db.DocAttachment) ([]byte, error) {
 			if knownData != nil {
 				// If I have the attachment already I don't need the client to send it, but for
 				// security purposes I do need the client to _prove_ it has the data, otherwise if
@@ -716,24 +716,24 @@ func (ctx *blipSyncContext) incrementSerialNumber() uint64 {
 	return atomic.AddUint64(&ctx.handlerSerialNumber, 1)
 }
 
-func (ctx *blipSyncContext) addAllowedAttachments(atts map[string]interface{}) {
+func (ctx *blipSyncContext) addAllowedAttachments(atts db.AttachmentMap) {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 	if ctx.allowedAttachments == nil {
 		ctx.allowedAttachments = make(map[string]int, 100)
 	}
 	for _, meta := range atts {
-		if digest, ok := meta.(map[string]interface{})["digest"].(string); ok {
+		if digest := meta.Digest; digest != "" {
 			ctx.allowedAttachments[digest] = ctx.allowedAttachments[digest] + 1
 		}
 	}
 }
 
-func (ctx *blipSyncContext) removeAllowedAttachments(atts map[string]interface{}) {
+func (ctx *blipSyncContext) removeAllowedAttachments(atts db.AttachmentMap) {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 	for _, meta := range atts {
-		if digest, ok := meta.(map[string]interface{})["digest"].(string); ok {
+		if digest := meta.Digest; digest != "" {
 			if n := ctx.allowedAttachments[digest]; n > 1 {
 				ctx.allowedAttachments[digest] = n - 1
 			} else {
@@ -769,12 +769,12 @@ func init() {
 }
 
 // Returns true if this attachment is worth trying to compress.
-func isCompressible(filename string, meta map[string]interface{}) bool {
-	if meta["encoding"] != nil {
+func isCompressible(filename string, meta *db.DocAttachment) bool {
+	if meta.Encoding != "" {
 		return false
 	} else if kBadFilenames.MatchString(filename) {
 		return false
-	} else if mimeType, ok := meta["content_type"].(string); ok && mimeType != "" {
+	} else if mimeType := meta.ContentType; mimeType != "" {
 		return !kCompressedTypes.MatchString(mimeType) &&
 			(kGoodTypes.MatchString(mimeType) ||
 				!kBadTypes.MatchString(mimeType))

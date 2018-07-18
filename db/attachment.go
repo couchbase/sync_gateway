@@ -42,33 +42,31 @@ type AttachmentData map[AttachmentKey][]byte
 // A map of keys -> DocAttachments.
 type AttachmentMap map[string]*DocAttachment
 
-// A struct which models an attachment.  Currently only used by test code, however
-// new code or refactoring in the main codebase should try to use where appropriate.
+// A struct which models an attachment and its metadata.
 type DocAttachment struct {
-	ContentType string `json:"content_type,omitempty"`
-	Digest      string `json:"digest,omitempty"`
-	Length      int    `json:"length,omitempty"`
-	Revpos      int    `json:"revpos,omitempty"`
-	Stub        bool   `json:"stub,omitempty"`
-	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
+	ContentType   string `json:"content_type,omitempty"`
+	Digest        string `json:"digest,omitempty"`
+	Length        int    `json:"length,omitempty"`
+	Revpos        int    `json:"revpos,omitempty"`
+	Stub          bool   `json:"stub,omitempty"`
+	Encoding      string `json:"encoding,omitempty"`
+	EncodedLength int    `json:"encoded_length,omitempty"`
+	Follows       bool   `json:"follows,omitempty"`
+	Data          []byte `json:"data,omitempty"`
 }
 
 // Given a CouchDB document body about to be stored in the database, goes through the _attachments
 // dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
 // the bodies with the 'digest' attributes which are the keys to retrieving them.
 func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
-	var parentAttachments map[string]interface{}
+	var parentAttachments AttachmentMap
 	newAttachmentData := make(AttachmentData, 0)
 	atts := BodyAttachments(body)
 	if atts == nil && body["_attachments"] != nil {
 		return nil, base.HTTPErrorf(400, "Invalid _attachments")
 	}
-	for name, value := range atts {
-		meta, ok := value.(map[string]interface{})
-		if !ok {
-			return nil, base.HTTPErrorf(400, "Invalid _attachments")
-		}
-		data := meta["data"]
+	for name, meta := range atts {
+		data := meta.Data
 		if data != nil {
 			// Attachment contains data, so store it in the db:
 			attachment, err := decodeAttachment(data)
@@ -78,31 +76,27 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			key := AttachmentKey(Sha1DigestKey(attachment))
 			newAttachmentData[key] = attachment
 
-			newMeta := map[string]interface{}{
-				"stub":   true,
-				"digest": string(key),
-				"revpos": generation,
+			newMeta := DocAttachment{
+				Stub:        true,
+				Digest:      string(key),
+				Revpos:      generation,
+				ContentType: meta.ContentType,
 			}
-			if contentType, ok := meta["content_type"].(string); ok {
-				newMeta["content_type"] = contentType
-			}
-			if encoding := meta["encoding"]; encoding != nil {
-				newMeta["encoding"] = encoding
-				newMeta["encoded_length"] = len(attachment)
-				if length, ok := meta["length"].(float64); ok {
-					newMeta["length"] = length
-				}
+			if meta.Encoding != "" {
+				newMeta.Encoding = meta.Encoding
+				newMeta.EncodedLength = len(attachment)
+				newMeta.Length = meta.Length
 			} else {
-				newMeta["length"] = len(attachment)
+				newMeta.Length = len(attachment)
 			}
-			atts[name] = newMeta
+			atts[name] = &newMeta
 
 		} else {
 			// Attachment must be a stub that repeats a parent attachment
-			if meta["stub"] != true {
+			if !meta.Stub {
 				return nil, base.HTTPErrorf(400, "Missing data of attachment %q", name)
 			}
-			if revpos, ok := base.ToInt64(meta["revpos"]); !ok || revpos < 1 {
+			if meta.Revpos < 1 {
 				return nil, base.HTTPErrorf(400, "Missing/invalid revpos in stub attachment %q", name)
 			}
 			// Try to look up the attachment in ancestor attachments
@@ -114,7 +108,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 				if parentAttachment := parentAttachments[name]; parentAttachment != nil {
 					atts[name] = parentAttachment
 				}
-			} else if meta["digest"] == nil {
+			} else if meta.Digest == "" {
 				return nil, base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
 			}
 		}
@@ -125,26 +119,22 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 // Attempts to retrieve ancestor attachments for a document.  First attempts to find and use a non-pruned ancestor.
 // If no non-pruned ancestor is available, checks whether the currently active doc has a common ancestor with the new revision.
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
-func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string, docHistory []string) map[string]interface{} {
+func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string, docHistory []string) AttachmentMap {
 
-	var parentAttachments map[string]interface{}
+	var parentAttachments AttachmentMap
 	// Attempt to find a non-pruned parent or ancestor
 	parent, _ := db.getAvailableRev(doc, parentRev)
 	if parent != nil {
-		parentAttachments, _ = parent["_attachments"].(map[string]interface{})
+		parentAttachments = BodyAttachments(parent)
 	} else {
 		// No non-pruned ancestor is available
 		commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory)
 		if commonAncestor != "" {
-			parentAttachments = make(map[string]interface{})
-			commonAncestorGen, _ := base.ToInt64(genOfRevID(commonAncestor))
+			parentAttachments = make(AttachmentMap)
+			commonAncestorGen := genOfRevID(commonAncestor)
 			for name, activeAttachment := range BodyAttachments(doc.Body()) {
-				attachmentMeta, ok := activeAttachment.(map[string]interface{})
-				if ok {
-					activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
-					if ok && activeRevpos <= commonAncestorGen {
-						parentAttachments[name] = activeAttachment
-					}
+				if activeAttachment.Revpos <= commonAncestorGen {
+					parentAttachments[name] = activeAttachment
 				}
 			}
 		}
@@ -160,25 +150,18 @@ func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string,
 func (db *Database) loadBodyAttachments(body Body, minRevpos int, docid string) (Body, error) {
 
 	body = body.MutableAttachmentsCopy()
-	for attachmentName, value := range BodyAttachments(body) {
-		meta := value.(map[string]interface{})
-		revpos, ok := base.ToInt64(meta["revpos"])
-		if ok && revpos >= int64(minRevpos) {
-			digest, ok := meta["digest"]
-			if !ok {
-				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to missing digest field", base.UD(docid), base.UD(attachmentName), revpos)
+	for attachmentName, meta := range BodyAttachments(body) {
+		if meta.Revpos >= minRevpos {
+			if meta.Digest == "" {
+				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to missing digest field", base.UD(docid), base.UD(attachmentName), meta.Revpos)
 			}
-			digestStr, ok := digest.(string)
-			if !ok {
-				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to unexpected digest field: %v", base.UD(docid), base.UD(attachmentName), revpos, digest)
-			}
-			key := AttachmentKey(digestStr)
+			key := AttachmentKey(meta.Digest)
 			data, err := db.GetAttachment(key)
 			if err != nil {
 				return nil, err
 			}
-			meta["data"] = data
-			delete(meta, "stub")
+			meta.Data = data
+			meta.Stub = false
 		}
 	}
 	return body, nil
@@ -280,22 +263,21 @@ func writeJSONPart(writer *multipart.Writer, contentType string, body Body, comp
 func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, compress bool) {
 	// First extract the attachments that should follow:
 	following := []attInfo{}
-	for name, value := range BodyAttachments(body) {
-		meta := value.(map[string]interface{})
-		if meta["stub"] != true {
+	for name, meta := range BodyAttachments(body) {
+		if !meta.Stub {
 			var err error
 			var info attInfo
-			info.contentType, _ = meta["content_type"].(string)
-			info.data, err = decodeAttachment(meta["data"])
+			info.contentType = meta.ContentType
+			info.data, err = decodeAttachment(meta.Data)
 			if info.data == nil {
 				base.Warnf(base.KeyAll, "Couldn't decode attachment %q of doc %q: %v", base.UD(name), base.UD(body["_id"]), err)
-				meta["stub"] = true
-				delete(meta, "data")
+				meta.Stub = true
+				meta.Data = nil
 			} else if len(info.data) > kMaxInlineAttachmentSize {
 				info.name = name
 				following = append(following, info)
-				meta["follows"] = true
-				delete(meta, "data")
+				meta.Follows = true
+				meta.Data = nil
 			}
 		}
 	}
@@ -367,9 +349,9 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	}
 
 	// Collect the attachments with a "follows" property, which will appear as MIME parts:
-	followingAttachments := map[string]map[string]interface{}{}
-	for name, value := range BodyAttachments(body) {
-		if meta := value.(map[string]interface{}); meta["follows"] == true {
+	followingAttachments := AttachmentMap{}
+	for name, meta := range BodyAttachments(body) {
+		if meta.Follows {
 			followingAttachments[name] = meta
 		}
 	}
@@ -377,10 +359,10 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	// Subroutine to look up a following attachment given its digest. (I used to precompute a
 	// map from digest->name, which was faster, but that broke down if there were multiple
 	// attachments with the same contents! See #96)
-	findFollowingAttachment := func(withDigest string) (string, map[string]interface{}) {
+	findFollowingAttachment := func(withDigest string) (string, *DocAttachment) {
 		for name, meta := range followingAttachments {
-			if meta["follows"] == true {
-				if digest, ok := meta["digest"].(string); ok && digest == withDigest {
+			if meta.Follows {
+				if meta.Digest == withDigest {
 					return name, meta
 				}
 			}
@@ -416,20 +398,18 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 			}
 		}
 
-		length, ok := base.ToInt64(meta["encoded_length"])
-		if !ok {
-			length, ok = base.ToInt64(meta["length"])
+		length := meta.EncodedLength
+		if length == 0 {
+			length = meta.Length
 		}
-		if ok {
-			if length != int64(len(data)) {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, "Attachment length mismatch for %q: read %d bytes, should be %d", name, len(data), length)
-			}
+		if length != len(data) {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "Attachment length mismatch for %q: read %d bytes, should be %d", name, len(data), length)
 		}
 
 		// Stuff the data into the attachment metadata and remove the "follows" property:
-		delete(meta, "follows")
-		meta["data"] = data
-		meta["digest"] = digest
+		meta.Follows = false
+		meta.Data = data
+		meta.Digest = digest
 	}
 
 	// Make sure there are no unused MIME parts:
@@ -444,7 +424,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 	return body, nil
 }
 
-type AttachmentCallback func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error)
+type AttachmentCallback func(name string, digest string, knownData []byte, meta *DocAttachment) ([]byte, error)
 
 // Given a document body, invokes the callback once for each attachment that doesn't include
 // its data. The callback is told whether the attachment body is known to the database, according
@@ -455,30 +435,22 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback Att
 	if atts == nil && body["_attachments"] != nil {
 		return base.HTTPErrorf(400, "Invalid _attachments")
 	}
-	for name, value := range atts {
-		meta, ok := value.(map[string]interface{})
-		if !ok {
-			return base.HTTPErrorf(400, "Invalid attachment")
-		}
-		if meta["data"] == nil {
-			if revpos, ok := base.ToInt64(meta["revpos"]); revpos < int64(minRevpos) || !ok {
+	for name, meta := range atts {
+		if meta.Data == nil {
+			if meta.Revpos < minRevpos {
 				continue
 			}
-			digest, ok := meta["digest"].(string)
-			if !ok {
-				return base.HTTPErrorf(400, "Invalid attachment")
-			}
-			data, err := db.GetAttachment(AttachmentKey(digest))
+			data, err := db.GetAttachment(AttachmentKey(meta.Digest))
 			if err != nil && !base.IsDocNotFoundError(err) {
 				return err
 			}
 
-			if newData, err := callback(name, digest, data, meta); err != nil {
+			if newData, err := callback(name, meta.Digest, data, meta); err != nil {
 				return err
 			} else if newData != nil {
-				meta["data"] = newData
-				delete(meta, "stub")
-				delete(meta, "follows")
+				meta.Data = newData
+				meta.Stub = false
+				meta.Follows = false
 			}
 		}
 	}
@@ -500,14 +472,33 @@ func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof strin
 
 //////// HELPERS:
 
-func BodyAttachments(body Body) map[string]interface{} {
-	atts, _ := body["_attachments"].(map[string]interface{})
-	return atts
+func BodyAttachments(body Body) AttachmentMap {
+	am, ok := body["_attachments"].(AttachmentMap)
+	if ok {
+		return am
+	}
+
+	// FIXME: Ugly hack to get map[string]interface{} to AttachmentMap type
+	b, err := json.Marshal(body["_attachments"])
+	if err != nil {
+		panic(err)
+	}
+	var attachmentMap AttachmentMap
+	err = json.Unmarshal(b, &attachmentMap)
+	if err != nil {
+		panic(err)
+	}
+	if attachmentMap != nil {
+		// Now attachmentMap is a copy of the original slice, so we'll have to put the typed copy back into body
+		body["_attachments"] = attachmentMap
+	}
+
+	return attachmentMap
 }
 
 func hasInlineAttachments(body Body) bool {
-	for _, value := range BodyAttachments(body) {
-		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {
+	for _, meta := range BodyAttachments(body) {
+		if meta.Data != nil {
 			return true
 		}
 	}

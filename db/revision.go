@@ -45,15 +45,11 @@ func (body Body) MutableAttachmentsCopy() Body {
 	copied := make(Body, len(body))
 	for k1, v1 := range body {
 		if k1 == "_attachments" {
-			atts := v1.(map[string]interface{})
-			attscopy := make(map[string]interface{}, len(atts))
+			atts := v1.(AttachmentMap)
+			attscopy := make(AttachmentMap, len(atts))
 			for k2, v2 := range atts {
-				attachment := v2.(map[string]interface{})
-				attachmentcopy := make(map[string]interface{}, len(attachment))
-				for k3, v3 := range attachment {
-					attachmentcopy[k3] = v3
-				}
-				attscopy[k2] = attachmentcopy
+				copy := *v2
+				attscopy[k2] = &copy
 			}
 			v1 = attscopy
 		}

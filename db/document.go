@@ -760,7 +760,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		var revOnlyMeta revOnlySyncData
 		unmarshalErr := json.Unmarshal(xdata, &revOnlyMeta)
 		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf( "Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc.syncData = syncData{
 			CurrentRev: revOnlyMeta.CurrentRev,

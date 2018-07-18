@@ -149,12 +149,12 @@ func (h *handler) handleGetAttachment() error {
 	if body == nil {
 		return kNotFoundError
 	}
-	meta, ok := db.BodyAttachments(body)[attachmentName].(map[string]interface{})
+	atts := db.BodyAttachments(body)
+	meta, ok := atts[attachmentName]
 	if !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
-	digest := meta["digest"].(string)
-	data, err := h.db.GetAttachment(db.AttachmentKey(digest))
+	data, err := h.db.GetAttachment(db.AttachmentKey(meta.Digest))
 	if err != nil {
 		return err
 	}
@@ -165,30 +165,30 @@ func (h *handler) handleGetAttachment() error {
 	} else if status == http.StatusPartialContent {
 		data = data[start:end]
 	}
-	h.setHeader("Content-Length", strconv.FormatUint(uint64(len(data)), 10))
 
-	h.setHeader("Etag", strconv.Quote(digest))
-	if contentType, ok := meta["content_type"].(string); ok {
-		h.setHeader("Content-Type", contentType)
+	h.setHeader("Content-Length", strconv.FormatUint(uint64(len(data)), 10))
+	h.setHeader("Etag", strconv.Quote(meta.Digest))
+	h.setHeader("Content-Type", meta.ContentType)
+
+	if h.getOptBoolQuery("content_encoding", true) {
+		h.setHeader("Content-Encoding", meta.Encoding)
+	} else {
+		// Couchbase Lite wants to download the encoded form directly and store it that way,
+		// but some HTTP client libraries like NSURLConnection will automatically decompress
+		// the HTTP response if it has a Content-Encoding header. As a workaround, allow the
+		// client to add ?content_encoding=false to the request URL to disable setting this
+		// header.
+		h.setHeader("X-Content-Encoding", meta.Encoding)
+		h.setHeader("Content-Type", "application/gzip")
 	}
-	if encoding, ok := meta["encoding"].(string); ok {
-		if h.getOptBoolQuery("content_encoding", true) {
-			h.setHeader("Content-Encoding", encoding)
-		} else {
-			// Couchbase Lite wants to download the encoded form directly and store it that way,
-			// but some HTTP client libraries like NSURLConnection will automatically decompress
-			// the HTTP response if it has a Content-Encoding header. As a workaround, allow the
-			// client to add ?content_encoding=false to the request URL to disable setting this
-			// header.
-			h.setHeader("X-Content-Encoding", encoding)
-			h.setHeader("Content-Type", "application/gzip")
-		}
-	}
+
 	if h.privs == adminPrivs { // #720
 		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
 	}
+
 	h.response.WriteHeader(status)
 	h.response.Write(data)
+
 	return nil
 }
 
@@ -224,16 +224,17 @@ func (h *handler) handlePutAttachment() error {
 	// find attachment (if it existed)
 	attachments := db.BodyAttachments(body)
 	if attachments == nil {
-		attachments = make(map[string]interface{})
+		attachments = db.AttachmentMap{}
 	}
 
 	// create new attachment
-	attachment := make(map[string]interface{})
-	attachment["data"] = attachmentData
-	attachment["content_type"] = attachmentContentType
+	attachment := db.DocAttachment{
+		Data:        attachmentData,
+		ContentType: attachmentContentType,
+	}
 
-	//attach it
-	attachments[attachmentName] = attachment
+	// attach it
+	attachments[attachmentName] = &attachment
 	body["_attachments"] = attachments
 
 	newRev, err := h.db.Put(docid, body)

@@ -57,7 +57,7 @@ func TestAttachments(t *testing.T) {
 	assertNoError(t, err, "Couldn't create document")
 
 	log.Printf("Retrieve doc...")
-	rev1output := `{"_attachments":{"bye.txt":{"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA==","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":1},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"1-54f3a105fb903018c160712ffddb74dc"}`
+	rev1output := `{"_attachments":{"bye.txt":{"digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":1,"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="},"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"data":"aGVsbG8gd29ybGQ="}},"_id":"doc1","_rev":"1-54f3a105fb903018c160712ffddb74dc"}`
 	gotbody, err := db.GetRev("doc1", "", false, []string{})
 	assertNoError(t, err, "Couldn't get document")
 	assert.Equals(t, tojson(gotbody), rev1output)
@@ -72,13 +72,13 @@ func TestAttachments(t *testing.T) {
 	assert.Equals(t, revid, "2-08b42c51334c0469bd060e6d9e6d797b")
 
 	log.Printf("Retrieve doc...")
-	rev2output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
+	rev2output := `{"_attachments":{"bye.txt":{"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2,"data":"YnllLXlh"},"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"data":"aGVsbG8gd29ybGQ="}},"_id":"doc1","_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{})
 	assertNoError(t, err, "Couldn't get document")
 	assert.Equals(t, tojson(gotbody), rev2output)
 
 	log.Printf("Retrieve doc with atts_since...")
-	rev2Aoutput := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_id":"doc1","_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
+	rev2Aoutput := `{"_attachments":{"bye.txt":{"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2,"data":"YnllLXlh"},"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_id":"doc1","_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{"1-54f3a105fb903018c160712ffddb74dc", "1-foo", "993-bar"})
 	assertNoError(t, err, "Couldn't get document")
 	assert.Equals(t, tojson(gotbody), rev2Aoutput)
@@ -93,7 +93,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equals(t, revid, "3-252b9fa1f306930bffc07e7d75b77faf")
 
 	log.Printf("Retrieve doc...")
-	rev3output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2}},"_id":"doc1","_rev":"3-252b9fa1f306930bffc07e7d75b77faf"}`
+	rev3output := `{"_attachments":{"bye.txt":{"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2,"data":"YnllLXlh"}},"_id":"doc1","_rev":"3-252b9fa1f306930bffc07e7d75b77faf"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{})
 	assertNoError(t, err, "Couldn't get document")
 	assert.Equals(t, tojson(gotbody), rev3output)
