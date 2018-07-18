@@ -36,6 +36,15 @@ if [ -f godeps/bin/sync_gateway ]; then
     echo "Sync Gateway binary compiled to: godeps/bin/sync_gateway"
 fi
 
+# Go install mobile-mds
+if [ -d godeps/src/github.com/couchbase/mobile-mds ]; then
+    echo "Building Mobile-MDS with 'go install' ..."
+    go install "$@" github.com/couchbase/mobile-mds/...
+    if [ -f godeps/bin/mobile-mds ]; then
+	echo "Mobile-mds compiled to: godeps/bin/mobile-mds"
+    fi
+fi
+
 # Go install Sg Accel
 if [ -d godeps/src/github.com/couchbaselabs/sync-gateway-accel ]; then
     echo "Building Sync Gateway Accel with 'go install' ..."
