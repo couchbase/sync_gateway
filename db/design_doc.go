@@ -377,9 +377,10 @@ func installViews(bucket base.Bucket) error {
 	// Tombstones view - used for view tombstone compaction
 	// Key is purge time; value is docid
 	tombstones_map := `function (doc, meta) {
-                     	var sync = meta.xattrs._sync;
+                     	%s
                      	if (sync !== undefined && sync.tombstoned_at !== undefined)
                      		emit(sync.tombstoned_at, meta.id);}`
+	tombstones_map = fmt.Sprintf(tombstones_map, syncData)
 
 	// All-principals view
 	// Key is name; value is true for user, false for role
