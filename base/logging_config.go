@@ -81,6 +81,9 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 		return warnings, err
 	}
 
+	// Initialize external loggers too
+	initExternalLoggers()
+
 	return warnings, nil
 }
 

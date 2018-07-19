@@ -375,6 +375,7 @@ func init() {
 	// This maintains consistent formatting (timestamps, levels, etc) in the output,
 	// and allows a single set of logging functions to be used, rather than fmt.Printf()
 	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{})
+	initExternalLoggers()
 }
 
 // Panicf logs the given formatted string and args to the error log level and given log key and then panics.

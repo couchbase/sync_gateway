@@ -577,6 +577,10 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		dataSourceOptions.IncludeXAttrs = true
 	}
 
+	dataSourceOptions.Logf = func(fmt string, v ...interface{}) {
+		Debugf(KeyDCP, fmt, v...)
+	}
+
 	dataSourceOptions.Name = GenerateDcpStreamName("SG")
 
 	auth := spec.Auth
