@@ -472,24 +472,21 @@ func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof strin
 
 //////// HELPERS:
 
-func BodyAttachments(body Body) AttachmentMap {
-	am, ok := body["_attachments"].(AttachmentMap)
-	if ok {
-		return am
+func BodyAttachments(body Body) (attachmentMap AttachmentMap) {
+	switch a := body["_attachments"].(type) {
+	case AttachmentMap:
+		attachmentMap = a
+	case map[string]interface{}:
+		base.DeepCopyInefficient(&attachmentMap, a)
+	case nil:
+		break
+	default:
+		panic(fmt.Sprintf("unrecognised type %T for attachment map", a))
 	}
 
-	// FIXME: Ugly hack to get map[string]interface{} to AttachmentMap type
-	b, err := json.Marshal(body["_attachments"])
-	if err != nil {
-		panic(err)
-	}
-	var attachmentMap AttachmentMap
-	err = json.Unmarshal(b, &attachmentMap)
-	if err != nil {
-		panic(err)
-	}
 	if attachmentMap != nil {
-		// Now attachmentMap is a copy of the original slice, so we'll have to put the typed copy back into body
+		// Now attachmentMap is a copy of the original slice,
+		// so we'll have to put the typed copy back into body.
 		body["_attachments"] = attachmentMap
 	}
 
