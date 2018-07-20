@@ -39,9 +39,8 @@ const (
 )
 
 const (
-	_                      CouchbaseDriver = iota
-	GoCB                                   // Use GoCB driver with default Transcoder
-	GoCBCustomSGTranscoder                 // Use GoCB driver with a custom Transcoder
+	GoCB                   CouchbaseDriver = iota // Use GoCB driver with default Transcoder
+	GoCBCustomSGTranscoder                        // Use GoCB driver with a custom Transcoder
 )
 
 const (
