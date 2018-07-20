@@ -1,77 +1,61 @@
-[![Join the chat at https://gitter.im/couchbase/discuss](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/couchbase/discuss?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge) [![Go Report Card](https://goreportcard.com/badge/github.com/couchbase/sync_gateway)](https://goreportcard.com/report/github.com/couchbase/sync_gateway) [![codebeat badge](https://codebeat.co/badges/a8fb8053-742a-425b-8e8c-96f1c5bdbd26)](https://codebeat.co/projects/github-com-couchbase-sync_gateway) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-
 # Sync Gateway
 
-*Features*
+[![Sync Gateway Documentation](https://img.shields.io/badge/documentation-current-blue.svg)][SG_DOCS]
+[![GoDoc](https://godoc.org/github.com/couchbase/sync_gateway?status.svg)](https://godoc.org/github.com/couchbase/sync_gateway)
+[![Go Report Card](https://goreportcard.com/badge/github.com/couchbase/sync_gateway)](https://goreportcard.com/report/github.com/couchbase/sync_gateway)
+[![Codebeat badge](https://codebeat.co/badges/a8fb8053-742a-425b-8e8c-96f1c5bdbd26)](https://codebeat.co/projects/github-com-couchbase-sync_gateway)
+[![Code Coverage](https://img.shields.io/coveralls/github/couchbase/sync_gateway.svg)](https://coveralls.io/github/couchbase/sync_gateway)
+[![License](https://img.shields.io/github/license/couchbase/sync_gateway.svg)](https://github.com/couchbase/sync_gateway/blob/master/LICENSE)
 
-* Manages HTTP-based data access for [Couchbase Lite][COUCHBASE_LITE] mobile clients 
-* Leverages [Couchbase Server][COUCHBASE_SERVER] as it's horizontally scalable backing data store
-* Clustered into a horizontally scalable tier
-* Provides access control and data routing
-* Provides HTTP longpoll changes stream of all database mutations
+Sync Gateway is a horizontally scalable web server that securely manages the access control and
+synchronization of data between [Couchbase Lite][CB_LITE] and [Couchbase Server][CB_SERVER].
 
-## Resources
+## Download
 
-[**Official product home page**](http://www.couchbase.com/mobile)
+Download Sync Gateway and other Couchbase packages for Linux, Windows and macOS at [Couchbase Downloads][CB_DOWNLOAD].
 
-[**Documentation**](http://developer.couchbase.com/mobile/develop/guides/sync-gateway/index.html)
+## Build from source
 
-[**Downloads**](http://www.couchbase.com/download#cb-mobile)
-
-[**Issue Tracker**][ISSUE_TRACKER] 
-
-[**Mailing List**][MAILING_LIST]
-
-[**Discussion Forum**][FORUM]
-
-
-## Build pre-requisites
+### Pre-requisites
 
 To build Sync Gateway from source, you must have the following installed:
 
-* Go 1.9 or later with your `$GOPATH` set to a valid directory 
-* GCC
+* Go 1.8 or later, with your `$GOPATH` set to a valid directory.
 
 **Install Go**
 
 See [Installing Go](https://golang.org/doc/install)
 
-**Install GCC**
+### Build instructions
 
-```
-$ yum install gcc
-```
+See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pinning via the `repo` multi-repository tool.
 
-## Download and build via repo
+## Resources
 
-This is the recommended approach.  See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pinning via the `repo` multi-repository tool.
+- [Sync Gateway Documentation][SG_DOCS]
+- [Sync Gateway Issue Tracker][SG_ISSUES]
+- Couchbase Products:
+    - [Sync Gateway][CB_GATEWAY]
+    - [Lite][CB_LITE]
+    - [Mobile][CB_MOBILE]
+    - [Server][CB_SERVER]
+    - [Developer SDKs][CB_SDK]
+- [Couchbase Downloads][CB_DOWNLOAD]
+- [Couchbase Discussion Forum][CB_FORUM]
+- [Couchbase Mobile Mailing List][MAILING_LIST]
 
-## Download and build via go get
+## License
 
-**Warning** currently the `go get` style of building is [broken](https://github.com/couchbase/sync_gateway/issues/2209) due to upstream library changes, please use the [Extended Build Instructions](docs/BUILD.md)
+[Apache License 2.0](https://github.com/couchbase/sync_gateway/blob/master/LICENSE)
 
-Download and build the code in a single step via `go get`:
-
-```
-$ go get -u -t github.com/couchbase/sync_gateway/...
-```
-
-After this operation completes you should have a new `sync_gateway` binary in `$GOPATH/bin`
-
-*NOTE:* This build style is only suitable for development rather than deployment.  There is a chance this might fail or have runtime errors due to using the latest version of all dependencies (whereas release builds use dependency pinning).  Please file an [issue][ISSUE_TRACKER] if you run into problems.
-
-### License
-
-Apache 2 license.
-
-
-[COUCHBASE_LITE]: https://github.com/couchbase/couchbase-lite-ios
-[COUCHDB]: http://couchdb.apache.org
-[COUCHDB_API]: http://wiki.apache.org/couchdb/Complete_HTTP_API_Reference
-[COUCHBASE_SERVER]: http://www.couchbase.com/couchbase-server/overview
-[WALRUS]: https://github.com/couchbaselabs/walrus
-[HTTPIE]: http://httpie.org
+[CB_MOBILE]: https://www.couchbase.com/products/mobile
+[CB_GATEWAY]: https://www.couchbase.com/products/sync-gateway
+[CB_LITE]: https://www.couchbase.com/products/lite
+[CB_SERVER]: https://www.couchbase.com/products/server
+[CB_SDK]: https://www.couchbase.com/products/developer-sdk
+[CB_DOWNLOAD]: https://www.couchbase.com/downloads
+[CB_FORUM]: http://forums.couchbase.com
+[SG_REPO]: https://github.com/couchbase/sync_gateway
+[SG_DOCS]: https://developer.couchbase.com/documentation/mobile/current/guides/sync-gateway/index.html
+[SG_ISSUES]: https://github.com/couchbase/sync_gateway/issues?q=is%3Aissue+is%3Aopen
 [MAILING_LIST]: https://groups.google.com/forum/?fromgroups#!forum/mobile-couchbase
-[FORUM]: http://forums.couchbase.com
-[ISSUE_TRACKER]: https://github.com/couchbase/sync_gateway/issues?state=open
-[MAC_STABLE_BUILD]: http://cbfs-ext.hq.couchbase.com/mobile/SyncGateway/SyncGateway-Mac.zip
