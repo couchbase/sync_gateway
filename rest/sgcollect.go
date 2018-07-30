@@ -83,6 +83,7 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	}
 
 	atomic.StoreUint32(sg.status, sgRunning)
+	startTime := time.Now()
 	base.Infof(base.KeyAdmin, "sgcollect_info started with args: %v", base.UD(args))
 
 	// Stream sgcollect_info stderr to warn logs
@@ -112,7 +113,7 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 		err := cmd.Wait()
 
 		atomic.StoreUint32(sg.status, sgStopped)
-		duration := cmd.ProcessState.UserTime()
+		duration := time.Since(startTime)
 
 		if err != nil {
 			if err.Error() == "signal: killed" {
