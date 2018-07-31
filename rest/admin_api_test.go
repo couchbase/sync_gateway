@@ -41,6 +41,8 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), `{"value":"initial"}`)
 	response.DumpBody()
 
+	assertStatus(t, response, http.StatusCreated)
+
 	// Discover revision ID
 	// TODO: The schema for SG responses should be defined in our code somewhere to avoid this clunky approach
 	var responseDoc map[string]interface{}

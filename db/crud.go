@@ -104,7 +104,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 	emptySyncData := syncData{}
 	key := realDocID(docid)
 	if key == "" {
-		return syncData{}, base.HTTPErrorf(400, "Invalid doc ID")
+		return emptySyncData, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
 	if db.UseXattrs() {
