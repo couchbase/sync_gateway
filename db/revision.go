@@ -36,32 +36,6 @@ func (body Body) ShallowCopy() Body {
 	return copied
 }
 
-// Creates a mutable copy that does a deep copy of the _attachments property in the body,
-// suitable for modification by the caller
-func (body Body) MutableAttachmentsCopy() Body {
-	if body == nil {
-		return nil
-	}
-	copied := make(Body, len(body))
-	for k1, v1 := range body {
-		if k1 == "_attachments" {
-			atts := v1.(map[string]interface{})
-			attscopy := make(map[string]interface{}, len(atts))
-			for k2, v2 := range atts {
-				attachment := v2.(map[string]interface{})
-				attachmentcopy := make(map[string]interface{}, len(attachment))
-				for k3, v3 := range attachment {
-					attachmentcopy[k3] = v3
-				}
-				attscopy[k2] = attachmentcopy
-			}
-			v1 = attscopy
-		}
-		copied[k1] = v1
-	}
-	return copied
-}
-
 // Returns the expiry as uint32 (using getExpiry), and removes the _exp property from the body
 func (body Body) extractExpiry() (uint32, error) {
 
