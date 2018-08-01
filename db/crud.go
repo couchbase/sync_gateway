@@ -299,6 +299,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 
 	// If doc is nil (we got the rev from the rev cache)
 	// look up the doc sync to get attachment metadata and exp
+	// TODO: Issue #3688 - We should enhance the rev cache to include attachment metadata
 	if doc == nil {
 		if doc, err = db.GetDocument(docid, DocUnmarshalSync); doc == nil {
 			return nil, err
