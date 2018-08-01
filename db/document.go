@@ -44,20 +44,21 @@ type UserAccessMap map[string]channels.TimedSet
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type syncData struct {
-	CurrentRev      string              `json:"rev"`
-	NewestRev       string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags           uint8               `json:"flags,omitempty"`
-	Sequence        uint64              `json:"sequence,omitempty"`
-	UnusedSequences []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
-	RecentSequences []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
-	History         RevTree             `json:"history"`
-	Channels        channels.ChannelMap `json:"channels,omitempty"`
-	Access          UserAccessMap       `json:"access,omitempty"`
-	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
-	Expiry          *time.Time          `json:"exp,omitempty"`           // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas             string              `json:"cas"`                     // String representation of a cas value, populated via macro expansion
-	Crc32c          string              `json:"value_crc32c"`            // String representation of crc32c hash of doc body, populated via macro expansion
-	TombstonedAt    int64               `json:"tombstoned_at,omitempty"` // Time the document was tombstoned.  Used for view compaction
+	CurrentRev      string                 `json:"rev"`
+	NewestRev       string                 `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags           uint8                  `json:"flags,omitempty"`
+	Sequence        uint64                 `json:"sequence,omitempty"`
+	UnusedSequences []uint64               `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
+	RecentSequences []uint64               `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
+	History         RevTree                `json:"history"`
+	Channels        channels.ChannelMap    `json:"channels,omitempty"`
+	Access          UserAccessMap          `json:"access,omitempty"`
+	RoleAccess      UserAccessMap          `json:"role_access,omitempty"`
+	Expiry          *time.Time             `json:"exp,omitempty"`           // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas             string                 `json:"cas"`                     // String representation of a cas value, populated via macro expansion
+	Crc32c          string                 `json:"value_crc32c"`            // String representation of crc32c hash of doc body, populated via macro expansion
+	TombstonedAt    int64                  `json:"tombstoned_at,omitempty"` // Time the document was tombstoned.  Used for view compaction
+	Attachments     map[string]interface{} `json:"attachments,omitempty"`
 
 	// Fields used by bucket-shadowing:
 	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc
@@ -696,6 +697,7 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
+
 	if root.SyncData != nil {
 		doc.syncData = *root.SyncData
 	}
@@ -760,7 +762,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		var revOnlyMeta revOnlySyncData
 		unmarshalErr := json.Unmarshal(xdata, &revOnlyMeta)
 		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf( "Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
+			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc.syncData = syncData{
 			CurrentRev: revOnlyMeta.CurrentRev,

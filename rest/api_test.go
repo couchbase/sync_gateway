@@ -3197,6 +3197,12 @@ func TestBulkGetRevPruning(t *testing.T) {
 // Reproduces panic seen in https://github.com/couchbase/sync_gateway/issues/2528
 func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
+	if base.TestUseXattrs() {
+		// Since we now store attachment metadata in sync data,
+		// this test cannot modify the xattrs to reproduce the panic
+		t.Skip("This test only works with XATTRS disabled")
+	}
+
 	var rt RestTester
 	defer rt.Close()
 
@@ -3266,7 +3272,10 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	*/
 
 	// Modify the doc directly in the bucket to delete the digest field
-	attachments := db.BodyAttachments(couchbaseDoc)
+	s := couchbaseDoc["_sync"].(map[string]interface{})
+	couchbaseDoc["_attachments"] = s["attachments"].(map[string]interface{})
+	attachments := couchbaseDoc["_attachments"].(map[string]interface{})
+
 	attach1 := attachments[attachmentName].(map[string]interface{})
 	delete(attach1, "digest")
 	delete(attach1, "content_type")
