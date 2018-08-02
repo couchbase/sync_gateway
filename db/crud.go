@@ -104,7 +104,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 	emptySyncData := syncData{}
 	key := realDocID(docid)
 	if key == "" {
-		return syncData{}, base.HTTPErrorf(400, "Invalid doc ID")
+		return emptySyncData, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
 	if db.UseXattrs() {
@@ -297,19 +297,25 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 		body["_revisions"] = revisions
 	}
 
-	if showExp {
-		// If doc is nil (we got the rev from the rev cache), look up the doc to find the exp on the doc
-		if doc == nil {
-			if doc, err = db.GetDocument(docid, DocUnmarshalSync); doc == nil {
-				return nil, err
-			}
-		}
-		if doc.Expiry != nil && !doc.Expiry.IsZero() {
-			body["_exp"] = doc.Expiry.Format(time.RFC3339)
+	// If doc is nil (we got the rev from the rev cache)
+	// look up the doc sync to get attachment metadata and exp
+	// TODO: Issue #3688 - We should enhance the rev cache to include attachment metadata
+	if doc == nil {
+		if doc, err = db.GetDocument(docid, DocUnmarshalSync); doc == nil {
+			return nil, err
 		}
 	}
 
-	// Add attachment bodies:
+	if showExp && doc.Expiry != nil && !doc.Expiry.IsZero() {
+		body["_exp"] = doc.Expiry.Format(time.RFC3339)
+	}
+
+	// Stamp attachment metadata back into the body
+	if doc.Attachments != nil {
+		body["_attachments"] = doc.Attachments
+	}
+
+	// Add attachment bodies if requested:
 	if attachmentsSince != nil && len(BodyAttachments(body)) > 0 {
 		minRevpos := 1
 		if len(attachmentsSince) > 0 {
@@ -330,6 +336,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 			return nil, err
 		}
 	}
+
 	return body, nil
 }
 
@@ -394,7 +401,7 @@ func (db *Database) authorizeDoc(doc *document, revid string) error {
 }
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
-// This method adds the magic _id and _rev properties.
+// This method adds the magic _id, _rev and _attachments properties.
 func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error) {
 	var body Body
 	if body = doc.getRevisionBody(revid, db.RevisionBodyLoader); body == nil {
@@ -410,6 +417,11 @@ func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error
 	body.FixJSONNumbers() // Make sure big ints won't get output in scientific notation
 	body["_id"] = doc.ID
 	body["_rev"] = revid
+
+	if doc.Attachments != nil {
+		body["_attachments"] = doc.Attachments
+	}
+
 	return body, nil
 }
 
@@ -615,7 +627,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
-		// Process the attachments, replacing bodies with digests. This alters 'body' so it has to
+		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
 		newAttachments, err := db.storeAttachments(doc, body, generation, matchRev, nil)
 		if err != nil {
@@ -629,6 +641,10 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 			base.Infof(base.KeyCRUD, "Failed to add revision ID: %s, error: %v", newRev, err)
 			return nil, nil, nil, base.ErrRevTreeAddRevFailure
 		}
+
+		// move _attachment metadata to syncdata of doc after rev-id generation
+		doc.syncData.Attachments = BodyAttachments(body)
+		delete(body, "_attachments")
 
 		return body, newAttachments, nil, nil
 	})
