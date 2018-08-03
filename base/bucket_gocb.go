@@ -1521,9 +1521,10 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 			}
 		}
 
-		// If there was no error, we're done
-		if err == nil {
-			return nil
+		if pkgerrors.Cause(err) == gocb.ErrKeyExists {
+			// retry on cas failure
+		} else if err != nil {
+			return err
 		}
 
 	}
@@ -1596,9 +1597,11 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 
 			}
 		}
-		// If there was no error, we're done
-		if err == nil {
-			return nil
+
+		if pkgerrors.Cause(err) == gocb.ErrKeyExists {
+			// retry on cas failure
+		} else if err != nil {
+			return err
 		}
 	}
 }
