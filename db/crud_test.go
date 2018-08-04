@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -350,5 +351,264 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	log.Printf("Verify revision body doc has been removed from bucket")
 	_, _, err = db.Bucket.GetRaw("_sync:rb:ULDLuEgDoKFJeET2hojeFANXM8SrHdVfAGONki+kPxM=")
 	assertTrue(t, base.IsKeyNotFoundError(db.Bucket, err), "Revision should be not found")
+
+}
+
+// Checks for unwanted interaction between old revision body backups and revision cache
+func TestOldRevisionStorage(t *testing.T) {
+
+	db, _ := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer tearDownTestDB(t, db)
+
+	prop_1000_bytes := base.CreateProperty(1000)
+
+	// Create rev 1-a
+	log.Printf("Create rev 1-a")
+	body := Body{"key1": "value1", "version": "1a", "large": prop_1000_bytes}
+	assertNoError(t, db.PutExistingRev("doc1", body, []string{"1-a"}, false), "add 1-a")
+
+	// Create rev 2-a
+	// 1-a
+	//  |
+	// 2-a
+	log.Printf("Create rev 2-a")
+	rev2a_body := Body{"key1": "value2", "version": "2a", "large": prop_1000_bytes}
+	assertNoError(t, db.PutExistingRev("doc1", rev2a_body, []string{"2-a", "1-a"}, false), "add 2-a")
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc 2-a...")
+	gotbody, err := db.Get("doc1")
+	assertNoError(t, err, "Couldn't get document")
+	assert.DeepEquals(t, gotbody, rev2a_body)
+
+	// Create rev 3-a
+
+	// 1-a
+	//  |
+	// 2-a
+	//  |
+	// 3-a
+	log.Printf("Create rev 3-a")
+	rev3a_body := Body{"key1": "value2", "version": "3a", "large": prop_1000_bytes}
+	assertNoError(t, db.PutExistingRev("doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false), "add 3-a")
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc 3-a...")
+	gotbody, err = db.Get("doc1")
+	assertNoError(t, err, "Couldn't get document")
+	assert.DeepEquals(t, gotbody, rev3a_body)
+
+	// Create rev 2-b
+	//    1-a
+	//   /  \
+	// 2-a  2-b
+	//  |
+	// 3-a
+	log.Printf("Create rev 2-b")
+	rev2b_body := Body{"key1": "value2", "version": "2b", "large": prop_1000_bytes}
+	assertNoError(t, db.PutExistingRev("doc1", rev2b_body, []string{"2-b", "1-a"}, false), "add 2-b")
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc, verify still rev 3-a")
+	gotbody, err = db.Get("doc1")
+	assertNoError(t, err, "Couldn't get document")
+	assert.DeepEquals(t, gotbody, rev3a_body)
+
+	// Create rev that hops a few generations
+	//    1-a
+	//   /  \
+	// 2-a  2-b
+	//  |
+	// 3-a
+	//  |
+	// 4-a
+	//  |
+	// 5-a
+	//  |
+	// 6-a
+	log.Printf("Create rev 6-a")
+	rev6a_body := Body{"key1": "value2", "version": "6a", "large": prop_1000_bytes}
+	assertNoError(t, db.PutExistingRev("doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false), "add 6-a")
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc 6-a...")
+	gotbody, err = db.Get("doc1")
+	assertNoError(t, err, "Couldn't get document")
+	assert.DeepEquals(t, gotbody, rev6a_body)
+
+	// Add child to non-winning revision w/ inline body
+	//    1-a
+	//   /  \
+	// 2-a  2-b
+	//  |    |
+	// 3-a  3-b
+	//  |
+	// 4-a
+	//  |
+	// 5-a
+	//  |
+	// 6-a
+	log.Printf("Create rev 3-b")
+	rev3b_body := Body{"key1": "value2", "version": "3b", "large": prop_1000_bytes}
+	assertNoError(t, db.PutExistingRev("doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false), "add 3-b")
+
+	// Same again and again
+	// Add child to non-winning revision w/ inline body
+	//    1-a
+	//   /   \
+	// 2-a    2-b
+	//  |    / |  \
+	// 3-a 3-b 3-c 3-d
+	//  |
+	// 4-a
+	//  |
+	// 5-a
+	//  |
+	// 6-a
+
+	log.Printf("Create rev 3-c")
+	rev3c_body := Body{"key1": "value2", "version": "3c", "large": prop_1000_bytes}
+	assertNoError(t, db.PutExistingRev("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false), "add 3-c")
+
+	log.Printf("Create rev 3-d")
+	rev3d_body := Body{"key1": "value2", "version": "3d", "large": prop_1000_bytes}
+	assertNoError(t, db.PutExistingRev("doc1", rev3d_body, []string{"3-d", "2-b", "1-a"}, false), "add 3-d")
+
+	// Create new winning revision on 'b' branch.  Triggers movement of 6-a to inline storage.  Force cas retry, check document contents
+	//    1-a
+	//   /   \
+	// 2-a    2-b
+	//  |    / |  \
+	// 3-a 3-b 3-c 3-d
+	//  |   |
+	// 4-a 4-b
+	//  |   |
+	// 5-a 5-b
+	//  |   |
+	// 6-a 6-b
+	//      |
+	//     7-b
+	log.Printf("Create rev 7-b")
+	rev7b_body := Body{"key1": "value2", "version": "7b", "large": prop_1000_bytes}
+	assertNoError(t, db.PutExistingRev("doc1", rev7b_body, []string{"7-b", "6-b", "5-b", "4-b", "3-b"}, false), "add 7-b")
+
+}
+
+// Ensure safe handling when hitting a bucket error during backup of old revision bodies.
+// https://github.com/couchbase/sync_gateway/issues/3692
+func TestOldRevisionStorageError(t *testing.T) {
+
+	// Use LeakyBucket to force a server error when persisting the old revision body for doc1, rev 2-b
+	forceErrorKey := oldRevisionKey("doc1", "2-b")
+	leakyConfig := base.LeakyBucketConfig{
+		ForceErrorSetRawKeys: []string{forceErrorKey},
+	}
+	db := setupTestLeakyDBWithCacheOptions(t, CacheOptions{}, leakyConfig)
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)
+
+	// Create rev 1-a
+	log.Printf("Create rev 1-a")
+	body := Body{"key1": "value1", "v": "1a"}
+	assertNoError(t, db.PutExistingRev("doc1", body, []string{"1-a"}, false), "add 1-a")
+
+	// Create rev 2-a
+	// 1-a
+	//  |
+	// 2-a
+	log.Printf("Create rev 2-a")
+	rev2a_body := Body{"key1": "value2", "v": "2a"}
+	assertNoError(t, db.PutExistingRev("doc1", rev2a_body, []string{"2-a", "1-a"}, false), "add 2-a")
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc 2-a...")
+	gotbody, err := db.Get("doc1")
+	assertNoError(t, err, "Couldn't get document")
+	assert.DeepEquals(t, gotbody, rev2a_body)
+
+	// Create rev 3-a, should re-attempt to write old revision body for 2-a
+	// 1-a
+	//  |
+	// 2-a
+	//  |
+	// 3-a
+	log.Printf("Create rev 3-a")
+	rev3a_body := Body{"key1": "value2", "v": "3a"}
+	assertNoError(t, db.PutExistingRev("doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false), "add 3-a")
+
+	// Create rev 2-b
+	//    1-a
+	//   /  \
+	// 2-a  2-b
+	//  |
+	// 3-a
+	log.Printf("Create rev 2-b")
+	rev2b_body := Body{"key1": "value2", "v": "2b"}
+	assertNoError(t, db.PutExistingRev("doc1", rev2b_body, []string{"2-b", "1-a"}, false), "add 2-b")
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc, verify still rev 3-a")
+	gotbody, err = db.Get("doc1")
+	assertNoError(t, err, "Couldn't get document")
+	assert.DeepEquals(t, gotbody, rev3a_body)
+
+	// Create rev that hops a few generations
+	//    1-a
+	//   /  \
+	// 2-a  2-b
+	//  |
+	// 3-a
+	//  |
+	// 4-a
+	//  |
+	// 5-a
+	//  |
+	// 6-a
+	log.Printf("Create rev 6-a")
+	rev6a_body := Body{"key1": "value2", "v": "6a"}
+	assertNoError(t, db.PutExistingRev("doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false), "add 6-a")
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc 6-a...")
+	gotbody, err = db.Get("doc1")
+	assertNoError(t, err, "Couldn't get document")
+	assert.DeepEquals(t, gotbody, rev6a_body)
+
+	// Add child to non-winning revision w/ inline body
+	// Creation of 3-b will trigger leaky bucket handling when obsolete body of rev 2-b is persisted
+	//    1-a
+	//   /  \
+	// 2-a  2-b
+	//  |    |
+	// 3-a  3-b
+	//  |
+	// 4-a
+	//  |
+	// 5-a
+	//  |
+	// 6-a
+	log.Printf("Create rev 3-b")
+	rev3b_body := Body{"key1": "value2", "v": "3b"}
+	assertNoError(t, db.PutExistingRev("doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false), "add 3-b")
+
+	// Same again
+	// Add child to non-winning revision w/ inline body.
+	// Prior to fix for https://github.com/couchbase/sync_gateway/issues/3692, this fails due to malformed oldDoc
+	//    1-a
+	//   /   \
+	// 2-a    2-b
+	//  |     / |
+	// 3-a  3-b 3-c
+	//  |
+	// 4-a
+	//  |
+	// 5-a
+	//  |
+	// 6-a
+
+	log.Printf("Create rev 3-c")
+	rev3c_body := Body{"key1": "value2", "v": "3c"}
+	assertNoError(t, db.PutExistingRev("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false), "add 3-c")
 
 }
