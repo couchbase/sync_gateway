@@ -374,7 +374,12 @@ func init() {
 	// We'll initilise a default consoleLogger so we can still log stuff before/during parsing logging configs.
 	// This maintains consistent formatting (timestamps, levels, etc) in the output,
 	// and allows a single set of logging functions to be used, rather than fmt.Printf()
-	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{})
+
+	// initialCollationBufferSize is set to zero for disabling log collation before
+	// initializing a logging config, and when running under a test scenario.
+	initialCollationBufferSize := 0
+
+	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{CollationBufferSize: &initialCollationBufferSize})
 	initExternalLoggers()
 }
 
