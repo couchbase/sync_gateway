@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 )
 
 // A wrapper around a Bucket to support forced errors.  For testing use only.
@@ -27,6 +27,8 @@ type LeakyBucketConfig struct {
 	TapFeedDeDuplication bool
 	TapFeedVbuckets      bool     // Emulate vbucket numbers on feed
 	TapFeedMissingDocs   []string // Emulate entry not appearing on tap feed
+
+	ForceErrorSetRawKeys []string // Issuing a SetRaw call with a specified key will return an error
 
 	// Returns a partial error the first time ViewCustom is called
 	FirstTimeViewCustomPartialError bool
@@ -68,6 +70,11 @@ func (b *LeakyBucket) Set(k string, exp uint32, v interface{}) error {
 	return b.bucket.Set(k, exp, v)
 }
 func (b *LeakyBucket) SetRaw(k string, exp uint32, v []byte) error {
+	for _, errorKey := range b.config.ForceErrorSetRawKeys {
+		if k == errorKey {
+			return fmt.Errorf("Leaky bucket forced SetRaw error for key %s", k)
+		}
+	}
 	return b.bucket.SetRaw(k, exp, v)
 }
 func (b *LeakyBucket) Delete(k string) error {

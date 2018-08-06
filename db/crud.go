@@ -506,32 +506,32 @@ func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
-func (db *Database) backupAncestorRevs(doc *document, revid string) error {
+func (db *Database) backupAncestorRevs(doc *document, revid string) {
 	// Find an ancestor that still has JSON in the document:
 	var json []byte
 	for {
 		if revid = doc.History.getParent(revid); revid == "" {
-			return nil // No ancestors with JSON found
+			return // No ancestors with JSON found
 		} else if json = doc.getRevisionBodyJSON(revid, db.RevisionBodyLoader); json != nil {
 			break
 		}
 	}
 
 	// Store the JSON as a separate doc in the bucket:
-	if err := db.setOldRevisionJSON(doc.ID, revid, json); err != nil {
+	err := db.setOldRevisionJSON(doc.ID, revid, json)
+	if err != nil {
 		// This isn't fatal since we haven't lost any information; just warn about it.
 		base.Warnf(base.KeyAll, "backupAncestorRevs failed: doc=%q rev=%q err=%v", base.UD(doc.ID), revid, err)
-		return err
+	} else {
+		base.Debugf(base.KeyCRUD, "Backed up obsolete rev %q/%q", base.UD(doc.ID), revid)
 	}
 
-	// Nil out the rev's body in the document struct:
+	// Nil out the ancestor rev's body in the document struct:
 	if revid == doc.CurrentRev {
 		doc.RemoveBody()
 	} else {
 		doc.removeRevisionBody(revid)
 	}
-	base.Debugf(base.KeyCRUD, "Backed up obsolete rev %q/%q", base.UD(doc.ID), revid)
-	return nil
 }
 
 //////// UPDATING DOCUMENTS:
