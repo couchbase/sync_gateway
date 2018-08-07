@@ -2341,7 +2341,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
 
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
@@ -2598,8 +2598,6 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
-	base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyAccess|base.KeyCRUD|base.KeyChanges)
-
 	response = rt.Send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
@@ -3565,6 +3563,8 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// TODO: Test disabled because it fails with -race
 	t.Skip("WARNING: TEST DISABLED")
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
+
 	var changes struct {
 		Results  []db.ChangeEntry
 		Last_Seq db.SequenceID
@@ -3573,7 +3573,6 @@ func TestLongpollWithWildcard(t *testing.T) {
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true}`)
 
 	// Create user:
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
@@ -3587,7 +3586,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	err = db.RestartListener()
 	assert.True(t, err == nil)
 	// Put a document to increment the counter for the * channel
-	response = rt.Send(request("PUT", "/db/lost", `{"channel":["ABC"]}`))
+	response := rt.Send(request("PUT", "/db/lost", `{"channel":["ABC"]}`))
 	assertStatus(t, response, 201)
 
 	// Previous bug: changeWaiter was treating the implicit '*' wildcard in the _changes request as the '*' channel, so the wait counter

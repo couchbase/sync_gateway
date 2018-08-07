@@ -332,10 +332,7 @@ function(doc, oldDoc) {
 	rt := RestTester{SyncFn: syncFunction}
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true}`)
-	defer rt.SendAdminRequest("PUT", "/_logging", `{}`) // reset logging to initial state
-
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
 	assertStatus(t, response, 201)
 
 	//Try to force channel initialisation for user bernard
@@ -438,7 +435,7 @@ func TestLoggingKeys(t *testing.T) {
 	defer rt.Close()
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
-	rt.SendAdminRequest("PUT", "/_logging", `{}`)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
 
 	//Assert default log channels are enabled
 	response := rt.SendAdminRequest("GET", "/_logging", "")
@@ -514,7 +511,7 @@ func TestLoggingLevels(t *testing.T) {
 	defer rt.Close()
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
-	rt.SendAdminRequest("PUT", "/_logging?logLevel=info", `{}`)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
 
 	// Log keys should be blank
 	response := rt.SendAdminRequest("GET", "/_logging", "")
@@ -548,7 +545,7 @@ func TestLoggingCombined(t *testing.T) {
 	defer rt.Close()
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
-	rt.SendAdminRequest("PUT", "/_logging?logLevel=info", `{}`)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
 
 	// Log keys should be blank
 	response := rt.SendAdminRequest("GET", "/_logging", "")
@@ -567,12 +564,12 @@ func TestLoggingCombined(t *testing.T) {
 // Test user delete while that user has an active changes feed (see issue 809)
 func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyCache|base.KeyHTTP)()
+
 	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Changes":true, "Cache":true, "HTTP":true}`)
-
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
 	assertStatus(t, response, 201)
 
 	var wg sync.WaitGroup
