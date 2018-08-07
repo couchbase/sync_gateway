@@ -538,6 +538,8 @@ func NumOpenBuckets(bucketName string) int32 {
 // SetUpTestLogging will set the given log level and log keys,
 // and return a function that can be deferred for teardown.
 //
+// This function will panic if called multiple times without running the teardownFn.
+//
 // To set multiple log keys, use the bitwise OR operator.
 // E.g. KeyCache|KeyDCP|KeySync
 //
@@ -548,18 +550,24 @@ func NumOpenBuckets(bucketName string) int32 {
 // Shorthand style:
 //     defer SetUpTestLogging(LevelDebug, KeyCache|KeyDCP|KeySync)()
 func SetUpTestLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
+	initialLogLevel := LevelInfo
+	initialLogKey := KeyHTTP
+
+	// Check that a previous invocation has not forgotten to call teardownFn
+	if *consoleLogger.LogLevel != initialLogLevel ||
+		*consoleLogger.LogKey != initialLogKey {
+		panic("Logging is in an unexpected state! Did a previous test forget to call the teardownFn of SetUpTestLogging?")
+	}
+
 	caller := GetCallersName(1, false)
 	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
-
-	// Set the console logger settings
 	consoleLogger.LogLevel.Set(logLevel)
 	consoleLogger.LogKey.Set(logKeys)
 
 	return func() {
-		// Return to default state
-		consoleLogger.LogLevel.Set(LevelInfo)
-		consoleLogger.LogKey.Set(KeyHTTP)
-
+		// Return logging to a default state
+		consoleLogger.LogLevel.Set(initialLogLevel)
+		consoleLogger.LogKey.Set(initialLogKey)
 		Infof(KeyAll, "%v: Reset logging", caller)
 	}
 }

@@ -581,3 +581,29 @@ func TestRedactBasicAuthURL(t *testing.T) {
 		assert.Equals(t, RedactBasicAuthURL(test.input), test.expected)
 	}
 }
+
+func TestSetUpTestLogging(t *testing.T) {
+	// Check default state of logging is as expected.
+	assert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
+	assert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
+
+	teardownFn := SetUpTestLogging(LevelDebug, KeyDCP|KeySync)
+	assert.Equals(t, *consoleLogger.LogLevel, LevelDebug)
+	assert.Equals(t, *consoleLogger.LogKey, KeyDCP|KeySync)
+
+	teardownFn()
+	assert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
+	assert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
+
+	SetUpTestLogging(LevelDebug, KeyDCP|KeySync)
+	assert.Equals(t, *consoleLogger.LogLevel, LevelDebug)
+	assert.Equals(t, *consoleLogger.LogKey, KeyDCP|KeySync)
+
+	// Now we should panic because we forgot to call teardown!
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected panic from multiple SetUpTestLogging calls")
+		}
+	}()
+	SetUpTestLogging(LevelError, KeyAuth|KeyCRUD)
+}
