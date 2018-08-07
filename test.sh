@@ -11,6 +11,7 @@ fi
 
 EXTRA_FLAGS=""
 if [ "$SG_TEST_BACKING_STORE" == "Couchbase" ] || [ "$SG_TEST_BACKING_STORE" == "couchbase" ]; then
+    ./test-integration-init.sh
     echo "Integration mode: forcing tests to run in serial across packages via -p 1 flag"
     EXTRA_FLAGS="-p 1"  # force this to run in serial, otherwise packages run in parallel and interfere with each other
 fi
