@@ -1534,7 +1534,7 @@ func TestViewCustom(t *testing.T) {
 //////// BENCHMARKS
 
 func BenchmarkDatabase(b *testing.B) {
-	defer base.SetUpTestLogging(base.LevelNone, base.KeyNone)() // disables logging
+	defer base.DisableTestLogging()()
 
 	for i := 0; i < b.N; i++ {
 		bucket, _ := ConnectToBucket(base.BucketSpec{

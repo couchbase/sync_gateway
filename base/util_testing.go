@@ -550,6 +550,20 @@ func NumOpenBuckets(bucketName string) int32 {
 // Shorthand style:
 //     defer SetUpTestLogging(LevelDebug, KeyCache|KeyDCP|KeySync)()
 func SetUpTestLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
+	caller := GetCallersName(1, false)
+	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
+	return setTestLogging(logLevel, logKeys, caller)
+}
+
+// DisableTestLogging is an alias for SetUpTestLogging(LevelNone, KeyNone)
+// This function will panic if called multiple times without running the teardownFn.
+func DisableTestLogging() (teardownFn func()) {
+	caller := GetCallersName(1, false)
+	Infof(KeyAll, "%s: Disabling logging", caller)
+	return setTestLogging(LevelNone, KeyNone, caller)
+}
+
+func setTestLogging(logLevel LogLevel, logKeys LogKey, caller string) (teardownFn func()) {
 	initialLogLevel := LevelInfo
 	initialLogKey := KeyHTTP
 
@@ -559,8 +573,6 @@ func SetUpTestLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
 		panic("Logging is in an unexpected state! Did a previous test forget to call the teardownFn of SetUpTestLogging?")
 	}
 
-	caller := GetCallersName(1, false)
-	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
 	consoleLogger.LogLevel.Set(logLevel)
 	consoleLogger.LogKey.Set(logKeys)
 
