@@ -23,7 +23,7 @@ PRODUCT="sg"
 # repo since it includes sg-accel in it's manifest and will
 # build *both* sync gateway and sg-accel
 TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
-			
+
 # By default, will run "repo init" followed by "repo sync".
 # If this is set to 1, skips "repo sync" 
 INIT_ONLY=0
@@ -118,6 +118,12 @@ downloadHelperScripts () {
 	echo "Downloading test.sh"
 	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/test.sh" > test.sh
 	chmod +x test.sh
+    fi
+
+    if [ ! -f test-integration-init.sh ]; then
+	echo "Downloading test-integration-init.sh"
+	curl -s "https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/test-integration-init.sh" > test-integration-init.sh
+	chmod +x test-integration-init.sh
     fi
 
     if [ ! -f test_with_coverage.sh ]; then
