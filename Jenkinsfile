@@ -68,8 +68,8 @@ pipeline {
                 echo 'Testing with coverage..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                     // gocoverutil is required until we upgrade to Go 1.10, and can use -coverprofile with ./...
-                    sh 'gocoverutil -coverprofile=cover_sg.out test -covermode=count github.com/couchbase/sync_gateway/...'
-                    sh 'gocoverutil -coverprofile=cover_sga.out test -covermode=count github.com/couchbaselabs/sync-gateway-accel/...'
+                    sh 'gocoverutil -coverprofile=cover_sg.out test -covermode=atomic github.com/couchbase/sync_gateway/...'
+                    sh 'gocoverutil -coverprofile=cover_sga.out test -covermode=atomic github.com/couchbaselabs/sync-gateway-accel/...'
 
                     sh 'gocoverutil -coverprofile=cover_merged.out merge cover_sg.out cover_sga.out'
 
@@ -81,8 +81,11 @@ pipeline {
 
                 // Travis-related variables are required as coveralls only officially supports a certain set of CI tools.
                 withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                    // Replace count covermode values with set just for coveralls to reduce the variability in reports.
+                    sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_sg.out > cover_coveralls.out'
+
                     // Send just the SG coverage report to coveralls.io - **NOT** accel! It will expose the codebase!!!
-                    sh "goveralls -coverprofile=cover_sg.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN}"
+                    sh "goveralls -coverprofile=cover_coveralls.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN}"
 
                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
                     // TODO: Requires Cobertura Plugin to be installed on Jenkins first
