@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/go.assert"
@@ -32,11 +33,10 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`)
 	defer it.Close()
-
-	response := it.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
-	assert.True(t, response != nil)
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
@@ -45,7 +45,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	a.Save(bernard)
 
 	// Put several documents in channel PBS
-	response = it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response := it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -87,11 +87,10 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
-
-	response := it.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "Wait":true}`)
-	assert.True(t, response != nil)
 
 	// Create user:
 	userResponse := it.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["ABC"]}`)
@@ -110,7 +109,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	*/
 
 	// Put several documents in channel PBS
-	response = it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response := it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)

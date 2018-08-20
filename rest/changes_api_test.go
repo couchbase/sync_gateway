@@ -123,11 +123,10 @@ func TestReproduce2383(t *testing.T) {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
 	var rt RestTester
 	defer rt.Close()
-
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"*":true, "color":true}`)
-	assert.NotEquals(t, response, nil)
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	user, err := a.NewUser("ben", "letmein", channels.SetOf("PBS"))
@@ -135,7 +134,7 @@ func TestReproduce2383(t *testing.T) {
 	a.Save(user)
 
 	// Put several documents
-	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -270,15 +269,15 @@ func TestDocDeletionFromChannel(t *testing.T) {
 
 func TestPostChangesInteger(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
+
 	postChanges(t, it)
 }
 
 func postChanges(t *testing.T, it indexTester) {
-
-	response := it.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
-	assert.True(t, response != nil)
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
@@ -287,7 +286,7 @@ func postChanges(t *testing.T, it indexTester) {
 	a.Save(bernard)
 
 	// Put several documents
-	response = it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response := it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/abc1", `{"value":1, "channel":["ABC"]}`)
 	assertStatus(t, response, 201)
@@ -316,11 +315,10 @@ func TestPostChangesUserTiming(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel)}`)
 	defer it.Close()
-
-	response := it.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
-	assert.True(t, response != nil)
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
@@ -331,7 +329,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Put several documents to channel PBS
-	response = it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response := it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -376,8 +374,11 @@ func TestPostChangesSinceInteger(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
+
 	postChangesSince(t, it)
 }
 
@@ -425,13 +426,9 @@ func TestPostChangesWithQueryString(t *testing.T) {
 
 // Basic _changes test with since value
 func postChangesSince(t *testing.T, it indexTester) {
-	response := it.SendAdminRequest("PUT", "/_logging", `{"*":true}`)
-
-	//response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
-	assert.True(t, response != nil)
 
 	// Create user
-	response = it.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@bb.com", "password":"letmein", "admin_channels":["PBS"]}`)
+	response := it.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@bb.com", "password":"letmein", "admin_channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
 	// Put several documents
@@ -478,16 +475,17 @@ func postChangesSince(t *testing.T, it indexTester) {
 }
 
 func TestPostChangesChannelFilterInteger(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
+
 	postChangesChannelFilter(t, it)
 }
 
 // Test _changes with channel filter
 func postChangesChannelFilter(t *testing.T, it indexTester) {
-
-	response := it.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
-	assert.True(t, response != nil)
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
@@ -496,7 +494,7 @@ func postChangesChannelFilter(t *testing.T, it indexTester) {
 	a.Save(bernard)
 
 	// Put several documents
-	response = it.SendAdminRequest("PUT", "/db/pbs1-0000609", `{"channel":["PBS"]}`)
+	response := it.SendAdminRequest("PUT", "/db/pbs1-0000609", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/samevbdiffchannel-0000609", `{"channel":["ABC"]}`)
 	assertStatus(t, response, 201)
@@ -545,6 +543,8 @@ func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	postChangesAdminChannelGrant(t, it)
@@ -552,10 +552,6 @@ func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
 
 // _changes with admin-based channel grant
 func postChangesAdminChannelGrant(t *testing.T, it indexTester) {
-	response := it.SendAdminRequest("PUT", "/_logging", `{"Backfill":true}`)
-
-	//response := it.sendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "HTTP":true, "DIndex+":true}`)
-	assert.True(t, response != nil)
 
 	// Create user with access to channel ABC:
 	a := it.ServerContext().Database("db").Authenticator()
@@ -564,7 +560,7 @@ func postChangesAdminChannelGrant(t *testing.T, it indexTester) {
 	a.Save(bernard)
 
 	// Put several documents in channel ABC and PBS
-	response = it.SendAdminRequest("PUT", "/db/pbs-1", `{"channel":["PBS"]}`)
+	response := it.SendAdminRequest("PUT", "/db/pbs-1", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/pbs-2", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -639,6 +635,8 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+
 	pendingMaxWait := uint32(5)
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
@@ -657,10 +655,9 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	testDb := rt.ServerContext().Database("db")
 
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "Debug":true}`)
 	// Create user:
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein", "admin_channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein", "admin_channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -893,6 +890,8 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 }
 
 func TestChangesActiveOnlyInteger(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	changesActiveOnly(t, it)
@@ -1271,9 +1270,6 @@ func TestChangesIncludeDocs(t *testing.T) {
 // Test _changes with channel filter
 func changesActiveOnly(t *testing.T, it indexTester) {
 
-	response := it.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true}`)
-	assert.True(t, response != nil)
-
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS", "ABC"))
@@ -1282,7 +1278,7 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 
 	// Put several documents
 	var body db.Body
-	response = it.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
+	response := it.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	deletedRev := body["rev"].(string)
 	assertStatus(t, response, 201)
@@ -1379,11 +1375,11 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 
 // Tests view backfill and validates that results are prepended to cache
 func TestChangesViewBackfill(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
+
 	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer rt.Close()
-
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true, "Changes+":true, "Cache":true, "Cache+":true}`)
-	assert.True(t, response != nil)
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1392,7 +1388,7 @@ func TestChangesViewBackfill(t *testing.T) {
 	a.Save(bernard)
 
 	// Put several documents
-	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -1447,11 +1443,11 @@ func TestChangesViewBackfill(t *testing.T) {
 
 // Tests view backfill and validates that results are prepended to cache
 func TestChangesViewBackfillStarChannel(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
+
 	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer rt.Close()
-
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true, "Changes+":true, "Cache":true, "Cache+":true}`)
-	assert.True(t, response != nil)
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1460,7 +1456,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	a.Save(bernard)
 
 	// Put several documents
-	response = rt.SendAdminRequest("PUT", "/db/doc5", `{"channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/doc5", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/doc4", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -1525,11 +1521,10 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 		t.Skip("Skip test with LeakyBucket dependency test when running in integration")
 	}
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
+
 	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer rt.Close()
-
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true, "Changes+":true, "Cache":true, "Cache+":true}`)
-	assert.True(t, response != nil)
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1538,7 +1533,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	a.Save(bernard)
 
 	// Put rev1 of document
-	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
@@ -1625,11 +1620,10 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges)()
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
-
-	response := it.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true}`)
-	assert.True(t, response != nil)
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
@@ -1639,7 +1633,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
 	// Put several documents
 	var body db.Body
-	response = it.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
+	response := it.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	deletedRev := body["rev"].(string)
 	assertStatus(t, response, 201)
@@ -1783,11 +1777,10 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 // additional to general view handling.
 func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
+
 	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
-
-	response := it.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true, "Changes+":true, "Cache":true, "Cache+":true}`)
-	assert.True(t, response != nil)
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
@@ -1797,7 +1790,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	// Put several documents
 	var body db.Body
-	response = it.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
+	response := it.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	deletedRev := body["rev"].(string)
 	assertStatus(t, response, 201)
@@ -1969,6 +1962,8 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
+
 	cacheSize := 2
 	shortWaitConfig := &DbConfig{
 		CacheConfig: &CacheConfig{
@@ -1983,9 +1978,6 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	///it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	//defer it.Close()
 
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"HTTP":true, "Changes":true, "Cache":true}`)
-	assert.True(t, response != nil)
-
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS", "ABC"))
@@ -1994,7 +1986,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
 	// Put several documents
 	var body db.Body
-	response = rt.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	deletedRev := body["rev"].(string)
 	assertStatus(t, response, 201)
