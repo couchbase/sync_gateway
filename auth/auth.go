@@ -500,6 +500,11 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 		return nil, jwt, identityErr
 	}
 
+	if domainErr := ValidateAllowedDomain(provider, identity.Email); domainErr != nil {
+		base.Debugf(base.KeyAuth, "Error validating user %s : %v", base.UD(identity.Email), domainErr)
+		return nil, jwt, domainErr
+	}
+
 	username := GetOIDCUsername(provider, identity.ID)
 	base.Debugf(base.KeyAuth, "OIDCUsername: %v", base.UD(username))
 

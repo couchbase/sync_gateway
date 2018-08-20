@@ -23,6 +23,7 @@ import (
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
+	"errors"
 )
 
 const (
@@ -52,6 +53,8 @@ type OIDCProvider struct {
 	OIDCClientOnce          sync.Once
 	IsDefault               bool
 	Name                    string
+	WhitelistDomains        []string `json:"whitelist_domains,omitempty"`      // Only allow users with email addresses from specific domains
+	BlacklistDomains        []string `json:"blacklist_domains,omitempty"`      // Never allow users with email addresses from specific domains
 }
 
 type OIDCProviderMap map[string]*OIDCProvider
@@ -261,6 +264,25 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 
 func GetOIDCUsername(provider *OIDCProvider, subject string) string {
 	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(subject))
+}
+
+func ValidateAllowedDomain(provider *OIDCProvider, email string) error {
+	if len(provider.WhitelistDomains) != 0 {
+		for _, domain := range provider.WhitelistDomains {
+			if strings.HasSuffix(email, "@"+domain) {
+				return nil
+			}
+		}
+		return errors.New("domain not in whitelist")
+	} else if len(provider.BlacklistDomains) != 0 {
+		for _, domain := range provider.BlacklistDomains {
+			if strings.HasSuffix(email, "@"+domain) {
+				return errors.New("domain in blacklist")
+			}
+		}
+		return nil
+	}
+	return nil
 }
 
 // Converts an OpenID Connect / OAuth2 error to an HTTP error

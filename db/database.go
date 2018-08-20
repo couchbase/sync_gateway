@@ -344,6 +344,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			if strings.Contains(name, "_") {
 				return nil, base.RedactErrorf("OpenID Connect provider names cannot contain underscore:%s", base.UD(name))
 			}
+			if len(provider.WhitelistDomains) != 0 && len(provider.BlacklistDomains) != 0 {
+				return nil, fmt.Errorf("OpenID Connect provider cannot specify both whitelist and blacklist:%s", name)
+			}
 			provider.Name = name
 			if _, ok := context.OIDCProviders[provider.Issuer]; ok {
 				return nil, base.RedactErrorf("Multiple OIDC providers defined for issuer %v", base.UD(provider.Issuer))

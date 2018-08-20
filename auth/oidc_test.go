@@ -257,6 +257,36 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 
 }
 
+func TestOIDCWhitelist(t *testing.T) {
+
+	provider := OIDCProvider{
+		Issuer: "http://www.someprovider.com",
+		WhitelistDomains: []string{"couchbase.com", "membase.com"},
+	}
+
+	provider.InitUserPrefix()
+
+	err := ValidateAllowedDomain(&provider, "jflath@couchbase.com")
+	goassert.Equals(t, err, nil)
+	err = ValidateAllowedDomain(&provider, "jflath@example.com")
+	goassert.NotEquals(t, err, nil)
+}
+
+func TestOIDCBlacklist(t *testing.T) {
+
+	provider := OIDCProvider{
+		Issuer: "http://www.someprovider.com",
+		BlacklistDomains: []string{"gmail.com", "example.com"},
+	}
+
+	provider.InitUserPrefix()
+
+	err := ValidateAllowedDomain(&provider, "jflath@couchbase.com")
+	goassert.Equals(t, err, nil)
+	err = ValidateAllowedDomain(&provider, "jflath@example.com")
+	goassert.NotEquals(t, err, nil)
+}
+
 // This test verifies that common OpenIDConnect providers return configurations that
 // don't cause any errors in the Sync Gateway processing, for example if the URL parsing fails.
 // If any errors are found from provider, these should be dealt with appropriately.  As new
