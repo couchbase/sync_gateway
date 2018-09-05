@@ -1521,9 +1521,13 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 			}
 		}
 
-		// If there was no error, we're done
-		if err == nil {
-			return nil
+		if pkgerrors.Cause(err) == gocb.ErrKeyExists {
+			// retry on cas failure
+		} else if isRecoverableGoCBError(err) {
+			// retry on recoverable failure
+		} else {
+			// err will be nil if successful
+			return err
 		}
 
 	}
@@ -1596,9 +1600,14 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 
 			}
 		}
-		// If there was no error, we're done
-		if err == nil {
-			return nil
+
+		if pkgerrors.Cause(err) == gocb.ErrKeyExists {
+			// retry on cas failure
+		} else if isRecoverableGoCBError(err) {
+			// retry on recoverable failure
+		} else {
+			// err will be nil if successful
+			return err
 		}
 	}
 }
@@ -1660,6 +1669,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
 		deleteBody := len(value) > 0
 		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
+
 		switch pkgerrors.Cause(writeErr) {
 		case nil:
 			return casOut, nil
