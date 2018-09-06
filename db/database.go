@@ -879,7 +879,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 				// This is a document not known to the sync gateway. Ignore it:
 				return nil, false, nil, couchbase.UpdateCancel
 			} else {
-				base.Infof(base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
+				base.Debugf(base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
 			}
 
 			// Run the sync fn over each current/leaf revision, in case there are conflicts:
