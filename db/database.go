@@ -916,7 +916,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 				// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
 				// so deleteDoc is always returned as false.
 				if currentValue == nil || len(currentValue) == 0 {
-					return nil, nil, deleteDoc, nil, errors.New("Cancel update")
+					return nil, nil, deleteDoc, nil, couchbase.UpdateCancel
 				}
 				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll)
 				if err != nil {
@@ -935,7 +935,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 					raw, rawXattr, err = updatedDoc.MarshalWithXattr()
 					return raw, rawXattr, deleteDoc, updatedExpiry, err
 				} else {
-					return nil, nil, deleteDoc, nil, errors.New("Cancel update")
+					return nil, nil, deleteDoc, nil, couchbase.UpdateCancel
 				}
 			}
 			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, nil, writeUpdateFunc)
