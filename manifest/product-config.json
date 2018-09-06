@@ -56,6 +56,7 @@
             "release_name": "Couchbase Sync Gateway 2.1.0",
             "production": true,
             "interval": 120,
+            "go_version": "1.8.5",
             "start_build": 107
         },
         "manifest/dev.xml": {
