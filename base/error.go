@@ -23,20 +23,21 @@ import (
 type sgErrorCode uint16
 
 const (
-	alreadyImported       = sgErrorCode(0x00)
-	importCancelled       = sgErrorCode(0x01)
-	importCasFailure      = sgErrorCode(0x02)
-	viewTimeoutError      = sgErrorCode(0x03)
-	revTreeAddRevFailure  = sgErrorCode(0x04)
-	importCancelledFilter = sgErrorCode(0x05)
-	documentMigrated      = sgErrorCode(0x06)
-	fatalBucketConnection = sgErrorCode(0x07)
-	emptyMetadata         = sgErrorCode(0x08)
-	casFailureShouldRetry = sgErrorCode(0x09)
-	errPartialViewErrors  = sgErrorCode(0x10)
-	indexerError          = sgErrorCode(0x11)
-	indexExists           = sgErrorCode(0x12)
-	notFound              = sgErrorCode(0x13)
+	alreadyImported = sgErrorCode(iota)
+	importCancelled
+	importCasFailure
+	viewTimeoutError
+	revTreeAddRevFailure
+	importCancelledFilter
+	documentMigrated
+	fatalBucketConnection
+	emptyMetadata
+	casFailureShouldRetry
+	errPartialViewErrors
+	indexerError
+	indexExists
+	notFound
+	updateCancel
 )
 
 type SGError struct {
@@ -57,6 +58,7 @@ var (
 	ErrIndexerError          = &SGError{indexerError}
 	ErrIndexAlreadyExists    = &SGError{indexExists}
 	ErrNotFound              = &SGError{notFound}
+	ErrUpdateCancel          = &SGError{updateCancel}
 
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.
@@ -89,6 +91,8 @@ func (e SGError) Error() string {
 		return "Indexer error"
 	case indexExists:
 		return "Index already exists"
+	case updateCancel:
+		return "Cancel update"
 	case notFound:
 		return "Not Found"
 	default:
