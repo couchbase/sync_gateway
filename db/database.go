@@ -21,7 +21,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -825,11 +824,11 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 			bytes, err := json.Marshal(syncData)
 			return bytes, nil, err
 		} else {
-			return nil, nil, couchbase.UpdateCancel // value unchanged, no need to save
+			return nil, nil, base.ErrUpdateCancel // value unchanged, no need to save
 		}
 	})
 
-	if err == couchbase.UpdateCancel {
+	if err == base.ErrUpdateCancel {
 		err = nil
 	}
 	return
@@ -867,9 +866,9 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			imported := false
 			if !doc.HasValidSyncData(db.writeSequences()) {
 				// This is a document not known to the sync gateway. Ignore it:
-				return nil, false, nil, couchbase.UpdateCancel
+				return nil, false, nil, base.ErrUpdateCancel
 			} else {
-				base.Infof(base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
+				base.Debugf(base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
 			}
 
 			// Run the sync fn over each current/leaf revision, in case there are conflicts:
@@ -906,7 +905,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 				// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
 				// so deleteDoc is always returned as false.
 				if currentValue == nil || len(currentValue) == 0 {
-					return nil, nil, deleteDoc, nil, errors.New("Cancel update")
+					return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 				}
 				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll)
 				if err != nil {
@@ -925,7 +924,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 					raw, rawXattr, err = updatedDoc.MarshalWithXattr()
 					return raw, rawXattr, deleteDoc, updatedExpiry, err
 				} else {
-					return nil, nil, deleteDoc, nil, errors.New("Cancel update")
+					return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 				}
 			}
 			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, nil, writeUpdateFunc)
@@ -933,7 +932,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 				// Be careful: this block can be invoked multiple times if there are races!
 				if currentValue == nil {
-					return nil, nil, couchbase.UpdateCancel // someone deleted it?!
+					return nil, nil, base.ErrUpdateCancel // someone deleted it?!
 				}
 				doc, err := unmarshalDocument(docid, currentValue)
 				if err != nil {
@@ -951,13 +950,13 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 					updatedBytes, marshalErr := json.Marshal(updatedDoc)
 					return updatedBytes, updatedExpiry, marshalErr
 				} else {
-					return nil, nil, couchbase.UpdateCancel
+					return nil, nil, base.ErrUpdateCancel
 				}
 			})
 		}
 		if err == nil {
 			changeCount++
-		} else if err != couchbase.UpdateCancel {
+		} else if err != base.ErrUpdateCancel {
 			base.Warnf(base.KeyAll, "Error updating doc %q: %v", base.UD(docid), err)
 		}
 	}

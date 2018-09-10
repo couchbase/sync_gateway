@@ -14,7 +14,6 @@ import (
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
-	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
@@ -108,7 +107,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
-			return nil, nil, couchbase.UpdateCancel
+			return nil, nil, base.ErrUpdateCancel
 		}
 
 		princ = factory()
@@ -143,11 +142,11 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			return updatedBytes, nil, marshalErr
 		} else {
 			// Principal is valid, so stop the update
-			return nil, nil, couchbase.UpdateCancel
+			return nil, nil, base.ErrUpdateCancel
 		}
 	})
 
-	if err != nil && err != couchbase.UpdateCancel {
+	if err != nil && err != base.ErrUpdateCancel {
 		return nil, err
 	}
 	return princ, nil
@@ -443,7 +442,7 @@ func (auth *Authenticator) updateVbucketSequences(docID string, factory func() P
 	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
-			return nil, nil, couchbase.UpdateCancel
+			return nil, nil, base.ErrUpdateCancel
 		}
 		princ := factory()
 		if err := json.Unmarshal(currentValue, princ); err != nil {
@@ -491,11 +490,11 @@ func (auth *Authenticator) updateVbucketSequences(docID string, factory func() P
 			return updatedBytes, nil, marshalErr
 		} else {
 			// No entries found requiring update, so cancel update.
-			return nil, nil, couchbase.UpdateCancel
+			return nil, nil, base.ErrUpdateCancel
 		}
 	})
 
-	if err != nil && err != couchbase.UpdateCancel {
+	if err != nil && err != base.ErrUpdateCancel {
 		return err
 	}
 	return nil

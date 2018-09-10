@@ -684,7 +684,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 		if currentRevIndex == 0 {
 			base.Debugf(base.KeyCRUD, "PutExistingRev(%q): No new revisions to add", base.UD(docid))
 			body["_rev"] = newRev                        // The _rev field is expected by some callers.  If missing, may cause problems for callers.
-			return nil, nil, nil, couchbase.UpdateCancel // No new revisions to add
+			return nil, nil, nil, base.ErrUpdateCancel // No new revisions to add
 		}
 
 		// Conflict-free mode check
@@ -1112,7 +1112,7 @@ func (db *Database) updateAndReturnDoc(
 		}
 	}
 
-	if err == couchbase.UpdateCancel {
+	if err == base.ErrUpdateCancel {
 		return nil, "", nil
 	} else if err == couchbase.ErrOverwritten {
 		// ErrOverwritten is ok; if a later revision got persisted, that's fine too
