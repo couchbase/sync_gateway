@@ -4,7 +4,8 @@ pipeline {
     agent { label 'sync-gateway-ami-builder' }
 
     environment {
-        GO_VERSION = 'go1.8.5'
+        GO_VERSION = 'go1.10.4'
+        GVM = "/root/.gvm/bin/gvm"
         GO = "/root/.gvm/gos/${GO_VERSION}/bin"
         GOPATH = "${WORKSPACE}/godeps"
         BRANCH = "${BRANCH_NAME}"
@@ -36,7 +37,9 @@ pipeline {
         stage('Setup Tools') {
             steps {
                 echo 'Setting up Go tools..'
-                withEnv(["PATH+=${GO}"]) {
+                // Use gvm to install the required Go version, if not already
+                sh "${GVM} install $GO_VERSION"
+                withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
                     sh "go version"
                     sh 'go get -v -u github.com/AlekSi/gocoverutil'
                     sh 'go get -v -u golang.org/x/tools/cmd/cover'
