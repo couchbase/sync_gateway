@@ -9,7 +9,6 @@
   <remote fetch="https://github.com/natefinch/" name="natefinch"/>
   <remote fetch="https://github.com/rcrowley/" name="rcrowley"/>
   <remote fetch="https://github.com/samuel/" name="samuel"/>
-  <remote fetch="https://github.com/snej/" name="snej"/>
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
   <remote fetch="https://github.com/mreiferson/" name="mreiferson"/>
   <remote fetch="https://github.com/kardianos/" name="kardianos"/>
@@ -22,19 +21,19 @@
   <default remote="couchbase" revision="master"/>
 
   <!-- Build Scripts (required on CI servers) -->
-  <project name="build" path="cbbuild" remote="couchbase">
-    <annotation name="VERSION" value="1.5.0"     keep="true"/>
+  <project name="build" path="cbbuild" remote="couchbase" revision="2693c160e604c17daa838c151b35ffcf7ddcc1b6">
+    <annotation name="VERSION" value="1.5.0"   keep="true"/>
     <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
     <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
   </project>
 
   
   <!-- Sync Gateway -->
-  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase"/> 
+  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/1.5.0"/>
 
   
   <!-- Sync Gateway Accel-->
-  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="bc9e483a80f72ff744b5008af1135b6e2dbfd531"/>
+  <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="e3be96359a026d15fac974162956bc377ea88b1d"/>
 
   <!-- Dependencies specific to Sync Gateway Accel-->
   <project groups="notdefault,sg-accel" name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="eb79bf552d0992f5d790b25b6ebba9b633a259a2"/>
@@ -61,7 +60,7 @@
 
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="6382451e5ef472cd19e4eba6e82e3c1957e4cc09"/>
 
-  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="87479d3ac646baac2385314bfb743bb04928f280"/>
+  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="c93b867917a3058506fcab2d6948a918776a9374"/>
 
   <project name="gocbconnstr" path="godeps/src/github.com/couchbaselabs/gocbconnstr" remote="couchbaselabs" revision="f601f521a1ab1c99260c63441e1bbdbbc48b1bd9"/>
 
@@ -117,7 +116,7 @@
 
   <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="5823a0cbaaa9008406021dc5daf80125ea30bba6"/>
 
-  <project name="go-blip" path="godeps/src/github.com/snej/go-blip" remote="snej" revision="d91ad03dfa1649aab06b0ce04577a744f97749b0"/>
+  <project name="go-blip" path="godeps/src/github.com/snej/go-blip" remote="couchbase" revision="d91ad03dfa1649aab06b0ce04577a744f97749b0"/>
 
   <project name="go.uuid" path="godeps/src/github.com/satori/go.uuid" remote="satori" revision="5bf94b69c6b68ee1b541973bb8e1144db23a194b"/>
 
