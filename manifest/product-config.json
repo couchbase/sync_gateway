@@ -6,7 +6,7 @@
             "release_name": "Couchbase Sync Gateway",
             "production": true,
             "interval": 30,
-            "go_version": "1.8.5",
+            "go_version": "1.10.4",
             "start_build": 1
         },
         "manifest/1.4.0.xml": {
@@ -70,10 +70,9 @@
             "release_name": "Couchbase Sync Gateway Dev",
             "production": true,
             "interval": 30,
-            "go_version": "1.8.5",
+            "go_version": "1.10.4",
             "start_build": 1,
             "do-build": false
         }
     }
 }
-
