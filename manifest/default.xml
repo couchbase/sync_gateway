@@ -7,7 +7,6 @@
 
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
   <remote fetch="https://github.com/mreiferson/" name="mreiferson"/>
-  <remote fetch="https://github.com/satori/" name="satori"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
@@ -111,13 +110,11 @@
 
   <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="238f46bf38971b117d90e70cba9bd4682428a8b6"/>
 
-  <project name="go.uuid" path="godeps/src/github.com/satori/go.uuid" remote="satori" revision="5bf94b69c6b68ee1b541973bb8e1144db23a194b"/>
-
   <project name="errors" path="godeps/src/github.com/pkg/errors" remote="couchbasedeps" revision="f15c970de5b76fac0b59abb32d62c17cc7bed265"/>
 
   <project name="sourcemap" path="godeps/src/gopkg.in/sourcemap.v1" remote="couchbasedeps" revision="6e83acea0053641eff084973fee085f0c193c61a"/>
 
-  <project name="uuid" path="godeps/src/github.com/google/uuid" remote="couchbasedeps" revision="dec09d789f3dba190787f8b4454c7d3c936fed9e"/>
+  <project name="uuid" path="godeps/src/github.com/google/uuid" remote="couchbasedeps" revision="e704694aed0ea004bb7eb1fc2e911d048a54606a"/>
 
   <project name="opentracing-go" path="godeps/src/github.com/opentracing/opentracing-go" remote="couchbasedeps" revision="6c572c00d1830223701e155de97408483dfcd14a"/>
 

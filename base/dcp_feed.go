@@ -20,8 +20,8 @@ import (
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/sg-bucket"
+	"github.com/google/uuid"
 	pkgerrors "github.com/pkg/errors"
-	"github.com/satori/go.uuid"
 )
 
 var dcpExpvars *expvar.Map
@@ -638,9 +638,12 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 // version number / commit for debugging purposes
 func GenerateDcpStreamName(product string) string {
 
-	// Use V2 since it takes the timestamp into account (as opposed to V4 which appears that it would
-	// require the random number generator to be seeded), so that it's more likely to be unique across different processes.
-	uuidComponent := uuid.NewV2(uuid.DomainPerson).String()
+	// Create a time-based UUID for uniqueness of DCP Stream Names
+	u, err := uuid.NewUUID()
+	if err != nil {
+		// Current implementation of uuid.NewUUID *never* returns an error.
+		Errorf(KeyAll, "Error generating UUID for DCP Stream Name: %v", err)
+	}
 
 	commitTruncated := StringPrefix(GitCommit, 7)
 
@@ -649,7 +652,7 @@ func GenerateDcpStreamName(product string) string {
 		product,
 		VersionNumber,
 		commitTruncated,
-		uuidComponent,
+		u.String(),
 	)
 
 }
