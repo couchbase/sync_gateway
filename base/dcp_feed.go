@@ -580,7 +580,10 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		Debugf(KeyDCP, fmt, v...)
 	}
 
-	dataSourceOptions.Name = GenerateDcpStreamName("SG")
+	dataSourceOptions.Name, err = GenerateDcpStreamName("SG")
+	if err != nil {
+		return pkgerrors.Wrap(err, "unable to generate DCP stream name")
+	}
 
 	auth := spec.Auth
 
@@ -636,13 +639,12 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 // Create a prefix that will be used to create the dcp stream name, which must be globally unique
 // in order to avoid https://issues.couchbase.com/browse/MB-24237.  It's also useful to have the Sync Gateway
 // version number / commit for debugging purposes
-func GenerateDcpStreamName(product string) string {
+func GenerateDcpStreamName(product string) (string, error) {
 
 	// Create a time-based UUID for uniqueness of DCP Stream Names
 	u, err := uuid.NewUUID()
 	if err != nil {
-		// Current implementation of uuid.NewUUID *never* returns an error.
-		Errorf(KeyAll, "Error generating UUID for DCP Stream Name: %v", err)
+		return "", err
 	}
 
 	commitTruncated := StringPrefix(GitCommit, 7)
@@ -653,7 +655,7 @@ func GenerateDcpStreamName(product string) string {
 		VersionNumber,
 		commitTruncated,
 		u.String(),
-	)
+	), nil
 
 }
 
