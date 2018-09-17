@@ -20,8 +20,8 @@ import (
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	"github.com/couchbase/sg-bucket"
+	"github.com/google/uuid"
 	pkgerrors "github.com/pkg/errors"
-	"github.com/satori/go.uuid"
 )
 
 var dcpExpvars *expvar.Map
@@ -580,7 +580,10 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		Debugf(KeyDCP, fmt, v...)
 	}
 
-	dataSourceOptions.Name = GenerateDcpStreamName("SG")
+	dataSourceOptions.Name, err = GenerateDcpStreamName("SG")
+	if err != nil {
+		return pkgerrors.Wrap(err, "unable to generate DCP stream name")
+	}
 
 	auth := spec.Auth
 
@@ -636,11 +639,13 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 // Create a prefix that will be used to create the dcp stream name, which must be globally unique
 // in order to avoid https://issues.couchbase.com/browse/MB-24237.  It's also useful to have the Sync Gateway
 // version number / commit for debugging purposes
-func GenerateDcpStreamName(product string) string {
+func GenerateDcpStreamName(product string) (string, error) {
 
-	// Use V2 since it takes the timestamp into account (as opposed to V4 which appears that it would
-	// require the random number generator to be seeded), so that it's more likely to be unique across different processes.
-	uuidComponent := uuid.NewV2(uuid.DomainPerson).String()
+	// Create a time-based UUID for uniqueness of DCP Stream Names
+	u, err := uuid.NewUUID()
+	if err != nil {
+		return "", err
+	}
 
 	commitTruncated := StringPrefix(GitCommit, 7)
 
@@ -649,8 +654,8 @@ func GenerateDcpStreamName(product string) string {
 		product,
 		VersionNumber,
 		commitTruncated,
-		uuidComponent,
-	)
+		u.String(),
+	), nil
 
 }
 
