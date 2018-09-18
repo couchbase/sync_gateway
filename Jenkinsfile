@@ -41,8 +41,6 @@ pipeline {
                 sh "${GVM} install $GO_VERSION"
                 withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
                     sh "go version"
-                    // cocoverutil is used to merge SG and SGA coverprofiles
-                    sh 'go get -v -u github.com/AlekSi/gocoverutil'
                     // cover is used for building HTML reports of coverprofiles
                     sh 'go get -v -u golang.org/x/tools/cmd/cover'
                     // goveralls is used to send coverprofiles to coveralls.io
@@ -74,17 +72,12 @@ pipeline {
                 echo 'Testing with -race and -cover..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                     // Test with -race and -cover at the same time (to save running tests several times)
-                    sh 'go test -race -coverprofile=cover_sg.out github.com/couchbase/sync_gateway/...'
-                    sh 'go test -race -coverprofile=cover_sga.out github.com/couchbaselabs/sync-gateway-accel/...'
-
-                    // Merge cover profiles for SG and SGA for internal coverage reports
-                    sh 'gocoverutil -coverprofile=cover_merged.out merge cover_sg.out cover_sga.out'
+                    sh 'go test -race -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_sg.out github.com/couchbase/sync_gateway/...'
+                    sh 'go test -race -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_merged.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
 
                     // Print total coverage stats
-                    sh 'go tool cover -func=cover_sg.out | awk \'END{print "Total SG Coverage:    " $3}\''
-                    sh 'go tool cover -func=cover_sga.out | awk \'END{print "Total SGA Coverage:   " $3}\''
-                    sh 'echo -------------------------'
-                    sh 'go tool cover -func=cover_merged.out | awk \'END{print "Total Merged Coverage:" $3}\''
+                    sh 'go tool cover -func=cover_sg.out | awk \'END{print "Total SG Coverage:     " $3}\''
+                    sh 'go tool cover -func=cover_merged.out | awk \'END{print "Total SG+SGA Coverage: " $3}\''
 
                     // Publish combined HTML coverage report to Jenkins
                     sh 'mkdir reports'
