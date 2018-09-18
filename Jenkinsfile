@@ -41,8 +41,11 @@ pipeline {
                 sh "${GVM} install $GO_VERSION"
                 withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
                     sh "go version"
+                    // cocoverutil is used to merge SG and SGA coverprofiles
                     sh 'go get -v -u github.com/AlekSi/gocoverutil'
+                    // cover is used for building HTML reports of coverprofiles
                     sh 'go get -v -u golang.org/x/tools/cmd/cover'
+                    // goveralls is used to send coverprofiles to coveralls.io
                     sh 'go get -v -u github.com/mattn/goveralls'
                     // Jenkins coverage reporting tools
                     // sh 'go get -v -u github.com/axw/gocov/...'
@@ -66,17 +69,24 @@ pipeline {
                 }
             }
         }
-        stage('Test with coverage') {
+        stage('Test') {
             steps {
-                echo 'Testing with coverage..'
+                echo 'Testing with -race and -cover..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    // gocoverutil is required until we upgrade to Go 1.10, and can use -coverprofile with ./...
-                    sh 'gocoverutil -coverprofile=cover_sg.out test -covermode=atomic github.com/couchbase/sync_gateway/...'
-                    sh 'gocoverutil -coverprofile=cover_sga.out test -covermode=atomic github.com/couchbaselabs/sync-gateway-accel/...'
+                    // Test with -race and -cover at the same time (to save running tests several times)
+                    sh 'go test -race -coverprofile=cover_sg.out github.com/couchbase/sync_gateway/...'
+                    sh 'go test -race -coverprofile=cover_sga.out github.com/couchbaselabs/sync-gateway-accel/...'
 
+                    // Merge cover profiles for SG and SGA for internal coverage reports
                     sh 'gocoverutil -coverprofile=cover_merged.out merge cover_sg.out cover_sga.out'
 
-                    // Publish combined HTML coverage report
+                    // Print total coverage stats
+                    sh 'go tool cover -func=cover_sg.out | awk \'END{print "Total SG Coverage:    " $3}\''
+                    sh 'go tool cover -func=cover_sga.out | awk \'END{print "Total SGA Coverage:   " $3}\''
+                    sh 'echo -------------------------'
+                    sh 'go tool cover -func=cover_merged.out | awk \'END{print "Total Merged Coverage:" $3}\''
+
+                    // Publish combined HTML coverage report to Jenkins
                     sh 'mkdir reports'
                     sh 'go tool cover -html=cover_merged.out -o reports/coverage.html'
                     publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: 'coverage.html', keepAll: false, reportDir: 'reports', reportFiles: 'coverage.html', reportName: 'Code Coverage', reportTitles: ''])
@@ -84,24 +94,16 @@ pipeline {
 
                 // Travis-related variables are required as coveralls only officially supports a certain set of CI tools.
                 withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
-                    // Replace count covermode values with set just for coveralls to reduce the variability in reports.
+                    // Replace covermode values with set just for coveralls to reduce the variability in reports.
                     sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_sg.out > cover_coveralls.out'
 
-                    // Send just the SG coverage report to coveralls.io - **NOT** accel! It will expose the codebase!!!
+                    // Send just the SG coverage report to coveralls.io - **NOT** accel! It will expose the private codebase!!!
                     sh "goveralls -coverprofile=cover_coveralls.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN}"
 
                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
                     // TODO: Requires Cobertura Plugin to be installed on Jenkins first
                     // sh 'gocov convert cover_sg.out | gocov-xml > reports/coverage.xml'
                     // step([$class: 'CoberturaPublisher', coberturaReportFile: 'reports/coverage.xml'])
-                }
-            }
-        }
-        stage('Test Race') {
-            steps {
-                echo 'Testing with -race..'
-                withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    sh './test.sh -race'
                 }
             }
         }
