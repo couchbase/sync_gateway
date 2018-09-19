@@ -1310,3 +1310,83 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 
 
 }
+
+
+// Repro attempt for SG #3738
+//
+// - Add 5 docs to channel ABC
+// - Purge one doc via _purge REST API
+// - Flush rev cache
+// - Send subChanges request
+// - Reply to all changes saying all docs are wanted
+// - Wait to receive rev messages for all 5 docs
+//   - Expected: receive all 5 docs
+//   - Actual: only recieve 4 docs
+func TestMissingNoRev(t *testing.T) {
+
+
+	rt := RestTester{}
+	btSpec := BlipTesterSpec{
+		// connectingUsername: "user1",
+		// connectingPassword: "1234",
+		restTester:         &rt,
+	}
+	bt, err := NewBlipTesterFromSpec(btSpec)
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+
+	//// Blip tester
+	//bt, err := NewBlipTester()
+	//assertNoError(t, err, "Error creating BlipTester")
+	//defer bt.Close()
+	//
+	//// Rest tester
+	//var rt RestTester
+	//defer rt.Close()
+
+	// Create 5 docs
+	//for i := 0; i<5; i++ {
+	//	docId := fmt.Sprintf("/db/doc-%d", i)
+	//	response := rt.SendAdminRequest("PUT", docId, `{"hi": "there", "channels": ["ABC"]}`)
+	//	log.Printf("response: %v", response)
+	//}
+
+	for i := 0; i < 5; i++ {
+		docId := fmt.Sprintf("doc-%d", i)
+		docRev := fmt.Sprintf("1-abc%d", i)
+		sent, _, resp, err := bt.SendRev(docId, docRev, []byte(`{"key": "val", "channels": ["ABC"]}`), blip.Properties{})
+		assert.True(t, sent)
+		log.Printf("resp: %v, err: %v", resp, err)
+	}
+
+	// time.Sleep(time.Second * 2)
+
+	targetDbContext, err := rt.ServerContext().GetDatabase("db")
+	assertNoError(t, err, "failed")
+	targetDb, err := db.GetDatabase(targetDbContext, nil)
+	assertNoError(t, err, "failed")
+
+
+	// Purge one doc
+	// resource := fmt.Sprintf("/db/_purge")
+	doc0Id := fmt.Sprintf("doc-%d", 0)
+	err = targetDb.Purge(doc0Id)
+	assertNoError(t, err, "failed")
+
+	// response := rt.SendAdminRequest("POST", resource, fmt.Sprintf(`{"purged": { "%v": ["*"] } }`, doc0Id))
+	// log.Printf("response: %v", response)
+
+	// Flush rev cache
+	//resource = fmt.Sprintf("/db/_flush_rev_cache")
+	//response = rt.SendAdminRequest("POST", resource, "")
+	targetDb.FlushRevisionCache()
+
+	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
+
+	docs := bt.WaitForNumDocsViaChanges(4)
+	assert.True(t, len(docs) == 4)
+
+
+
+}
