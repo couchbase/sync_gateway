@@ -1,6 +1,7 @@
 package base
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/couchbaselabs/go.assert"
@@ -39,4 +40,112 @@ func TestBucketSpec(t *testing.T) {
 	connStr, err = bucketSpec.GetGoCBConnString()
 	assertNoError(t, err, "Error creating connection string for bucket spec")
 
+}
+
+func TestGetStatsVbSeqno(t *testing.T) {
+
+	// We'll artificially lower this here to make for easier test data
+	const maxVbno = 4
+
+	tests := []struct {
+		stats              map[string]map[string]string
+		expectedUUIDs      map[uint16]uint64
+		expectedHighSeqnos map[uint16]uint64
+	}{
+		{
+			stats: map[string]map[string]string{
+				"host1:11210": map[string]string{
+					"vb_0:uuid":       "90",
+					"vb_0:high_seqno": "990",
+					"vb_1:uuid":       "91",
+					"vb_1:high_seqno": "991",
+					"vb_2:uuid":       "92",
+					"vb_2:high_seqno": "992",
+					"vb_3:uuid":       "93",
+					"vb_3:high_seqno": "993",
+				},
+			},
+			expectedUUIDs: map[uint16]uint64{
+				0: 90,
+				1: 91,
+				2: 92,
+				3: 93,
+			},
+			expectedHighSeqnos: map[uint16]uint64{
+				0: 990,
+				1: 991,
+				2: 992,
+				3: 993,
+			},
+		},
+		{
+			stats: map[string]map[string]string{
+				"host1:11210": map[string]string{
+					"vb_0:uuid":       "90",
+					"vb_0:high_seqno": "990",
+					"vb_1:uuid":       "91",
+					"vb_1:high_seqno": "991",
+				},
+				"host2:11210": map[string]string{
+					"vb_2:uuid":       "92",
+					"vb_2:high_seqno": "992",
+					"vb_3:uuid":       "93",
+					"vb_3:high_seqno": "993",
+				},
+			},
+			expectedUUIDs: map[uint16]uint64{
+				0: 90,
+				1: 91,
+				2: 92,
+				3: 93,
+			},
+			expectedHighSeqnos: map[uint16]uint64{
+				0: 990,
+				1: 991,
+				2: 992,
+				3: 993,
+			},
+		},
+		{
+			stats: map[string]map[string]string{
+				"host1:11210": map[string]string{
+					"vb_0:uuid":       "90",
+					"vb_0:high_seqno": "990",
+				},
+				"host2:11210": map[string]string{
+					"vb_1:uuid":       "91",
+					"vb_1:high_seqno": "991",
+				},
+				"host3:11210": map[string]string{
+					"vb_2:uuid":       "92",
+					"vb_2:high_seqno": "992",
+				},
+				"host4:11210": map[string]string{
+					"vb_3:uuid":       "93",
+					"vb_3:high_seqno": "993",
+				},
+			},
+			expectedUUIDs: map[uint16]uint64{
+				0: 90,
+				1: 91,
+				2: 92,
+				3: 93,
+			},
+			expectedHighSeqnos: map[uint16]uint64{
+				0: 990,
+				1: 991,
+				2: 992,
+				3: 993,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("%d nodes", len(test.stats)), func(ts *testing.T) {
+			actualUUIDs, actualHighSeqnos, err := GetStatsVbSeqno(test.stats, maxVbno, false)
+			assert.Equals(ts, err, nil)
+			assert.DeepEquals(ts, actualUUIDs, test.expectedUUIDs)
+			assert.DeepEquals(ts, actualHighSeqnos, test.expectedHighSeqnos)
+		})
+	}
 }
