@@ -256,6 +256,10 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, (*handler).handlePurge)).Methods("POST")
 	dbr.Handle("/_flush",
 		makeHandler(sc, adminPrivs, (*handler).handleFlush)).Methods("POST")
+	dbr.Handle("/_flush_rev_cache",
+		makeHandler(sc, adminPrivs, (*handler).handleFlushRevCache)).Methods("POST")
+
+
 	dbr.Handle("/_online",
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleDbOnline)).Methods("POST")
 	dbr.Handle("/_offline",

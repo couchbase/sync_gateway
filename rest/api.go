@@ -63,6 +63,11 @@ func (h *handler) handleVacuum() error {
 	return nil
 }
 
+func (h *handler) handleFlushRevCache() error {
+	h.db.FlushRevisionCache()
+	return nil
+}
+
 func (h *handler) handleFlush() error {
 
 	// If it can be flushed, then flush it
