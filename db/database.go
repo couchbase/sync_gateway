@@ -541,6 +541,9 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 }
 
 func (context *DatabaseContext) Authenticator() *auth.Authenticator {
+	context.BucketLock.RLock()
+	defer context.BucketLock.RUnlock()
+
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	authenticator := auth.NewAuthenticator(context.Bucket, context)
 	if context.Options.SessionCookieName != "" {
