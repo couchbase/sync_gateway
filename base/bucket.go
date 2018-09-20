@@ -493,7 +493,10 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 			}
 
 			highSeqno, err := strconv.ParseUint(serverMap[highSeqnoKey], 10, 64)
-			if err == nil && highSeqno > 0 {
+			// Each node will return seqnos for its active and replica vBuckets. Iterating over all nodes will give us
+			// numReplicas*maxVbno results. Rather than filter by active/replica (which would require a separate STATS call)
+			// simply pick the highest.
+			if err == nil && highSeqno > highSeqnos[i] {
 				highSeqnos[i] = highSeqno
 				uuid, err := strconv.ParseUint(serverMap[uuidKey], 10, 64)
 				if err == nil {
@@ -501,8 +504,6 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 				}
 			}
 		}
-		// We're only using a single server, so can break after the first entry in the map.
-		break
 	}
 	return
 
