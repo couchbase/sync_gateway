@@ -543,6 +543,10 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
+
+		// TODO: send NoRev message here
+		// TODO: send error code
+		// TODO: log warning on 500 errors
 		base.Warnf(base.KeyAll, "[%s] blipHandler can't get doc %q/%s: %v", bh.blipContext.ID, base.UD(docID), revID, err)
 		return
 	}
