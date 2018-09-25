@@ -558,13 +558,11 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 	seqJSON, _ := json.Marshal(seq)
 	outrq.Properties["sequence"] = string(seqJSON)
 
-	// TODO: review this
-	if base.IsDocNotFoundError(err) {
-		outrq.Properties["error"] = "404"
-	} else {
-		outrq.Properties["error"] = "500"
-		base.Warnf(base.KeyAll, "[%s] blipHandler can't get doc %q/%s: %v", bh.blipContext.ID, base.UD(docID), revID, err)
-	}
+	status, reason := base.ErrorAsHTTPStatus(err)
+	outrq.Properties["error"] = fmt.Sprintf("%s", status)
+
+	// Add a "reason" field that gives more detailed explanation on the cause of the error.
+	outrq.Properties["reason"] = fmt.Sprintf("%s", reason)
 
 	outrq.SetNoReply(true)
 	sender.Send(outrq)
