@@ -67,13 +67,12 @@ pipeline {
                 }
             }
         }
-        stage('Test') {
+        stage('Test with coverage') {
             steps {
                 echo 'Testing with -race and -cover..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    // Test with -race and -cover at the same time (to save running tests several times)
-                    sh 'go test -race -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_sg.out github.com/couchbase/sync_gateway/...'
-                    sh 'go test -race -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_merged.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
+                    sh 'go test -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_sg.out github.com/couchbase/sync_gateway/...'
+                    sh 'go test -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_merged.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
 
                     // Print total coverage stats
                     sh 'go tool cover -func=cover_sg.out | awk \'END{print "Total SG Coverage:     " $3}\''
@@ -97,6 +96,14 @@ pipeline {
                     // TODO: Requires Cobertura Plugin to be installed on Jenkins first
                     // sh 'gocov convert cover_sg.out | gocov-xml > reports/coverage.xml'
                     // step([$class: 'CoberturaPublisher', coberturaReportFile: 'reports/coverage.xml'])
+                }
+            }
+        }
+        stage('Test with race') {
+            steps {
+                echo 'Testing with -race..'
+                withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                    sh './test.sh -race'
                 }
             }
         }
