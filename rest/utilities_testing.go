@@ -1164,6 +1164,14 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 	}
 
+	// -------- Norev handler callback --------
+	bt.blipContext.HandlerForProfile["norev"] = func(request *blip.Message) {
+		// If a norev is received, then don't bother waiting for one of the expected revisions, since it will never come.
+		// The norev could be added to the returned docs map, but so far there is no need for that.  The ability
+		// to assert on the number of actually received revisions (which norevs won't affect) meets current test requirements.
+		defer revsFinishedWg.Done()
+	}
+
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	changesFinishedWg.Add(1)
 	subChangesRequest := blip.NewRequest()
