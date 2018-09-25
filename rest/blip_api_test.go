@@ -1312,7 +1312,7 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 }
 
 
-// Repro attempt for SG #3738
+// Reproduce issue SG #3738
 //
 // - Add 5 docs to channel ABC
 // - Purge one doc via _purge REST API
@@ -1320,8 +1320,8 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 // - Send subChanges request
 // - Reply to all changes saying all docs are wanted
 // - Wait to receive rev messages for all 5 docs
-//   - Expected: receive all 5 docs
-//   - Actual: only recieve 4 docs
+//   - Expected: receive all 5 docs (4 revs and 1 norev)
+//   - Actual: only recieve 4 docs (4 revs)
 func TestMissingNoRev(t *testing.T) {
 
 	rt := RestTester{}
