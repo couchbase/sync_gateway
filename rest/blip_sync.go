@@ -540,7 +540,6 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 
 func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
 
-	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
 		bh.sendNoRev(err, sender, seq, docID, revID, knownRevs, maxHistory)
@@ -551,12 +550,16 @@ func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, do
 
 func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
 
+	bh.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
+
 	outrq := blip.NewRequest()
 	outrq.SetProfile("norev")
 	outrq.Properties["id"] = docID
 	outrq.Properties["rev"] = revID
-	seqJSON, _ := json.Marshal(seq)
-	outrq.Properties["sequence"] = string(seqJSON)
+	seqJSON, marshalErr := json.Marshal(seq)
+	if marshalErr == nil {
+		outrq.Properties["sequence"] = string(seqJSON)
+	}
 
 	status, reason := base.ErrorAsHTTPStatus(err)
 	outrq.Properties["error"] = fmt.Sprintf("%s", status)
@@ -588,7 +591,7 @@ func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.Se
 
 	outrq := blip.NewRequest()
 	outrq.SetProfile("rev")
-	seqJSON, _ := json.Marshal(seq)
+	seqJSON, marshalErr := json.Marshal(seq)
 	outrq.Properties["id"] = docID
 	delete(body, "_id")
 	outrq.Properties["rev"] = revID
@@ -597,7 +600,9 @@ func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.Se
 		outrq.Properties["deleted"] = "1"
 		delete(body, "deleted")
 	}
-	outrq.Properties["sequence"] = string(seqJSON)
+	if marshalErr == nil {
+		outrq.Properties["sequence"] = string(seqJSON)
+	}
 	if len(history) > 0 {
 		outrq.Properties["history"] = strings.Join(history, ",")
 	}
