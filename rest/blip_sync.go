@@ -542,15 +542,15 @@ func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, do
 
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
-		bh.sendNoRev(err, sender, seq, docID, revID, knownRevs, maxHistory)
+		bh.sendNoRev(err, sender, seq, docID, revID)
 	} else {
 		bh.sendRevision(body, sender, seq, docID, revID, knownRevs, maxHistory)
 	}
 }
 
-func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.SequenceID, docID string, revID string) {
 
-	bh.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
+	bh.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s due to error: %v.  User:%s", base.UD(docID), revID, err, base.UD(bh.effectiveUsername))
 
 	outrq := blip.NewRequest()
 	outrq.SetProfile("norev")
