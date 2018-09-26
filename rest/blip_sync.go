@@ -449,7 +449,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 					return
 				}
 			}
-			bh.sendRevision(sender, seq, docID, revID, knownRevs, maxHistory)
+			bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 		}
 	}
 }
@@ -538,14 +538,44 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 
 //////// DOCUMENTS:
 
-// Pushes a revision body to the client
-func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
-	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
+func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
-		base.Warnf(base.KeyAll, "[%s] blipHandler can't get doc %q/%s: %v", bh.blipContext.ID, base.UD(docID), revID, err)
-		return
+		bh.sendNoRev(err, sender, seq, docID, revID)
+	} else {
+		bh.sendRevision(body, sender, seq, docID, revID, knownRevs, maxHistory)
 	}
+}
+
+func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.SequenceID, docID string, revID string) {
+
+	bh.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s due to error: %v.  User:%s", base.UD(docID), revID, err, base.UD(bh.effectiveUsername))
+
+	outrq := blip.NewRequest()
+	outrq.SetProfile("norev")
+	outrq.Properties["id"] = docID
+	outrq.Properties["rev"] = revID
+	seqJSON, marshalErr := json.Marshal(seq)
+	if marshalErr == nil {
+		outrq.Properties["sequence"] = string(seqJSON)
+	}
+
+	status, reason := base.ErrorAsHTTPStatus(err)
+	outrq.Properties["error"] = fmt.Sprintf("%s", status)
+
+	// Add a "reason" field that gives more detailed explanation on the cause of the error.
+	outrq.Properties["reason"] = fmt.Sprintf("%s", reason)
+
+	outrq.SetNoReply(true)
+	sender.Send(outrq)
+
+}
+
+// Pushes a revision body to the client
+func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+
+	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 
 	// Get the revision's history as a descending array of ancestor revIDs:
 	history := db.ParseRevisions(body)[1:]
@@ -561,7 +591,7 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 
 	outrq := blip.NewRequest()
 	outrq.SetProfile("rev")
-	seqJSON, _ := json.Marshal(seq)
+	seqJSON, marshalErr := json.Marshal(seq)
 	outrq.Properties["id"] = docID
 	delete(body, "_id")
 	outrq.Properties["rev"] = revID
@@ -570,7 +600,9 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 		outrq.Properties["deleted"] = "1"
 		delete(body, "deleted")
 	}
-	outrq.Properties["sequence"] = string(seqJSON)
+	if marshalErr == nil {
+		outrq.Properties["sequence"] = string(seqJSON)
+	}
 	if len(history) > 0 {
 		outrq.Properties["history"] = strings.Join(history, ",")
 	}
