@@ -69,7 +69,7 @@ pipeline {
         }
         stage('Test with coverage') {
             steps {
-                echo 'Testing with -race and -cover..'
+                echo 'Testing with -cover..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                     sh 'go test -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_sg.out github.com/couchbase/sync_gateway/...'
                     sh 'go test -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_merged.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
