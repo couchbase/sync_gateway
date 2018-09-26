@@ -103,7 +103,7 @@ pipeline {
             steps {
                 echo 'Testing with -race..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    sh './test.sh -race'
+                    sh './test.sh -race -count=1'
                 }
             }
         }
