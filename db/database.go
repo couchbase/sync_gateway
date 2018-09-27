@@ -774,12 +774,14 @@ func (db *Database) Compact() (int, error) {
 			}
 			if delErr := db.Bucket.Delete(tombstonesRow.Id); delErr != nil {
 				base.Warnf(base.KeyAll, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
+				continue
 			}
 			count++
 		} else {
 			base.Warnf(base.KeyAll, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
 		}
 	}
+
 	return count, nil
 }
 
