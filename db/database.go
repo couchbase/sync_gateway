@@ -781,7 +781,8 @@ func (db *Database) Compact() (int, error) {
 
 	// Trigger view compaction for all tombstoned documents older than the purge interval
 	purgeIntervalDuration := time.Duration(-db.PurgeInterval) * time.Hour
-	purgeOlderThan := time.Now().Add(purgeIntervalDuration)
+	startTime := time.Now()
+	purgeOlderThan := startTime.Add(purgeIntervalDuration)
 	results, err := db.QueryTombstones(purgeOlderThan)
 	if err != nil {
 		return 0, err
@@ -789,7 +790,7 @@ func (db *Database) Compact() (int, error) {
 
 	base.Infof(base.KeyAll, "Compacting purged tombstones for %s ...", base.UD(db.Name))
 	purgeBody := Body{"_purged": true}
-	count := 0
+	purgedDocs := make([]string, 0)
 
 	var tombstonesRow QueryIdRow
 	for results.Next(&tombstonesRow) {
@@ -797,7 +798,7 @@ func (db *Database) Compact() (int, error) {
 		// First, attempt to purge.
 		purgeErr := db.Purge(tombstonesRow.Id)
 		if purgeErr == nil {
-			count++
+			purgedDocs = append(purgedDocs, tombstonesRow.Id)
 		} else if base.IsKeyNotFoundError(db.Bucket, purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
 			_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
@@ -805,14 +806,25 @@ func (db *Database) Compact() (int, error) {
 				base.Warnf(base.KeyAll, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
 				continue
 			}
+
+			// At this point, the doc is not in a usable state for mobile
+			// so mark it to be removed from cache, even if the subsequent delete fails
+			purgedDocs = append(purgedDocs, tombstonesRow.Id)
+
 			if delErr := db.Bucket.Delete(tombstonesRow.Id); delErr != nil {
-				base.Warnf(base.KeyAll, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
+				base.Errorf(base.KeyAll, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
 			}
-			count++
 		} else {
 			base.Warnf(base.KeyAll, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
 		}
 	}
+
+	// Now purge them from all channel caches
+	count := len(purgedDocs)
+	if count > 0 {
+		db.changeCache.Remove(purgedDocs, startTime)
+	}
+
 	return count, nil
 }
 

@@ -1533,6 +1533,33 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 }
 
+// TestPurgeWithChannelCache will make sure thant upon calling _purge, the channel caches are also cleaned
+// This was fixed in #3765, previously channel caches were not cleaned up
+func TestPurgeWithChannelCache(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
+
+	changes, err := rt.WaitForChanges(2, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
+	assertNoError(t, err, "Error waiting for changes")
+	assert.Equals(t, changes.Results[0].ID, "doc1")
+	assert.Equals(t, changes.Results[1].ID, "doc2")
+
+	// Purge "doc1"
+	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
+	assertStatus(t, resp, http.StatusOK)
+	var body map[string]interface{}
+	json.Unmarshal(resp.Body.Bytes(), &body)
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
+
+	changes, err = rt.WaitForChanges(1, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
+	assertNoError(t, err, "Error waiting for changes")
+	assert.Equals(t, changes.Results[0].ID, "doc2")
+
+}
+
 func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
