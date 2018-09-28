@@ -915,7 +915,7 @@ func (config *ServerConfig) NumIndexWriters() int {
 }
 
 // Starts and runs the server given its configuration. (This function never returns.)
-func RunServer(config *ServerConfig) {
+func RunServer(config *ServerConfig) *ServerContext {
 	PrettyPrint = config.Pretty
 
 	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKey().EnabledLogKeys())
@@ -953,7 +953,10 @@ func RunServer(config *ServerConfig) {
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
 
 	base.Infof(base.KeyAll, "Starting server on %s ...", base.UD(*config.Interface))
-	config.Serve(*config.Interface, CreatePublicHandler(sc))
+	go config.Serve(*config.Interface, CreatePublicHandler(sc))
+
+	return sc
+
 }
 
 func HandleSighup() {

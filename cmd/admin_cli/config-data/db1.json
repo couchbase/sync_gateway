@@ -1,0 +1,32 @@
+{
+  "num_index_replicas": 0,
+  "feed_type":"DCP",
+  "use_views": true,
+  "server": "http://couchbase-server:8091",
+  "bucket":"test_data_bucket",
+  "username": "test_data_bucket",
+  "password": "password",
+  "enable_shared_bucket_access": false,
+  "unsupported": {
+    "api_endpoints": {
+      "enable_couchbase_bucket_flush": true
+    }
+  },
+  "revs_limit": 250,
+  "users":{
+    "GUEST":{
+      "disabled":true,
+      "admin_channels":[
+        "*"
+      ]
+    },
+    "foo":{
+      "disabled":false,
+      "admin_channels":[
+        "*"
+      ],
+      "password":"bar"
+    }
+  },
+  "allow_empty_password":true
+}
