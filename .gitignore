@@ -10,3 +10,4 @@
 /pkg
 *.exe
 *.iml
+/cli/cli

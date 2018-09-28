@@ -20,6 +20,7 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
+	math_rand "math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -1105,4 +1106,56 @@ func ContainsString(s []string, e string) bool {
 		}
 	}
 	return false
+}
+
+// Find a random integer in the given range.  Inclusive for both min and max.
+func RandIntRange(min, max int) int {
+	return math_rand.Intn(max-min) + min
+}
+
+// Check each address to see if it's still in the cluster by seeing if it responds
+// to /pools/default with a 200 or a 404 error.  If it's a 404, consider it to no longer
+// be in the cluster and filter it out.
+// Will be superceded by GoCB change GOCBC-365
+func FilterAddressesInCluster(original gocbconnstr.ConnSpec, username, password string) gocbconnstr.ConnSpec {
+	result := gocbconnstr.ConnSpec{}
+	result.Scheme = original.Scheme
+	result.Bucket = original.Bucket
+	result.Options = original.Options
+
+	addressesInCluster := []gocbconnstr.Address{}
+	for _, address := range original.Addresses {
+		var url string
+		if username != "" {
+			url = fmt.Sprintf(
+				"http://%s:%s@%s:%d/pools/%s",
+				username,
+				password,
+				address.Host,
+				address.Port,
+				DefaultPool)
+		} else {
+			url = fmt.Sprintf(
+				"http://%s:%d/pools/%s",
+				address.Host,
+				address.Port,
+				DefaultPool)
+		}
+
+		resp, err := http.Get(url)
+		if err != nil {
+			Warnf(KeyAll, "Unable to connect to MobileService at %v, ignoring", url)
+			continue
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == 200 {
+			addressesInCluster = append(addressesInCluster, address)
+		} else {
+			Warnf(KeyAll, "Unable to connect to MobileService at %v.  Resp code: %v. ignoring", url, resp.StatusCode)
+		}
+
+	}
+	result.Addresses = addressesInCluster
+	return result
+
 }

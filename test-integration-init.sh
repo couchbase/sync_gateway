@@ -14,8 +14,10 @@ fi
 CB_ADMIN_USERNAME="Administrator"
 CB_ADMIN_PASSWORD="password"
 
+SG_CLUSTER_RAMSIZE_MB=4000
+
 SG_TEST_BUCKETS=("test_data_bucket" "test_shadowbucket" "test_indexbucket")
-SG_TEST_BUCKET_RAMSIZE=1000 # MB
+SG_TEST_BUCKET_RAMSIZE_MB=1000
 
 SG_TEST_BUCKET_PASSWORD="password"
 SG_TEST_BUCKET_RBAC_ROLES=() # No bucket-specific roles when we can rely on global admin
@@ -26,6 +28,7 @@ SG_TEST_GLOBAL_RBAC_ROLES=("admin")
 ################
 
 set -e
+set -x
 
 cb_cli_tool="couchbase-cli"
 
@@ -43,6 +46,17 @@ function find_couchbase-cli {
     set -e
 }
 
+
+function init_cluster {
+    set +e
+    # FTS is currently needed, but once MB-31682 is implemented, that can be removed.
+    "$cb_cli_tool" cluster-init -c $CB_SERVER_URL --cluster-name default --cluster-username $CB_ADMIN_USERNAME \
+        --cluster-password $CB_ADMIN_PASSWORD --cluster-ramsize $SG_CLUSTER_RAMSIZE_MB --cluster-index-ramsize 512 \
+        --cluster-fts-ramsize 256 --services data,index,query,fts,mobile
+    set -e
+}
+
+
 # Will attempt to remove buckets and rbac users
 function cb_cleanup {
     set +e
@@ -59,7 +73,7 @@ function cb_create_buckets {
     for bucket in "${SG_TEST_BUCKETS[@]}"; do
         "$cb_cli_tool" bucket-create -c $CB_SERVER_URL --username $CB_ADMIN_USERNAME \
             --password $CB_ADMIN_PASSWORD --bucket=$bucket --bucket-type=couchbase \
-            --bucket-ramsize=$SG_TEST_BUCKET_RAMSIZE --enable-flush=1 \
+            --bucket-ramsize=$SG_TEST_BUCKET_RAMSIZE_MB --enable-flush=1 \
             --bucket-replica=0 --enable-index-replica=0 --wait
     done
 }
@@ -95,6 +109,7 @@ function cb_manage_rbac_users {
 if [ "$SG_TEST_BACKING_STORE_RECREATE" == "true" ]; then
     echo "SG_TEST_BACKING_STORE_RECREATE set, re-creating buckets and RBAC users"
     find_couchbase-cli
+    init_cluster
     cb_cleanup
     cb_create_buckets
     cb_manage_rbac_users create

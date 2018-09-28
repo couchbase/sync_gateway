@@ -413,7 +413,7 @@ func (k *kvChangeIndex) generatePartitionStats() (PartitionStats, error) {
 }
 
 // The following are no-ops for kvChangeIndex.
-func (k *kvChangeIndex) Start() (error) { return nil }
+func (k *kvChangeIndex) Start() error { return nil }
 
 func IsNotFoundError(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "not found")

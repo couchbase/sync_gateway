@@ -1,0 +1,9 @@
+{
+  "num_index_replicas":0,
+  "feed_type":"DCP",
+  "bucket":"database-1",
+  "enable_shared_bucket_access":false,
+  "revs_limit":250,
+  "allow_empty_password":true,
+  "use_views": true
+}

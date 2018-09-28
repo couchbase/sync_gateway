@@ -44,7 +44,7 @@ const (
 )
 
 const (
-	DataBucket CouchbaseBucketType = iota
+	DataBucket   CouchbaseBucketType = iota
 	IndexBucket
 	ShadowBucket
 )

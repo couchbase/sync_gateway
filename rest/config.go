@@ -17,11 +17,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
-	"syscall"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -32,19 +29,24 @@ import (
 )
 
 var (
-	DefaultInterface      = ":4984"
-	DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
-	DefaultServer         = "walrus:"
-	DefaultPool           = "default"
 
-	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
-	defaultLogFilePath string
+	DefaultPublicInterface = "0.0.0.0"
+	DefaultPublicPort      = 4984
+	DefaultAdminPort       = 4985
+	DefaultInterface       = fmt.Sprintf(":%d", DefaultPublicPort)
+	DefaultAdminInterface  = fmt.Sprintf("127.0.0.1:%d", DefaultAdminPort) // Only accessible on localhost!
+	DefaultServer          = "walrus:"
 
 	// Default values for delta sync
 	defaultDeltaSyncEnable    = base.IsEnterpriseEdition() // true by default in EE
 	defaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24)       // 24 hours in seconds
+
+	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
+	defaultLogFilePath string
 )
 
+// Package level serverconfig.  Should only be used by legacy code.
+// TODO: should there be a LegacySyncGateway or StaticFileConfigSyncGateway and this would become a field of that?
 var config *ServerConfig
 
 const (
@@ -295,7 +297,7 @@ func (dbConfig *DbConfig) setup(name string) error {
 		dbConfig.Server = &DefaultServer
 	}
 	if dbConfig.Pool == nil {
-		dbConfig.Pool = &DefaultPool
+		dbConfig.Pool = &base.DefaultPool
 	}
 
 	url, err := url.Parse(*dbConfig.Server)
@@ -742,7 +744,7 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	configServer := flag.String("configServer", "", "URL of server that can return database configs")
 	deploymentID := flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
 	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
-	poolName := flag.String("pool", DefaultPool, "Name of pool")
+	poolName := flag.String("pool", base.DefaultPool, "Name of pool")
 	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
 	dbName := flag.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
@@ -935,55 +937,6 @@ func (config *ServerConfig) NumIndexWriters() int {
 	return n
 }
 
-// Starts and runs the server given its configuration. (This function never returns.)
-func RunServer(config *ServerConfig) {
-	PrettyPrint = config.Pretty
-
-	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKey().EnabledLogKeys())
-	base.Infof(base.KeyAll, "Console LogLevel: %v", base.ConsoleLogLevel())
-	base.Infof(base.KeyAll, "Log Redaction Level: %s", config.Logging.RedactionLevel)
-
-	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
-		cpus := runtime.NumCPU()
-		if cpus > 1 {
-			runtime.GOMAXPROCS(cpus)
-			base.Infof(base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
-		}
-	}
-
-	SetMaxFileDescriptors(config.MaxFileDescriptors)
-
-	// Set global bcrypt cost if configured
-	if config.BcryptCost > 0 {
-		if err := auth.SetBcryptCost(config.BcryptCost); err != nil {
-			base.Fatalf(base.KeyAll, "Configuration error: %v", err)
-		}
-	}
-
-	sc := NewServerContext(config)
-	for _, dbConfig := range config.Databases {
-		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Fatalf(base.KeyAll, "Error opening database %s: %+v", base.MD(dbConfig.Name), err)
-		}
-	}
-
-	if config.ProfileInterface != nil {
-		//runtime.MemProfileRate = 10 * 1024
-		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(*config.ProfileInterface))
-		go func() {
-			http.ListenAndServe(*config.ProfileInterface, nil)
-		}()
-	}
-
-	go sc.PostStartup()
-
-	base.Infof(base.KeyAll, "Starting admin server on %s", base.UD(*config.AdminInterface))
-	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
-
-	base.Infof(base.KeyAll, "Starting server on %s ...", base.UD(*config.Interface))
-	config.Serve(*config.Interface, CreatePublicHandler(sc))
-}
-
 func HandleSighup() {
 	for logger, err := range base.RotateLogfiles() {
 		if err != nil {
@@ -996,6 +949,7 @@ func GetConfig() *ServerConfig {
 	return config
 }
 
+// TODO: re-add/remove pending decision to continue to support SG Accel
 func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 
 	// if the user passes -skipRunModeValidation on the command line, then skip validation
@@ -1017,66 +971,4 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 		}
 	}
 
-}
-
-func RegisterSignalHandler() {
-	signalchannel := make(chan os.Signal, 1)
-	signal.Notify(signalchannel, syscall.SIGHUP, os.Interrupt, os.Kill)
-
-	go func() {
-		for sig := range signalchannel {
-			base.Infof(base.KeyAll, "Handling signal: %v", sig)
-			switch sig {
-			case syscall.SIGHUP:
-				HandleSighup()
-			case os.Interrupt, os.Kill:
-				// Ensure log buffers are flushed before exiting.
-				base.FlushLogBuffers()
-				os.Exit(130) // 130 == exit code 128 + 2 (interrupt)
-			}
-		}
-	}()
-}
-
-func panicHandler() (panicHandler func()) {
-	return func() {
-		// Recover from any panics to allow for graceful shutdown.
-		if r := recover(); r != nil {
-			base.Errorf(base.KeyAll, "Handling panic: %v", r)
-			// Ensure log buffers are flushed before exiting.
-			base.FlushLogBuffers()
-
-			panic(r)
-		}
-	}
-
-}
-
-// Main entry point for a simple server; you can have your main() function just call this.
-// It parses command-line flags, reads the optional configuration file, then starts the server.
-func ServerMain(runMode SyncGatewayRunMode) {
-	RegisterSignalHandler()
-	defer panicHandler()()
-
-	ParseCommandLine(runMode)
-
-	// Logging config will now have been loaded from command line
-	// or from a sync_gateway config file so we can validate the
-	// configuration and setup logging now
-	warnings, err := config.setupAndValidateLogging()
-	if err != nil {
-		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
-	}
-
-	// This is the earliest opportunity to log a startup indicator
-	// that will be persisted in log files.
-	base.LogSyncGatewayVersion()
-
-	// Execute any deferred warnings from setup.
-	for _, logFn := range warnings {
-		logFn()
-	}
-
-	ValidateConfigOrPanic(runMode)
-	RunServer(config)
 }

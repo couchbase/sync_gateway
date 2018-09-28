@@ -87,6 +87,20 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 	return sc
 }
 
+
+func NewServerContextFromExisting(config *ServerConfig, existing *ServerContext) *ServerContext {
+
+	existing.lock.RLock()
+	defer existing.lock.RUnlock()
+
+	newServerContext := NewServerContext(config)
+
+	newServerContext.databases_ = existing.databases_
+
+	return newServerContext
+
+}
+
 // PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
 	// Introduce a minor delay if there are any replications
@@ -188,11 +202,17 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 func (sc *ServerContext) GetDatabaseConfig(name string) *DbConfig {
 	sc.lock.RLock()
 	config := sc.config.Databases[name]
+
+	// TODO: at the very least, the password should be masked.  Might also consider completely removing username/pass here.
+
 	sc.lock.RUnlock()
 	return config
 }
 
 func (sc *ServerContext) GetConfig() *ServerConfig {
+
+	// TODO: at the very least, the password should be masked for all db configs.  Might also consider completely removing username/pass here.
+
 	return sc.config
 }
 
@@ -477,7 +497,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Initialize Views or GSI indexes
 	if !useViews {
-
 		// Couchbase Server version must be 5.5 or higher to use GSI
 		gsiSupported, errServerVersion := base.IsMinimumServerVersion(bucket, 5, 5)
 		if errServerVersion != nil {
@@ -667,6 +686,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	dbcontext.ExitChanges = make(chan struct{})
 
 	// Register it so HTTP handlers can find it:
+	if sc.databases_ == nil {
+		return nil, fmt.Errorf("sc.databases_ is nil")
+	}
 	sc.databases_[dbcontext.Name] = dbcontext
 
 	// Save the config

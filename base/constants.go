@@ -103,6 +103,23 @@ var (
 		SyncFnErrorWrongUser,
 		SyncFnErrorMissingChannelAccess,
 	}
+
+	// How often to push stats to the Mobile Service
+	PushStatsFreqSeconds = 5
+
+)
+
+const (
+
+	// This is a special interface/port combination to be used when using the RestTester in conjunction with
+	// SG Mercury integration tests that receive configuration from a running MobileService.  If this is used
+	// in the configuration, then during the Sync Gateway startup process, it will skip the Http listener steps.
+	RestTesterInterface = "resttester:-1"
+)
+
+var (
+	DefaultPool = "default"
+
 )
 
 func UnitTestUrl() string {

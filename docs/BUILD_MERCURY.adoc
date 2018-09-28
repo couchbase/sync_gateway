@@ -1,0 +1,231 @@
+[%hardbreaks]
+:toc: left
+:toclevels: 3
+
+Sync Gateway Mercury Build / Development Instructions
+
+== Mobile Service
+
+=== MacOS
+
+==== Install build dependencies
+
+. `cmake` - `brew install cmake`
+. `repo` - should already be installed via `bootstrap.sh`
+. `clang` compiler (available via Xcode)
+
+==== Repo Sync Code (one-time)
+
+```
+$ repo init -u git://github.com/couchbase/manifest -m couchbase-server/mad-hatter.xml
+$ repo sync
+```
+
+==== Build
+
+```
+$ make -j 6
+```
+
+The first time will take a long time, depending on your machine specs.  Subsequent builds should be very fast however.
+
+In order to submit code changes up to the https://github.com/couchbase/mobile-service[mobile-service], you must use Gerrit since the repo is Gerrit-locked.
+
+==== Run
+
+```
+$ cd ns_server
+$ ./cluster_run -n 2
+```
+
+You will now have nodes running on:
+
+* http://localhost:9000/
+* http://localhost:9001/
+
+Both nodes will have the mobile-service running and you are ready to connect Sync Gateway nodes.  Go to the <<Sync Gateway>> section for instructions.
+
+=== CentOS7 + Docker
+
+Building directly on the CentOS7 machine should be possible in theory, but it appears difficult due to compiler version dependencies.  The Couchbase Build team recommends building in a Docker container.
+
+This takes a "hybrid" approach of installing Couchbase Server from an `.rpm` package, and then using the docker source build in order to rebuild the `mobile-service` binary and copy it up to the host machine to overwrite the existing `mobile-service` binary from the `.rpm` package.
+
+==== Install Couchbase Server pre-built binary (one-time)
+
+1. Download a recent Mad-Hatter build, for example http://latestbuilds.service.couchbase.com/builds/latestbuilds/couchbase-server/mad-hatter/1908/couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm[mad-hatter/1908/couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm]
+1. `rpm -i couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm`
+1. In the setup screen, you should see a new checkbox for the **Mobile** service.
+1. After going through the setup process, you should see a new a log file: `/opt/couchbase/var/lib/couchbase/logs/mobile.log`
+1. Additionally, if you run a `ps` command, you should see a new child process: `/opt/couchbase/bin/mobile-service --grpcTlsPort=18098 --restAdminPort=8097 --restAdminPortTLS=18097 --dataDir=/opt/couchbase/var/lib/couchbase/data/@mobile --uuid=69e8108a6611a8b192398a0bb32af36d --server=http://127.0.0.1:8091 --enterprise=true`
+
+At this point, you will have a running Couchbase Server with the mobile service enabled.  You can skip to the Sync Gateway section to get a complete running system.  If you need to change the mobile service code and rebuild, you will need to do more steps.
+
+As far as running the mobile service under a remote debugger, in https://issues.couchbase.com/browse/MB-31682[MB-31682] there was a request to add code which would enable the Delve debugger, which has been tested and is known to work.  Unfornately this change never made it in.  The details are in the ticket under the **Option to run under the delve debugger** section.  If that code was added while building from source, it is possible to use the Delve remote debugging feature to connect.
+
+==== Rebuild Mobile-Service from Source
+
+In order to use the correct dependencies, the `mobile-service` needs to be built from within the Couchbase Server source tree.
+
+===== Install docker (one-time)
+
+From this https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-centos-7[Digital Ocean tutorial]:
+
+```
+$ curl -fsSL https://get.docker.com/ | sh
+$ sudo systemctl start docker
+$ sudo systemctl enable docker
+$ sudo usermod -aG docker centos
+```
+
+===== Launch docker container (one-time)
+
+The docker container has all of the build dependencies baked in.  Run a docker container in the background via:
+
+```
+$ docker run -d -v ~/.ssh:/ssh --name="builder" couchbasebuild/server-centos7-build:20181125 sleep 1000000
+```
+
+===== Enter docker container + repo sync code (one-time)
+
+Create a shell inside of the running docker container:
+
+```
+$ docker exec -u couchbase -it builder bash
+```
+
+Now, from inside the docker container:
+
+```
+$ cd ~
+$ git config --global user.email "someone@couchbase.com"
+$ git config --global user.name "someone"
+$ repo init -u git://github.com/couchbase/manifest -m couchbase-server/mad-hatter.xml
+$ repo sync
+```
+
+===== Enter docker container + build
+
+From inside the docker container (see previous step):
+
+```
+$ make -j 6
+```
+
+The first time will take a long time, depending on your machine specs.  Subsequent builds should be very fast however.
+
+This will include and build the https://github.com/couchbase/mobile-service[mobile-service] codebase as part of the build process.
+
+This will build the **community** edition.  Building the **enterprise** edition is trickier due to the dependency on private repos.
+
+===== Deploy
+
+From **outside** the docker container, deploy the mobile-service binary to the Couchbase Server running on the host:
+
+After the build is complete, you should have a file `/opt/couchbase/bin/mobile-service` (if not, check for `install/bin/mobile-service`).
+
+
+=== Jenkins Toy Build
+
+==== Create Forks (one-time)
+
+Fork the following repos to your personal github account:
+
+* https://github.com/couchbase/manifest
+* https://github.com/couchbase/mobile-service
+
+==== Update couchbase manifest fork (one-time)
+
+On your fork of the `couchbase/manifest` repo, update the `master/couchbase-server/mad-hatter.xml` file to point to your mobile-service fork.  Rather than point to a particular commit hash, it's probably easier to point to your feature branch.
+
+==== Push changes to mobile-service fork
+
+Push your feature branch up to your fork.  Now anyone who builds the `mad-hatter.xml` from your `couchbase/manifest` repo fork will pick up the feature branch of the `mobile-service`.
+
+==== Create Toy Build on Jenkins
+
+On the http://server.jenkins.couchbase.com/view/Toys/job/toy-unix/build?delay=0sec[Server Jenkins] machine, kick off a toy build and point to your manifest fork.
+
+Toy builds will self-destruct after 1-2 weeks, unless you check the **Keep This Build Forever** checkbox.
+
+
+== Sync Gateway
+
+=== Bootstrap
+
+When doing the bootstrap install, specify the SG Mercury branch:
+
+```
+$ ./bootstrap.sh -c feature/mercury
+```
+
+After the build you should have a `godeps/bin/cli` binary.
+
+=== Setup
+
+Export some env variables:
+
+```
+$ export CBSERVER="http://ec2-54-161-160-114.compute-1.amazonaws.com:8091"
+$ export CBUSER="Administrator"
+$ export CBPASS="password"
+```
+
+And rename the binary and put into the path:
+
+```
+$ cp godeps/bin/cli /usr/bin/sg
+```
+
+=== Add config to MetaKV
+
+The Sync Gateway node must be able to fetch it's configuration from MetaKV in order to startup.  Since there is no UI to do this yet, it must be done via the CLI.
+
+==== Listener Config
+
+```
+$ sg config metakv set /mobile/gateway/config/listener -c "$CBSERVER" -u "$CBUSER" -p "$CBPASS" --input-file-path godeps/src/github.com/couchbase/sync_gateway/examples/mercury/metakv-listener.json
+```
+
+==== General Config
+
+```
+$ sg config metakv set /mobile/gateway/config/general -c "$CBSERVER" -u "$CBUSER" -p "$CBPASS" --input-file-path godeps/src/github.com/couchbase/sync_gateway/examples/mercury/metakv-general.json
+```
+
+==== Database Config
+
+```
+$ sg config metakv set /mobile/gateway/config/databases/database-1 -c "$CBSERVER" -u "$CBUSER" -p "$CBPASS" --input-file-path godeps/src/github.com/couchbase/sync_gateway/examples/mercury/metakv-database-1.json
+```
+
+==== CBServer Setup
+
+Go to the Couchbase Server UI and create a bucket named `database-1`
+
+=== Run
+
+```
+$ sg serve -uuid sg1 -c "$CBSERVER" -u "$CBUSER" -p "$CBPASS"
+```
+
+At this point you should be able to access:
+
+* http://localhost:4984/
+
+* http://localhost:4985/database-1/
+
+
+== Continuous Integration
+
+=== Integration Tests
+
+1. Create a fresh Toy Build unless you plan on using a previous build that had the **Keep This Build Forever** checkbox checked.
+1. Kick off integration test on http://uberjenkins.sc.couchbase.com:8080/view/Build/job/sync-gateway-integration-mercury/[Uberjenkins sync-gateway-integration-mercury]
+    * Use the toy build artifact from previous step, which will be installed during job setup
+
+
+== Reference Documentation
+
+1. https://docs.google.com/document/d/1Agc7EOdNcz18Cn_1kzrYv5Ofa1NL1CDwvcUoS1ohW04[Mobile Service Integration] (internal-only Design Doc)
+
