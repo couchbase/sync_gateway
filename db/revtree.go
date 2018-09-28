@@ -374,6 +374,17 @@ func (tree RevTree) getRevisionBody(revid string, loader RevLoaderFunc) ([]byte,
 			}
 		}
 	}
+
+	// Handling for data affected by https://github.com/couchbase/sync_gateway/issues/3692
+	// In that scenario, the revision history includes an entry that should have been moved to a transient
+	// backup and removed from the rev tree, and the revtree version was modified to include a leading non-JSON byte.
+	// We ignore these rev history entries, meaning that callers will see the same view of the data
+	// as if the transient backup had expired. We are not attempting to repair the rev tree, as reclaiming storage
+	// is a much lower priority than avoiding write errors, and want to avoid introducing additional conflict scenarios.
+	// The invalid rev tree bodies will eventually be pruned through normal revision tree pruning.
+	if len(info.Body) > 0 && info.Body[0] == nonJSONPrefix {
+		return nil, false
+	}
 	return info.Body, true
 }
 
