@@ -357,7 +357,8 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 // Checks for unwanted interaction between old revision body backups and revision cache
 func TestOldRevisionStorage(t *testing.T) {
 
-	db, _ := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	prop_1000_bytes := base.CreateProperty(1000)
@@ -637,7 +638,8 @@ const rawDocMalformedRevisionStorage = `
     }`
 
 func TestMalformedRevisionStorageRecovery(t *testing.T) {
-	db, _ := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)
