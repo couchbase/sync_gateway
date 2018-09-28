@@ -14,6 +14,7 @@ import (
 	"log"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
@@ -388,6 +389,46 @@ func TestPrependChanges(t *testing.T) {
 		assert.Equals(t, cachedChanges[4].DocID, "doc5")
 		assert.Equals(t, cachedChanges[4].RevID, "3-a")
 	}
+}
+
+func TestChannelCacheRemove(t *testing.T) {
+
+	base.EnableTestLogKey("Cache+")
+
+	context := testBucketContext()
+	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
+	cache := newChannelCache(context, "Test1", 0)
+
+	// Add some entries to cache
+	cache.addToCache(e(1, "doc1", "1-a"), false)
+	cache.addToCache(e(2, "doc3", "3-a"), false)
+	cache.addToCache(e(3, "doc5", "5-a"), false)
+
+	entries, err := cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.Equals(t, len(entries), 3)
+	assert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3}))
+	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc5"}))
+	assert.True(t, err == nil)
+
+	// Now remove doc1
+	cache.Remove([]string{"doc1"}, time.Now())
+	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.Equals(t, len(entries), 2)
+	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
+	assert.True(t, verifyChannelDocIDs(entries, []string{"doc3", "doc5"}))
+	assert.True(t, err == nil)
+
+	// Try to remove doc5 with a startTime before it was added to ensure it's not removed
+	// This will print a debug level log:
+	// [DBG] Cache+: Skipping removal of doc "doc5" from cache "Test1" - received after purge
+	cache.Remove([]string{"doc5"}, time.Now().Add(-time.Second*5))
+	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.Equals(t, len(entries), 2)
+	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
+	assert.True(t, verifyChannelDocIDs(entries, []string{"doc3", "doc5"}))
+	assert.True(t, err == nil)
 }
 
 func verifyChannelSequences(entries []*LogEntry, sequences []uint64) bool {
