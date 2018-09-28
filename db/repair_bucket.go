@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -191,7 +190,7 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 			err = r.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 				// Be careful: this block can be invoked multiple times if there are races!
 				if currentValue == nil {
-					return nil, nil, couchbase.UpdateCancel // someone deleted it?!
+					return nil, nil, base.ErrUpdateCancel // someone deleted it?!
 				}
 				updatedDoc, shouldUpdate, repairJobs, err := r.TransformBucketDoc(key, currentValue)
 				if err != nil {
@@ -218,19 +217,19 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 					results = append(results, result)
 
 					if r.DryRun {
-						return nil, nil, couchbase.UpdateCancel
+						return nil, nil, base.ErrUpdateCancel
 					} else {
 						return updatedDoc, nil, nil
 					}
 				default:
-					return nil, nil, couchbase.UpdateCancel
+					return nil, nil, base.ErrUpdateCancel
 				}
 
 			})
 
 			if err != nil {
-				// Ignore couchbase.UpdateCancel (Cas.QUIT) errors.  Any other errors should be returned to caller
-				if pkgerrors.Cause(err) != couchbase.UpdateCancel {
+				// Ignore base.ErrUpdateCancel (Cas.QUIT) errors.  Any other errors should be returned to caller
+				if pkgerrors.Cause(err) != base.ErrUpdateCancel {
 					return results, err
 				}
 			}

@@ -20,80 +20,36 @@ import (
 	pkgerrors "github.com/pkg/errors"
 )
 
-type sgErrorCode uint16
-
-const (
-	alreadyImported       = sgErrorCode(0x00)
-	importCancelled       = sgErrorCode(0x01)
-	importCasFailure      = sgErrorCode(0x02)
-	viewTimeoutError      = sgErrorCode(0x03)
-	revTreeAddRevFailure  = sgErrorCode(0x04)
-	importCancelledFilter = sgErrorCode(0x05)
-	documentMigrated      = sgErrorCode(0x06)
-	fatalBucketConnection = sgErrorCode(0x07)
-	emptyMetadata         = sgErrorCode(0x08)
-	casFailureShouldRetry = sgErrorCode(0x09)
-	errPartialViewErrors  = sgErrorCode(0x10)
-	indexerError          = sgErrorCode(0x11)
-	indexExists           = sgErrorCode(0x12)
-	notFound              = sgErrorCode(0x13)
-)
-
-type SGError struct {
-	code sgErrorCode
+type sgError struct {
+	message string
 }
 
 var (
-	ErrRevTreeAddRevFailure  = &SGError{revTreeAddRevFailure}
-	ErrImportCancelled       = &SGError{importCancelled}
-	ErrAlreadyImported       = &SGError{alreadyImported}
-	ErrImportCasFailure      = &SGError{importCasFailure}
-	ErrViewTimeoutError      = &SGError{viewTimeoutError}
-	ErrImportCancelledFilter = &SGError{importCancelledFilter}
-	ErrDocumentMigrated      = &SGError{documentMigrated}
-	ErrFatalBucketConnection = &SGError{fatalBucketConnection}
-	ErrEmptyMetadata         = &SGError{emptyMetadata}
-	ErrCasFailureShouldRetry = &SGError{casFailureShouldRetry}
-	ErrIndexerError          = &SGError{indexerError}
-	ErrIndexAlreadyExists    = &SGError{indexExists}
-	ErrNotFound              = &SGError{notFound}
+	ErrRevTreeAddRevFailure  = &sgError{"Failure adding Rev to RevTree"}
+	ErrImportCancelled       = &sgError{"Import cancelled"}
+	ErrAlreadyImported       = &sgError{"Document already imported"}
+	ErrImportCasFailure      = &sgError{"CAS failure during import"}
+	ErrViewTimeoutError      = &sgError{"Timeout performing Query"}
+	ErrImportCancelledFilter = &sgError{"Import cancelled based on import filter"}
+	ErrDocumentMigrated      = &sgError{"Document migrated"}
+	ErrFatalBucketConnection = &sgError{"Fatal error connecting to bucket"}
+	ErrEmptyMetadata         = &sgError{"Empty Sync Gateway metadata"}
+	ErrCasFailureShouldRetry = &sgError{"CAS failure should retry"}
+	ErrIndexerError          = &sgError{"Indexer error"}
+	ErrIndexAlreadyExists    = &sgError{"Index already exists"}
+	ErrNotFound              = &sgError{"Not Found"}
+	ErrUpdateCancel          = &sgError{"Cancel update"}
 
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.
-	ErrPartialViewErrors = &SGError{errPartialViewErrors}
+	ErrPartialViewErrors = &sgError{"Partial errors in view"}
 )
 
-func (e SGError) Error() string {
-	switch e.code {
-	case alreadyImported:
-		return "Document already imported"
-	case importCancelled:
-		return "Import cancelled"
-	case documentMigrated:
-		return "Document migrated"
-	case importCancelledFilter:
-		return "Import cancelled based on import filter"
-	case importCasFailure:
-		return "CAS failure during import"
-	case revTreeAddRevFailure:
-		return "Failure adding Rev to RevTree"
-	case viewTimeoutError:
-		return "Timeout performing Query"
-	case fatalBucketConnection:
-		return "Fatal error connecting to bucket"
-	case emptyMetadata:
-		return "Empty Sync Gateway metadata"
-	case errPartialViewErrors:
-		return "Partial errors in view"
-	case indexerError:
-		return "Indexer error"
-	case indexExists:
-		return "Index already exists"
-	case notFound:
-		return "Not Found"
-	default:
-		return "Unknown error"
+func (e *sgError) Error() string {
+	if e.message != "" {
+		return e.message
 	}
+	return "Unknown error"
 }
 
 // Simple error implementation wrapping an HTTP response status.
@@ -156,7 +112,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		}
 	case sgbucket.MissingError:
 		return http.StatusNotFound, "missing"
-	case *SGError:
+	case *sgError:
 		switch unwrappedErr {
 		case ErrNotFound:
 			return http.StatusNotFound, "missing"
