@@ -1487,9 +1487,9 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 }
 
-// TestPurgeWithChanelCache will make sure thant upon calling _purge, the channel caches are also cleaned
+// TestPurgeWithChannelCache will make sure thant upon calling _purge, the channel caches are also cleaned
 // This was fixed in #3765, previously channel caches were not cleaned up
-func TestPurgeWithChanelCache(t *testing.T) {
+func TestPurgeWithChannelCache(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
