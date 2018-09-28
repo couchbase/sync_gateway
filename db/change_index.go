@@ -53,6 +53,9 @@ type ChangeIndex interface {
 	// stable=true returns cached value (if available)
 	GetStableClock(stale bool) (clock base.SequenceClock, err error)
 
+	// Remove purges the given doc IDs and returns the number of items removed
+	Remove(docIDs []string, startTime time.Time) (count int)
+
 	// Utility functions for unit testing
 	waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration)
 

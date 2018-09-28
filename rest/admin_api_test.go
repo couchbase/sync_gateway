@@ -18,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1485,6 +1486,36 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	//Create new versions of the docs without conflicts
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+}
+
+// TestPurgeWithChanelCache will make sure thant upon calling _purge, the channel caches are also cleaned
+// This was fixed in #3765, previously channel caches were not cleaned up
+func TestPurgeWithChanelCache(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
+	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
+
+	// Make sure we see both "doc1" and "doc2" in channel "abc"
+	resp := rt.SendRequest(http.MethodGet, "/db/_changes?filter=sync_gateway/bychannel&channels=abc", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.True(t, strings.Contains(resp.Body.String(), "doc1"))
+	assert.True(t, strings.Contains(resp.Body.String(), "doc2"))
+
+	// Purge "doc1"
+	resp = rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
+	assertStatus(t, resp, http.StatusOK)
+	var body map[string]interface{}
+	json.Unmarshal(resp.Body.Bytes(), &body)
+	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
+
+	// If the channel caches have been cleaned properly, we won't see "doc1" in channel "abc"
+	resp = rt.SendRequest(http.MethodGet, "/db/_changes?filter=sync_gateway/bychannel&channels=abc", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.False(t, strings.Contains(resp.Body.String(), "doc1"))
+	assert.True(t, strings.Contains(resp.Body.String(), "doc2"))
+
 }
 
 func TestPurgeWithSomeInvalidDocs(t *testing.T) {

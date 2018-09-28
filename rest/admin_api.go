@@ -672,6 +672,9 @@ func (h *handler) handlePurge() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "_purge document ID's must be passed as a JSON")
 	}
 
+	startTime := time.Now()
+	docIDs := make([]string, 0)
+
 	h.setHeader("Content-Type", "application/json")
 	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
 	h.response.Write([]byte("{\"purged\":{\r\n"))
@@ -698,6 +701,8 @@ func (h *handler) handlePurge() error {
 			err = h.db.Purge(key)
 			if err == nil {
 
+				docIDs = append(docIDs, key)
+
 				if first {
 					first = false
 				} else {
@@ -716,6 +721,11 @@ func (h *handler) handlePurge() error {
 			base.Infof(base.KeyCRUD, "Revision list for doc ID %v, is not an array, ", base.UD(key))
 			continue //skip this entry its not valid
 		}
+	}
+
+	if len(docIDs) > 0 {
+		count := h.db.GetChangeIndex().Remove(docIDs, startTime)
+		base.Debugf(base.KeyCache, "Purged %d items from caches", count)
 	}
 
 	h.response.Write([]byte("}\n}\n"))
