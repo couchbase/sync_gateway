@@ -173,6 +173,52 @@ func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 
 }
 
+// Remove purges the given doc IDs from the channel cache and returns the number of items removed.
+func (c *channelCache) Remove(docIDs []string, startTime time.Time) (count int) {
+	// Exit early if there's no work to do
+	if len(docIDs) == 0 {
+		return 0
+	}
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	// Build subset of docIDs that we know are present in the cache
+	foundDocs := make(map[string]struct{}, 0)
+	for _, docID := range docIDs {
+		if _, found := c.cachedDocIDs[docID]; found {
+			foundDocs[docID] = struct{}{}
+		}
+	}
+
+	// Do the removals in one sweep of the channel cache
+	end := len(c.logs) - 1
+	for i := end; i >= 0; i-- {
+		if _, ok := foundDocs[c.logs[i].DocID]; ok {
+			docID := c.logs[i].DocID
+
+			// Make sure the document we're about to remove is older than the start time of the purge
+			// This is to ensure that resurrected documents do not accidentally get removed.
+			if c.logs[i].TimeReceived.After(startTime) {
+				base.Debugf(base.KeyCache, "Skipping removal of doc %q from cache %q - received after purge",
+					base.UD(docID), base.UD(c.channelName))
+				continue
+			}
+
+			// Memory-leak safe delete from SliceTricks:
+			copy(c.logs[i:], c.logs[i+1:])
+			c.logs[len(c.logs)-1] = nil
+			c.logs = c.logs[:len(c.logs)-1]
+			delete(c.cachedDocIDs, docID)
+			count++
+
+			base.Tracef(base.KeyCache, "Removed doc %q from cache %q", base.UD(docID), base.UD(c.channelName))
+		}
+	}
+
+	return count
+}
+
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
 func (c *channelCache) _pruneCache() {
 	pruned := 0

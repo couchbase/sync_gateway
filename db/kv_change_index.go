@@ -19,10 +19,10 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"time"
 )
 
 const (
@@ -188,6 +188,9 @@ func (k *kvChangeIndex) getOldestSkippedSequence() uint64 {
 }
 func (k *kvChangeIndex) getChannelCache(channelName string) *channelCache {
 	return nil
+}
+func (k *kvChangeIndex) Remove(docIDs []string, startTime time.Time) int {
+	return 0
 }
 
 // TODO: refactor waitForSequence to accept either vbNo or clock
