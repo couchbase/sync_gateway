@@ -1227,6 +1227,169 @@ func TestImportBinaryDoc(t *testing.T) {
 	assert.True(t, response.Code != 200)
 }
 
+// Test creation of backup revision on import
+func TestImportRevisionCopy(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &DbConfig{
+			ImportBackupOldRev: true,
+		},
+	}
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true}`)
+
+	key := "TestImportRevisionCopy"
+	docBody := make(map[string]interface{})
+	docBody["test"] = "TestImportRevisionCopy"
+	docBody["channels"] = "ABC"
+
+	// 1. Create via SDK
+	_, err := bucket.Add(key, 0, docBody)
+	assertNoError(t, err, "Unable to insert doc TestImportDelete")
+
+	// 2. Trigger import via SG retrieval
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	assert.Equals(t, response.Code, 200)
+	var rawInsertResponse rawResponse
+	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
+	assertNoError(t, err, "Unable to unmarshal raw response")
+	rev1id := rawInsertResponse.Sync.Rev
+
+	// 3. Update via SDK
+	updatedBody := make(map[string]interface{})
+	updatedBody["test"] = "TestImportRevisionCopyModified"
+	updatedBody["channels"] = "DEF"
+	err = bucket.Set(key, 0, updatedBody)
+	assertNoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
+
+	// 4. Trigger import of update via SG retrieval
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	assert.Equals(t, response.Code, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
+	assertNoError(t, err, "Unable to unmarshal raw response")
+
+	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
+	//    at simulating multiple SG instances)
+	rt.GetDatabase().FlushRevisionCache()
+
+	// 6. Attempt to retrieve previous revision body
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s?rev=%s", key, rev1id), "")
+	assert.Equals(t, response.Code, 200)
+}
+
+// Test creation of backup revision on import, when rev is no longer available in rev cache.
+func TestImportRevisionCopyUnavailable(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &DbConfig{
+			ImportBackupOldRev: true,
+		},
+	}
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true}`)
+
+	key := "TestImportRevisionCopy"
+	docBody := make(map[string]interface{})
+	docBody["test"] = "TestImportRevisionCopy"
+	docBody["channels"] = "ABC"
+
+	// 1. Create via SDK
+	_, err := bucket.Add(key, 0, docBody)
+	assertNoError(t, err, "Unable to insert doc TestImportDelete")
+
+	// 2. Trigger import via SG retrieval
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	assert.Equals(t, response.Code, 200)
+	var rawInsertResponse rawResponse
+	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
+	assertNoError(t, err, "Unable to unmarshal raw response")
+	rev1id := rawInsertResponse.Sync.Rev
+
+	// 3. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
+	//    at simulating multiple SG instances)
+	rt.GetDatabase().FlushRevisionCache()
+
+	// 4. Update via SDK
+	updatedBody := make(map[string]interface{})
+	updatedBody["test"] = "TestImportRevisionCopyModified"
+	updatedBody["channels"] = "DEF"
+	err = bucket.Set(key, 0, updatedBody)
+	assertNoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
+
+	// 5. Trigger import of update via SG retrieval
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	assert.Equals(t, response.Code, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
+	assertNoError(t, err, "Unable to unmarshal raw response")
+
+	// 6. Attempt to retrieve previous revision body.  Should return missing, as rev wasn't in rev cache when import occurred.
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s?rev=%s", key, rev1id), "")
+	assert.Equals(t, response.Code, 404)
+}
+
+// Verify config flag for import creation of backup revision on import
+func TestImportRevisionCopyDisabled(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	// ImportBackupOldRev not set in config, defaults to false
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+	}
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true}`)
+
+	key := "TestImportRevisionCopy"
+	docBody := make(map[string]interface{})
+	docBody["test"] = "TestImportRevisionCopy"
+	docBody["channels"] = "ABC"
+
+	// 1. Create via SDK
+	_, err := bucket.Add(key, 0, docBody)
+	assertNoError(t, err, "Unable to insert doc TestImportDelete")
+
+	// 2. Trigger import via SG retrieval
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	assert.Equals(t, response.Code, 200)
+	var rawInsertResponse rawResponse
+	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
+	assertNoError(t, err, "Unable to unmarshal raw response")
+	rev1id := rawInsertResponse.Sync.Rev
+
+	// 3. Update via SDK
+	updatedBody := make(map[string]interface{})
+	updatedBody["test"] = "TestImportRevisionCopyModified"
+	updatedBody["channels"] = "DEF"
+	err = bucket.Set(key, 0, updatedBody)
+	assertNoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
+
+	// 4. Trigger import of update via SG retrieval
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	assert.Equals(t, response.Code, 200)
+	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
+	assertNoError(t, err, "Unable to unmarshal raw response")
+
+	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
+	//    at simulating multiple SG instances)
+	rt.GetDatabase().FlushRevisionCache()
+
+	// 6. Attempt to retrieve previous revision body.  Should fail, as backup wasn't persisted
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s?rev=%s", key, rev1id), "")
+	assert.Equals(t, response.Code, 404)
+}
+
 // Test DCP backfill stats
 func TestDcpBackfill(t *testing.T) {
 

@@ -125,6 +125,7 @@ type UnsupportedOptions struct {
 // Options associated with the import of documents not written by Sync Gateway
 type ImportOptions struct {
 	ImportFilter *ImportFilterFunction // Opt-in filter for document import
+	BackupOldRev bool                  // Create temporary backup of old revision body when available
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,

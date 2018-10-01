@@ -378,6 +378,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	if config.ImportFilter != nil {
 		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter)
 	}
+	importOptions.BackupOldRev = config.ImportBackupOldRev
 
 	// Set cache properties, if present
 	cacheOptions := db.CacheOptions{}
