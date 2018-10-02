@@ -1,15 +1,16 @@
 package db
 
 import (
+	"encoding/json"
 	"errors"
 	"expvar"
+	"fmt"
 	"strconv"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto"
-	"fmt"
 )
 
 var importExpvars *expvar.Map
@@ -194,7 +195,16 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		body["_rev"] = newRev
 		doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 
-		// During import, oldDoc (doc.Body) is nil (since it's no longer available)
+		// If the previous revision body is available in the rev cache,
+		// make a temporary copy in the bucket for other nodes/clusters
+		if db.DatabaseContext.Options.ImportOptions.BackupOldRev && doc.CurrentRev != "" {
+			backupErr := db.backupPreImportRevision(docid, doc.CurrentRev)
+			if backupErr != nil {
+				base.Infof(base.KeyImport, "Optimistic backup of previous revision failed due to %s", backupErr)
+			}
+		}
+
+		// During import, oldDoc (doc.Body) is nil (since it's not guaranteed to be available)
 		doc.RemoveBody()
 
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
@@ -277,6 +287,35 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	// On any other error, return it as-is since it shouldn't necessarily retry in this case
 	return nil, false, writeErr
 
+}
+
+// backupPreImportRev attempts to make a temporary backup of a revision body if the
+// revision is currently resident in the revision cache.  This is the import parallel for
+// the temporary revision bodies made during SG writes.  Allows in-flight replications on
+// other Sync Gateway nodes to serve the previous revision
+// (https://github.com/couchbase/sync_gateway/issues/3740)
+func (db *Database) backupPreImportRevision(docid, revid string) error {
+
+	previousBody, _, _, err := db.revisionCache.GetCached(docid, revid)
+	if err != nil {
+		return fmt.Errorf("Cache error: %v", err)
+	}
+
+	if previousBody == nil {
+		return nil
+	}
+
+	bodyJson, marshalErr := json.Marshal(stripSpecialProperties(previousBody))
+	if marshalErr != nil {
+		return fmt.Errorf("Marshal error: %v", marshalErr)
+	}
+
+	setOldRevErr := db.setOldRevisionJSON(docid, revid, bodyJson)
+	if setOldRevErr != nil {
+		return fmt.Errorf("Persistence error: %v", setOldRevErr)
+	}
+
+	return nil
 }
 
 //////// Import Filter Function
