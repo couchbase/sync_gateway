@@ -169,8 +169,9 @@ func (op *OIDCProvider) InitOIDCClient() error {
 
 	// Start process for ongoing sync of the provider config
 	if shouldSyncConfig {
-		base.Infof(base.KeyAuth, "Not synchronizing provider config for issuer %s...", base.UD(op.Issuer))
 		op.OIDCClient.SyncProviderConfig(op.Issuer)
+	} else {
+		base.Infof(base.KeyAuth, "Not synchronizing provider config for issuer %s...", base.UD(op.Issuer))
 	}
 
 	// Initialize the prefix for users created for this provider
