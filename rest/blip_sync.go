@@ -559,26 +559,24 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 		}
 	}
 
-	outrq := blip.NewRequest()
-	outrq.SetProfile("rev")
-	seqJSON, _ := json.Marshal(seq)
-	outrq.Properties["id"] = docID
-	delete(body, "_id")
-	outrq.Properties["rev"] = revID
-	delete(body, "_rev")
+	outrq := NewRevMessage()
+	outrq.setId(docID)
+	outrq.setRev(revID)
 	if del, _ := body["_deleted"].(bool); del {
-		outrq.Properties["deleted"] = "1"
-		delete(body, "deleted")
+		outrq.setDeleted(del)
 	}
-	outrq.Properties["sequence"] = string(seqJSON)
-	if len(history) > 0 {
-		outrq.Properties["history"] = strings.Join(history, ",")
-	}
+	outrq.setSequence(seq)
+	outrq.setHistory(history)
+
+	delete(body, "_id")
+	delete(body, "_rev")
+	delete(body, "_deleted")
+
 	outrq.SetJSONBody(body)
 	if atts := db.BodyAttachments(body); atts != nil {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bh.addAllowedAttachments(atts)
-		sender.Send(outrq)
+		sender.Send(outrq.Message)
 		go func() {
 			defer func() {
 				if panicked := recover(); panicked != nil {
@@ -591,15 +589,18 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 		}()
 	} else {
 		outrq.SetNoReply(true)
-		sender.Send(outrq)
+		sender.Send(outrq.Message)
 	}
+
 }
 
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
-	addRevisionParams := newAddRevisionParams(rq)
-	bh.logEndpointEntry(rq.Profile(), addRevisionParams.String())
+	//addRevisionParams := newAddRevisionParams(rq)
+	revMessage := revMessage{Message: rq}
+
+	bh.logEndpointEntry(rq.Profile(), revMessage.String())
 
 	var body db.Body
 	if err := rq.ReadJSONBody(&body); err != nil {
@@ -607,13 +608,13 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
-	docID, found := addRevisionParams.id()
-	revID, rfound := addRevisionParams.rev()
+	docID, found := revMessage.id()
+	revID, rfound := revMessage.rev()
 	if !found || !rfound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
 
-	if addRevisionParams.deleted() {
+	if revMessage.deleted() {
 		body["_deleted"] = true
 	}
 

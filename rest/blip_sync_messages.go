@@ -189,61 +189,106 @@ func (s *setCheckpointParams) String() string {
 
 }
 
-type addRevisionParams struct {
-	rq *blip.Message // The underlying BLIP message
+// Rev message
+type revMessage struct {
+	*blip.Message
 }
 
-func newAddRevisionParams(rq *blip.Message) *addRevisionParams {
-	return &addRevisionParams{
-		rq: rq,
-	}
+// rev message type and properties
+const (
+	messageName_rev = "rev"
+
+	revMessage_id       = "id"
+	revMessage_rev      = "rev"
+	revMessage_deleted  = "deleted"
+	revMessage_sequence = "sequence"
+	revMessage_history  = "history"
+)
+
+func NewRevMessage() *revMessage {
+	rm := &revMessage{}
+	rm.SetProfile(messageName_rev)
+	return rm
 }
 
-func (a *addRevisionParams) id() (id string, found bool) {
-	id, found = a.rq.Properties["id"]
+func (rm *revMessage) id() (id string, found bool) {
+	id, found = rm.Properties[revMessage_id]
 	return id, found
 }
 
-func (a *addRevisionParams) rev() (rev string, found bool) {
-	rev, found = a.rq.Properties["rev"]
+func (rm *revMessage) rev() (rev string, found bool) {
+	rev, found = rm.Properties[revMessage_rev]
 	return rev, found
 }
 
-func (a *addRevisionParams) deleted() bool {
-	deleted, found := a.rq.Properties["deleted"]
+func (rm *revMessage) deleted() bool {
+	deleted, found := rm.Properties[revMessage_deleted]
 	if !found {
 		return false
 	}
 	return deleted != "0" && deleted != "false"
 }
 
-func (a *addRevisionParams) hasDeletedPropery() bool {
-	_, found := a.rq.Properties["deleted"]
+func (rm *revMessage) hasDeletedProperty() bool {
+	_, found := rm.Properties[revMessage_deleted]
 	return found
 }
 
-func (a *addRevisionParams) sequence() (sequence string, found bool) {
-	sequence, found = a.rq.Properties["sequence"]
+func (rm *revMessage) sequence() (sequence string, found bool) {
+	sequence, found = rm.Properties[revMessage_sequence]
 	return sequence, found
 }
 
-func (a *addRevisionParams) String() string {
+func (rm *revMessage) setId(id string) {
+	rm.Properties[revMessage_id] = id
+}
+
+func (rm *revMessage) setRev(rev string) {
+	rm.Properties[revMessage_rev] = rev
+}
+
+func (rm *revMessage) setDeleted(deleted bool) {
+	if deleted {
+		rm.Properties[revMessage_deleted] = "1"
+	} else {
+		delete(rm.Properties, revMessage_deleted)
+	}
+}
+
+func (rm *revMessage) setHistory(history []string) {
+	if len(history) > 0 {
+		rm.Properties[revMessage_history] = strings.Join(history, ",")
+	} else {
+		delete(rm.Properties, revMessage_history)
+	}
+}
+
+func (rm *revMessage) setSequence(seq db.SequenceID) error {
+	seqJSON, marshalErr := json.Marshal(seq)
+	if marshalErr != nil {
+		return marshalErr
+	}
+	rm.Properties[revMessage_sequence] = string(seqJSON)
+	return nil
+}
+
+func (rm *revMessage) String() string {
 
 	buffer := bytes.NewBufferString("")
 
-	if id, foundId := a.id(); foundId {
+	if id, foundId := rm.id(); foundId {
 		buffer.WriteString(fmt.Sprintf("Id:%v ", id))
 	}
 
-	if rev, foundRev := a.rev(); foundRev {
+	if rev, foundRev := rm.rev(); foundRev {
 		buffer.WriteString(fmt.Sprintf("Rev:%v ", rev))
 	}
 
-	if a.hasDeletedPropery() {
-		buffer.WriteString(fmt.Sprintf("Deleted:%v ", a.deleted()))
+	if rm.hasDeletedProperty() {
+		buffer.WriteString(fmt.Sprintf("Deleted:%v ", rm.deleted()))
 	}
 
-	if sequence, foundSequence := a.sequence(); foundSequence == true {
+	if sequence, foundSequence := rm.sequence(); foundSequence == true {
 		buffer.WriteString(fmt.Sprintf("Sequence:%v ", sequence))
 	}
 
