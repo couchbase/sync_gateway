@@ -225,19 +225,27 @@ func TestImportNullDoc(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
+	key := "TestImportNullDoc"
 	var body Body
-	existingDoc := &sgbucket.BucketDocument{Body: []byte("null"), Cas: 1}
+	rawNull := []byte("null")
+	existingDoc := &sgbucket.BucketDocument{Body: rawNull, Cas: 1}
 
 	// Import a null document
-	importedDoc, err := db.importDoc("TestImportNullDoc", body, false, existingDoc, ImportOnDemand)
+	importedDoc, err := db.importDoc(key+"1", body, false, existingDoc, ImportOnDemand)
 	assert.Equals(t, err, base.ErrEmptyDocument)
 	assertTrue(t, importedDoc == nil, "Expected no imported doc")
 
 	// Do a valid on-demand import from a null document
 	body = Body{"new": true}
-	importedDoc, err = db.importDoc("TestImportNullDoc", body, false, existingDoc, ImportOnDemand)
+	importedDoc, err = db.importDoc(key+"2", body, false, existingDoc, ImportOnDemand)
 	assert.Equals(t, err, nil)
 	assertFalse(t, importedDoc == nil, "Expected imported doc")
+
+	// Feed import of null doc
+	exp := uint32(0)
+	importedDoc, err = db.ImportDocRaw(key+"3", rawNull, []byte("{}"), false, 1, &exp, ImportFromFeed)
+	assert.Equals(t, err, base.ErrEmptyDocument)
+	assertTrue(t, importedDoc == nil, "Expected no imported doc")
 
 }
 
