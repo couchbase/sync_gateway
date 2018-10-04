@@ -43,6 +43,9 @@ var (
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.
 	ErrPartialViewErrors = &sgError{"Partial errors in view"}
+
+	// ErrEmptyDocument is returned when trying to insert a document with a null body.
+	ErrEmptyDocument = &sgError{"Document body is empty"}
 )
 
 func (e *sgError) Error() string {
@@ -116,6 +119,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		switch unwrappedErr {
 		case ErrNotFound:
 			return http.StatusNotFound, "missing"
+		case ErrEmptyDocument:
+			return http.StatusBadRequest, "Document body is empty"
 		}
 	case *json.SyntaxError, *json.UnmarshalTypeError:
 		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", unwrappedErr)
