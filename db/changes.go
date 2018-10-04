@@ -406,6 +406,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			lateSequenceFeeds = make(map[string]*lateSequenceFeed)
 		}
 
+		// Store incoming low sequence, for potential use by longpoll iterations
+		requestLowSeq := options.Since.LowSeq
+
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
 		for {
@@ -630,6 +633,13 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 			if !options.Continuous && (sentSomething || changeWaiter == nil) {
 				break
+			}
+
+			// For longpoll requests that didn't send any results, reset low sequence to the original since value,
+			// as the system low sequence may change before the longpoll request wakes up, and longpoll feeds don't
+			// use lateSequenceFeeds.
+			if !options.Continuous {
+				options.Since.LowSeq = requestLowSeq
 			}
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
