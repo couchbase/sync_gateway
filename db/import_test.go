@@ -215,8 +215,8 @@ func rawDocWithSyncMeta() []byte {
 // Reproduces https://github.com/couchbase/sync_gateway/issues/3774
 func TestImportNullDoc(t *testing.T) {
 
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
+	if !base.TestUseXattrs() || base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works with XATTRS enabled and in integration mode")
 	}
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyImport)()
