@@ -215,6 +215,10 @@ func rawDocWithSyncMeta() []byte {
 // Reproduces https://github.com/couchbase/sync_gateway/issues/3774
 func TestImportNullDoc(t *testing.T) {
 
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyImport)()
 
 	db, testBucket := setupTestDB(t)
@@ -222,11 +226,18 @@ func TestImportNullDoc(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	var body Body
-	existingDoc := &sgbucket.BucketDocument{Body: []byte("null")}
+	existingDoc := &sgbucket.BucketDocument{Body: []byte("null"), Cas: 1}
 
+	// Import a null document
 	importedDoc, err := db.importDoc("TestImportNullDoc", body, false, existingDoc, ImportOnDemand)
 	assert.Equals(t, err, base.ErrEmptyDocument)
 	assertTrue(t, importedDoc == nil, "Expected no imported doc")
+
+	// Do a valid on-demand import from a null document
+	body = Body{"new": true}
+	importedDoc, err = db.importDoc("TestImportNullDoc", body, false, existingDoc, ImportOnDemand)
+	assert.Equals(t, err, nil)
+	assertFalse(t, importedDoc == nil, "Expected imported doc")
 
 }
 
