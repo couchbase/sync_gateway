@@ -37,6 +37,9 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 			base.Infof(base.KeyImport, "Unmarshal error during importDoc %v", err)
 			return nil, err
 		}
+		if body == nil {
+			return nil, base.ErrEmptyDocument
+		}
 	}
 
 	// Get the doc expiry if it wasn't passed in

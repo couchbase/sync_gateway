@@ -214,7 +214,6 @@ func rawDocWithSyncMeta() []byte {
 // Invokes db.importDoc() with a null document body
 // Reproduces https://github.com/couchbase/sync_gateway/issues/3774
 func TestImportNullDoc(t *testing.T) {
-
 	if !base.TestUseXattrs() || base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works with XATTRS enabled and in integration mode")
 	}
@@ -240,13 +239,20 @@ func TestImportNullDoc(t *testing.T) {
 	importedDoc, err = db.importDoc(key+"2", body, false, existingDoc, ImportOnDemand)
 	assert.Equals(t, err, nil)
 	assertFalse(t, importedDoc == nil, "Expected imported doc")
+}
+
+func TestImportNullDocRaw(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyImport)()
+
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
 
 	// Feed import of null doc
 	exp := uint32(0)
-	importedDoc, err = db.ImportDocRaw(key+"3", rawNull, []byte("{}"), false, 1, &exp, ImportFromFeed)
+	importedDoc, err := db.ImportDocRaw("TestImportNullDoc", []byte("null"), []byte("{}"), false, 1, &exp, ImportFromFeed)
 	assert.Equals(t, err, base.ErrEmptyDocument)
 	assertTrue(t, importedDoc == nil, "Expected no imported doc")
-
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
