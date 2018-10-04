@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 )
@@ -214,46 +215,18 @@ func rawDocWithSyncMeta() []byte {
 // Reproduces https://github.com/couchbase/sync_gateway/issues/3774
 func TestImportNullDoc(t *testing.T) {
 
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works in integration mode")
-	}
-
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyMigrate|base.KeyImport)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyImport)()
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	key := "TestImportNullDoc"
-	body := Body{}
-	docBody := []byte("null")
-	err := body.Unmarshal(docBody)
-	assertNoError(t, err, "Error unmarshalling body")
+	var body Body
+	existingDoc := &sgbucket.BucketDocument{Body: []byte("null")}
 
-	// Create via the SDK with sync metadata intact
-	syncMetaExpiry := time.Now().Add(time.Second * 30)
-	_, err = testBucket.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), docBody)
-	assertNoError(t, err, "Error writing doc w/ expiry")
-
-	// Get the existing bucket doc
-	_, existingBucketDoc, err := db.GetDocWithXattr(key, DocUnmarshalAll)
-
-	// Perform an SDK update to turn existingBucketDoc into a stale doc
-	updateCallbackFn := func(current []byte) (updated []byte, expiry *uint32, err error) {
-		exp := uint32(0)
-		return docBody, &exp, nil
-	}
-	errUpdateDoc := testBucket.Bucket.Update(key, uint32(0), updateCallbackFn)
-	assertNoError(t, errUpdateDoc, "Unexpected error")
-
-	// Import the doc (will migrate as part of the import since the doc contains sync meta)
-	docOut, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
-	assert.Equals(t, errImportDoc, base.ErrEmptyDocument)
-	assert.True(t, docOut == nil)
+	importedDoc, err := db.importDoc("TestImportNullDoc", body, false, existingDoc, ImportOnDemand)
+	assert.Equals(t, err, base.ErrEmptyDocument)
+	assertTrue(t, importedDoc == nil, "Expected no imported doc")
 
 }
 
