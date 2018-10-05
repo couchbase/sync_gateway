@@ -37,8 +37,12 @@ pipeline {
         stage('Setup Tools') {
             steps {
                 echo 'Setting up Go tools..'
-                // Use gvm to install the required Go version, if not already
-                sh "${GVM} install $GO_VERSION"
+                // We'll use Go 1.10.4 to bootstrap compilation of newer Go versions
+                // (because we know this version is installed on the Jenkins node)
+                withEnv(["GOROOT_BOOTSTRAP=/root/.gvm/gos/go1.10.4"]) {
+                    // Use gvm to install the required Go version, if not already
+                    sh "${GVM} install $GO_VERSION"
+                }
                 withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
                     sh "go version"
                     sh 'go get -v -u github.com/AlekSi/gocoverutil'
