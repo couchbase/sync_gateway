@@ -12,13 +12,155 @@ package auth
 import (
 	"testing"
 
+	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
 )
 
+func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAuth)()
+
+	cbProvider := OIDCProvider{
+		Name: "Couchbase",
+	}
+	cbProviderDefault := cbProvider
+	cbProviderDefault.IsDefault = true
+
+	glProvider := OIDCProvider{
+		Name: "Gügul",
+	}
+	glProviderDefault := glProvider
+	glProviderDefault.IsDefault = true
+
+	fbProvider := OIDCProvider{
+		Name: "Fæsbuk",
+	}
+	fbProviderDefault := fbProvider
+	fbProviderDefault.IsDefault = true
+
+	tests := []struct {
+		Name             string
+		ProviderMap      OIDCProviderMap
+		ExpectedProvider *OIDCProvider
+	}{
+		{
+			Name:             "Empty OIDCProviderMap",
+			ProviderMap:      nil,
+			ExpectedProvider: nil,
+		},
+		{
+			Name: "One provider, no default",
+			ProviderMap: OIDCProviderMap{
+				"cb": &cbProvider,
+			},
+			ExpectedProvider: nil,
+		},
+		{
+			Name: "One provider, with default",
+			ProviderMap: OIDCProviderMap{
+				"cb": &cbProviderDefault,
+			},
+			ExpectedProvider: &cbProviderDefault,
+		},
+		{
+			Name: "Multiple provider, one default",
+			ProviderMap: OIDCProviderMap{
+				"gl": &glProvider,
+				"cb": &cbProviderDefault,
+				"fb": &fbProvider,
+			},
+			ExpectedProvider: &cbProviderDefault,
+		},
+		// FIXME: Implementation is non-deterministic, because of ranging over the map
+		// {
+		// 	Name: "Multiple provider, multiple defaults",
+		// 	ProviderMap: OIDCProviderMap{
+		// 		"cb": &cbProviderDefault,
+		// 		"gl": &glProviderDefault,
+		// 		"fb": &fbProviderDefault,
+		// 	},
+		// 	ExpectedProvider: &glProviderDefault,
+		// },
+	}
+
+	for _, test := range tests {
+		t.Run(test.Name, func(tt *testing.T) {
+			provider := test.ProviderMap.GetDefaultProvider()
+			assert.Equals(tt, provider, test.ExpectedProvider)
+		})
+	}
+}
+
+func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAuth)()
+
+	clientID := "SGW-TEST"
+	cbProvider := OIDCProvider{
+		Name:     "Couchbase",
+		Issuer:   "http://127.0.0.1:1234",
+		ClientID: &clientID,
+	}
+	glProvider := OIDCProvider{
+		Name:     "Gügul",
+		Issuer:   "http://127.0.0.1:1235",
+		ClientID: &clientID,
+	}
+	fbProvider := OIDCProvider{
+		Name:     "Fæsbuk",
+		Issuer:   "http://127.0.0.1:1236",
+		ClientID: &clientID,
+	}
+	providerMap := OIDCProviderMap{
+		"gl": &glProvider,
+		"cb": &cbProvider,
+		"fb": &fbProvider,
+	}
+
+	tests := []struct {
+		Name             string
+		Issuer           string
+		Audiences        []string
+		ExpectedProvider *OIDCProvider
+	}{
+		{
+			Name:             "No issuer or audiences",
+			Issuer:           "",
+			Audiences:        []string{},
+			ExpectedProvider: nil,
+		},
+		{
+			Name:             "Matched issuer, no audience",
+			Issuer:           "http://127.0.0.1:1234",
+			Audiences:        []string{},
+			ExpectedProvider: nil,
+		},
+		{
+			Name:             "Matched issuer, unmatched audience",
+			Issuer:           "http://127.0.0.1:1234",
+			Audiences:        []string{"SGW-PROD"},
+			ExpectedProvider: nil,
+		},
+		{
+			Name:             "Matched issuer, matched audience",
+			Issuer:           "http://127.0.0.1:1234",
+			Audiences:        []string{"SGW-TEST"},
+			ExpectedProvider: &cbProvider,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.Name, func(tt *testing.T) {
+			provider := providerMap.GetProviderForIssuer(test.Issuer, test.Audiences)
+			assert.Equals(tt, provider, test.ExpectedProvider)
+		})
+	}
+}
+
 func TestOIDCUsername(t *testing.T) {
 
 	provider := OIDCProvider{
+		Name:   "Some_Provider",
 		Issuer: "http://www.someprovider.com",
 	}
 
@@ -26,20 +168,92 @@ func TestOIDCUsername(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, provider.UserPrefix, "www.someprovider.com")
 
+	// test username suffix
 	oidcUsername := GetOIDCUsername(&provider, "bernard")
 	assert.Equals(t, oidcUsername, "www.someprovider.com_bernard")
 	assert.Equals(t, IsValidPrincipalName(oidcUsername), true)
 
+	// test char escaping
 	oidcUsername = GetOIDCUsername(&provider, "{bernard}")
 	assert.Equals(t, oidcUsername, "www.someprovider.com_%7Bbernard%7D")
 	assert.Equals(t, IsValidPrincipalName(oidcUsername), true)
 
+	// test URL with paths
 	provider.UserPrefix = ""
 	provider.Issuer = "http://www.someprovider.com/extra"
 	err = provider.InitUserPrefix()
 	assert.Equals(t, err, nil)
 	assert.Equals(t, provider.UserPrefix, "www.someprovider.com%2Fextra")
-	assert.Equals(t, IsValidPrincipalName(oidcUsername), true)
+
+	// test invalid URL
+	provider.UserPrefix = ""
+	provider.Issuer = "http//www.someprovider.com"
+	err = provider.InitUserPrefix()
+	assert.Equals(t, err, nil)
+	// falls back to provider name:
+	assert.Equals(t, provider.UserPrefix, "Some_Provider")
+
+}
+
+func TestOIDCProvider_InitOIDCClient(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAuth)()
+
+	clientID := "SGW-TEST"
+	callbackURL := "http://sgw-test:4984/_callback"
+
+	tests := []struct {
+		Name             string
+		Provider         *OIDCProvider
+		ErrContains      string
+		ExpectOIDCClient bool
+	}{
+		{
+			Name:        "nil provider",
+			ErrContains: "nil provider",
+		},
+		{
+			Name:        "empty provider",
+			Provider:    &OIDCProvider{},
+			ErrContains: "Issuer not defined",
+		},
+		{
+			Name: "unavailable",
+			Provider: &OIDCProvider{
+				Issuer: "http://127.0.0.1:12345/auth",
+			},
+			ErrContains: "connection refused",
+		},
+		{
+			Name: "valid provider",
+			Provider: &OIDCProvider{
+				ClientID:    &clientID,
+				Issuer:      "https://accounts.google.com",
+				CallbackURL: &callbackURL,
+			},
+			ExpectOIDCClient: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.Name, func(tt *testing.T) {
+			err := test.Provider.InitOIDCClient()
+			if test.ErrContains != "" {
+				assert.NotEquals(tt, err, nil)
+				assert.StringContains(tt, err.Error(), test.ErrContains)
+			} else {
+				assert.Equals(tt, err, nil)
+			}
+
+			if test.Provider != nil {
+				client := test.Provider.GetClient(func() string { return "" })
+				if test.ExpectOIDCClient {
+					assert.NotEquals(tt, client, (*oidc.Client)(nil))
+				} else {
+					assert.Equals(tt, client, (*oidc.Client)(nil))
+				}
+			}
+		})
+	}
 
 }
 
