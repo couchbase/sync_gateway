@@ -98,7 +98,7 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *oid
 			}
 		}
 		if err = op.InitOIDCClient(); err != nil {
-			base.Warnf(base.KeyAll, "Unable to initialize OIDC client: %v", err)
+			base.Errorf(base.KeyAll, "Unable to initialize OIDC client: %v", err)
 		}
 	})
 
@@ -139,7 +139,6 @@ func (op *OIDCProvider) InitOIDCClient() error {
 
 	config, shouldSyncConfig, err := op.DiscoverConfig()
 	if err != nil || config == nil {
-		base.Warnf(base.KeyAll, "Error during OIDC discovery - unable to initialize client: %v", err)
 		return err
 	}
 

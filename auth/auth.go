@@ -11,6 +11,7 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
@@ -327,6 +328,10 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 
 	// VerifyJWT validates the claims and signature on the JWT
 	client := provider.GetClient(callbackURLFunc)
+	if client == nil {
+		return nil, jose.JWT{}, fmt.Errorf("OIDC client couldn't be created!")
+	}
+
 	err = client.VerifyJWT(jwt)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
