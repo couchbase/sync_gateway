@@ -329,7 +329,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	// VerifyJWT validates the claims and signature on the JWT
 	client := provider.GetClient(callbackURLFunc)
 	if client == nil {
-		return nil, jose.JWT{}, fmt.Errorf("OIDC client couldn't be created!")
+		return nil, jose.JWT{}, fmt.Errorf("OIDC client was not initialized")
 	}
 
 	err = client.VerifyJWT(jwt)

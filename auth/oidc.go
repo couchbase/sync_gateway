@@ -132,6 +132,9 @@ func (op *OIDCProvider) InitUserPrefix() error {
 }
 
 func (op *OIDCProvider) InitOIDCClient() error {
+	if op == nil {
+		return fmt.Errorf("nil provider")
+	}
 
 	if op.Issuer == "" {
 		return base.RedactErrorf("Issuer not defined for OpenID Connect provider %+v", base.UD(op))

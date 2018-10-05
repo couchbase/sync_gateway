@@ -29,15 +29,7 @@ type roleImpl struct {
 	vbNo              *uint16
 }
 
-var kValidNameRegexp *regexp.Regexp
-
-func init() {
-	var err error
-	kValidNameRegexp, err = regexp.Compile(`^[-+.@%\w]*$`)
-	if err != nil {
-		panic("Bad kValidNameRegexp")
-	}
-}
+var kValidNameRegexp = regexp.MustCompile(`^[-+.@%\w]*$`)
 
 func (role *roleImpl) initRole(name string, channels base.Set) error {
 	channels = ch.ExpandingStar(channels)
