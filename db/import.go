@@ -3,13 +3,13 @@ package db
 import (
 	"errors"
 	"expvar"
+	"fmt"
 	"strconv"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto"
-	"fmt"
 )
 
 var importExpvars *expvar.Map
@@ -36,6 +36,9 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 		if err != nil {
 			base.Infof(base.KeyImport, "Unmarshal error during importDoc %v", err)
 			return nil, err
+		}
+		if body == nil {
+			return nil, base.ErrEmptyDocument
 		}
 	}
 
@@ -97,6 +100,8 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 	if existingDoc == nil {
 		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
+	} else if body == nil {
+		return nil, base.ErrEmptyDocument
 	}
 
 	var newRev string
@@ -110,9 +115,13 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			if mode == ImportFromFeed {
 				return nil, nil, nil, base.ErrImportCasFailure
 			}
+
 			// If this is an on-demand import, we want to continue to import the current version of the doc.  Re-initialize existing doc based on the latest doc
 			if mode == ImportOnDemand {
 				body = doc.Body()
+				if body == nil {
+					return nil, nil, nil, base.ErrEmptyDocument
+				}
 
 				// Reload the doc expiry
 				gocbBucket, _ := base.AsGoCBBucket(db.Bucket)

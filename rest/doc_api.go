@@ -254,7 +254,7 @@ func (h *handler) handlePutDoc() error {
 		return err
 	}
 	if body == nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "Document body is empty")
+		return base.ErrEmptyDocument
 	}
 	var newRev string
 	var ok bool
