@@ -3,6 +3,7 @@ package cmd
 import (
 	"github.com/couchbase/sync_gateway"
 	"github.com/spf13/cobra"
+	"fmt"
 )
 
 // serveCmd represents the serve command
@@ -11,7 +12,13 @@ var serveCmd = &cobra.Command{
 	Short: "Sync Gateway Server",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		sync_gateway.RunGateway(true)
+
+		config, err := sync_gateway.NewGatewayBootstrapConfig("http://localhost:9000,localhost:9001")
+		if err != nil {
+			panic(fmt.Sprintf("Error creating bootstrap config: %v", err))
+		}
+
+		sync_gateway.RunGateway(*config,true)
 	},
 }
 

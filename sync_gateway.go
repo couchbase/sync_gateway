@@ -17,6 +17,7 @@ import (
 )
 
 type Gateway struct {
+
 	Uuid     string // The uuid of this gateway node (the same one used by CBGT and stored in a local file)
 	Hostname string // The hostname of this gateway node, not sure where this would come from
 
@@ -33,10 +34,15 @@ type Gateway struct {
 
 	// The SG DB contexts, keyed by their path in the Config
 	DbContexts map[string]*db.DatabaseContext
+
+	// The "bootstrap config" for this gateway to be able to connect to Couchbase Server to get actual config
+	BootstrapConfig GatewayBootstrapConfig
+
 }
 
-func NewGateway() *Gateway {
+func NewGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 	gw := Gateway{
+		BootstrapConfig: bootstrapConfig,
 		Uuid:       GATEWAY_UUID,
 		Hostname:   GATEWAY_HOSTNAME,
 		Config:     map[string]*mobile_service.MetaKVPair{},
@@ -330,10 +336,10 @@ func (gw *Gateway) PushStatsStream() error {
 
 }
 
-func RunGateway(pushStats bool) {
+func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 
 	// Client setup
-	gw := NewGateway()
+	gw := NewGateway(bootstrapConfig)
 	defer gw.Close()
 
 	// Load snapshot of configuration from MetaKV
