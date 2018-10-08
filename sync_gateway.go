@@ -73,7 +73,7 @@ func (gw *Gateway) ConnectMobileSvc(mobileSvcAddr string) error {
 func (gw *Gateway) LoadConfigSnapshot() {
 
 	// Get snapshot of MetaKV tree under /mobile/
-	keyMobileConfig := AddTrailingSlash(MOBILE_CONFIG)
+	keyMobileConfig := AddTrailingSlash(MOBILE_GATEWAY_CONFIG)
 	metaKvPairs, err := gw.GrpcClient.MetaKVListAllChildren(context.Background(), &mobile_service.MetaKVPath{Path: keyMobileConfig})
 	if err != nil {
 		panic(fmt.Sprintf("Error getting metakv for mobile key %v.  Err: %v", keyMobileConfig, err))
@@ -86,10 +86,10 @@ func (gw *Gateway) LoadConfigSnapshot() {
 
 func (gw *Gateway) RunServer() {
 
-	// Parse json stored in gw.Config under /mobile/config/server into a ServerConfig
-	serverConfig, err := gw.LoadServerConfig(MOBILE_CONFIG_SERVER)
+	// Parse json stored in metakv into a ServerConfig
+	serverConfig, err := gw.LoadServerConfig()
 	if err != nil {
-		panic(fmt.Sprintf("Error unmarshalling server config %v.  Err: %v", MOBILE_CONFIG_SERVER, err))
+		panic(fmt.Sprintf("Error loading server config.  Err: %v", err))
 
 	}
 
@@ -120,14 +120,7 @@ func (gw *Gateway) ObserveMetaKVChanges(path string) error {
 
 		existingConfigKV, found := gw.Config[updatedConfigKV.Path]
 
-		if strings.HasPrefix(updatedConfigKV.Path, MOBILE_CONFIG_SERVER) {
-
-			// Server level config updated
-			if err := gw.HandleServerConfigUpdated(updatedConfigKV, existingConfigKV); err != nil {
-				log.Printf("Error handling server level config update: %v", err)
-			}
-
-		} else if strings.HasPrefix(updatedConfigKV.Path, MOBILE_CONFIG_DATABASES) {
+		if strings.HasPrefix(updatedConfigKV.Path, MOBILE_CONFIG_DATABASES) {
 
 			switch found {
 			case true:
@@ -153,6 +146,11 @@ func (gw *Gateway) ObserveMetaKVChanges(path string) error {
 				}
 			}
 
+		} else if strings.HasPrefix(updatedConfigKV.Path, MOBILE_GATEWAY_CONFIG) {
+			// Server level config updated
+			if err := gw.HandleServerConfigUpdated(updatedConfigKV, existingConfigKV); err != nil {
+				log.Printf("Error handling server level config update: %v", err)
+			}
 		}
 
 	}
@@ -186,7 +184,7 @@ func (gw *Gateway) HandleDbDelete(incomingMetaKVPair, existingDbConfig *mobile_s
 /*
 
 -
- */
+*/
 
 func (gw *Gateway) HandleDbAdd(metaKvPair *mobile_service.MetaKVPair) error {
 
@@ -230,20 +228,47 @@ func (gw *Gateway) HandleDbUpdate(metaKvPair, existingDbConfig *mobile_service.M
 
 }
 
-func (gw *Gateway) LoadServerConfig(path string) (serverConfig *rest.ServerConfig, err error) {
+func (gw *Gateway) LoadServerConfig() (serverConfig *rest.ServerConfig, err error) {
 
-	metaKvPair, found := gw.Config[path]
+	// Load the listener config
+	listenerConfigMetaKV, found := gw.Config[MOBILE_GATEWAY_LISTENER_CONFIG]
 	if !found {
-		return nil, fmt.Errorf("Key not found: %v", path)
+		return nil, fmt.Errorf("Key not found: %v", MOBILE_GATEWAY_LISTENER_CONFIG)
 	}
 
-	serverConfigTmp := rest.ServerConfig{}
+	serverListenerConfig := rest.ServerConfig{}
 
-	if err := json.Unmarshal(metaKvPair.Value, &serverConfigTmp); err != nil {
+	if err := json.Unmarshal(listenerConfigMetaKV.Value, &serverListenerConfig); err != nil {
 		return nil, err
 	}
 
-	return &serverConfigTmp, nil
+	// Load the general config
+	generalConfigMetaKV, found := gw.Config[MOBILE_GATEWAY_GENERAL_CONFIG]
+	if !found {
+		return nil, fmt.Errorf("Key not found: %v", MOBILE_GATEWAY_GENERAL_CONFIG)
+	}
+
+	serverGeneralConfig := rest.ServerConfig{}
+
+	if err := json.Unmarshal(generalConfigMetaKV.Value, &serverGeneralConfig); err != nil {
+		return nil, err
+	}
+
+	// Copy over the values from listener into general
+	if serverListenerConfig.Interface != nil {
+		serverGeneralConfig.Interface = serverListenerConfig.Interface
+	}
+	if serverListenerConfig.AdminInterface != nil {
+		serverGeneralConfig.AdminInterface = serverListenerConfig.AdminInterface
+	}
+	if serverListenerConfig.SSLCert != nil {
+		serverGeneralConfig.SSLCert = serverListenerConfig.SSLCert
+	}
+	if serverListenerConfig.SSLKey != nil {
+		serverGeneralConfig.SSLKey = serverListenerConfig.SSLKey
+	}
+
+	return &serverGeneralConfig, nil
 
 }
 

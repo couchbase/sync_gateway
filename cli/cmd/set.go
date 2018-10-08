@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"io/ioutil"
 	"os"
+	"log"
 )
 
 var (
@@ -52,13 +53,14 @@ echo "{\"MyKey\": 2}" | sg config metakv set /path/to/my/key
 		if err != nil {
 			panic(fmt.Sprintf("Error reading from stdin: %v", err))
 		}
-		fmt.Printf("input: %v", string(val))
 
 		metakvHelper := sync_gateway.NewMetaKVClient()
 		key := args[0]
 		if err := metakvHelper.Upsert(key, val); err != nil {
 			panic(fmt.Sprintf("Error setting config.  Key: %v Error: %v Val: %v", key, err, val))
 		}
+
+		log.Printf("Successfully set key: %v.  Value size: %d bytes", key, len(val))
 
 	},
 }
