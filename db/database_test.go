@@ -556,14 +556,16 @@ func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
 }
 
 func TestAllDocsOnly(t *testing.T) {
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyCache)()
+
+	// Lower the log max length so no more than 50 items will be kept.
+	cacheOptions := CacheOptions{}
+	cacheOptions.ChannelCacheMaxLength = 50
+
+	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
-
-	// Lower the log expiration time to zero so no more than 50 items will be kept.
-	oldChannelCacheAge := DefaultChannelCacheAge
-	DefaultChannelCacheAge = 0
-	defer func() { DefaultChannelCacheAge = oldChannelCacheAge }()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 

@@ -155,7 +155,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		removalChange.Flags |= channels.Removed
 		c._appendChange(&removalChange)
 	}
-	c._pruneCache()
+	c._pruneCacheLength()
 	base.Infof(base.KeyCache, "    #%d ==> channel %q", change.Sequence, base.UD(c.channelName))
 }
 
@@ -174,9 +174,7 @@ func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
-func (c *channelCache) _pruneCache() {
-	pruned := 0
-
+func (c *channelCache) _pruneCacheLength() (pruned int) {
 	// If we are over max length, prune it down to max length
 	if len(c.logs) > c.options.ChannelCacheMaxLength {
 		pruned = len(c.logs) - c.options.ChannelCacheMaxLength
@@ -187,6 +185,21 @@ func (c *channelCache) _pruneCache() {
 		c.logs = c.logs[pruned:]
 	}
 
+	base.Debugf(base.KeyCache, "Pruned %d entries from channel %q", pruned, base.UD(c.channelName))
+
+	return pruned
+}
+
+func (c *channelCache) pruneCacheAge() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	// time-based cache pruning doesn't make sense when MinLength >= MaxLength
+	if c.options.ChannelCacheMinLength >= c.options.ChannelCacheMaxLength {
+		return
+	}
+
+	pruned := 0
 	// Remove all entries who've been in the cache longer than channelCacheAge, except
 	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
 	for len(c.logs) > c.options.ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.ChannelCacheAge {
@@ -195,15 +208,8 @@ func (c *channelCache) _pruneCache() {
 		c.logs = c.logs[1:]
 		pruned++
 	}
-	if pruned > 0 {
-		base.Debugf(base.KeyCache, "Pruned %d old entries from channel %q", pruned, base.UD(c.channelName))
-	}
-}
+	base.Debugf(base.KeyCache, "Pruned %d old entries from channel %q", pruned, base.UD(c.channelName))
 
-func (c *channelCache) pruneCache() {
-	c.lock.Lock()
-	c._pruneCache()
-	c.lock.Unlock()
 }
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.

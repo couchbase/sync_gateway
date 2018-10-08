@@ -106,6 +106,11 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 		CachePendingSeqMaxWait: DefaultCachePendingSeqMaxWait,
 		CachePendingSeqMaxNum:  DefaultCachePendingSeqMaxNum,
 		CacheSkippedSeqMaxWait: DefaultSkippedSeqMaxWait,
+		ChannelCacheOptions: ChannelCacheOptions{
+			ChannelCacheAge:       DefaultChannelCacheAge,
+			ChannelCacheMinLength: DefaultChannelCacheMinLength,
+			ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
+		},
 	}
 
 	if options != nil {
@@ -120,7 +125,18 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 		if options.CacheSkippedSeqMaxWait > 0 {
 			c.options.CacheSkippedSeqMaxWait = options.CacheSkippedSeqMaxWait
 		}
-		c.options.ChannelCacheOptions = options.ChannelCacheOptions
+
+		if options.ChannelCacheAge > 0 {
+			c.options.ChannelCacheAge = options.ChannelCacheAge
+		}
+
+		if options.ChannelCacheMinLength > 0 {
+			c.options.ChannelCacheMinLength = options.ChannelCacheMinLength
+		}
+
+		if options.ChannelCacheMaxLength > 0 {
+			c.options.ChannelCacheMaxLength = options.ChannelCacheMaxLength
+		}
 	}
 
 	base.Infof(base.KeyCache, "Initializing changes cache with options %+v", c.options)
@@ -131,34 +147,30 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 
 	heap.Init(&c.pendingLogs)
 
-	// Start a background task for periodic housekeeping:
-	go func() {
-		for {
-			select {
-			case <-time.After(c.options.CachePendingSeqMaxWait / 2):
-				c.CleanUp()
-			case <-c.terminator:
-				return
-			}
-		}
-	}()
-
-	// Start a background task for SkippedSequenceQueue housekeeping:
-	go func() {
-		for {
-			select {
-			case <-time.After(c.options.CacheSkippedSeqMaxWait / 2):
-				c.CleanSkippedSequenceQueue()
-			case <-c.terminator:
-				return
-			}
-		}
-	}()
+	// background tasks that perform housekeeping duties on the cache
+	c.backgroundTask("InsertPendingEntries", c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2)
+	c.backgroundTask("CleanSkippedSequenceQueue", c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2)
+	c.backgroundTask("CleanAgedItems", c.CleanAgedItems, c.options.ChannelCacheAge)
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
 	c.lock.Lock()
 
 	return nil
+}
+
+// backgroundTask runs task at the specified time interval in its own goroutine.
+func (c *changeCache) backgroundTask(name string, task func() bool, interval time.Duration) {
+	go func() {
+		for {
+			select {
+			case <-time.After(interval):
+				task()
+			case <-c.terminator:
+				base.Debugf(base.KeyCache, "Database %s: Terminating background task: %s", base.UD(c.context.Name), name)
+				return
+			}
+		}
+	}()
 }
 
 func (c *changeCache) Start() error {
@@ -223,17 +235,10 @@ func (c *changeCache) EnableChannelIndexing(enable bool) {
 	c.lock.Unlock()
 }
 
-// Cleanup function, invoked periodically.
 // Inserts pending entries that have been waiting too long.
-// Removes entries older than MaxChannelLogCacheAge from the cache.
-// Returns false if the changeCache has been closed.
-func (c *changeCache) CleanUp() bool {
+func (c *changeCache) InsertPendingEntries() bool {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
-	if c.channelCaches == nil {
-		return false
-	}
 
 	// If entries have been pending too long, add them to the cache:
 	changedChannels := c._addPendingLogs()
@@ -241,10 +246,22 @@ func (c *changeCache) CleanUp() bool {
 		c.notifyChange(changedChannels)
 	}
 
-	// Remove old cache entries:
-	for channelName := range c.channelCaches {
-		c._getChannelCache(channelName).pruneCache()
+	return true
+}
+
+// CleanAgedItems prunes the caches based on age of items
+func (c *changeCache) CleanAgedItems() bool {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if c.channelCaches == nil {
+		return false
 	}
+
+	for channelName := range c.channelCaches {
+		c._getChannelCache(channelName).pruneCacheAge()
+	}
+
 	return true
 }
 
@@ -342,7 +359,6 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		go c.DocChangedSynchronous(event)
 	}
 }
-
 
 // Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
@@ -786,7 +802,7 @@ func (c *changeCache) _setInitialSequence(initialSequence uint64) {
 	c.nextSequence = initialSequence + 1
 }
 
-// Concurrent-safe get value of nextSequence 
+// Concurrent-safe get value of nextSequence
 func (c *changeCache) getNextSequence() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
