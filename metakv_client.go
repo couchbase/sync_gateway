@@ -14,8 +14,13 @@ type MetaKVClient struct {
 }
 
 func NewMetaKVClient() *MetaKVClient {
+
+	// TODO: at some point, this will probably need a real bootstrap config
+	// TODO: so that it can discover the mobile service port on the mobile service node
+	bootstrapConfig := GatewayBootstrapConfig{}
+
 	return &MetaKVClient{
-		gateway: NewGateway(),
+		gateway: NewGateway(bootstrapConfig),
 		context: context.Background(),
 	}
 }
