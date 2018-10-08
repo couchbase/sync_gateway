@@ -22,8 +22,6 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 )
 
-const kBcryptCostFactor = bcrypt.DefaultCost
-
 // Actual implementation of User interface
 type userImpl struct {
 	roleImpl // userImpl "inherits from" Role
@@ -209,7 +207,7 @@ func (user *userImpl) SetPassword(password string) {
 	if password == "" {
 		user.PasswordHash_ = nil
 	} else {
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), kBcryptCostFactor)
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 		if err != nil {
 			panic(fmt.Sprintf("Error hashing password: %v", err))
 		}
