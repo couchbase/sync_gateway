@@ -1,62 +1,56 @@
-package main
+package sync_gateway
 
 import (
-	"log"
-	"fmt"
 	"context"
+
 	"github.com/couchbase/mobile-service/mobile_service"
-	"github.com/couchbase/sync_gateway"
 )
 
-type AdminCLI struct {
-	gateway *sync_gateway.Gateway
+type MetaKVClient struct {
+	gateway *Gateway
 	context context.Context
 }
 
-func NewAdminCLI() *AdminCLI {
-	return &AdminCLI{
-		gateway: sync_gateway.NewGateway(),
+func NewMetaKVClient() *MetaKVClient {
+	return &MetaKVClient{
+		gateway: NewGateway(),
 		context: context.Background(),
 	}
 }
 
-func (a *AdminCLI) UpsertServerConfig() {
+func (mkv *MetaKVClient) Upsert(key string, value []byte) (err error) {
 
-	a.UpsertKey(sync_gateway.MOBILE_CONFIG_SERVER, "config-data/server.json")
-
-}
-
-func (a *AdminCLI) UpsertKey(key, assetPath string) {
-
-	assetJson, err := Asset(assetPath)
-	if err != nil {
-		panic(fmt.Sprintf("Asset not found"))
-	}
-
-	log.Printf("assetJson: %s", string(assetJson))
-
-	serverConfigKey, _  := a.gateway.GrpcClient.MetaKVGet(a.context, &mobile_service.MetaKVPath{
+	// Get existing value at that key in order to get the metakv rev
+	serverConfigKey, err := mkv.gateway.GrpcClient.MetaKVGet(mkv.context, &mobile_service.MetaKVPath{
 		Path: key,
 	})
 
+	if err != nil {
+		return err
+	}
+
 	if serverConfigKey.Rev == "" {
-		_, err = a.gateway.GrpcClient.MetaKVAdd(a.context, &mobile_service.MetaKVPair{
+		// If no metakv rev, do an add
+		_, err = mkv.gateway.GrpcClient.MetaKVAdd(mkv.context, &mobile_service.MetaKVPair{
 			Path:  key,
-			Value: assetJson,
+			Value: value,
 		})
 
 	} else {
-		_, err = a.gateway.GrpcClient.MetaKVSet(a.context, &mobile_service.MetaKVPair{
+		// If there is a metakv rev, do a set
+		_, err = mkv.gateway.GrpcClient.MetaKVSet(mkv.context, &mobile_service.MetaKVPair{
 			Path:  key,
-			Rev: serverConfigKey.Rev,
-			Value: assetJson,
+			Rev:   serverConfigKey.Rev,
+			Value: value,
 		})
 	}
 
-	if err != nil {
-		log.Printf("Error adding/setting key: %v. Err: %v", key, err)
-	}
+	return err
+
 }
+
+/*
+
 
 
 // DeleteAllMobileKeys
@@ -108,4 +102,6 @@ func (a *AdminCLI) DeleteDbConfig(dbName string) {
 		log.Printf("Error deleting key: %v. Err: %v", dbKey, err)
 	}
 
-}
+
+
+ */
