@@ -201,6 +201,19 @@ func (gw *Gateway) HandleDbAdd(metaKvPair *mobile_service.MetaKVPair) error {
 		return err
 	}
 
+	// The metakv pair path will be: /mobile/gateway/config/databases/database-1
+	// Get the last item from the path and use that as the dbname
+	lastItemPath, err := MetaKVLastItemPath(metaKvPair.Path)
+	if err != nil {
+		return err
+	}
+	dbConfig.Name = lastItemPath
+
+	// Enhance the db config with the connection parameters from the gateway bootstrap config
+	dbConfig.Server = &gw.BootstrapConfig.GoCBConnstr
+	dbConfig.Username = gw.BootstrapConfig.CBUsername
+	dbConfig.Password = gw.BootstrapConfig.CBPassword
+
 	dbContext, err := gw.ServerContext.AddDatabaseFromConfig(dbConfig)
 	if err != nil {
 		return err

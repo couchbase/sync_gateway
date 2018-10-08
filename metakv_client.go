@@ -72,10 +72,6 @@ func (mkv *MetaKVClient) ListAllChildren(key string) (metakvPairs []*mobile_serv
 
 func (mkv *MetaKVClient) Get(key string) (value []byte, err error) {
 
-	//if !strings.HasSuffix(key, "/") {
-	//	return nil, fmt.Errorf("Invalid key: %v does not end in a '/'", key)
-	//}
-
 	metaKvPair, err := mkv.gateway.GrpcClient.MetaKVGet(mkv.context, &mobile_service.MetaKVPath{Path: key})
 	if err != nil {
 		return nil, err
@@ -84,59 +80,35 @@ func (mkv *MetaKVClient) Get(key string) (value []byte, err error) {
 
 }
 
-/*
+func (mkv *MetaKVClient) Delete(key string) (err error) {
 
-
-
-// DeleteAllMobileKeys
-func (a *AdminCLI) DeleteAllMobileKeys() {
-
-	mobileConfigKey := sync_gateway.AddTrailingSlash(sync_gateway.MOBILE_GATEWAY_CONFIG) // /mobile/config/
-	_, err := a.gateway.GrpcClient.MetaKVRecursiveDelete(a.context, &mobile_service.MetaKVPath{Path: mobileConfigKey})
-	if err != nil {
-		panic(fmt.Sprintf("Error recursively deleting elements under %v.  Err: %v", mobileConfigKey, err))
-	}
-
-}
-
-func (a *AdminCLI) ListAllMobileKeys() {
-
-	mobileConfigKey := sync_gateway.AddTrailingSlash(sync_gateway.MOBILE_GATEWAY_CONFIG) // /mobile/config/
-	metaKvPairs, err := a.gateway.GrpcClient.MetaKVListAllChildren(a.context, &mobile_service.MetaKVPath{Path: mobileConfigKey})
-	if err != nil {
-		panic(fmt.Sprintf("Error getting metakv for mobile key %v.  Err: %v", mobileConfigKey, err))
-	}
-	for _, metakvPair := range metaKvPairs.Items {
-		log.Printf("metakvPair: %+v", metakvPair)
-	}
-
-}
-
-func (a *AdminCLI) UpsertDbConfig(dbName string) {
-
-	dbKey := fmt.Sprintf("%s/%s", sync_gateway.MOBILE_CONFIG_DATABASES, dbName)
-
-	a.UpsertKey(dbKey, fmt.Sprintf("config-data/%s.json", dbName))
-
-}
-
-func (a *AdminCLI) DeleteDbConfig(dbName string) {
-
-	dbKey := fmt.Sprintf("%s/%s", sync_gateway.MOBILE_CONFIG_DATABASES, dbName)
-
-	serverConfigKey, _  := a.gateway.GrpcClient.MetaKVGet(a.context, &mobile_service.MetaKVPath{
-		Path: dbKey,
+	serverConfigKey, err  := mkv.gateway.GrpcClient.MetaKVGet(mkv.context, &mobile_service.MetaKVPath{
+		Path: key,
 	})
 
-	_, err := a.gateway.GrpcClient.MetaKVDelete(a.context, &mobile_service.MetaKVPair{
-		Path: dbKey,
+	if err != nil {
+		return err
+	}
+
+	_, err = mkv.gateway.GrpcClient.MetaKVDelete(mkv.context, &mobile_service.MetaKVPair{
+		Path: key,
 		Rev: serverConfigKey.Rev,
 	})
 
-	if err != nil {
-		log.Printf("Error deleting key: %v. Err: %v", dbKey, err)
+	return err
+
+}
+
+// /mobile/gateway/config/databases/database-1 -> database-1
+func MetaKVLastItemPath(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("Cannot get last item from empty path")
 	}
+	components := strings.Split(path, "/")
+	if len(components) == 0 {
+		return "", fmt.Errorf("Not enough components found in path: %v", path)
+	}
+	return components[len(components) - 1], nil
 
+}
 
-
-*/
