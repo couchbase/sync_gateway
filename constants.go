@@ -6,11 +6,25 @@ import (
 )
 
 var (
+	// /mobile
 	MOBILE = "/mobile"
-	MOBILE_CONFIG = fmt.Sprintf("%s/config", MOBILE)
-	MOBILE_CONFIG_SERVER = fmt.Sprintf("%s/server", MOBILE_CONFIG)
-	MOBILE_CONFIG_DATABASES = fmt.Sprintf("%s/databases", MOBILE_CONFIG)
-)
+
+	// /mobile/gateway
+	MOBILE_GATEWAY = fmt.Sprintf("%s/gateway", MOBILE)
+
+	// /mobile/gateway/config
+	MOBILE_GATEWAY_CONFIG   = fmt.Sprintf("%s/config", MOBILE_GATEWAY)
+
+	// /mobile/gateway/config/listener
+	MOBILE_GATEWAY_LISTENER_CONFIG   = fmt.Sprintf("%s/listener", MOBILE_GATEWAY_CONFIG)
+
+	// /mobile/gateway/config/general
+	MOBILE_GATEWAY_GENERAL_CONFIG   = fmt.Sprintf("%s/general", MOBILE_GATEWAY_CONFIG)
+
+	// /mobile/gateway/config/databases
+	MOBILE_CONFIG_DATABASES = fmt.Sprintf("%s/databases", MOBILE_GATEWAY_CONFIG)
+
+	)
 
 var (
 	MOBILE_SERVICE_HOST_PORT = "localhost:50052"
