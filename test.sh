@@ -12,8 +12,8 @@ fi
 EXTRA_FLAGS=""
 if [ "$SG_TEST_BACKING_STORE" == "Couchbase" ] || [ "$SG_TEST_BACKING_STORE" == "couchbase" ]; then
     ./test-integration-init.sh
-    echo "Integration mode: forcing tests to run in serial across packages via -p 1 flag"
-    EXTRA_FLAGS="-p 1"  # force this to run in serial, otherwise packages run in parallel and interfere with each other
+    echo "Integration mode: forcing -count=1 and tests to run in serial across packages via -p 1 flag"
+    EXTRA_FLAGS="-count=1 -p 1" # force this to run in serial, otherwise packages run in parallel and interfere with each other
 fi
 
 # Default the test timeout to 20 minutes.  This means that any package will fail if the tests in that package takes longer
