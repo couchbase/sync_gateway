@@ -9,7 +9,9 @@ type GatewayBootstrapConfig struct {
 
 	GoCBConnstr string // A "connection spec" string as expected by couchbaselabs/gocbconnstr
 
+	CBUsername string  // The Couchbase Username to connect as
 
+	CBPassword string  // The password corresponding to CBUsername
 
 
 }

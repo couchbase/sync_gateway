@@ -6,6 +6,12 @@ import (
 	"fmt"
 )
 
+var (
+	GoCBConnstr string
+	CBUsername string
+	CBPassword string
+)
+
 // serveCmd represents the serve command
 var serveCmd = &cobra.Command{
 	Use:   "serve",
@@ -13,26 +19,27 @@ var serveCmd = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		config, err := sync_gateway.NewGatewayBootstrapConfig("http://localhost:9000,localhost:9001")
+		config, err := sync_gateway.NewGatewayBootstrapConfig(GoCBConnstr)
 		if err != nil {
 			panic(fmt.Sprintf("Error creating bootstrap config: %v", err))
 		}
+
+		config.CBUsername = CBUsername
+		config.CBPassword = CBPassword
 
 		sync_gateway.RunGateway(*config,true)
 	},
 }
 
 func init() {
+
 	rootCmd.AddCommand(serveCmd)
 
-	// Here you will define your flags and configuration settings.
+	serveCmd.Flags().StringVarP(&GoCBConnstr, "connstr", "c", "couchbase://host1,host2", "The Couchbase server(s) to connect to")
 
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// serveCmd.PersistentFlags().String("foo", "", "A help for foo")
+	serveCmd.Flags().StringVarP(&CBUsername, "username", "u", "username", "The Couchbase username to connect as")
 
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// serveCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	serveCmd.Flags().StringVarP(&CBPassword, "password", "p", "xxxxxxxx", "The password for the given username")
+
 
 }
