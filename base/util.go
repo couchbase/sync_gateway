@@ -30,6 +30,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	math_rand "math/rand"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gomemcached"
@@ -1045,4 +1046,8 @@ func ReplaceAll(s, chars, new string) string {
 		s = strings.Replace(s, string(r), new, -1)
 	}
 	return s
+}
+
+func RandIntRange(min, max int) int {
+	return math_rand.Intn(max-min) + min
 }
