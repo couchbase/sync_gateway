@@ -8,15 +8,14 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func TestUserPasswordHashUpgrade(t *testing.T) {
+func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 	const (
 		username      = "alice"
 		oldPassword   = "hunter2"
-		newPassword   = "correct horse battery staple"
 		newBcryptCost = 12
 	)
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 
 	gTestBucket := base.GetTestBucketOrPanic()
 	defer gTestBucket.Close()
@@ -31,13 +30,30 @@ func TestUserPasswordHashUpgrade(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.NotEquals(t, u, nil)
 
-	// Now authenticate
-	assert.False(t, u.Authenticate("test"))
-	assert.True(t, u.Authenticate(oldPassword))
+	user := u.(*userImpl)
+	oldHash := user.PasswordHash_
 
 	// Make sure their password was hashed with the desired cost
-	user := u.(*userImpl)
 	cost, err := bcrypt.Cost(user.PasswordHash_)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, cost, bcrypt.DefaultCost)
+
+	// Try to auth with an incorrect password
+	assert.False(t, u.Authenticate("test"))
+
+	// Make sure the hash has not changed
+	newHash := user.PasswordHash_
+	assert.Equals(t, string(newHash), string(oldHash))
+
+	// Authenticate correctly
+	assert.True(t, u.Authenticate(oldPassword))
+
+	// Make sure the hash has still not changed (we've not changed the cost yet)
+	newHash = user.PasswordHash_
+	assert.Equals(t, string(newHash), string(oldHash))
+
+	// Check the cost is still the old value
+	cost, err = bcrypt.Cost(user.PasswordHash_)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, cost, bcrypt.DefaultCost)
 
@@ -45,20 +61,21 @@ func TestUserPasswordHashUpgrade(t *testing.T) {
 	err = SetBcryptCost(newBcryptCost)
 	assert.Equals(t, err, nil)
 
-	// Cost is still default... Password hash was created before change
-	cost, err = bcrypt.Cost(user.PasswordHash_)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, cost, bcrypt.DefaultCost)
+	// Authenticate incorrectly again
+	assert.False(t, u.Authenticate("test"))
 
-	// Make sure the user can still authenticate
+	// Make sure the hash has still not changed (cost has been bumped, but auth was not successful)
+	newHash = user.PasswordHash_
+	assert.Equals(t, string(newHash), string(oldHash))
+
+	// Authenticate correctly
 	assert.True(t, u.Authenticate(oldPassword))
 
-	// Reset password
-	u.SetPassword(newPassword)
-	// Make sure old password doesn't work anymore
-	assert.True(t, u.Authenticate(newPassword))
-	assert.False(t, u.Authenticate(oldPassword))
-	// Now check the bcrypt cost was upgraded
+	// Hash should've changed, as the above authenticate was successful
+	newHash = user.PasswordHash_
+	assert.NotEquals(t, string(newHash), string(oldHash))
+
+	// Cost should now match newBcryptCost
 	cost, err = bcrypt.Cost(user.PasswordHash_)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, cost, newBcryptCost)
