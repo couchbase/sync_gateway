@@ -45,8 +45,9 @@ pipeline {
                 }
                 withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
                     sh "go version"
-                    sh 'go get -v -u github.com/AlekSi/gocoverutil'
+                    // cover is used for building HTML reports of coverprofiles
                     sh 'go get -v -u golang.org/x/tools/cmd/cover'
+                    // goveralls is used to send coverprofiles to coveralls.io
                     sh 'go get -v -u github.com/mattn/goveralls'
                     // Jenkins coverage reporting tools
                     // sh 'go get -v -u github.com/axw/gocov/...'
@@ -72,26 +73,28 @@ pipeline {
         }
         stage('Test with coverage') {
             steps {
-                echo 'Testing with coverage..'
+                echo 'Testing with -cover..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    // gocoverutil is required until we upgrade to Go 1.10, and can use -coverprofile with ./...
-                    sh 'gocoverutil -coverprofile=cover_sg.out test -covermode=atomic github.com/couchbase/sync_gateway/...'
-                    sh 'gocoverutil -coverprofile=cover_sga.out test -covermode=atomic github.com/couchbaselabs/sync-gateway-accel/...'
+                    // Build public and private coverprofiles (private containing accel code too)
+                    sh 'go test -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_public.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
+                    sh 'go test -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
 
-                    sh 'gocoverutil -coverprofile=cover_merged.out merge cover_sg.out cover_sga.out'
+                    // Print total coverage stats
+                    sh 'go tool cover -func=cover_public.out | awk \'END{print "Total SG Coverage: " $3}\''
+                    sh 'go tool cover -func=cover_private.out | awk \'END{print "Total SG+SGA Coverage: " $3}\''
 
-                    // Publish combined HTML coverage report
+                    // Publish combined HTML coverage report to Jenkins
                     sh 'mkdir reports'
-                    sh 'go tool cover -html=cover_merged.out -o reports/coverage.html'
+                    sh 'go tool cover -html=cover_private.out -o reports/coverage.html'
                     publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: 'coverage.html', keepAll: false, reportDir: 'reports', reportFiles: 'coverage.html', reportName: 'Code Coverage', reportTitles: ''])
                 }
 
                 // Travis-related variables are required as coveralls only officially supports a certain set of CI tools.
                 withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
-                    // Replace count covermode values with set just for coveralls to reduce the variability in reports.
-                    sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_sg.out > cover_coveralls.out'
+                    // Replace covermode values with set just for coveralls to reduce the variability in reports.
+                    sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_public.out > cover_coveralls.out'
 
-                    // Send just the SG coverage report to coveralls.io - **NOT** accel! It will expose the codebase!!!
+                    // Send just the SG coverage report to coveralls.io - **NOT** accel! It will expose the private codebase!!!
                     sh "goveralls -coverprofile=cover_coveralls.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN}"
 
                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
@@ -101,11 +104,11 @@ pipeline {
                 }
             }
         }
-        stage('Test Race') {
+        stage('Test with race') {
             steps {
                 echo 'Testing with -race..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    sh './test.sh -race'
+                    sh './test.sh -race -count=1'
                 }
             }
         }
