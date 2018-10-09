@@ -97,7 +97,7 @@ type ServerConfig struct {
 	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`             // Config for unsupported features
 	RunMode                    SyncGatewayRunMode       `json:"runmode,omitempty"`                 // Whether this is an SG reader or an SG Accelerator
 	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"`  // BLIP data compression level (0-9)
-	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`             // bcrypt cost to use for password hases - zero = bcrypt.DefaultCost
+	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`             // bcrypt cost to use for password hashes - Zero = bcrypt.DefaultCost
 }
 
 // Bucket configuration elements - used by db, shadow, index

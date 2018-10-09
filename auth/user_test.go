@@ -8,6 +8,41 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+func TestUserAuthenticateDisabled(t *testing.T) {
+	const (
+		username    = "alice"
+		oldPassword = "hunter2"
+	)
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+
+	gTestBucket := base.GetTestBucketOrPanic()
+	defer gTestBucket.Close()
+	bucket := gTestBucket.Bucket
+
+	// Create user
+	auth := NewAuthenticator(bucket, nil)
+	u, err := auth.NewUser(username, oldPassword, base.Set{})
+	assert.Equals(t, err, nil)
+	assert.NotEquals(t, u, nil)
+
+	assert.False(t, u.Disabled())
+	// Correct password, activated account
+	assert.True(t, u.Authenticate(oldPassword))
+	// Incorrect password, activated account
+	assert.False(t, u.Authenticate("test"))
+
+	// Disable account
+	u.SetDisabled(true)
+
+	assert.True(t, u.Disabled())
+	// Correct password, disabled account
+	assert.False(t, u.Authenticate(oldPassword))
+	// Incorrect password, disabled account
+	assert.False(t, u.Authenticate("test"))
+
+}
+
 func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 	const (
 		username      = "alice"
