@@ -649,7 +649,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	sc.databases_[dbcontext.Name] = dbcontext
 
 	// Save the config
-	sc.config.Databases[config.Name] = config
+	sc.config.Databases[dbName] = config
 
 	if config.StartOffline {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
