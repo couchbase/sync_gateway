@@ -11,13 +11,14 @@ import (
 	"encoding/json"
 
 	"github.com/couchbase/mobile-service/mobile_service"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"google.golang.org/grpc"
+	"strconv"
 )
 
 type Gateway struct {
-
 	Uuid     string // The uuid of this gateway node (the same one used by CBGT and stored in a local file)
 	Hostname string // The hostname of this gateway node, not sure where this would come from
 
@@ -37,18 +38,23 @@ type Gateway struct {
 
 	// The "bootstrap config" for this gateway to be able to connect to Couchbase Server to get actual config
 	BootstrapConfig GatewayBootstrapConfig
-
 }
 
 func NewGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 	gw := Gateway{
 		BootstrapConfig: bootstrapConfig,
-		Uuid:       GATEWAY_UUID,
-		Hostname:   GATEWAY_HOSTNAME,
-		Config:     map[string]*mobile_service.MetaKVPair{},
-		DbContexts: map[string]*db.DatabaseContext{},
+		Uuid:            bootstrapConfig.Uuid,
+		Hostname:        GATEWAY_HOSTNAME,
+		Config:          map[string]*mobile_service.MetaKVPair{},
+		DbContexts:      map[string]*db.DatabaseContext{},
 	}
-	err := gw.ConnectMobileSvc(MOBILE_SERVICE_HOST_PORT)
+	mobileSvcHostPort, err := ChooseRandomMobileService()
+	if err != nil {
+		panic(fmt.Sprintf("Error finding mobile service to connect to: %v", err))
+	}
+	log.Printf("Connecting to mobile service: %v", mobileSvcHostPort)
+
+	err = gw.ConnectMobileSvc(mobileSvcHostPort)
 	if err != nil {
 		panic(fmt.Sprintf("Error connecting to mobile service: %v", err))
 	}
@@ -276,9 +282,15 @@ func (gw *Gateway) LoadServerConfig() (serverConfig *rest.ServerConfig, err erro
 	// Copy over the values from listener into general
 	if serverListenerConfig.Interface != nil {
 		serverGeneralConfig.Interface = serverListenerConfig.Interface
+		if gw.BootstrapConfig.PortOffset != 0 {
+			*serverGeneralConfig.Interface = ApplyPortOffset(*serverGeneralConfig.Interface, gw.BootstrapConfig.PortOffset)
+		}
 	}
 	if serverListenerConfig.AdminInterface != nil {
 		serverGeneralConfig.AdminInterface = serverListenerConfig.AdminInterface
+		if gw.BootstrapConfig.PortOffset != 0 {
+			*serverGeneralConfig.AdminInterface = ApplyPortOffset(*serverGeneralConfig.AdminInterface, gw.BootstrapConfig.PortOffset)
+		}
 	}
 	if serverListenerConfig.SSLCert != nil {
 		serverGeneralConfig.SSLCert = serverListenerConfig.SSLCert
@@ -320,8 +332,8 @@ func (gw *Gateway) PushStatsStream() error {
 		Hostname: gw.Hostname,
 	}
 	creds := mobile_service.Creds{
-		Username: "Testuser",
-		Password: "password",
+		Username: gw.BootstrapConfig.CBUsername,
+		Password: gw.BootstrapConfig.CBPassword,
 	}
 	stats := []mobile_service.Stats{
 		mobile_service.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "10", Creds: &creds},
@@ -346,6 +358,38 @@ func (gw *Gateway) PushStatsStream() error {
 
 	// Should never get here
 	return fmt.Errorf("Stats push ended unexpectedly")
+
+}
+
+func ChooseRandomMobileService() (mobileSvcHostPort string, err error) {
+
+	mobileServiceNodes, err := FindMobileServiceNodes()
+	if err != nil {
+		return "", err
+	}
+
+	return mobileServiceNodes[base.RandIntRange(0, len(mobileServiceNodes))], nil
+
+}
+
+func FindMobileServiceNodes() (mobileSvcHostPorts []string, err error) {
+	return []string{
+		"localhost:50051",
+		"localhost:50052",
+	}, nil
+}
+
+// "localhost:4984" with port offset 2 -> "localhost:4986"
+func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffset string) {
+
+	components := strings.Split(mobileSvcHostPort, ":")
+	portStr := components[1]
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to apply port offset to %s", mobileSvcHostPort))
+	}
+	port += portOffset
+	return fmt.Sprintf("%s:%d", components[0], port)
 
 }
 
