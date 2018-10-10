@@ -209,8 +209,9 @@ func (user *userImpl) Authenticate(password string) bool {
 			return false
 		}
 
-		// password was correct, we'll attempt to upgrade the bcrypt hash
-		user.upgradePasswordHash(user.PasswordHash_, password)
+		// password was correct, we'll rehash the password if required
+		// e.g: in the case of bcryptCost changes
+		user.rehashPassword(user.PasswordHash_, password)
 	} else {
 		// no hash, but (incorrect) password provided
 		if password != "" {
@@ -234,17 +235,27 @@ func (user *userImpl) SetPassword(password string) {
 	}
 }
 
-// upgraePasswordHash will check the bcrypt cost of the given hash
-// and will reset the user's password if the configured cost has since increased
+// rehashPassword will check the bcrypt cost of the given hash
+// and will reset the user's password if the configured cost has since changed
 // Callers should make sure password is correct before calling this
-func (user *userImpl) upgradePasswordHash(hash []byte, password string) {
+func (user *userImpl) rehashPassword(hash []byte, password string) {
+	// Exit early if bcryptCost has not been set
+	if !bcryptCostChanged {
+		return
+	}
+
 	hashCost, costErr := bcrypt.Cost(user.PasswordHash_)
-	if costErr == nil && hashCost < bcryptCost {
-		// the cost of the existing hash is less than the configured bcrypt cost.
-		// We'll re-hash the password to upgrade the cost:
-		base.Debugf(base.KeyAuth, "User account %q upgrading password hash cost: %d to %d",
-			base.UD(user.Name_), hashCost, bcryptCost)
+	if costErr == nil && hashCost != bcryptCost {
+		// the cost of the existing hash is different than the configured bcrypt cost.
+		// We'll re-hash the password to adopt the new cost:
 		user.SetPassword(password)
+		err := user.auth.Save(user)
+		if err != nil {
+			base.Warnf(base.KeyAll, "Error saving user: %v", err)
+			return
+		}
+		base.Debugf(base.KeyAuth, "User account %q changed password hash cost from %d to %d",
+			base.UD(user.Name_), hashCost, bcryptCost)
 	}
 	return
 }

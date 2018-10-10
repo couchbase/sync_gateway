@@ -57,7 +57,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 	bucket := gTestBucket.Bucket
 
 	// Reset bcrypt cost after test
-	defer SetBcryptCost(bcrypt.DefaultCost)
+	defer SetBcryptCost(bcryptDefaultCost)
 
 	// Create user
 	auth := NewAuthenticator(bucket, nil)
@@ -71,7 +71,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 	// Make sure their password was hashed with the desired cost
 	cost, err := bcrypt.Cost(user.PasswordHash_)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, cost, bcrypt.DefaultCost)
+	assert.Equals(t, cost, bcryptDefaultCost)
 
 	// Try to auth with an incorrect password
 	assert.False(t, u.Authenticate("test"))
@@ -90,7 +90,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 	// Check the cost is still the old value
 	cost, err = bcrypt.Cost(user.PasswordHash_)
 	assert.Equals(t, err, nil)
-	assert.Equals(t, cost, bcrypt.DefaultCost)
+	assert.Equals(t, cost, bcryptDefaultCost)
 
 	// Now bump the global bcrypt cost
 	err = SetBcryptCost(newBcryptCost)
