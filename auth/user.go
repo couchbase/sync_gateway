@@ -251,7 +251,7 @@ func (user *userImpl) rehashPassword(hash []byte, password string) {
 		user.SetPassword(password)
 		err := user.auth.Save(user)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error saving user: %v", err)
+			base.Warnf(base.KeyAll, "Unable to save user when rehashing password: %v", err)
 			return
 		}
 		base.Debugf(base.KeyAuth, "User account %q changed password hash cost from %d to %d",
