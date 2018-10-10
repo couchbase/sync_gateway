@@ -22,8 +22,6 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 )
 
-const kBcryptCostFactor = bcrypt.DefaultCost
-
 // Actual implementation of User interface
 type userImpl struct {
 	roleImpl // userImpl "inherits from" Role
@@ -191,17 +189,37 @@ func (user *userImpl) SetExplicitRoles(roles ch.TimedSet) {
 func (user *userImpl) Authenticate(password string) bool {
 	if user == nil {
 		return false
-	} else if user.OldPasswordHash_ != nil {
+	}
+
+	// exit early for disabled user accounts
+	if user.Disabled_ {
+		return false
+	}
+
+	// exit early if old hash is present
+	if user.OldPasswordHash_ != nil {
 		base.Warnf(base.KeyAll, "User account %q still has pre-beta password hash; need to reset password", base.UD(user.Name_))
 		return false // Password must be reset to use new (bcrypt) password hash
-	} else if user.PasswordHash_ == nil {
+	}
+
+	// bcrypt hash present
+	if user.PasswordHash_ != nil {
+		if !compareHashAndPassword(user.PasswordHash_, []byte(password)) {
+			// incorrect password
+			return false
+		}
+
+		// password was correct, we'll rehash the password if required
+		// e.g: in the case of bcryptCost changes
+		user.rehashPassword(user.PasswordHash_, password)
+	} else {
+		// no hash, but (incorrect) password provided
 		if password != "" {
 			return false
 		}
-	} else if !compareHashAndPassword(user.PasswordHash_, []byte(password)) {
-		return false
 	}
-	return !user.Disabled_
+
+	return true
 }
 
 // Changes a user's password to the given string.
@@ -209,12 +227,37 @@ func (user *userImpl) SetPassword(password string) {
 	if password == "" {
 		user.PasswordHash_ = nil
 	} else {
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), kBcryptCostFactor)
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 		if err != nil {
 			panic(fmt.Sprintf("Error hashing password: %v", err))
 		}
 		user.PasswordHash_ = hash
 	}
+}
+
+// rehashPassword will check the bcrypt cost of the given hash
+// and will reset the user's password if the configured cost has since changed
+// Callers should make sure password is correct before calling this
+func (user *userImpl) rehashPassword(hash []byte, password string) {
+	// Exit early if bcryptCost has not been set
+	if !bcryptCostChanged {
+		return
+	}
+
+	hashCost, costErr := bcrypt.Cost(user.PasswordHash_)
+	if costErr == nil && hashCost != bcryptCost {
+		// the cost of the existing hash is different than the configured bcrypt cost.
+		// We'll re-hash the password to adopt the new cost:
+		user.SetPassword(password)
+		err := user.auth.Save(user)
+		if err != nil {
+			base.Warnf(base.KeyAll, "Unable to save user when rehashing password: %v", err)
+			return
+		}
+		base.Debugf(base.KeyAuth, "User account %q changed password hash cost from %d to %d",
+			base.UD(user.Name_), hashCost, bcryptCost)
+	}
+	return
 }
 
 // Returns the sequence number since which the user has been able to access the channel, else zero.  Sets the vb

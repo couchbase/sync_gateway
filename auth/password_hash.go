@@ -11,10 +11,25 @@ package auth
 
 import (
 	"crypto/sha1"
+	"fmt"
 	"sync"
 
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 )
+
+var (
+	// bcryptDefaultCost is the default bcrypt cost to use
+	bcryptDefaultCost = bcrypt.DefaultCost
+	// bcryptCost is used when hashing new passwords
+	// either via password reset, or rehashPassword
+	bcryptCost = bcryptDefaultCost
+	// Used to exit-early for unchanged values
+	bcryptCostChanged = false
+)
+
+var ErrInvalidBcryptCost = fmt.Errorf("invalid bcrypt cost")
 
 // Set of known-to-be-valid {password, bcryt-hash} pairs.
 // Keys are of the form SHA1 digest of password + bcrypt'ed hash of password
@@ -48,10 +63,35 @@ func compareHashAndPassword(hash []byte, password []byte) bool {
 	}
 
 	cacheLock.Lock()
+	// TODO: Replace this with an LRU cache so the whole map doesn't get wiped
 	if len(cachedHashes) >= kMaxCacheSize {
 		cachedHashes = map[string]struct{}{}
 	}
 	cachedHashes[key] = struct{}{}
 	cacheLock.Unlock()
+
 	return true
+}
+
+// SetBcryptCost will set the bcrypt cost for Sync Gateway to use
+// Values of zero or less will use bcryptDefaultCost instead
+// An error is returned if the cost is not between bcryptDefaultCost and bcrypt.MaxCost
+func SetBcryptCost(cost int) error {
+	if cost <= 0 {
+		bcryptCost = bcryptDefaultCost
+		base.Debugf(base.KeyAuth, "bcrypt cost set to default: %d", cost)
+		return nil
+	}
+
+	if cost < bcryptDefaultCost || cost > bcrypt.MaxCost {
+		return errors.Wrapf(ErrInvalidBcryptCost,
+			"%d outside allowed range: %d-%d",
+			cost, bcryptDefaultCost, bcrypt.MaxCost)
+	}
+
+	base.Infof(base.KeyAuth, "bcrypt cost set to: %d", cost)
+	bcryptCost = cost
+	bcryptCostChanged = true
+
+	return nil
 }

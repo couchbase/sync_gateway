@@ -97,6 +97,7 @@ type ServerConfig struct {
 	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`             // Config for unsupported features
 	RunMode                    SyncGatewayRunMode       `json:"runmode,omitempty"`                 // Whether this is an SG reader or an SG Accelerator
 	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"`  // BLIP data compression level (0-9)
+	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`             // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
 }
 
 // Bucket configuration elements - used by db, shadow, index
@@ -931,6 +932,13 @@ func RunServer(config *ServerConfig) {
 	}
 
 	SetMaxFileDescriptors(config.MaxFileDescriptors)
+
+	// Set global bcrypt cost if configured
+	if config.BcryptCost > 0 {
+		if err := auth.SetBcryptCost(config.BcryptCost); err != nil {
+			base.Fatalf(base.KeyAll, "Configuration error: %v", err)
+		}
+	}
 
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
