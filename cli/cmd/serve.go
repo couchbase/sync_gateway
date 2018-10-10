@@ -5,6 +5,7 @@ import (
 	"github.com/spf13/cobra"
 	"fmt"
 	"time"
+	"math/rand"
 )
 
 var (
@@ -42,8 +43,9 @@ var serveCmd = &cobra.Command{
 
 func init() {
 
-	rootCmd.AddCommand(serveCmd)
+	rand.Seed(time.Now().Unix())
 
+	rootCmd.AddCommand(serveCmd)
 
 	serveCmd.Flags().StringVarP(&GoCBConnstr, "connstr", "c", "couchbase://host1,host2", "The Couchbase server(s) to connect to")
 
@@ -53,7 +55,7 @@ func init() {
 
 	serveCmd.Flags().StringVarP(&UUID, "uuid", "d", "4fg6hf", "A UUID to uniquely identify this gateway node")
 
-	serveCmd.Flags().IntVarP(&PortOffset, "portoffset", "r", 2, "Use this port offset for listening ports.  For example if set to 2, then the public port will be modified from 4984 -> 4986")
+	serveCmd.Flags().IntVarP(&PortOffset, "portoffset", "r", 0, "Use this port offset for listening ports.  For example if set to 2, then the public port will be modified from 4984 -> 4986")
 
 
 }

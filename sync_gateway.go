@@ -48,13 +48,8 @@ func NewGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 		Config:          map[string]*mobile_service.MetaKVPair{},
 		DbContexts:      map[string]*db.DatabaseContext{},
 	}
-	mobileSvcHostPort, err := ChooseRandomMobileService()
-	if err != nil {
-		panic(fmt.Sprintf("Error finding mobile service to connect to: %v", err))
-	}
-	log.Printf("Connecting to mobile service: %v", mobileSvcHostPort)
 
-	err = gw.ConnectMobileSvc(mobileSvcHostPort)
+	err := gw.ConnectMobileSvc()
 	if err != nil {
 		panic(fmt.Sprintf("Error connecting to mobile service: %v", err))
 	}
@@ -66,10 +61,16 @@ func NewGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 //
 //   - Push stats on a regular basis
 //   - Receive configuration updates
-func (gw *Gateway) ConnectMobileSvc(mobileSvcAddr string) error {
+func (gw *Gateway) ConnectMobileSvc() error {
+
+	mobileSvcHostPort, err := ChooseRandomMobileService()
+	if err != nil {
+		panic(fmt.Sprintf("Error finding mobile service to connect to: %v", err))
+	}
+	log.Printf("Connecting to mobile service: %v", mobileSvcHostPort)
 
 	// Set up a connection to the server.
-	conn, err := grpc.Dial(mobileSvcAddr, grpc.WithInsecure())
+	conn, err := grpc.Dial(mobileSvcHostPort, grpc.WithInsecure())
 	if err != nil {
 		return err
 	}
@@ -320,6 +321,28 @@ func (gw *Gateway) LoadDbConfig(path string) (dbConfig *rest.DbConfig, err error
 
 }
 
+func (gw *Gateway) PushStatsStreamWithReconnect() error {
+
+	for {
+
+		log.Printf("Starting push stats stream")
+
+		if err := gw.PushStatsStream(); err != nil {
+			log.Printf("Error pushing stats: %v", err)
+		}
+
+		// TODO: this should be a backoff / retry and only give up after a number of retries
+
+		log.Printf("Attempting to reconnect to grpc server")
+		err := gw.ConnectMobileSvc()
+		if err != nil {
+			return err
+		}
+
+	}
+
+}
+
 func (gw *Gateway) PushStatsStream() error {
 
 	// Stream stats
@@ -404,9 +427,10 @@ func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 
 	// Kick off goroutine to observe stream of metakv changes
 	go func() {
+		// TODO: reconnect to a different mobile service if the other side closes the connection.
 		err := gw.ObserveMetaKVChanges(AddTrailingSlash(MOBILE))
 		if err != nil {
-			panic(fmt.Sprintf("Error observing metakv changes: %v", err))
+			log.Printf("Error observing metakv changes: %v", err)
 		}
 	}()
 
@@ -415,7 +439,7 @@ func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 
 	if pushStats {
 		// Push stats (blocks)
-		if err := gw.PushStatsStream(); err != nil {
+		if err := gw.PushStatsStreamWithReconnect(); err != nil {
 			panic(fmt.Sprintf("Error pushing stats: %v", err))
 		}
 	} else {
