@@ -10,12 +10,13 @@ import (
 
 	"encoding/json"
 
+	"strconv"
+
 	"github.com/couchbase/mobile-service/mobile_service"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"google.golang.org/grpc"
-	"strconv"
 )
 
 type Gateway struct {
@@ -114,6 +115,20 @@ func (gw *Gateway) RunServer() {
 
 func (gw *Gateway) Close() {
 	gw.GrpcConn.Close()
+}
+
+func (gw *Gateway) ObserveMetaKVChangesRetry(path string) error {
+
+	for {
+		log.Printf("Starting ObserveMetaKVChanges")
+		if err := gw.ObserveMetaKVChanges(path); err != nil {
+			log.Printf("ObserveMetaKVChanges returned error: %v, retrying.", err)
+			time.Sleep(time.Second * 1)
+			gw.ObserveMetaKVChanges(path)
+		}
+
+	}
+
 }
 
 func (gw *Gateway) ObserveMetaKVChanges(path string) error {
@@ -332,12 +347,20 @@ func (gw *Gateway) PushStatsStreamWithReconnect() error {
 		}
 
 		// TODO: this should be a backoff / retry and only give up after a number of retries
+		// TODO: also, this should happen in a central place in the codebase rather than arbitrarily in the PushStatsStream()
+		for {
+			log.Printf("Attempting to reconnect to grpc server")
 
-		log.Printf("Attempting to reconnect to grpc server")
-		err := gw.ConnectMobileSvc()
-		if err != nil {
-			return err
+			err := gw.ConnectMobileSvc()
+			if err != nil {
+				log.Printf("Error connecting to grpc server: %v.  Retrying", err)
+				time.Sleep(time.Second)
+				continue
+			}
+
+			break
 		}
+
 
 	}
 
@@ -427,8 +450,7 @@ func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 
 	// Kick off goroutine to observe stream of metakv changes
 	go func() {
-		// TODO: reconnect to a different mobile service if the other side closes the connection.
-		err := gw.ObserveMetaKVChanges(AddTrailingSlash(MOBILE))
+		err := gw.ObserveMetaKVChangesRetry(AddTrailingSlash(MOBILE))
 		if err != nil {
 			log.Printf("Error observing metakv changes: %v", err)
 		}
