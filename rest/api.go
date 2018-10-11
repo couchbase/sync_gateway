@@ -210,6 +210,7 @@ func (h *handler) handleGetDB() error {
 		"purge_seq":            0,     // TODO: Should track this value
 		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
 		"state":                runState,
+		"server_pool_uuid":     h.db.DatabaseContext.GetServerPoolUUID(),
 	}
 	h.writeJSON(response)
 	return nil
