@@ -178,26 +178,16 @@ func (bucket *CouchbaseBucketGoCB) GetBucketCredentials() (username, password st
 // found, retrieves the cluster-wide value.
 func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 
-	var err error
-
-	bucketEp, err := GoCBBucketMgmtEndpoint(bucket.Bucket)
-	if err != nil {
-		return -1, err
-	}
-
-	relativeUri := fmt.Sprintf("pools/default/buckets/%s", bucket.spec.BucketName)
-
-	// Check for Bucket-specific setting first
-	bucketReqUri := fmt.Sprintf("%s/%s", bucketEp, relativeUri)
-
-	bucketPurgeInterval, err := bucket.retrievePurgeInterval(bucketReqUri)
+	// Bucket-specific settings
+	uri := fmt.Sprintf("/pools/default/buckets/%s", bucket.Name())
+	bucketPurgeInterval, err := bucket.retrievePurgeInterval(uri)
 	if bucketPurgeInterval > 0 || err != nil {
 		return bucketPurgeInterval, err
 	}
 
 	// Cluster-wide settings
-	clusterReqUri := fmt.Sprintf("%s/settings/autoCompaction", bucket.spec.Server)
-	clusterPurgeInterval, err := bucket.retrievePurgeInterval(clusterReqUri)
+	uri = fmt.Sprintf("/settings/autoCompaction")
+	clusterPurgeInterval, err := bucket.retrievePurgeInterval(uri)
 	if clusterPurgeInterval > 0 || err != nil {
 		return clusterPurgeInterval, err
 	}
@@ -216,37 +206,29 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 		PurgeInterval float64 `json:"purgeInterval,omitempty"`
 	}
 
-	req, err := http.NewRequest("GET", uri, nil)
+	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return 0, err
 	}
-	username, password, _ := bucket.spec.Auth.GetCredentials()
-	req.SetBasicAuth(username, password)
-
-	client := bucket.Bucket.IoRouter()
-	resp, err := client.HttpClient().Do(req)
-	if err != nil {
-		return 0, err
-	}
-
-	jsonDec := json.NewDecoder(resp.Body)
 	defer resp.Body.Close()
-	err = jsonDec.Decode(&purgeResponse)
-	if err != nil {
-		return 0, err
-	}
 
 	if resp.StatusCode == http.StatusForbidden {
 		Warnf(KeyAll, "403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
+	} else if resp.StatusCode != http.StatusOK {
+		return 0, errors.New(resp.Status)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return 0, errors.New(resp.Status)
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := json.Unmarshal(respBytes, &purgeResponse); err != nil {
+		return 0, err
 	}
 
 	// Server purge interval is a float value, in days.  Round up to hours
 	purgeIntervalHours := int(purgeResponse.PurgeInterval*24 + 0.5)
-
 	return purgeIntervalHours, nil
 }
 
