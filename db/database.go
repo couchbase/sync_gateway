@@ -435,10 +435,6 @@ func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err 
 }
 
 func (context *DatabaseContext) GetServerPoolUUID() *string {
-	if context.BucketSpec.IsWalrusBucket() {
-		// Walrus does not have the concept of a server pool UUID.
-		return nil
-	}
 
 	// Lazy load the server pool UUID, if we can get it.
 	if context.serverPoolUUID == nil {
