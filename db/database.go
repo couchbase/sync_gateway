@@ -14,7 +14,6 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strings"
@@ -445,53 +444,16 @@ func (context *DatabaseContext) GetServerPoolUUID() *string {
 	if context.serverPoolUUID == nil {
 		b, ok := base.AsGoCBBucket(context.Bucket)
 		if !ok {
+			base.Warnf(base.KeyAll, "Database %v: Unable to get server pool UUID. Bucket was type: %T, not GoCBBucket.", base.MD(context.Name), context.Bucket)
 			return nil
 		}
 
-		bucketEp, err := base.GoCBBucketMgmtEndpoint(b.Bucket)
+		uuid, err := b.GetServerPoolUUID()
 		if err != nil {
+			base.Warnf(base.KeyAll, "Database %v: Unable to get server pool UUID: %v", base.MD(context.Name), err)
 			return nil
 		}
-
-		poolsUri := fmt.Sprintf("%s/pools", bucketEp)
-		req, err := http.NewRequest("GET", poolsUri, nil)
-		if err != nil {
-			return nil
-		}
-
-		req.Header.Add("Content-Type", "application/json")
-
-		u, p, _ := context.BucketSpec.Auth.GetCredentials()
-		req.SetBasicAuth(u, p)
-
-		goCBClient := b.IoRouter().HttpClient()
-
-		resp, err := goCBClient.Do(req)
-		if err != nil {
-			return nil
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != 200 {
-			_, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				return nil
-			}
-			return nil
-		}
-
-		respJson := map[string]interface{}{}
-
-		decoder := json.NewDecoder(resp.Body)
-		if err := decoder.Decode(&respJson); err != nil {
-			return nil
-		}
-
-		uuid, ok := respJson["uuid"].(string)
-		if !ok {
-			return nil
-		}
-
+		base.Debugf(base.KeyAll, "Database %v: Got server pool UUID %v", base.MD(context.Name), base.MD(uuid))
 		context.serverPoolUUID = &uuid
 	}
 

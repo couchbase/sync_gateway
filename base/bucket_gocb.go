@@ -249,6 +249,53 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 	return purgeIntervalHours, nil
 }
 
+// Get the Server Pool UUID of the bucket
+func (bucket *CouchbaseBucketGoCB) GetServerPoolUUID() (uuid string, err error) {
+	bucketEp, err := GoCBBucketMgmtEndpoint(bucket.Bucket)
+	if err != nil {
+		return "", err
+	}
+
+	poolsUri := fmt.Sprintf("%s/pools", bucketEp)
+	req, err := http.NewRequest("GET", poolsUri, nil)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+
+	req.SetBasicAuth(bucket.GetBucketCredentials())
+
+	goCBClient := bucket.IoRouter().HttpClient()
+
+	resp, err := goCBClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		_, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return "", err
+		}
+		return "", err
+	}
+
+	respJson := map[string]interface{}{}
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&respJson); err != nil {
+		return "", err
+	}
+
+	uuid, ok := respJson["uuid"].(string)
+	if !ok {
+		return "", fmt.Errorf("expected 'uuid' to be a string")
+	}
+
+	return uuid, nil
+}
+
 // Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
 // since it's not meant to operate against buckets that auto-delete data.
 func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
