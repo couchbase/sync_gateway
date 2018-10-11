@@ -221,7 +221,7 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 			Provider: &OIDCProvider{
 				Issuer: "http://127.0.0.1:12345/auth",
 			},
-			ErrContains: "connection refused",
+			ErrContains: "unable to discover config",
 		},
 		{
 			Name: "valid provider",
