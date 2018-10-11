@@ -142,7 +142,7 @@ func (op *OIDCProvider) InitOIDCClient() error {
 
 	config, shouldSyncConfig, err := op.DiscoverConfig()
 	if err != nil || config == nil {
-		return err
+		return pkgerrors.Wrap(err, "unable to discover config")
 	}
 
 	clientCredentials := oidc.ClientCredentials{
