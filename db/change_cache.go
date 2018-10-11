@@ -158,8 +158,8 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 	return nil
 }
 
-// backgroundTask runs task at the specified time interval in its own goroutine.
-func (c *changeCache) backgroundTask(name string, task func() bool, interval time.Duration) {
+// backgroundTask runs task at the specified time interval in its own goroutine until the changeCache is stopped.
+func (c *changeCache) backgroundTask(name string, task func(), interval time.Duration) {
 	go func() {
 		for {
 			select {
@@ -236,7 +236,7 @@ func (c *changeCache) EnableChannelIndexing(enable bool) {
 }
 
 // Inserts pending entries that have been waiting too long.
-func (c *changeCache) InsertPendingEntries() bool {
+func (c *changeCache) InsertPendingEntries() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -246,30 +246,26 @@ func (c *changeCache) InsertPendingEntries() bool {
 		c.notifyChange(changedChannels)
 	}
 
-	return true
+	return
 }
 
 // CleanAgedItems prunes the caches based on age of items
-func (c *changeCache) CleanAgedItems() bool {
+func (c *changeCache) CleanAgedItems() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
-	if c.channelCaches == nil {
-		return false
-	}
 
 	for channelName := range c.channelCaches {
 		c._getChannelCache(channelName).pruneCacheAge()
 	}
 
-	return true
+	return
 }
 
 // Cleanup function, invoked periodically.
 // Removes skipped entries from skippedSeqs that have been waiting longer
 // than MaxChannelLogMissingWaitTime from the queue.  Attempts view retrieval
 // prior to removal
-func (c *changeCache) CleanSkippedSequenceQueue() bool {
+func (c *changeCache) CleanSkippedSequenceQueue() {
 
 	foundEntries, pendingDeletes := func() ([]*LogEntry, []uint64) {
 		c.skippedSeqLock.Lock()
@@ -344,7 +340,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() bool {
 		}
 	}
 
-	return true
+	return
 }
 
 //////// ADDING CHANGES:
