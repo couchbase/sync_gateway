@@ -36,7 +36,7 @@ pipeline {
         }
 
         stage('Setup') {
-            parallel {
+            // parallel {
                 stage('Tools') {
                     steps {
                         echo 'Setting up Go tools..'
@@ -66,11 +66,11 @@ pipeline {
                         sh "./bootstrap.sh -p sg-accel -c ${SG_COMMIT}"
                     }
                 }
-            }
+            // }
         }
 
         stage('Build') {
-            parallel {
+            // parallel {
                 stage('CE') {
                     steps {
                         echo 'Building..'
@@ -87,11 +87,11 @@ pipeline {
                         }
                     }
                 }
-            }
+            // }
         }
 
         stage('Test with coverage') {
-            parallel {
+            // parallel {
                 stage('CE') {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
@@ -134,7 +134,7 @@ pipeline {
                         }
                     }
                 }
-            }
+            // }
             post {
                 always {
                     publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: '*.html', keepAll: false, reportDir: 'reports', reportFiles: '*.html', reportName: 'Code Coverage', reportTitles: ''])
@@ -143,7 +143,7 @@ pipeline {
         }
 
         stage('Test Race') {
-            parallel {
+            // parallel {
                 stage('CE') {
                     steps {
                         echo 'Testing with -race..'
@@ -160,7 +160,7 @@ pipeline {
                         }
                     }
                 }
-            }
+            // }
         }
     }
 
