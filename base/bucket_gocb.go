@@ -15,6 +15,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -251,81 +252,37 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 
 // Get the Server Pool UUID of the bucket
 func (bucket *CouchbaseBucketGoCB) GetServerPoolUUID() (uuid string, err error) {
-	bucketEp, err := GoCBBucketMgmtEndpoint(bucket.Bucket)
-	if err != nil {
-		return "", err
-	}
-
-	poolsUri := fmt.Sprintf("%s/pools", bucketEp)
-	req, err := http.NewRequest("GET", poolsUri, nil)
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Add("Content-Type", "application/json")
-
-	req.SetBasicAuth(bucket.GetBucketCredentials())
-
-	goCBClient := bucket.IoRouter().HttpClient()
-
-	resp, err := goCBClient.Do(req)
+	resp, err := bucket.mgmtRequest(http.MethodGet, "/pools", "application/json", nil)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		_, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return "", err
-		}
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
 		return "", err
 	}
 
-	respJson := map[string]interface{}{}
-	decoder := json.NewDecoder(resp.Body)
-	if err := decoder.Decode(&respJson); err != nil {
+	var responseJson struct {
+		ServerPoolUUID string `json:"uuid"`
+	}
+
+	if err := json.Unmarshal(respBytes, &responseJson); err != nil {
 		return "", err
 	}
 
-	uuid, ok := respJson["uuid"].(string)
-	if !ok {
-		return "", fmt.Errorf("expected 'uuid' to be a string")
-	}
-
-	return uuid, nil
+	return responseJson.ServerPoolUUID, nil
 }
 
 // Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
 // since it's not meant to operate against buckets that auto-delete data.
 func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
-
-	var err error
-
-	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
 	var bucketResponseWithMaxTTL struct {
 		MaxTTLSeconds int `json:"maxTTL,omitempty"`
 	}
 
-	bucketEp, err := GoCBBucketMgmtEndpoint(bucket.Bucket)
-	if err != nil {
-		return -1, err
-	}
-
-	relativeUri := fmt.Sprintf("pools/default/buckets/%s", bucket.spec.BucketName)
-
-	// Check for Bucket-specific setting first
-	bucketReqUri := fmt.Sprintf("%s/%s", bucketEp, relativeUri)
-
-	req, err := http.NewRequest("GET", bucketReqUri, nil)
-	if err != nil {
-		return -1, err
-	}
-	username, password, _ := bucket.spec.Auth.GetCredentials()
-	req.SetBasicAuth(username, password)
-
-	client := bucket.Bucket.IoRouter()
-	resp, err := client.HttpClient().Do(req)
+	uri := fmt.Sprintf("/pools/default/buckets/%s", bucket.spec.BucketName)
+	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return -1, err
 	}
@@ -341,7 +298,37 @@ func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
 	}
 
 	return bucketResponseWithMaxTTL.MaxTTLSeconds, nil
+}
 
+// mgmtRequest is a re-implementation of gocb's mgmtRequest
+// TODO: Request gocb to either:
+// - Make a public version of mgmtRequest for us to use
+// - Or add all of the neccesary APIs we need to use
+func (bucket *CouchbaseBucketGoCB) mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error) {
+	if contentType == "" && body != nil {
+		panic("Content-type must be specified for non-null body.")
+	}
+
+	mgmtEp, err := GoCBBucketMgmtEndpoint(bucket.Bucket)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(method, mgmtEp+uri, body)
+	if err != nil {
+		return nil, err
+	}
+
+	if contentType != "" {
+		req.Header.Add("Content-Type", contentType)
+	}
+
+	username, password := bucket.GetBucketCredentials()
+	if username != "" || password != "" {
+		req.SetBasicAuth(username, password)
+	}
+
+	return bucket.IoRouter().HttpClient().Do(req)
 }
 
 func (bucket *CouchbaseBucketGoCB) GetName() string {
@@ -2357,8 +2344,32 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 // GOCB doesn't currently offer a way to do this, and so this is a workaround to go directly
 // to Couchbase Server REST API.
 func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
-	user, pass, _ := bucket.spec.Auth.GetCredentials()
-	return GoCBBucketItemCount(bucket.Bucket, bucket.spec, user, pass)
+	uri := fmt.Sprintf("/pools/default/buckets/%s", bucket.Name())
+	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
+	if err != nil {
+		return -1, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		_, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return -1, err
+		}
+		return -1, pkgerrors.Wrapf(err, "Error trying to find number of items in bucket")
+	}
+
+	respJson := map[string]interface{}{}
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&respJson); err != nil {
+		return -1, err
+	}
+
+	basicStats := respJson["basicStats"].(map[string]interface{})
+	itemCountRaw := basicStats["itemCount"]
+	itemCountFloat := itemCountRaw.(float64)
+
+	return int(itemCountFloat), nil
 }
 
 func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
@@ -2620,56 +2631,4 @@ func GoCBBucketMgmtEndpoint(bucket *gocb.Bucket) (url string, err error) {
 	}
 	bucketEp := mgmtEps[rand.Intn(len(mgmtEps))]
 	return bucketEp, nil
-}
-
-func GoCBBucketItemCount(bucket *gocb.Bucket, spec BucketSpec, user, pass string) (itemCount int, err error) {
-
-	relativeUri := fmt.Sprintf("pools/default/buckets/%s", spec.BucketName)
-
-	bucketEp, err := GoCBBucketMgmtEndpoint(bucket)
-	if err != nil {
-		return -1, err
-	}
-	reqUri := fmt.Sprintf("%s/%s", bucketEp, relativeUri)
-
-	req, err := http.NewRequest("GET", reqUri, nil)
-	if err != nil {
-		return -1, err
-	}
-
-	req.Header.Add("Content-Type", "application/json")
-
-	req.SetBasicAuth(user, pass)
-
-	goCBClient := bucket.IoRouter().HttpClient()
-
-	resp, err := goCBClient.Do(req)
-	if err != nil {
-		return -1, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		_, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return -1, err
-		}
-		return -1, pkgerrors.Wrapf(err, "Error trying to find number of items in bucket")
-	}
-
-	respJson := map[string]interface{}{}
-
-	decoder := json.NewDecoder(resp.Body)
-	if err := decoder.Decode(&respJson); err != nil {
-		return -1, err
-	}
-
-	basicStats := respJson["basicStats"].(map[string]interface{})
-
-	itemCountRaw := basicStats["itemCount"]
-
-	itemCountFloat := itemCountRaw.(float64)
-
-	return int(itemCountFloat), nil
-
 }
