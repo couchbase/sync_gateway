@@ -361,7 +361,6 @@ func (gw *Gateway) PushStatsStreamWithReconnect() error {
 			break
 		}
 
-
 	}
 
 }
@@ -457,7 +456,7 @@ func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 	}()
 
 	// Kick off http/s server
-	go gw.RunServer()
+	gw.RunServer()
 
 	if pushStats {
 		// Push stats (blocks)
@@ -467,5 +466,27 @@ func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 	} else {
 		select {}
 	}
+
+}
+
+func RunGatewayLegacyMode(pathToConfigFile string) {
+
+	serverConfig, err := rest.ReadServerConfig(rest.SyncGatewayRunModeNormal, pathToConfigFile)
+	if err != nil {
+		base.Fatalf(base.KeyAll, "Error reading config file %s: %v", base.UD(pathToConfigFile), err)
+	}
+
+	// If the interfaces were not specified in either the config file or
+	// on the command line, set them to the default values
+	if serverConfig.Interface == nil {
+		serverConfig.Interface = &rest.DefaultInterface
+	}
+	if serverConfig.AdminInterface == nil {
+		serverConfig.AdminInterface = &rest.DefaultAdminInterface
+	}
+
+	_ = rest.RunServer(serverConfig)
+
+	select {} // block forever
 
 }
