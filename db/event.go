@@ -46,7 +46,7 @@ type DocumentChangeEvent struct {
 }
 
 func (dce *DocumentChangeEvent) String() string {
-	return fmt.Sprintf("Document change event for doc id: %s", dce.Doc["_id"])
+	return fmt.Sprintf("Document change event for doc id: %s", dce.Doc[BodyId])
 }
 
 func (dce *DocumentChangeEvent) EventType() EventType {

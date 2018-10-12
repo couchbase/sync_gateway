@@ -16,8 +16,8 @@ func TestRevisionCache(t *testing.T) {
 
 	revForTest := func(i int) (Body, Body, base.Set) {
 		body := Body{
-			"_id":  ids[i],
-			"_rev": "x",
+			BodyId:  ids[i],
+			BodyRev: "x",
 		}
 		history := Body{"start": i}
 		return body, history, nil
@@ -27,7 +27,7 @@ func TestRevisionCache(t *testing.T) {
 			t.Fatalf("nil body at #%d", i)
 		}
 		assert.True(t, body != nil)
-		assert.Equals(t, body["_id"], ids[i])
+		assert.Equals(t, body[BodyId], ids[i])
 		assert.True(t, history != nil)
 		assert.Equals(t, history["start"], i)
 		assert.DeepEquals(t, channels, base.Set(nil))
@@ -36,7 +36,7 @@ func TestRevisionCache(t *testing.T) {
 	cache := NewRevisionCache(10, nil)
 	for i := 0; i < 10; i++ {
 		body, history, channels := revForTest(i)
-		cache.Put(body["_id"].(string), body["_rev"].(string), body, history, channels)
+		cache.Put(body[BodyId].(string), body[BodyRev].(string), body, history, channels)
 	}
 
 	for i := 0; i < 10; i++ {
@@ -46,7 +46,7 @@ func TestRevisionCache(t *testing.T) {
 
 	for i := 10; i < 13; i++ {
 		body, history, channels := revForTest(i)
-		cache.Put(body["_id"].(string), body["_rev"].(string), body, history, channels)
+		cache.Put(body[BodyId].(string), body[BodyRev].(string), body, history, channels)
 	}
 
 	for i := 0; i < 3; i++ {
@@ -67,8 +67,8 @@ func TestLoaderFunction(t *testing.T) {
 			err = base.HTTPErrorf(404, "missing")
 		} else {
 			body = Body{
-				"_id":  id.DocID,
-				"_rev": id.RevID,
+				BodyId:  id.DocID,
+				BodyRev: id.RevID,
 			}
 			history = Body{"start": 1}
 			channels = base.SetOf("*")
@@ -78,7 +78,7 @@ func TestLoaderFunction(t *testing.T) {
 	cache := NewRevisionCache(10, loader)
 
 	body, history, channels, err := cache.Get("Jens", "1")
-	assert.Equals(t, body["_id"], "Jens")
+	assert.Equals(t, body[BodyId], "Jens")
 	assert.True(t, history != nil)
 	assert.True(t, channels != nil)
 	assert.Equals(t, err, error(nil))
@@ -90,7 +90,7 @@ func TestLoaderFunction(t *testing.T) {
 	assert.Equals(t, callsToLoader, 2)
 
 	body, history, channels, err = cache.Get("Jens", "1")
-	assert.Equals(t, body["_id"], "Jens")
+	assert.Equals(t, body[BodyId], "Jens")
 	assert.True(t, history != nil)
 	assert.True(t, channels != nil)
 	assert.Equals(t, err, error(nil))

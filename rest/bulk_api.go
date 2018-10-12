@@ -154,7 +154,7 @@ func (h *handler) handleAllDocs() error {
 					row.Status = http.StatusForbidden
 					return row
 				}
-				doc.RevID = body["_rev"].(string)
+				doc.RevID = body[db.BodyRev].(string)
 			}
 			if includeDocs {
 				row.Doc = body
@@ -482,7 +482,7 @@ func (h *handler) handleBulkDocs() error {
 
 		// If ID is present, check whether local doc. (note: if _id is absent or non-string, docid will be
 		// empty string and handled during normal doc processing)
-		docid, _ := doc["_id"].(string)
+		docid, _ := doc[db.BodyId].(string)
 
 		if strings.HasPrefix(docid, "_local/") {
 			localDocs = append(localDocs, doc)
@@ -496,7 +496,7 @@ func (h *handler) handleBulkDocs() error {
 	result := make([]db.Body, 0, len(docs))
 	for _, item := range docs {
 		doc := item.(map[string]interface{})
-		docid, _ := doc["_id"].(string)
+		docid, _ := doc[db.BodyId].(string)
 		var err error
 		var revid string
 		if newEdits {
@@ -540,7 +540,7 @@ func (h *handler) handleBulkDocs() error {
 		var err error
 		var revid string
 		offset := len("_local/")
-		docid, _ := doc["_id"].(string)
+		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
 		revid, err = h.db.PutSpecial("local", idslug, doc)
 		status := db.Body{}

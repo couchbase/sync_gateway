@@ -88,7 +88,7 @@ func TestDocumentChangeEvent(t *testing.T) {
 	}
 	eventForTest := func(i int) (Body, base.Set) {
 		testBody := Body{
-			"_id":   ids[i],
+			BodyId:  ids[i],
 			"value": i,
 		}
 		var channelSet base.Set
@@ -165,7 +165,7 @@ func TestSlowExecutionProcessing(t *testing.T) {
 
 	eventForTest := func(i int) (Body, base.Set) {
 		testBody := Body{
-			"_id":   ids[i],
+			BodyId:  ids[i],
 			"value": i,
 		}
 		var channelSet base.Set
@@ -203,7 +203,7 @@ func TestCustomHandler(t *testing.T) {
 
 	eventForTest := func(i int) (Body, base.Set) {
 		testBody := Body{
-			"_id":   ids[i],
+			BodyId:  ids[i],
 			"value": i,
 		}
 		var channelSet base.Set
@@ -242,7 +242,7 @@ func TestUnhandledEvent(t *testing.T) {
 
 	eventForTest := func(i int) (Body, base.Set) {
 		testBody := Body{
-			"_id":   ids[i],
+			BodyId:  ids[i],
 			"value": i,
 		}
 		var channelSet base.Set
@@ -346,7 +346,7 @@ func TestWebhookBasic(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	eventForTest := func(i int) (Body, base.Set) {
 		testBody := Body{
-			"_id":   ids[i],
+			BodyId:  ids[i],
 			"value": i,
 		}
 		var channelSet base.Set
@@ -475,7 +475,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	eventForTest := func(i int) (Body, base.Set) {
 		testBody := Body{
-			"_id":   ids[i],
+			BodyId:  ids[i],
 			"value": i,
 		}
 		var channelSet base.Set
@@ -592,7 +592,7 @@ func TestWebhookTimeout(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	eventForTest := func(i int) (Body, base.Set) {
 		testBody := Body{
-			"_id":   ids[i],
+			BodyId:  ids[i],
 			"value": i,
 		}
 		var channelSet base.Set
@@ -693,7 +693,7 @@ func TestUnavailableWebhook(t *testing.T) {
 
 	eventForTest := func(i int) (Body, base.Set) {
 		testBody := Body{
-			"_id":   ids[i],
+			BodyId:  ids[i],
 			"value": i,
 		}
 		var channelSet base.Set

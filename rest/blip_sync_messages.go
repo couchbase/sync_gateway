@@ -13,6 +13,57 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+// Message types
+const (
+	messageSetCheckpoint   = "setCheckpoint"
+	messageGetCheckpoint   = "getCheckpoint"
+	messageSubChanges      = "subChanges"
+	messageChanges         = "changes"
+	messageRev             = "rev"
+	messageGetAttachment   = "getAttachment"
+	messageProposeChanges  = "proposeChanges"
+	messageProveAttachment = "proveAttachment"
+)
+
+// Message properties
+const (
+
+	// Common message properties
+	blipClient   = "client"
+	blipCompress = "compress"
+	blipProfile  = "Profile"
+
+	// setCheckpoint message properties
+	setCheckpointRev = "rev"
+
+	// getCheckpoint message properties
+	getCheckpointResponseRev = "rev"
+
+	// subChanges message properties
+	subChangesActiveOnly = "active_only"
+	subChangesFilter     = "filter"
+	subChangesChannels   = "channels"
+	subChangesSince      = "since"
+	subChangesContinuous = "continuous"
+
+	// rev message properties
+	revMessageId          = "id"
+	revMessageRev         = "rev"
+	revMessageDeleted     = "deleted"
+	revMessageSequence    = "sequence"
+	revMessageHistory     = "history"
+	revMessageNoConflicts = "noconflicts"
+
+	// changes message properties
+	changesResponseMaxHistory = "maxHistory"
+
+	// getAttachment message properties
+	getAttachmentDigest = "digest"
+
+	// proveAttachment
+	proveAttachmentDigest = "digest"
+)
+
 // Function signature for something that parses a sequence id from a string
 type SequenceIDParser func(since string) (db.SequenceID, error)
 
@@ -36,7 +87,7 @@ func newSubChangesParams(rq *blip.Message, logger base.SGLogger, zeroSeq db.Sequ
 
 	// Determine incoming since and docIDs once, since there is some overhead associated with their calculation
 	sinceSequenceId := zeroSeq
-	if sinceStr, found := rq.Properties["since"]; found {
+	if sinceStr, found := rq.Properties[subChangesSince]; found {
 		var err error
 		if sinceSequenceId, err = sequenceIDParser(base.ConvertJSONString(sinceStr)); err != nil {
 			logger.Logf(base.LevelInfo, base.KeySync, "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
@@ -91,27 +142,27 @@ func (s *subChangesParams) batchSize() int {
 
 func (s *subChangesParams) continuous() bool {
 	continuous := false
-	if val, found := s.rq.Properties["continuous"]; found && val != "false" {
+	if val, found := s.rq.Properties[subChangesContinuous]; found && val != "false" {
 		continuous = true
 	}
 	return continuous
 }
 
 func (s *subChangesParams) activeOnly() bool {
-	return (s.rq.Properties["active_only"] == "true")
+	return (s.rq.Properties[subChangesActiveOnly] == "true")
 }
 
 func (s *subChangesParams) filter() string {
-	return s.rq.Properties["filter"]
+	return s.rq.Properties[subChangesFilter]
 }
 
 func (s *subChangesParams) channels() (channels string, found bool) {
-	channels, found = s.rq.Properties["channels"]
+	channels, found = s.rq.Properties[subChangesChannels]
 	return channels, found
 }
 
 func (s *subChangesParams) channelsExpandedSet() (resultChannels base.Set, err error) {
-	channelsParam, found := s.rq.Properties["channels"]
+	channelsParam, found := s.rq.Properties[subChangesChannels]
 	if !found {
 		return nil, fmt.Errorf("Missing 'channels' filter parameter")
 	}
@@ -156,31 +207,40 @@ func (s *subChangesParams) String() string {
 
 }
 
-type setCheckpointParams struct {
-	rq *blip.Message // The underlying BLIP message
+// setCheckpoint message
+type SetCheckpointMessage struct {
+	*blip.Message
 }
 
-func newSetCheckpointParams(rq *blip.Message) *setCheckpointParams {
-	return &setCheckpointParams{
-		rq: rq,
-	}
+func NewSetCheckpointMessage() *SetCheckpointMessage {
+	scm := &SetCheckpointMessage{blip.NewRequest()}
+	scm.SetProfile(messageSetCheckpoint)
+	return scm
 }
 
-func (s *setCheckpointParams) client() string {
-	return s.rq.Properties["client"]
+func (scm *SetCheckpointMessage) client() string {
+	return scm.Properties[blipClient]
 }
 
-func (s *setCheckpointParams) rev() string {
-	return s.rq.Properties["rev"]
+func (scm *SetCheckpointMessage) setClient(client string) {
+	scm.Properties[blipClient] = client
 }
 
-func (s *setCheckpointParams) String() string {
+func (scm *SetCheckpointMessage) rev() string {
+	return scm.Properties[setCheckpointRev]
+}
+
+func (scm *SetCheckpointMessage) setRev(rev string) {
+	scm.Properties[setCheckpointRev] = rev
+}
+
+func (scm *SetCheckpointMessage) String() string {
 
 	buffer := bytes.NewBufferString("")
 
-	buffer.WriteString(fmt.Sprintf("Client:%v ", s.client()))
+	buffer.WriteString(fmt.Sprintf("Client:%v ", scm.client()))
 
-	rev := s.rev()
+	rev := scm.rev()
 	if len(rev) > 0 {
 		buffer.WriteString(fmt.Sprintf("Rev:%v ", rev))
 	}
@@ -189,40 +249,41 @@ func (s *setCheckpointParams) String() string {
 
 }
 
+type SetCheckpointResponse struct {
+	*blip.Message
+}
+
+func (scr *SetCheckpointResponse) Rev() (rev string) {
+	return scr.Properties[setCheckpointRev]
+}
+
+func (scr *SetCheckpointResponse) setRev(rev string) {
+	scr.Properties[setCheckpointRev] = rev
+}
+
 // Rev message
 type revMessage struct {
 	*blip.Message
 }
 
-// rev message type and properties
-const (
-	messageName_rev = "rev"
-
-	revMessage_id       = "id"
-	revMessage_rev      = "rev"
-	revMessage_deleted  = "deleted"
-	revMessage_sequence = "sequence"
-	revMessage_history  = "history"
-)
-
 func NewRevMessage() *revMessage {
-	rm := &revMessage{}
-	rm.SetProfile(messageName_rev)
+	rm := &revMessage{blip.NewRequest()}
+	rm.SetProfile(messageRev)
 	return rm
 }
 
 func (rm *revMessage) id() (id string, found bool) {
-	id, found = rm.Properties[revMessage_id]
+	id, found = rm.Properties[revMessageId]
 	return id, found
 }
 
 func (rm *revMessage) rev() (rev string, found bool) {
-	rev, found = rm.Properties[revMessage_rev]
+	rev, found = rm.Properties[revMessageRev]
 	return rev, found
 }
 
 func (rm *revMessage) deleted() bool {
-	deleted, found := rm.Properties[revMessage_deleted]
+	deleted, found := rm.Properties[revMessageDeleted]
 	if !found {
 		return false
 	}
@@ -230,36 +291,36 @@ func (rm *revMessage) deleted() bool {
 }
 
 func (rm *revMessage) hasDeletedProperty() bool {
-	_, found := rm.Properties[revMessage_deleted]
+	_, found := rm.Properties[revMessageDeleted]
 	return found
 }
 
 func (rm *revMessage) sequence() (sequence string, found bool) {
-	sequence, found = rm.Properties[revMessage_sequence]
+	sequence, found = rm.Properties[revMessageSequence]
 	return sequence, found
 }
 
 func (rm *revMessage) setId(id string) {
-	rm.Properties[revMessage_id] = id
+	rm.Properties[revMessageId] = id
 }
 
 func (rm *revMessage) setRev(rev string) {
-	rm.Properties[revMessage_rev] = rev
+	rm.Properties[revMessageRev] = rev
 }
 
 func (rm *revMessage) setDeleted(deleted bool) {
 	if deleted {
-		rm.Properties[revMessage_deleted] = "1"
+		rm.Properties[revMessageDeleted] = "1"
 	} else {
-		delete(rm.Properties, revMessage_deleted)
+		delete(rm.Properties, revMessageDeleted)
 	}
 }
 
 func (rm *revMessage) setHistory(history []string) {
 	if len(history) > 0 {
-		rm.Properties[revMessage_history] = strings.Join(history, ",")
+		rm.Properties[revMessageHistory] = strings.Join(history, ",")
 	} else {
-		delete(rm.Properties, revMessage_history)
+		delete(rm.Properties, revMessageHistory)
 	}
 }
 
@@ -268,7 +329,7 @@ func (rm *revMessage) setSequence(seq db.SequenceID) error {
 	if marshalErr != nil {
 		return marshalErr
 	}
-	rm.Properties[revMessage_sequence] = string(seqJSON)
+	rm.Properties[revMessageSequence] = string(seqJSON)
 	return nil
 }
 
@@ -307,7 +368,7 @@ func newGetAttachmentParams(rq *blip.Message) *getAttachmentParams {
 }
 
 func (g *getAttachmentParams) digest() string {
-	return g.rq.Properties["digest"]
+	return g.rq.Properties[getAttachmentDigest]
 }
 
 func (g *getAttachmentParams) String() string {

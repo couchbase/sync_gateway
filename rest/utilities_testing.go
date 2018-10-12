@@ -738,6 +738,24 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
 }
 
+func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []byte) (sent bool, req *SetCheckpointMessage, res *SetCheckpointResponse, err error) {
+
+	scm := NewSetCheckpointMessage()
+	scm.SetCompressed(true)
+	scm.setClient(client)
+	scm.setRev(checkpointRev)
+	scm.SetBody(body)
+
+	sent = bt.sender.Send(scm.Message)
+	if !sent {
+		return sent, scm, nil, fmt.Errorf("Failed to send setCheckpoint for client: %v", client)
+	}
+
+	scr := &SetCheckpointResponse{scm.Response()}
+	return true, scm, scr, nil
+
+}
+
 // The docHistory should be in the same format as expected by db.PutExistingRev(), or empty if this is the first revision
 func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory []string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
 
@@ -1283,7 +1301,7 @@ func NewRestDocument() *RestDocument {
 }
 
 func (d RestDocument) ID() string {
-	rawID, hasID := d["_id"]
+	rawID, hasID := d[db.BodyId]
 	if !hasID {
 		return ""
 	}
@@ -1292,11 +1310,11 @@ func (d RestDocument) ID() string {
 }
 
 func (d RestDocument) SetID(docId string) {
-	d["_id"] = docId
+	d[db.BodyId] = docId
 }
 
 func (d RestDocument) RevID() string {
-	rawRev, hasRev := d["_rev"]
+	rawRev, hasRev := d[db.BodyRev]
 	if !hasRev {
 		return ""
 	}
@@ -1304,7 +1322,7 @@ func (d RestDocument) RevID() string {
 }
 
 func (d RestDocument) SetRevID(revId string) {
-	d["_rev"] = revId
+	d[db.BodyRev] = revId
 }
 
 func (d RestDocument) SetAttachments(attachments db.AttachmentMap) {

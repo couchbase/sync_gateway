@@ -708,7 +708,7 @@ func ParseRevisions(body Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
 	revisions, ok := body["_revisions"].(map[string]interface{})
 	if !ok {
-		revid, ok := body["_rev"].(string)
+		revid, ok := body[BodyRev].(string)
 		if !ok {
 			return nil
 		}

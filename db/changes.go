@@ -849,14 +849,14 @@ func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []str
 		}
 
 		changes := make([]ChangeRev, 1)
-		changes[0] = ChangeRev{"rev": body["_rev"].(string)}
+		changes[0] = ChangeRev{"rev": body[BodyRev].(string)}
 		row.Changes = changes
 		row.Seq = SequenceID{Seq: populatedDoc.Sequence}
 		row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 
 		var removedChannels []string
 
-		if deleted, _ := body["_deleted"].(bool); deleted {
+		if deleted, _ := body[BodyDeleted].(bool); deleted {
 			row.Deleted = true
 		}
 

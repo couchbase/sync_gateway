@@ -80,13 +80,13 @@ func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 
 // Maps the profile (verb) of an incoming request to the method that handles it.
 var kHandlersByProfile = map[string]blipHandlerMethod{
-	"getCheckpoint":  (*blipHandler).handleGetCheckpoint,
-	"setCheckpoint":  (*blipHandler).handleSetCheckpoint,
-	"subChanges":     userBlipHandler((*blipHandler).handleSubChanges),
-	"changes":        userBlipHandler((*blipHandler).handleChanges),
-	"rev":            userBlipHandler((*blipHandler).handleRev),
-	"getAttachment":  userBlipHandler((*blipHandler).handleGetAttachment),
-	"proposeChanges": (*blipHandler).handleProposedChanges,
+	messageGetCheckpoint:  (*blipHandler).handleGetCheckpoint,
+	messageSetCheckpoint:  (*blipHandler).handleSetCheckpoint,
+	messageSubChanges:     userBlipHandler((*blipHandler).handleSubChanges),
+	messageChanges:        userBlipHandler((*blipHandler).handleChanges),
+	messageRev:            userBlipHandler((*blipHandler).handleRev),
+	messageGetAttachment:  userBlipHandler((*blipHandler).handleGetAttachment),
+	messageProposeChanges: (*blipHandler).handleProposedChanges,
 }
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
@@ -204,7 +204,7 @@ func (ctx *blipSyncContext) Logf(logLevel base.LogLevel, logKey base.LogKey, for
 // Received a "getCheckpoint" request
 func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 
-	client := rq.Properties["client"]
+	client := rq.Properties[blipClient]
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("Client:%s", client))
 
 	docID := fmt.Sprintf("checkpoint/%s", client)
@@ -220,9 +220,9 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	if value == nil {
 		return base.HTTPErrorf(http.StatusNotFound, http.StatusText(http.StatusNotFound))
 	}
-	response.Properties["rev"] = value["_rev"].(string)
-	delete(value, "_rev")
-	delete(value, "_id")
+	response.Properties[getCheckpointResponseRev] = value[db.BodyRev].(string)
+	delete(value, db.BodyRev)
+	delete(value, db.BodyId)
 	value.FixJSONNumbers()
 	response.SetJSONBody(value)
 	return nil
@@ -231,23 +231,26 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 // Received a "setCheckpoint" request
 func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
-	setCheckpointParams := newSetCheckpointParams(rq)
-	bh.logEndpointEntry(rq.Profile(), setCheckpointParams.String())
+	checkpointMessage := SetCheckpointMessage{rq}
+	bh.logEndpointEntry(rq.Profile(), checkpointMessage.String())
 
-	docID := fmt.Sprintf("checkpoint/%s", setCheckpointParams.client())
+	docID := fmt.Sprintf("checkpoint/%s", checkpointMessage.client())
 
 	var checkpoint db.Body
-	if err := rq.ReadJSONBody(&checkpoint); err != nil {
+	if err := checkpointMessage.ReadJSONBody(&checkpoint); err != nil {
 		return err
 	}
-	if revID := setCheckpointParams.rev(); revID != "" {
-		checkpoint["_rev"] = revID
+	if revID := checkpointMessage.rev(); revID != "" {
+		checkpoint[db.BodyRev] = revID
 	}
 	revID, err := bh.db.PutSpecial("local", docID, checkpoint)
 	if err != nil {
 		return err
 	}
-	rq.Response().Properties["rev"] = revID
+
+	checkpointResponse := SetCheckpointResponse{checkpointMessage.Response()}
+	checkpointResponse.setRev(revID)
+
 	return nil
 }
 
@@ -421,7 +424,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 	}
 
 	maxHistory := 0
-	if max, err := strconv.ParseUint(response.Properties["maxHistory"], 10, 64); err == nil {
+	if max, err := strconv.ParseUint(response.Properties[changesResponseMaxHistory], 10, 64); err == nil {
 		maxHistory = int(max)
 	}
 
@@ -562,15 +565,15 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, seq db.SequenceID, docI
 	outrq := NewRevMessage()
 	outrq.setId(docID)
 	outrq.setRev(revID)
-	if del, _ := body["_deleted"].(bool); del {
+	if del, _ := body[db.BodyDeleted].(bool); del {
 		outrq.setDeleted(del)
 	}
 	outrq.setSequence(seq)
 	outrq.setHistory(history)
 
-	delete(body, "_id")
-	delete(body, "_rev")
-	delete(body, "_deleted")
+	delete(body, db.BodyId)
+	delete(body, db.BodyRev)
+	delete(body, db.BodyDeleted)
 
 	outrq.SetJSONBody(body)
 	if atts := db.BodyAttachments(body); atts != nil {
@@ -615,13 +618,13 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	if revMessage.deleted() {
-		body["_deleted"] = true
+		body[db.BodyDeleted] = true
 	}
 
 	// noconflicts flag from LiteCore
 	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev
 	var noConflicts bool
-	if val, ok := rq.Properties["noconflicts"]; ok {
+	if val, ok := rq.Properties[revMessageNoConflicts]; ok {
 		var err error
 		noConflicts, err = strconv.ParseBool(val)
 		if err != nil {
@@ -630,7 +633,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	history := []string{revID}
-	if historyStr := rq.Properties["history"]; historyStr != "" {
+	if historyStr := rq.Properties[revMessageHistory]; historyStr != "" {
 		history = append(history, strings.Split(historyStr, ",")...)
 	}
 
@@ -672,7 +675,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending attachment with digest=%q (%dkb) User:%s", digest, len(attachment)/1024, base.UD(bh.effectiveUsername))
 	response := rq.Response()
 	response.SetBody(attachment)
-	response.SetCompressed(rq.Properties["compress"] == "true")
+	response.SetCompressed(rq.Properties[blipCompress] == "true")
 	return nil
 }
 
@@ -689,7 +692,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				bh.Logf(base.LevelDebug, base.KeySync, "    Verifying attachment %q (digest %s).  User:%s", base.UD(name), digest, base.UD(bh.effectiveUsername))
 				nonce, proof := db.GenerateProofOfAttachment(knownData)
 				outrq := blip.NewRequest()
-				outrq.Properties = map[string]string{"Profile": "proveAttachment", "digest": digest}
+				outrq.Properties = map[string]string{blipProfile: messageProveAttachment, proveAttachmentDigest: digest}
 				outrq.SetBody(nonce)
 				sender.Send(outrq)
 				if body, err := outrq.Response().Body(); err != nil {
@@ -703,9 +706,9 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				// If I don't have the attachment, I will request it from the client:
 				bh.Logf(base.LevelDebug, base.KeySync, "    Asking for attachment %q (digest %s). User:%s", base.UD(name), digest, base.UD(bh.effectiveUsername))
 				outrq := blip.NewRequest()
-				outrq.Properties = map[string]string{"Profile": "getAttachment", "digest": digest}
+				outrq.Properties = map[string]string{blipProfile: messageGetAttachment, getAttachmentDigest: digest}
 				if isCompressible(name, meta) {
-					outrq.Properties["compress"] = "true"
+					outrq.Properties[blipCompress] = "true"
 				}
 				sender.Send(outrq)
 				return outrq.Response().Body()

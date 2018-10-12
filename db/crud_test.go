@@ -128,7 +128,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	log.Printf("Create tombstone 3-b")
 	rev3b_body := Body{}
 	rev3b_body["version"] = "3b"
-	rev3b_body["_deleted"] = true
+	rev3b_body[BodyDeleted] = true
 	assertNoError(t, db.PutExistingRev("doc1", rev3b_body, []string{"3-b", "2-b"}, false), "add 3-b (tombstone)")
 
 	// Retrieve tombstone
@@ -180,7 +180,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev3c_body := Body{}
 	rev3c_body["version"] = "3c"
 	rev3c_body["key1"] = prop_1000_bytes
-	rev3c_body["_deleted"] = true
+	rev3c_body[BodyDeleted] = true
 	assertNoError(t, db.PutExistingRev("doc1", rev3c_body, []string{"3-c", "2-c"}, false), "add 3-c (large tombstone)")
 
 	// Validate the tombstone is not stored inline (due to small size)
@@ -295,7 +295,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	rev3b_body := Body{}
 	rev3b_body["version"] = "3b"
 	rev3b_body["key1"] = prop_1000_bytes
-	rev3b_body["_deleted"] = true
+	rev3b_body[BodyDeleted] = true
 	assertNoError(t, db.PutExistingRev("doc1", rev3b_body, []string{"3-b", "2-b"}, false), "add 3-b (tombstone)")
 
 	// Retrieve tombstone
