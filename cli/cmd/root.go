@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/couchbase/sync_gateway"
 )
 
 var cfgFile string
@@ -14,9 +15,14 @@ var rootCmd = &cobra.Command{
 	Use:   "sg",
 	Short: "Sync Gateway -- Couchbase Mobile",
 	Long:  ``,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	//	Run: func(cmd *cobra.Command, args []string) { },
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		// Legacy mode
+		pathToConfigFile := args[0]
+		sync_gateway.RunGatewayLegacyMode(pathToConfigFile)
+
+
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
