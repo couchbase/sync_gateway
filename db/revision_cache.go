@@ -175,9 +175,9 @@ func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) 
 func (value *revCacheValue) store(body Body, history Body, channels base.Set) {
 	value.lock.Lock()
 	if value.body == nil {
-		value.body = body.ShallowCopy()     // Don't store a body the caller might later mutate
-		value.body["_id"] = value.key.DocID // Rev cache includes id and rev in the body.  Ensure they are set in case callers aren't passing
-		value.body["_rev"] = value.key.RevID
+		value.body = body.ShallowCopy()      // Don't store a body the caller might later mutate
+		value.body[BodyId] = value.key.DocID // Rev cache includes id and rev in the body.  Ensure they are set in case callers aren't passing
+		value.body[BodyRev] = value.key.RevID
 		value.history = history
 		value.channels = channels
 		value.err = nil

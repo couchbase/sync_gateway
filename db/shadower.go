@@ -93,7 +93,7 @@ func (s *Shadower) readTapFeed() {
 func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas uint64, flags uint32) error {
 	var body Body
 	if isDeletion {
-		body = Body{"_deleted": true}
+		body = Body{BodyDeleted: true}
 	} else {
 		if err := body.Unmarshal(value); err != nil {
 			base.Infof(base.KeyShadow, "Doc %q is not JSON; skipping", base.UD(key))
@@ -124,7 +124,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		}
 		doc.UpstreamRev = newRev
 		doc.UpstreamCAS = &cas
-		body["_rev"] = newRev
+		body[BodyRev] = newRev
 		if doc.History[newRev] == nil {
 			// It's a new rev, so add it to the history:
 			if parentRev != "" && !doc.History.contains(parentRev) {

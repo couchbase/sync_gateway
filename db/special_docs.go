@@ -68,7 +68,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 			if err := json.Unmarshal(value, &prevBody); err != nil {
 				return nil, nil, err
 			}
-			if matchRev != prevBody["_rev"] {
+			if matchRev != prevBody[BodyRev] {
 				return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document update conflict")
 			}
 		}
@@ -80,7 +80,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 				fmt.Sscanf(matchRev, "0-%d", &generation)
 			}
 			revid = fmt.Sprintf("0-%d", generation+1)
-			body["_rev"] = revid
+			body[BodyRev] = revid
 			bodyBytes, marshalErr := json.Marshal(body)
 			return bodyBytes, nil, marshalErr
 		} else {
@@ -93,7 +93,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 }
 
 func (db *Database) PutSpecial(doctype string, docid string, body Body) (string, error) {
-	matchRev, _ := body["_rev"].(string)
+	matchRev, _ := body[BodyRev].(string)
 	body = stripSpecialSpecialProperties(body)
 	return db.putSpecial(doctype, docid, matchRev, body)
 }

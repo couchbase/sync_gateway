@@ -519,7 +519,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	// Extract rev from response for comparison with second GET below
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	revId, ok := body["_rev"].(string)
+	revId, ok := body[db.BodyRev].(string)
 	assertTrue(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
@@ -540,7 +540,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
 	assert.Equals(t, response.Code, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
-	newRevId := body["_rev"].(string)
+	newRevId := body[db.BodyRev].(string)
 	log.Printf("Retrieved via Sync Gateway after non-mobile update, revId:%v", newRevId)
 	assert.Equals(t, newRevId, revId)
 }
@@ -572,7 +572,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	// Extract rev from response for comparison with second GET below
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	revId, ok := body["_rev"].(string)
+	revId, ok := body[db.BodyRev].(string)
 	assertTrue(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
@@ -631,7 +631,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Extract rev from response for comparison with second GET below
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	revId, ok := body["_rev"].(string)
+	revId, ok := body[db.BodyRev].(string)
 	assertTrue(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
@@ -672,7 +672,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
 	assert.Equals(t, response.Code, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
-	newRevId := body["_rev"].(string)
+	newRevId := body[db.BodyRev].(string)
 	log.Printf("Retrieved via Sync Gateway after non-mobile update, revId:%v", newRevId)
 	assert.Equals(t, newRevId, revId)
 

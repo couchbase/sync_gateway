@@ -66,7 +66,7 @@ func TestAttachments(t *testing.T) {
 	rev2str := `{"_attachments": {"hello.txt": {"stub":true, "revpos":1}, "bye.txt": {"data": "YnllLXlh"}}}`
 	var body2 Body
 	json.Unmarshal([]byte(rev2str), &body2)
-	body2["_rev"] = revid
+	body2[BodyRev] = revid
 	revid, err = db.Put("doc1", body2)
 	assertNoError(t, err, "Couldn't update document")
 	assert.Equals(t, revid, "2-08b42c51334c0469bd060e6d9e6d797b")
@@ -87,7 +87,7 @@ func TestAttachments(t *testing.T) {
 	rev3str := `{"_attachments": {"bye.txt": {"stub":true,"revpos":2}}}`
 	var body3 Body
 	json.Unmarshal([]byte(rev3str), &body3)
-	body3["_rev"] = revid
+	body3[BodyRev] = revid
 	revid, err = db.Put("doc1", body3)
 	assertNoError(t, err, "Couldn't update document")
 	assert.Equals(t, revid, "3-252b9fa1f306930bffc07e7d75b77faf")

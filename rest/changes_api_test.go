@@ -252,7 +252,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	log.Printf("Deletion looks like: %s", response.Body.Bytes())
 	var docBody db.Body
 	json.Unmarshal(response.Body.Bytes(), &docBody)
-	assert.DeepEquals(t, docBody, db.Body{"_id": "alpha", "_rev": rev2, "_deleted": true})
+	assert.DeepEquals(t, docBody, db.Body{db.BodyId: "alpha", db.BodyRev: rev2, db.BodyDeleted: true})
 
 	// Access without deletion revID shouldn't be allowed (since doc is not in Alice's channels):
 	response = rt.Send(requestByUser("GET", "/db/alpha", "", "alice"))
@@ -1062,7 +1062,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.Equals(t, err, nil)
 	assert.Equals(t, len(changes.Results), 4)
 	assert.Equals(t, changes.Results[3].ID, "docD")
-	assert.Equals(t, changes.Results[3].Doc["_id"], "docD")
+	assert.Equals(t, changes.Results[3].Doc[db.BodyId], "docD")
 
 	//test parameter style=all_docs
 	//Create a conflict revision on docC

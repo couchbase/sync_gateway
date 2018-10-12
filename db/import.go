@@ -30,7 +30,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 
 	var body Body
 	if isDelete {
-		body = Body{"_deleted": true}
+		body = Body{BodyDeleted: true}
 	} else {
 		err := body.Unmarshal(value)
 		if err != nil {
@@ -200,7 +200,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		generation++
 		newRev = createRevID(generation, parentRev, body)
 		base.Infof(base.KeyImport, "Created new rev ID %v", newRev)
-		body["_rev"] = newRev
+		body[BodyRev] = newRev
 		doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 
 		// During import, oldDoc (doc.Body) is nil (since it's no longer available)
