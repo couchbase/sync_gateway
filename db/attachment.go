@@ -286,7 +286,7 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 			info.contentType, _ = meta["content_type"].(string)
 			info.data, err = decodeAttachment(meta["data"])
 			if info.data == nil {
-				base.Warnf(base.KeyAll, "Couldn't decode attachment %q of doc %q: %v", base.UD(name), base.UD(body["_id"]), err)
+				base.Warnf(base.KeyAll, "Couldn't decode attachment %q of doc %q: %v", base.UD(name), base.UD(body[BodyId]), err)
 				meta["stub"] = true
 				delete(meta, "data")
 			} else if len(info.data) > kMaxInlineAttachmentSize {
@@ -317,8 +317,8 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 // The revision will be written as a nested multipart body if it has attachments.
 func (db *Database) WriteRevisionAsPart(revBody Body, isError bool, compressPart bool, writer *multipart.Writer) error {
 	partHeaders := textproto.MIMEHeader{}
-	docID, _ := revBody["_id"].(string)
-	revID, _ := revBody["_rev"].(string)
+	docID, _ := revBody[BodyId].(string)
+	revID, _ := revBody[BodyRev].(string)
 	if len(docID) > 0 {
 		partHeaders.Set("X-Doc-ID", docID)
 		partHeaders.Set("X-Rev-ID", revID)

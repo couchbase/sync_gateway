@@ -177,16 +177,16 @@ func TestDatabase(t *testing.T) {
 	body := Body{"key1": "value1", "key2": 1234}
 	rev1id, err := db.Put("doc1", body)
 	assertNoError(t, err, "Couldn't create document")
-	assert.Equals(t, rev1id, body["_rev"])
+	assert.Equals(t, rev1id, body[BodyRev])
 	assert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
 
 	log.Printf("Create rev 2...")
 	body["key1"] = "new value"
 	body["key2"] = int64(4321)
 	rev2id, err := db.Put("doc1", body)
-	body["_id"] = "doc1"
+	body[BodyId] = "doc1"
 	assertNoError(t, err, "Couldn't update document")
-	assert.Equals(t, rev2id, body["_rev"])
+	assert.Equals(t, rev2id, body[BodyRev])
 	assert.Equals(t, rev2id, "2-488724414d0ed6b398d6d2aeb228d797")
 
 	// Retrieve the document:
@@ -198,7 +198,7 @@ func TestDatabase(t *testing.T) {
 	log.Printf("Retrieve rev 1...")
 	gotbody, err = db.GetRev("doc1", rev1id, false, nil)
 	assertNoError(t, err, "Couldn't get document with rev 1")
-	assert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": 1234, "_id": "doc1", "_rev": rev1id})
+	assert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": 1234, BodyId: "doc1", BodyRev: rev1id})
 
 	log.Printf("Retrieve rev 2...")
 	gotbody, err = db.GetRev("doc1", rev2id, false, nil)
@@ -241,7 +241,7 @@ func TestDatabase(t *testing.T) {
 
 	// Test PutExistingRev:
 	log.Printf("Check PutExistingRev...")
-	body["_rev"] = "4-four"
+	body[BodyRev] = "4-four"
 	body["key1"] = "fourth value"
 	body["key2"] = int64(4444)
 	history := []string{"4-four", "3-three", "2-488724414d0ed6b398d6d2aeb228d797",
@@ -274,9 +274,9 @@ func TestGetDeleted(t *testing.T) {
 	body, err = db.GetRev("doc1", rev2id, true, nil)
 	assertNoError(t, err, "GetRev")
 	expectedResult := Body{
-		"_id":        "doc1",
-		"_rev":       rev2id,
-		"_deleted":   true,
+		BodyId:       "doc1",
+		BodyRev:      rev2id,
+		BodyDeleted:  true,
 		"_revisions": map[string]interface{}{"start": 2, "ids": []string{"bc6d97f6e97c0d034a34f8aac2bf8b44", "dfd5e19813767eeddd08270fc5f385cd"}},
 	}
 	assert.DeepEquals(t, body, expectedResult)
@@ -314,7 +314,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	rev2body := Body{
 		"key1":     1234,
 		"channels": []string{"NBC"},
-		"_rev":     rev1id,
+		BodyRev:    rev1id,
 	}
 	rev2id, err := db.Put("doc1", rev2body)
 	assertNoError(t, err, "Put Rev 2")
@@ -323,7 +323,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	rev3body := Body{
 		"key1":     12345,
 		"channels": []string{"NBC"},
-		"_rev":     rev2id,
+		BodyRev:    rev2id,
 	}
 	_, err = db.Put("doc1", rev3body)
 	assertNoError(t, err, "Put Rev 3")
@@ -339,8 +339,8 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"_revisions": map[string]interface{}{
 			"start": 2,
 			"ids":   []string{rev2digest, rev1digest}},
-		"_id":  "doc1",
-		"_rev": rev2id,
+		BodyId:  "doc1",
+		BodyRev: rev2id,
 	}
 	assert.DeepEquals(t, body, expectedResult)
 
@@ -364,8 +364,8 @@ func TestGetRemovedAsUser(t *testing.T) {
 	body, err = db.GetRev("doc1", rev2id, true, nil)
 	assertNoError(t, err, "GetRev")
 	expectedResult = Body{
-		"_id":      "doc1",
-		"_rev":     rev2id,
+		BodyId:     "doc1",
+		BodyRev:    rev2id,
 		"_removed": true,
 		"_revisions": map[string]interface{}{
 			"start": 2,
@@ -398,7 +398,7 @@ func TestGetRemoved(t *testing.T) {
 	rev2body := Body{
 		"key1":     1234,
 		"channels": []string{"NBC"},
-		"_rev":     rev1id,
+		BodyRev:    rev1id,
 	}
 	rev2id, err := db.Put("doc1", rev2body)
 	assertNoError(t, err, "Put Rev 2")
@@ -407,7 +407,7 @@ func TestGetRemoved(t *testing.T) {
 	rev3body := Body{
 		"key1":     12345,
 		"channels": []string{"NBC"},
-		"_rev":     rev2id,
+		BodyRev:    rev2id,
 	}
 	_, err = db.Put("doc1", rev3body)
 	assertNoError(t, err, "Put Rev 3")
@@ -423,8 +423,8 @@ func TestGetRemoved(t *testing.T) {
 		"_revisions": map[string]interface{}{
 			"start": 2,
 			"ids":   []string{rev2digest, rev1digest}},
-		"_id":  "doc1",
-		"_rev": rev2id,
+		BodyId:  "doc1",
+		BodyRev: rev2id,
 	}
 	assert.DeepEquals(t, body, expectedResult)
 
@@ -439,8 +439,8 @@ func TestGetRemoved(t *testing.T) {
 	body, err = db.GetRev("doc1", rev2id, true, nil)
 	assertNoError(t, err, "GetRev")
 	expectedResult = Body{
-		"_id":      "doc1",
-		"_rev":     rev2id,
+		BodyId:     "doc1",
+		BodyRev:    rev2id,
 		"_removed": true,
 		"_revisions": map[string]interface{}{
 			"start": 2,
@@ -471,9 +471,9 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	assertNoError(t, err, "Put")
 
 	rev2body := Body{
-		"key1":     1234,
-		"_deleted": true,
-		"_rev":     rev1id,
+		"key1":      1234,
+		BodyDeleted: true,
+		BodyRev:     rev1id,
 	}
 	rev2id, err := db.Put("doc1", rev2body)
 	assertNoError(t, err, "Put Rev 2")
@@ -482,7 +482,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	rev3body := Body{
 		"key1":     12345,
 		"channels": []string{"NBC"},
-		"_rev":     rev2id,
+		BodyRev:    rev2id,
 	}
 	_, err = db.Put("doc1", rev3body)
 	assertNoError(t, err, "Put Rev 3")
@@ -493,13 +493,13 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	rev2digest := rev2id[2:]
 	rev1digest := rev1id[2:]
 	expectedResult := Body{
-		"key1":     1234,
-		"_deleted": true,
+		"key1":      1234,
+		BodyDeleted: true,
 		"_revisions": map[string]interface{}{
 			"start": 2,
 			"ids":   []string{rev2digest, rev1digest}},
-		"_id":  "doc1",
-		"_rev": rev2id,
+		BodyId:  "doc1",
+		BodyRev: rev2id,
 	}
 	assert.DeepEquals(t, body, expectedResult)
 
@@ -514,10 +514,10 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	body, err = db.GetRev("doc1", rev2id, true, nil)
 	assertNoError(t, err, "GetRev")
 	expectedResult = Body{
-		"_id":      "doc1",
-		"_rev":     rev2id,
-		"_removed": true,
-		"_deleted": true,
+		BodyId:      "doc1",
+		BodyRev:     rev2id,
+		"_removed":  true,
+		BodyDeleted: true,
 		"_revisions": map[string]interface{}{
 			"start": 2,
 			"ids":   []string{rev2digest, rev1digest}},
@@ -703,17 +703,17 @@ func TestRepeatedConflict(t *testing.T) {
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}, false), "add 2-a")
 
 	// Get the _rev that was set in the body by PutExistingRev() and make assertions on it
-	rev, ok := body["_rev"]
+	rev, ok := body[BodyRev]
 	assert.True(t, ok)
 	revGen, _ := ParseRevID(rev.(string))
 	assert.Equals(t, revGen, 2)
 
 	// Remove the _rev key from the body, and call PutExistingRev() again, which should re-add it
-	delete(body, "_rev")
+	delete(body, BodyRev)
 	db.PutExistingRev("doc", body, []string{"2-a", "1-a"}, false)
 
 	// The _rev should pass the same assertions as before, since PutExistingRev() should re-add it
-	rev, ok = body["_rev"]
+	rev, ok = body[BodyRev]
 	assert.True(t, ok)
 	revGen, _ = ParseRevID(rev.(string))
 	assert.Equals(t, revGen, 2)
@@ -757,15 +757,15 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change with the higher revid won:
 	gotBody, err := db.Get("doc")
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-b", "n": 2,
+	assert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-b", "n": 2,
 		"channels": []string{"all", "2b"}})
 
 	// Verify we can still get the other two revisions:
 	gotBody, err = db.GetRev("doc", "1-a", false, nil)
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "1-a", "n": 1,
+	assert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "1-a", "n": 1,
 		"channels": []string{"all", "1"}})
 	gotBody, err = db.GetRev("doc", "2-a", false, nil)
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": 3,
+	assert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-a", "n": 3,
 		"channels": []string{"all", "2a"}})
 
 	// Verify the change-log of the "all" channel:
@@ -798,7 +798,7 @@ func TestConflicts(t *testing.T) {
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
 	gotBody, err = db.Get("doc")
-	assert.DeepEquals(t, gotBody, Body{"_id": "doc", "_rev": "2-a", "n": 3,
+	assert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-a", "n": 3,
 		"channels": []string{"all", "2a"}})
 
 	// Verify channel assignments are correct for channels defined by 2-a:
@@ -852,9 +852,9 @@ func TestNoConflictsMode(t *testing.T) {
 	assertHTTPError(t, err, 409)
 
 	// Create a non-conflict with a longer history, ending in a deletion:
-	body["_deleted"] = true
+	body[BodyDeleted] = true
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"4-a", "3-a", "2-a", "1-a"}, false), "add 4-a")
-	delete(body, "_deleted")
+	delete(body, BodyDeleted)
 
 	// Create a non-conflict with no history (re-creating the document, but with an invalid rev):
 	err = db.PutExistingRev("doc", body, []string{"1-f"}, false)
@@ -862,20 +862,20 @@ func TestNoConflictsMode(t *testing.T) {
 
 	// Resurrect the tombstoned document with a valid history
 	assertNoError(t, db.PutExistingRev("doc", body, []string{"5-f", "4-a"}, false), "add 5-f")
-	delete(body, "_deleted")
+	delete(body, BodyDeleted)
 
 	// Create a new document with a longer history:
 	assertNoError(t, db.PutExistingRev("COD", body, []string{"4-a", "3-a", "2-a", "1-a"}, false), "add COD")
-	delete(body, "_deleted")
+	delete(body, BodyDeleted)
 
 	// Now use Put instead of PutExistingRev:
 
 	// Successfully add a new revision:
-	_, err = db.Put("doc", Body{"_rev": "5-f", "foo": -1})
+	_, err = db.Put("doc", Body{BodyRev: "5-f", "foo": -1})
 	assertNoError(t, err, "Put rev after 1-f")
 
 	// Try to create a conflict:
-	_, err = db.Put("doc", Body{"_rev": "3-a", "foo": 7})
+	_, err = db.Put("doc", Body{BodyRev: "3-a", "foo": 7})
 	assertHTTPError(t, err, 409)
 
 	// Conflict with no ancestry:
@@ -909,14 +909,14 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	// Set AllowConflicts to false
 	db.Options.AllowConflicts = base.BooleanPointer(false)
 	delete(body, "n")
-	body["_deleted"] = true
+	body[BodyDeleted] = true
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
 	err := db.PutExistingRev("doc1", body, []string{"2-c", "1-a"}, false)
 	assertTrue(t, err != nil, "expected error tombstoning non-leaf")
 
 	// Tombstone the non-winning branch of a conflicted document
-	body["_rev"] = "2-a"
+	body[BodyRev] = "2-a"
 	tombstoneRev, putErr := db.Put("doc1", body)
 	assertNoError(t, putErr, "tombstone 2-a")
 	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
@@ -924,12 +924,12 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.Equals(t, doc.CurrentRev, "2-b")
 
 	// Attempt to add a tombstone rev w/ the previous tombstone as parent
-	body["_rev"] = tombstoneRev
+	body[BodyRev] = tombstoneRev
 	_, putErr = db.Put("doc1", body)
 	assertTrue(t, putErr != nil, "Expect error tombstoning a tombstone")
 
 	// Tombstone the winning branch of a conflicted document
-	body["_rev"] = "2-b"
+	body[BodyRev] = "2-b"
 	_, putErr = db.Put("doc2", body)
 	assertNoError(t, putErr, "tombstone 2-b")
 	doc, err = db.GetDocument("doc2", DocUnmarshalAll)
@@ -938,7 +938,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 
 	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
 	db.RevsLimit = uint32(1)
-	body["_rev"] = "2-a"
+	body[BodyRev] = "2-a"
 	_, putErr = db.Put("doc3", body)
 	assertNoError(t, putErr, "tombstone 2-a w/ revslimit=1")
 	doc, err = db.GetDocument("doc3", DocUnmarshalAll)
@@ -975,7 +975,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	// Set AllowConflicts to false
 	db.Options.AllowConflicts = base.BooleanPointer(false)
 	delete(body, "n")
-	body["_deleted"] = true
+	body[BodyDeleted] = true
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
 	err := db.PutExistingRev("doc1", body, []string{"2-c", "1-a"}, false)
@@ -1023,7 +1023,7 @@ func TestSyncFnOnPush(t *testing.T) {
 
 	// Add several revisions at once to a doc, as on a push:
 	log.Printf("Check PutExistingRev...")
-	body["_rev"] = "4-four"
+	body[BodyRev] = "4-four"
 	body["key1"] = "fourth value"
 	body["key2"] = int64(4444)
 	body["channels"] = "clibup"
@@ -1236,7 +1236,7 @@ func TestPostWithExistingId(t *testing.T) {
 	// Test creating a document with existing id property:
 	customDocId := "customIdValue"
 	log.Printf("Create document with existing id...")
-	body := Body{"_id": customDocId, "key1": "value1", "key2": "existing"}
+	body := Body{BodyId: customDocId, "key1": "value1", "key2": "existing"}
 	docid, rev1id, err := db.Post(body)
 	assert.True(t, rev1id != "")
 	assert.True(t, docid == customDocId)
@@ -1272,7 +1272,7 @@ func TestPutWithUserSpecialProperty(t *testing.T) {
 	// Test creating a document with existing id property:
 	customDocId := "customIdValue"
 	log.Printf("Create document with existing id...")
-	body := Body{"_id": customDocId, "key1": "value1", "_key2": "existing"}
+	body := Body{BodyId: customDocId, "key1": "value1", "_key2": "existing"}
 	docid, rev1id, err := db.Post(body)
 	assert.True(t, rev1id == "")
 	assert.True(t, docid == "")
@@ -1289,7 +1289,7 @@ func TestWithNullPropertyKey(t *testing.T) {
 	// Test creating a document with null property key
 	customDocId := "customIdValue"
 	log.Printf("Create document with empty property key")
-	body := Body{"_id": customDocId, "": "value1"}
+	body := Body{BodyId: customDocId, "": "value1"}
 	docid, rev1id, _ := db.Post(body)
 	assert.True(t, rev1id != "")
 	assert.True(t, docid != "")
@@ -1305,7 +1305,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	// Test creating a document with existing id property:
 	customDocId := "customIdValue"
 	log.Printf("Create document with existing id...")
-	body := Body{"_id": customDocId, "key1": "value1", "key2": "existing"}
+	body := Body{BodyId: customDocId, "key1": "value1", "key2": "existing"}
 	docid, rev1id, err := db.Post(body)
 	assert.True(t, rev1id != "")
 	assert.True(t, docid == customDocId)
@@ -1319,7 +1319,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	// Test that posting an update with a user special property does not update the
 	//document
 	log.Printf("Update document with existing id...")
-	body = Body{"_id": customDocId, "_rev": rev1id, "_special": "value", "key1": "value1", "key2": "existing"}
+	body = Body{BodyId: customDocId, BodyRev: rev1id, "_special": "value", "key1": "value1", "key2": "existing"}
 	_, err = db.Put(docid, body)
 	assert.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
 
@@ -1430,7 +1430,7 @@ func TestChannelView(t *testing.T) {
 	body := Body{"key1": "value1", "key2": 1234}
 	rev1id, err := db.Put("doc1", body)
 	assertNoError(t, err, "Couldn't create document")
-	assert.Equals(t, rev1id, body["_rev"])
+	assert.Equals(t, rev1id, body[BodyRev])
 	assert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
 
 	var entries LogEntries

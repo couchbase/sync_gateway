@@ -293,9 +293,9 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 
 	//Assert that we can get the two conflicing revisions
 	gotBody, err := db.GetRev("foo", "1-madeup", false, nil)
-	assert.DeepEquals(t, gotBody, Body{"_id": "foo", "a": "b", "_rev": "1-madeup"})
+	assert.DeepEquals(t, gotBody, Body{BodyId: "foo", "a": "b", BodyRev: "1-madeup"})
 	gotBody, err = db.GetRev("foo", "2-edce85747420ad6781bdfccdebf82180", false, nil)
-	assert.DeepEquals(t, gotBody, Body{"_id": "foo", "a": "c", "_rev": "2-edce85747420ad6781bdfccdebf82180"})
+	assert.DeepEquals(t, gotBody, Body{BodyId: "foo", "a": "c", BodyRev: "2-edce85747420ad6781bdfccdebf82180"})
 }
 
 func TestShadowerPattern(t *testing.T) {

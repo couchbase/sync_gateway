@@ -686,7 +686,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	assertStatus(t, response, 200)
 	var responseBody RestDocument
 	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
-	_, ok := responseBody["_deleted"]
+	_, ok := responseBody[db.BodyDeleted]
 	assert.False(t, ok)
 
 	// Tombstone the document
@@ -701,7 +701,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	assertStatus(t, response, 200)
 	responseBody = RestDocument{}
 	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
-	deletedValue, deletedOK := responseBody["_deleted"].(bool)
+	deletedValue, deletedOK := responseBody[db.BodyDeleted].(bool)
 	assert.True(t, deletedOK)
 	assert.True(t, deletedValue)
 }
@@ -730,8 +730,48 @@ func TestMultiChannelContinousChangesSubscription(t *testing.T) {
 }
 
 // Test setting and getting checkpoints
-func TestCheckpoints(t *testing.T) {
+func TestBlipSetCheckpoint(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+
+	// Setup
+	rt := RestTester{
+		noAdminParty: true,
+	}
+	btSpec := BlipTesterSpec{
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         &rt,
+	}
+	bt, err := NewBlipTesterFromSpec(btSpec)
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	// Create new checkpoint
+	checkpointBody := []byte(`{"client_seq":"1000"}`)
+	sent, _, resp, err := bt.SetCheckpoint("testclient", "", checkpointBody)
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, resp.Properties["Error-Code"], "")
+
+	checkpointRev := resp.Rev()
+	assert.Equals(t, checkpointRev, "0-1")
+
+	// Validate checkpoint existence in bucket (local file name "/" needs to be URL encoded as %252F)
+	response := rt.SendAdminRequest("GET", "/db/_local/checkpoint%252Ftestclient", "")
+	assertStatus(t, response, 200)
+	var responseBody map[string]interface{}
+	err = json.Unmarshal(response.Body.Bytes(), &responseBody)
+	assert.Equals(t, responseBody["client_seq"], "1000")
+
+	// Attempt to update the checkpoint with previous rev
+	checkpointBody = []byte(`{"client_seq":"1005"}`)
+	sent, _, resp, err = bt.SetCheckpoint("testclient", checkpointRev, checkpointBody)
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, resp.Properties["Error-Code"], "")
+	checkpointRev = resp.Rev()
+	assert.Equals(t, checkpointRev, "0-2")
 }
 
 // Test no-conflicts mode replication (proposeChanges endpoint)

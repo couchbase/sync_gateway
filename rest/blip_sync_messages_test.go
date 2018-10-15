@@ -50,8 +50,10 @@ func TestAddRevision(t *testing.T) {
 		if testCase.deletedPropertyValue != "nil" {
 			blipMessage.Properties["deleted"] = testCase.deletedPropertyValue
 		}
-		addRevision := newAddRevisionParams(&blipMessage)
-		assert.Equals(t, addRevision.deleted(), testCase.expectedDeletedVal)
+		revMessage := &revMessage{
+			Message: &blipMessage,
+		}
+		assert.Equals(t, revMessage.deleted(), testCase.expectedDeletedVal)
 	}
 
 }

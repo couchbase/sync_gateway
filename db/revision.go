@@ -21,6 +21,12 @@ import (
 // The body of a CouchDB document/revision as decoded from JSON.
 type Body map[string]interface{}
 
+const (
+	BodyDeleted = "_deleted"
+	BodyRev     = "_rev"
+	BodyId      = "_id"
+)
+
 func (b *Body) Unmarshal(data []byte) error {
 	if err := json.Unmarshal(data, &b); err != nil {
 		return err
@@ -172,7 +178,7 @@ func compareRevIDs(id1, id2 string) int {
 func stripSpecialProperties(body Body) Body {
 	stripped := Body{}
 	for key, value := range body {
-		if key == "" || key[0] != '_' || key == "_attachments" || key == "_deleted" {
+		if key == "" || key[0] != '_' || key == "_attachments" || key == BodyDeleted {
 			stripped[key] = value
 		}
 	}
@@ -181,7 +187,7 @@ func stripSpecialProperties(body Body) Body {
 
 func containsUserSpecialProperties(body Body) bool {
 	for key := range body {
-		if key != "" && key[0] == '_' && key != "_id" && key != "_rev" && key != "_deleted" && key != "_attachments" && key != "_revisions" {
+		if key != "" && key[0] == '_' && key != BodyId && key != BodyRev && key != BodyDeleted && key != "_attachments" && key != "_revisions" {
 			return true
 		}
 	}

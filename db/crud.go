@@ -200,7 +200,7 @@ func (context *DatabaseContext) revCacheLoaderForDocument(doc *document, revid s
 		}
 	}
 	if doc.History[revid].Deleted {
-		body["_deleted"] = true
+		body[BodyDeleted] = true
 	}
 
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
@@ -272,10 +272,10 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 			// On access failure, return (only) the doc history and deletion/removal
 			// status instead of returning an error. For justification see the comment in
 			// the getRevFromDoc method, below
-			deleted, _ := body["_deleted"].(bool)
-			redactedBody := Body{"_id": docid, "_rev": revid}
+			deleted, _ := body[BodyDeleted].(bool)
+			redactedBody := Body{BodyId: docid, BodyRev: revid}
 			if deleted {
-				redactedBody["_deleted"] = true
+				redactedBody[BodyDeleted] = true
 			} else {
 				redactedBody["_removed"] = true
 			}
@@ -287,7 +287,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 	}
 
 	if !revIDGiven {
-		if deleted, _ := body["_deleted"].(bool); deleted {
+		if deleted, _ := body[BodyDeleted].(bool); deleted {
 			return nil, base.HTTPErrorf(404, "deleted")
 		}
 	}
@@ -415,8 +415,8 @@ func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error
 		}
 	}
 	body.FixJSONNumbers() // Make sure big ints won't get output in scientific notation
-	body["_id"] = doc.ID
-	body["_rev"] = revid
+	body[BodyId] = doc.ID
+	body[BodyRev] = revid
 
 	if doc.Attachments != nil {
 		body["_attachments"] = doc.Attachments
@@ -465,7 +465,7 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		if revid == "" || doc.History[revid] == nil /*|| !doc.History[revid].Deleted*/ {
 			return nil, err
 		}
-		body = Body{"_id": doc.ID, "_rev": revid}
+		body = Body{BodyId: doc.ID, BodyRev: revid}
 		if !doc.History[revid].Deleted {
 			body["_removed"] = true
 		}
@@ -482,7 +482,7 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		}
 	}
 	if doc.History[revid].Deleted {
-		body["_deleted"] = true
+		body[BodyDeleted] = true
 	}
 	if listRevisions {
 		validatedHistory, getHistoryErr := doc.History.getHistory(revid)
@@ -541,7 +541,7 @@ func (db *Database) backupAncestorRevs(doc *document, revid string) {
 func (db *Database) initializeSyncData(doc *document) (err error) {
 	body := doc.Body()
 	doc.CurrentRev = createRevID(1, "", body)
-	body["_rev"] = doc.CurrentRev
+	body[BodyRev] = doc.CurrentRev
 	doc.setFlag(channels.Deleted, false)
 	doc.History = make(RevTree)
 	if err = doc.History.addRevision(doc.ID, RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false}); err != nil {
@@ -560,7 +560,7 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *document, body Bod
 	if doc.Body() == nil {
 		isDelete = true
 	} else {
-		deletedInBody, ok := body["_deleted"].(bool)
+		deletedInBody, ok := body[BodyDeleted].(bool)
 		if ok {
 			isDelete = deletedInBody
 		}
@@ -582,16 +582,16 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *document, body Bod
 }
 
 // Updates or creates a document.
-// The new body's "_rev" property must match the current revision's, if any.
+// The new body's BodyRev property must match the current revision's, if any.
 func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 	// Get the revision ID to match, and the new generation number:
-	matchRev, _ := body["_rev"].(string)
+	matchRev, _ := body[BodyRev].(string)
 	generation, _ := ParseRevID(matchRev)
 	if generation < 0 {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
-	deleted, _ := body["_deleted"].(bool)
+	deleted, _ := body[BodyDeleted].(bool)
 
 	expiry, err := body.extractExpiry()
 	if err != nil {
@@ -636,7 +636,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 		// Make up a new _rev, and add it to the history:
 		newRev := createRevID(generation, matchRev, body)
-		body["_rev"] = newRev
+		body[BodyRev] = newRev
 		if err := doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.Infof(base.KeyCRUD, "Failed to add revision ID: %s, error: %v", newRev, err)
 			return nil, nil, nil, base.ErrRevTreeAddRevFailure
@@ -668,7 +668,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 	if generation < 0 {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
-	deleted, _ := body["_deleted"].(bool)
+	deleted, _ := body[BodyDeleted].(bool)
 
 	expiry, err := body.extractExpiry()
 	if err != nil {
@@ -699,7 +699,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 		}
 		if currentRevIndex == 0 {
 			base.Debugf(base.KeyCRUD, "PutExistingRev(%q): No new revisions to add", base.UD(docid))
-			body["_rev"] = newRev                        // The _rev field is expected by some callers.  If missing, may cause problems for callers.
+			body[BodyRev] = newRev                     // The _rev field is expected by some callers.  If missing, may cause problems for callers.
 			return nil, nil, nil, base.ErrUpdateCancel // No new revisions to add
 		}
 
@@ -728,7 +728,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		body["_rev"] = newRev
+		body[BodyRev] = newRev
 		return body, newAttachments, nil, nil
 	})
 	return err
@@ -843,7 +843,7 @@ func (db *Database) updateAndReturnDoc(
 		}
 
 		// Determine which is the current "winning" revision (it's not necessarily the new one):
-		newRevID = body["_rev"].(string)
+		newRevID = body[BodyRev].(string)
 		prevCurrentRev := doc.CurrentRev
 		var branched, inConflict bool
 		doc.CurrentRev, branched, inConflict = doc.History.winningRevision()
@@ -882,7 +882,7 @@ func (db *Database) updateAndReturnDoc(
 		}
 
 		// Run the sync function, to validate the update and compute its channels/access:
-		body["_id"] = doc.ID
+		body[BodyId] = doc.ID
 		channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(doc, body, newRevID)
 		if err != nil {
 			return
@@ -1148,7 +1148,7 @@ func (db *Database) updateAndReturnDoc(
 		}
 
 		if doc.History[newRevID].Deleted {
-			body["_deleted"] = true
+			body[BodyDeleted] = true
 		}
 		revChannels := doc.History[newRevID].Channels
 		db.revisionCache.Put(doc.ID, newRevID, storedBody, encodeRevisions(history), revChannels)
@@ -1233,12 +1233,12 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 
 // Creates a new document, assigning it a random doc ID.
 func (db *Database) Post(body Body) (string, string, error) {
-	if body["_rev"] != nil {
+	if body[BodyRev] != nil {
 		return "", "", base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
 	}
 
 	// If there's an incoming _id property, use that as the doc ID.
-	docid, idFound := body["_id"].(string)
+	docid, idFound := body[BodyId].(string)
 	if !idFound {
 		docid = base.CreateUUID()
 	}
@@ -1250,9 +1250,9 @@ func (db *Database) Post(body Body) (string, string, error) {
 	return docid, rev, err
 }
 
-// Deletes a document, by adding a new revision whose "_deleted" property is true.
+// Deletes a document, by adding a new revision whose _deleted property is true.
 func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
-	body := Body{"_deleted": true, "_rev": revid}
+	body := Body{BodyDeleted: true, BodyRev: revid}
 	return db.Put(docid, body)
 }
 
@@ -1277,7 +1277,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 	expiry *uint32,
 	oldJson string,
 	err error) {
-	base.Debugf(base.KeyCRUD, "Invoking sync on doc %q rev %s", base.UD(doc.ID), body["_rev"])
+	base.Debugf(base.KeyCRUD, "Invoking sync on doc %q rev %s", base.UD(doc.ID), body[BodyRev])
 
 	// Get the parent revision, to pass to the sync function:
 	var oldJsonBytes []byte

@@ -69,7 +69,7 @@ func (h *handler) handleGetDoc() error {
 		if value == nil {
 			return kNotFoundError
 		}
-		h.setHeader("Etag", strconv.Quote(value["_rev"].(string)))
+		h.setHeader("Etag", strconv.Quote(value[db.BodyRev].(string)))
 
 		hasBodies := (attachmentsSince != nil && value["_attachments"] != nil)
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
@@ -214,11 +214,11 @@ func (h *handler) handlePutAttachment() error {
 		// couchdb creates empty body on attachment PUT
 		// for non-existant doc id
 		body = db.Body{}
-		body["_rev"] = revid
+		body[db.BodyRev] = revid
 	} else if err != nil {
 		return err
 	} else if body != nil {
-		body["_rev"] = revid
+		body[db.BodyRev] = revid
 	}
 
 	// find attachment (if it existed)
@@ -262,9 +262,9 @@ func (h *handler) handlePutDoc() error {
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
 		if oldRev := h.getQuery("rev"); oldRev != "" {
-			body["_rev"] = oldRev
+			body[db.BodyRev] = oldRev
 		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
-			body["_rev"] = ifMatch
+			body[db.BodyRev] = ifMatch
 		}
 		newRev, err = h.db.Put(docid, body)
 		if err != nil {
@@ -282,7 +282,7 @@ func (h *handler) handlePutDoc() error {
 			return err
 		}
 
-		newRev, ok = body["_rev"].(string)
+		newRev, ok = body[db.BodyRev].(string)
 		if !ok {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
 		}
@@ -334,7 +334,7 @@ func (h *handler) handleGetLocalDoc() error {
 	if value == nil {
 		return kNotFoundError
 	}
-	value["_id"] = "_local/" + docid
+	value[db.BodyId] = "_local/" + docid
 	value.FixJSONNumbers()
 	h.writeJSON(value)
 	return nil

@@ -1422,7 +1422,7 @@ readerLoop:
 
 		var exp int
 
-		switch partJSON["_id"] {
+		switch partJSON[db.BodyId] {
 		case "doc1":
 			exp = reqRevsLimit
 		case "doc2":
@@ -3165,7 +3165,7 @@ func TestBulkGetRevPruning(t *testing.T) {
 	// Get latest rev id
 	response = rt.SendRequest("GET", "/db/doc1", "")
 	json.Unmarshal(response.Body.Bytes(), &body)
-	revId = body["_rev"]
+	revId = body[db.BodyRev]
 
 	// Spin up several goroutines to all try to do a _bulk_get on the latest revision.
 	// Since they will be pruning the same shared rev history, it will cause a data race
@@ -3301,7 +3301,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// Get latest rev id
 	response = rt.SendRequest("GET", resource, "")
 	json.Unmarshal(response.Body.Bytes(), &body)
-	revId := body["_rev"]
+	revId := body[db.BodyRev]
 
 	// Do a bulk_get to get the doc -- this was causing a panic prior to the fix for #2528
 	bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "%v", "rev": "%v"}, {"id": "%v", "rev": "%v"}]}`, docIdDoc1, revId, docIdDoc2, revidDoc2)
@@ -3379,7 +3379,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 		}
 
 		// Assert expectations for the doc with no attachment errors
-		rawId, ok = partJson["_id"]
+		rawId, ok = partJson[db.BodyId]
 		if ok {
 			_, hasErr := partJson["error"]
 			assertTrue(t, !hasErr, "Did not expect error field for this doc")

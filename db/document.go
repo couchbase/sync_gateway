@@ -627,12 +627,12 @@ func (doc *document) IsChannelRemoval(revID string) (body Body, history Body, ch
 
 	// Construct removal body
 	body = Body{
-		"_id":      doc.ID,
-		"_rev":     revID,
+		BodyId:     doc.ID,
+		BodyRev:    revID,
 		"_removed": true,
 	}
 	if isDelete {
-		body["_deleted"] = true
+		body[BodyDeleted] = true
 	}
 
 	// Build revision history for revID
@@ -785,7 +785,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 	// If there's no body, but there is an xattr, set body as {"_deleted":true} to align with non-xattr handling
 	if len(data) == 0 && len(xdata) > 0 {
 		doc._body = Body{}
-		doc._body["_deleted"] = true
+		doc._body[BodyDeleted] = true
 	}
 	return nil
 }
@@ -795,7 +795,7 @@ func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	body := doc._body
 	// If body is non-empty and non-deleted, unmarshal and return
 	if body != nil {
-		deleted, _ := body["_deleted"].(bool)
+		deleted, _ := body[BodyDeleted].(bool)
 		if !deleted {
 			data, err = json.Marshal(body)
 			if err != nil {

@@ -54,7 +54,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	assert.Equals(t, revGeneration, 1)
 
 	// Update doc (normal update, no conflicting revisions added)
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), fmt.Sprintf(`{"value":"secondval", "_rev":"%s"}`, revId))
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), fmt.Sprintf(`{"value":"secondval", db.BodyRev:"%s"}`, revId))
 	response.DumpBody()
 
 	// Create conflict
