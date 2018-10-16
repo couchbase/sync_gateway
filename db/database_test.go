@@ -87,6 +87,25 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 	return db, tBucket
 }
 
+// Sets up a test bucket with _sync:seq initialized to a high value prior to database creation.  Used to test
+// issues with custom _sync:seq values without triggering skipped sequences between 0 and customSeq
+func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, base.TestBucket) {
+
+	dbcOptions := DatabaseContextOptions{}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	tBucket := testBucket()
+
+	log.Printf("Initializing test _sync:seq to %d", customSeq)
+	_, incrErr := tBucket.Incr(SyncSeqKey, customSeq, customSeq, 0)
+	assertNoError(t, incrErr, fmt.Sprintf("Couldn't increment _sync:seq by %d", customSeq))
+
+	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+	return db, tBucket
+}
+
 func testBucket() base.TestBucket {
 
 	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry

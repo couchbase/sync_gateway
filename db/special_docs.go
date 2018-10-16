@@ -30,7 +30,7 @@ func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal(rawDocBytes, &body); err != nil {
+		if err := body.Unmarshal(rawDocBytes); err != nil {
 			return nil, err
 		}
 	} else {

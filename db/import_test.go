@@ -121,7 +121,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 		t.Run(fmt.Sprintf("%s", testCase), func(t *testing.T) {
 
 			key := fmt.Sprintf("TestImportDocWithStaleDoc%-s", testCase.name)
-			bodyBytes := rawDocNoMeta()
+			bodyBytes := testCase.docBody
 			body := Body{}
 			err := body.Unmarshal(bodyBytes)
 			assertNoError(t, err, "Error unmarshalling body")

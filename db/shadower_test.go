@@ -143,7 +143,7 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 	})
 
 	// wait for Event Manager queue worker to process
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	channelSize := len(resultChannel)
 

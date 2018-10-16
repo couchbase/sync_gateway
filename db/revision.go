@@ -10,6 +10,7 @@
 package db
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
@@ -28,7 +29,16 @@ const (
 )
 
 func (b *Body) Unmarshal(data []byte) error {
-	if err := json.Unmarshal(data, &b); err != nil {
+
+	if len(data) == 0 {
+		b = &Body{}
+		return nil
+	}
+
+	// Use decoder for unmarshalling to preserve large numbers
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&b); err != nil {
 		return err
 	}
 	return nil

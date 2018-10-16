@@ -263,6 +263,26 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 	assertStatus(t, response, 400)
 }
 
+func TestDocumentLargeNumbers(t *testing.T) {
+
+	// Use sync function to ensure no unexpected change to doc.
+	rt := RestTester{SyncFn: `function(doc) {if(doc.largeInt > 1000) { channel("largeNum") }}`}
+	defer rt.Close()
+
+	//Create document
+	response := rt.SendAdminRequest("PUT", "/db/numberDoc", `{"largeInt":9223372036854775807}`)
+	assertStatus(t, response, 201)
+
+	// Get document, validate number value
+	getResponse := rt.SendAdminRequest("GET", "/db/numberDoc", "")
+	assertStatus(t, getResponse, 200)
+	log.Printf("response body: %s", getResponse.Body.Bytes())
+
+	// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
+	responseString := string(getResponse.Body.Bytes())
+	assert.True(t, strings.Contains(responseString, `"largeInt":9223372036854775807`))
+}
+
 func TestFunkyDocIDs(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()

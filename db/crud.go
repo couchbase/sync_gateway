@@ -414,7 +414,6 @@ func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error
 			return nil, err
 		}
 	}
-	body.FixJSONNumbers() // Make sure big ints won't get output in scientific notation
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
 

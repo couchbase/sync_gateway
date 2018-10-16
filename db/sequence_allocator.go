@@ -22,6 +22,7 @@ const (
 	kMaxIncrRetries         = 3                  // Max retries for incr operations
 	UnusedSequenceKeyPrefix = "_sync:unusedSeq:" // Prefix for unused sequence documents
 	UnusedSequenceTTL       = 10 * 60            // 10 minute expiry for unused sequence docs
+	SyncSeqKey              = "_sync:seq"        // Key for sequence counter doc
 )
 
 type sequenceAllocator struct {
@@ -38,7 +39,7 @@ func newSequenceAllocator(bucket base.Bucket) (*sequenceAllocator, error) {
 
 func (s *sequenceAllocator) lastSequence() (uint64, error) {
 	dbExpvars.Add("sequence_gets", 1)
-	last, err := s.incrWithRetry("_sync:seq", 0)
+	last, err := s.incrWithRetry(SyncSeqKey, 0)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Error from Incr in lastSequence(): %v", err)
 	}
@@ -63,7 +64,7 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 		//OPT: Could remember multiple discontiguous ranges of free sequences
 	}
 	dbExpvars.Add("sequence_reserves", 1)
-	max, err := s.incrWithRetry("_sync:seq", numToReserve)
+	max, err := s.incrWithRetry(SyncSeqKey, numToReserve)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
 		return err

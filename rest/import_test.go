@@ -678,6 +678,38 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
 }
 
+// Test scenario where another actor updates a different xattr on a document.  Sync Gateway
+// should detect and not import/create new revision during read-triggered import
+func TestXattrImportLargeNumbers(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// 1. Create doc via the SDK
+	mobileKey := "TestImportLargeNumbers"
+	mobileBody := make(map[string]interface{})
+	mobileBody["channels"] = "ABC"
+	mobileBody["largeNumber"] = uint64(9223372036854775807)
+	_, err := bucket.Add(mobileKey, 0, mobileBody)
+	assertNoError(t, err, "Error writing SDK doc")
+
+	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
+	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	assert.Equals(t, response.Code, 200)
+	// Extract rev from response for comparison with second GET below
+	log.Printf("GET returned response: %s", response.Body.Bytes())
+	// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
+	responseString := string(response.Body.Bytes())
+	assert.True(t, strings.Contains(responseString, `"largeNumber":9223372036854775807`))
+}
+
 // Structs for manual rev storage validation
 type treeDoc struct {
 	Meta treeMeta `json:"_sync"`
