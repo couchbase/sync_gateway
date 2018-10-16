@@ -19,13 +19,13 @@ type RevisionCache struct {
 	lock       sync.Mutex // For thread-safety
 }
 
-type RevisionCacheLoaderFunc func(id IDAndRev) (body Body, history Body, channels base.Set, err error)
+type RevisionCacheLoaderFunc func(id IDAndRev) (body Body, history Revisions, channels base.Set, err error)
 
 // The cache payload data. Stored as the Value of a list Element.
 type revCacheValue struct {
 	key      IDAndRev   // doc/rev IDs
 	body     Body       // Revision body (a pristine shallow copy)
-	history  Body       // Rev history encoded like a "_revisions" property
+	history  Revisions  // Rev history encoded like a "_revisions" property
 	channels base.Set   // Set of channels that have access
 	err      error      // Error from loaderFunc if it failed
 	lock     sync.Mutex // Synchronizes access to this struct
@@ -50,7 +50,7 @@ func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc) *Revi
 // Returns the body of the revision, its history, and the set of channels it's in.
 // If the cache has a loaderFunction, it will be called if the revision isn't in the cache;
 // any error returned by the loaderFunction will be returned from Get.
-func (rc *RevisionCache) Get(docid, revid string) (Body, Body, base.Set, error) {
+func (rc *RevisionCache) Get(docid, revid string) (Body, Revisions, base.Set, error) {
 	value := rc.getValue(docid, revid, rc.loaderFunc != nil)
 	if value == nil {
 		return nil, nil, nil, nil
@@ -67,7 +67,7 @@ func (rc *RevisionCache) Get(docid, revid string) (Body, Body, base.Set, error) 
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
 // rev cache, will use it.  Otherwise will add to the rev cache using the raw document obtained in the
 // initial retrieval.
-func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (body Body, history Body, channels base.Set, currentRev string, err error) {
+func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (body Body, history Revisions, channels base.Set, currentRev string, err error) {
 
 	// Look up active rev for doc
 	bucketDoc, getErr := context.GetDocument(docid, DocUnmarshalSync)
@@ -90,7 +90,7 @@ func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (body
 }
 
 // Adds a revision to the cache.
-func (rc *RevisionCache) Put(docid string, revid string, body Body, history Body, channels base.Set) {
+func (rc *RevisionCache) Put(docid string, revid string, body Body, history Revisions, channels base.Set) {
 	if history == nil {
 		panic("Missing history for RevisionCache.Put")
 	}
@@ -135,7 +135,7 @@ func (rc *RevisionCache) purgeOldest_() {
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
 // will be called. This is synchronized so that the loader will only be called once even if
 // multiple goroutines try to load at the same time.
-func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (Body, Body, base.Set, error) {
+func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (Body, Revisions, base.Set, error) {
 	value.lock.Lock()
 	defer value.lock.Unlock()
 	if value.body == nil && value.err == nil {
@@ -155,7 +155,7 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (Body, Body
 
 // Retrieves the body etc. out of a revCacheValue.  If they aren't already present, loads into the cache value using
 // the provided document.
-func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) (Body, Body, base.Set, error) {
+func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) (Body, Revisions, base.Set, error) {
 	value.lock.Lock()
 	defer value.lock.Unlock()
 	if value.body == nil && value.err == nil {
@@ -172,7 +172,7 @@ func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) 
 }
 
 // Stores a body etc. into a revCacheValue if there isn't one already.
-func (value *revCacheValue) store(body Body, history Body, channels base.Set) {
+func (value *revCacheValue) store(body Body, history Revisions, channels base.Set) {
 	value.lock.Lock()
 	if value.body == nil {
 		value.body = body.ShallowCopy()      // Don't store a body the caller might later mutate

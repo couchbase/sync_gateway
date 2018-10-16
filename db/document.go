@@ -608,7 +608,7 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 
 // Determine whether the specified revision was a channel removal, based on doc.Channels.  If so, construct the standard document body for a
 // removal notification (_removed=true)
-func (doc *document) IsChannelRemoval(revID string) (body Body, history Body, channels base.Set, isRemoval bool, err error) {
+func (doc *document) IsChannelRemoval(revID string) (body Body, history Revisions, channels base.Set, isRemoval bool, err error) {
 
 	channels = make(base.Set)
 

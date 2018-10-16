@@ -173,7 +173,7 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
-func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
+func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Revisions, channels base.Set, err error) {
 	var doc *document
 	if doc, err = context.GetDocument(id.DocID, DocUnmarshalAll); doc == nil {
 		return body, history, channels, err
@@ -183,7 +183,7 @@ func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history 
 }
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
-func (context *DatabaseContext) revCacheLoaderForDocument(doc *document, revid string) (body Body, history Body, channels base.Set, err error) {
+func (context *DatabaseContext) revCacheLoaderForDocument(doc *document, revid string) (body Body, history Revisions, channels base.Set, err error) {
 
 	if body, err = context.getRevision(doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether

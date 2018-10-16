@@ -14,15 +14,15 @@ func TestRevisionCache(t *testing.T) {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
-	revForTest := func(i int) (Body, Body, base.Set) {
+	revForTest := func(i int) (Body, Revisions, base.Set) {
 		body := Body{
 			BodyId:  ids[i],
 			BodyRev: "x",
 		}
-		history := Body{"start": i}
+		history := Revisions{"start": i}
 		return body, history, nil
 	}
-	verify := func(body Body, history Body, channels base.Set, i int) {
+	verify := func(body Body, history Revisions, channels base.Set, i int) {
 		if body == nil {
 			t.Fatalf("nil body at #%d", i)
 		}
@@ -61,7 +61,7 @@ func TestRevisionCache(t *testing.T) {
 
 func TestLoaderFunction(t *testing.T) {
 	var callsToLoader = 0
-	loader := func(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
+	loader := func(id IDAndRev) (body Body, history Revisions, channels base.Set, err error) {
 		callsToLoader++
 		if id.DocID[0] != 'J' {
 			err = base.HTTPErrorf(404, "missing")
@@ -70,7 +70,7 @@ func TestLoaderFunction(t *testing.T) {
 				BodyId:  id.DocID,
 				BodyRev: id.RevID,
 			}
-			history = Body{"start": 1}
+			history = Revisions{"start": 1}
 			channels = base.SetOf("*")
 		}
 		return

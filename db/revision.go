@@ -28,6 +28,13 @@ const (
 	BodyId      = "_id"
 )
 
+// A revisions property found within a Body.  Expected to be of the form:
+//   Revisions["start"]: int64, starting generation number
+//   Revisions["ids"]: []string, list of digests
+// Used as map[string]interface{} instead of Revisions struct because it's unmarshalled
+// along with Body, and we don't need the overhead of allocating a new object
+type Revisions map[string]interface{}
+
 func (b *Body) Unmarshal(data []byte) error {
 
 	if len(data) == 0 {
@@ -47,6 +54,14 @@ func (b *Body) Unmarshal(data []byte) error {
 func (body Body) ShallowCopy() Body {
 	copied := make(Body, len(body))
 	for key, value := range body {
+		copied[key] = value
+	}
+	return copied
+}
+
+func (revisions Revisions) ShallowCopy() Revisions {
+	copied := make(Revisions, len(revisions))
+	for key, value := range revisions {
 		copied[key] = value
 	}
 	return copied
@@ -212,7 +227,7 @@ func canonicalEncoding(body Body) []byte {
 	return encoded
 }
 
-func GetStringArrayProperty(body Body, property string) ([]string, error) {
+func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {
 	if raw, exists := body[property]; !exists {
 		return nil, nil
 	} else if strings, ok := raw.([]string); ok {

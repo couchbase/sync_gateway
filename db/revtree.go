@@ -706,7 +706,7 @@ func (tree RevTree) getHistory(revid string) ([]string, error) {
 // Parses a CouchDB _rev or _revisions property into a list of revision IDs
 func ParseRevisions(body Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
-	revisions, ok := body["_revisions"].(map[string]interface{})
+	revisions, ok := body["_revisions"].(Revisions)
 	if !ok {
 		revid, ok := body[BodyRev].(string)
 		if !ok {
@@ -732,7 +732,7 @@ func ParseRevisions(body Body) []string {
 }
 
 // Splits out the "start" and "ids" properties from encoded revision list
-func splitRevisionList(revisions Body) (int, []string) {
+func splitRevisionList(revisions Revisions) (int, []string) {
 	start, ok := base.ToInt64(revisions["start"])
 	digests, _ := GetStringArrayProperty(revisions, "ids")
 	if ok && len(digests) > 0 && int(start) >= len(digests) {
@@ -744,7 +744,7 @@ func splitRevisionList(revisions Body) (int, []string) {
 
 // Standard CouchDB encoding of a revision list: digests without numeric generation prefixes go in
 // the "ids" property, and the first (largest) generation number in the "start" property.
-func encodeRevisions(revs []string) Body {
+func encodeRevisions(revs []string) Revisions {
 	ids := make([]string, len(revs))
 	var start int
 	for i, revid := range revs {
@@ -756,14 +756,14 @@ func encodeRevisions(revs []string) Body {
 			base.Warnf(base.KeyAll, "encodeRevisions found weird history %v", revs)
 		}
 	}
-	return map[string]interface{}{"start": start, "ids": ids}
+	return Revisions{"start": start, "ids": ids}
 }
 
 // Given a revision history encoded by encodeRevisions() and a list of possible ancestor revIDs,
 // trim the history to stop at the first ancestor revID. If no ancestors are found, trim to
 // length maxUnmatchedLen.
 // TODO: Document/rename what the boolean result return value represents
-func trimEncodedRevisionsToAncestor(revs Body, ancestors []string, maxUnmatchedLen int) (result bool, trimmedRevs Body) {
+func trimEncodedRevisionsToAncestor(revs Revisions, ancestors []string, maxUnmatchedLen int) (result bool, trimmedRevs Revisions) {
 
 	trimmedRevs = revs
 
