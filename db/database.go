@@ -78,6 +78,7 @@ type DatabaseContext struct {
 	ExitChanges        chan struct{}           // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders      auth.OIDCProviderMap    // OIDC clients
 	PurgeInterval      int                     // Metadata purge interval, in hours
+	serverUUID         string                  // UUID of the server, if available
 }
 
 type DatabaseContextOptions struct {
@@ -431,6 +432,29 @@ func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
 func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err error) {
 	staleOk := false
 	return context.changeCache.GetStableClock(staleOk)
+}
+
+func (context *DatabaseContext) GetServerUUID() string {
+
+	// Lazy load the server UUID, if we can get it.
+	if context.serverUUID == "" {
+		b, ok := base.AsGoCBBucket(context.Bucket)
+		if !ok {
+			base.Warnf(base.KeyAll, "Database %v: Unable to get server UUID. Bucket was type: %T, not GoCBBucket.", base.MD(context.Name), context.Bucket)
+			return ""
+		}
+
+		uuid, err := b.GetServerUUID()
+		if err != nil {
+			base.Warnf(base.KeyAll, "Database %v: Unable to get server UUID: %v", base.MD(context.Name), err)
+			return ""
+		}
+
+		base.Debugf(base.KeyAll, "Database %v: Got server UUID %v", base.MD(context.Name), base.MD(uuid))
+		context.serverUUID = uuid
+	}
+
+	return context.serverUUID
 }
 
 // Utility function to support cache testing from outside db package

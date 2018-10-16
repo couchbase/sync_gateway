@@ -269,7 +269,7 @@ func (tbm *TestBucketManager) Close() {
 // See https://forums.couchbase.com/t/is-there-a-way-to-get-the-number-of-items-in-a-bucket/12816/4
 // for GOCB discussion.
 func (tbm *TestBucketManager) BucketItemCount() (itemCount int, err error) {
-	return GoCBBucketItemCount(tbm.Bucket.Bucket, tbm.BucketSpec, tbm.AdministratorUsername, tbm.AdministratorPassword)
+	return tbm.Bucket.BucketItemCount()
 }
 
 func (tbm *TestBucketManager) DropIndexes() error {

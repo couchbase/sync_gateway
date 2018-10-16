@@ -211,6 +211,11 @@ func (h *handler) handleGetDB() error {
 		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
 		"state":                runState,
 	}
+
+	if uuid := h.db.DatabaseContext.GetServerUUID(); uuid != "" {
+		response["server_uuid"] = uuid
+	}
+
 	h.writeJSON(response)
 	return nil
 }
