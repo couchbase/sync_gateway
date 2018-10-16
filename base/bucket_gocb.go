@@ -232,8 +232,8 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 	return purgeIntervalHours, nil
 }
 
-// Get the Server Pool UUID of the bucket
-func (bucket *CouchbaseBucketGoCB) GetServerPoolUUID() (uuid string, err error) {
+// Get the Server UUID of the bucket, this is also known as the Cluster UUID
+func (bucket *CouchbaseBucketGoCB) GetServerUUID() (uuid string, err error) {
 	resp, err := bucket.mgmtRequest(http.MethodGet, "/pools", "application/json", nil)
 	if err != nil {
 		return "", err
@@ -246,14 +246,14 @@ func (bucket *CouchbaseBucketGoCB) GetServerPoolUUID() (uuid string, err error) 
 	}
 
 	var responseJson struct {
-		ServerPoolUUID string `json:"uuid"`
+		ServerUUID string `json:"uuid"`
 	}
 
 	if err := json.Unmarshal(respBytes, &responseJson); err != nil {
 		return "", err
 	}
 
-	return responseJson.ServerPoolUUID, nil
+	return responseJson.ServerUUID, nil
 }
 
 // Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,

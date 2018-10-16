@@ -212,8 +212,8 @@ func (h *handler) handleGetDB() error {
 		"state":                runState,
 	}
 
-	if uuid := h.db.DatabaseContext.GetServerPoolUUID(); uuid != "" {
-		response["server_pool_uuid"] = uuid
+	if uuid := h.db.DatabaseContext.GetServerUUID(); uuid != "" {
+		response["server_uuid"] = uuid
 	}
 
 	h.writeJSON(response)
