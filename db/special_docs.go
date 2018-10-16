@@ -65,7 +65,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 			}
 		} else {
 			prevBody := Body{}
-			if err := json.Unmarshal(value, &prevBody); err != nil {
+			if err := prevBody.Unmarshal(value); err != nil {
 				return nil, nil, err
 			}
 			if matchRev != prevBody[BodyRev] {

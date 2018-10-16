@@ -706,7 +706,8 @@ func (tree RevTree) getHistory(revid string) ([]string, error) {
 // Parses a CouchDB _rev or _revisions property into a list of revision IDs
 func ParseRevisions(body Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
-	revisions, ok := body["_revisions"].(Revisions)
+	//revisions, ok := body[BodyRevisions].(Revisions)
+	revisionsMap, ok := body[BodyRevisions].(map[string]interface{})
 	if !ok {
 		revid, ok := body[BodyRev].(string)
 		if !ok {
@@ -719,6 +720,7 @@ func ParseRevisions(body Body) []string {
 		oneRev = append(oneRev, revid)
 		return oneRev
 	}
+	revisions := Revisions(revisionsMap)
 	start, ids := splitRevisionList(revisions)
 	if ids == nil {
 		return nil
@@ -733,8 +735,8 @@ func ParseRevisions(body Body) []string {
 
 // Splits out the "start" and "ids" properties from encoded revision list
 func splitRevisionList(revisions Revisions) (int, []string) {
-	start, ok := base.ToInt64(revisions["start"])
-	digests, _ := GetStringArrayProperty(revisions, "ids")
+	start, ok := base.ToInt64(revisions[RevisionsStart])
+	digests, _ := GetStringArrayProperty(revisions, RevisionsIds)
 	if ok && len(digests) > 0 && int(start) >= len(digests) {
 		return int(start), digests
 	} else {
@@ -756,7 +758,7 @@ func encodeRevisions(revs []string) Revisions {
 			base.Warnf(base.KeyAll, "encodeRevisions found weird history %v", revs)
 		}
 	}
-	return Revisions{"start": start, "ids": ids}
+	return Revisions{RevisionsStart: start, RevisionsIds: ids}
 }
 
 // Given a revision history encoded by encodeRevisions() and a list of possible ancestor revIDs,
@@ -784,7 +786,7 @@ func trimEncodedRevisionsToAncestor(revs Revisions, ancestors []string, maxUnmat
 		// modifying the same underlying map returned from the revision cache.
 		// See https://github.com/couchbase/sync_gateway/issues/2427
 		trimmedRevs = revs.ShallowCopy()
-		trimmedRevs["ids"] = digests[0:maxUnmatchedLen]
+		trimmedRevs[RevisionsIds] = digests[0:maxUnmatchedLen]
 	}
 	return true, trimmedRevs
 

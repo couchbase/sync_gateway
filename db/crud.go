@@ -280,7 +280,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 				redactedBody["_removed"] = true
 			}
 			if revisions != nil {
-				redactedBody["_revisions"] = revisions
+				redactedBody[BodyRevisions] = revisions
 			}
 			return redactedBody, nil
 		}
@@ -294,7 +294,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 
 	// Add revision metadata:
 	if revisions != nil {
-		body["_revisions"] = revisions
+		body[BodyRevisions] = revisions
 	}
 
 	// If doc is nil (we got the rev from the rev cache)
@@ -488,7 +488,7 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		if getHistoryErr != nil {
 			return nil, getHistoryErr
 		}
-		body["_revisions"] = encodeRevisions(validatedHistory)
+		body[BodyRevisions] = encodeRevisions(validatedHistory)
 	}
 	return body, nil
 }

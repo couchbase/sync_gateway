@@ -400,7 +400,7 @@ func (doc *document) getNonWinningRevisionBody(revid string, loader RevLoaderFun
 		return nil
 	}
 
-	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+	if err := body.Unmarshal(bodyBytes); err != nil {
 		base.Warnf(base.KeyAll, "Unexpected error parsing body of rev %q: %v", revid, err)
 		return nil
 	}

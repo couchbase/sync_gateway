@@ -23,9 +23,10 @@ import (
 type Body map[string]interface{}
 
 const (
-	BodyDeleted = "_deleted"
-	BodyRev     = "_rev"
-	BodyId      = "_id"
+	BodyDeleted   = "_deleted"
+	BodyRev       = "_rev"
+	BodyId        = "_id"
+	BodyRevisions = "_revisions"
 )
 
 // A revisions property found within a Body.  Expected to be of the form:
@@ -34,6 +35,11 @@ const (
 // Used as map[string]interface{} instead of Revisions struct because it's unmarshalled
 // along with Body, and we don't need the overhead of allocating a new object
 type Revisions map[string]interface{}
+
+const (
+	RevisionsStart = "start"
+	RevisionsIds   = "ids"
+)
 
 func (b *Body) Unmarshal(data []byte) error {
 
@@ -212,7 +218,7 @@ func stripSpecialProperties(body Body) Body {
 
 func containsUserSpecialProperties(body Body) bool {
 	for key := range body {
-		if key != "" && key[0] == '_' && key != BodyId && key != BodyRev && key != BodyDeleted && key != "_attachments" && key != "_revisions" {
+		if key != "" && key[0] == '_' && key != BodyId && key != BodyRev && key != BodyDeleted && key != "_attachments" && key != BodyRevisions {
 			return true
 		}
 	}

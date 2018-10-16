@@ -65,8 +65,8 @@ func TestShadowerPull(t *testing.T) {
 	})
 	doc1, _ = db.GetDocument("key1", DocUnmarshalAll)
 	doc2, _ = db.GetDocument("key2", DocUnmarshalAll)
-	assert.DeepEquals(t, doc1.Body(), Body{"foo": float64(1)})
-	assert.DeepEquals(t, doc2.Body(), Body{"bar": float64(-1)})
+	assert.DeepEquals(t, doc1.Body(), Body{"foo": json.Number("1")})
+	assert.DeepEquals(t, doc2.Body(), Body{"bar": json.Number("-1")})
 
 	t.Logf("Deleting remote doc")
 	bucket.Delete("key1")
@@ -331,9 +331,9 @@ func TestShadowerPattern(t *testing.T) {
 	doc2, err := db.GetDocument("key2", DocUnmarshalAll)
 	assertNoError(t, err, fmt.Sprintf("Error getting key2: %v", err))
 
-	assert.DeepEquals(t, doc1.Body(), Body{"foo": float64(1)})
+	assert.DeepEquals(t, doc1.Body(), Body{"foo": json.Number("1")})
 	assert.True(t, docI == nil)
-	assert.DeepEquals(t, doc2.Body(), Body{"bar": float64(-1)})
+	assert.DeepEquals(t, doc2.Body(), Body{"bar": json.Number("-1")})
 
 	waitFor(t, func() bool {
 		return atomic.LoadUint64(&shadower.pullCount) >= 2

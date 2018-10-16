@@ -1449,7 +1449,7 @@ readerLoop:
 			exp = 1
 		case "doc3":
 			// revs_limit of zero should display no revision object at all
-			assert.Equals(t, partJSON["_revisions"], nil)
+			assert.Equals(t, partJSON[db.BodyRevisions], nil)
 			break readerLoop
 		case "doc4":
 			// revs_limit must be >= 0
@@ -1459,8 +1459,8 @@ readerLoop:
 			t.Error("unrecognised part in response")
 		}
 
-		revisions := partJSON["_revisions"].(map[string]interface{})
-		assert.Equals(t, len(revisions["ids"].([]interface{})), exp)
+		revisions := partJSON[db.BodyRevisions].(map[string]interface{})
+		assert.Equals(t, len(revisions[db.RevisionsIds].([]interface{})), exp)
 	}
 
 }
