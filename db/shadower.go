@@ -7,10 +7,9 @@ import (
 	"strings"
 	"sync/atomic"
 
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"log"
 )
 
 // Bidirectional sync with an external Couchbase bucket.
@@ -118,11 +117,8 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		// Compare this body to the current revision body to see if it's an echo:
 		parentRev := doc.UpstreamRev
 		newRev := doc.CurrentRev
-		docBody := doc.getRevisionBody(newRev, s.context.RevisionBodyLoader)
-		if !reflect.DeepEqual(body, docBody) {
+		if !reflect.DeepEqual(body, doc.getRevisionBody(newRev, s.context.RevisionBodyLoader)) {
 			// Nope, it's not. Assign it a new rev ID
-			log.Printf("Not equal.  body: %+v  %T", body, body["foo"])
-			log.Printf("Not equal.  docBody: %+v %T", docBody, docBody["foo"])
 			generation, _ := ParseRevID(parentRev)
 			newRev = createRevID(generation+1, parentRev, body)
 		}

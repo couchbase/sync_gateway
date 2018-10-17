@@ -276,7 +276,6 @@ func TestDocumentLargeNumbers(t *testing.T) {
 	// Get document, validate number value
 	getResponse := rt.SendAdminRequest("GET", "/db/numberDoc", "")
 	assertStatus(t, getResponse, 200)
-	log.Printf("response body: %s", getResponse.Body.Bytes())
 
 	// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 	responseString := string(getResponse.Body.Bytes())

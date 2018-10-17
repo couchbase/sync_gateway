@@ -2189,7 +2189,6 @@ func TestChangesLargeSequences(t *testing.T) {
 
 	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?since=9223372036854775800", "")
 	err := json.Unmarshal(changesResponse.Body.Bytes(), &changes)
-	log.Printf("GET changes response: %s", changesResponse.Body.Bytes())
 	assertNoError(t, err, "Error unmarshalling changes response")
 	assert.Equals(t, len(changes.Results), 1)
 	assert.Equals(t, changes.Results[0].Seq.Seq, uint64(9223372036854775808))
@@ -2198,14 +2197,12 @@ func TestChangesLargeSequences(t *testing.T) {
 	// Validate incoming since value isn't being truncated
 	changesResponse = rt.SendAdminRequest("GET", "/db/_changes?since=9223372036854775808", "")
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
-	log.Printf("GET changes response: %s", changesResponse.Body.Bytes())
 	assertNoError(t, err, "Error unmarshalling changes response")
 	assert.Equals(t, len(changes.Results), 0)
 
 	// Validate incoming since value isn't being truncated
 	changesResponse = rt.SendAdminRequest("POST", "/db/_changes", `{"since":9223372036854775808}`)
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
-	log.Printf("POST changes response: %s", changesResponse.Body.Bytes())
 	assertNoError(t, err, "Error unmarshalling changes response")
 	assert.Equals(t, len(changes.Results), 0)
 

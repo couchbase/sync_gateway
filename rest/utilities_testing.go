@@ -59,7 +59,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if !rt.NoFlush {
 			tempBucket := base.GetTestBucketOrPanic() // side effect of creating/flushing bucket
 			if rt.InitSyncSeq > 0 {
-				log.Printf("Initializing Sync Seq to %d", rt.InitSyncSeq)
+				log.Printf("Initializing %s to %d", db.SyncSeqKey, rt.InitSyncSeq)
 				_, incrErr := tempBucket.Incr(db.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 				if incrErr != nil {
 					panic(fmt.Sprintf("Error initializing %s in test bucket: %v", db.SyncSeqKey, incrErr))

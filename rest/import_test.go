@@ -700,11 +700,9 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 	_, err := bucket.Add(mobileKey, 0, mobileBody)
 	assertNoError(t, err, "Error writing SDK doc")
 
-	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
+	// 2. Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
 	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
 	assert.Equals(t, response.Code, 200)
-	// Extract rev from response for comparison with second GET below
-	log.Printf("GET returned response: %s", response.Body.Bytes())
 	// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 	responseString := string(response.Body.Bytes())
 	assert.True(t, strings.Contains(responseString, `"largeNumber":9223372036854775807`))
