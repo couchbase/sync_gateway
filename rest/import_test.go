@@ -26,16 +26,16 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 	}
 }
 
-type simpleSync struct {
+type SimpleSync struct {
 	Channels map[string]interface{}
 	Rev      string
 }
 
-type rawResponse struct {
-	Sync simpleSync `json:"_sync"`
+type RawResponse struct {
+	Sync SimpleSync `json:"_sync"`
 }
 
-func hasActiveChannel(channelSet map[string]interface{}, channelName string) bool {
+func HasActiveChannel(channelSet map[string]interface{}, channelName string) bool {
 	if channelSet == nil {
 		return false
 	}
@@ -78,12 +78,12 @@ func TestXattrImportOldDoc(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
 	response := rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
 	assert.Equals(t, response.Code, 200)
-	var rawInsertResponse rawResponse
+	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 	assertTrue(t, rawInsertResponse.Sync.Channels != nil, "Expected channels not returned for SDK insert")
 	log.Printf("insert channels: %+v", rawInsertResponse.Sync.Channels)
-	assertTrue(t, hasActiveChannel(rawInsertResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK insert")
+	assertTrue(t, HasActiveChannel(rawInsertResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK insert")
 
 	// 2. Test oldDoc behaviour during SDK update
 
@@ -97,12 +97,12 @@ func TestXattrImportOldDoc(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
 	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
 	assert.Equals(t, response.Code, 200)
-	var rawUpdateResponse rawResponse
+	var rawUpdateResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 	assertTrue(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
 	log.Printf("update channels: %+v", rawUpdateResponse.Sync.Channels)
-	assertTrue(t, hasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
+	assertTrue(t, HasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
 
 	// 3. Test oldDoc behaviour during SDK delete
 	err = bucket.Delete(key)
@@ -110,12 +110,12 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
 	assert.Equals(t, response.Code, 200)
-	var rawDeleteResponse rawResponse
+	var rawDeleteResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawDeleteResponse)
 	log.Printf("Post-delete: %s", response.Body.Bytes())
 	assertNoError(t, err, "Unable to unmarshal raw response")
-	assertTrue(t, hasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
-	assertTrue(t, hasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
+	assertTrue(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
+	assertTrue(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
 
 }
 
@@ -296,7 +296,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	rawPath := fmt.Sprintf("/db/_raw/%s", key)
 	response := rt.SendAdminRequest("GET", rawPath, "")
 	assert.Equals(t, response.Code, 200)
-	var rawInsertResponse rawResponse
+	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 
@@ -306,7 +306,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", rawPath, "")
 	assert.Equals(t, response.Code, 200)
-	var rawDeleteResponse rawResponse
+	var rawDeleteResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawDeleteResponse)
 	log.Printf("Post-delete: %s", response.Body.Bytes())
 	assertNoError(t, err, "Unable to unmarshal raw response")
@@ -322,7 +322,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.
 	response = rt.SendAdminRequest("GET", rawPath, "")
 	assert.Equals(t, response.Code, 200)
-	var rawUpdateResponse rawResponse
+	var rawUpdateResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 	_, ok := rawUpdateResponse.Sync.Channels["HBO"]
