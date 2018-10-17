@@ -726,7 +726,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	defer bt.Close()
 
 	// Send non-deleted rev
-	sent, _, resp, err := bt.SendRev("largeNumberRev", "1-abc", []byte(`{"key": "val", "largeNumber": 9223372036854775807, "channels": ["user1"]}`), blip.Properties{})
+	sent, _, resp, err := bt.SendRev("largeNumberRev", "1-abc", []byte(`{"key": "val", "largeNumber":9223372036854775807, "channels": ["user1"]}`), blip.Properties{})
 	assert.True(t, sent)
 	assert.Equals(t, err, nil)
 	assert.Equals(t, resp.Properties["Error-Code"], "")
@@ -735,7 +735,9 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	response := bt.restTester.SendAdminRequest("GET", "/db/largeNumberRev?rev=1-abc", "")
 	assertStatus(t, response, 200) // Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 	responseString := string(response.Body.Bytes())
-	assert.True(t, strings.Contains(responseString, `"largeNumber":9223372036854775807`))
+	if !strings.Contains(responseString, `9223372036854775807`) {
+		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
+	}
 }
 
 func AssertChangeEquals(t *testing.T, change []interface{}, expectedChange ExpectedChange) {

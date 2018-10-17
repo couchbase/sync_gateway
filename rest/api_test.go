@@ -279,7 +279,9 @@ func TestDocumentLargeNumbers(t *testing.T) {
 
 	// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 	responseString := string(getResponse.Body.Bytes())
-	assert.True(t, strings.Contains(responseString, `"largeInt":9223372036854775807`))
+	if !strings.Contains(responseString, `9223372036854775807`) {
+		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
+	}
 }
 
 func TestFunkyDocIDs(t *testing.T) {

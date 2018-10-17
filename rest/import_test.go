@@ -705,7 +705,9 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 	assert.Equals(t, response.Code, 200)
 	// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 	responseString := string(response.Body.Bytes())
-	assert.True(t, strings.Contains(responseString, `"largeNumber":9223372036854775807`))
+	if !strings.Contains(responseString, `9223372036854775807`) {
+		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
+	}
 }
 
 // Structs for manual rev storage validation
