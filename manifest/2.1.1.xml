@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <manifest>
 
     <remote fetch="https://github.com/couchbase/" name="couchbase"/>
@@ -16,20 +16,20 @@
     <remote fetch="https://github.com/pkg/" name="pkg"/>
     <remote fetch="https://github.com/go-sourcemap/" name="go-sourcemap"/>
 
-    <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
+    <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private"/>
 
     <default remote="couchbase" revision="master"/>
 
     <!-- Build Scripts (required on CI servers) -->
-    <project name="build" path="cbbuild" remote="couchbase">
-        <annotation name="VERSION" value="2.1.1"     keep="true"/>
+    <project name="build" path="cbbuild" remote="couchbase" revision="51cdfb4ae316289e072ca631cc14eb27b671cc15">
+        <annotation name="VERSION" value="2.1.1" keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
     </project>
 
 
     <!-- Sync Gateway -->
-    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.1.1"/>
+    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="fea9947066eadc7a6cf0c9e12eed5701aaf11bfe"/>
 
 
     <!-- Sync Gateway Accel-->
