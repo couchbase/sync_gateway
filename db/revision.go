@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -44,14 +45,13 @@ const (
 func (b *Body) Unmarshal(data []byte) error {
 
 	if len(data) == 0 {
-		b = &Body{}
-		return nil
+		return errors.New("Unexpected empty JSON input to body.Unmarshal")
 	}
 
 	// Use decoder for unmarshalling to preserve large numbers
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	if err := decoder.Decode(&b); err != nil {
+	if err := decoder.Decode(b); err != nil {
 		return err
 	}
 	return nil

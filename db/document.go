@@ -134,7 +134,7 @@ func unmarshalDocument(docid string, data []byte) (*document, error) {
 	if len(data) > 0 {
 		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.UseNumber()
-		if err := decoder.Decode(&doc); err != nil {
+		if err := decoder.Decode(doc); err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error unmarshalling doc.")
 		}
 		if doc != nil && doc.Deleted_OLD {
