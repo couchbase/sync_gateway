@@ -26,16 +26,16 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 	}
 }
 
-type simpleSync struct {
+type SimpleSync struct {
 	Channels map[string]interface{}
 	Rev      string
 }
 
-type rawResponse struct {
-	Sync simpleSync `json:"_sync"`
+type RawResponse struct {
+	Sync SimpleSync `json:"_sync"`
 }
 
-func hasActiveChannel(channelSet map[string]interface{}, channelName string) bool {
+func HasActiveChannel(channelSet map[string]interface{}, channelName string) bool {
 	if channelSet == nil {
 		return false
 	}
@@ -78,12 +78,12 @@ func TestXattrImportOldDoc(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
 	response := rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
 	assert.Equals(t, response.Code, 200)
-	var rawInsertResponse rawResponse
+	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 	assertTrue(t, rawInsertResponse.Sync.Channels != nil, "Expected channels not returned for SDK insert")
 	log.Printf("insert channels: %+v", rawInsertResponse.Sync.Channels)
-	assertTrue(t, hasActiveChannel(rawInsertResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK insert")
+	assertTrue(t, HasActiveChannel(rawInsertResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK insert")
 
 	// 2. Test oldDoc behaviour during SDK update
 
@@ -97,12 +97,12 @@ func TestXattrImportOldDoc(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
 	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
 	assert.Equals(t, response.Code, 200)
-	var rawUpdateResponse rawResponse
+	var rawUpdateResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 	assertTrue(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
 	log.Printf("update channels: %+v", rawUpdateResponse.Sync.Channels)
-	assertTrue(t, hasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
+	assertTrue(t, HasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
 
 	// 3. Test oldDoc behaviour during SDK delete
 	err = bucket.Delete(key)
@@ -110,12 +110,12 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
 	assert.Equals(t, response.Code, 200)
-	var rawDeleteResponse rawResponse
+	var rawDeleteResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawDeleteResponse)
 	log.Printf("Post-delete: %s", response.Body.Bytes())
 	assertNoError(t, err, "Unable to unmarshal raw response")
-	assertTrue(t, hasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
-	assertTrue(t, hasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
+	assertTrue(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
+	assertTrue(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
 
 }
 
@@ -296,7 +296,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	rawPath := fmt.Sprintf("/db/_raw/%s", key)
 	response := rt.SendAdminRequest("GET", rawPath, "")
 	assert.Equals(t, response.Code, 200)
-	var rawInsertResponse rawResponse
+	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 
@@ -306,7 +306,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", rawPath, "")
 	assert.Equals(t, response.Code, 200)
-	var rawDeleteResponse rawResponse
+	var rawDeleteResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawDeleteResponse)
 	log.Printf("Post-delete: %s", response.Body.Bytes())
 	assertNoError(t, err, "Unable to unmarshal raw response")
@@ -322,7 +322,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	// Attempt to get the document via Sync Gateway, to trigger import.
 	response = rt.SendAdminRequest("GET", rawPath, "")
 	assert.Equals(t, response.Code, 200)
-	var rawUpdateResponse rawResponse
+	var rawUpdateResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 	_, ok := rawUpdateResponse.Sync.Channels["HBO"]
@@ -676,6 +676,38 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	log.Printf("Retrieved via Sync Gateway after non-mobile update, revId:%v", newRevId)
 	assert.Equals(t, newRevId, revId)
 
+}
+
+// Test scenario where another actor updates a different xattr on a document.  Sync Gateway
+// should detect and not import/create new revision during read-triggered import
+func TestXattrImportLargeNumbers(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// 1. Create doc via the SDK
+	mobileKey := "TestImportLargeNumbers"
+	mobileBody := make(map[string]interface{})
+	mobileBody["channels"] = "ABC"
+	mobileBody["largeNumber"] = uint64(9223372036854775807)
+	_, err := bucket.Add(mobileKey, 0, mobileBody)
+	assertNoError(t, err, "Error writing SDK doc")
+
+	// 2. Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
+	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	assert.Equals(t, response.Code, 200)
+	// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
+	responseString := string(response.Body.Bytes())
+	if !strings.Contains(responseString, `9223372036854775807`) {
+		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
+	}
 }
 
 // Structs for manual rev storage validation

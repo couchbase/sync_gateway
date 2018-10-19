@@ -173,7 +173,7 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
-func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
+func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Revisions, channels base.Set, err error) {
 	var doc *document
 	if doc, err = context.GetDocument(id.DocID, DocUnmarshalAll); doc == nil {
 		return body, history, channels, err
@@ -183,7 +183,7 @@ func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history 
 }
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
-func (context *DatabaseContext) revCacheLoaderForDocument(doc *document, revid string) (body Body, history Body, channels base.Set, err error) {
+func (context *DatabaseContext) revCacheLoaderForDocument(doc *document, revid string) (body Body, history Revisions, channels base.Set, err error) {
 
 	if body, err = context.getRevision(doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
@@ -280,7 +280,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 				redactedBody["_removed"] = true
 			}
 			if revisions != nil {
-				redactedBody["_revisions"] = revisions
+				redactedBody[BodyRevisions] = revisions
 			}
 			return redactedBody, nil
 		}
@@ -294,7 +294,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 
 	// Add revision metadata:
 	if revisions != nil {
-		body["_revisions"] = revisions
+		body[BodyRevisions] = revisions
 	}
 
 	// If doc is nil (we got the rev from the rev cache)
@@ -414,7 +414,6 @@ func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error
 			return nil, err
 		}
 	}
-	body.FixJSONNumbers() // Make sure big ints won't get output in scientific notation
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
 
@@ -489,7 +488,7 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 		if getHistoryErr != nil {
 			return nil, getHistoryErr
 		}
-		body["_revisions"] = encodeRevisions(validatedHistory)
+		body[BodyRevisions] = encodeRevisions(validatedHistory)
 	}
 	return body, nil
 }

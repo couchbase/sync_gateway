@@ -14,22 +14,22 @@ func TestRevisionCache(t *testing.T) {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
-	revForTest := func(i int) (Body, Body, base.Set) {
+	revForTest := func(i int) (Body, Revisions, base.Set) {
 		body := Body{
 			BodyId:  ids[i],
 			BodyRev: "x",
 		}
-		history := Body{"start": i}
+		history := Revisions{RevisionsStart: i}
 		return body, history, nil
 	}
-	verify := func(body Body, history Body, channels base.Set, i int) {
+	verify := func(body Body, history Revisions, channels base.Set, i int) {
 		if body == nil {
 			t.Fatalf("nil body at #%d", i)
 		}
 		assert.True(t, body != nil)
 		assert.Equals(t, body[BodyId], ids[i])
 		assert.True(t, history != nil)
-		assert.Equals(t, history["start"], i)
+		assert.Equals(t, history[RevisionsStart], i)
 		assert.DeepEquals(t, channels, base.Set(nil))
 	}
 
@@ -61,7 +61,7 @@ func TestRevisionCache(t *testing.T) {
 
 func TestLoaderFunction(t *testing.T) {
 	var callsToLoader = 0
-	loader := func(id IDAndRev) (body Body, history Body, channels base.Set, err error) {
+	loader := func(id IDAndRev) (body Body, history Revisions, channels base.Set, err error) {
 		callsToLoader++
 		if id.DocID[0] != 'J' {
 			err = base.HTTPErrorf(404, "missing")
@@ -70,7 +70,7 @@ func TestLoaderFunction(t *testing.T) {
 				BodyId:  id.DocID,
 				BodyRev: id.RevID,
 			}
-			history = Body{"start": 1}
+			history = Revisions{RevisionsStart: 1}
 			channels = base.SetOf("*")
 		}
 		return
@@ -111,8 +111,8 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	// Invalid _revisions property will be stripped.  Should also not be present in the rev cache.
 	rev1body := Body{
-		"value":      1234,
-		"_revisions": "unexpected data",
+		"value":       1234,
+		BodyRevisions: "unexpected data",
 	}
 	rev1id, err := db.Put("doc1", rev1body)
 	assertNoError(t, err, "Put")
@@ -120,7 +120,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
 	var bucketBody Body
 	testBucket.Bucket.Get("doc1", &bucketBody)
-	_, ok := bucketBody["_revisions"]
+	_, ok := bucketBody[BodyRevisions]
 	if ok {
 		t.Error("_revisions property still present in document retrieved directly from bucket.")
 	}
@@ -128,7 +128,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	// Get the doc while still resident in the rev cache w/ history=false, validate _revisions property isn't found
 	body, err := db.GetRev("doc1", rev1id, false, nil)
 	assertNoError(t, err, "GetRev")
-	badRevisions, ok := body["_revisions"]
+	badRevisions, ok := body[BodyRevisions]
 	if ok {
 		t.Errorf("_revisions property still present in document retrieved from rev cache: %s", badRevisions)
 	}
@@ -137,13 +137,13 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	// properties ("start", "ids")
 	bodyWithHistory, err := db.GetRev("doc1", rev1id, true, nil)
 	assertNoError(t, err, "GetRev")
-	validRevisions, ok := bodyWithHistory["_revisions"]
+	validRevisions, ok := bodyWithHistory[BodyRevisions]
 	if !ok {
 		t.Errorf("Expected _revisions property not found in document retrieved from rev cache: %s", validRevisions)
 	}
 	validRevisionsMap, ok := validRevisions.(map[string]interface{})
-	_, startOk := validRevisionsMap["start"]
+	_, startOk := validRevisionsMap[RevisionsStart]
 	assert.True(t, startOk)
-	_, idsOk := validRevisionsMap["ids"]
+	_, idsOk := validRevisionsMap[RevisionsIds]
 	assert.True(t, idsOk)
 }

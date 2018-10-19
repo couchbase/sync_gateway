@@ -223,7 +223,6 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	response.Properties[getCheckpointResponseRev] = value[db.BodyRev].(string)
 	delete(value, db.BodyRev)
 	delete(value, db.BodyId)
-	value.FixJSONNumbers()
 	response.SetJSONBody(value)
 	return nil
 }

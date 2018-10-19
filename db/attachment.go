@@ -232,6 +232,7 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 	}
 
 	decoder := json.NewDecoder(input)
+	decoder.UseNumber()
 	if err := decoder.Decode(into); err != nil {
 		base.Warnf(base.KeyAll, "Couldn't parse JSON in HTTP request: %v", err)
 		return base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")

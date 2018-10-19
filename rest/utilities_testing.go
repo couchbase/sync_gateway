@@ -40,8 +40,9 @@ type RestTester struct {
 	DatabaseConfig          *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	AdminHandler            http.Handler
 	PublicHandler           http.Handler
-	EnableNoConflictsMode   bool // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
-	NoFlush                 bool // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
+	EnableNoConflictsMode   bool   // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	NoFlush                 bool   // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
+	InitSyncSeq             uint64 // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
@@ -57,7 +58,18 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
 		if !rt.NoFlush {
 			tempBucket := base.GetTestBucketOrPanic() // side effect of creating/flushing bucket
+			if rt.InitSyncSeq > 0 {
+				log.Printf("Initializing %s to %d", db.SyncSeqKey, rt.InitSyncSeq)
+				_, incrErr := tempBucket.Incr(db.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+				if incrErr != nil {
+					panic(fmt.Sprintf("Error initializing %s in test bucket: %v", db.SyncSeqKey, incrErr))
+				}
+			}
 			tempBucket.Close()
+		} else {
+			if rt.InitSyncSeq > 0 {
+				panic("RestTester doesn't support NoFlush and InitSyncSeq in same test")
+			}
 		}
 
 		spec := base.GetTestBucketSpec(base.DataBucket)

@@ -144,10 +144,10 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 		useDecode      bool
 		fixJSONNumbers bool
 	}{
-		{"UnmarshalAndFixNumbers", false, true},
-		{"Unmarshal", false, false},
 		{"Decode", true, false},
 		{"DecodeUseNumber", true, true},
+		{"UnmarshalAndFixNumbers", false, true},
+		{"Unmarshal", false, false},
 	}
 
 	for _, bm := range unmarshalBenchmarks {
@@ -155,10 +155,12 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				b.StopTimer()
 				doc := newDocument("testDocID")
+				docReader := bytes.NewReader(doc1k_body)
 				b.StartTimer()
 				var err error
 				if bm.useDecode {
-					decoder := json.NewDecoder(bytes.NewBuffer(doc1k_body))
+					//decoder := json.NewDecoder(bytes.NewReader(doc1k_body))
+					decoder := json.NewDecoder(docReader)
 					if bm.fixJSONNumbers {
 						decoder.UseNumber()
 					}

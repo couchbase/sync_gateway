@@ -2161,6 +2161,53 @@ func TestChangesIncludeConflicts(t *testing.T) {
 
 }
 
+// Test _changes handling large sequence values - ensures no truncation of large ints.
+func TestChangesLargeSequences(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("TestChangesLargeSequences doesn't support walrus - needs to customize _sync:seq prior to db creation")
+	}
+
+	initialSeq := uint64(9223372036854775807)
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
+			 channel(doc.channel)
+		 }`,
+		InitSyncSeq: initialSeq}
+	defer rt.Close()
+
+	// Create document
+	response := rt.SendAdminRequest("PUT", "/db/largeSeqDoc", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	// Get changes
+	rt.ServerContext().Database("db").WaitForPendingChanges()
+
+	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?since=9223372036854775800", "")
+	err := json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 1)
+	assert.Equals(t, changes.Results[0].Seq.Seq, uint64(9223372036854775808))
+	assert.Equals(t, changes.Last_Seq, "9223372036854775808")
+
+	// Validate incoming since value isn't being truncated
+	changesResponse = rt.SendAdminRequest("GET", "/db/_changes?since=9223372036854775808", "")
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 0)
+
+	// Validate incoming since value isn't being truncated
+	changesResponse = rt.SendAdminRequest("POST", "/db/_changes", `{"since":9223372036854775808}`)
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assertNoError(t, err, "Error unmarshalling changes response")
+	assert.Equals(t, len(changes.Results), 0)
+
+}
+
 //////// HELPERS:
 
 func assertNoError(t *testing.T, err error, message string) {

@@ -88,6 +88,7 @@ func TestMigrateMetadata(t *testing.T) {
 // Scenario 2: import with migration
 //
 // - Same as scenario 1, except that in step 1 it writes a doc with sync metadata, so that it excercises the migration code
+// - Temporarily set expectedGeneration:2, see https://github.com/couchbase/sync_gateway/issues/3804
 //
 func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
@@ -102,49 +103,52 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	type testcase struct {
-		docBody []byte
-		name    string
+		docBody            []byte
+		name               string
+		expectedGeneration int
 	}
 	testCases := []testcase{
 		{
-			docBody: rawDocNoMeta(),
-			name:    "rawDocNoMeta",
+			docBody:            rawDocNoMeta(),
+			name:               "rawDocNoMeta",
+			expectedGeneration: 1,
 		},
 		{
-			docBody: rawDocWithSyncMeta(),
-			name:    "rawDocWithSyncMeta",
+			docBody:            rawDocWithSyncMeta(),
+			name:               "rawDocWithSyncMeta",
+			expectedGeneration: 2,
 		},
 	}
 
 	for _, testCase := range testCases {
 
-		t.Run(fmt.Sprintf("%s", testCase), func(t *testing.T) {
-
+		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 			key := fmt.Sprintf("TestImportDocWithStaleDoc%-s", testCase.name)
-			bodyBytes := rawDocNoMeta()
+			bodyBytes := testCase.docBody
 			body := Body{}
 			err := body.Unmarshal(bodyBytes)
 			assertNoError(t, err, "Error unmarshalling body")
 
-			// Create via the SDK with sync metadata intact
-			expirySeconds := time.Second * 30
-			syncMetaExpiry := time.Now().Add(expirySeconds)
+			// Create via the SDK
+			expiryDuration := time.Minute * 30
+			syncMetaExpiry := time.Now().Add(expiryDuration)
 			_, err = testBucket.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
 			assertNoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
 			_, existingBucketDoc, err := db.GetDocWithXattr(key, DocUnmarshalAll)
+			assertNoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
+
 			body = Body{}
 			err = body.Unmarshal(existingBucketDoc.Body)
 			assertNoError(t, err, "Error unmarshalling body")
-			log.Printf("existingBucketDoc: %+v", existingBucketDoc)
 
 			// Set the expiry value
 			existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
 
 			// Perform an SDK update to turn existingBucketDoc into a stale doc
-			laterExpirySeconds := time.Second * 60
-			laterSyncMetaExpiry := time.Now().Add(laterExpirySeconds)
+			laterExpiryDuration := time.Minute * 60
+			laterSyncMetaExpiry := time.Now().Add(laterExpiryDuration)
 			updateCallbackFn := func(current []byte) (updated []byte, expiry *uint32, err error) {
 				// This update function will not be "competing" with other updates, so it doesn't need
 				// to handle being called back multiple times or performing any merging with existing values.
@@ -158,18 +162,16 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			)
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
-			docOut, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
-			log.Printf("docOut: %v, errImportDoc: %v", docOut, errImportDoc)
+			_, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
 			assertNoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
-			assertXattrSyncMetaRevGeneration(t, testBucket.Bucket, key, 1)
+			assertXattrSyncMetaRevGeneration(t, testBucket.Bucket, key, testCase.expectedGeneration)
 
 			// Verify the expiry has been preserved after the import
 			gocbBucket, _ := base.AsGoCBBucket(testBucket.Bucket)
 			expiry, err := gocbBucket.GetExpiry(key)
 			assertNoError(t, err, "Error calling GetExpiry()")
-			log.Printf("expiry: %v  laterSyncMetaExpiry.Unix(): %v", expiry, laterSyncMetaExpiry.Unix())
 			assert.True(t, expiry == uint32(laterSyncMetaExpiry.Unix()))
 
 		})

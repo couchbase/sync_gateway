@@ -613,3 +613,21 @@ func TestOldRevisionStorageError(t *testing.T) {
 	assertNoError(t, db.PutExistingRev("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false), "add 3-c")
 
 }
+
+// Validate JSON number handling for large sequence values
+func TestLargeSequence(t *testing.T) {
+
+	db, testBucket := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
+	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Write a doc via SG
+	body := Body{"key1": "largeSeqTest"}
+	assertNoError(t, db.PutExistingRev("largeSeqDoc", body, []string{"1-a"}, false), "add largeSeqDoc")
+
+	syncData, err := db.GetDocSyncData("largeSeqDoc")
+	assertNoError(t, err, "Error retrieving document sync data")
+	assert.Equals(t, syncData.Sequence, uint64(9223372036854775808))
+}

@@ -335,7 +335,6 @@ func (h *handler) handleGetLocalDoc() error {
 		return kNotFoundError
 	}
 	value[db.BodyId] = "_local/" + docid
-	value.FixJSONNumbers()
 	h.writeJSON(value)
 	return nil
 }
@@ -345,7 +344,6 @@ func (h *handler) handlePutLocalDoc() error {
 	docid := h.PathVar("docid")
 	body, err := h.readJSON()
 	if err == nil {
-		body.FixJSONNumbers()
 		var revid string
 		revid, err = h.db.PutSpecial("local", docid, body)
 		if err == nil {

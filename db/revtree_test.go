@@ -717,7 +717,7 @@ func TestParseRevisions(t *testing.T) {
 
 func TestEncodeRevisions(t *testing.T) {
 	encoded := encodeRevisions([]string{"5-huey", "4-dewey", "3-louie"})
-	assert.DeepEquals(t, encoded, Body{"start": 5, "ids": []string{"huey", "dewey", "louie"}})
+	assert.DeepEquals(t, encoded, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}})
 }
 
 func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
@@ -726,30 +726,30 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 
 	result, trimmedRevs := trimEncodedRevisionsToAncestor(encoded, []string{"3-walter", "17-gretchen", "1-fooey"}, 1000)
 	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey", "dewey", "louie", "screwy"}})
+	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie", "screwy"}})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, []string{"3-walter", "3-louie", "1-fooey"}, 2)
 	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey", "dewey", "louie"}})
+	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, []string{"3-walter", "3-louie", "1-fooey"}, 3)
 	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey", "dewey", "louie"}})
+	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, []string{"3-walter", "3-louie", "5-huey"}, 3)
 	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey"}})
+	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey"}})
 
 	// Check maxLength with no ancestors:
 	encoded = encodeRevisions([]string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(encoded, nil, 6)
 	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey", "dewey", "louie", "screwy"}})
+	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie", "screwy"}})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, nil, 2)
 	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Body{"start": 5, "ids": []string{"huey", "dewey"}})
+	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey"}})
 }
 
 // Regression test for https://github.com/couchbase/sync_gateway/issues/2847

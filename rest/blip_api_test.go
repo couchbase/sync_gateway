@@ -706,6 +706,40 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	assert.True(t, deletedValue)
 }
 
+// Test send and retrieval of a doc with a large numeric value.  Ensure proper large number handling.
+//   Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
+func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+
+	// Setup
+	rt := RestTester{
+		noAdminParty: true,
+	}
+	btSpec := BlipTesterSpec{
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         &rt,
+	}
+	bt, err := NewBlipTesterFromSpec(btSpec)
+	assertNoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	// Send non-deleted rev
+	sent, _, resp, err := bt.SendRev("largeNumberRev", "1-abc", []byte(`{"key": "val", "largeNumber":9223372036854775807, "channels": ["user1"]}`), blip.Properties{})
+	assert.True(t, sent)
+	assert.Equals(t, err, nil)
+	assert.Equals(t, resp.Properties["Error-Code"], "")
+
+	// Get non-deleted rev
+	response := bt.restTester.SendAdminRequest("GET", "/db/largeNumberRev?rev=1-abc", "")
+	assertStatus(t, response, 200) // Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
+	responseString := string(response.Body.Bytes())
+	if !strings.Contains(responseString, `9223372036854775807`) {
+		t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
+	}
+}
+
 func AssertChangeEquals(t *testing.T, change []interface{}, expectedChange ExpectedChange) {
 	if err := expectedChange.Equals(change); err != nil {
 		t.Errorf("Change %+v does not equal expected change: %+v.  Error: %v", change, expectedChange, err)

@@ -103,7 +103,7 @@ func newDocument(docid string) *document {
 // Accessors for document properties.  To support lazy unmarshalling of document contents, all access should be done through accessors
 func (doc *document) Body() Body {
 	if doc._body == nil && doc.rawBody != nil {
-		err := json.Unmarshal(doc.rawBody, &doc._body)
+		err := doc._body.Unmarshal(doc.rawBody)
 		if err != nil {
 			base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
 			return nil
@@ -132,7 +132,9 @@ func (doc *document) MarshalBody() ([]byte, error) {
 func unmarshalDocument(docid string, data []byte) (*document, error) {
 	doc := newDocument(docid)
 	if len(data) > 0 {
-		if err := json.Unmarshal(data, doc); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.UseNumber()
+		if err := decoder.Decode(doc); err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error unmarshalling doc.")
 		}
 		if doc != nil && doc.Deleted_OLD {
@@ -398,7 +400,7 @@ func (doc *document) getNonWinningRevisionBody(revid string, loader RevLoaderFun
 		return nil
 	}
 
-	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+	if err := body.Unmarshal(bodyBytes); err != nil {
 		base.Warnf(base.KeyAll, "Unexpected error parsing body of rev %q: %v", revid, err)
 		return nil
 	}
@@ -606,7 +608,7 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 
 // Determine whether the specified revision was a channel removal, based on doc.Channels.  If so, construct the standard document body for a
 // removal notification (_removed=true)
-func (doc *document) IsChannelRemoval(revID string) (body Body, history Body, channels base.Set, isRemoval bool, err error) {
+func (doc *document) IsChannelRemoval(revID string) (body Body, history Revisions, channels base.Set, isRemoval bool, err error) {
 
 	channels = make(base.Set)
 
@@ -702,7 +704,7 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 		doc.syncData = *root.SyncData
 	}
 
-	if err := json.Unmarshal(data, &doc._body); err != nil {
+	if err := doc._body.Unmarshal(data); err != nil {
 		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
@@ -744,7 +746,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		}
 		// Unmarshal body if requested and present
 		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
-			return json.Unmarshal(data, &doc._body)
+			return doc._body.Unmarshal(data)
 		} else {
 			doc.rawBody = data
 		}

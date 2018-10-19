@@ -87,6 +87,25 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 	return db, tBucket
 }
 
+// Sets up a test bucket with _sync:seq initialized to a high value prior to database creation.  Used to test
+// issues with custom _sync:seq values without triggering skipped sequences between 0 and customSeq
+func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, base.TestBucket) {
+
+	dbcOptions := DatabaseContextOptions{}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	tBucket := testBucket()
+
+	log.Printf("Initializing test _sync:seq to %d", customSeq)
+	_, incrErr := tBucket.Incr(SyncSeqKey, customSeq, customSeq, 0)
+	assertNoError(t, incrErr, fmt.Sprintf("Couldn't increment _sync:seq by %d", customSeq))
+
+	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+	return db, tBucket
+}
+
 func testBucket() base.TestBucket {
 
 	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
@@ -212,9 +231,9 @@ func TestDatabase(t *testing.T) {
 	// Test the _revisions property:
 	log.Printf("Check _revisions...")
 	gotbody, err = db.GetRev("doc1", rev2id, true, nil)
-	revisions := gotbody["_revisions"].(map[string]interface{})
-	assert.Equals(t, revisions["start"], 2)
-	assert.DeepEquals(t, revisions["ids"],
+	revisions := gotbody[BodyRevisions].(map[string]interface{})
+	assert.Equals(t, revisions[RevisionsStart], 2)
+	assert.DeepEquals(t, revisions[RevisionsIds],
 		[]string{"488724414d0ed6b398d6d2aeb228d797",
 			"cb0c9a22be0e5a1b01084ec019defa81"})
 
@@ -274,10 +293,10 @@ func TestGetDeleted(t *testing.T) {
 	body, err = db.GetRev("doc1", rev2id, true, nil)
 	assertNoError(t, err, "GetRev")
 	expectedResult := Body{
-		BodyId:       "doc1",
-		BodyRev:      rev2id,
-		BodyDeleted:  true,
-		"_revisions": map[string]interface{}{"start": 2, "ids": []string{"bc6d97f6e97c0d034a34f8aac2bf8b44", "dfd5e19813767eeddd08270fc5f385cd"}},
+		BodyId:        "doc1",
+		BodyRev:       rev2id,
+		BodyDeleted:   true,
+		BodyRevisions: map[string]interface{}{RevisionsStart: 2, RevisionsIds: []string{"bc6d97f6e97c0d034a34f8aac2bf8b44", "dfd5e19813767eeddd08270fc5f385cd"}},
 	}
 	assert.DeepEquals(t, body, expectedResult)
 
@@ -336,9 +355,9 @@ func TestGetRemovedAsUser(t *testing.T) {
 	expectedResult := Body{
 		"key1":     1234,
 		"channels": []string{"NBC"},
-		"_revisions": map[string]interface{}{
-			"start": 2,
-			"ids":   []string{rev2digest, rev1digest}},
+		BodyRevisions: map[string]interface{}{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2digest, rev1digest}},
 		BodyId:  "doc1",
 		BodyRev: rev2id,
 	}
@@ -367,9 +386,9 @@ func TestGetRemovedAsUser(t *testing.T) {
 		BodyId:     "doc1",
 		BodyRev:    rev2id,
 		"_removed": true,
-		"_revisions": map[string]interface{}{
-			"start": 2,
-			"ids":   []string{rev2digest, rev1digest}},
+		BodyRevisions: map[string]interface{}{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
 	assert.DeepEquals(t, body, expectedResult)
 
@@ -420,9 +439,9 @@ func TestGetRemoved(t *testing.T) {
 	expectedResult := Body{
 		"key1":     1234,
 		"channels": []string{"NBC"},
-		"_revisions": map[string]interface{}{
-			"start": 2,
-			"ids":   []string{rev2digest, rev1digest}},
+		BodyRevisions: map[string]interface{}{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2digest, rev1digest}},
 		BodyId:  "doc1",
 		BodyRev: rev2id,
 	}
@@ -442,9 +461,9 @@ func TestGetRemoved(t *testing.T) {
 		BodyId:     "doc1",
 		BodyRev:    rev2id,
 		"_removed": true,
-		"_revisions": map[string]interface{}{
-			"start": 2,
-			"ids":   []string{rev2digest, rev1digest}},
+		BodyRevisions: map[string]interface{}{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
 	assert.DeepEquals(t, body, expectedResult)
 
@@ -495,9 +514,9 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	expectedResult := Body{
 		"key1":      1234,
 		BodyDeleted: true,
-		"_revisions": map[string]interface{}{
-			"start": 2,
-			"ids":   []string{rev2digest, rev1digest}},
+		BodyRevisions: map[string]interface{}{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2digest, rev1digest}},
 		BodyId:  "doc1",
 		BodyRev: rev2id,
 	}
@@ -518,9 +537,9 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		BodyRev:     rev2id,
 		"_removed":  true,
 		BodyDeleted: true,
-		"_revisions": map[string]interface{}{
-			"start": 2,
-			"ids":   []string{rev2digest, rev1digest}},
+		BodyRevisions: map[string]interface{}{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
 	assert.DeepEquals(t, body, expectedResult)
 

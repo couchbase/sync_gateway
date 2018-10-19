@@ -10,8 +10,10 @@
 package db
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -22,13 +24,34 @@ import (
 type Body map[string]interface{}
 
 const (
-	BodyDeleted = "_deleted"
-	BodyRev     = "_rev"
-	BodyId      = "_id"
+	BodyDeleted   = "_deleted"
+	BodyRev       = "_rev"
+	BodyId        = "_id"
+	BodyRevisions = "_revisions"
+)
+
+// A revisions property found within a Body.  Expected to be of the form:
+//   Revisions["start"]: int64, starting generation number
+//   Revisions["ids"]: []string, list of digests
+// Used as map[string]interface{} instead of Revisions struct because it's unmarshalled
+// along with Body, and we don't need the overhead of allocating a new object
+type Revisions map[string]interface{}
+
+const (
+	RevisionsStart = "start"
+	RevisionsIds   = "ids"
 )
 
 func (b *Body) Unmarshal(data []byte) error {
-	if err := json.Unmarshal(data, &b); err != nil {
+
+	if len(data) == 0 {
+		return errors.New("Unexpected empty JSON input to body.Unmarshal")
+	}
+
+	// Use decoder for unmarshalling to preserve large numbers
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(b); err != nil {
 		return err
 	}
 	return nil
@@ -37,6 +60,14 @@ func (b *Body) Unmarshal(data []byte) error {
 func (body Body) ShallowCopy() Body {
 	copied := make(Body, len(body))
 	for key, value := range body {
+		copied[key] = value
+	}
+	return copied
+}
+
+func (revisions Revisions) ShallowCopy() Revisions {
+	copied := make(Revisions, len(revisions))
+	for key, value := range revisions {
 		copied[key] = value
 	}
 	return copied
@@ -187,7 +218,7 @@ func stripSpecialProperties(body Body) Body {
 
 func containsUserSpecialProperties(body Body) bool {
 	for key := range body {
-		if key != "" && key[0] == '_' && key != BodyId && key != BodyRev && key != BodyDeleted && key != "_attachments" && key != "_revisions" {
+		if key != "" && key[0] == '_' && key != BodyId && key != BodyRev && key != BodyDeleted && key != "_attachments" && key != BodyRevisions {
 			return true
 		}
 	}
@@ -202,7 +233,7 @@ func canonicalEncoding(body Body) []byte {
 	return encoded
 }
 
-func GetStringArrayProperty(body Body, property string) ([]string, error) {
+func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {
 	if raw, exists := body[property]; !exists {
 		return nil, nil
 	} else if strings, ok := raw.([]string); ok {
