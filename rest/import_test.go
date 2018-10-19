@@ -1287,7 +1287,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	// 2. Trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	assert.Equals(t, response.Code, 200)
-	var rawInsertResponse rawResponse
+	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev
@@ -1342,7 +1342,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	// 2. Trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	assert.Equals(t, response.Code, 200)
-	var rawInsertResponse rawResponse
+	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev
@@ -1395,7 +1395,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	// 2. Trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	assert.Equals(t, response.Code, 200)
-	var rawInsertResponse rawResponse
+	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
 	assertNoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev

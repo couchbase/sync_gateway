@@ -393,7 +393,7 @@ func TestPrependChanges(t *testing.T) {
 
 func TestChannelCacheRemove(t *testing.T) {
 
-	base.EnableTestLogKey("Cache+")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	context := testBucketContext()
 	defer context.Close()

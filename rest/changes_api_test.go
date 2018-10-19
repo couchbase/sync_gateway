@@ -724,6 +724,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
 	pendingMaxWait := uint32(5)
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
@@ -742,10 +743,9 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 
 	testDb := rt.ServerContext().Database("db")
 
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "Debug":true}`)
 	// Create user:
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein", "admin_channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein", "admin_channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
 	// Simulate 4 non-skipped writes (seq 2,3,4,5)
@@ -857,6 +857,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
 	pendingMaxWait := uint32(5)
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
@@ -875,8 +876,6 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 
 	testDb := rt.ServerContext().Database("db")
 
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "Debug":true}`)
-
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
 	WriteDirect(testDb, []string{"PBS"}, 1)
 	WriteDirect(testDb, []string{"PBS"}, 2)
@@ -890,7 +889,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq string
 	}
-	response = rt.SendAdminRequest("GET", "/db/_changes", "")
+	response := rt.SendAdminRequest("GET", "/db/_changes", "")
 	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.Equals(t, len(changes.Results), 5)
@@ -987,6 +986,8 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+
 	pendingMaxWait := uint32(5)
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
@@ -1005,10 +1006,9 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 
 	testDb := rt.ServerContext().Database("db")
 
-	response := rt.SendAdminRequest("PUT", "/_logging", `{"Changes":true, "Changes+":true, "Debug":true}`)
 	// Create user:
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein", "admin_channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein", "admin_channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
 	// Simulate 4 non-skipped writes (seq 2,3,4,5)

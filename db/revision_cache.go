@@ -64,7 +64,7 @@ func (rc *RevisionCache) Get(docid, revid string) (Body, Revisions, base.Set, er
 
 // Looks up a revision from the cache-only.  Will not fall back to loader function if not
 // present in the cache.
-func (rc *RevisionCache) GetCached(docid, revid string) (Body, Body, base.Set, error) {
+func (rc *RevisionCache) GetCached(docid, revid string) (Body, Revisions, base.Set, error) {
 	value := rc.getValue(docid, revid, false)
 	if value == nil {
 		return nil, nil, nil, nil
