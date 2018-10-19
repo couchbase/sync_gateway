@@ -564,7 +564,7 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 	}
 
 	status, reason := base.ErrorAsHTTPStatus(err)
-	outrq.Properties["error"] = fmt.Sprintf("%s", status)
+	outrq.Properties["error"] = strconv.Itoa(status)
 
 	// Add a "reason" field that gives more detailed explanation on the cause of the error.
 	outrq.Properties["reason"] = fmt.Sprintf("%s", reason)
