@@ -35,7 +35,7 @@ pipeline {
             }
         }
 
-        stage('Setup') {
+        // stage('Setup') {
             // parallel {
                 stage('Tools') {
                     steps {
@@ -67,11 +67,11 @@ pipeline {
                     }
                 }
             // }
-        }
+        // }
 
-        stage('Build') {
+        // stage('Build') {
             // parallel {
-                stage('CE') {
+                stage('CE Build') {
                     steps {
                         echo 'Building..'
                         withEnv(["PATH+=${GO}"]) {
@@ -79,7 +79,7 @@ pipeline {
                         }
                     }
                 }
-                stage('EE') {
+                stage('EE Build') {
                     steps {
                         echo 'Building..'
                         withEnv(["PATH+=${GO}"]) {
@@ -88,11 +88,11 @@ pipeline {
                     }
                 }
             // }
-        }
+        // }
 
-        stage('Test with coverage') {
+        // stage('Test with coverage') {
             // parallel {
-                stage('CE') {
+                stage('CE Test -cover') {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                             // Build public and private coverprofiles (private containing accel code too)
@@ -106,7 +106,7 @@ pipeline {
                             // Publish combined HTML coverage report to Jenkins
                             sh 'mkdir reports'
                             sh 'go tool cover -html=cover_ce_private.out -o reports/coverage-ce.html'
-                            publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: '*.html', keepAll: false, reportDir: 'reports', reportFiles: '*.html', reportName: 'Code Coverage', reportTitles: ''])
+                            // publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: '*.html', keepAll: false, reportDir: 'reports', reportFiles: '*.html', reportName: 'Code Coverage', reportTitles: ''])
                         }
 
                         // Travis-related variables are required as coveralls only officially supports a certain set of CI tools.
@@ -124,7 +124,7 @@ pipeline {
                         }
                     }
                 }
-                stage('EE') {
+                stage('EE Test -cover') {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                             sh 'go test -tags "sg_enterprise" -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ee_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
@@ -135,16 +135,16 @@ pipeline {
                     }
                 }
             // }
-            post {
-                always {
-                    publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: '*.html', keepAll: false, reportDir: 'reports', reportFiles: '*.html', reportName: 'Code Coverage', reportTitles: ''])
-                }
-            }
-        }
+            // post {
+            //     always {
+            //         publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: '*.html', keepAll: false, reportDir: 'reports', reportFiles: '*.html', reportName: 'Code Coverage', reportTitles: ''])
+            //     }
+            // }
+        // }
 
-        stage('Test Race') {
+        // stage('Test Race') {
             // parallel {
-                stage('CE') {
+                stage('CE Test -race') {
                     steps {
                         echo 'Testing with -race..'
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
@@ -152,7 +152,7 @@ pipeline {
                         }
                     }
                 }
-                stage('EE') {
+                stage('EE Test -race') {
                     steps {
                         echo 'Testing with -race..'
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
@@ -161,11 +161,12 @@ pipeline {
                     }
                 }
             // }
-        }
+        // }
     }
 
     post {
         always {
+            publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: '*.html', keepAll: false, reportDir: 'reports', reportFiles: '*.html', reportName: 'Code Coverage', reportTitles: ''])
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
         }
