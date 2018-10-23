@@ -62,6 +62,20 @@ func (rc *RevisionCache) Get(docid, revid string) (Body, Revisions, base.Set, er
 	return body, history, channels, err
 }
 
+// Looks up a revision from the cache-only.  Will not fall back to loader function if not
+// present in the cache.
+func (rc *RevisionCache) GetCached(docid, revid string) (Body, Revisions, base.Set, error) {
+	value := rc.getValue(docid, revid, false)
+	if value == nil {
+		return nil, nil, nil, nil
+	}
+	body, history, channels, err := value.load(rc.loaderFunc)
+	if err != nil {
+		rc.removeValue(value) // don't keep failed loads in the cache
+	}
+	return body, history, channels, err
+}
+
 // Attempts to retrieve the active revision for a document from the cache.  Requires retrieval
 // of the document from the bucket to guarantee the current active revision, but does minimal unmarshalling
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the

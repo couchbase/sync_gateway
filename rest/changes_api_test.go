@@ -715,6 +715,382 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 }
 
+// Test low sequence handling of late arriving sequences to a one-shot changes feed, ensuring that
+// subsequent requests for the current low sequence value don't return results (avoids loops for
+// longpoll as well as clients doing repeated one-off changes requests - see #1309)
+func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	pendingMaxWait := uint32(5)
+	maxNum := 50
+	skippedMaxWait := uint32(120000)
+
+	numIndexReplicas := uint(0)
+	shortWaitConfig := &DbConfig{
+		CacheConfig: &CacheConfig{
+			CachePendingSeqMaxWait: &pendingMaxWait,
+			CachePendingSeqMaxNum:  &maxNum,
+			CacheSkippedSeqMaxWait: &skippedMaxWait,
+		},
+		NumIndexReplicas: &numIndexReplicas,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
+	defer rt.Close()
+
+	testDb := rt.ServerContext().Database("db")
+
+	// Create user:
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein", "admin_channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	// Simulate 4 non-skipped writes (seq 2,3,4,5)
+	WriteDirect(testDb, []string{"PBS"}, 2)
+	WriteDirect(testDb, []string{"PBS"}, 3)
+	WriteDirect(testDb, []string{"PBS"}, 4)
+	WriteDirect(testDb, []string{"PBS"}, 5)
+	testDb.WaitForSequenceWithMissing(5)
+
+	// Check the _changes feed:
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq string
+	}
+	response = rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
+	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 5) // Includes user doc
+	since := changes.Results[0].Seq
+	assert.Equals(t, since.Seq, uint64(1))
+	assert.Equals(t, changes.Last_Seq, "5")
+
+	// Skip sequence 6, write docs 7-10
+	WriteDirect(testDb, []string{"PBS"}, 7)
+	WriteDirect(testDb, []string{"PBS"}, 8)
+	WriteDirect(testDb, []string{"PBS"}, 9)
+	WriteDirect(testDb, []string{"PBS"}, 10)
+	testDb.WaitForSequenceWithMissing(10)
+
+	// Send another changes request with the last_seq received from the last changes ("5")
+	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
+	log.Printf("sending changes JSON: %s", changesJSON)
+	response = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	log.Printf("_changes 2 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, changes.Last_Seq, "5::10")
+
+	// Write a few more docs
+	WriteDirect(testDb, []string{"PBS"}, 11)
+	WriteDirect(testDb, []string{"PBS"}, 12)
+	testDb.WaitForSequenceWithMissing(12)
+
+	// Send another changes request with the last_seq received from the last changes ("5")
+	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
+	log.Printf("sending changes JSON: %s", changesJSON)
+	response = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	log.Printf("_changes 3 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 2)
+	assert.Equals(t, changes.Last_Seq, "5::12")
+
+	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
+	WriteDirect(testDb, []string{"PBS"}, 13)
+	WriteDirect(testDb, []string{"PBS"}, 6)
+	testDb.WaitForSequence(13)
+
+	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
+	log.Printf("sending changes JSON: %s", changesJSON)
+	response = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	log.Printf("_changes 4 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+
+	// Valid results here under race conditions should be:
+	//    receive sequences 6-13, last seq 13
+	//    receive sequence 13, last seq 5::13
+	//    receive sequence 6-12, last seq 12
+	//    receive no sequences, last seq 5::12
+	// Valid but unexpected results (no data loss):
+	//    receive sequence 6, last sequence 6
+	//    receive sequence 6, last sequence 12
+	// Invalid results (data loss):
+	//    receive sequence 13, last seq 13
+	//    receives sequence 6, last seq 13
+	switch len(changes.Results) {
+	case 0:
+		assert.Equals(t, changes.Last_Seq, "5::12")
+	case 1:
+		switch changes.Last_Seq {
+		case "5::13":
+			assert.Equals(t, changes.Results[0].Seq.Seq, uint64(13))
+		case "6":
+			assert.Equals(t, changes.Results[0].Seq.Seq, uint64(6))
+			log.Printf("Didn't expect last:6 w/ seq 6")
+		case "12":
+			assert.Equals(t, changes.Results[0].Seq.Seq, uint64(6))
+			log.Printf("Didn't expect last:12 w/ seq 6")
+		default:
+			t.Errorf("invalid response.  Last_Seq: %v  changes: %v", changes.Last_Seq, changes.Results[0])
+		}
+	case 7:
+		assert.Equals(t, changes.Last_Seq, "12")
+	case 8:
+		assert.Equals(t, changes.Last_Seq, "13")
+	default:
+		t.Errorf("Unexpected number of changes results.  Last_Seq: %v  len(changes): %v", changes.Last_Seq, len(changes.Results))
+	}
+
+	assert.Equals(t, len(changes.Results), 8)
+	assert.Equals(t, changes.Last_Seq, "13")
+}
+
+// Test low sequence handling of late arriving sequences to a one-shot changes feed, ensuring that
+// subsequent requests for the current low sequence value don't return results (avoids loops for
+// longpoll as well as clients doing repeated one-off changes requests - see #1309)
+func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	pendingMaxWait := uint32(5)
+	maxNum := 50
+	skippedMaxWait := uint32(120000)
+
+	numIndexReplicas := uint(0)
+	shortWaitConfig := &DbConfig{
+		CacheConfig: &CacheConfig{
+			CachePendingSeqMaxWait: &pendingMaxWait,
+			CachePendingSeqMaxNum:  &maxNum,
+			CacheSkippedSeqMaxWait: &skippedMaxWait,
+		},
+		NumIndexReplicas: &numIndexReplicas,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
+	defer rt.Close()
+
+	testDb := rt.ServerContext().Database("db")
+
+	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
+	WriteDirect(testDb, []string{"PBS"}, 1)
+	WriteDirect(testDb, []string{"PBS"}, 2)
+	WriteDirect(testDb, []string{"PBS"}, 3)
+	WriteDirect(testDb, []string{"PBS"}, 4)
+	WriteDirect(testDb, []string{"PBS"}, 5)
+	testDb.WaitForSequenceWithMissing(5)
+
+	// Check the _changes feed:
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq string
+	}
+	response := rt.SendAdminRequest("GET", "/db/_changes", "")
+	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 5)
+	since := changes.Results[0].Seq
+	assert.Equals(t, since.Seq, uint64(1))
+	assert.Equals(t, changes.Last_Seq, "5")
+
+	// Skip sequence 6, write docs 7-10
+	WriteDirect(testDb, []string{"PBS"}, 7)
+	WriteDirect(testDb, []string{"PBS"}, 8)
+	WriteDirect(testDb, []string{"PBS"}, 9)
+	WriteDirect(testDb, []string{"PBS"}, 10)
+	testDb.WaitForSequenceWithMissing(10)
+
+	// Send another changes request with the last_seq received from the last changes ("5")
+	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
+	log.Printf("sending changes JSON: %s", changesJSON)
+	response = rt.SendAdminRequest("POST", "/db/_changes", changesJSON)
+	log.Printf("_changes 2 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, changes.Last_Seq, "5::10")
+
+	// Write a few more docs
+	WriteDirect(testDb, []string{"PBS"}, 11)
+	WriteDirect(testDb, []string{"PBS"}, 12)
+	testDb.WaitForSequenceWithMissing(12)
+
+	// Send another changes request with the last_seq received from the last changes ("5")
+	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
+	log.Printf("sending changes JSON: %s", changesJSON)
+	response = rt.SendAdminRequest("POST", "/db/_changes", changesJSON)
+	log.Printf("_changes 3 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 2)
+	assert.Equals(t, changes.Last_Seq, "5::12")
+
+	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
+	WriteDirect(testDb, []string{"PBS"}, 13)
+	WriteDirect(testDb, []string{"PBS"}, 6)
+	testDb.WaitForSequence(13)
+
+	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
+	log.Printf("sending changes JSON: %s", changesJSON)
+	response = rt.SendAdminRequest("POST", "/db/_changes", changesJSON)
+	log.Printf("_changes 4 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+
+	// Valid results here under race conditions should be:
+	//    receive sequences 6-13, last seq 13
+	//    receive sequence 13, last seq 5::13
+	//    receive sequence 6-12, last seq 12
+	//    receive no sequences, last seq 5::12
+	// Valid but unexpected results (no data loss):
+	//    receive sequence 6, last sequence 6
+	//    receive sequence 6, last sequence 12
+	// Invalid results (data loss):
+	//    receive sequence 13, last seq 13
+	//    receives sequence 6, last seq 13
+	switch len(changes.Results) {
+	case 0:
+		assert.Equals(t, changes.Last_Seq, "5::12")
+	case 1:
+		switch changes.Last_Seq {
+		case "5::13":
+			assert.Equals(t, changes.Results[0].Seq.Seq, uint64(13))
+		case "6":
+			assert.Equals(t, changes.Results[0].Seq.Seq, uint64(6))
+			log.Printf("Didn't expect last:6 w/ seq 6")
+		case "12":
+			assert.Equals(t, changes.Results[0].Seq.Seq, uint64(6))
+			log.Printf("Didn't expect last:12 w/ seq 6")
+		default:
+			t.Errorf("invalid response.  Last_Seq: %v  changes: %v", changes.Last_Seq, changes.Results[0])
+		}
+	case 7:
+		assert.Equals(t, changes.Last_Seq, "12")
+	case 8:
+		assert.Equals(t, changes.Last_Seq, "13")
+	default:
+		t.Errorf("Unexpected number of changes results.  Last_Seq: %v  len(changes): %v", changes.Last_Seq, len(changes.Results))
+	}
+
+	assert.Equals(t, len(changes.Results), 8)
+	assert.Equals(t, changes.Last_Seq, "13")
+}
+
+// Test low sequence handling of late arriving sequences to a longpoll changes feed, ensuring that
+// subsequent requests for the current low sequence value don't return results (avoids loops for
+// longpoll as well as clients doing repeated one-off changes requests - see #1309)
+func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+
+	pendingMaxWait := uint32(5)
+	maxNum := 50
+	skippedMaxWait := uint32(120000)
+
+	numIndexReplicas := uint(0)
+	shortWaitConfig := &DbConfig{
+		CacheConfig: &CacheConfig{
+			CachePendingSeqMaxWait: &pendingMaxWait,
+			CachePendingSeqMaxNum:  &maxNum,
+			CacheSkippedSeqMaxWait: &skippedMaxWait,
+		},
+		NumIndexReplicas: &numIndexReplicas,
+	}
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
+	defer rt.Close()
+
+	testDb := rt.ServerContext().Database("db")
+
+	// Create user:
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein", "admin_channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	// Simulate 4 non-skipped writes (seq 2,3,4,5)
+	WriteDirect(testDb, []string{"PBS"}, 2)
+	WriteDirect(testDb, []string{"PBS"}, 3)
+	WriteDirect(testDb, []string{"PBS"}, 4)
+	WriteDirect(testDb, []string{"PBS"}, 5)
+	testDb.WaitForSequenceWithMissing(5)
+
+	// Check the _changes feed:
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq string
+	}
+	response = rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
+	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 5) // Includes user doc
+	since := changes.Results[0].Seq
+	assert.Equals(t, since.Seq, uint64(1))
+	assert.Equals(t, changes.Last_Seq, "5")
+
+	// Skip sequence 6, write docs 7-10
+	WriteDirect(testDb, []string{"PBS"}, 7)
+	WriteDirect(testDb, []string{"PBS"}, 8)
+	WriteDirect(testDb, []string{"PBS"}, 9)
+	WriteDirect(testDb, []string{"PBS"}, 10)
+	testDb.WaitForSequenceWithMissing(10)
+
+	// Send another changes request with the last_seq received from the last changes ("5")
+	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
+	log.Printf("sending changes JSON: %s", changesJSON)
+	response = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	log.Printf("_changes 2 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 4)
+	assert.Equals(t, changes.Last_Seq, "5::10")
+
+	// Write a few more docs
+	WriteDirect(testDb, []string{"PBS"}, 11)
+	WriteDirect(testDb, []string{"PBS"}, 12)
+	testDb.WaitForSequenceWithMissing(12)
+
+	// Send another changes request with the last_seq received from the last changes ("5")
+	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
+	log.Printf("sending changes JSON: %s", changesJSON)
+	response = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	log.Printf("_changes 3 looks like: %s", response.Body.Bytes())
+	json.Unmarshal(response.Body.Bytes(), &changes)
+	assert.Equals(t, len(changes.Results), 2)
+	assert.Equals(t, changes.Last_Seq, "5::12")
+
+	// Issue a longpoll changes request.  Will block.
+	var longpollWg sync.WaitGroup
+	longpollWg.Add(1)
+	go func() {
+		defer longpollWg.Done()
+		longpollChangesJSON := fmt.Sprintf(`{"since":"%s", "feed":"longpoll"}`, changes.Last_Seq)
+		log.Printf("starting longpoll changes w/ JSON: %s", longpollChangesJSON)
+		longPollResponse := rt.Send(requestByUser("POST", "/db/_changes", longpollChangesJSON, "bernard"))
+		log.Printf("longpoll changes looks like: %s", longPollResponse.Body.Bytes())
+		json.Unmarshal(longPollResponse.Body.Bytes(), &changes)
+		// Expect to get 6 through 12
+		assert.Equals(t, len(changes.Results), 7)
+		assert.Equals(t, changes.Last_Seq, "12")
+	}()
+
+	// Wait for longpoll to get into wait mode
+	// TODO: Would be preferable to add an expvar tracking the number of changes feeds in wait mode, and use that to
+	//       detect when the longpoll changes goes into wait mode instead of a sleep.
+	//       Such an expvar would be useful for diagnostic purposes as well.
+	//       Deferring this change until post-2.1.1, due to potential performance implications.  Using sleep until that enhancement is
+	//       made.
+	time.Sleep(2 * time.Second)
+
+	// Write the skipped doc, wait for longpoll to return
+	WriteDirect(testDb, []string{"PBS"}, 6)
+	//WriteDirect(testDb, []string{"PBS"}, 13)
+	longpollWg.Wait()
+
+}
+
 func TestUnusedSequences(t *testing.T) {
 
 	if testing.Short() {

@@ -521,6 +521,24 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 
 }
 
+// Remove purges the given doc IDs from all channel caches and returns the number of items removed.
+// count will be larger than the input slice if the same document is removed from multiple channel caches.
+func (c *changeCache) Remove(docIDs []string, startTime time.Time) (count int) {
+	// Exit early if there's no work to do
+	if len(docIDs) == 0 {
+		return 0
+	}
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	for channelName := range c.channelCaches {
+		count += c._getChannelCache(channelName).Remove(docIDs, startTime)
+	}
+
+	return count
+}
+
 func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Principal, error) {
 
 	c.context.BucketLock.RLock()

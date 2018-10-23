@@ -631,3 +631,74 @@ func TestLargeSequence(t *testing.T) {
 	assertNoError(t, err, "Error retrieving document sync data")
 	assert.Equals(t, syncData.Sequence, uint64(9223372036854775808))
 }
+
+const rawDocMalformedRevisionStorage = `
+	{
+     "_sync":
+		{"rev":"6-a",
+         "new_rev":"3-b",
+         "flags":28,
+         "sequence":6,
+         "recent_sequences":[1,2,3,4,5,6],
+         "history":{
+              "revs":["5-a","6-a","3-b","2-b","2-a","1-a","3-a","4-a"],
+              "parents":[7,0,3,5,5,-1,4,6],
+              "bodymap":{
+                 "2":"{\"key1\":\"value2\",\"v\":\"3b\"}",
+                 "3":"\u0001{\"key1\":\"value2\",\"v\":\"2b\""},
+              "channels":[null,null,null,null,null,null,null,null]},
+         "cas":"",
+         "value_crc32c":"",
+         "time_saved":"2018-09-27T13:47:44.719971735-07:00"
+     },
+     "key1":"value2",
+     "v":"6a"
+    }`
+
+func TestMalformedRevisionStorageRecovery(t *testing.T) {
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)
+
+	// Create a document with a malformed revision body (due to https://github.com/couchbase/sync_gateway/issues/3692) in the bucket
+	// Document has the following rev tree, with a malformed body of revision 2-b remaining in the revision tree (same set of operations as
+	// TestOldRevisionStorageError)
+	//    1-a
+	//   /  \
+	// 2-a  2-b
+	//  |    |
+	// 3-a  3-b
+	//  |
+	// 4-a
+	//  |
+	// 5-a
+	//  |
+	// 6-a
+	log.Printf("Add doc1 w/ malformed body for rev 2-b included in revision tree")
+	ok, addErr := db.Bucket.AddRaw("doc1", 0, []byte(rawDocMalformedRevisionStorage))
+	assert.True(t, ok)
+	assertNoError(t, addErr, "Error writing raw document")
+
+	// Increment _sync:seq to match sequences allocated by raw doc
+	_, incrErr := db.Bucket.Incr("_sync:seq", 5, 0, 0)
+	assertNoError(t, incrErr, "Error incrementing sync:seq")
+
+	// Add child to non-winning revision w/ malformed inline body.
+	// Prior to fix for https://github.com/couchbase/sync_gateway/issues/3700, this fails
+	//    1-a
+	//   /   \
+	// 2-a    2-b
+	//  |     / |
+	// 3-a  3-b 3-c
+	//  |
+	// 4-a
+	//  |
+	// 5-a
+	//  |
+	// 6-a
+	log.Printf("Attempt to create rev 3-c")
+	rev3c_body := Body{"key1": "value2", "v": "3c"}
+	assertNoError(t, db.PutExistingRev("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false), "add 3-c")
+}
