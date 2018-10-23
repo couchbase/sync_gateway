@@ -1,28 +1,10 @@
 package sync_gateway
 
-import (
-	"fmt"
-	"strings"
-)
-
-var (
-	// /mobile
-	MOBILE = "/mobile"
-
-	// /mobile/gateway
-	MOBILE_GATEWAY = fmt.Sprintf("%s/gateway", MOBILE)
-
-	// /mobile/gateway/config
-	MOBILE_GATEWAY_CONFIG = fmt.Sprintf("%s/config", MOBILE_GATEWAY)
-
-	// /mobile/gateway/config/listener
-	MOBILE_GATEWAY_LISTENER_CONFIG = fmt.Sprintf("%s/listener", MOBILE_GATEWAY_CONFIG)
-
-	// /mobile/gateway/config/general
-	MOBILE_GATEWAY_GENERAL_CONFIG = fmt.Sprintf("%s/general", MOBILE_GATEWAY_CONFIG)
-
-	// /mobile/gateway/config/databases
-	MOBILE_CONFIG_DATABASES = fmt.Sprintf("%s/databases", MOBILE_GATEWAY_CONFIG)
+const (
+	DefaultPublicInterface = "0.0.0.0"
+	DefaultAdminInterface  = "127.0.0.1"
+	DefaultPublicPort      = 4984
+	DefaultAdminPort       = 4985
 )
 
 var (
@@ -33,14 +15,3 @@ var (
 	// Discover this from OS -- just a convenience to help give a hint, since otherwise users just see an opaque UUID
 	GATEWAY_HOSTNAME = "localhost"
 )
-
-func AddTrailingSlash(initial string) string {
-	if strings.HasSuffix(initial, "/") {
-		return initial
-	}
-	return fmt.Sprintf("%s/", initial)
-}
-
-func init() {
-
-}
