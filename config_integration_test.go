@@ -8,6 +8,8 @@ import (
 	"github.com/couchbase/mobile-service"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/go.assert"
+	"github.com/couchbase/sync_gateway/sgclient"
+	"log"
 )
 
 // Integration tests that verify that Sync Gateway loads the correct configuration from the mobile-service
@@ -55,16 +57,19 @@ func TestGatewayLoadDbConfig(t *testing.T) {
 
 	go RunGateway(*bootstrapConfig, true)
 
-	//// Query the admin api at the _config endpoint, and make sure it lists the db added above
-	//sgClient := sgclient.NewSGClient(fmt.Sprintf("%s:%s", DefaultAdminInterface, DefaultAdminPort))
-	//sgClient.WaitApiAvailable()
-	//dbEndpoint, err := sgClient.GetDbEndpoint(base.DefaultTestBucketname)
-	//if err != nil {
-	//	t.Fatalf("Unable to get db endpoint: %v", base.DefaultTestBucketname)
-	//}
-	//log.Printf("dbEndpoint: %v", dbEndpoint)
+	// Query the admin api at the _config endpoint, and make sure it lists the db added above
+	sgClient := sgclient.NewSgClient(fmt.Sprintf("%s:%d", DefaultAdminInterface, DefaultAdminPort))
+	if err := sgClient.WaitApiAvailable(); err != nil {
+		t.Fatalf("Error waiting for api to become available.  Error: %v", err)
 
-	time.Sleep(time.Second * 60)
+	}
+	dbEndpoint, err := sgClient.GetDb(base.DefaultTestBucketname)
+	if err != nil {
+		t.Fatalf("Unable to get db endpoint: %v", base.DefaultTestBucketname)
+	}
+	log.Printf("dbEndpoint: %+v", dbEndpoint)
+
+
 
 }
 
