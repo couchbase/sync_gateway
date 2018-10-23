@@ -11,3 +11,7 @@ var (
 var (
 	inputFilePath string
 )
+
+var (
+	RecursiveDelete bool
+)

@@ -128,8 +128,8 @@ func (gw *Gateway) FindMobileServiceNodes() (mobileSvcHostPorts []string, err er
 
 func (gw *Gateway) LoadConfigSnapshot() {
 
-	// Get snapshot of MetaKV tree under /mobile/
-	keyMobileConfig := AddTrailingSlash(MOBILE_GATEWAY_CONFIG)
+	// Get snapshot of MetaKV tree
+	keyMobileConfig := mobile_mds.KeyDirMobileGateway
 	metaKvPairs, err := gw.GrpcClient.MetaKVListAllChildren(context.Background(), &mobile_service.MetaKVPath{Path: keyMobileConfig})
 	if err != nil {
 		panic(fmt.Sprintf("Error getting metakv for mobile key %v.  Err: %v", keyMobileConfig, err))
@@ -190,7 +190,7 @@ func (gw *Gateway) ObserveMetaKVChanges(path string) error {
 
 		existingConfigKV, found := gw.Config[updatedConfigKV.Path]
 
-		if strings.HasPrefix(updatedConfigKV.Path, MOBILE_CONFIG_DATABASES) {
+		if strings.HasPrefix(updatedConfigKV.Path, mobile_mds.KeyMobileGatewayDatabases) {
 
 			switch found {
 			case true:
@@ -216,7 +216,7 @@ func (gw *Gateway) ObserveMetaKVChanges(path string) error {
 				}
 			}
 
-		} else if strings.HasPrefix(updatedConfigKV.Path, MOBILE_GATEWAY_CONFIG) {
+		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_mds.KeyMobileGateway) {
 			// Server level config updated
 			if err := gw.HandleServerConfigUpdated(updatedConfigKV, existingConfigKV); err != nil {
 				log.Printf("Error handling server level config update: %v", err)
@@ -314,9 +314,10 @@ func (gw *Gateway) HandleDbUpdate(metaKvPair, existingDbConfig *mobile_service.M
 func (gw *Gateway) LoadServerConfig() (serverConfig *rest.ServerConfig, err error) {
 
 	// Load the listener config
-	listenerConfigMetaKV, found := gw.Config[MOBILE_GATEWAY_LISTENER_CONFIG]
+	key := mobile_mds.KeyMobileGatewayListener
+	listenerConfigMetaKV, found := gw.Config[key]
 	if !found {
-		return nil, fmt.Errorf("Key not found: %v", MOBILE_GATEWAY_LISTENER_CONFIG)
+		return nil, fmt.Errorf("Key not found: %v", key)
 	}
 
 	serverListenerConfig := rest.ServerConfig{}
@@ -326,9 +327,10 @@ func (gw *Gateway) LoadServerConfig() (serverConfig *rest.ServerConfig, err erro
 	}
 
 	// Load the general config
-	generalConfigMetaKV, found := gw.Config[MOBILE_GATEWAY_GENERAL_CONFIG]
+	key = mobile_mds.KeyMobileGatewayGeneral
+	generalConfigMetaKV, found := gw.Config[key]
 	if !found {
-		return nil, fmt.Errorf("Key not found: %v", MOBILE_GATEWAY_GENERAL_CONFIG)
+		return nil, fmt.Errorf("Key not found: %v", key)
 	}
 
 	serverGeneralConfig := rest.ServerConfig{}
@@ -465,6 +467,8 @@ func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffs
 
 }
 
+// TODO: this blocks forever, so there is no way to get a handle on the Gateway.
+// TODO: split this up into a function that creates and returns a gateway
 func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 
 	// Client setup
@@ -476,7 +480,7 @@ func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 
 	// Kick off goroutine to observe stream of metakv changes
 	go func() {
-		err := gw.ObserveMetaKVChangesRetry(AddTrailingSlash(MOBILE))
+		err := gw.ObserveMetaKVChangesRetry(mobile_mds.KeyDirMobileRoot)
 		if err != nil {
 			log.Printf("Error observing metakv changes: %v", err)
 		}

@@ -22,15 +22,31 @@ var deleteCmd = &cobra.Command{
 
 		metakvHelper := sync_gateway.NewMetaKVClient(bootstrapConfig)
 		key := args[0]
-		err = metakvHelper.Delete(key)
-		if err != nil {
-			panic(fmt.Sprintf("Error deleting key: %v.  Err: %v", key, err))
+
+		if RecursiveDelete {
+			err = metakvHelper.RecursiveDelete(key)
+			if err != nil {
+				panic(fmt.Sprintf("Error recursively deleting key: %v.  Err: %v", key, err))
+			}
+			fmt.Printf("Recursively deleted key %v\n", key)
+		} else {
+			err = metakvHelper.Delete(key)
+			if err != nil {
+				panic(fmt.Sprintf("Error deleting key: %v.  Err: %v", key, err))
+			}
+			fmt.Printf("Deleted key %v\n", key)
 		}
-		fmt.Printf("Deleted key %v\n", key)
+
+
 	},
 }
 
 func init() {
+
 	metakvCmd.AddCommand(deleteCmd)
+
+
+	rootCmd.Flags().BoolVar(&RecursiveDelete, "--recursive-delete", false, "Perform a recursive delete")
+
 
 }

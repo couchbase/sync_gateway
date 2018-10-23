@@ -95,6 +95,16 @@ func (mkv *MetaKVClient) Delete(key string) (err error) {
 
 }
 
+func (mkv *MetaKVClient) RecursiveDelete(key string) (err error) {
+
+	_, err = mkv.gateway.GrpcClient.MetaKVRecursiveDelete(mkv.context, &mobile_service.MetaKVPath{
+		Path: key,
+	})
+
+	return err
+
+}
+
 // /mobile/gateway/config/databases/database-1 -> database-1
 func MetaKVLastItemPath(path string) (string, error) {
 	if path == "" {
