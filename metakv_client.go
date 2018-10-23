@@ -3,9 +3,9 @@ package sync_gateway
 import (
 	"context"
 
+	"fmt"
 	"github.com/couchbase/mobile-service/mobile_service"
 	"strings"
-	"fmt"
 )
 
 type MetaKVClient struct {
@@ -13,11 +13,7 @@ type MetaKVClient struct {
 	context context.Context
 }
 
-func NewMetaKVClient() *MetaKVClient {
-
-	// TODO: at some point, this will probably need a real bootstrap config
-	// TODO: so that it can discover the mobile service port on the mobile service node
-	bootstrapConfig := GatewayBootstrapConfig{}
+func NewMetaKVClient(bootstrapConfig GatewayBootstrapConfig) *MetaKVClient {
 
 	return &MetaKVClient{
 		gateway: NewGateway(bootstrapConfig),
@@ -82,7 +78,7 @@ func (mkv *MetaKVClient) Get(key string) (value []byte, err error) {
 
 func (mkv *MetaKVClient) Delete(key string) (err error) {
 
-	serverConfigKey, err  := mkv.gateway.GrpcClient.MetaKVGet(mkv.context, &mobile_service.MetaKVPath{
+	serverConfigKey, err := mkv.gateway.GrpcClient.MetaKVGet(mkv.context, &mobile_service.MetaKVPath{
 		Path: key,
 	})
 
@@ -92,7 +88,7 @@ func (mkv *MetaKVClient) Delete(key string) (err error) {
 
 	_, err = mkv.gateway.GrpcClient.MetaKVDelete(mkv.context, &mobile_service.MetaKVPair{
 		Path: key,
-		Rev: serverConfigKey.Rev,
+		Rev:  serverConfigKey.Rev,
 	})
 
 	return err
@@ -108,7 +104,6 @@ func MetaKVLastItemPath(path string) (string, error) {
 	if len(components) == 0 {
 		return "", fmt.Errorf("Not enough components found in path: %v", path)
 	}
-	return components[len(components) - 1], nil
+	return components[len(components)-1], nil
 
 }
-

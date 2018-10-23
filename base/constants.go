@@ -87,7 +87,6 @@ const (
 	// Set this to true to dump stacktraces (for pkgerrors wrapped errors only) whenever an error is returned to
 	// an API client.  Currently only works with REST API calls.
 	StacktraceOnAPIErrors = false
-
 )
 
 func UnitTestUrl() string {

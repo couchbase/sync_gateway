@@ -343,7 +343,6 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 }
 
-
 // Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.
@@ -786,7 +785,7 @@ func (c *changeCache) _setInitialSequence(initialSequence uint64) {
 	c.nextSequence = initialSequence + 1
 }
 
-// Concurrent-safe get value of nextSequence 
+// Concurrent-safe get value of nextSequence
 func (c *changeCache) getNextSequence() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()

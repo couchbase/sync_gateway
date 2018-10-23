@@ -14,9 +14,15 @@ var deleteCmd = &cobra.Command{
 	Long:  ``,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		metakvHelper := sync_gateway.NewMetaKVClient()
+
+		bootstrapConfig, err := BootstrapConfigFromParams()
+		if err != nil {
+			panic(fmt.Sprintf("Error getting bootstrap config: %v", err))
+		}
+
+		metakvHelper := sync_gateway.NewMetaKVClient(bootstrapConfig)
 		key := args[0]
-		err := metakvHelper.Delete(key)
+		err = metakvHelper.Delete(key)
 		if err != nil {
 			panic(fmt.Sprintf("Error deleting key: %v.  Err: %v", key, err))
 		}

@@ -17,6 +17,8 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"google.golang.org/grpc"
+	"github.com/couchbaselabs/gocbconnstr"
+	"github.com/couchbase/mobile-service"
 )
 
 type Gateway struct {
@@ -64,7 +66,7 @@ func NewGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 //   - Receive configuration updates
 func (gw *Gateway) ConnectMobileSvc() error {
 
-	mobileSvcHostPort, err := ChooseRandomMobileService()
+	mobileSvcHostPort, err := gw.ChooseRandomMobileService()
 	if err != nil {
 		panic(fmt.Sprintf("Error finding mobile service to connect to: %v", err))
 	}
@@ -83,6 +85,46 @@ func (gw *Gateway) ConnectMobileSvc() error {
 	return nil
 
 }
+
+func (gw *Gateway) ChooseRandomMobileService() (mobileSvcHostPort string, err error) {
+
+	mobileServiceNodes, err := gw.FindMobileServiceNodes()
+	if err != nil {
+		return "", err
+	}
+
+	return mobileServiceNodes[base.RandIntRange(0, len(mobileServiceNodes))], nil
+
+}
+
+// Since we don't know which mobile service node will be assigned which grpc port, we
+// need to generate every combination of server ip and grpc port starting with the known grpc start port.
+func (gw *Gateway) FindMobileServiceNodes() (mobileSvcHostPorts []string, err error) {
+
+	connSpec, err := gocbconnstr.Parse(gw.BootstrapConfig.GoCBConnstr)
+	if err != nil {
+		return []string{}, err
+	}
+
+	grpcTargetPorts := []int{}
+	for portOffset := 0; portOffset < len(connSpec.Addresses); portOffset++ {
+		grpcTargetPort := portOffset + mobile_mds.PortGrpcTls
+		grpcTargetPorts = append(grpcTargetPorts, grpcTargetPort)
+	}
+
+	mobileSvcHostPorts = []string{}
+
+	for _, address := range connSpec.Addresses {
+		for _, grpcTargetPort := range grpcTargetPorts {
+			hostPort := fmt.Sprintf("%s:%d", address.Host, grpcTargetPort)
+			mobileSvcHostPorts = append(mobileSvcHostPorts, hostPort)
+		}
+	}
+
+	return mobileSvcHostPorts, nil
+
+}
+
 
 func (gw *Gateway) LoadConfigSnapshot() {
 
@@ -406,23 +448,8 @@ func (gw *Gateway) PushStatsStream() error {
 
 }
 
-func ChooseRandomMobileService() (mobileSvcHostPort string, err error) {
 
-	mobileServiceNodes, err := FindMobileServiceNodes()
-	if err != nil {
-		return "", err
-	}
 
-	return mobileServiceNodes[base.RandIntRange(0, len(mobileServiceNodes))], nil
-
-}
-
-func FindMobileServiceNodes() (mobileSvcHostPorts []string, err error) {
-	return []string{
-		"localhost:50051",
-		"localhost:50052",
-	}, nil
-}
 
 // "localhost:4984" with port offset 2 -> "localhost:4986"
 func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffset string) {

@@ -1,11 +1,11 @@
 package rest
 
 import (
-	"testing"
-	"github.com/couchbaselabs/go.assert"
 	"encoding/json"
-	"log"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbaselabs/go.assert"
+	"log"
+	"testing"
 )
 
 func TestDocumentUnmarshal(t *testing.T) {
@@ -50,19 +50,17 @@ func TestDocumentUnmarshal(t *testing.T) {
 
 }
 
-
 func TestAttachmentRoundTrip(t *testing.T) {
-
 
 	doc := RestDocument{}
 	attachmentMap := db.AttachmentMap{
 		"foo": &db.DocAttachment{
 			ContentType: "text",
-			Digest: "whatever",
+			Digest:      "whatever",
 		},
 		"bar": &db.DocAttachment{
 			ContentType: "text",
-			Digest: "whatever",
+			Digest:      "whatever",
 		},
 	}
 
@@ -79,4 +77,3 @@ func TestAttachmentRoundTrip(t *testing.T) {
 	}
 
 }
-

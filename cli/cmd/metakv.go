@@ -1,8 +1,6 @@
-
 package cmd
 
 import (
-	"fmt"
 	"github.com/spf13/cobra"
 )
 
@@ -10,10 +8,10 @@ import (
 var metakvCmd = &cobra.Command{
 	Use:   "metakv",
 	Short: "Directly manipulate configuration data in metakv",
-	Long: ``,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("metakv called")
-	},
+	Long:  ``,
+	//Run: func(cmd *cobra.Command, args []string) {
+	//	fmt.Println("metakv called")
+	//},
 }
 
 func init() {

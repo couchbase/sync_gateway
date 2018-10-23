@@ -15,7 +15,12 @@ var listCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 
-		metakvHelper := sync_gateway.NewMetaKVClient()
+		bootstrapConfig, err := BootstrapConfigFromParams()
+		if err != nil {
+			panic(fmt.Sprintf("Error getting bootstrap config: %v", err))
+		}
+
+		metakvHelper := sync_gateway.NewMetaKVClient(bootstrapConfig)
 		key := args[0]
 		metakvPairs, err := metakvHelper.ListAllChildren(key)
 

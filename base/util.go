@@ -20,6 +20,7 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
+	math_rand "math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -30,7 +31,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	math_rand "math/rand"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gomemcached"
