@@ -3,17 +3,23 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/couchbase/sync_gateway"
+	"github.com/spf13/cobra"
 )
 
 // getCmd represents the get command
 var getCmd = &cobra.Command{
 	Use:   "get <metakv-key>",
 	Short: "Get the value of the given metakv key",
-	Long: ``,
+	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		metakvHelper := sync_gateway.NewMetaKVClient()
+
+		bootstrapConfig, err := BootstrapConfigFromParams()
+		if err != nil {
+			panic(fmt.Sprintf("Error getting bootstrap config: %v", err))
+		}
+
+		metakvHelper := sync_gateway.NewMetaKVClient(bootstrapConfig)
 		key := args[0]
 		value, err := metakvHelper.Get(key)
 

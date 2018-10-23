@@ -7,12 +7,8 @@ import (
 	"github.com/couchbase/sync_gateway"
 	"github.com/spf13/cobra"
 	"io/ioutil"
-	"os"
 	"log"
-)
-
-var (
-	inputFilePath string
+	"os"
 )
 
 // setCmd represents the set command
@@ -54,7 +50,12 @@ echo "{\"MyKey\": 2}" | sg config metakv set /path/to/my/key
 			panic(fmt.Sprintf("Error reading from stdin: %v", err))
 		}
 
-		metakvHelper := sync_gateway.NewMetaKVClient()
+		bootstrapConfig, err := BootstrapConfigFromParams()
+		if err != nil {
+			panic(fmt.Sprintf("Error getting bootstrap config: %v", err))
+		}
+
+		metakvHelper := sync_gateway.NewMetaKVClient(bootstrapConfig)
 		key := args[0]
 		if err := metakvHelper.Upsert(key, val); err != nil {
 			panic(fmt.Sprintf("Error setting config.  Key: %v Error: %v Val: %v", key, err, val))
