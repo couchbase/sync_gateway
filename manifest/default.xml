@@ -7,6 +7,7 @@
 
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
   <remote fetch="https://github.com/mreiferson/" name="mreiferson"/>
+  <remote fetch="https://github.com/spf13/" name="spf13"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
@@ -116,7 +117,7 @@
 
   <project name="go-genproto" remote="couchbasedeps" revision="2b5a72b8730b0b16380010cfe5286c42108d88e7" path="godeps/src/google.golang.org/genproto"/>
 
-  <project name="cobra"          remote="couchbasedeps" revision="ef82de70bb3f60c65fb8eebacbb2d122ef517385" path="godeps/src/github.com/spf13/cobra"/>
+  <project name="cobra"          remote="spf13" revision="ef82de70bb3f60c65fb8eebacbb2d122ef517385" path="godeps/src/github.com/spf13/cobra"/>
 
   <project name="pflag"          remote="couchbasedeps" revision="a232f6d9f87afaaa08bafaff5da685f974b83313" path="godeps/src/github.com/spf13/pflag"/>
 
