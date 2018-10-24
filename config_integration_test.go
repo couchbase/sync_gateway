@@ -5,11 +5,16 @@ import (
 	"testing"
 	"time"
 
+	"bytes"
+	"encoding/json"
+	"log"
+	"net/http"
+	"net/http/httptest"
+
 	"github.com/couchbase/mobile-service"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbaselabs/go.assert"
-	"github.com/couchbase/sync_gateway/sgclient"
-	"log"
 )
 
 // Integration tests that verify that Sync Gateway loads the correct configuration from the mobile-service
@@ -45,7 +50,7 @@ func TestGatewayLoadDbConfig(t *testing.T) {
 	}
 
 	// Add metakv listener config
-	if err := metakvHelper.Upsert(mobile_mds.KeyMobileGatewayListener, []byte(DefaultMetaKVListenerConfig())); err != nil {
+	if err := metakvHelper.Upsert(mobile_mds.KeyMobileGatewayListener, []byte(InMemoryListenerConfig())); err != nil {
 		t.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
 
@@ -55,22 +60,35 @@ func TestGatewayLoadDbConfig(t *testing.T) {
 		t.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
 
-	go RunGateway(*bootstrapConfig, true)
+	gw := StartGateway(*bootstrapConfig)
 
-	// Query the admin api at the _config endpoint, and make sure it lists the db added above
-	sgClient := sgclient.NewSgClient(fmt.Sprintf("%s:%d", DefaultAdminInterface, DefaultAdminPort))
-	if err := sgClient.WaitApiAvailable(); err != nil {
-		t.Fatalf("Error waiting for api to become available.  Error: %v", err)
+	// artificial delay in case the config exchange still in progress
+	// TODO: if it's updated to synchronously get db config during startup, this won't be needed
+	time.Sleep(5 * time.Second)
 
+	resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
+	dbConfig := rest.DbConfig{}
+	respBody := resp.Body.Bytes()
+	log.Printf("Raw body: %v", string(respBody))
+	if err := json.Unmarshal(respBody, &dbConfig); err != nil {
+		t.Fatalf("Error getting db config.  Error: %v", err)
 	}
-	dbEndpoint, err := sgClient.GetDb(base.DefaultTestBucketname)
-	if err != nil {
-		t.Fatalf("Unable to get db endpoint: %v", base.DefaultTestBucketname)
-	}
-	log.Printf("dbEndpoint: %+v", dbEndpoint)
+	log.Printf("dbConfig: %+v", dbConfig)
 
+}
 
+func CreateAdminHandler(gw *Gateway) http.Handler {
+	return rest.CreateAdminHandler(gw.ServerContext)
+}
 
+func SendAdminRequest(gw *Gateway, method, resource string, body string) *rest.TestResponse {
+	input := bytes.NewBufferString(body)
+	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
+	response := &rest.TestResponse{httptest.NewRecorder(), request}
+	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+
+	CreateAdminHandler(gw).ServeHTTP(response, request)
+	return response
 }
 
 func DefaultMetaKVGeneralConfig() string {
@@ -87,6 +105,17 @@ func DefaultMetaKVGeneralConfig() string {
 }
 `
 
+}
+
+
+// With empty interfaces, sync gateway will
+func InMemoryListenerConfig() string {
+	return fmt.Sprintf(`
+{
+    "interface": "%s",
+    "adminInterface": "%s"
+}
+`, base.RestTesterInterface, base.RestTesterInterface)
 }
 
 func DefaultMetaKVListenerConfig() string {

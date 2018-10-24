@@ -29,7 +29,9 @@ var serveCmd = &cobra.Command{
 			config.Uuid = fmt.Sprintf("%d", time.Now().Unix())
 		}
 
-		sync_gateway.RunGateway(*config, true)
+		gw := sync_gateway.StartGateway(*config)
+		gw.Wait()
+
 	},
 }
 
