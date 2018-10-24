@@ -69,13 +69,13 @@
 
   <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="084795c8f01f195a88c0ca4af0d7228a5ef40c83"/>
 
-  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="bd91bbf73e9a4a801adbfb97133c992678533126"/>
+  <project name="text"           remote="couchbasedeps" revision="88f656faf3f37f690df1a32515b479415e1a6769" path="godeps/src/golang.org/x/text"/>
 
-  <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="8968c61983e8f51a91b8c0ef25bf739278c89634"/>
+  <project name="crypto"         remote="couchbasedeps" revision="bd6f299fb381e4c3393d1c4b1f0b94f5e77650c8" path="godeps/src/golang.org/x/crypto"/>
 
-  <project name="sys" path="godeps/src/golang.org/x/sys" remote="couchbasedeps" revision="9d4e42a20653790449273b3c85e67d6d8bae6e2e"/>
+  <project name="net"            remote="couchbasedeps" revision="44b7c21cbf19450f38b337eb6b6fe4f6496fb5b3" path="godeps/src/golang.org/x/net"/>
 
-  <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="c89e5683853da5ed97731b507dcd8cda2b11afaf"/>
+  <project name="sys"            remote="couchbasedeps" revision="661970f62f5897bc0cd5fdca7e087ba8a98a8fa1" path="godeps/src/golang.org/x/sys"/>
 
   <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="b0907c1dc06bfb60354416769e40bb07b4367d88"/>
 
