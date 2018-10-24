@@ -20,6 +20,7 @@ const (
 	messageSubChanges      = "subChanges"
 	messageChanges         = "changes"
 	messageRev             = "rev"
+	messageNoRev           = "norev"
 	messageGetAttachment   = "getAttachment"
 	messageProposeChanges  = "proposeChanges"
 	messageProveAttachment = "proveAttachment"
@@ -53,6 +54,12 @@ const (
 	revMessageSequence    = "sequence"
 	revMessageHistory     = "history"
 	revMessageNoConflicts = "noconflicts"
+
+	// norev message properties
+	norevMessageId     = "id"
+	norevMessageRev    = "rev"
+	norevMessageError  = "error"
+	norevMessageReason = "reason"
 
 	// changes message properties
 	changesResponseMaxHistory = "maxHistory"
@@ -355,6 +362,32 @@ func (rm *revMessage) String() string {
 
 	return buffer.String()
 
+}
+
+// Rev message
+type noRevMessage struct {
+	*blip.Message
+}
+
+func NewNoRevMessage() *noRevMessage {
+	nrm := &noRevMessage{blip.NewRequest()}
+	nrm.SetProfile(messageNoRev)
+	return nrm
+}
+func (nrm *noRevMessage) setId(id string) {
+	nrm.Properties[norevMessageId] = id
+}
+
+func (nrm *noRevMessage) setRev(rev string) {
+	nrm.Properties[norevMessageRev] = rev
+}
+
+func (nrm *noRevMessage) setReason(reason string) {
+	nrm.Properties[norevMessageReason] = reason
+}
+
+func (nrm *noRevMessage) setError(message string) {
+	nrm.Properties[norevMessageError] = message
 }
 
 type getAttachmentParams struct {
