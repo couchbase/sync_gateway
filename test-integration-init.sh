@@ -14,10 +14,10 @@ fi
 CB_ADMIN_USERNAME="Administrator"
 CB_ADMIN_PASSWORD="password"
 
-SG_CLUSTER_RAMSIZE=2750
+SG_CLUSTER_RAMSIZE=2000
 
 SG_TEST_BUCKETS=("test_data_bucket" "test_shadowbucket" "test_indexbucket")
-SG_TEST_BUCKET_RAMSIZE=750 # MB
+SG_TEST_BUCKET_RAMSIZE=500 # MB
 
 SG_TEST_BUCKET_PASSWORD="password"
 SG_TEST_BUCKET_RBAC_ROLES=() # No bucket-specific roles when we can rely on global admin
