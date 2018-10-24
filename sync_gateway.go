@@ -151,6 +151,11 @@ func (gw *Gateway) RunServer() {
 
 }
 
+// Dummy method that just blocks forever
+func (gw *Gateway) Wait() {
+	select {}
+}
+
 func (gw *Gateway) Close() {
 	gw.GrpcConn.Close()
 }
@@ -351,6 +356,10 @@ func (gw *Gateway) LoadServerConfig() (serverConfig *rest.ServerConfig, err erro
 		serverGeneralConfig.SSLKey = serverListenerConfig.SSLKey
 	}
 
+
+	// TODO: this should also add all the databases present in metakv
+
+
 	return &serverGeneralConfig, nil
 
 }
@@ -379,7 +388,7 @@ func (gw *Gateway) PushStatsStreamWithReconnect() error {
 		log.Printf("Starting push stats stream")
 
 		if err := gw.PushStatsStream(); err != nil {
-			log.Printf("Error pushing stats: %v", err)
+			log.Printf("Error pushing stats: %v.  Retrying", err)
 		}
 
 		// TODO: this should be a backoff / retry and only give up after a number of retries
@@ -456,9 +465,8 @@ func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffs
 
 }
 
-// TODO: this blocks forever, so there is no way to get a handle on the Gateway.
-// TODO: split this up into a function that creates and returns a gateway
-func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
+
+func StartGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 
 	// Client setup
 	gw := NewGateway(bootstrapConfig)
@@ -474,18 +482,19 @@ func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 	go func() {
 		err := gw.ObserveMetaKVChangesRetry(mobile_mds.KeyDirMobileRoot)
 		if err != nil {
-			log.Printf("Error observing metakv changes: %v", err)
+			base.Warnf(base.KeyAll, fmt.Sprintf("Error observing metakv changes: %v", err))
+
 		}
 	}()
 
-	if pushStats {
-		// Push stats (blocks)
+	// Kick off goroutine to push stats
+	go func() {
 		if err := gw.PushStatsStreamWithReconnect(); err != nil {
-			panic(fmt.Sprintf("Error pushing stats: %v", err))
+			base.Warnf(base.KeyAll, fmt.Sprintf("Error pushing stats: %v.  Stats will no longer be pushed.", err))
 		}
-	} else {
-		select {}
-	}
+	}()
+
+	return gw
 
 }
 

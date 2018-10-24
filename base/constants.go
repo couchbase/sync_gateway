@@ -89,6 +89,11 @@ const (
 	StacktraceOnAPIErrors = false
 )
 
+const (
+	RestTesterInterface = "resttester:-1"
+)
+
+
 func UnitTestUrl() string {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
 	switch {

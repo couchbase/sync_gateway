@@ -949,11 +949,19 @@ func RunServer(config *ServerConfig) *ServerContext {
 
 	go sc.PostStartup()
 
-	base.Infof(base.KeyAll, "Starting admin server on %s", base.UD(*config.AdminInterface))
-	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
+	if *config.AdminInterface != base.RestTesterInterface {
+		base.Infof(base.KeyAll, "Starting admin server on %s", base.UD(*config.AdminInterface))
+		go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
+	} else {
+		base.Infof(base.KeyAll, "Starting admin server in RestTester mode")
+	}
 
-	base.Infof(base.KeyAll, "Starting server on %s ...", base.UD(*config.Interface))
-	go config.Serve(*config.Interface, CreatePublicHandler(sc))
+	if *config.Interface != base.RestTesterInterface {
+		base.Infof(base.KeyAll, "Starting server on %s ...", base.UD(*config.Interface))
+		go config.Serve(*config.Interface, CreatePublicHandler(sc))
+	} else {
+		base.Infof(base.KeyAll, "Starting server in RestTester mode")
+	}
 
 	return sc
 
