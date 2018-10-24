@@ -43,6 +43,17 @@ function find_couchbase-cli {
     set -e
 }
 
+
+function init_cluster {
+    set +e
+    # FTS is currently needed, but once MB-31682 is implemented, that can be removed.
+    "$cb_cli_tool" cluster-init -c $CB_SERVER_URL --cluster-name default --cluster-username $CB_ADMIN_USERNAME \
+        --cluster-password $CB_ADMIN_PASSWORD --cluster-ramsize $SG_TEST_BUCKET_RAMSIZE --cluster-index-ramsize 512 \
+        --cluster-fts-ramsize 256 --services data,index,query,mobile_service,fts
+    set -e
+}
+
+
 # Will attempt to remove buckets and rbac users
 function cb_cleanup {
     set +e
@@ -95,6 +106,7 @@ function cb_manage_rbac_users {
 if [ "$SG_TEST_BACKING_STORE_RECREATE" == "true" ]; then
     echo "SG_TEST_BACKING_STORE_RECREATE set, re-creating buckets and RBAC users"
     find_couchbase-cli
+    init_cluster
     cb_cleanup
     cb_create_buckets
     cb_manage_rbac_users create
