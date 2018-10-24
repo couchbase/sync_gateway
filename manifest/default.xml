@@ -135,7 +135,7 @@
 
   <project name="pflag"          remote="couchbasedeps" revision="a232f6d9f87afaaa08bafaff5da685f974b83313" path="godeps/src/github.com/spf13/pflag"/>
 
-  <project name="cbauth" path="godeps/src/github.com/couchbase/cbauth" remote="couchbase" revision="1323b92ac2619c29d50e588e59d7a6b4839da629"/>
+  <!-- get this from accel <project name="cbauth" path="godeps/src/github.com/couchbase/cbauth" remote="couchbase" revision="1323b92ac2619c29d50e588e59d7a6b4839da629"/> -->
 
 
   <!-- gozip tools -->
