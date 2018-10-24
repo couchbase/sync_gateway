@@ -36,7 +36,11 @@
   <project groups="notdefault,sg-accel" name="cb-heartbeat" path="godeps/src/github.com/couchbase/cb-heartbeat" remote="couchbase" revision="aedb0776e80d25a79d4b17c1f322a75a2c52a518"/>
 
   <project groups="notdefault,sg-accel" name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="3d39b57188c372649beedd5c13c9003156d5a055"/>
-  
+
+
+  <!-- Mobile Service -->
+  <project name="mobile-service" path="godeps/src/github.com/couchbase/mobile-service"/>
+
   
   <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
   <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
@@ -114,6 +118,19 @@
   <project name="uuid" path="godeps/src/github.com/google/uuid" remote="couchbasedeps" revision="e704694aed0ea004bb7eb1fc2e911d048a54606a"/>
 
   <project name="opentracing-go" path="godeps/src/github.com/opentracing/opentracing-go" remote="couchbasedeps" revision="6c572c00d1830223701e155de97408483dfcd14a"/>
+
+
+  <!-- Mobile Service Deps -->
+
+  <project name="protobuf"       remote="couchbasedeps" revision="ddf22928ea3c56eb4292a0adbbf5001b1e8e7d0d" path="godeps/src/github.com/golang/protobuf"/>
+
+  <project name="grpc-go" remote="couchbasedeps" revision="afc05b9e1d36f289ea16ba294894486a3e458246" path="godeps/src/google.golang.org/grpc"/>
+
+  <project name="go-genproto" remote="couchbasedeps" revision="2b5a72b8730b0b16380010cfe5286c42108d88e7" path="godeps/src/google.golang.org/genproto"/>
+
+  <project name="cobra"          remote="couchbasedeps" revision="0f056af21f5f368e5b0646079d0094a2c64150f7" path="godeps/src/github.com/spf13/cobra"/>
+
+
 
   <!-- gozip tools -->
   <project name="ns_server" path="godeps/src/github.com/couchbase/ns_server" remote="couchbase" revision="6d835931f574f25e3781192c09e45a3ee30deb51"/>
