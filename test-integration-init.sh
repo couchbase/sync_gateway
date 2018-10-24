@@ -14,10 +14,10 @@ fi
 CB_ADMIN_USERNAME="Administrator"
 CB_ADMIN_PASSWORD="password"
 
-SG_CLUSTER_RAMSIZE=1500
+SG_CLUSTER_RAMSIZE=2750
 
 SG_TEST_BUCKETS=("test_data_bucket" "test_shadowbucket" "test_indexbucket")
-SG_TEST_BUCKET_RAMSIZE=1000 # MB
+SG_TEST_BUCKET_RAMSIZE=750 # MB
 
 SG_TEST_BUCKET_PASSWORD="password"
 SG_TEST_BUCKET_RBAC_ROLES=() # No bucket-specific roles when we can rely on global admin
@@ -28,6 +28,7 @@ SG_TEST_GLOBAL_RBAC_ROLES=("admin")
 ################
 
 set -e
+set -x
 
 cb_cli_tool="couchbase-cli"
 
