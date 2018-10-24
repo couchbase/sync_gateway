@@ -14,6 +14,8 @@ fi
 CB_ADMIN_USERNAME="Administrator"
 CB_ADMIN_PASSWORD="password"
 
+SG_CLUSTER_RAMSIZE=1500
+
 SG_TEST_BUCKETS=("test_data_bucket" "test_shadowbucket" "test_indexbucket")
 SG_TEST_BUCKET_RAMSIZE=1000 # MB
 
@@ -48,7 +50,7 @@ function init_cluster {
     set +e
     # FTS is currently needed, but once MB-31682 is implemented, that can be removed.
     "$cb_cli_tool" cluster-init -c $CB_SERVER_URL --cluster-name default --cluster-username $CB_ADMIN_USERNAME \
-        --cluster-password $CB_ADMIN_PASSWORD --cluster-ramsize $SG_TEST_BUCKET_RAMSIZE --cluster-index-ramsize 512 \
+        --cluster-password $CB_ADMIN_PASSWORD --cluster-ramsize $SG_CLUSTER_RAMSIZE --cluster-index-ramsize 512 \
         --cluster-fts-ramsize 256 --services data,index,query,mobile_service,fts
     set -e
 }
