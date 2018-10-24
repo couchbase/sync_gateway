@@ -12,13 +12,12 @@ import (
 
 	"strconv"
 
+	"github.com/couchbase/mobile-service"
 	"github.com/couchbase/mobile-service/mobile_service"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"google.golang.org/grpc"
 	"github.com/couchbaselabs/gocbconnstr"
-	"github.com/couchbase/mobile-service"
+	"google.golang.org/grpc"
 )
 
 type Gateway struct {
@@ -36,9 +35,6 @@ type Gateway struct {
 	// The SG server context
 	ServerContext *rest.ServerContext
 
-	// The SG DB contexts, keyed by their path in the Config
-	DbContexts map[string]*db.DatabaseContext
-
 	// The "bootstrap config" for this gateway to be able to connect to Couchbase Server to get actual config
 	BootstrapConfig GatewayBootstrapConfig
 }
@@ -49,7 +45,6 @@ func NewGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 		Uuid:            bootstrapConfig.Uuid,
 		Hostname:        GATEWAY_HOSTNAME,
 		Config:          map[string]*mobile_service.MetaKVPair{},
-		DbContexts:      map[string]*db.DatabaseContext{},
 	}
 
 	err := gw.ConnectMobileSvc()
@@ -125,7 +120,8 @@ func (gw *Gateway) FindMobileServiceNodes() (mobileSvcHostPorts []string, err er
 
 }
 
-
+// I'm not sure if this is even needed, since these values will be set during
+// startup based on ObserveMetaKVChanges() results.
 func (gw *Gateway) LoadConfigSnapshot() {
 
 	// Get snapshot of MetaKV tree
@@ -251,11 +247,6 @@ func (gw *Gateway) HandleDbDelete(incomingMetaKVPair, existingDbConfig *mobile_s
 	return nil
 }
 
-/*
-
--
-*/
-
 func (gw *Gateway) HandleDbAdd(metaKvPair *mobile_service.MetaKVPair) error {
 
 	gw.Config[metaKvPair.Path] = metaKvPair
@@ -267,46 +258,47 @@ func (gw *Gateway) HandleDbAdd(metaKvPair *mobile_service.MetaKVPair) error {
 
 	// The metakv pair path will be: /mobile/gateway/config/databases/database-1
 	// Get the last item from the path and use that as the dbname
-	lastItemPath, err := MetaKVLastItemPath(metaKvPair.Path)
+	dbName, err := MetaKVLastItemPath(metaKvPair.Path)
 	if err != nil {
 		return err
 	}
-	dbConfig.Name = lastItemPath
+	dbConfig.Name = dbName
 
 	// Enhance the db config with the connection parameters from the gateway bootstrap config
 	dbConfig.Server = &gw.BootstrapConfig.GoCBConnstr
 	dbConfig.Username = gw.BootstrapConfig.CBUsername
 	dbConfig.Password = gw.BootstrapConfig.CBPassword
 
-	dbContext, err := gw.ServerContext.AddDatabaseFromConfig(dbConfig)
+	_, err = gw.ServerContext.AddDatabaseFromConfig(dbConfig)
 	if err != nil {
 		return err
 	}
 
-	gw.DbContexts[metaKvPair.Path] = dbContext
-
 	// TODO: other db add handling
-
 	return nil
 }
 
 func (gw *Gateway) HandleDbUpdate(metaKvPair, existingDbConfig *mobile_service.MetaKVPair) error {
 
-	// Find existing db context
-	_, found := gw.DbContexts[metaKvPair.Path]
-	if !found {
-		return fmt.Errorf("Did not find existing db context for %v", metaKvPair.Path)
+	// The metakv pair path will be: /mobile/gateway/config/databases/database-1
+	// Get the last item from the path and use that as the dbname
+	dbName, err := MetaKVLastItemPath(metaKvPair.Path)
+	if err != nil {
+		return err
 	}
 
-	removed := gw.ServerContext.RemoveDatabase("test_data_bucket") // TODO: fix
-	if !removed {
-		return fmt.Errorf("Could not remove db: %v", metaKvPair.Path)
-
+	// Is the database already known?  If so, we must remove it first
+	_, err = gw.ServerContext.GetDatabase(dbName)
+	if err == nil {
+		// Remove the database.  This is a workaround for the fact that servercontext doesn't seem
+		// to have a way to update the db config.
+		removed := gw.ServerContext.RemoveDatabase(dbName)
+		if !removed {
+			return fmt.Errorf("Could not remove db: %v", metaKvPair.Path)
+		}
 	}
 
-	delete(gw.DbContexts, metaKvPair.Path)
-
-	// Add a DB based on updated config
+	// Re-add DB based on updated config
 	return gw.HandleDbAdd(metaKvPair)
 
 }
@@ -450,9 +442,6 @@ func (gw *Gateway) PushStatsStream() error {
 
 }
 
-
-
-
 // "localhost:4984" with port offset 2 -> "localhost:4986"
 func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffset string) {
 
@@ -478,6 +467,9 @@ func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 	// Load snapshot of configuration from MetaKV
 	gw.LoadConfigSnapshot()
 
+	// Kick off http/s server
+	gw.RunServer()
+
 	// Kick off goroutine to observe stream of metakv changes
 	go func() {
 		err := gw.ObserveMetaKVChangesRetry(mobile_mds.KeyDirMobileRoot)
@@ -485,9 +477,6 @@ func RunGateway(bootstrapConfig GatewayBootstrapConfig, pushStats bool) {
 			log.Printf("Error observing metakv changes: %v", err)
 		}
 	}()
-
-	// Kick off http/s server
-	gw.RunServer()
 
 	if pushStats {
 		// Push stats (blocks)
