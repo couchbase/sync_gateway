@@ -241,7 +241,7 @@ func (gw *Gateway) ObserveMetaKVChanges(path string) error {
 }
 
 func (gw *Gateway) ProcessDatabaseMetaKVPair(metakvPair *mobile_service.MetaKVPair) error {
-	existingConfigKV, found := gw.Config[metakvPair.Path]
+	existingMetaKVConfig, found := gw.Config[metakvPair.Path]
 	switch found {
 	case true:
 		// If we got here, we already know about this db key in the config state
@@ -250,12 +250,13 @@ func (gw *Gateway) ProcessDatabaseMetaKVPair(metakvPair *mobile_service.MetaKVPa
 		case "":
 		case "null":
 			// Db is being deleted
-			if err := gw.HandleDbDelete(metakvPair, existingConfigKV); err != nil {
+			if err := gw.HandleDbDelete(metakvPair, existingMetaKVConfig); err != nil {
 				return err
 			}
 		default:
 			// Db is being updated
-			if err := gw.HandleDbUpdate(metakvPair, existingConfigKV); err != nil {
+			log.Printf("updatedDbConfig: %v", string(metakvPair.Value))
+			if err := gw.HandleDbUpdate(metakvPair, existingMetaKVConfig); err != nil {
 				return err
 			}
 		}
