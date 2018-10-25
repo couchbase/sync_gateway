@@ -100,16 +100,14 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 		  "feed_type":"DCP",
 		  "bucket":"%s",
 		  "enable_shared_bucket_access":false,
-		  "revs_limit":250,
+		  "revs_limit":350,
 		  "allow_empty_password":true,
-		  "use_views": false
+		  "use_views": true
 		}`, base.DefaultTestBucketname)
 
 	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(updatedDbConfig)); err != nil {
 		t.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
-
-	// TODO: figure out why this is failing
 
 	getConfig := func() *TestResponse {
 		resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/_config"), "")
@@ -125,7 +123,7 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 		if !ok {
 			return false
 		}
-		return dbConfig.UseViews == false
+		return *dbConfig.RevsLimit == 350
 	}
 
 	if err := WaitForExpectation(expectation, getConfig); err != nil {
