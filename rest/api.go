@@ -201,22 +201,23 @@ func (h *handler) handleGetDB() error {
 		lastSeq, _ = h.db.LastSequence()
 	}
 
-	response := db.Body{
-		"db_name":              h.db.Name,
-		"update_seq":           lastSeq,
-		"committed_update_seq": lastSeq,
-		"instance_start_time":  h.instanceStartTime(),
-		"compact_running":      false, // TODO: Implement this
-		"purge_seq":            0,     // TODO: Should track this value
-		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
-		"state":                runState,
+	db := Database{
+		DbName: h.db.Name,
+		UpdateSeq: lastSeq,
+		CommittedUpdateSeq: lastSeq,
+		InstanceStartTime: h.instanceStartTime(),
+		CompactRunning: false,
+		PurgeSeq: 0,
+		DiskFormatVersion: 0,
+		State: runState,
 	}
 
 	if uuid := h.db.DatabaseContext.GetServerUUID(); uuid != "" {
-		response["server_uuid"] = uuid
+		db.ServerUuid = uuid
 	}
 
-	h.writeJSON(response)
+	h.writeJSON(db)
+
 	return nil
 }
 

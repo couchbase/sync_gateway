@@ -29,7 +29,10 @@ var serveCmd = &cobra.Command{
 			config.Uuid = fmt.Sprintf("%d", time.Now().Unix())
 		}
 
-		gw := sync_gateway.StartGateway(*config)
+		gw, err := sync_gateway.StartGateway(*config)
+		if err != nil {
+			panic(fmt.Sprintf("Error starting gateway: %v", err))
+		}
 		gw.Wait()
 
 	},
