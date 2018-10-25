@@ -95,6 +95,42 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 	}
 
 	// Update the db config in metakv, wait for updates to appear
+	updatedDbConfig := fmt.Sprintf(`{
+		  "num_index_replicas":0,
+		  "feed_type":"DCP",
+		  "bucket":"%s",
+		  "enable_shared_bucket_access":false,
+		  "revs_limit":250,
+		  "allow_empty_password":true,
+		  "use_views": false
+		}`, base.DefaultTestBucketname)
+
+	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(updatedDbConfig)); err != nil {
+		t.Fatalf("Error updating metakv key.  Error: %v", err)
+	}
+
+	// TODO: figure out why this is failing
+
+	getConfig := func() *TestResponse {
+		resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/_config"), "")
+		return resp
+	}
+
+	expectation := func(resp *TestResponse) bool {
+		serverConfig := ServerConfig{}
+		if err := json.Unmarshal(resp.Body.Bytes(), &serverConfig); err != nil {
+			t.Fatalf("Error getting db config.  Error: %v", err)
+		}
+		dbConfig, ok := serverConfig.Databases[base.DefaultTestBucketname]
+		if !ok {
+			return false
+		}
+		return dbConfig.UseViews == false
+	}
+
+	if err := WaitForExpectation(expectation, getConfig); err != nil {
+		t.Fatalf("Error waiting for expected response: %v", err)
+	}
 
 	// Delete the db from metakv, wait for 404 status on the db endpoint
 
@@ -141,16 +177,42 @@ func (ith *SGIntegrationTestHelper) InsertGeneralListenerTestConfig() {
 }
 
 type RestApiCall func() *TestResponse
+type ResponseExpectation func(resp *TestResponse) bool
 
 func WaitForResponseCode(expectedResponseCode int, apiCall RestApiCall) error {
 
+	//worker := func() (shouldRetry bool, err error, value interface{}) {
+	//	resp := apiCall()
+	//	if resp.Result().StatusCode == expectedResponseCode {
+	//		return false, nil, resp
+	//	}
+	//	log.Printf("Expected response code %d but got %d. Retrying.", expectedResponseCode, resp.Result().StatusCode)
+	//	return true, fmt.Errorf("Expected response code %d but got %d", expectedResponseCode, resp.Result().StatusCode), resp
+	//}
+	//
+	//err, _ := base.RetryLoop(
+	//	"WaitForResponseCode",
+	//	worker,
+	//	base.CreateMaxDoublingSleeperFunc(25, 50, 250),
+	//)
+	//
+	//return err
+
+	expectation := func(resp *TestResponse) bool {
+		return resp.Result().StatusCode == expectedResponseCode
+	}
+	return WaitForExpectation(expectation, apiCall)
+
+}
+
+func WaitForExpectation(expectation ResponseExpectation, apiCall RestApiCall) error {
+
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		resp := apiCall()
-		if resp.Result().StatusCode == expectedResponseCode {
+		if expectation(resp) {
 			return false, nil, resp
 		}
-		log.Printf("Expected response code %d but got %d. Retrying.", expectedResponseCode, resp.Result().StatusCode)
-		return true, fmt.Errorf("Expected response code %d but got %d", expectedResponseCode, resp.Result().StatusCode), resp
+		return true, fmt.Errorf("Did not get expected response"), resp
 	}
 
 	err, _ := base.RetryLoop(
