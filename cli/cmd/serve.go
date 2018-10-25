@@ -30,6 +30,7 @@ var serveCmd = &cobra.Command{
 		}
 
 		gw, err := rest.StartGateway(*config)
+		defer gw.Close()
 		if err != nil {
 			panic(fmt.Sprintf("Error starting gateway: %v", err))
 		}
