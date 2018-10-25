@@ -559,7 +559,7 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 	noRevRq.setRev(revID)
 
 	status, reason := base.ErrorAsHTTPStatus(err)
-	noRevRq.setReason(strconv.Itoa(status))
+	noRevRq.setError(strconv.Itoa(status))
 
 	// Add a "reason" field that gives more detailed explanation on the cause of the error.
 	noRevRq.setReason(reason)
