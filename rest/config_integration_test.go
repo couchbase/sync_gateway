@@ -18,7 +18,6 @@ import (
 
 // Integration tests that verify that Sync Gateway loads the correct configuration from the mobile-service
 
-
 func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
@@ -39,6 +38,7 @@ func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
 
 	// Start a gateway in resttester mode
 	gw, err := StartGateway(*testHelper.BootstrapConfig)
+	defer gw.Close()
 	if err != nil {
 		t.Fatalf("Error starting gateway: %+v", err)
 	}
@@ -69,6 +69,7 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 
 	// Start a gateway in resttester mode
 	gw, err := StartGateway(*testHelper.BootstrapConfig)
+	defer gw.Close()
 	if err != nil {
 		t.Fatalf("Error starting gateway: %+v", err)
 	}
@@ -93,12 +94,11 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 		t.Fatalf("Error waiting for expected response code: %v", err)
 	}
 
-	}
+	// Update the db config in metakv, wait for updates to appear
 
+	// Delete the db from metakv, wait for 404 status on the db endpoint
 
-	// TODO: remove db from metakv and see if it's gone, update existing
-
-
+}
 
 // ----------- Test Helper
 
@@ -181,7 +181,6 @@ func GetTestBootstrapConfigOrPanic() (config *GatewayBootstrapConfig) {
 	return bootstrapConfig
 
 }
-
 
 func SendAdminRequest(gw *Gateway, method, resource string, body string) *TestResponse {
 

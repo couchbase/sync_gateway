@@ -117,8 +117,39 @@ func (gw *Gateway) FindMobileServiceNodes() (mobileSvcHostPorts []string, err er
 
 }
 
-// I'm not sure if this is even needed, since these values will be set during
-// startup based on ObserveMetaKVChanges() results.
+func (gw *Gateway) Start() error {
+
+	// Load snapshot of configuration from MetaKV
+	if err := gw.LoadConfigSnapshot(); err != nil {
+		return err
+	}
+
+	// Kick off http/s server
+	if err := gw.RunServer(); err != nil {
+		return err
+	}
+
+	// Kick off goroutine to observe stream of metakv changes
+	go func() {
+		err := gw.ObserveMetaKVChangesRetry(mobile_mds.KeyDirMobileRoot)
+		if err != nil {
+			base.Warnf(base.KeyAll, fmt.Sprintf("Error observing metakv changes: %v", err))
+
+		}
+	}()
+
+	// Kick off goroutine to push stats
+	go func() {
+		if err := gw.PushStatsStreamWithReconnect(); err != nil {
+			base.Warnf(base.KeyAll, fmt.Sprintf("Error pushing stats: %v.  Stats will no longer be pushed.", err))
+		}
+	}()
+
+	return nil
+
+}
+
+
 func (gw *Gateway) LoadConfigSnapshot() error {
 
 	// Get snapshot of MetaKV tree
@@ -501,35 +532,8 @@ func StartGateway(bootstrapConfig GatewayBootstrapConfig) (*Gateway, error) {
 
 	// Client setup
 	gw := NewGateway(bootstrapConfig)
-	defer gw.Close()
-
-	// Load snapshot of configuration from MetaKV
-	if err := gw.LoadConfigSnapshot(); err != nil {
-		return nil, err
-	}
-
-	// Kick off http/s server
-	if err := gw.RunServer(); err != nil {
-		return nil, err
-	}
-
-	// Kick off goroutine to observe stream of metakv changes
-	go func() {
-		err := gw.ObserveMetaKVChangesRetry(mobile_mds.KeyDirMobileRoot)
-		if err != nil {
-			base.Warnf(base.KeyAll, fmt.Sprintf("Error observing metakv changes: %v", err))
-
-		}
-	}()
-
-	// Kick off goroutine to push stats
-	go func() {
-		if err := gw.PushStatsStreamWithReconnect(); err != nil {
-			base.Warnf(base.KeyAll, fmt.Sprintf("Error pushing stats: %v.  Stats will no longer be pushed.", err))
-		}
-	}()
-
-	return gw, nil
+	err := gw.Start()
+	return gw, err
 
 }
 
