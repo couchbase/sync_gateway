@@ -552,25 +552,20 @@ func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, do
 
 func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.SequenceID, docID string, revID string) {
 
-	bh.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s due to error: %v.  User:%s", base.UD(docID), revID, err, base.UD(bh.effectiveUsername))
+	bh.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s due to unavailable revision: %v.  User:%s", base.UD(docID), revID, err, base.UD(bh.effectiveUsername))
 
-	outrq := blip.NewRequest()
-	outrq.SetProfile("norev")
-	outrq.Properties["id"] = docID
-	outrq.Properties["rev"] = revID
-	seqJSON, marshalErr := json.Marshal(seq)
-	if marshalErr == nil {
-		outrq.Properties["sequence"] = string(seqJSON)
-	}
+	noRevRq := NewNoRevMessage()
+	noRevRq.setId(docID)
+	noRevRq.setRev(revID)
 
 	status, reason := base.ErrorAsHTTPStatus(err)
-	outrq.Properties["error"] = strconv.Itoa(status)
+	noRevRq.setError(strconv.Itoa(status))
 
 	// Add a "reason" field that gives more detailed explanation on the cause of the error.
-	outrq.Properties["reason"] = fmt.Sprintf("%s", reason)
+	noRevRq.setReason(reason)
 
-	outrq.SetNoReply(true)
-	sender.Send(outrq)
+	noRevRq.SetNoReply(true)
+	sender.Send(noRevRq.Message)
 
 }
 
