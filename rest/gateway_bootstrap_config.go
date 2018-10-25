@@ -1,4 +1,4 @@
-package sync_gateway
+package rest
 
 import (
 	"log"

@@ -1,14 +1,14 @@
 package cmd
 
 import (
-	"github.com/couchbase/sync_gateway"
+	"github.com/couchbase/sync_gateway/rest"
 )
 
-func BootstrapConfigFromParams() (sync_gateway.GatewayBootstrapConfig, error) {
+func BootstrapConfigFromParams() (rest.GatewayBootstrapConfig, error) {
 
-	config, err := sync_gateway.NewGatewayBootstrapConfig(GoCBConnstr)
+	config, err := rest.NewGatewayBootstrapConfig(GoCBConnstr)
 	if err != nil {
-		return sync_gateway.GatewayBootstrapConfig{}, err
+		return rest.GatewayBootstrapConfig{}, err
 	}
 
 	config.PortOffset = PortOffset

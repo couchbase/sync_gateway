@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/couchbase/sync_gateway"
+	"github.com/couchbase/sync_gateway/rest"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +19,7 @@ var getCmd = &cobra.Command{
 			panic(fmt.Sprintf("Error getting bootstrap config: %v", err))
 		}
 
-		metakvHelper := sync_gateway.NewMetaKVClient(bootstrapConfig)
+		metakvHelper := rest.NewMetaKVClient(bootstrapConfig)
 		key := args[0]
 		value, err := metakvHelper.Get(key)
 
