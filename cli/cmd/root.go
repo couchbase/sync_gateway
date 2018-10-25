@@ -17,6 +17,9 @@ var rootCmd = &cobra.Command{
 	Long:  ``,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+
+		// TODO: this will need to accept log file path and other params being overridden in the service scripts.
+
 		// Legacy mode
 		pathToConfigFile := args[0]
 		sync_gateway.RunGatewayLegacyMode(pathToConfigFile)

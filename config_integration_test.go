@@ -19,6 +19,90 @@ import (
 
 // Integration tests that verify that Sync Gateway loads the correct configuration from the mobile-service
 
+
+func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test only works with a Couchbase server")
+	}
+
+	// Create a test helper that initializes the testing bootstrap config and MetaKV Client
+	testHelper := NewSGIntegrationTestHelper(t)
+
+	// Add listener with resttester interfaces and general config to metakv
+	testHelper.InsertGeneralListenerTestConfig()
+
+	// Add metakv database config
+	dbKey := fmt.Sprintf("%s/%s", mobile_mds.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
+	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(DefaultMetaKVDbConfig())); err != nil {
+		t.Fatalf("Error updating metakv key.  Error: %v", err)
+	}
+
+	// Start a gateway in resttester mode
+	gw, err := StartGateway(*testHelper.BootstrapConfig)
+	if err != nil {
+		t.Fatalf("Error starting gateway: %+v", err)
+	}
+
+	// Send in-memory request to sync gateway to validate that it knows about the db config
+	resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
+	db := rest.Database{}
+	respBody := resp.Body.Bytes()
+	if err := json.Unmarshal(respBody, &db); err != nil {
+		t.Fatalf("Error getting db config.  Error: %v", err)
+	}
+	log.Printf("db: %+v", db)
+	assert.Equals(t, db.DbName, base.DefaultTestBucketname)
+
+}
+
+func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test only works with a Couchbase server")
+	}
+
+	// Create a test helper that initializes the testing bootstrap config and MetaKV Client
+	testHelper := NewSGIntegrationTestHelper(t)
+
+	// Add listener with resttester interfaces and general config to metakv
+	testHelper.InsertGeneralListenerTestConfig()
+
+	// Start a gateway in resttester mode
+	gw, err := StartGateway(*testHelper.BootstrapConfig)
+	if err != nil {
+		t.Fatalf("Error starting gateway: %+v", err)
+	}
+
+	// Verify that there are no db's listed under _config endpoint yet, since none have been added)
+	resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
+	assert.Equals(t, resp.Result().StatusCode, 404)
+
+	// Add a database config to metakv
+	dbKey := fmt.Sprintf("%s/%s", mobile_mds.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
+	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(DefaultMetaKVDbConfig())); err != nil {
+		t.Fatalf("Error updating metakv key.  Error: %v", err)
+	}
+
+	// Polling loop until /db returns the expected db config
+	retryFunc := func() *rest.TestResponse {
+		resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
+		return resp
+	}
+
+	if err := WaitForResponseCode(200, retryFunc); err != nil {
+		t.Fatalf("Error waiting for expected response code: %v", err)
+	}
+
+	}
+
+
+	// TODO: remove db from metakv and see if it's gone, update existing
+
+
+
+// ----------- Test Helper
+
 type SGIntegrationTestHelper struct {
 	BootstrapConfig *GatewayBootstrapConfig
 	MetaKVClient    *MetaKVClient
@@ -53,79 +137,6 @@ func (ith *SGIntegrationTestHelper) InsertGeneralListenerTestConfig() {
 	// Add metakv listener config
 	if err := ith.MetaKVClient.Upsert(mobile_mds.KeyMobileGatewayListener, []byte(InMemoryListenerConfig())); err != nil {
 		ith.Test.Fatalf("Error updating metakv key.  Error: %v", err)
-	}
-
-}
-
-func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test only works with a Couchbase server")
-	}
-
-	testHelper := NewSGIntegrationTestHelper(t)
-
-	// Add listener and general config to metakv
-	testHelper.InsertGeneralListenerTestConfig()
-
-	// Add metakv database config
-	dbKey := fmt.Sprintf("%s/%s", mobile_mds.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
-	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(DefaultMetaKVDbConfig())); err != nil {
-		t.Fatalf("Error updating metakv key.  Error: %v", err)
-	}
-
-	gw, err := StartGateway(*testHelper.BootstrapConfig)
-	if err != nil {
-		t.Fatalf("Error starting gateway: %+v", err)
-	}
-
-	resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
-	db := rest.Database{}
-	respBody := resp.Body.Bytes()
-	if err := json.Unmarshal(respBody, &db); err != nil {
-		t.Fatalf("Error getting db config.  Error: %v", err)
-	}
-	log.Printf("db: %+v", db)
-	assert.Equals(t, db.DbName, base.DefaultTestBucketname)
-
-}
-
-func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test only works with a Couchbase server")
-	}
-
-	testHelper := NewSGIntegrationTestHelper(t)
-
-	// Add listener and general config to metakv
-	testHelper.InsertGeneralListenerTestConfig()
-
-	// Start gateway
-	gw, err := StartGateway(*testHelper.BootstrapConfig)
-	if err != nil {
-		t.Fatalf("Error starting gateway: %+v", err)
-	}
-
-	// Verify that there are no db's listed under _config endpoint
-	resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
-	assert.Equals(t, resp.Result().StatusCode, 404)
-
-	// Add a database config to metakv
-	// Add metakv database config
-	dbKey := fmt.Sprintf("%s/%s", mobile_mds.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
-	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(DefaultMetaKVDbConfig())); err != nil {
-		t.Fatalf("Error updating metakv key.  Error: %v", err)
-	}
-
-	// Polling loop until /db returns the db config
-	retryFunc := func() *rest.TestResponse {
-		resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
-		return resp
-	}
-
-	if err := WaitForResponseCode(200, retryFunc); err != nil {
-		t.Fatalf("Error waiting for expected response code: %v", err)
 	}
 
 }
