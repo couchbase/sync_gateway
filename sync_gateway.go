@@ -18,6 +18,8 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbaselabs/gocbconnstr"
 	"google.golang.org/grpc"
+	pkgerrors "github.com/pkg/errors"
+
 )
 
 type Gateway struct {
@@ -122,33 +124,39 @@ func (gw *Gateway) FindMobileServiceNodes() (mobileSvcHostPorts []string, err er
 
 // I'm not sure if this is even needed, since these values will be set during
 // startup based on ObserveMetaKVChanges() results.
-func (gw *Gateway) LoadConfigSnapshot() {
+func (gw *Gateway) LoadConfigSnapshot() error {
 
 	// Get snapshot of MetaKV tree
 	keyMobileConfig := mobile_mds.KeyDirMobileGateway
 	metaKvPairs, err := gw.GrpcClient.MetaKVListAllChildren(context.Background(), &mobile_service.MetaKVPath{Path: keyMobileConfig})
 	if err != nil {
-		panic(fmt.Sprintf("Error getting metakv for mobile key %v.  Err: %v", keyMobileConfig, err))
+		return err
 	}
 	for _, metakvPair := range metaKvPairs.Items {
 		gw.Config[metakvPair.Path] = metakvPair
 	}
-
+	return nil
 }
 
-func (gw *Gateway) RunServer() {
+func (gw *Gateway) RunServer() error {
 
 	// Parse json stored in metakv into a ServerConfig
 	serverConfig, err := gw.LoadServerConfig()
 	if err != nil {
-		panic(fmt.Sprintf("Error loading server config.  Err: %v", err))
-
+		return err
 	}
 
 	serverContext := rest.RunServer(serverConfig)
 
 	gw.ServerContext = serverContext
 
+	// This has to be done separately _after_ the call to gw.ServerContext, because
+	// without a valid gw.ServerContext, loading databases will fail.
+	if err := gw.LoadDbConfigAllDbs(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Dummy method that just blocks forever
@@ -189,38 +197,16 @@ func (gw *Gateway) ObserveMetaKVChanges(path string) error {
 
 		log.Printf("ObserveMetaKVChanges got metakv change for %v: %+v", path, updatedConfigKV)
 
-		existingConfigKV, found := gw.Config[updatedConfigKV.Path]
-
 		if strings.HasPrefix(updatedConfigKV.Path, mobile_mds.KeyMobileGatewayDatabases) {
 
-			switch found {
-			case true:
-				// If we got here, we already know about this db key in the config state
-				// Is the db being deleted or updated?
-				switch updatedConfigKV.Rev {
-				case "":
-				case "null":
-					// Db is being deleted
-					if err := gw.HandleDbDelete(updatedConfigKV, existingConfigKV); err != nil {
-						log.Printf("Error handling db delete: %v", err)
-					}
-				default:
-					// Db is being updated
-					if err := gw.HandleDbUpdate(updatedConfigKV, existingConfigKV); err != nil {
-						log.Printf("Error handling db update: %v", err)
-					}
-				}
-			case false:
-				// We don't know about this db key, brand new
-				if err := gw.HandleDbAdd(updatedConfigKV); err != nil {
-					log.Printf("Error handling db add: %v", err)
-				}
+			if err := gw.ProcessDatabaseMetaKVPair(updatedConfigKV); err != nil {
+				return err
 			}
 
 		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_mds.KeyMobileGateway) {
 			// Server level config updated
-			if err := gw.HandleServerConfigUpdated(updatedConfigKV, existingConfigKV); err != nil {
-				log.Printf("Error handling server level config update: %v", err)
+			if err := gw.HandleServerConfigUpdated(updatedConfigKV); err != nil {
+				return err
 			}
 		}
 
@@ -228,11 +214,45 @@ func (gw *Gateway) ObserveMetaKVChanges(path string) error {
 
 }
 
-func (gw *Gateway) HandleServerConfigUpdated(metaKvPair, existingDbConfig *mobile_service.MetaKVPair) error {
+
+func (gw *Gateway) ProcessDatabaseMetaKVPair(metakvPair *mobile_service.MetaKVPair) error {
+	existingConfigKV, found := gw.Config[metakvPair.Path]
+	switch found {
+	case true:
+		// If we got here, we already know about this db key in the config state
+		// Is the db being deleted or updated?
+		switch metakvPair.Rev {
+		case "":
+		case "null":
+			// Db is being deleted
+			if err := gw.HandleDbDelete(metakvPair, existingConfigKV); err != nil {
+				return err
+			}
+		default:
+			// Db is being updated
+			if err := gw.HandleDbUpdate(metakvPair, existingConfigKV); err != nil {
+				return err
+			}
+		}
+	case false:
+		// We don't know about this db key, brand new
+		if err := gw.HandleDbAdd(metakvPair); err != nil {
+			return err
+		}
+	}
+
+	return nil
+
+}
+
+
+func (gw *Gateway) HandleServerConfigUpdated(metaKvPair *mobile_service.MetaKVPair) error {
 
 	gw.Config[metaKvPair.Path] = metaKvPair
 
 	// TODO: reload server level config
+
+	base.Warnf(base.KeyAll, "HandleServerConfigUpdated ignoring change: %v", metaKvPair.Path)
 
 	return nil
 
@@ -310,33 +330,39 @@ func (gw *Gateway) HandleDbUpdate(metaKvPair, existingDbConfig *mobile_service.M
 
 func (gw *Gateway) LoadServerConfig() (serverConfig *rest.ServerConfig, err error) {
 
-	// Load the listener config
-	key := mobile_mds.KeyMobileGatewayListener
-	listenerConfigMetaKV, found := gw.Config[key]
-	if !found {
-		return nil, fmt.Errorf("Key not found: %v", key)
-	}
-
+	gotListenerConfig := false
+	gotGeneralConfig := false
 	serverListenerConfig := rest.ServerConfig{}
-
-	if err := json.Unmarshal(listenerConfigMetaKV.Value, &serverListenerConfig); err != nil {
-		return nil, err
-	}
-
-	// Load the general config
-	key = mobile_mds.KeyMobileGatewayGeneral
-	generalConfigMetaKV, found := gw.Config[key]
-	if !found {
-		return nil, fmt.Errorf("Key not found: %v", key)
-	}
-
 	serverGeneralConfig := rest.ServerConfig{}
 
-	if err := json.Unmarshal(generalConfigMetaKV.Value, &serverGeneralConfig); err != nil {
-		return nil, err
+	//Get the general + listener config
+	for _, metaKvPair := range gw.Config {
+		switch {
+		case metaKvPair.Path == mobile_mds.KeyMobileGatewayListener:
+			gotListenerConfig = true
+			if err := json.Unmarshal(metaKvPair.Value, &serverListenerConfig); err != nil {
+				return nil, pkgerrors.Wrapf(err, "Error unmarshalling")
+			}
+
+		case metaKvPair.Path == mobile_mds.KeyMobileGatewayGeneral:
+			gotGeneralConfig = true
+			if err := json.Unmarshal(metaKvPair.Value, &serverGeneralConfig); err != nil {
+				return nil, pkgerrors.Wrapf(err, "Error unmarshalling")
+			}
+		}
+
+	}
+
+	if !gotListenerConfig {
+		return nil, fmt.Errorf("Did not find required MetaKV config: %v", mobile_mds.KeyMobileGatewayListener)
+	}
+
+	if !gotGeneralConfig {
+		return nil, fmt.Errorf("Did not find required MetaKV config: %v", mobile_mds.KeyMobileGatewayGeneral)
 	}
 
 	// Copy over the values from listener into general
+	// TODO: figure out a less hacky/brittle way to do this
 	if serverListenerConfig.Interface != nil {
 		serverGeneralConfig.Interface = serverListenerConfig.Interface
 		if gw.BootstrapConfig.PortOffset != 0 {
@@ -357,12 +383,28 @@ func (gw *Gateway) LoadServerConfig() (serverConfig *rest.ServerConfig, err erro
 	}
 
 
-	// TODO: this should also add all the databases present in metakv
-
-
 	return &serverGeneralConfig, nil
 
 }
+
+
+func (gw *Gateway) LoadDbConfigAllDbs() error {
+
+	// Second pass to get the databases
+	for _, metaKvPair := range gw.Config {
+		switch {
+		case strings.HasPrefix(metaKvPair.Path, mobile_mds.KeyMobileGatewayDatabases):
+			if err := gw.ProcessDatabaseMetaKVPair(metaKvPair); err != nil {
+				return err
+			}
+		}
+
+	}
+
+	return nil
+
+}
+
 
 func (gw *Gateway) LoadDbConfig(path string) (dbConfig *rest.DbConfig, err error) {
 
@@ -374,7 +416,7 @@ func (gw *Gateway) LoadDbConfig(path string) (dbConfig *rest.DbConfig, err error
 	dbConfigTemp := rest.DbConfig{}
 
 	if err := json.Unmarshal(metaKvPair.Value, &dbConfigTemp); err != nil {
-		return nil, err
+		return nil, pkgerrors.Wrapf(err, "Error unmarshalling db config")
 	}
 
 	return &dbConfigTemp, nil
@@ -466,17 +508,21 @@ func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffs
 }
 
 
-func StartGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
+func StartGateway(bootstrapConfig GatewayBootstrapConfig) (*Gateway, error) {
 
 	// Client setup
 	gw := NewGateway(bootstrapConfig)
 	defer gw.Close()
 
 	// Load snapshot of configuration from MetaKV
-	gw.LoadConfigSnapshot()
+	if err := gw.LoadConfigSnapshot(); err != nil {
+		return nil, err
+	}
 
 	// Kick off http/s server
-	gw.RunServer()
+	if err := gw.RunServer(); err != nil {
+		return nil, err
+	}
 
 	// Kick off goroutine to observe stream of metakv changes
 	go func() {
@@ -494,7 +540,7 @@ func StartGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 		}
 	}()
 
-	return gw
+	return gw, nil
 
 }
 

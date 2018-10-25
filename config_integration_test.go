@@ -60,20 +60,19 @@ func TestGatewayLoadDbConfig(t *testing.T) {
 		t.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
 
-	gw := StartGateway(*bootstrapConfig)
-
-	// artificial delay in case the config exchange still in progress
-	// TODO: if it's updated to synchronously get db config during startup, this won't be needed
-	time.Sleep(5 * time.Second)
-
+	gw, err := StartGateway(*bootstrapConfig)
+	if err != nil {
+		t.Fatalf("Error starting gateway: %+v", err)
+	}
+	
 	resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
-	dbConfig := rest.DbConfig{}
+	db := rest.Database{}
 	respBody := resp.Body.Bytes()
-	log.Printf("Raw body: %v", string(respBody))
-	if err := json.Unmarshal(respBody, &dbConfig); err != nil {
+	if err := json.Unmarshal(respBody, &db); err != nil {
 		t.Fatalf("Error getting db config.  Error: %v", err)
 	}
-	log.Printf("dbConfig: %+v", dbConfig)
+	log.Printf("db: %+v", db)
+	assert.Equals(t, db.DbName, base.DefaultTestBucketname)
 
 }
 
