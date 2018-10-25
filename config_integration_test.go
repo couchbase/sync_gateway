@@ -63,33 +63,18 @@ func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
 		t.Skip("Test only works with a Couchbase server")
 	}
 
-	bootstrapConfig := GetTestBootstrapConfigOrPanic()
+	testHelper := NewSGIntegrationTestHelper(t)
 
-	// Create metakv helper
-	metakvHelper := NewMetaKVClient(*bootstrapConfig)
-
-	// Remove all config from metakv
-	if err := metakvHelper.RecursiveDelete(mobile_mds.KeyDirMobileRoot); err != nil {
-		t.Fatalf("Error deleting metakv key.  Error: %v", err)
-	}
-
-	// Add metakv general config
-	if err := metakvHelper.Upsert(mobile_mds.KeyMobileGatewayGeneral, []byte(DefaultMetaKVGeneralConfig())); err != nil {
-		t.Fatalf("Error updating metakv key.  Error: %v", err)
-	}
-
-	// Add metakv listener config
-	if err := metakvHelper.Upsert(mobile_mds.KeyMobileGatewayListener, []byte(InMemoryListenerConfig())); err != nil {
-		t.Fatalf("Error updating metakv key.  Error: %v", err)
-	}
+	// Add listener and general config to metakv
+	testHelper.InsertGeneralListenerTestConfig()
 
 	// Add metakv database config
 	dbKey := fmt.Sprintf("%s/%s", mobile_mds.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
-	if err := metakvHelper.Upsert(dbKey, []byte(DefaultMetaKVDbConfig())); err != nil {
+	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(DefaultMetaKVDbConfig())); err != nil {
 		t.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
 
-	gw, err := StartGateway(*bootstrapConfig)
+	gw, err := StartGateway(*testHelper.BootstrapConfig)
 	if err != nil {
 		t.Fatalf("Error starting gateway: %+v", err)
 	}
