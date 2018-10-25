@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/couchbase/sync_gateway"
+	"github.com/couchbase/sync_gateway/rest"
 	"github.com/spf13/cobra"
 	"math/rand"
 	"time"
@@ -15,7 +15,7 @@ var serveCmd = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		config, err := sync_gateway.NewGatewayBootstrapConfig(GoCBConnstr)
+		config, err := rest.NewGatewayBootstrapConfig(GoCBConnstr)
 		if err != nil {
 			panic(fmt.Sprintf("Error creating bootstrap config: %v", err))
 		}
@@ -29,7 +29,7 @@ var serveCmd = &cobra.Command{
 			config.Uuid = fmt.Sprintf("%d", time.Now().Unix())
 		}
 
-		gw, err := sync_gateway.StartGateway(*config)
+		gw, err := rest.StartGateway(*config)
 		if err != nil {
 			panic(fmt.Sprintf("Error starting gateway: %v", err))
 		}

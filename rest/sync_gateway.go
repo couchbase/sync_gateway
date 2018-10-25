@@ -1,25 +1,20 @@
-package sync_gateway
+package rest
 
 import (
 	"context"
-	"log"
-	"time"
-
-	"fmt"
-	"strings"
-
 	"encoding/json"
-
+	"fmt"
+	"log"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/couchbase/mobile-service"
 	"github.com/couchbase/mobile-service/mobile_service"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbaselabs/gocbconnstr"
-	"google.golang.org/grpc"
 	pkgerrors "github.com/pkg/errors"
-
+	"google.golang.org/grpc"
 )
 
 type Gateway struct {
@@ -35,7 +30,7 @@ type Gateway struct {
 	Config map[string]*mobile_service.MetaKVPair
 
 	// The SG server context
-	ServerContext *rest.ServerContext
+	ServerContext *ServerContext
 
 	// The "bootstrap config" for this gateway to be able to connect to Couchbase Server to get actual config
 	BootstrapConfig GatewayBootstrapConfig
@@ -146,7 +141,7 @@ func (gw *Gateway) RunServer() error {
 		return err
 	}
 
-	serverContext := rest.RunServer(serverConfig)
+	serverContext := RunServer(serverConfig)
 
 	gw.ServerContext = serverContext
 
@@ -214,7 +209,6 @@ func (gw *Gateway) ObserveMetaKVChanges(path string) error {
 
 }
 
-
 func (gw *Gateway) ProcessDatabaseMetaKVPair(metakvPair *mobile_service.MetaKVPair) error {
 	existingConfigKV, found := gw.Config[metakvPair.Path]
 	switch found {
@@ -244,7 +238,6 @@ func (gw *Gateway) ProcessDatabaseMetaKVPair(metakvPair *mobile_service.MetaKVPa
 	return nil
 
 }
-
 
 func (gw *Gateway) HandleServerConfigUpdated(metaKvPair *mobile_service.MetaKVPair) error {
 
@@ -328,12 +321,12 @@ func (gw *Gateway) HandleDbUpdate(metaKvPair, existingDbConfig *mobile_service.M
 
 }
 
-func (gw *Gateway) LoadServerConfig() (serverConfig *rest.ServerConfig, err error) {
+func (gw *Gateway) LoadServerConfig() (serverConfig *ServerConfig, err error) {
 
 	gotListenerConfig := false
 	gotGeneralConfig := false
-	serverListenerConfig := rest.ServerConfig{}
-	serverGeneralConfig := rest.ServerConfig{}
+	serverListenerConfig := ServerConfig{}
+	serverGeneralConfig := ServerConfig{}
 
 	//Get the general + listener config
 	for _, metaKvPair := range gw.Config {
@@ -382,11 +375,9 @@ func (gw *Gateway) LoadServerConfig() (serverConfig *rest.ServerConfig, err erro
 		serverGeneralConfig.SSLKey = serverListenerConfig.SSLKey
 	}
 
-
 	return &serverGeneralConfig, nil
 
 }
-
 
 func (gw *Gateway) LoadDbConfigAllDbs() error {
 
@@ -405,15 +396,14 @@ func (gw *Gateway) LoadDbConfigAllDbs() error {
 
 }
 
-
-func (gw *Gateway) LoadDbConfig(path string) (dbConfig *rest.DbConfig, err error) {
+func (gw *Gateway) LoadDbConfig(path string) (dbConfig *DbConfig, err error) {
 
 	metaKvPair, found := gw.Config[path]
 	if !found {
 		return nil, fmt.Errorf("Key not found: %v", path)
 	}
 
-	dbConfigTemp := rest.DbConfig{}
+	dbConfigTemp := DbConfig{}
 
 	if err := json.Unmarshal(metaKvPair.Value, &dbConfigTemp); err != nil {
 		return nil, pkgerrors.Wrapf(err, "Error unmarshalling db config")
@@ -507,7 +497,6 @@ func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffs
 
 }
 
-
 func StartGateway(bootstrapConfig GatewayBootstrapConfig) (*Gateway, error) {
 
 	// Client setup
@@ -546,7 +535,7 @@ func StartGateway(bootstrapConfig GatewayBootstrapConfig) (*Gateway, error) {
 
 func RunGatewayLegacyMode(pathToConfigFile string) {
 
-	serverConfig, err := rest.ReadServerConfig(rest.SyncGatewayRunModeNormal, pathToConfigFile)
+	serverConfig, err := ReadServerConfig(SyncGatewayRunModeNormal, pathToConfigFile)
 	if err != nil {
 		base.Fatalf(base.KeyAll, "Error reading config file %s: %v", base.UD(pathToConfigFile), err)
 	}
@@ -554,13 +543,13 @@ func RunGatewayLegacyMode(pathToConfigFile string) {
 	// If the interfaces were not specified in either the config file or
 	// on the command line, set them to the default values
 	if serverConfig.Interface == nil {
-		serverConfig.Interface = &rest.DefaultInterface
+		serverConfig.Interface = &DefaultInterface
 	}
 	if serverConfig.AdminInterface == nil {
-		serverConfig.AdminInterface = &rest.DefaultAdminInterface
+		serverConfig.AdminInterface = &DefaultAdminInterface
 	}
 
-	_ = rest.RunServer(serverConfig)
+	_ = RunServer(serverConfig)
 
 	select {} // block forever
 

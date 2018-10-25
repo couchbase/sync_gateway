@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/couchbase/sync_gateway"
+	"github.com/couchbase/sync_gateway/rest"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +22,7 @@ var rootCmd = &cobra.Command{
 
 		// Legacy mode
 		pathToConfigFile := args[0]
-		sync_gateway.RunGatewayLegacyMode(pathToConfigFile)
+		rest.RunGatewayLegacyMode(pathToConfigFile)
 
 	},
 }

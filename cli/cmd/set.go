@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"bufio"
-	"github.com/couchbase/sync_gateway"
+	"github.com/couchbase/sync_gateway/rest"
 	"github.com/spf13/cobra"
 	"io/ioutil"
 	"log"
@@ -55,7 +55,7 @@ echo "{\"MyKey\": 2}" | sg config metakv set /path/to/my/key
 			panic(fmt.Sprintf("Error getting bootstrap config: %v", err))
 		}
 
-		metakvHelper := sync_gateway.NewMetaKVClient(bootstrapConfig)
+		metakvHelper := rest.NewMetaKVClient(bootstrapConfig)
 		key := args[0]
 		if err := metakvHelper.Upsert(key, val); err != nil {
 			panic(fmt.Sprintf("Error setting config.  Key: %v Error: %v Val: %v", key, err, val))

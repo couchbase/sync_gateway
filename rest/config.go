@@ -31,10 +31,15 @@ import (
 	_ "net/http/pprof"
 )
 
-var DefaultInterface = ":4984"
-var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
-var DefaultServer = "walrus:"
-var DefaultPool = "default"
+var (
+	DefaultInterface       = ":4984"
+	DefaultAdminInterface  = "127.0.0.1:4985" // Only accessible on localhost!
+	DefaultPublicInterface = "0.0.0.0"
+	DefaultPublicPort      = 4984
+	DefaultAdminPort       = 4985
+	DefaultServer          = "walrus:"
+	DefaultPool            = "default"
+)
 
 // The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 var defaultLogFilePath string

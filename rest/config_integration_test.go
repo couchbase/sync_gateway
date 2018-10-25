@@ -1,4 +1,4 @@
-package sync_gateway
+package rest
 
 import (
 	"fmt"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/couchbase/mobile-service"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbaselabs/go.assert"
 )
 
@@ -46,7 +45,7 @@ func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
 
 	// Send in-memory request to sync gateway to validate that it knows about the db config
 	resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
-	db := rest.Database{}
+	db := Database{}
 	respBody := resp.Body.Bytes()
 	if err := json.Unmarshal(respBody, &db); err != nil {
 		t.Fatalf("Error getting db config.  Error: %v", err)
@@ -85,7 +84,7 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 	}
 
 	// Polling loop until /db returns the expected db config
-	retryFunc := func() *rest.TestResponse {
+	retryFunc := func() *TestResponse {
 		resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
 		return resp
 	}
@@ -141,7 +140,7 @@ func (ith *SGIntegrationTestHelper) InsertGeneralListenerTestConfig() {
 
 }
 
-type RestApiCall func() *rest.TestResponse
+type RestApiCall func() *TestResponse
 
 func WaitForResponseCode(expectedResponseCode int, apiCall RestApiCall) error {
 
@@ -183,17 +182,19 @@ func GetTestBootstrapConfigOrPanic() (config *GatewayBootstrapConfig) {
 
 }
 
-func CreateAdminHandler(gw *Gateway) http.Handler {
-	return rest.CreateAdminHandler(gw.ServerContext)
-}
 
-func SendAdminRequest(gw *Gateway, method, resource string, body string) *rest.TestResponse {
+func SendAdminRequest(gw *Gateway, method, resource string, body string) *TestResponse {
+
+	// TODO: don't recreate admin handler for every request
+
+	// TODO: merge w/ RestTester
+
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
-	response := &rest.TestResponse{httptest.NewRecorder(), request}
+	response := &TestResponse{httptest.NewRecorder(), request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
-	CreateAdminHandler(gw).ServeHTTP(response, request)
+	CreateAdminHandler(gw.ServerContext).ServeHTTP(response, request)
 	return response
 }
 
