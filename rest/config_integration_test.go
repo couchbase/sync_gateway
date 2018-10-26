@@ -85,25 +85,54 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 	}
 
 	// Polling loop until /db returns the expected db config
-	retryFunc := func() *TestResponse {
+	getDatabaseStatus := func() *TestResponse {
 		resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
 		return resp
 	}
 
-	if err := WaitForResponseCode(200, retryFunc); err != nil {
+	if err := WaitForResponseCode(200, getDatabaseStatus); err != nil {
 		t.Fatalf("Error waiting for expected response code: %v", err)
 	}
 
+}
+
+
+func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test only works with a Couchbase server")
+	}
+
+	// Create a test helper that initializes the testing bootstrap config and MetaKV Client
+	testHelper := NewSGIntegrationTestHelper(t)
+
+	// Add listener with resttester interfaces and general config to metakv
+	testHelper.InsertGeneralListenerTestConfig()
+
+	// Add metakv database config
+	dbKey := fmt.Sprintf("%s/%s", mobile_mds.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
+	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(DefaultMetaKVDbConfig())); err != nil {
+		t.Fatalf("Error updating metakv key.  Error: %v", err)
+	}
+
+	// Start a gateway in resttester mode
+	gw, err := StartGateway(*testHelper.BootstrapConfig)
+	defer gw.Close()
+	if err != nil {
+		t.Fatalf("Error starting gateway: %+v", err)
+	}
+
 	// Update the db config in metakv, wait for updates to appear
+	updatedRevsLimit := uint32(350)
 	updatedDbConfig := fmt.Sprintf(`{
 		  "num_index_replicas":0,
 		  "feed_type":"DCP",
 		  "bucket":"%s",
 		  "enable_shared_bucket_access":false,
-		  "revs_limit":350,
+		  "revs_limit":%d,
 		  "allow_empty_password":true,
 		  "use_views": true
-		}`, base.DefaultTestBucketname)
+		}`, base.DefaultTestBucketname, updatedRevsLimit)
 
 	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(updatedDbConfig)); err != nil {
 		t.Fatalf("Error updating metakv key.  Error: %v", err)
@@ -123,7 +152,7 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 		if !ok {
 			return false
 		}
-		return *dbConfig.RevsLimit == 350 && dbConfig.UseViews == true
+		return *dbConfig.RevsLimit == updatedRevsLimit
 	}
 
 	if err := WaitForExpectation(expectation, getConfig); err != nil {
@@ -131,8 +160,26 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 	}
 
 	// Delete the db from metakv, wait for 404 status on the db endpoint
+	if err := testHelper.MetaKVClient.Delete(dbKey); err != nil {
+		t.Fatalf("Error deleting metakv key.  Error: %v", err)
+	}
+
+	// Invoke the /<db-name>/ REST API endpoint
+	getDatabaseStatus := func() *TestResponse {
+		resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/%s/", base.DefaultTestBucketname), "")
+		return resp
+	}
+
+	if err := WaitForResponseCode(404, getDatabaseStatus); err != nil {
+		t.Fatalf("Error waiting for expected response code: %v", err)
+	}
+
 
 }
+
+
+
+
 
 // ----------- Test Helper
 
@@ -179,23 +226,6 @@ type ResponseExpectation func(resp *TestResponse) bool
 
 func WaitForResponseCode(expectedResponseCode int, apiCall RestApiCall) error {
 
-	//worker := func() (shouldRetry bool, err error, value interface{}) {
-	//	resp := apiCall()
-	//	if resp.Result().StatusCode == expectedResponseCode {
-	//		return false, nil, resp
-	//	}
-	//	log.Printf("Expected response code %d but got %d. Retrying.", expectedResponseCode, resp.Result().StatusCode)
-	//	return true, fmt.Errorf("Expected response code %d but got %d", expectedResponseCode, resp.Result().StatusCode), resp
-	//}
-	//
-	//err, _ := base.RetryLoop(
-	//	"WaitForResponseCode",
-	//	worker,
-	//	base.CreateMaxDoublingSleeperFunc(25, 50, 250),
-	//)
-	//
-	//return err
-
 	expectation := func(resp *TestResponse) bool {
 		return resp.Result().StatusCode == expectedResponseCode
 	}
@@ -216,7 +246,7 @@ func WaitForExpectation(expectation ResponseExpectation, apiCall RestApiCall) er
 	err, _ := base.RetryLoop(
 		"WaitForResponseCode",
 		worker,
-		base.CreateMaxDoublingSleeperFunc(25, 50, 2500),
+		base.CreateMaxDoublingSleeperFunc(15, 50, 1000),
 	)
 
 	return err
@@ -294,6 +324,12 @@ func DefaultMetaKVListenerConfig() string {
 }
 
 func DefaultMetaKVDbConfig() string {
+
+	// Using "use_views: true" due to a strange issue I'm seeing when running
+	// GSI when building couchbase from source: https://gist.github.com/tleyden/46c2a2a4dfe79a2cdd759aaf22a4b88d
+	// I'm not seeing this when using a toy build: http://server.jenkins.couchbase.com/view/Toys/job/toy-unix/3474/artifact/couchbase-server-enterprise-6.5.0-10002-centos7.x86_64.rpm
+
+
 	return fmt.Sprintf(`
 {
   "num_index_replicas":0,
@@ -302,7 +338,7 @@ func DefaultMetaKVDbConfig() string {
   "enable_shared_bucket_access":false,
   "revs_limit":250,
   "allow_empty_password":true,
-  "use_views": false
+  "use_views": true  
 }
 `, base.DefaultTestBucketname)
 
