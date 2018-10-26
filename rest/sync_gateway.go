@@ -283,16 +283,33 @@ func (gw *Gateway) HandleServerConfigUpdated(metaKvPair *mobile_service.MetaKVPa
 
 }
 
-func (gw *Gateway) HandleDbDelete(incomingMetaKVPair, existingDbConfig *mobile_service.MetaKVPair) error {
+func (gw *Gateway) HandleDbDelete(metaKvPair, existingDbConfig *mobile_service.MetaKVPair) error {
 
-	if len(incomingMetaKVPair.Value) != 0 {
+	if len(metaKvPair.Value) != 0 {
 		return fmt.Errorf("If db config is being deleted, incoming value should be empty")
 	}
 
 	// Delete from config map
-	delete(gw.Config, incomingMetaKVPair.Path)
+	delete(gw.Config, metaKvPair.Path)
 
-	// TODO: other db delete handling
+	// The metakv pair path will be: /mobile/gateway/config/databases/database-1
+	// Get the last item from the path and use that as the dbname
+	dbName, err := MetaKVLastItemPath(metaKvPair.Path)
+	if err != nil {
+		return err
+	}
+
+	// Make sure the db actually exists
+	_, err = gw.ServerContext.GetDatabase(dbName)
+	if err != nil {
+		return err
+	}
+
+	// Remove the database
+	removed := gw.ServerContext.RemoveDatabase(dbName)
+	if !removed {
+		return fmt.Errorf("Could not remove db: %v", metaKvPair.Path)
+	}
 
 	return nil
 }
