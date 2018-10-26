@@ -78,35 +78,3 @@ func init() {
 	)
 
 }
-
-//func UpsertKey(key, val []byte) {
-//
-//	assetJson, err := Asset(assetPath)
-//	if err != nil {
-//		panic(fmt.Sprintf("Asset not found"))
-//	}
-//
-//	log.Printf("assetJson: %s", string(assetJson))
-//
-//	serverConfigKey, _  := a.gateway.GrpcClient.MetaKVGet(a.context, &mobile_service.MetaKVPath{
-//		Path: key,
-//	})
-//
-//	if serverConfigKey.Rev == "" {
-//		_, err = a.gateway.GrpcClient.MetaKVAdd(a.context, &mobile_service.MetaKVPair{
-//			Path:  key,
-//			Value: assetJson,
-//		})
-//
-//	} else {
-//		_, err = a.gateway.GrpcClient.MetaKVSet(a.context, &mobile_service.MetaKVPair{
-//			Path:  key,
-//			Rev: serverConfigKey.Rev,
-//			Value: assetJson,
-//		})
-//	}
-//
-//	if err != nil {
-//		log.Printf("Error adding/setting key: %v. Err: %v", key, err)
-//	}
-//}
