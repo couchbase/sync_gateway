@@ -33,7 +33,6 @@ echo "{\"MyKey\": 2}" | sg config metakv set /path/to/my/key
 `,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("set called with args: %+v", args)
 
 		var val []byte
 		var err error
