@@ -492,6 +492,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		if indexErr != nil {
 			return nil, indexErr
 		}
+
 	} else {
 		viewErr := db.InitializeViews(bucket)
 		if viewErr != nil {

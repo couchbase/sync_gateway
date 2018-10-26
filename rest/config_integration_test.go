@@ -123,7 +123,7 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 		if !ok {
 			return false
 		}
-		return *dbConfig.RevsLimit == 350
+		return *dbConfig.RevsLimit == 350 && dbConfig.UseViews == true
 	}
 
 	if err := WaitForExpectation(expectation, getConfig); err != nil {
@@ -216,7 +216,7 @@ func WaitForExpectation(expectation ResponseExpectation, apiCall RestApiCall) er
 	err, _ := base.RetryLoop(
 		"WaitForResponseCode",
 		worker,
-		base.CreateMaxDoublingSleeperFunc(25, 50, 250),
+		base.CreateMaxDoublingSleeperFunc(25, 50, 2500),
 	)
 
 	return err
@@ -302,7 +302,7 @@ func DefaultMetaKVDbConfig() string {
   "enable_shared_bucket_access":false,
   "revs_limit":250,
   "allow_empty_password":true,
-  "use_views": true
+  "use_views": false
 }
 `, base.DefaultTestBucketname)
 
