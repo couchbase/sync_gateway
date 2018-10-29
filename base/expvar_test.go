@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRollingMeanExpvar(t *testing.T) {
@@ -41,7 +42,7 @@ func TestRollingMeanExpvar(t *testing.T) {
 }
 
 func assertMapEntry(t *testing.T, e SequenceTimingExpvar, key string) {
-	assertTrue(t, e.timingMap.Get(key) != nil, fmt.Sprintf("Expected map key %s not found", key))
+	assert.True(t, e.timingMap.Get(key) != nil, fmt.Sprintf("Expected map key %s not found", key))
 }
 
 func TestTimingExpvarSequenceOnly(t *testing.T) {

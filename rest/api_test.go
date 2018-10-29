@@ -33,6 +33,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/robertkrimen/otto/underscore"
+	"github.com/stretchr/testify/assert"
 )
 
 func init() {
@@ -310,7 +311,7 @@ func TestDocumentLargeNumbers(t *testing.T) {
 			json.Unmarshal(getRawResponse.Body.Bytes(), &rawResponse)
 			log.Printf("raw response: %s", getRawResponse.Body.Bytes())
 			goassert.Equals(t, len(rawResponse.Sync.Channels), 1)
-			assertTrue(t, HasActiveChannel(rawResponse.Sync.Channels, test.expectedChannel), fmt.Sprintf("Expected channel %s was not found in document channels", test.expectedChannel))
+			assert.True(t, HasActiveChannel(rawResponse.Sync.Channels, test.expectedChannel), fmt.Sprintf("Expected channel %s was not found in document channels", test.expectedChannel))
 
 		})
 	}
@@ -849,16 +850,16 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	doc1Rev, err := rt.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	doc3Rev, err := rt.GetDatabase().GetDocSyncData("bulk3")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
 	lastSequence, err := rt.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
+	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(3))
 
 	//send another _bulk_docs and validate the sequences used
@@ -868,20 +869,20 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 
 	//Sequence 3 get used here
 	doc21Rev, err := rt.GetDatabase().GetDocSyncData("bulk21")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc21Rev.Sequence, uint64(3))
 
 	doc22Rev, err := rt.GetDatabase().GetDocSyncData("bulk22")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc22Rev.Sequence, uint64(4))
 
 	doc23Rev, err := rt.GetDatabase().GetDocSyncData("bulk23")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc23Rev.Sequence, uint64(5))
 
 	//Get current sequence number
 	lastSequence, err = rt.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
+	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(5))
 }
 
@@ -896,16 +897,16 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	doc1Rev, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	doc3Rev, err := rt1.GetDatabase().GetDocSyncData("bulk3")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
 	lastSequence, err := rt1.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
+	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
@@ -919,13 +920,13 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	// For the second rest tester, create a copy of the original database config and
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
-	assertNoError(t, err, "Failed to add database to rest tester")
+	assert.NoError(t, err, "Failed to add database to rest tester")
 
 	//send another _bulk_docs to rt2 and validate the sequences used
 	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23}]}`
@@ -934,20 +935,20 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	//Sequence 3 does not get used here as its using a different sequence allocator
 	doc21Rev, err := rt2.GetDatabase().GetDocSyncData("bulk21")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc21Rev.Sequence, uint64(4))
 
 	doc22Rev, err := rt2.GetDatabase().GetDocSyncData("bulk22")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc22Rev.Sequence, uint64(5))
 
 	doc23Rev, err := rt2.GetDatabase().GetDocSyncData("bulk23")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc23Rev.Sequence, uint64(6))
 
 	//Get current sequence number
 	lastSequence, err = rt2.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
+	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(6))
 
 	//Now send a bulk_doc to rt1 and see if it uses sequence 3
@@ -957,15 +958,15 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	//Sequence 3 get used here as its using first sequence allocator
 	doc31Rev, err := rt1.GetDatabase().GetDocSyncData("bulk31")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc31Rev.Sequence, uint64(3))
 
 	doc32Rev, err := rt1.GetDatabase().GetDocSyncData("bulk32")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc32Rev.Sequence, uint64(7))
 
 	doc33Rev, err := rt1.GetDatabase().GetDocSyncData("bulk33")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc33Rev.Sequence, uint64(8))
 
 }
@@ -982,19 +983,19 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	doc1Rev, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID := doc1Rev.CurrentRev
 
 	doc3Rev, err := rt1.GetDatabase().GetDocSyncData("bulk3")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
 	lastSequence, err := rt1.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
+	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
@@ -1008,13 +1009,13 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	// For the second rest tester, create a copy of the original database config and
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
-	assertNoError(t, err, "Unexpected error calling DeepCopy()")
+	assert.NoError(t, err, "Unexpected error calling DeepCopy()")
 	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
-	assertNoError(t, err, "Failed to add database to rest tester")
+	assert.NoError(t, err, "Failed to add database to rest tester")
 
 	//send another _bulk_docs to rt2, including an update to doc "bulk1" and validate the sequences used
 	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23}, {"_id": "bulk1", "_rev": "` + doc1RevID + `", "n": 2}]}`
@@ -1023,20 +1024,20 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	//Sequence 3 does not get used here as its using a different sequence allocator
 	doc21Rev, err := rt2.GetDatabase().GetDocSyncData("bulk21")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc21Rev.Sequence, uint64(4))
 
 	doc22Rev, err := rt2.GetDatabase().GetDocSyncData("bulk22")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc22Rev.Sequence, uint64(5))
 
 	doc23Rev, err := rt2.GetDatabase().GetDocSyncData("bulk23")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc23Rev.Sequence, uint64(6))
 
 	//Validate rev2 of doc "bulk1" has a new revision
 	doc1Rev2, err := rt2.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc1Rev2.Sequence, uint64(7))
 
 	//Get the revID for doc "bulk1"
@@ -1044,7 +1045,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	//Get current sequence number
 	lastSequence, err = rt2.GetDatabase().LastSequence()
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, lastSequence, uint64(7))
 
 	//Now send a bulk_doc to rt1 to update doc bulk1 again
@@ -1054,7 +1055,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	//Sequence 8 should get used here as sequence 3 should have been dropped by the first sequence allocator
 	doc1Rev3, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc1Rev3.Sequence, uint64(8))
 
 	//validate the doc _sync metadata, should see last sequence lower than previous sequence
@@ -1078,19 +1079,19 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	doc1Rev, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID := doc1Rev.CurrentRev
 
 	doc3Rev, err := rt1.GetDatabase().GetDocSyncData("bulk3")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
 	lastSequence, err := rt1.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
+	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
@@ -1104,13 +1105,13 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	// For the second rest tester, create a copy of the original database config and
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
-	assertNoError(t, err, "Unexpected error calling DeepCopy()")
+	assert.NoError(t, err, "Unexpected error calling DeepCopy()")
 	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
-	assertNoError(t, err, "Failed to add database to rest tester")
+	assert.NoError(t, err, "Failed to add database to rest tester")
 
 	//send another _bulk_docs to rt2, including an update to doc "bulk1" and another invalid rev to create an unused sequence
 	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23, "type": "invalid"}, {"_id": "bulk1", "_rev": "` + doc1RevID + `", "n": 2}]}`
@@ -1119,16 +1120,16 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	//Sequence 3 does not get used here as its using a different sequence allocator
 	doc21Rev, err := rt2.GetDatabase().GetDocSyncData("bulk21")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc21Rev.Sequence, uint64(4))
 
 	doc22Rev, err := rt2.GetDatabase().GetDocSyncData("bulk22")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc22Rev.Sequence, uint64(5))
 
 	//Validate rev2 of doc "bulk1" has a new revision
 	doc1Rev2, err := rt2.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc1Rev2.Sequence, uint64(7))
 
 	//Get the revID for doc "bulk1"
@@ -1136,7 +1137,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	//Get current sequence number
 	lastSequence, err = rt2.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
+	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(7))
 
 	//Now send a bulk_doc to rt1 to update doc bulk1 again
@@ -1146,7 +1147,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	//Sequence 8 should get used here as sequence 3 should have been dropped by the first sequence allocator
 	doc1Rev3, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc1Rev3.Sequence, uint64(8))
 
 	//Get the revID for doc "bulk1"
@@ -1159,7 +1160,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	//Sequence 9 should get used here as sequence 6 should have been dropped by the second sequence allocator
 	doc1Rev4, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
+	assert.NoError(t, err, "GetDocSyncData error")
 	goassert.Equals(t, doc1Rev4.Sequence, uint64(9))
 
 	//validate the doc _sync metadata, should see last sequence lower than previous sequence
@@ -1466,13 +1467,13 @@ readerLoop:
 		}
 
 		partBytes, err := ioutil.ReadAll(part)
-		assertNoError(t, err, "Unexpected error")
+		assert.NoError(t, err, "Unexpected error")
 
 		log.Printf("multipart part: %+v", string(partBytes))
 
 		partJSON := map[string]interface{}{}
 		err = json.Unmarshal(partBytes, &partJSON)
-		assertNoError(t, err, "Unexpected error")
+		assert.NoError(t, err, "Unexpected error")
 
 		var exp int
 
@@ -2300,7 +2301,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
 	changes, err = rt.WaitForChanges(len(expectedIDs), "/db/_changes", "alice", false)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	log.Printf("_changes looks like: %+v", changes)
 	goassert.Equals(t, len(changes.Results), len(expectedIDs))
 
@@ -2419,7 +2420,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	limit := 50
 	changesResults, err := rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user1", false)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, len(changesResults.Results), 50)
 	since := changesResults.Results[49].Seq
 	goassert.Equals(t, changesResults.Results[49].ID, "doc48")
@@ -2427,7 +2428,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, len(changesResults.Results), 50)
 	since = changesResults.Results[49].Seq
 	goassert.Equals(t, changesResults.Results[49].ID, "doc98")
@@ -2439,7 +2440,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	//Retrieve all changes for user2 with no limits
 	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/db/_changes"), "user2", false)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, len(changesResults.Results), 101)
 	goassert.Equals(t, changesResults.Results[99].ID, "doc99")
 
@@ -2449,7 +2450,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	//Get first 50 document changes
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user3", false)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, len(changesResults.Results), 50)
 	since = changesResults.Results[49].Seq
 	goassert.Equals(t, changesResults.Results[49].ID, "doc49")
@@ -2458,7 +2459,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	//// Get remainder of changes i.e. no limit parameter
 	changesResults, err = rt.WaitForChanges(51, fmt.Sprintf("/db/_changes?since=\"%s\"", since), "user3", false)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, len(changesResults.Results), 51)
 	goassert.Equals(t, changesResults.Results[49].ID, "doc99")
 
@@ -2467,7 +2468,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user4", false)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, len(changesResults.Results), 50)
 	since = changesResults.Results[49].Seq
 	goassert.Equals(t, changesResults.Results[49].ID, "doc49")
@@ -3304,7 +3305,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	couchbaseDoc := db.Body{}
 	bucket := rt.Bucket()
 	_, err := bucket.Get(docIdDoc1, &couchbaseDoc)
-	assertNoError(t, err, "Error getting couchbaseDoc")
+	assert.NoError(t, err, "Error getting couchbaseDoc")
 	log.Printf("couchbase doc: %+v", couchbaseDoc)
 
 	// Doc at this point
@@ -3350,7 +3351,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	// Put the doc back into couchbase
 	err = bucket.Set(docIdDoc1, 0, couchbaseDoc)
-	assertNoError(t, err, "Error putting couchbaseDoc")
+	assert.NoError(t, err, "Error putting couchbaseDoc")
 
 	// Get latest rev id
 	response = rt.SendRequest("GET", resource, "")
@@ -3413,20 +3414,20 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 		}
 
 		partBytes, err := ioutil.ReadAll(part)
-		assertNoError(t, err, "Unexpected error")
+		assert.NoError(t, err, "Unexpected error")
 
 		log.Printf("multipart part: %+v", string(partBytes))
 
 		partJson := map[string]interface{}{}
 		err = json.Unmarshal(partBytes, &partJson)
-		assertNoError(t, err, "Unexpected error")
+		assert.NoError(t, err, "Unexpected error")
 
 		// Assert expectations for the doc with attachment errors
 		rawId, ok := partJson["id"]
 		if ok {
 			// expect an error
 			_, hasErr := partJson["error"]
-			assertTrue(t, hasErr, "Expected error field for this doc")
+			assert.True(t, hasErr, "Expected error field for this doc")
 			goassert.Equals(t, docIdDoc1, rawId)
 			sawDoc1 = true
 
@@ -3436,15 +3437,15 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 		rawId, ok = partJson[db.BodyId]
 		if ok {
 			_, hasErr := partJson["error"]
-			assertTrue(t, !hasErr, "Did not expect error field for this doc")
+			assert.True(t, !hasErr, "Did not expect error field for this doc")
 			goassert.Equals(t, docIdDoc2, rawId)
 			sawDoc2 = true
 		}
 
 	}
 
-	assertTrue(t, sawDoc2, "Did not see doc 2")
-	assertTrue(t, sawDoc1, "Did not see doc 1")
+	assert.True(t, sawDoc2, "Did not see doc 2")
+	assert.True(t, sawDoc1, "Did not see doc 1")
 
 }
 
@@ -3469,12 +3470,12 @@ func TestDocExpiry(t *testing.T) {
 	response = rt.SendRequest("POST", "/db/_bulk_get", bulkGetDocs)
 	assertStatus(t, response, 200)
 	responseString := string(response.Body.Bytes())
-	assertTrue(t, !strings.Contains(responseString, "_exp"), "Bulk get response contains _exp property when show_exp not set.")
+	assert.True(t, !strings.Contains(responseString, "_exp"), "Bulk get response contains _exp property when show_exp not set.")
 
 	response = rt.SendRequest("POST", "/db/_bulk_get?show_exp=true", bulkGetDocs)
 	assertStatus(t, response, 200)
 	responseString = string(response.Body.Bytes())
-	assertTrue(t, strings.Contains(responseString, "_exp"), "Bulk get response doesn't contain _exp property when show_exp was set.")
+	assert.True(t, strings.Contains(responseString, "_exp"), "Bulk get response doesn't contain _exp property when show_exp was set.")
 
 	body = nil
 	response = rt.SendRequest("GET", "/db/expNumericTTL?show_exp=true", "")
@@ -3590,7 +3591,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 
 	bulkDocsResponse := []map[string]interface{}{}
 	err := json.Unmarshal(response.Body.Bytes(), &bulkDocsResponse)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	log.Printf("bulkDocsResponse: %+v", bulkDocsResponse)
 	for _, bulkDocResponse := range bulkDocsResponse {
 		bulkDocErr, gotErr := bulkDocResponse["error"]
@@ -3605,7 +3606,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	_, err = gocbBucket.GetWithXattr("-21SK00U-ujxUO9fU2HezxL", "_sync", &retrievedVal, &retrievedXattr)
-	assertNoError(t, err, "Unexpected Error")
+	assert.NoError(t, err, "Unexpected Error")
 	goassert.True(t, retrievedXattr["rev"].(string) == "2-466a1fab90a810dc0a63565b70680e4e")
 
 }
@@ -3685,7 +3686,7 @@ func TestUnsupportedConfig(t *testing.T) {
 	goassert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(&testProviderOnlyConfig)
-	assertNoError(t, err, "Error adding testProviderOnly database.")
+	assert.NoError(t, err, "Error adding testProviderOnly database.")
 
 	viewsOnlyJSON := `{"name": "views_only",
         			"server": "walrus:",
@@ -3702,7 +3703,7 @@ func TestUnsupportedConfig(t *testing.T) {
 	goassert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(&viewsOnlyConfig)
-	assertNoError(t, err, "Error adding viewsOnlyConfig database.")
+	assert.NoError(t, err, "Error adding viewsOnlyConfig database.")
 
 	viewsAndTestJSON := `{"name": "views_and_test",
         			"server": "walrus:",
@@ -3723,7 +3724,7 @@ func TestUnsupportedConfig(t *testing.T) {
 	goassert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(&viewsAndTestConfig)
-	assertNoError(t, err, "Error adding viewsAndTestConfig database.")
+	assert.NoError(t, err, "Error adding viewsAndTestConfig database.")
 
 	sc.Close()
 }

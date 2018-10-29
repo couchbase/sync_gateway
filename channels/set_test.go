@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestIsValidChannel(t *testing.T) {
@@ -42,7 +43,7 @@ func TestSetFromArray(t *testing.T) {
 	}
 	for _, cas := range cases {
 		channels, err := SetFromArray(cas[0], RemoveStar)
-		assertNoError(t, err, "SetFromArray failed")
+		assert.NoError(t, err, "SetFromArray failed")
 		goassert.DeepEquals(t, channels, SetOf(cas[1]...))
 	}
 }
@@ -59,14 +60,14 @@ func TestSetFromArrayWithStar(t *testing.T) {
 	}
 	for _, cas := range cases {
 		channels, err := SetFromArray(cas[0], ExpandStar)
-		assertNoError(t, err, "SetFromArray failed")
+		assert.NoError(t, err, "SetFromArray failed")
 		goassert.DeepEquals(t, channels, SetOf(cas[1]...))
 	}
 }
 
 func TestSetFromArrayError(t *testing.T) {
 	_, err := SetFromArray([]string{""}, RemoveStar)
-	assertTrue(t, err != nil, "SetFromArray didn't return an error")
+	assert.True(t, err != nil, "SetFromArray didn't return an error")
 	_, err = SetFromArray([]string{"chan1", "chan2", "bogus,name", "chan3"}, RemoveStar)
-	assertTrue(t, err != nil, "SetFromArray didn't return an error")
+	assert.True(t, err != nil, "SetFromArray didn't return an error")
 }

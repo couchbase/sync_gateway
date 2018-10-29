@@ -6,6 +6,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRevisionCache(t *testing.T) {
@@ -115,7 +116,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 		BodyRevisions: "unexpected data",
 	}
 	rev1id, err := db.Put("doc1", rev1body)
-	assertNoError(t, err, "Put")
+	assert.NoError(t, err, "Put")
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
 	var bucketBody Body
@@ -127,7 +128,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	// Get the doc while still resident in the rev cache w/ history=false, validate _revisions property isn't found
 	body, err := db.GetRev("doc1", rev1id, false, nil)
-	assertNoError(t, err, "GetRev")
+	assert.NoError(t, err, "GetRev")
 	badRevisions, ok := body[BodyRevisions]
 	if ok {
 		t.Errorf("_revisions property still present in document retrieved from rev cache: %s", badRevisions)
@@ -136,7 +137,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	// Get the doc while still resident in the rev cache w/ history=true, validate _revisions property is returned with expected
 	// properties ("start", "ids")
 	bodyWithHistory, err := db.GetRev("doc1", rev1id, true, nil)
-	assertNoError(t, err, "GetRev")
+	assert.NoError(t, err, "GetRev")
 	validRevisions, ok := bodyWithHistory[BodyRevisions]
 	if !ok {
 		t.Errorf("Expected _revisions property not found in document retrieved from rev cache: %s", validRevisions)

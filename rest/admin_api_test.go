@@ -27,6 +27,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
@@ -997,7 +998,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 	}()
 
 	err := WaitWithTimeout(&wg, time.Second*30)
-	assertNoError(t, err, "Error waiting for waitgroup")
+	assert.NoError(t, err, "Error waiting for waitgroup")
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1269,7 +1270,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 
 	// Wait for DB to come online (retry loop)
 	errDbOnline := rt.WaitForDBOnline()
-	assertNoError(t, errDbOnline, "Error waiting for db to come online")
+	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
 
 }
 
@@ -1311,7 +1312,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 
 	// Wait for DB to come online (retry loop)
 	errDbOnline := rt.WaitForDBOnline()
-	assertNoError(t, errDbOnline, "Error waiting for db to come online")
+	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
 
 }
 
@@ -1353,7 +1354,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 
 	// Wait for DB to come online (retry loop)
 	errDbOnline := rt.WaitForDBOnline()
-	assertNoError(t, errDbOnline, "Error waiting for db to come online")
+	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1365,7 +1366,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 
 	// Wait for DB to come online (retry loop)
 	errDbOnline = rt.WaitForDBOnline()
-	assertNoError(t, errDbOnline, "Error waiting for db to come online")
+	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
 
 }
 
@@ -1543,7 +1544,7 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
 
 	changes, err := rt.WaitForChanges(2, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
-	assertNoError(t, err, "Error waiting for changes")
+	assert.NoError(t, err, "Error waiting for changes")
 	goassert.Equals(t, changes.Results[0].ID, "doc1")
 	goassert.Equals(t, changes.Results[1].ID, "doc2")
 
@@ -1555,7 +1556,7 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
 
 	changes, err = rt.WaitForChanges(1, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
-	assertNoError(t, err, "Error waiting for changes")
+	assert.NoError(t, err, "Error waiting for changes")
 	goassert.Equals(t, changes.Results[0].ID, "doc2")
 
 }

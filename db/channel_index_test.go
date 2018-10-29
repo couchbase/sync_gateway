@@ -23,6 +23,7 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 )
 
 type channelIndexTest struct {
@@ -593,17 +594,17 @@ func TestChannelVbucketMappings(t *testing.T) {
 	defer index.indexBucket.Close()
 
 	err := verifyVBMapping(index.indexBucket, "foo")
-	assertTrue(t, err == nil, "inconsistent hash")
+	assert.True(t, err == nil, "inconsistent hash")
 
 	err = verifyVBMapping(index.indexBucket, "SomeVeryLongChannelNameInCaseLengthIsSomehowAFactor")
-	assertTrue(t, err == nil, "inconsistent hash")
+	assert.True(t, err == nil, "inconsistent hash")
 	err = verifyVBMapping(index.indexBucket, "Punc-tu-@-tio-n")
-	assertTrue(t, err == nil, "inconsistent hash")
+	assert.True(t, err == nil, "inconsistent hash")
 	err = verifyVBMapping(index.indexBucket, "more::punc::tu::a::tion")
-	assertTrue(t, err == nil, "inconsistent hash")
+	assert.True(t, err == nil, "inconsistent hash")
 
 	err = verifyVBMapping(index.indexBucket, "1")
-	assertTrue(t, err == nil, "inconsistent hash")
+	assert.True(t, err == nil, "inconsistent hash")
 
 	log.Printf("checks out")
 }

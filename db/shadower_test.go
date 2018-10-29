@@ -11,6 +11,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func makeExternalBucket() base.TestBucket {
@@ -28,7 +29,7 @@ func waitFor(t *testing.T, condition func() bool) bool {
 	var start = time.Now()
 	for !condition() {
 		if time.Since(start) >= 15*time.Second {
-			assertFailed(t, "Timeout!")
+			t.Fatal("Timeout!")
 			return false
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -54,7 +55,7 @@ func TestShadowerPull(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
 	t.Logf("Waiting for shadower to catch up...")
@@ -115,7 +116,7 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
 	t.Logf("Waiting for shadower to catch up...")
@@ -171,12 +172,12 @@ func TestShadowerPush(t *testing.T) {
 
 	var err error
 	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 
 	key1rev1, err := db.Put("key1", Body{"aaa": "bbb"})
-	assertNoError(t, err, "Put")
+	assert.NoError(t, err, "Put")
 	_, err = db.Put("key2", Body{"ccc": "ddd"})
-	assertNoError(t, err, "Put")
+	assert.NoError(t, err, "Put")
 
 	t.Log("Waiting for shadower to catch up...")
 	var doc1, doc2 Body
@@ -221,7 +222,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 
 	var err error
 	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 
 	// Push an existing doc revision (the way a client's push replicator would)
 	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"}, false)
@@ -255,7 +256,7 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 
 	var err error
 	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 
 	// Push an existing doc revision (the way a client's push replicator would)
 	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"}, false)
@@ -317,7 +318,7 @@ func TestShadowerPattern(t *testing.T) {
 
 	pattern, _ := regexp.Compile(`key\d+`)
 	shadower, err := NewShadower(db.DatabaseContext, bucket, pattern)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
 	t.Logf("Waiting for shadower to catch up...")
@@ -326,10 +327,10 @@ func TestShadowerPattern(t *testing.T) {
 		return seq >= 2
 	})
 	doc1, err := db.GetDocument("key1", DocUnmarshalAll)
-	assertNoError(t, err, fmt.Sprintf("Error getting key1: %v", err))
+	assert.NoError(t, err, fmt.Sprintf("Error getting key1: %v", err))
 	docI, _ := db.GetDocument("ignorekey", DocUnmarshalAll)
 	doc2, err := db.GetDocument("key2", DocUnmarshalAll)
-	assertNoError(t, err, fmt.Sprintf("Error getting key2: %v", err))
+	assert.NoError(t, err, fmt.Sprintf("Error getting key2: %v", err))
 
 	goassert.DeepEquals(t, doc1.Body(), Body{"foo": json.Number("1")})
 	goassert.True(t, docI == nil)

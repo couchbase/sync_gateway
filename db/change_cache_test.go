@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func e(seq uint64, docid string, revid string) *LogEntry {
@@ -303,7 +304,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	case <-successChan:
 		log.Println("notification successful")
 	case <-time.After(time.Second * 3):
-		assertFailed(t, "No notification after 3 seconds")
+		t.Fatal("No notification after 3 seconds")
 	}
 
 }
@@ -337,7 +338,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	db.changeCache.waitForSequenceID(SequenceID{Seq: 6}, base.DefaultWaitForSequenceTesting)
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
-	assertNoError(t, err, "Couldn't GetChanges")
+	assert.NoError(t, err, "Couldn't GetChanges")
 	goassert.Equals(t, len(changes), 4)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
@@ -452,7 +453,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	for {
 		nextEntry, err := readNextFromFeed(feed, 5*time.Second)
 		log.Printf("Read changes entry: %v", nextEntry)
-		assertNoError(t, err, "Error reading next change entry from feed")
+		assert.NoError(t, err, "Error reading next change entry from feed")
 		if err != nil {
 			break
 		}
@@ -492,9 +493,9 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	assertTrue(t, authenticator != nil, "db.Authenticator() returned nil")
+	assert.True(t, authenticator != nil, "db.Authenticator() returned nil")
 	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC", "PBS", "NBC", "TBS"))
-	assertNoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
+	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
 	authenticator.Save(user)
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -559,7 +560,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC"))
-	assertNoError(t, err, fmt.Sprintf("db.Authenticator() returned err: %v", err))
+	assert.NoError(t, err, fmt.Sprintf("db.Authenticator() returned err: %v", err))
 	authenticator.Save(user)
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -657,7 +658,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	goassert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
 	_, err = db.UpdatePrincipal(*userInfo, true, true)
-	assertNoError(t, err, "UpdatePrincipal failed")
+	assert.NoError(t, err, "UpdatePrincipal failed")
 
 	WriteDirect(db, []string{"PBS"}, 9)
 
@@ -665,7 +666,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	time.Sleep(500 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequenceTesting)
-	assertNoError(t, err, "Expected more changes to be sent on feed, but never received")
+	assert.NoError(t, err, "Expected more changes to be sent on feed, but never received")
 	goassert.Equals(t, len(changes), 7)
 	goassert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"}))
 	// Notes:
@@ -694,9 +695,9 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	assertTrue(t, authenticator != nil, "db.Authenticator() returned nil")
+	assert.True(t, authenticator != nil, "db.Authenticator() returned nil")
 	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC", "PBS", "NBC", "TBS"))
-	assertNoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
+	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
 	authenticator.Save(user)
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -890,7 +891,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 3)
 
 	changeCache, ok := db.changeCache.(*changeCache)
-	assertTrue(t, ok, "Testing skipped sequences without a change cache")
+	assert.True(t, ok, "Testing skipped sequences without a change cache")
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
 	changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
@@ -900,7 +901,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	// Validate that 3 is in the channel cache, 5 isn't
 	db.changeCache.waitForSequenceID(SequenceID{Seq: 3}, base.DefaultWaitForSequenceTesting)
 	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
-	assertNoError(t, err, "Get Changes returned error")
+	assert.NoError(t, err, "Get Changes returned error")
 	goassert.Equals(t, len(entries), 1)
 	goassert.Equals(t, entries[0].DocID, "doc-3")
 
@@ -937,7 +938,7 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 3)
 
 	changeCache, ok := db.changeCache.(*changeCache)
-	assertTrue(t, ok, "Testing skipped sequences without a change cache")
+	assert.True(t, ok, "Testing skipped sequences without a change cache")
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
 	changeCache.skippedSeqLock.Lock()
@@ -990,12 +991,12 @@ func TestChannelCacheSize(t *testing.T) {
 	db.changeCache.waitForSequence(750, base.DefaultWaitForSequenceTesting)
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: SequenceID{Seq: 0}})
-	assertNoError(t, err, "Couldn't GetChanges")
+	assert.NoError(t, err, "Couldn't GetChanges")
 	goassert.Equals(t, len(changes), 750)
 
 	// Validate that cache stores the expected number of values
 	changeCache, ok := db.changeCache.(*changeCache)
-	assertTrue(t, ok, "Testing skipped sequences without a change cache")
+	assert.True(t, ok, "Testing skipped sequences without a change cache")
 	abcCache := changeCache.channelCaches["ABC"]
 	goassert.Equals(t, len(abcCache.logs), 600)
 }
@@ -1222,7 +1223,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 		Sequence:   3,
 	}
 	doc1Bytes, err := doc1.MarshalJSON()
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 
 	// Create doc2 w/ sequence 2, channel ABC
 	doc2Id := "doc2Id"
@@ -1238,7 +1239,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 		Channels:   channelMap,
 	}
 	doc2Bytes, err := doc2.MarshalJSON()
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 
 	// Send feed event for doc2. This won't trigger notifyChange, as buffering is waiting for seq 1
 	feedEventDoc2 := sgbucket.FeedEvent{

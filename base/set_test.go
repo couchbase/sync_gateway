@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	goassert "github.com/couchbaselabs/go.assert"
-	"runtime/debug"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSetFromArray(t *testing.T) {
@@ -74,17 +74,17 @@ func TestSetMarshal(t *testing.T) {
 		Channels Set
 	}
 	bytes, err := json.Marshal(str)
-	assertNoError(t, err, "Marshal")
+	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":null}`)
 
 	str.Channels = SetOf()
 	bytes, err = json.Marshal(str)
-	assertNoError(t, err, "Marshal")
+	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":[]}`)
 
 	str.Channels = SetOf("a", "b")
 	bytes, err = json.Marshal(str)
-	assertNoError(t, err, "Marshal")
+	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":["a","b"]}`)
 }
 
@@ -93,31 +93,15 @@ func TestSetUnmarshal(t *testing.T) {
 		Channels Set
 	}
 	err := json.Unmarshal([]byte(`{"channels":null}`), &str)
-	assertNoError(t, err, "Unmarshal")
+	assert.NoError(t, err, "Unmarshal")
 	goassert.DeepEquals(t, str.Channels, Set(nil))
 
 	err = json.Unmarshal([]byte(`{"channels":[]}`), &str)
-	assertNoError(t, err, "Unmarshal")
+	assert.NoError(t, err, "Unmarshal")
 	goassert.DeepEquals(t, str.Channels, SetOf())
 
 	err = json.Unmarshal([]byte(`{"channels":["foo"]}`), &str)
-	assertNoError(t, err, "Unmarshal")
+	assert.NoError(t, err, "Unmarshal")
 	goassert.DeepEquals(t, str.Channels.ToArray(), []string{"foo"})
 
-}
-
-//////// HELPERS:
-
-func assertNoError(t *testing.T, err error, message string) {
-	if err != nil {
-		debug.PrintStack()
-		t.Fatalf("%s: %v", message, err)
-	}
-}
-
-func assertTrue(t *testing.T, success bool, message string) {
-	if !success {
-		debug.PrintStack()
-		t.Fatalf("%s", message)
-	}
 }

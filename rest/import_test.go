@@ -13,6 +13,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func SkipImportTestsIfNotEnabled(t *testing.T) {
@@ -73,17 +74,17 @@ func TestXattrImportOldDoc(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	_, err := bucket.Add(key, 0, docBody)
-	assertNoError(t, err, "Unable to insert doc TestImportDelete")
+	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
 	response := rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
 	goassert.Equals(t, response.Code, 200)
 	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assertNoError(t, err, "Unable to unmarshal raw response")
-	assertTrue(t, rawInsertResponse.Sync.Channels != nil, "Expected channels not returned for SDK insert")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
+	assert.True(t, rawInsertResponse.Sync.Channels != nil, "Expected channels not returned for SDK insert")
 	log.Printf("insert channels: %+v", rawInsertResponse.Sync.Channels)
-	assertTrue(t, HasActiveChannel(rawInsertResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK insert")
+	assert.True(t, HasActiveChannel(rawInsertResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK insert")
 
 	// 2. Test oldDoc behaviour during SDK update
 
@@ -92,30 +93,30 @@ func TestXattrImportOldDoc(t *testing.T) {
 	updatedBody["channels"] = "HBO"
 
 	err = bucket.Set(key, 0, updatedBody)
-	assertNoError(t, err, "Unable to update doc TestImportDelete")
+	assert.NoError(t, err, "Unable to update doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
 	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
 	goassert.Equals(t, response.Code, 200)
 	var rawUpdateResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawUpdateResponse)
-	assertNoError(t, err, "Unable to unmarshal raw response")
-	assertTrue(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
+	assert.True(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
 	log.Printf("update channels: %+v", rawUpdateResponse.Sync.Channels)
-	assertTrue(t, HasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
+	assert.True(t, HasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
 
 	// 3. Test oldDoc behaviour during SDK delete
 	err = bucket.Delete(key)
-	assertNoError(t, err, "Unable to delete doc TestImportDelete")
+	assert.NoError(t, err, "Unable to delete doc TestImportDelete")
 
 	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
 	goassert.Equals(t, response.Code, 200)
 	var rawDeleteResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawDeleteResponse)
 	log.Printf("Post-delete: %s", response.Body.Bytes())
-	assertNoError(t, err, "Unable to unmarshal raw response")
-	assertTrue(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
-	assertTrue(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
+	assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
+	assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
 
 }
 
@@ -157,7 +158,7 @@ func TestXattrSGTombstone(t *testing.T) {
 	// 3. Attempt to retrieve the doc through the SDK
 	deletedValue := make(map[string]interface{})
 	_, err := bucket.Get(key, deletedValue)
-	assertTrue(t, err != nil, "Expected key not found error trying to retrieve document")
+	assert.True(t, err != nil, "Expected key not found error trying to retrieve document")
 
 }
 
@@ -208,7 +209,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 		sdkBody["test"] = "TestCasFailureImport"
 		sdkBody["SDK_write_count"] = i
 		err := bucket.Set(key, 0, sdkBody)
-		assertNoError(t, err, "Unexpected error doing SDK write")
+		assert.NoError(t, err, "Unexpected error doing SDK write")
 	}
 
 	// wait for SG write to happen
@@ -290,7 +291,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	docBody["channels"] = "ABC"
 
 	_, err := bucket.Add(key, 0, docBody)
-	assertNoError(t, err, "Unable to insert doc TestResurrectViaSDK")
+	assert.NoError(t, err, "Unable to insert doc TestResurrectViaSDK")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
 	rawPath := fmt.Sprintf("/db/_raw/%s", key)
@@ -298,18 +299,18 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	goassert.Equals(t, response.Code, 200)
 	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assertNoError(t, err, "Unable to unmarshal raw response")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
 
 	// 2. Delete the doc through the SDK
 	err = bucket.Delete(key)
-	assertNoError(t, err, "Unable to delete doc TestResurrectViaSDK")
+	assert.NoError(t, err, "Unable to delete doc TestResurrectViaSDK")
 
 	response = rt.SendAdminRequest("GET", rawPath, "")
 	goassert.Equals(t, response.Code, 200)
 	var rawDeleteResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawDeleteResponse)
 	log.Printf("Post-delete: %s", response.Body.Bytes())
-	assertNoError(t, err, "Unable to unmarshal raw response")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
 
 	// 3. Recreate the doc through the SDK (with different data)
 	updatedBody := make(map[string]interface{})
@@ -317,16 +318,16 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	updatedBody["channels"] = "HBO"
 
 	err = bucket.Set(key, 0, updatedBody)
-	assertNoError(t, err, "Unable to update doc TestResurrectViaSDK")
+	assert.NoError(t, err, "Unable to update doc TestResurrectViaSDK")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.
 	response = rt.SendAdminRequest("GET", rawPath, "")
 	goassert.Equals(t, response.Code, 200)
 	var rawUpdateResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawUpdateResponse)
-	assertNoError(t, err, "Unable to unmarshal raw response")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
 	_, ok := rawUpdateResponse.Sync.Channels["HBO"]
-	assertTrue(t, ok, "Didn't find expected channel (HBO) on resurrected doc")
+	assert.True(t, ok, "Didn't find expected channel (HBO) on resurrected doc")
 
 }
 
@@ -360,7 +361,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 	// 2. Delete the doc through the SDK
 	log.Printf("...............Delete through SDK.....................................")
 	deleteErr := bucket.Delete(key)
-	assertNoError(t, deleteErr, "Couldn't delete via SDK")
+	assert.NoError(t, deleteErr, "Couldn't delete via SDK")
 
 	log.Printf("...............Delete through SG.......................................")
 
@@ -415,7 +416,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	// 2. Delete SDK_delete through the SDK
 	log.Printf("...............Delete through SDK.....................................")
 	deleteErr := bucket.Delete(sdk_key)
-	assertNoError(t, deleteErr, "Couldn't delete via SDK")
+	assert.NoError(t, deleteErr, "Couldn't delete via SDK")
 
 	// Trigger import via SG retrieval
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s", sdk_key), "")
@@ -435,12 +436,12 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	// Attempt to retrieve via view.  Above operations were all synchronous (on-demand import of SDK delete, SG delete), so
 	// stale=false view results should be immediately updated.
 	results, err := rt.GetDatabase().ChannelViewTest("ABC", 1000, db.ChangesOptions{})
-	assertNoError(t, err, "Error issuing channel view query")
+	assert.NoError(t, err, "Error issuing channel view query")
 	for _, entry := range results {
 		log.Printf("Got view result: %v", entry)
 	}
 	goassert.Equals(t, len(results), 2)
-	assertTrue(t, strings.HasPrefix(results[0].RevID, "2-") && strings.HasPrefix(results[1].RevID, "2-"), "Unexpected revisions in view results post-delete")
+	assert.True(t, strings.HasPrefix(results[0].RevID, "2-") && strings.HasPrefix(results[1].RevID, "2-"), "Unexpected revisions in view results post-delete")
 }
 
 func TestXattrImportFilterOptIn(t *testing.T) {
@@ -465,14 +466,14 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
 	_, err := bucket.Add(mobileKey, 0, mobileBody)
-	assertNoError(t, err, "Error writing SDK doc")
+	assert.NoError(t, err, "Error writing SDK doc")
 
 	nonMobileKey := "TestImportFilterInvalid"
 	nonMobileBody := make(map[string]interface{})
 	nonMobileBody["type"] = "non-mobile"
 	nonMobileBody["channels"] = "ABC"
 	_, err = bucket.Add(nonMobileKey, 0, nonMobileBody)
-	assertNoError(t, err, "Error writing SDK doc")
+	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
 	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
@@ -511,7 +512,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	mobileBody := make(map[string]interface{})
 	mobileBody["channels"] = "ABC"
 	_, err := bucket.Add(mobileKey, 0, mobileBody)
-	assertNoError(t, err, "Error writing SDK doc")
+	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
 	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
@@ -520,21 +521,21 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	revId, ok := body[db.BodyRev].(string)
-	assertTrue(t, ok, "No rev included in response")
+	assert.True(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
 	_, cas, getErr := bucket.GetRaw(mobileKey)
-	assertNoError(t, getErr, "Error retrieving cas for multi-actor document")
+	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
-	assertTrue(t, ok, "Unable to cast bucket to gocb bucket")
+	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
 		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
 		Execute()
-	assertNoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
+	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
 	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
@@ -564,7 +565,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	mobileBody := make(map[string]interface{})
 	mobileBody["channels"] = "ABC"
 	_, err := bucket.Add(mobileKey, 0, mobileBody)
-	assertNoError(t, err, "Error writing SDK doc")
+	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
 	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
@@ -573,21 +574,21 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	revId, ok := body[db.BodyRev].(string)
-	assertTrue(t, ok, "No rev included in response")
+	assert.True(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
 	_, cas, getErr := bucket.GetRaw(mobileKey)
-	assertNoError(t, getErr, "Error retrieving cas for multi-actor document")
+	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
-	assertTrue(t, ok, "Unable to cast bucket to gocb bucket")
+	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
 		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
 		Execute()
-	assertNoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
+	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
 	// rev should have generation 2.
@@ -596,7 +597,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	json.Unmarshal(putResponse.Body.Bytes(), &body)
 	log.Printf("Put response details: %s", putResponse.Body.Bytes())
 	newRevId, ok := body["rev"].(string)
-	assertTrue(t, ok, "Unable to cast rev to string")
+	assert.True(t, ok, "Unable to cast rev to string")
 	log.Printf("Retrieved via Sync Gateway PUT after non-mobile update, revId:%v", newRevId)
 	goassert.Equals(t, newRevId, "2-04bb60e2d65acedb2a846daa0ce882ea")
 }
@@ -623,7 +624,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	mobileBody := make(map[string]interface{})
 	mobileBody["channels"] = "ABC"
 	_, err := bucket.Add(mobileKey, 0, mobileBody)
-	assertNoError(t, err, "Error writing SDK doc")
+	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Guarantees initial import is complete
 	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
@@ -632,11 +633,11 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	revId, ok := body[db.BodyRev].(string)
-	assertTrue(t, ok, "No rev included in response")
+	assert.True(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
 	_, cas, getErr := bucket.GetRaw(mobileKey)
-	assertNoError(t, getErr, "Error retrieving cas for multi-actor document")
+	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Check expvars before update
 	crcMatchesBefore, _ := base.GetExpvarAsInt("syncGateway_import", "crc32c_match_count")
@@ -646,11 +647,11 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
-	assertTrue(t, ok, "Unable to cast bucket to gocb bucket")
+	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
 		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
 		Execute()
-	assertNoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
+	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Wait until crc match count changes
 	var crcMatchesAfter, crcMismatchesAfter int
@@ -698,7 +699,7 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 	mobileBody["channels"] = "ABC"
 	mobileBody["largeNumber"] = uint64(9223372036854775807)
 	_, err := bucket.Add(mobileKey, 0, mobileBody)
-	assertNoError(t, err, "Error writing SDK doc")
+	assert.NoError(t, err, "Error writing SDK doc")
 
 	// 2. Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
 	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
@@ -773,7 +774,7 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 
 	// Create via the SDK with sync metadata intact
 	_, err := bucket.Add(key, 0, []byte(largeBodyString))
-	assertNoError(t, err, "Error writing doc w/ large inline revisions")
+	assert.NoError(t, err, "Error writing doc w/ large inline revisions")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
 	response := rt.SendAdminRequest("GET", "/db/"+key, "")
@@ -838,7 +839,7 @@ func TestMigrateTombstone(t *testing.T) {
 
 	// Create via the SDK with sync metadata intact
 	_, err := bucket.Add(key, 0, []byte(bodyString))
-	assertNoError(t, err, "Error writing tombstoned doc")
+	assert.NoError(t, err, "Error writing tombstoned doc")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
 	response := rt.SendAdminRequest("GET", "/db/"+key, "")
@@ -905,7 +906,7 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 
 	// Create via the SDK with sync metadata intact
 	_, err := bucket.Add(key, 0, []byte(largeBodyString))
-	assertNoError(t, err, "Error writing doc w/ large inline revisions")
+	assert.NoError(t, err, "Error writing doc w/ large inline revisions")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
 	response := rt.SendAdminRequest("GET", "/db/"+key, "")
@@ -946,15 +947,15 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	// Write directly to bucket with an expiry
 	expiryUnixEpoch := time.Now().Add(time.Second * 30).Unix()
 	_, err := bucket.Add(mobileKey, uint32(expiryUnixEpoch), mobileBody)
-	assertNoError(t, err, "Error writing SDK doc")
+	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Negative test case -- no expiry
 	_, err = bucket.Add(mobileKeyNoExpiry, 0, mobileBody)
-	assertNoError(t, err, "Error writing SDK doc")
+	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
 	changes, err := rt.WaitForChanges(2, "/db/_changes", "", true)
-	assertNoError(t, err, "Error waiting for changes")
+	assert.NoError(t, err, "Error waiting for changes")
 
 	log.Printf("changes: %+v", changes)
 	changeEntry := changes.Results[0]
@@ -967,12 +968,12 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	// Verify the expiry has been preserved after the import
 	gocbBucket, _ := base.AsGoCBBucket(bucket)
 	expiry, err := gocbBucket.GetExpiry(mobileKey)
-	assertNoError(t, err, "Error calling GetExpiry()")
+	assert.NoError(t, err, "Error calling GetExpiry()")
 	goassert.True(t, expiry == uint32(expiryUnixEpoch))
 
 	// Negative test case -- make sure no expiry was erroneously added by the the import
 	expiry, err = gocbBucket.GetExpiry(mobileKeyNoExpiry)
-	assertNoError(t, err, "Error calling GetExpiry()")
+	assert.NoError(t, err, "Error calling GetExpiry()")
 	goassert.True(t, expiry == 0)
 
 }
@@ -1001,13 +1002,13 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	testExpiry := time.Now().Add(expirySeconds)
 	bodyString := rawDocWithSyncMeta()
 	_, err := bucket.Add(key, uint32(testExpiry.Unix()), []byte(bodyString))
-	assertNoError(t, err, "Error writing doc w/ expiry")
+	assert.NoError(t, err, "Error writing doc w/ expiry")
 
 	// Wait for doc to appear on changes feed
 	// Wait until the change appears on the changes feed to ensure that it's been imported by this point
 	now := time.Now()
 	changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
-	assertNoError(t, err, "Error waiting for changes")
+	assert.NoError(t, err, "Error waiting for changes")
 	changeEntry := changes.Results[0]
 	goassert.Equals(t, changeEntry.ID, key)
 	log.Printf("Saw doc on changes feed after %v", time.Since(now))
@@ -1019,7 +1020,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	gocbBucket, _ := base.AsGoCBBucket(bucket)
 	expiry, err := gocbBucket.GetExpiry(key)
 	goassert.True(t, expiry > 0)
-	assertNoError(t, err, "Error calling getExpiry()")
+	assert.NoError(t, err, "Error calling getExpiry()")
 	log.Printf("expiry: %v", expiry)
 	goassert.True(t, expiry == uint32(testExpiry.Unix()))
 
@@ -1043,7 +1044,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	triggerOnDemandViaWrite := func(key string) {
 		mobileBody["foo"] = "bar"
 		mobileBodyMarshalled, err := json.Marshal(mobileBody)
-		assertNoError(t, err, "Error marshalling body")
+		assert.NoError(t, err, "Error marshalling body")
 		rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), string(mobileBodyMarshalled))
 	}
 
@@ -1082,12 +1083,12 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			// Write directly to bucket with an expiry
 			expiryUnixEpoch := time.Now().Add(time.Second * 30).Unix()
 			_, err := bucket.Add(key, uint32(expiryUnixEpoch), mobileBody)
-			assertNoError(t, err, "Error writing SDK doc")
+			assert.NoError(t, err, "Error writing SDK doc")
 
 			// Verify the expiry before the on-demand import is triggered
 			gocbBucket, _ := base.AsGoCBBucket(bucket)
 			expiry, err := gocbBucket.GetExpiry(key)
-			assertNoError(t, err, "Error calling GetExpiry()")
+			assert.NoError(t, err, "Error calling GetExpiry()")
 			goassert.True(t, expiry == uint32(expiryUnixEpoch))
 
 			testCase.onDemandCallback(key)
@@ -1095,7 +1096,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			// Wait until the change appears on the changes feed to ensure that it's been imported by this point.
 			// This is probably unnecessary in the case of on-demand imports, but it doesn't hurt to leave it in as a double check.
 			changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
-			assertNoError(t, err, "Error waiting for changes")
+			assert.NoError(t, err, "Error waiting for changes")
 			changeEntry := changes.Results[0]
 			goassert.Equals(t, changeEntry.ID, key)
 
@@ -1104,7 +1105,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 			// Verify the expiry has not been changed from the original expiry value
 			expiry, err = gocbBucket.GetExpiry(key)
-			assertNoError(t, err, "Error calling GetExpiry()")
+			assert.NoError(t, err, "Error calling GetExpiry()")
 			goassert.True(t, expiry == uint32(expiryUnixEpoch))
 
 		})
@@ -1166,7 +1167,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			syncMetaExpiry := time.Now().Add(expirySeconds)
 			bodyString := rawDocWithSyncMeta()
 			_, err := bucket.Add(key, uint32(syncMetaExpiry.Unix()), []byte(bodyString))
-			assertNoError(t, err, "Error writing doc w/ expiry")
+			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			testCase.onDemandCallback(key)
 
@@ -1176,7 +1177,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			// Now get the doc expiry and validate that it has been migrated into the doc metadata
 			gocbBucket, _ := base.AsGoCBBucket(bucket)
 			expiry, err := gocbBucket.GetExpiry(key)
-			assertNoError(t, err, "Error calling GetExpiry()")
+			assert.NoError(t, err, "Error calling GetExpiry()")
 			goassert.True(t, expiry > 0)
 			log.Printf("expiry: %v", expiry)
 			goassert.True(t, expiry == uint32(syncMetaExpiry.Unix()))
@@ -1219,7 +1220,7 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 	nonMobileBody["type"] = "non-mobile"
 	nonMobileBody["channels"] = "ABC"
 	err := bucket.Set(sgWriteKey, 0, nonMobileBody)
-	assertNoError(t, err, "Error updating SG doc from SDK ")
+	assert.NoError(t, err, "Error updating SG doc from SDK ")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
 
@@ -1252,7 +1253,7 @@ func TestImportBinaryDoc(t *testing.T) {
 	// 1. Write a binary doc through the SDK
 	rawBytes := []byte("some bytes")
 	err := bucket.SetRaw("binaryDoc", 0, rawBytes)
-	assertNoError(t, err, "Error writing binary doc through the SDK")
+	assert.NoError(t, err, "Error writing binary doc through the SDK")
 
 	// 2. Ensure we can't retrieve the document via SG
 	response := rt.SendAdminRequest("GET", "/db/binaryDoc", "")
@@ -1282,14 +1283,14 @@ func TestImportRevisionCopy(t *testing.T) {
 
 	// 1. Create via SDK
 	_, err := bucket.Add(key, 0, docBody)
-	assertNoError(t, err, "Unable to insert doc TestImportDelete")
+	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// 2. Trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	goassert.Equals(t, response.Code, 200)
 	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assertNoError(t, err, "Unable to unmarshal raw response")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev
 
 	// 3. Update via SDK
@@ -1297,13 +1298,13 @@ func TestImportRevisionCopy(t *testing.T) {
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
 	err = bucket.Set(key, 0, updatedBody)
-	assertNoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
+	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 4. Trigger import of update via SG retrieval
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	goassert.Equals(t, response.Code, 200)
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assertNoError(t, err, "Unable to unmarshal raw response")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
@@ -1337,14 +1338,14 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 	// 1. Create via SDK
 	_, err := bucket.Add(key, 0, docBody)
-	assertNoError(t, err, "Unable to insert doc TestImportDelete")
+	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// 2. Trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	goassert.Equals(t, response.Code, 200)
 	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assertNoError(t, err, "Unable to unmarshal raw response")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev
 
 	// 3. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
@@ -1356,13 +1357,13 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
 	err = bucket.Set(key, 0, updatedBody)
-	assertNoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
+	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 5. Trigger import of update via SG retrieval
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	goassert.Equals(t, response.Code, 200)
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assertNoError(t, err, "Unable to unmarshal raw response")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
 
 	// 6. Attempt to retrieve previous revision body.  Should return missing, as rev wasn't in rev cache when import occurred.
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s?rev=%s", key, rev1id), "")
@@ -1390,14 +1391,14 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 
 	// 1. Create via SDK
 	_, err := bucket.Add(key, 0, docBody)
-	assertNoError(t, err, "Unable to insert doc TestImportDelete")
+	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// 2. Trigger import via SG retrieval
 	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	goassert.Equals(t, response.Code, 200)
 	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assertNoError(t, err, "Unable to unmarshal raw response")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
 	rev1id := rawInsertResponse.Sync.Rev
 
 	// 3. Update via SDK
@@ -1405,13 +1406,13 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	updatedBody["test"] = "TestImportRevisionCopyModified"
 	updatedBody["channels"] = "DEF"
 	err = bucket.Set(key, 0, updatedBody)
-	assertNoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
+	assert.NoError(t, err, fmt.Sprintf("Unable to update doc %s", key))
 
 	// 4. Trigger import of update via SG retrieval
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
 	goassert.Equals(t, response.Code, 200)
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
-	assertNoError(t, err, "Unable to unmarshal raw response")
+	assert.NoError(t, err, "Unable to unmarshal raw response")
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
@@ -1438,7 +1439,7 @@ func TestDcpBackfill(t *testing.T) {
 	docBody["type"] = "sdk_write"
 	for i := 0; i < 2500; i++ {
 		err := bucket.Set(fmt.Sprintf("doc_%d", i), 0, docBody)
-		assertNoError(t, err, fmt.Sprintf("error setting doc_%d", i))
+		assert.NoError(t, err, fmt.Sprintf("error setting doc_%d", i))
 	}
 
 	// Close the previous test context
@@ -1471,7 +1472,7 @@ func TestDcpBackfill(t *testing.T) {
 			time.Sleep(1 * time.Second)
 		}
 	}
-	assertTrue(t, backfillComplete, fmt.Sprintf("Backfill didn't complete after 20s. Latest: %d/%d", completedBackfill, expectedBackfill))
+	assert.True(t, backfillComplete, fmt.Sprintf("Backfill didn't complete after 20s. Latest: %d/%d", completedBackfill, expectedBackfill))
 
 	log.Printf("done...%s  (%d/%d)", newRt.ServerContext().Database("db").Name, completedBackfill, expectedBackfill)
 
@@ -1480,9 +1481,9 @@ func TestDcpBackfill(t *testing.T) {
 func assertDocProperty(t *testing.T, getDocResponse *TestResponse, propertyName string, expectedPropertyValue interface{}) {
 	var responseBody map[string]interface{}
 	err := json.Unmarshal(getDocResponse.Body.Bytes(), &responseBody)
-	assertNoError(t, err, "Error unmarshalling document response")
+	assert.NoError(t, err, "Error unmarshalling document response")
 	value, ok := responseBody[propertyName]
-	assertTrue(t, ok, fmt.Sprintf("Expected property %s not found in response %s", propertyName, getDocResponse.Body.Bytes()))
+	assert.True(t, ok, fmt.Sprintf("Expected property %s not found in response %s", propertyName, getDocResponse.Body.Bytes()))
 	goassert.Equals(t, value, expectedPropertyValue)
 }
 
@@ -1518,7 +1519,7 @@ func rawDocWithSyncMeta() string {
 func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
 	_, err := bucket.GetWithXattr(key, "_sync", nil, &xattr)
-	assertNoError(t, err, "Error Getting Xattr")
+	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	goassert.True(t, ok)
 	generation, _ := db.ParseRevID(revision.(string))

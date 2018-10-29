@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestChangesAccessNotifyInteger(t *testing.T) {
@@ -131,7 +132,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
 	changesResponse := it.Send(requestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))
 	err := json.Unmarshal(changesResponse.Body.Bytes(), &initialChanges)
-	assertNoError(t, err, "Unexpected error unmarshalling initialChanges")
+	assert.NoError(t, err, "Unexpected error unmarshalling initialChanges")
 	lastSeq := initialChanges.Last_Seq.String()
 	goassert.Equals(t, lastSeq, "1")
 

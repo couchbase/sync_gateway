@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 var numShards = uint16(64)
@@ -72,7 +73,7 @@ func TestShardedSequenceClockCasError(t *testing.T) {
 
 	updateClock2 := NewSequenceClockImpl()
 	updateClock2.SetSequence(51, 101)
-	assertNoError(t, shardedClock2.UpdateAndWrite(updateClock2.ValueAsMap()), "Second update failed")
+	assert.NoError(t, shardedClock2.UpdateAndWrite(updateClock2.ValueAsMap()), "Second update failed")
 
 	// Validate sequence
 	postUpdateClock := shardedClock2.AsClock()
@@ -92,7 +93,7 @@ func TestShardedSequenceClockCasError(t *testing.T) {
 	// Check the partition contents directly from the bucket
 	key := "_idx_c:myClock:clock-3"
 	bytes, _, err := bucket.GetRaw(key)
-	assertTrue(t, err == nil, fmt.Sprintf("Error retrieving partition from bucket:%v", err))
+	assert.True(t, err == nil, fmt.Sprintf("Error retrieving partition from bucket:%v", err))
 
 	partition := NewShardedClockPartitionForBytes(key, bytes, indexPartitions)
 	goassert.Equals(t, partition.GetSequence(50), uint64(100))

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSgcollectFilename(t *testing.T) {
@@ -18,14 +19,14 @@ func TestSgcollectFilename(t *testing.T) {
 
 	pattern := `^sgcollectinfo\-\d{4}\-\d{2}\-\d{2}t\d{6}\-sga?@(\d{1,3}\.){4}zip$`
 	matched, err := regexp.Match(pattern, []byte(filename))
-	assertNoError(t, err, "unexpected regexp error")
-	assertTrue(t, matched, fmt.Sprintf("Filename: %s did not match pattern: %s", filename, pattern))
+	assert.NoError(t, err, "unexpected regexp error")
+	assert.True(t, matched, fmt.Sprintf("Filename: %s did not match pattern: %s", filename, pattern))
 }
 
 func TestSgcollectOptionsValidate(t *testing.T) {
 
 	binPath, err := os.Executable()
-	assertNoError(t, err, "unexpected error getting executable path")
+	assert.NoError(t, err, "unexpected error getting executable path")
 
 	tests := []struct {
 		options     *sgCollectOptions
@@ -103,7 +104,7 @@ func TestSgcollectOptionsValidate(t *testing.T) {
 
 func TestSgcollectOptionsArgs(t *testing.T) {
 	binPath, err := os.Executable()
-	assertNoError(t, err, "unexpected error getting executable path")
+	assert.NoError(t, err, "unexpected error getting executable path")
 
 	tests := []struct {
 		options      *sgCollectOptions

@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDesignDocs(t *testing.T) {
@@ -71,7 +72,7 @@ func TestViewQuery(t *testing.T) {
 	// The wait is needed here because the query does not have stale=false.
 	// TODO: update the query to use stale=false and remove the wait
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
-	assertNoError(t, err, "Got unexpected error")
+	assert.NoError(t, err, "Got unexpected error")
 	json.Unmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 2)
 	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
@@ -110,7 +111,7 @@ func TestViewQueryMultipleViews(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_age")
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, len(result.Rows), 2)
 	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
 	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
@@ -142,13 +143,13 @@ func TestViewQueryUserAccess(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
-	assertNoError(t, err, "Unexpected error in WaitForNAdminViewResults")
+	assert.NoError(t, err, "Unexpected error in WaitForNAdminViewResults")
 	goassert.Equals(t, len(result.Rows), 2)
 	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
 	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
-	assertNoError(t, err, "Unexpected error in WaitForNAdminViewResults")
+	assert.NoError(t, err, "Unexpected error in WaitForNAdminViewResults")
 
 	goassert.Equals(t, len(result.Rows), 2)
 	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
@@ -161,7 +162,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	a.Save(testUser)
 
 	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
-	assertNoError(t, err, "Unexpected error in WaitForNUserViewResults")
+	assert.NoError(t, err, "Unexpected error in WaitForNUserViewResults")
 
 	goassert.Equals(t, len(result.Rows), 2)
 	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
@@ -238,7 +239,7 @@ func TestUserViewQuery(t *testing.T) {
 	// Have the user query the view:
 
 	result, err := rt.WaitForNUserViewResults(1, "/db/_design/foo/_view/bar?include_docs=true", quinn, password)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, len(result.Rows), 1)
 	goassert.Equals(t, result.TotalRows, 1)
 	row := result.Rows[0]
@@ -254,7 +255,7 @@ func TestUserViewQuery(t *testing.T) {
 	// Admin should see both rows:
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, len(result.Rows), 2)
 	row = result.Rows[0]
 	goassert.Equals(t, row.Key, float64(7))
@@ -304,7 +305,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 
 	// Admin view query:
 	result, err := rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 
 	// we should get 1 row with the reduce result
 	goassert.Equals(t, len(result.Rows), 1)
@@ -349,7 +350,7 @@ func TestAdminReduceSumQuery(t *testing.T) {
 
 	// Admin view query:
 	result, err := rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?reduce=true")
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 
 	// we should get 1 row with the reduce result
 	goassert.Equals(t, len(result.Rows), 1)
@@ -380,7 +381,7 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 
 	// Admin view query:
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?reduce=true&group=true")
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 
 	// we should get 2 row with the reduce result
 	goassert.Equals(t, len(result.Rows), 2)
@@ -402,7 +403,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 	// Create a view
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
 	assertStatus(t, response, 201)
-	assertNoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/bar"), "Error waiting for view availability")
+	assert.NoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/bar"), "Error waiting for view availability")
 
 	// Create a doc
 	response = rt.SendAdminRequest("PUT", "/db/query_with_keys", `{"key":"channel_a", "value":99}`)
@@ -439,7 +440,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	// Create a view
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"composite_key_test": {"map": "function(doc) {emit([doc.key, doc.seq], doc.value);}"}}}`)
 	assertStatus(t, response, 201)
-	assertNoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/composite_key_test"), "Error waiting for view availability")
+	assert.NoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/composite_key_test"), "Error waiting for view availability")
 
 	// Create a doc
 	response = rt.SendAdminRequest("PUT", "/db/doc_composite_key", `{"key":"channel_a", "seq":55, "value":99}`)
@@ -475,7 +476,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	// Create a view
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"int_key_test": {"map": "function(doc) {emit(doc.seq, doc.value);}"}}}`)
 	assertStatus(t, response, 201)
-	assertNoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/int_key_test"), "Error waiting for view availability")
+	assert.NoError(t, rt.WaitForViewAvailable("/db/_design/foo/_view/int_key_test"), "Error waiting for view availability")
 
 	// Create a doc
 	response = rt.SendAdminRequest("PUT", "/db/doc_int_key", `{"key":"channel_a", "seq":55, "value":99}`)
@@ -522,7 +523,7 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 
 	// Admin view query:
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?reduce=true&group_level=2")
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 
 	// we should get 2 row with the reduce result
 	goassert.Equals(t, len(result.Rows), 2)
@@ -544,20 +545,20 @@ func TestPostInstallCleanup(t *testing.T) {
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
-	assertNoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
+	assert.NoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
 
 	err = bucket.PutDDoc(db.DesignDocSyncHousekeepingPrefix, sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"all_docs": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
-	assertNoError(t, err, "Unable to create design doc (DesignDocSyncHousekeepingPrefix)")
+	assert.NoError(t, err, "Unable to create design doc (DesignDocSyncHousekeepingPrefix)")
 
 	// Run post-upgrade in preview mode
 	var postUpgradeResponse PostUpgradeResponse
 	response := rt.SendAdminRequest("POST", "/_post_upgrade?preview=true", "")
 	assertStatus(t, response, 200)
-	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	goassert.Equals(t, postUpgradeResponse.Preview, true)
 	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 2)
 
@@ -565,7 +566,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest("POST", "/_post_upgrade", "")
 	assertStatus(t, response, 200)
-	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	goassert.Equals(t, postUpgradeResponse.Preview, false)
 	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 2)
 
@@ -573,7 +574,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest("POST", "/_post_upgrade?preview=true", "")
 	assertStatus(t, response, 200)
-	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	goassert.Equals(t, postUpgradeResponse.Preview, true)
 	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 0)
 
@@ -581,7 +582,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest("POST", "/_post_upgrade", "")
 	assertStatus(t, response, 200)
-	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	goassert.Equals(t, postUpgradeResponse.Preview, false)
 	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 0)
 

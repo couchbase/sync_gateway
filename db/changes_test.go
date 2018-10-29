@@ -10,18 +10,17 @@
 package db
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"testing"
 	"time"
 
-	goassert "github.com/couchbaselabs/go.assert"
-
-	"bytes"
-	"fmt"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 // Unit test for bug #314
@@ -54,7 +53,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	goassert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
 	_, err = db.UpdatePrincipal(*userInfo, true, true)
-	assertNoError(t, err, "UpdatePrincipal failed")
+	assert.NoError(t, err, "UpdatePrincipal failed")
 
 	// Check the _changes feed:
 	db.changeCache.waitForSequence(1, base.DefaultWaitForSequenceTesting)
@@ -65,7 +64,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	}
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
-	assertNoError(t, err, "Couldn't GetChanges")
+	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	time.Sleep(1000 * time.Millisecond)
 	goassert.Equals(t, len(changes), 3)
@@ -93,7 +92,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting)
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 
-	assertNoError(t, err, "Couldn't GetChanges (2nd)")
+	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
 	goassert.Equals(t, len(changes), 1)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{
@@ -103,7 +102,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// validate from zero
 	changes, err = db.GetChanges(base.SetOf("*"), getZeroSequence(db))
-	assertNoError(t, err, "Couldn't GetChanges")
+	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 
 }
@@ -162,7 +161,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	}
 	db.user, _ = authenticator.GetUser("alice")
 	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
-	assertNoError(t, err, "Couldn't GetChanges")
+	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	time.Sleep(1000 * time.Millisecond)
 	goassert.Equals(t, len(changes), 1)
@@ -206,7 +205,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting)
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 
-	assertNoError(t, err, "Couldn't GetChanges (2nd)")
+	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
 	goassert.Equals(t, len(changes), 1)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{
@@ -250,7 +249,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	}
 	db.user, _ = authenticator.GetUser("alice")
 	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
-	assertNoError(t, err, "Couldn't GetChanges")
+	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	time.Sleep(1000 * time.Millisecond)
 
@@ -293,7 +292,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 
-	assertNoError(t, err, "Couldn't GetChanges (2nd)")
+	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
 	goassert.Equals(t, len(changes), 1)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{

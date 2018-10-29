@@ -20,6 +20,7 @@ import (
 	"time"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFixJSONNumbers(t *testing.T) {
@@ -243,7 +244,7 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 
 	seqClock, err = HighSeqNosToSequenceClock(highSeqs)
 
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 
 	goassert.True(t, seqClock.GetSequence(0) == 568)
 	goassert.True(t, seqClock.GetSequence(1) == 98798)
@@ -282,7 +283,7 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 
 	for _, inputAndExpected := range inputsAndExpected {
 		actual, err := CouchbaseURIToHttpURL(nil, inputAndExpected.input)
-		assertNoError(t, err, "Unexpected error")
+		assert.NoError(t, err, "Unexpected error")
 		goassert.DeepEquals(t, actual, inputAndExpected.expected)
 	}
 
@@ -334,20 +335,20 @@ func TestReflectExpiry(t *testing.T) {
 func TestIsMinimumVersion(t *testing.T) {
 
 	// Expected true
-	assertTrue(t, isMinimumVersion(1, 0, 0, 0), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(1, 0, 1, 0), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(2, 5, 2, 5), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(3, 0, 2, 5), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(3, 5, 3, 4), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(5, 5, 4, 4), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(0, 0, 0, 0), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(1, 0, 0, 0), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(1, 0, 1, 0), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(2, 5, 2, 5), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(3, 0, 2, 5), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(3, 5, 3, 4), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(5, 5, 4, 4), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(0, 0, 0, 0), "Invalid minimum version check - expected true")
 
 	// Expected false
-	assertTrue(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
-	assertTrue(t, !isMinimumVersion(5, 0, 6, 0), "Invalid minimum version check - expected false")
-	assertTrue(t, !isMinimumVersion(4, 5, 5, 0), "Invalid minimum version check - expected false")
-	assertTrue(t, !isMinimumVersion(5, 0, 5, 1), "Invalid minimum version check - expected false")
-	assertTrue(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !isMinimumVersion(5, 0, 6, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !isMinimumVersion(4, 5, 5, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !isMinimumVersion(5, 0, 5, 1), "Invalid minimum version check - expected false")
+	assert.True(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
 }
 
 func TestSanitizeRequestURL(t *testing.T) {
@@ -389,7 +390,7 @@ func TestSanitizeRequestURL(t *testing.T) {
 
 	for _, test := range tests {
 		req, err := http.NewRequest(http.MethodGet, test.input, nil)
-		assertNoError(t, err, "Unable to create request")
+		assert.NoError(t, err, "Unable to create request")
 		sanitizedURL := SanitizeRequestURL(req, nil)
 		goassert.Equals(t, sanitizedURL, test.output)
 	}
@@ -448,7 +449,7 @@ func TestSanitizeRequestURLRedaction(t *testing.T) {
 
 	for _, test := range tests {
 		req, err := http.NewRequest(http.MethodGet, test.input, nil)
-		assertNoError(t, err, "Unable to create request")
+		assert.NoError(t, err, "Unable to create request")
 
 		SetRedaction(RedactNone)
 		sanitizedURL := SanitizeRequestURL(req, nil)
@@ -609,7 +610,7 @@ func TestSetUpTestLogging(t *testing.T) {
 
 	// Now we should panic because we forgot to call teardown!
 	defer func() {
-		assertTrue(t, recover() != nil, "Expected panic from multiple SetUpTestLogging calls")
+		assert.True(t, recover() != nil, "Expected panic from multiple SetUpTestLogging calls")
 	}()
 	SetUpTestLogging(LevelError, KeyAuth|KeyCRUD)
 }

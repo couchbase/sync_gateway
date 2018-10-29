@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTimedSetMarshal(t *testing.T) {
@@ -23,17 +24,17 @@ func TestTimedSetMarshal(t *testing.T) {
 		Channels TimedSet
 	}
 	bytes, err := json.Marshal(str)
-	assertNoError(t, err, "Marshal")
+	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":null}`)
 
 	str.Channels = TimedSet{}
 	bytes, err = json.Marshal(str)
-	assertNoError(t, err, "Marshal")
+	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":{}}`)
 
 	str.Channels = AtSequence(SetOf("a", "b"), 17)
 	bytes, err = json.Marshal(str)
-	assertNoError(t, err, "Marshal")
+	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":{"a":17,"b":17}}`)
 }
 
@@ -42,28 +43,28 @@ func TestTimedSetUnmarshal(t *testing.T) {
 		Channels TimedSet
 	}
 	err := json.Unmarshal([]byte(`{"channels":null}`), &str)
-	assertNoError(t, err, "Unmarshal")
+	assert.NoError(t, err, "Unmarshal")
 	goassert.DeepEquals(t, str.Channels, TimedSet(nil))
 
 	err = json.Unmarshal([]byte(`{"channels":{}}`), &str)
-	assertNoError(t, err, "Unmarshal empty")
+	assert.NoError(t, err, "Unmarshal empty")
 	goassert.DeepEquals(t, str.Channels, TimedSet{})
 
 	err = json.Unmarshal([]byte(`{"channels":{"a":17,"b":17}}`), &str)
-	assertNoError(t, err, "Unmarshal sequence only")
+	assert.NoError(t, err, "Unmarshal sequence only")
 	goassert.DeepEquals(t, str.Channels, TimedSet{"a": NewVbSimpleSequence(17), "b": NewVbSimpleSequence(17)})
 
 	// Now try unmarshaling the alternative array form:
 	err = json.Unmarshal([]byte(`{"channels":[]}`), &str)
-	assertNoError(t, err, "Unmarshal empty array")
+	assert.NoError(t, err, "Unmarshal empty array")
 	goassert.DeepEquals(t, str.Channels, TimedSet{})
 
 	err = json.Unmarshal([]byte(`{"channels":["a","b"]}`), &str)
-	assertNoError(t, err, "Unmarshal populated array")
+	assert.NoError(t, err, "Unmarshal populated array")
 	goassert.DeepEquals(t, str.Channels, TimedSet{"a": NewVbSimpleSequence(0), "b": NewVbSimpleSequence(0)})
 
 	err = json.Unmarshal([]byte(`{"channels":{"a":{"seq":17, "vb":21},"b":{"seq":23, "vb":25}}}`), &str)
-	assertNoError(t, err, "Unmarshal sequence and vbucket only")
+	assert.NoError(t, err, "Unmarshal sequence and vbucket only")
 	goassert.Equals(t, fmt.Sprintf("%s", str.Channels), fmt.Sprintf("%s", TimedSet{"a": NewVbSequence(21, 17), "b": NewVbSequence(25, 23)}))
 }
 

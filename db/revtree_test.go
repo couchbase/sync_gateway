@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -172,7 +172,7 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 
 func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	gotmap := RevTree{}
-	assertNoError(t, json.Unmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
+	assert.NoError(t, json.Unmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
 	goassert.DeepEquals(t, gotmap, testmap)
 	return gotmap
 }
@@ -221,15 +221,15 @@ func TestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
 
 func TestRevTreeMarshal(t *testing.T) {
 	bytes, err := json.Marshal(testmap)
-	assertNoError(t, err, "Couldn't write RevTree to JSON")
+	assert.NoError(t, err, "Couldn't write RevTree to JSON")
 	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
 	testUnmarshal(t, string(bytes))
 }
 
 func TestRevTreeAccess(t *testing.T) {
-	assertTrue(t, testmap.contains("3-three"), "contains 3 failed")
-	assertTrue(t, testmap.contains("1-one"), "contains 1 failed")
-	assertFalse(t, testmap.contains("foo"), "contains false positive")
+	assert.True(t, testmap.contains("3-three"), "contains 3 failed")
+	assert.True(t, testmap.contains("1-one"), "contains 1 failed")
+	assert.False(t, testmap.contains("foo"), "contains false positive")
 }
 
 func TestRevTreeParentAccess(t *testing.T) {
@@ -303,11 +303,11 @@ func TestRevTreeCompareRevIDs(t *testing.T) {
 }
 
 func TestRevTreeIsLeaf(t *testing.T) {
-	assertTrue(t, branchymap.isLeaf("3-three"), "isLeaf failed on 3-three")
-	assertTrue(t, branchymap.isLeaf("3-drei"), "isLeaf failed on 3-drei")
-	assertFalse(t, branchymap.isLeaf("2-two"), "isLeaf failed on 2-two")
-	assertFalse(t, branchymap.isLeaf("bogus"), "isLeaf failed on 'bogus")
-	assertFalse(t, branchymap.isLeaf(""), "isLeaf failed on ''")
+	assert.True(t, branchymap.isLeaf("3-three"), "isLeaf failed on 3-three")
+	assert.True(t, branchymap.isLeaf("3-drei"), "isLeaf failed on 3-drei")
+	assert.False(t, branchymap.isLeaf("2-two"), "isLeaf failed on 2-two")
+	assert.False(t, branchymap.isLeaf("bogus"), "isLeaf failed on 'bogus")
+	assert.False(t, branchymap.isLeaf(""), "isLeaf failed on ''")
 }
 
 func TestRevTreeWinningRev(t *testing.T) {
@@ -709,7 +709,7 @@ func TestParseRevisions(t *testing.T) {
 	}
 	for _, c := range cases {
 		var body Body
-		assertNoError(t, json.Unmarshal([]byte(c.json), &body), "base JSON in test case")
+		assert.NoError(t, json.Unmarshal([]byte(c.json), &body), "base JSON in test case")
 		ids := ParseRevisions(body)
 		goassert.DeepEquals(t, ids, c.ids)
 	}
@@ -825,37 +825,37 @@ func TestRevisionPruningLoop(t *testing.T) {
 	// create rev tree with a root entry
 	revTree := RevTree{}
 	err := addAndGet(revTree, "1-foo", "", nonTombstone)
-	assertNoError(t, err, "Error adding revision 1-foo to tree")
+	assert.NoError(t, err, "Error adding revision 1-foo to tree")
 
 	// Add several entries (2-foo to 5-foo)
 	for generation := 2; generation <= 5; generation++ {
 		revID := fmt.Sprintf("%d-foo", generation)
 		parentRevID := fmt.Sprintf("%d-foo", generation-1)
 		err := addAndGet(revTree, revID, parentRevID, nonTombstone)
-		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
+		assert.NoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
 	}
 
 	// Add tombstone children of 3-foo and 4-foo
 
 	err = addAndGet(revTree, "4-bar", "3-foo", nonTombstone)
 	err = addAndGet(revTree, "5-bar", "4-bar", tombstone)
-	assertNoError(t, err, "Error adding tombstone 4-bar to tree")
+	assert.NoError(t, err, "Error adding tombstone 4-bar to tree")
 
 	/*
 		// Add a second branch as a child of 2-foo.
 		err = addAndGet(revTree, "3-bar", "2-foo", nonTombstone)
-		assertNoError(t, err, "Error adding revision 3-bar to tree")
+		assert.NoError(t, err, "Error adding revision 3-bar to tree")
 
 		// Tombstone the second branch
 		err = addAndGet(revTree, "4-bar", "3-bar", tombstone)
-		assertNoError(t, err, "Error adding tombstone 4-bar to tree")
+		assert.NoError(t, err, "Error adding tombstone 4-bar to tree")
 	*/
 
 	// Add a another tombstoned branch as a child of 5-foo.  This will ensure that 2-foo doesn't get pruned
 	// until the first tombstone branch is deleted.
 	/*
 		err = addAndGet(revTree, "6-bar2", "5-foo", tombstone)
-		assertNoError(t, err, "Error adding tombstone 6-bar2 to tree")
+		assert.NoError(t, err, "Error adding tombstone 6-bar2 to tree")
 	*/
 
 	log.Printf("Tree before adding to main branch: [[%s]]", revTree.RenderGraphvizDot())
@@ -866,20 +866,20 @@ func TestRevisionPruningLoop(t *testing.T) {
 		revID := fmt.Sprintf("%d-foo", generation)
 		parentRevID := fmt.Sprintf("%d-foo", generation-1)
 		_, err := addPruneAndGet(revTree, revID, parentRevID, revBody, revsLimit, nonTombstone)
-		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
+		assert.NoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
 
 		keepAliveRevID := fmt.Sprintf("%d-keep", generation)
 		_, err = addPruneAndGet(revTree, keepAliveRevID, parentRevID, revBody, revsLimit, tombstone)
-		assertNoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
+		assert.NoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
 
 		// The act of marshalling the rev tree and then unmarshalling back into a revtree data structure
 		// causes the issue.
 		log.Printf("Tree pre-marshal: [[%s]]", revTree.RenderGraphvizDot())
 		treeBytes, marshalErr := revTree.MarshalJSON()
-		assertNoError(t, marshalErr, fmt.Sprintf("Error marshalling tree: %v", marshalErr))
+		assert.NoError(t, marshalErr, fmt.Sprintf("Error marshalling tree: %v", marshalErr))
 		revTree = RevTree{}
 		unmarshalErr := revTree.UnmarshalJSON(treeBytes)
-		assertNoError(t, unmarshalErr, fmt.Sprintf("Error unmarshalling tree: %v", unmarshalErr))
+		assert.NoError(t, unmarshalErr, fmt.Sprintf("Error unmarshalling tree: %v", unmarshalErr))
 	}
 
 }
@@ -969,42 +969,6 @@ func BenchmarkRevTreePruning(b *testing.B) {
 		revTree.pruneRevisions(50, "")
 	}
 
-}
-
-//////// HELPERS:
-
-func assertFailed(t testing.TB, message string) {
-	_, file, line, ok := runtime.Caller(2) // assertFailed + assertNoError + public function.
-	if ok {
-		// Truncate file name at last file name separator.
-		if index := strings.LastIndex(file, "/"); index >= 0 {
-			file = file[index+1:]
-		} else if index = strings.LastIndex(file, "\\"); index >= 0 {
-			file = file[index+1:]
-		}
-	} else {
-		file = "???"
-		line = 1
-	}
-	t.Fatalf("%s:%d: %s", file, line, message)
-}
-
-func assertNoError(t testing.TB, err error, message string) {
-	if err != nil {
-		assertFailed(t, fmt.Sprintf("%s: %v", message, err))
-	}
-}
-
-func assertTrue(t *testing.T, success bool, message string) {
-	if !success {
-		assertFailed(t, message)
-	}
-}
-
-func assertFalse(t *testing.T, failure bool, message string) {
-	if failure {
-		assertFailed(t, message)
-	}
 }
 
 func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest string) {

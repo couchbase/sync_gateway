@@ -6,6 +6,7 @@ import (
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRemoveObsoleteDesignDocs(t *testing.T) {
@@ -21,14 +22,14 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
-	assertNoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
+	assert.NoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
 
 	err = bucket.PutDDoc(DesignDocSyncHousekeepingPrefix, sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"all_docs": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
-	assertNoError(t, err, "Unable to create design doc (DesignDocSyncHousekeepingPrefix)")
+	assert.NoError(t, err, "Unable to create design doc (DesignDocSyncHousekeepingPrefix)")
 
 	// Add some user design docs that shouldn't be removed
 	err = bucket.PutDDoc("sync_gateway_user_ddoc", sgbucket.DesignDoc{
@@ -36,36 +37,36 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 			"channels_custom": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
-	assertNoError(t, err, "Unable to create design doc (sync_gateway_user_created)")
+	assert.NoError(t, err, "Unable to create design doc (sync_gateway_user_created)")
 
 	// Verify creation was successful
-	assertTrue(t, designDocExists(bucket, DesignDocSyncGatewayPrefix), "Design doc doesn't exist")
-	assertTrue(t, designDocExists(bucket, DesignDocSyncHousekeepingPrefix), "Design doc doesn't exist")
-	assertTrue(t, designDocExists(bucket, "sync_gateway_user_ddoc"), "Design doc doesn't exist")
+	assert.True(t, designDocExists(bucket, DesignDocSyncGatewayPrefix), "Design doc doesn't exist")
+	assert.True(t, designDocExists(bucket, DesignDocSyncHousekeepingPrefix), "Design doc doesn't exist")
+	assert.True(t, designDocExists(bucket, "sync_gateway_user_ddoc"), "Design doc doesn't exist")
 
 	// Invoke removal in preview mode
 	removedDDocs, removeErr := removeObsoleteDesignDocs(bucket, true)
-	assertNoError(t, removeErr, "Error removing previous design docs")
+	assert.NoError(t, removeErr, "Error removing previous design docs")
 	goassert.Equals(t, len(removedDDocs), 2)
-	assertTrue(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix), "Missing design doc from removed set")
-	assertTrue(t, base.StringSliceContains(removedDDocs, DesignDocSyncHousekeepingPrefix), "Missing design doc from removed set")
+	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix), "Missing design doc from removed set")
+	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncHousekeepingPrefix), "Missing design doc from removed set")
 
 	// Re-verify ddocs still exist (preview)
-	assertTrue(t, designDocExists(bucket, DesignDocSyncGatewayPrefix), "Design doc doesn't exist")
-	assertTrue(t, designDocExists(bucket, DesignDocSyncHousekeepingPrefix), "Design doc doesn't exist")
-	assertTrue(t, designDocExists(bucket, "sync_gateway_user_ddoc"), "Design doc should exist")
+	assert.True(t, designDocExists(bucket, DesignDocSyncGatewayPrefix), "Design doc doesn't exist")
+	assert.True(t, designDocExists(bucket, DesignDocSyncHousekeepingPrefix), "Design doc doesn't exist")
+	assert.True(t, designDocExists(bucket, "sync_gateway_user_ddoc"), "Design doc should exist")
 
 	// Invoke removal in non-preview mode
 	removedDDocs, removeErr = removeObsoleteDesignDocs(bucket, false)
-	assertNoError(t, removeErr, "Error removing previous design docs")
+	assert.NoError(t, removeErr, "Error removing previous design docs")
 	goassert.Equals(t, len(removedDDocs), 2)
-	assertTrue(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix), "Missing design doc from removed set")
-	assertTrue(t, base.StringSliceContains(removedDDocs, DesignDocSyncHousekeepingPrefix), "Missing design doc from removed set")
+	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix), "Missing design doc from removed set")
+	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncHousekeepingPrefix), "Missing design doc from removed set")
 
 	// Verify ddocs are in expected state
-	assertTrue(t, !designDocExists(bucket, DesignDocSyncGatewayPrefix), "Removed design doc still exists")
-	assertTrue(t, !designDocExists(bucket, DesignDocSyncHousekeepingPrefix), "Removed design doc still exists")
-	assertTrue(t, designDocExists(bucket, "sync_gateway_user_ddoc"), "Design doc should exist")
+	assert.True(t, !designDocExists(bucket, DesignDocSyncGatewayPrefix), "Removed design doc still exists")
+	assert.True(t, !designDocExists(bucket, DesignDocSyncHousekeepingPrefix), "Removed design doc still exists")
+	assert.True(t, designDocExists(bucket, "sync_gateway_user_ddoc"), "Design doc should exist")
 
 }
 
