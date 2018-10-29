@@ -18,7 +18,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/natefinch/lumberjack"
 )
 
@@ -33,7 +33,7 @@ func assertLogContains(t *testing.T, s string, f func()) {
 	defer func() { consoleLogger = originalLogger }()
 
 	f()
-	assert.StringContains(t, b.String(), s)
+	goassert.StringContains(t, b.String(), s)
 }
 
 func TestRedactedLogFuncs(t *testing.T) {
@@ -94,11 +94,11 @@ func TestPrependContextID(t *testing.T) {
 
 	for _, testInputOutput := range testInputsOutputs {
 		newFormat, newParams := PrependContextID(contextID, testInputOutput.inputFormat, testInputOutput.inputParams...)
-		assert.Equals(t, newFormat, testInputOutput.outputFormat)
+		goassert.Equals(t, newFormat, testInputOutput.outputFormat)
 
-		assert.Equals(t, len(newParams), len(testInputOutput.outputParams))
+		goassert.Equals(t, len(newParams), len(testInputOutput.outputParams))
 		for i, newParam := range newParams {
-			assert.Equals(t, newParam, testInputOutput.outputParams[i])
+			goassert.Equals(t, newParam, testInputOutput.outputParams[i])
 		}
 	}
 

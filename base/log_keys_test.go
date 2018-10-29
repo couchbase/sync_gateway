@@ -4,86 +4,86 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestLogKey(t *testing.T) {
 	var logKeysPtr *LogKey
-	assert.False(t, logKeysPtr.Enabled(KeyHTTP))
+	goassert.False(t, logKeysPtr.Enabled(KeyHTTP))
 
 	logKeys := KeyHTTP
-	assert.True(t, logKeys.Enabled(KeyHTTP))
+	goassert.True(t, logKeys.Enabled(KeyHTTP))
 
 	// Enable more log keys.
 	logKeys.Enable(KeyAccess | KeyReplicate)
-	assert.True(t, logKeys.Enabled(KeyAccess))
-	assert.True(t, logKeys.Enabled(KeyReplicate))
-	assert.Equals(t, logKeys, KeyAccess|KeyHTTP|KeyReplicate)
+	goassert.True(t, logKeys.Enabled(KeyAccess))
+	goassert.True(t, logKeys.Enabled(KeyReplicate))
+	goassert.Equals(t, logKeys, KeyAccess|KeyHTTP|KeyReplicate)
 
 	// Enable wildcard and check unset key is enabled.
 	logKeys.Enable(KeyAll)
-	assert.True(t, logKeys.Enabled(KeyCache))
-	assert.Equals(t, logKeys, KeyAll|KeyAccess|KeyHTTP|KeyReplicate)
+	goassert.True(t, logKeys.Enabled(KeyCache))
+	goassert.Equals(t, logKeys, KeyAll|KeyAccess|KeyHTTP|KeyReplicate)
 
 	// Disable wildcard and check that existing keys are still set.
 	logKeys.Disable(KeyAll)
-	assert.True(t, logKeys.Enabled(KeyAccess))
-	assert.False(t, logKeys.Enabled(KeyCache))
-	assert.Equals(t, logKeys, KeyAccess|KeyHTTP|KeyReplicate)
+	goassert.True(t, logKeys.Enabled(KeyAccess))
+	goassert.False(t, logKeys.Enabled(KeyCache))
+	goassert.Equals(t, logKeys, KeyAccess|KeyHTTP|KeyReplicate)
 
 	// Set KeyNone and check keys are disabled.
 	logKeys = KeyNone
-	assert.False(t, logKeys.Enabled(KeyAll))
-	assert.False(t, logKeys.Enabled(KeyCache))
-	assert.Equals(t, logKeys, KeyNone)
+	goassert.False(t, logKeys.Enabled(KeyAll))
+	goassert.False(t, logKeys.Enabled(KeyCache))
+	goassert.Equals(t, logKeys, KeyNone)
 }
 
 func TestLogKeyNames(t *testing.T) {
 	name := KeyDCP.String()
-	assert.Equals(t, name, "DCP")
+	goassert.Equals(t, name, "DCP")
 
 	// Combined log keys, will pretty-print a set of log keys
 	name = LogKey(KeyDCP | KeyReplicate).String()
-	assert.StringContains(t, name, "DCP")
-	assert.StringContains(t, name, "Replicate")
+	goassert.StringContains(t, name, "DCP")
+	goassert.StringContains(t, name, "Replicate")
 
 	keys := []string{}
 	logKeys, warnings := ToLogKey(keys)
-	assert.Equals(t, len(warnings), 0)
-	assert.Equals(t, logKeys, LogKey(0))
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{})
+	goassert.Equals(t, len(warnings), 0)
+	goassert.Equals(t, logKeys, LogKey(0))
+	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{})
 
 	keys = append(keys, "DCP")
 	logKeys, warnings = ToLogKey(keys)
-	assert.Equals(t, len(warnings), 0)
-	assert.Equals(t, logKeys, KeyDCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String()})
+	goassert.Equals(t, len(warnings), 0)
+	goassert.Equals(t, logKeys, KeyDCP)
+	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String()})
 
 	keys = append(keys, "Access")
 	logKeys, warnings = ToLogKey(keys)
-	assert.Equals(t, len(warnings), 0)
-	assert.Equals(t, logKeys, KeyAccess|KeyDCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAccess.String(), KeyDCP.String()})
+	goassert.Equals(t, len(warnings), 0)
+	goassert.Equals(t, logKeys, KeyAccess|KeyDCP)
+	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAccess.String(), KeyDCP.String()})
 
 	keys = []string{"*", "DCP"}
 	logKeys, warnings = ToLogKey(keys)
-	assert.Equals(t, len(warnings), 0)
-	assert.Equals(t, logKeys, KeyAll|KeyDCP)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAll.String(), KeyDCP.String()})
+	goassert.Equals(t, len(warnings), 0)
+	goassert.Equals(t, logKeys, KeyAll|KeyDCP)
+	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAll.String(), KeyDCP.String()})
 
 	// Special handling of log keys
 	keys = []string{"HTTP+"}
 	logKeys, warnings = ToLogKey(keys)
-	assert.Equals(t, len(warnings), 0)
-	assert.Equals(t, logKeys, KeyHTTP|KeyHTTPResp)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyHTTP.String(), KeyHTTPResp.String()})
+	goassert.Equals(t, len(warnings), 0)
+	goassert.Equals(t, logKeys, KeyHTTP|KeyHTTPResp)
+	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyHTTP.String(), KeyHTTPResp.String()})
 
 	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
 	keys = []string{"DCP", "WS+", "InvalidLogKey"}
 	logKeys, warnings = ToLogKey(keys)
-	assert.Equals(t, len(warnings), 2)
-	assert.Equals(t, logKeys, KeyDCP|KeyWebSocket)
-	assert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String(), KeyWebSocket.String()})
+	goassert.Equals(t, len(warnings), 2)
+	goassert.Equals(t, logKeys, KeyDCP|KeyWebSocket)
+	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String(), KeyWebSocket.String()})
 }
 
 func TestConvertSpecialLogKey(t *testing.T) {
@@ -107,9 +107,9 @@ func TestConvertSpecialLogKey(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.input, func(ts *testing.T) {
 			output, ok := convertSpecialLogKey(test.input)
-			assert.Equals(ts, ok, test.ok)
+			goassert.Equals(ts, ok, test.ok)
 			if ok {
-				assert.Equals(ts, *output, *test.output)
+				goassert.Equals(ts, *output, *test.output)
 			}
 		})
 	}

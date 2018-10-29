@@ -8,7 +8,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 // There are additional tests that exercise the import functionality in rest/import_test.go
@@ -71,8 +71,8 @@ func TestMigrateMetadata(t *testing.T) {
 		body,
 		existingBucketDoc,
 	)
-	assert.True(t, err != nil)
-	assert.True(t, err == base.ErrCasFailureShouldRetry)
+	goassert.True(t, err != nil)
+	goassert.True(t, err == base.ErrCasFailureShouldRetry)
 
 }
 
@@ -172,7 +172,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			gocbBucket, _ := base.AsGoCBBucket(testBucket.Bucket)
 			expiry, err := gocbBucket.GetExpiry(key)
 			assertNoError(t, err, "Error calling GetExpiry()")
-			assert.True(t, expiry == uint32(laterSyncMetaExpiry.Unix()))
+			goassert.True(t, expiry == uint32(laterSyncMetaExpiry.Unix()))
 
 		})
 	}
@@ -233,13 +233,13 @@ func TestImportNullDoc(t *testing.T) {
 
 	// Import a null document
 	importedDoc, err := db.importDoc(key+"1", body, false, existingDoc, ImportOnDemand)
-	assert.Equals(t, err, base.ErrEmptyDocument)
+	goassert.Equals(t, err, base.ErrEmptyDocument)
 	assertTrue(t, importedDoc == nil, "Expected no imported doc")
 
 	// Do a valid on-demand import from a null document
 	body = Body{"new": true}
 	importedDoc, err = db.importDoc(key+"2", body, false, existingDoc, ImportOnDemand)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	assertFalse(t, importedDoc == nil, "Expected imported doc")
 }
 
@@ -253,7 +253,7 @@ func TestImportNullDocRaw(t *testing.T) {
 	// Feed import of null doc
 	exp := uint32(0)
 	importedDoc, err := db.ImportDocRaw("TestImportNullDoc", []byte("null"), []byte("{}"), false, 1, &exp, ImportFromFeed)
-	assert.Equals(t, err, base.ErrEmptyDocument)
+	goassert.Equals(t, err, base.ErrEmptyDocument)
 	assertTrue(t, importedDoc == nil, "Expected no imported doc")
 }
 
@@ -262,8 +262,8 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 	_, err := bucket.GetWithXattr(key, "_sync", nil, &xattr)
 	assertNoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
-	assert.True(t, ok)
+	goassert.True(t, ok)
 	generation, _ := ParseRevID(revision.(string))
 	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
-	assert.True(t, generation == expectedRevGeneration)
+	goassert.True(t, generation == expectedRevGeneration)
 }

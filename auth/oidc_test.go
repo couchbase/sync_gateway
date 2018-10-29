@@ -14,7 +14,7 @@ import (
 
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
@@ -86,7 +86,7 @@ func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.Name, func(tt *testing.T) {
 			provider := test.ProviderMap.GetDefaultProvider()
-			assert.Equals(tt, provider, test.ExpectedProvider)
+			goassert.Equals(tt, provider, test.ExpectedProvider)
 		})
 	}
 }
@@ -152,7 +152,7 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.Name, func(tt *testing.T) {
 			provider := providerMap.GetProviderForIssuer(test.Issuer, test.Audiences)
-			assert.Equals(tt, provider, test.ExpectedProvider)
+			goassert.Equals(tt, provider, test.ExpectedProvider)
 		})
 	}
 }
@@ -165,33 +165,33 @@ func TestOIDCUsername(t *testing.T) {
 	}
 
 	err := provider.InitUserPrefix()
-	assert.Equals(t, err, nil)
-	assert.Equals(t, provider.UserPrefix, "www.someprovider.com")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, provider.UserPrefix, "www.someprovider.com")
 
 	// test username suffix
 	oidcUsername := GetOIDCUsername(&provider, "bernard")
-	assert.Equals(t, oidcUsername, "www.someprovider.com_bernard")
-	assert.Equals(t, IsValidPrincipalName(oidcUsername), true)
+	goassert.Equals(t, oidcUsername, "www.someprovider.com_bernard")
+	goassert.Equals(t, IsValidPrincipalName(oidcUsername), true)
 
 	// test char escaping
 	oidcUsername = GetOIDCUsername(&provider, "{bernard}")
-	assert.Equals(t, oidcUsername, "www.someprovider.com_%7Bbernard%7D")
-	assert.Equals(t, IsValidPrincipalName(oidcUsername), true)
+	goassert.Equals(t, oidcUsername, "www.someprovider.com_%7Bbernard%7D")
+	goassert.Equals(t, IsValidPrincipalName(oidcUsername), true)
 
 	// test URL with paths
 	provider.UserPrefix = ""
 	provider.Issuer = "http://www.someprovider.com/extra"
 	err = provider.InitUserPrefix()
-	assert.Equals(t, err, nil)
-	assert.Equals(t, provider.UserPrefix, "www.someprovider.com%2Fextra")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, provider.UserPrefix, "www.someprovider.com%2Fextra")
 
 	// test invalid URL
 	provider.UserPrefix = ""
 	provider.Issuer = "http//www.someprovider.com"
 	err = provider.InitUserPrefix()
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	// falls back to provider name:
-	assert.Equals(t, provider.UserPrefix, "Some_Provider")
+	goassert.Equals(t, provider.UserPrefix, "Some_Provider")
 
 }
 
@@ -238,18 +238,18 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 		t.Run(test.Name, func(tt *testing.T) {
 			err := test.Provider.InitOIDCClient()
 			if test.ErrContains != "" {
-				assert.NotEquals(tt, err, nil)
-				assert.StringContains(tt, err.Error(), test.ErrContains)
+				goassert.NotEquals(tt, err, nil)
+				goassert.StringContains(tt, err.Error(), test.ErrContains)
 			} else {
-				assert.Equals(tt, err, nil)
+				goassert.Equals(tt, err, nil)
 			}
 
 			if test.Provider != nil {
 				client := test.Provider.GetClient(func() string { return "" })
 				if test.ExpectOIDCClient {
-					assert.NotEquals(tt, client, (*oidc.Client)(nil))
+					goassert.NotEquals(tt, client, (*oidc.Client)(nil))
 				} else {
-					assert.Equals(tt, client, (*oidc.Client)(nil))
+					goassert.Equals(tt, client, (*oidc.Client)(nil))
 				}
 			}
 		})
@@ -276,7 +276,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 	for _, discoveryUrl := range providerDiscoveryUrls {
 		oidcProvider := OIDCProvider{}
 		_, err := oidcProvider.FetchCustomProviderConfig(discoveryUrl)
-		assert.True(t, err == nil)
+		goassert.True(t, err == nil)
 	}
 
 }

@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	assert "github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 const (
@@ -19,10 +19,10 @@ func TestUserDataRedact(t *testing.T) {
 	userdata := UserData(username)
 
 	RedactUserData = true
-	assert.Equals(t, userdata.Redact(), userDataPrefix+username+userDataSuffix)
+	goassert.Equals(t, userdata.Redact(), userDataPrefix+username+userDataSuffix)
 
 	RedactUserData = false
-	assert.Equals(t, userdata.Redact(), username)
+	goassert.Equals(t, userdata.Redact(), username)
 }
 
 func TestUD(t *testing.T) {
@@ -31,15 +31,15 @@ func TestUD(t *testing.T) {
 
 	// Straight-forward string test.
 	ud := UD("hello world")
-	assert.Equals(t, ud.Redact(), userDataPrefix+"hello world"+userDataSuffix)
+	goassert.Equals(t, ud.Redact(), userDataPrefix+"hello world"+userDataSuffix)
 
 	// big.Int fulfils the Stringer interface, so we should get sensible values.
 	ud = UD(big.NewInt(1234))
-	assert.Equals(t, ud.Redact(), userDataPrefix+"1234"+userDataSuffix)
+	goassert.Equals(t, ud.Redact(), userDataPrefix+"1234"+userDataSuffix)
 
 	// Even plain structs could be redactable.
 	ud = UD(struct{}{})
-	assert.Equals(t, ud.Redact(), userDataPrefix+"{}"+userDataSuffix)
+	goassert.Equals(t, ud.Redact(), userDataPrefix+"{}"+userDataSuffix)
 }
 
 func BenchmarkUserDataRedact(b *testing.B) {

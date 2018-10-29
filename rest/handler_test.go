@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestGetRestrictedIntQuery(t *testing.T) {
@@ -24,7 +24,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		maxValue,
 		false,
 	)
-	assert.Equals(t, restricted, defaultValue)
+	goassert.Equals(t, restricted, defaultValue)
 
 	// make sure it returns default value when passed Values that doesn't contain key
 	values.Set("bar", "99")
@@ -36,7 +36,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		maxValue,
 		false,
 	)
-	assert.Equals(t, restricted, defaultValue)
+	goassert.Equals(t, restricted, defaultValue)
 
 	// make sure it returns appropriate value from Values
 	values.Set("foo", "99")
@@ -48,7 +48,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		maxValue,
 		false,
 	)
-	assert.Equals(t, restricted, uint64(99))
+	goassert.Equals(t, restricted, uint64(99))
 
 	// make sure it is limited to max when value value is over max
 	values.Set("foo", "200")
@@ -60,7 +60,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		maxValue,
 		false,
 	)
-	assert.Equals(t, restricted, maxValue)
+	goassert.Equals(t, restricted, maxValue)
 
 	// make sure it is limited to min when value value is under min
 	values.Set("foo", "1")
@@ -72,7 +72,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		maxValue,
 		false,
 	)
-	assert.Equals(t, restricted, minValue)
+	goassert.Equals(t, restricted, minValue)
 
 	// Return zero when allowZero=true
 	values.Set("foo", "0")
@@ -84,7 +84,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		maxValue,
 		true,
 	)
-	assert.Equals(t, restricted, uint64(0))
+	goassert.Equals(t, restricted, uint64(0))
 
 	// Return minValue when allowZero=false
 	values.Set("foo", "0")
@@ -96,7 +96,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		maxValue,
 		false,
 	)
-	assert.Equals(t, restricted, minValue)
+	goassert.Equals(t, restricted, minValue)
 }
 
 func TestParseHTTPRangeHeader(t *testing.T) {
@@ -154,10 +154,10 @@ func TestParseHTTPRangeHeader(t *testing.T) {
 	for _, expected := range testcases {
 		status, start, end := parseHTTPRangeHeader(expected.header, expected.contentLength)
 		t.Logf("*** Range: %s  --> %d %d-%d", expected.header, status, start, end)
-		assert.Equals(t, status, expected.status)
+		goassert.Equals(t, status, expected.status)
 		if status == http.StatusPartialContent {
-			assert.Equals(t, start, expected.start)
-			assert.Equals(t, end, expected.end)
+			goassert.Equals(t, start, expected.start)
+			goassert.Equals(t, end, expected.end)
 		}
 	}
 }

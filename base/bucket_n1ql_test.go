@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 var testN1qlOptions = &N1qlIndexOptions{
@@ -56,8 +56,8 @@ func TestN1qlQuery(t *testing.T) {
 	exists, state, stateErr := bucket.GetIndexMeta("testIndex_value")
 	assertNoError(t, stateErr, "Error validating index state")
 	assertTrue(t, state != nil, "No state returned for index")
-	assert.Equals(t, state.State, "online")
-	assert.Equals(t, exists, true)
+	goassert.Equals(t, state.State, "online")
+	goassert.Equals(t, exists, true)
 
 	// Defer index teardown
 	defer func() {
@@ -117,7 +117,7 @@ func TestN1qlQuery(t *testing.T) {
 	}
 
 	assertNoError(t, queryCloseErr, "Unexpected error closing query results")
-	assert.Equals(t, count, 0)
+	goassert.Equals(t, count, 0)
 
 }
 
@@ -187,10 +187,10 @@ func TestN1qlFilterExpression(t *testing.T) {
 			break
 		}
 		assertTrue(t, queryResult.Val < 3, "Query returned unexpected result")
-		assert.Equals(t, queryResult.Id, "doc1")
+		goassert.Equals(t, queryResult.Id, "doc1")
 		count++
 	}
-	assert.Equals(t, count, 1)
+	goassert.Equals(t, count, 1)
 
 }
 
@@ -209,7 +209,7 @@ func TestIndexMeta(t *testing.T) {
 
 	// Check index state pre-creation
 	exists, meta, err := bucket.GetIndexMeta("testIndex_value")
-	assert.Equals(t, exists, false)
+	goassert.Equals(t, exists, false)
 	assertNoError(t, err, "Error getting meta for non-existent index")
 
 	indexExpression := "val"
@@ -232,8 +232,8 @@ func TestIndexMeta(t *testing.T) {
 
 	// Check index state post-creation
 	exists, meta, err = bucket.GetIndexMeta("testIndex_value")
-	assert.Equals(t, exists, true)
-	assert.Equals(t, meta.State, "online")
+	goassert.Equals(t, exists, true)
+	goassert.Equals(t, meta.State, "online")
 	assertNoError(t, err, "Error retrieving index state")
 }
 
@@ -353,7 +353,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 
 	// Attempt to create duplicate, validate duplicate error
 	duplicateErr := bucket.CreateIndex("testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
-	assert.Equals(t, duplicateErr, ErrIndexAlreadyExists)
+	goassert.Equals(t, duplicateErr, ErrIndexAlreadyExists)
 
 	// Drop the index
 	err = bucket.DropIndex("testIndexDuplicateSequence")

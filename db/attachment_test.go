@@ -17,7 +17,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func unjson(j string) Body {
@@ -60,7 +60,7 @@ func TestAttachments(t *testing.T) {
 	rev1output := `{"_attachments":{"bye.txt":{"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA==","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":1},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"1-54f3a105fb903018c160712ffddb74dc"}`
 	gotbody, err := db.GetRev("doc1", "", false, []string{})
 	assertNoError(t, err, "Couldn't get document")
-	assert.Equals(t, tojson(gotbody), rev1output)
+	goassert.Equals(t, tojson(gotbody), rev1output)
 
 	log.Printf("Create rev 2...")
 	rev2str := `{"_attachments": {"hello.txt": {"stub":true, "revpos":1}, "bye.txt": {"data": "YnllLXlh"}}}`
@@ -69,19 +69,19 @@ func TestAttachments(t *testing.T) {
 	body2[BodyRev] = revid
 	revid, err = db.Put("doc1", body2)
 	assertNoError(t, err, "Couldn't update document")
-	assert.Equals(t, revid, "2-08b42c51334c0469bd060e6d9e6d797b")
+	goassert.Equals(t, revid, "2-08b42c51334c0469bd060e6d9e6d797b")
 
 	log.Printf("Retrieve doc...")
 	rev2output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{})
 	assertNoError(t, err, "Couldn't get document")
-	assert.Equals(t, tojson(gotbody), rev2output)
+	goassert.Equals(t, tojson(gotbody), rev2output)
 
 	log.Printf("Retrieve doc with atts_since...")
 	rev2Aoutput := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_id":"doc1","_rev":"2-08b42c51334c0469bd060e6d9e6d797b"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{"1-54f3a105fb903018c160712ffddb74dc", "1-foo", "993-bar"})
 	assertNoError(t, err, "Couldn't get document")
-	assert.Equals(t, tojson(gotbody), rev2Aoutput)
+	goassert.Equals(t, tojson(gotbody), rev2Aoutput)
 
 	log.Printf("Create rev 3...")
 	rev3str := `{"_attachments": {"bye.txt": {"stub":true,"revpos":2}}}`
@@ -90,13 +90,13 @@ func TestAttachments(t *testing.T) {
 	body3[BodyRev] = revid
 	revid, err = db.Put("doc1", body3)
 	assertNoError(t, err, "Couldn't update document")
-	assert.Equals(t, revid, "3-252b9fa1f306930bffc07e7d75b77faf")
+	goassert.Equals(t, revid, "3-252b9fa1f306930bffc07e7d75b77faf")
 
 	log.Printf("Retrieve doc...")
 	rev3output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2}},"_id":"doc1","_rev":"3-252b9fa1f306930bffc07e7d75b77faf"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{})
 	assertNoError(t, err, "Couldn't get document")
-	assert.Equals(t, tojson(gotbody), rev3output)
+	goassert.Equals(t, tojson(gotbody), rev3output)
 
 	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
 	err = db.Bucket.Delete(oldRevisionKey("doc1", rev1id))

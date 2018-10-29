@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 
 	"bytes"
 	"fmt"
@@ -51,7 +51,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// Modify user to have access to both channels (sequence 2):
 	userInfo, err := db.GetPrincipal("naomi", true)
-	assert.True(t, userInfo != nil)
+	goassert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
 	_, err = db.UpdatePrincipal(*userInfo, true, true)
 	assertNoError(t, err, "UpdatePrincipal failed")
@@ -68,16 +68,16 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assertNoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	time.Sleep(1000 * time.Millisecond)
-	assert.Equals(t, len(changes), 3)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from ABC
+	goassert.Equals(t, len(changes), 3)
+	goassert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from ABC
 		Seq:     SequenceID{Seq: 1},
 		ID:      "doc1",
 		Changes: []ChangeRev{{"rev": revid}}})
-	assert.DeepEquals(t, changes[1], &ChangeEntry{ // Seq 1, from PBS backfill
+	goassert.DeepEquals(t, changes[1], &ChangeEntry{ // Seq 1, from PBS backfill
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 2},
 		ID:      "doc1",
 		Changes: []ChangeRev{{"rev": revid}}})
-	assert.DeepEquals(t, changes[2], &ChangeEntry{ // Seq 2, from ABC and PBS
+	goassert.DeepEquals(t, changes[2], &ChangeEntry{ // Seq 2, from ABC and PBS
 		Seq:       SequenceID{Seq: 2},
 		ID:        "_user/naomi",
 		Changes:   []ChangeRev{},
@@ -95,8 +95,8 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	assertNoError(t, err, "Couldn't GetChanges (2nd)")
 
-	assert.Equals(t, len(changes), 1)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
+	goassert.Equals(t, len(changes), 1)
+	goassert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:     SequenceID{Seq: 3},
 		ID:      "doc2",
 		Changes: []ChangeRev{{"rev": revid}}})
@@ -165,8 +165,8 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	assertNoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	time.Sleep(1000 * time.Millisecond)
-	assert.Equals(t, len(changes), 1)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from A
+	goassert.Equals(t, len(changes), 1)
+	goassert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from A
 		Seq:     SequenceID{Seq: 1},
 		ID:      "alpha",
 		Changes: []ChangeRev{{"rev": revid}}})
@@ -179,7 +179,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	//Unmarshall into nested maps
 	var x map[string]interface{}
 	json.Unmarshal(rv, &x)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 	sync := x["_sync"].(map[string]interface{})
 	sync["sequence"] = 3
@@ -208,8 +208,8 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	assertNoError(t, err, "Couldn't GetChanges (2nd)")
 
-	assert.Equals(t, len(changes), 1)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
+	goassert.Equals(t, len(changes), 1)
+	goassert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:        SequenceID{Seq: 2},
 		ID:         "alpha",
 		Removed:    base.SetOf("A"),
@@ -254,8 +254,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	printChanges(changes)
 	time.Sleep(1000 * time.Millisecond)
 
-	assert.Equals(t, len(changes), 1)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from A
+	goassert.Equals(t, len(changes), 1)
+	goassert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from A
 		Seq:     SequenceID{Seq: 1},
 		ID:      "alpha",
 		Changes: []ChangeRev{{"rev": revid}}})
@@ -269,7 +269,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	var x map[string]interface{}
 	json.Unmarshal(rv, &x)
 
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 	sync := x["_sync"].(map[string]interface{})
 	sync["sequence"] = 3
@@ -295,8 +295,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	assertNoError(t, err, "Couldn't GetChanges (2nd)")
 
-	assert.Equals(t, len(changes), 1)
-	assert.DeepEquals(t, changes[0], &ChangeEntry{
+	goassert.Equals(t, len(changes), 1)
+	goassert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:     SequenceID{Seq: 3},
 		ID:      "alpha",
 		Changes: []ChangeRev{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}}})

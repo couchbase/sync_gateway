@@ -6,7 +6,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 // Validate stats for view query
@@ -38,7 +38,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	results, queryErr := db.QueryChannels("ABC", 0, 10, 100)
 	assertNoError(t, queryErr, "Query error")
 
-	assert.Equals(t, countQueryResults(results), 3)
+	goassert.Equals(t, countQueryResults(results), 3)
 
 	closeErr := results.Close()
 	assertNoError(t, closeErr, "Close error")
@@ -46,8 +46,8 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	channelQueryCountAfter, _ := base.GetExpvarAsInt("syncGateway_query", queryCountExpvar)
 	channelQueryErrorCountAfter, _ := base.GetExpvarAsInt("syncGateway_query", errorCountExpvar)
 
-	assert.Equals(t, channelQueryCountBefore+1, channelQueryCountAfter)
-	assert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
+	goassert.Equals(t, channelQueryCountBefore+1, channelQueryCountAfter)
+	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
 
 }
 
@@ -80,7 +80,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	results, queryErr := db.QueryChannels("ABC", 0, 10, 100)
 	assertNoError(t, queryErr, "Query error")
 
-	assert.Equals(t, countQueryResults(results), 3)
+	goassert.Equals(t, countQueryResults(results), 3)
 
 	closeErr := results.Close()
 	assertNoError(t, closeErr, "Close error")
@@ -88,8 +88,8 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	channelQueryCountAfter, _ := base.GetExpvarAsInt("syncGateway_query", queryCountExpvar)
 	channelQueryErrorCountAfter, _ := base.GetExpvarAsInt("syncGateway_query", errorCountExpvar)
 
-	assert.Equals(t, channelQueryCountBefore+1, channelQueryCountAfter)
-	assert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
+	goassert.Equals(t, channelQueryCountBefore+1, channelQueryCountAfter)
+	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
 
 }
 

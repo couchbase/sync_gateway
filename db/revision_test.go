@@ -6,7 +6,7 @@ import (
 	"log"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestParseRevID(t *testing.T) {
@@ -62,8 +62,8 @@ func TestBodyUnmarshal(t *testing.T) {
 				assertTrue(t, err != nil, fmt.Sprintf("Expected error when unmarshalling %s", test.name))
 			} else {
 				assertNoError(t, err, fmt.Sprintf("Expected no error when unmarshalling %s", test.name))
-				assert.DeepEquals(t, b, test.expectedBody) // Check against expected body
-				assert.DeepEquals(t, b, jsonUnmarshalBody) // Check against json.Unmarshal results
+				goassert.DeepEquals(t, b, test.expectedBody) // Check against expected body
+				goassert.DeepEquals(t, b, jsonUnmarshalBody) // Check against json.Unmarshal results
 			}
 
 		})

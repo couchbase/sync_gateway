@@ -3,7 +3,7 @@ package base
 import (
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 // func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname string) (username, password, bucketname string) {
@@ -19,9 +19,9 @@ func TestTransformBucketCredentials(t *testing.T) {
 		inputPassword,
 		inputBucketName,
 	)
-	assert.Equals(t, username, inputUsername)
-	assert.Equals(t, password, inputPassword)
-	assert.Equals(t, bucketname, inputBucketName)
+	goassert.Equals(t, username, inputUsername)
+	goassert.Equals(t, password, inputPassword)
+	goassert.Equals(t, bucketname, inputBucketName)
 
 	inputUsername2 := ""
 	inputPassword2 := "bar"
@@ -33,8 +33,8 @@ func TestTransformBucketCredentials(t *testing.T) {
 		inputBucketName2,
 	)
 
-	assert.Equals(t, username2, inputBucketName2)
-	assert.Equals(t, password2, inputPassword2)
-	assert.Equals(t, bucketname2, inputBucketName2)
+	goassert.Equals(t, username2, inputBucketName2)
+	goassert.Equals(t, password2, inputPassword2)
+	goassert.Equals(t, bucketname2, inputBucketName2)
 
 }

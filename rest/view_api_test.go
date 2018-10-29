@@ -19,7 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestDesignDocs(t *testing.T) {
@@ -73,24 +73,24 @@ func TestViewQuery(t *testing.T) {
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	assertNoError(t, err, "Got unexpected error")
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"})
+	goassert.Equals(t, len(result.Rows), 2)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
+	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"})
 
 	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?limit=1")
-	assert.Equals(t, len(result.Rows), 1)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
+	goassert.Equals(t, len(result.Rows), 1)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 
 	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?endkey=9")
-	assert.Equals(t, len(result.Rows), 1)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
+	goassert.Equals(t, len(result.Rows), 1)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 
 	if base.UnitTestUrlIsWalrus() {
 		// include_docs=true only works with walrus as documented here:
 		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
 		result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?include_docs=true&endkey=9")
-		assert.Equals(t, len(result.Rows), 1)
-		assert.DeepEquals(t, *result.Rows[0].Doc, map[string]interface{}{"key": 7.0, "value": "seven"})
+		goassert.Equals(t, len(result.Rows), 1)
+		goassert.DeepEquals(t, *result.Rows[0].Doc, map[string]interface{}{"key": 7.0, "value": "seven"})
 	}
 
 }
@@ -111,19 +111,19 @@ func TestViewQueryMultipleViews(t *testing.T) {
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_age")
 	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
+	goassert.Equals(t, len(result.Rows), 2)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
+	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_fname")
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)})
+	goassert.Equals(t, len(result.Rows), 2)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)})
+	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)})
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_lname")
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
+	goassert.Equals(t, len(result.Rows), 2)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)})
+	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
 }
 
 func TestViewQueryUserAccess(t *testing.T) {
@@ -143,16 +143,16 @@ func TestViewQueryUserAccess(t *testing.T) {
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
 	assertNoError(t, err, "Unexpected error in WaitForNAdminViewResults")
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
+	goassert.Equals(t, len(result.Rows), 2)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
+	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
 	assertNoError(t, err, "Unexpected error in WaitForNAdminViewResults")
 
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
+	goassert.Equals(t, len(result.Rows), 2)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
+	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
 	// Create a user:
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -163,9 +163,9 @@ func TestViewQueryUserAccess(t *testing.T) {
 	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
 	assertNoError(t, err, "Unexpected error in WaitForNUserViewResults")
 
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
+	goassert.Equals(t, len(result.Rows), 2)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"})
+	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"})
 
 	// Disable user view access, retry
 	rt.ServerContext().Database("db").SetUserViewsEnabled(false)
@@ -196,23 +196,23 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
+	goassert.Equals(t, len(result.Rows), 2)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
+	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
 
 	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_fname", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)})
+	goassert.Equals(t, len(result.Rows), 2)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)})
+	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)})
 
 	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_lname", ``)
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 2)
-	assert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)})
-	assert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
+	goassert.Equals(t, len(result.Rows), 2)
+	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)})
+	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
 }
 
 func TestUserViewQuery(t *testing.T) {
@@ -239,39 +239,39 @@ func TestUserViewQuery(t *testing.T) {
 
 	result, err := rt.WaitForNUserViewResults(1, "/db/_design/foo/_view/bar?include_docs=true", quinn, password)
 	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(result.Rows), 1)
-	assert.Equals(t, result.TotalRows, 1)
+	goassert.Equals(t, len(result.Rows), 1)
+	goassert.Equals(t, result.TotalRows, 1)
 	row := result.Rows[0]
-	assert.Equals(t, row.Key, float64(7))
-	assert.Equals(t, row.Value, "seven")
+	goassert.Equals(t, row.Key, float64(7))
+	goassert.Equals(t, row.Value, "seven")
 
 	if base.UnitTestUrlIsWalrus() {
 		// include_docs=true only works with walrus as documented here:
 		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
-		assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
+		goassert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
 	}
 
 	// Admin should see both rows:
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(result.Rows), 2)
+	goassert.Equals(t, len(result.Rows), 2)
 	row = result.Rows[0]
-	assert.Equals(t, row.Key, float64(7))
-	assert.Equals(t, row.Value, "seven")
+	goassert.Equals(t, row.Key, float64(7))
+	goassert.Equals(t, row.Value, "seven")
 	if base.UnitTestUrlIsWalrus() {
 		// include_docs=true only works with walrus as documented here:
 		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
-		assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
+		goassert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 7.0, "value": "seven", "channel": "Q"})
 	}
 	row = result.Rows[1]
-	assert.Equals(t, row.Key, float64(10))
-	assert.Equals(t, row.Value, "ten")
+	goassert.Equals(t, row.Key, float64(10))
+	goassert.Equals(t, row.Value, "ten")
 
 	if base.UnitTestUrlIsWalrus() {
 		// include_docs=true only works with walrus as documented here:
 		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
-		assert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 10.0, "value": "ten", "channel": "W"})
+		goassert.DeepEquals(t, *row.Doc, map[string]interface{}{"key": 10.0, "value": "ten", "channel": "W"})
 	}
 
 	// Make sure users are not allowed to query internal views:
@@ -307,10 +307,10 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	assertNoError(t, err, "Unexpected error")
 
 	// we should get 1 row with the reduce result
-	assert.Equals(t, len(result.Rows), 1)
+	goassert.Equals(t, len(result.Rows), 1)
 	row := result.Rows[0]
 	value := row.Value.(float64)
-	assert.True(t, value == 10)
+	goassert.True(t, value == 10)
 
 	// todo support group reduce, see #955
 	// // test group=true
@@ -318,13 +318,13 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	// assertStatus(t, response, 200)
 	// json.Unmarshal(response.Body.Bytes(), &result)
 	// // we should get 2 rows with the reduce result
-	// assert.Equals(t, len(result.Rows), 2)
+	// goassert.Equals(t, len(result.Rows), 2)
 	// row = result.Rows[0]
 	// value = row.Value.(float64)
-	// assert.True(t, value == 9)
+	// goassert.True(t, value == 9)
 	// row = result.Rows[1]
 	// value = row.Value.(float64)
-	// assert.True(t, value == 1)
+	// goassert.True(t, value == 1)
 }
 
 func TestAdminReduceSumQuery(t *testing.T) {
@@ -352,10 +352,10 @@ func TestAdminReduceSumQuery(t *testing.T) {
 	assertNoError(t, err, "Unexpected error")
 
 	// we should get 1 row with the reduce result
-	assert.Equals(t, len(result.Rows), 1)
+	goassert.Equals(t, len(result.Rows), 1)
 	row := result.Rows[0]
 	value := row.Value.(float64)
-	assert.Equals(t, value, 108.0)
+	goassert.Equals(t, value, 108.0)
 }
 
 func TestAdminGroupReduceSumQuery(t *testing.T) {
@@ -383,10 +383,10 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	assertNoError(t, err, "Unexpected error")
 
 	// we should get 2 row with the reduce result
-	assert.Equals(t, len(result.Rows), 2)
+	goassert.Equals(t, len(result.Rows), 2)
 	row := result.Rows[1]
 	value := row.Value.(float64)
-	assert.Equals(t, value, 99.0)
+	goassert.Equals(t, value, 99.0)
 }
 
 // Reproduces SG #3344.  Original issue only reproducible against Couchbase server (non-walrus)
@@ -415,7 +415,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 1)
+	goassert.Equals(t, len(result.Rows), 1)
 
 	// Ensure that query for non-existent keys returns no rows
 	viewUrlPath = "/db/_design/foo/_view/bar?keys=%5B%22channel_b%22%5D&stale=false"
@@ -423,7 +423,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 	assertStatus(t, response, 200) // Query string was parsed properly
 
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 0)
+	goassert.Equals(t, len(result.Rows), 0)
 
 }
 
@@ -452,7 +452,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 1)
+	goassert.Equals(t, len(result.Rows), 1)
 
 	// Ensure that a query for non-existent key returns no rows
 	viewUrlPath = "/db/_design/foo/_view/composite_key_test?keys=%5B%5B%22channel_b%22%2C%2055%5D%5D&stale=false"
@@ -460,7 +460,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 0)
+	goassert.Equals(t, len(result.Rows), 0)
 }
 
 func TestViewQueryWithIntKeys(t *testing.T) {
@@ -488,7 +488,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 1)
+	goassert.Equals(t, len(result.Rows), 1)
 
 	// Ensure that a query for non-existent key returns no rows
 	//   keys:[65,75]
@@ -497,7 +497,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	json.Unmarshal(response.Body.Bytes(), &result)
-	assert.Equals(t, len(result.Rows), 0)
+	goassert.Equals(t, len(result.Rows), 0)
 }
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
@@ -525,10 +525,10 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 	assertNoError(t, err, "Unexpected error")
 
 	// we should get 2 row with the reduce result
-	assert.Equals(t, len(result.Rows), 2)
+	goassert.Equals(t, len(result.Rows), 2)
 	row := result.Rows[1]
 	value := row.Value.(float64)
-	assert.Equals(t, value, 99.0)
+	goassert.Equals(t, value, 99.0)
 }
 
 func TestPostInstallCleanup(t *testing.T) {
@@ -558,31 +558,31 @@ func TestPostInstallCleanup(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/_post_upgrade?preview=true", "")
 	assertStatus(t, response, 200)
 	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
-	assert.Equals(t, postUpgradeResponse.Preview, true)
-	assert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 2)
+	goassert.Equals(t, postUpgradeResponse.Preview, true)
+	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 2)
 
 	// Run post-upgrade in non-preview mode
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest("POST", "/_post_upgrade", "")
 	assertStatus(t, response, 200)
 	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
-	assert.Equals(t, postUpgradeResponse.Preview, false)
-	assert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 2)
+	goassert.Equals(t, postUpgradeResponse.Preview, false)
+	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 2)
 
 	// Run post-upgrade in preview mode again, expect no results for database
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest("POST", "/_post_upgrade?preview=true", "")
 	assertStatus(t, response, 200)
 	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
-	assert.Equals(t, postUpgradeResponse.Preview, true)
-	assert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 0)
+	goassert.Equals(t, postUpgradeResponse.Preview, true)
+	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 0)
 
 	// Run post-upgrade in non-preview mode again, expect no results for database
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest("POST", "/_post_upgrade", "")
 	assertStatus(t, response, 200)
 	assertNoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
-	assert.Equals(t, postUpgradeResponse.Preview, false)
-	assert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 0)
+	goassert.Equals(t, postUpgradeResponse.Preview, false)
+	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 0)
 
 }

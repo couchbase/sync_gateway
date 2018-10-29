@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -173,7 +173,7 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	gotmap := RevTree{}
 	assertNoError(t, json.Unmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
-	assert.DeepEquals(t, gotmap, testmap)
+	goassert.DeepEquals(t, gotmap, testmap)
 	return gotmap
 }
 
@@ -196,7 +196,7 @@ func TestGetMultiBranchTestRevtree(t *testing.T) {
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 	leaves := revTree.GetLeaves()
 	sort.Strings(leaves)
-	assert.DeepEquals(t, leaves, []string{"110-left", "150-winning", "76-right"})
+	goassert.DeepEquals(t, leaves, []string{"110-left", "150-winning", "76-right"})
 
 }
 
@@ -216,7 +216,7 @@ func TestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"]]}`
 	gotmap := RevTree{}
 	err := json.Unmarshal([]byte(testJSON), &gotmap)
-	assert.Equals(t, err.Error(), "revtreelist data is invalid, revs/parents/channels counts are inconsistent")
+	goassert.Equals(t, err.Error(), "revtreelist data is invalid, revs/parents/channels counts are inconsistent")
 }
 
 func TestRevTreeMarshal(t *testing.T) {
@@ -234,23 +234,23 @@ func TestRevTreeAccess(t *testing.T) {
 
 func TestRevTreeParentAccess(t *testing.T) {
 	parent := testmap.getParent("3-three")
-	assert.Equals(t, parent, "2-two")
+	goassert.Equals(t, parent, "2-two")
 	parent = testmap.getParent("1-one")
-	assert.Equals(t, parent, "")
+	goassert.Equals(t, parent, "")
 }
 
 func TestRevTreeGetHistory(t *testing.T) {
 	history, err := testmap.getHistory("3-three")
-	assert.True(t, err == nil)
-	assert.DeepEquals(t, history, []string{"3-three", "2-two", "1-one"})
+	goassert.True(t, err == nil)
+	goassert.DeepEquals(t, history, []string{"3-three", "2-two", "1-one"})
 }
 
 func TestRevTreeGetLeaves(t *testing.T) {
 	leaves := testmap.GetLeaves()
-	assert.DeepEquals(t, leaves, []string{"3-three"})
+	goassert.DeepEquals(t, leaves, []string{"3-three"})
 	leaves = branchymap.GetLeaves()
 	sort.Strings(leaves)
-	assert.DeepEquals(t, leaves, []string{"3-drei", "3-three"})
+	goassert.DeepEquals(t, leaves, []string{"3-drei", "3-three"})
 }
 
 func TestRevTreeForEachLeaf(t *testing.T) {
@@ -259,47 +259,47 @@ func TestRevTreeForEachLeaf(t *testing.T) {
 		leaves = append(leaves, rev.ID)
 	})
 	sort.Strings(leaves)
-	assert.DeepEquals(t, leaves, []string{"3-drei", "3-three"})
+	goassert.DeepEquals(t, leaves, []string{"3-drei", "3-three"})
 }
 
 func TestRevTreeAddRevision(t *testing.T) {
 	tempmap := testmap.copy()
-	assert.DeepEquals(t, tempmap, testmap)
+	goassert.DeepEquals(t, tempmap, testmap)
 
 	tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
-	assert.Equals(t, tempmap.getParent("4-four"), "3-three")
+	goassert.Equals(t, tempmap.getParent("4-four"), "3-three")
 }
 
 func TestRevTreeAddRevisionWithEmptyID(t *testing.T) {
 	tempmap := testmap.copy()
-	assert.DeepEquals(t, tempmap, testmap)
+	goassert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{Parent: "3-three"})
-	assert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", "testdoc"))
+	goassert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", "testdoc"))
 }
 
 func TestRevTreeAddDuplicateRevID(t *testing.T) {
 	tempmap := testmap.copy()
-	assert.DeepEquals(t, tempmap, testmap)
+	goassert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{ID: "2-two", Parent: "1-one"})
-	assert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", "testdoc", "2-two"))
+	goassert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", "testdoc", "2-two"))
 }
 
 func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
 	tempmap := testmap.copy()
-	assert.DeepEquals(t, tempmap, testmap)
+	goassert.DeepEquals(t, tempmap, testmap)
 
 	err := tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four"})
-	assert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", "testdoc", "4-four"))
+	goassert.Equals(t, err.Error(), fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", "testdoc", "4-four"))
 }
 
 func TestRevTreeCompareRevIDs(t *testing.T) {
-	assert.Equals(t, compareRevIDs("1-aaa", "1-aaa"), 0)
-	assert.Equals(t, compareRevIDs("1-aaa", "5-aaa"), -1)
-	assert.Equals(t, compareRevIDs("10-aaa", "5-aaa"), 1)
-	assert.Equals(t, compareRevIDs("1-bbb", "1-aaa"), 1)
-	assert.Equals(t, compareRevIDs("5-bbb", "1-zzz"), 1)
+	goassert.Equals(t, compareRevIDs("1-aaa", "1-aaa"), 0)
+	goassert.Equals(t, compareRevIDs("1-aaa", "5-aaa"), -1)
+	goassert.Equals(t, compareRevIDs("10-aaa", "5-aaa"), 1)
+	goassert.Equals(t, compareRevIDs("1-bbb", "1-aaa"), 1)
+	goassert.Equals(t, compareRevIDs("5-bbb", "1-zzz"), 1)
 }
 
 func TestRevTreeIsLeaf(t *testing.T) {
@@ -313,63 +313,63 @@ func TestRevTreeIsLeaf(t *testing.T) {
 func TestRevTreeWinningRev(t *testing.T) {
 	tempmap := branchymap.copy()
 	winner, branched, conflict := tempmap.winningRevision()
-	assert.Equals(t, winner, "3-three")
-	assert.True(t, branched)
-	assert.True(t, conflict)
+	goassert.Equals(t, winner, "3-three")
+	goassert.True(t, branched)
+	goassert.True(t, conflict)
 	tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
 	winner, branched, conflict = tempmap.winningRevision()
-	assert.Equals(t, winner, "4-four")
-	assert.True(t, branched)
-	assert.True(t, conflict)
+	goassert.Equals(t, winner, "4-four")
+	goassert.True(t, branched)
+	goassert.True(t, conflict)
 	tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
 	winner, branched, conflict = tempmap.winningRevision()
-	assert.Equals(t, winner, "3-drei")
-	assert.True(t, branched)
-	assert.False(t, conflict)
+	goassert.Equals(t, winner, "3-drei")
+	goassert.True(t, branched)
+	goassert.False(t, conflict)
 }
 
 func TestPruneRevisions(t *testing.T) {
 
 	tempmap := testmap.copy()
 	tempmap.computeDepthsAndFindLeaves()
-	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
-	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
-	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
+	goassert.Equals(t, tempmap["3-three"].depth, uint32(1))
+	goassert.Equals(t, tempmap["2-two"].depth, uint32(2))
+	goassert.Equals(t, tempmap["1-one"].depth, uint32(3))
 
 	tempmap = branchymap.copy()
 	tempmap.computeDepthsAndFindLeaves()
-	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
-	assert.Equals(t, tempmap["3-drei"].depth, uint32(1))
-	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
-	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
+	goassert.Equals(t, tempmap["3-three"].depth, uint32(1))
+	goassert.Equals(t, tempmap["3-drei"].depth, uint32(1))
+	goassert.Equals(t, tempmap["2-two"].depth, uint32(2))
+	goassert.Equals(t, tempmap["1-one"].depth, uint32(3))
 
 	tempmap["4-vier"] = &RevInfo{ID: "4-vier", Parent: "3-drei"}
 	tempmap.computeDepthsAndFindLeaves()
-	assert.Equals(t, tempmap["4-vier"].depth, uint32(1))
-	assert.Equals(t, tempmap["3-drei"].depth, uint32(2))
-	assert.Equals(t, tempmap["3-three"].depth, uint32(1))
-	assert.Equals(t, tempmap["2-two"].depth, uint32(2))
-	assert.Equals(t, tempmap["1-one"].depth, uint32(3))
+	goassert.Equals(t, tempmap["4-vier"].depth, uint32(1))
+	goassert.Equals(t, tempmap["3-drei"].depth, uint32(2))
+	goassert.Equals(t, tempmap["3-three"].depth, uint32(1))
+	goassert.Equals(t, tempmap["2-two"].depth, uint32(2))
+	goassert.Equals(t, tempmap["1-one"].depth, uint32(3))
 
 	// Prune:
 	pruned, _ := tempmap.pruneRevisions(1000, "")
-	assert.Equals(t, pruned, 0)
+	goassert.Equals(t, pruned, 0)
 	pruned, _ = tempmap.pruneRevisions(3, "")
-	assert.Equals(t, pruned, 0)
+	goassert.Equals(t, pruned, 0)
 	pruned, _ = tempmap.pruneRevisions(2, "")
-	assert.Equals(t, pruned, 1)
-	assert.Equals(t, len(tempmap), 4)
-	assert.Equals(t, tempmap["1-one"], (*RevInfo)(nil))
-	assert.Equals(t, tempmap["2-two"].Parent, "")
+	goassert.Equals(t, pruned, 1)
+	goassert.Equals(t, len(tempmap), 4)
+	goassert.Equals(t, tempmap["1-one"], (*RevInfo)(nil))
+	goassert.Equals(t, tempmap["2-two"].Parent, "")
 
 	// Make sure leaves are never pruned:
 	pruned, _ = tempmap.pruneRevisions(1, "")
-	assert.Equals(t, pruned, 2)
-	assert.Equals(t, len(tempmap), 2)
-	assert.True(t, tempmap["3-three"] != nil)
-	assert.Equals(t, tempmap["3-three"].Parent, "")
-	assert.True(t, tempmap["4-vier"] != nil)
-	assert.Equals(t, tempmap["4-vier"].Parent, "")
+	goassert.Equals(t, pruned, 2)
+	goassert.Equals(t, len(tempmap), 2)
+	goassert.True(t, tempmap["3-three"] != nil)
+	goassert.Equals(t, tempmap["3-three"].Parent, "")
+	goassert.True(t, tempmap["4-vier"] != nil)
+	goassert.Equals(t, tempmap["4-vier"].Parent, "")
 
 }
 
@@ -383,7 +383,7 @@ func TestPruneRevsSingleBranch(t *testing.T) {
 	expectedNumPruned := numRevs - int(maxDepth)
 
 	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
-	assert.Equals(t, numPruned, expectedNumPruned)
+	goassert.Equals(t, numPruned, expectedNumPruned)
 
 }
 
@@ -406,7 +406,7 @@ func TestPruneRevsOneWinningOneNonwinningBranch(t *testing.T) {
 
 	revTree.pruneRevisions(maxDepth, "")
 
-	assert.Equals(t, revTree.LongestBranch(), int(maxDepth))
+	goassert.Equals(t, revTree.LongestBranch(), int(maxDepth))
 
 }
 
@@ -429,11 +429,11 @@ func TestPruneRevsOneWinningOneOldTombstonedBranch(t *testing.T) {
 
 	revTree.pruneRevisions(maxDepth, "")
 
-	assert.True(t, revTree.LongestBranch() == int(maxDepth))
+	goassert.True(t, revTree.LongestBranch() == int(maxDepth))
 
 	// we shouldn't have any tombstoned branches, since the tombstoned branch was so old
 	// it should have been pruned away
-	assert.Equals(t, revTree.FindLongestTombstonedBranch(), 0)
+	goassert.Equals(t, revTree.FindLongestTombstonedBranch(), 0)
 
 }
 
@@ -461,16 +461,16 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 
 	revTree.pruneRevisions(maxDepth, "")
 
-	assert.True(t, revTree.LongestBranch() == int(maxDepth))
+	goassert.True(t, revTree.LongestBranch() == int(maxDepth))
 
 	// the "non-winning high-gen tombstoned" branch should still be around, but pruned to maxDepth
 	tombstonedLeaves := revTree.GetTombstonedLeaves()
-	assert.Equals(t, len(tombstonedLeaves), 1)
+	goassert.Equals(t, len(tombstonedLeaves), 1)
 	tombstonedLeaf := tombstonedLeaves[0]
 
 	tombstonedBranch, err := revTree.getHistory(tombstonedLeaf)
-	assert.True(t, err == nil)
-	assert.Equals(t, len(tombstonedBranch), int(maxDepth))
+	goassert.True(t, err == nil)
+	goassert.Equals(t, len(tombstonedBranch), int(maxDepth))
 
 	// The generation of the longest deleted branch is 97:
 	// 1 unconflictedBranchNumRevs
@@ -479,7 +479,7 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 	// +
 	// 1 extra rev in branchspec since LastRevisionIsTombstone (that variable name is misleading)
 	expectedGenLongestTSd := 6
-	assert.Equals(t, revTree.FindLongestTombstonedBranch(), expectedGenLongestTSd)
+	goassert.Equals(t, revTree.FindLongestTombstonedBranch(), expectedGenLongestTSd)
 
 }
 
@@ -510,7 +510,7 @@ func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 	// Also, the winning branch has more revisions (10 total), and so will be ignored too
 	expectedGenerationShortestNonTombstonedBranch := 7
 
-	assert.Equals(t, generationShortestNonTombstonedBranch, expectedGenerationShortestNonTombstonedBranch)
+	goassert.Equals(t, generationShortestNonTombstonedBranch, expectedGenerationShortestNonTombstonedBranch)
 
 }
 
@@ -545,7 +545,7 @@ func TestGenerationLongestTombstonedBranch(t *testing.T) {
 	// 1 extra rev in branchspec since LastRevisionIsTombstone (that variable name is misleading)
 	expectedGenerationLongestTombstonedBranch := 3 + 100 + 1
 
-	assert.Equals(t, generationLongestTombstonedBranch, expectedGenerationLongestTombstonedBranch)
+	goassert.Equals(t, generationLongestTombstonedBranch, expectedGenerationLongestTombstonedBranch)
 
 }
 
@@ -572,7 +572,7 @@ func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
 	fmt.Printf("numPruned: %v", numPruned)
 	fmt.Printf("LongestBranch: %v", revTree.LongestBranch())
 
-	assert.True(t, uint32(revTree.LongestBranch()) == maxDepth)
+	goassert.True(t, uint32(revTree.LongestBranch()) == maxDepth)
 
 }
 
@@ -601,7 +601,7 @@ func TestPruneRevsSingleTombstonedBranch(t *testing.T) {
 
 	log.Printf("RevTreeAfter pruning: %v", revTree.RenderGraphvizDot())
 
-	assert.Equals(t, numPruned, expectedNumPruned)
+	goassert.Equals(t, numPruned, expectedNumPruned)
 
 }
 
@@ -621,13 +621,13 @@ func TestLongestBranch1(t *testing.T) {
 	}
 	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
 
-	assert.True(t, revTree.LongestBranch() == 150)
+	goassert.True(t, revTree.LongestBranch() == 150)
 
 }
 
 func TestLongestBranch2(t *testing.T) {
 
-	assert.True(t, multiroot.LongestBranch() == 3)
+	goassert.True(t, multiroot.LongestBranch() == 3)
 
 }
 
@@ -681,7 +681,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	}
 
 	// Make sure the winning branch is pruned down to maxDepth, even with the disconnected rev tree
-	assert.True(t, revTree.LongestBranch() == 7)
+	goassert.True(t, revTree.LongestBranch() == 7)
 
 }
 
@@ -711,13 +711,13 @@ func TestParseRevisions(t *testing.T) {
 		var body Body
 		assertNoError(t, json.Unmarshal([]byte(c.json), &body), "base JSON in test case")
 		ids := ParseRevisions(body)
-		assert.DeepEquals(t, ids, c.ids)
+		goassert.DeepEquals(t, ids, c.ids)
 	}
 }
 
 func TestEncodeRevisions(t *testing.T) {
 	encoded := encodeRevisions([]string{"5-huey", "4-dewey", "3-louie"})
-	assert.DeepEquals(t, encoded, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}})
+	goassert.DeepEquals(t, encoded, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}})
 }
 
 func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
@@ -725,31 +725,31 @@ func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 	encoded := encodeRevisions([]string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
 
 	result, trimmedRevs := trimEncodedRevisionsToAncestor(encoded, []string{"3-walter", "17-gretchen", "1-fooey"}, 1000)
-	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie", "screwy"}})
+	goassert.True(t, result)
+	goassert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie", "screwy"}})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, []string{"3-walter", "3-louie", "1-fooey"}, 2)
-	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}})
+	goassert.True(t, result)
+	goassert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, []string{"3-walter", "3-louie", "1-fooey"}, 3)
-	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}})
+	goassert.True(t, result)
+	goassert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, []string{"3-walter", "3-louie", "5-huey"}, 3)
-	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey"}})
+	goassert.True(t, result)
+	goassert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey"}})
 
 	// Check maxLength with no ancestors:
 	encoded = encodeRevisions([]string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(encoded, nil, 6)
-	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie", "screwy"}})
+	goassert.True(t, result)
+	goassert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie", "screwy"}})
 
 	result, trimmedRevs = trimEncodedRevisionsToAncestor(trimmedRevs, nil, 2)
-	assert.True(t, result)
-	assert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey"}})
+	goassert.True(t, result)
+	goassert.DeepEquals(t, trimmedRevs, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey"}})
 }
 
 // Regression test for https://github.com/couchbase/sync_gateway/issues/2847
@@ -770,10 +770,10 @@ func TestRevsHistoryInfiniteLoop(t *testing.T) {
 	)
 
 	// This should return an error, since the history has cycles
-	assert.True(t, err != nil)
+	goassert.True(t, err != nil)
 
 	// The error should *not* be a timeout error
-	assert.False(t, strings.Contains(err.Error(), "Timeout"))
+	goassert.False(t, strings.Contains(err.Error(), "Timeout"))
 
 }
 

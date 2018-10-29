@@ -21,7 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 	"golang.org/x/net/websocket"
 )
 
@@ -206,7 +206,7 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 
 func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
 	err := rt.WaitForDoc(docid)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 }
 

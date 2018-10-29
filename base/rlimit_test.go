@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestGetSoftFDLimitWithCurrent(t *testing.T) {
@@ -24,7 +24,7 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 		requestedSoftFDLimit,
 		limit,
 	)
-	assert.False(t, requiresUpdate)
+	goassert.False(t, requiresUpdate)
 
 	limit.Cur = uint64(512)
 
@@ -32,7 +32,7 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 		requestedSoftFDLimit,
 		limit,
 	)
-	assert.True(t, requiresUpdate)
-	assert.Equals(t, softFDLimit, requestedSoftFDLimit)
+	goassert.True(t, requiresUpdate)
+	goassert.Equals(t, softFDLimit, requestedSoftFDLimit)
 
 }

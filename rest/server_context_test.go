@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 // Tests the ConfigServer feature.
@@ -38,13 +38,13 @@ func TestConfigServer(t *testing.T) {
 	sc.config.ConfigServer = &fakeConfigURL
 
 	dbc, err := sc.GetDatabase("db")
-	assert.Equals(t, err, nil)
-	assert.Equals(t, dbc.Name, "db")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, dbc.Name, "db")
 
 	dbc, err = sc.GetDatabase("db2")
-	assert.Equals(t, err, nil)
-	assert.Equals(t, dbc.Name, "db2")
-	assert.Equals(t, dbc.Bucket.GetName(), "fivez")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, dbc.Name, "db2")
+	goassert.Equals(t, dbc.Bucket.GetName(), "fivez")
 
 	rt.Bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
 }
@@ -90,13 +90,13 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 	sc.config.ConfigServer = &fakeConfigURL
 
 	dbc, err := sc.GetDatabase("db")
-	assert.Equals(t, err, nil)
-	assert.Equals(t, dbc.Name, "db")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, dbc.Name, "db")
 
 	dbc, err = sc.GetDatabase("db2")
-	assert.Equals(t, err, nil)
-	assert.Equals(t, dbc.Name, "db2")
-	assert.Equals(t, dbc.Bucket.GetName(), "fivez")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, dbc.Name, "db2")
+	goassert.Equals(t, dbc.Bucket.GetName(), "fivez")
 
 	rt.Bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
 

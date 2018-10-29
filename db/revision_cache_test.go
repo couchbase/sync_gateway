@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestRevisionCache(t *testing.T) {
@@ -26,11 +26,11 @@ func TestRevisionCache(t *testing.T) {
 		if body == nil {
 			t.Fatalf("nil body at #%d", i)
 		}
-		assert.True(t, body != nil)
-		assert.Equals(t, body[BodyId], ids[i])
-		assert.True(t, history != nil)
-		assert.Equals(t, history[RevisionsStart], i)
-		assert.DeepEquals(t, channels, base.Set(nil))
+		goassert.True(t, body != nil)
+		goassert.Equals(t, body[BodyId], ids[i])
+		goassert.True(t, history != nil)
+		goassert.Equals(t, history[RevisionsStart], i)
+		goassert.DeepEquals(t, channels, base.Set(nil))
 	}
 
 	cache := NewRevisionCache(10, nil)
@@ -51,7 +51,7 @@ func TestRevisionCache(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		body, _, _, _ := cache.Get(ids[i], "x")
-		assert.True(t, body == nil)
+		goassert.True(t, body == nil)
 	}
 	for i := 3; i < 13; i++ {
 		body, history, channels, _ := cache.Get(ids[i], "x")
@@ -78,28 +78,28 @@ func TestLoaderFunction(t *testing.T) {
 	cache := NewRevisionCache(10, loader)
 
 	body, history, channels, err := cache.Get("Jens", "1")
-	assert.Equals(t, body[BodyId], "Jens")
-	assert.True(t, history != nil)
-	assert.True(t, channels != nil)
-	assert.Equals(t, err, error(nil))
-	assert.Equals(t, callsToLoader, 1)
+	goassert.Equals(t, body[BodyId], "Jens")
+	goassert.True(t, history != nil)
+	goassert.True(t, channels != nil)
+	goassert.Equals(t, err, error(nil))
+	goassert.Equals(t, callsToLoader, 1)
 
 	body, history, channels, err = cache.Get("Peter", "1")
-	assert.DeepEquals(t, body, Body(nil))
-	assert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
-	assert.Equals(t, callsToLoader, 2)
+	goassert.DeepEquals(t, body, Body(nil))
+	goassert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
+	goassert.Equals(t, callsToLoader, 2)
 
 	body, history, channels, err = cache.Get("Jens", "1")
-	assert.Equals(t, body[BodyId], "Jens")
-	assert.True(t, history != nil)
-	assert.True(t, channels != nil)
-	assert.Equals(t, err, error(nil))
-	assert.Equals(t, callsToLoader, 2)
+	goassert.Equals(t, body[BodyId], "Jens")
+	goassert.True(t, history != nil)
+	goassert.True(t, channels != nil)
+	goassert.Equals(t, err, error(nil))
+	goassert.Equals(t, callsToLoader, 2)
 
 	body, history, channels, err = cache.Get("Peter", "1")
-	assert.DeepEquals(t, body, Body(nil))
-	assert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
-	assert.Equals(t, callsToLoader, 3)
+	goassert.DeepEquals(t, body, Body(nil))
+	goassert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
+	goassert.Equals(t, callsToLoader, 3)
 }
 
 // Ensure internal properties aren't being incorrectly stored in revision cache
@@ -143,7 +143,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	}
 	validRevisionsMap, ok := validRevisions.(map[string]interface{})
 	_, startOk := validRevisionsMap[RevisionsStart]
-	assert.True(t, startOk)
+	goassert.True(t, startOk)
 	_, idsOk := validRevisionsMap[RevisionsIds]
-	assert.True(t, idsOk)
+	goassert.True(t, idsOk)
 }

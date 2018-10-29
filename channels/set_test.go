@@ -12,7 +12,7 @@ package channels
 import (
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestIsValidChannel(t *testing.T) {
@@ -43,7 +43,7 @@ func TestSetFromArray(t *testing.T) {
 	for _, cas := range cases {
 		channels, err := SetFromArray(cas[0], RemoveStar)
 		assertNoError(t, err, "SetFromArray failed")
-		assert.DeepEquals(t, channels, SetOf(cas[1]...))
+		goassert.DeepEquals(t, channels, SetOf(cas[1]...))
 	}
 }
 
@@ -60,7 +60,7 @@ func TestSetFromArrayWithStar(t *testing.T) {
 	for _, cas := range cases {
 		channels, err := SetFromArray(cas[0], ExpandStar)
 		assertNoError(t, err, "SetFromArray failed")
-		assert.DeepEquals(t, channels, SetOf(cas[1]...))
+		goassert.DeepEquals(t, channels, SetOf(cas[1]...))
 	}
 }
 
