@@ -134,35 +134,6 @@ func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sess
 	return session.ID, nil
 }
 
-func (h *handler) makeSessionFromEmail(email string, createUserIfNeeded bool) error {
-
-	// Email is verified. Look up the user and make a login session for her:
-	user, err := h.db.Authenticator().GetUserByEmail(email)
-	if err != nil {
-		return err
-	}
-
-	if user == nil {
-		// The email address is authentic but we have no user account for it.
-		if !createUserIfNeeded {
-			return base.HTTPErrorf(http.StatusUnauthorized, "No such user")
-		}
-
-		if len(email) < 1 {
-			return base.HTTPErrorf(http.StatusBadRequest, "Cannot register new user: email is missing")
-		}
-
-		// Create a User with the given email address as username and a random password.
-		user, err = h.db.Authenticator().RegisterNewUser(email, email)
-		if err != nil {
-			return err
-		}
-	}
-
-	return h.makeSession(user)
-
-}
-
 // MakeSessionFromUserAndEmail first attempts to find the user by username.  If found, updates the users's
 // email if different. If no match for username, attempts to find by the user by email.
 // If not found, and createUserIfNeeded=true, creates a new user based on username, email.
@@ -180,8 +151,9 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 			// User found, check whether the email needs to be updated
 			// (e.g. user has changed email in external auth system)
 			if email != user.Email() {
-				if err = user.SetEmail(email); err == nil {
-					h.db.Authenticator().Save(user)
+				if err = h.db.Authenticator().UpdateUserEmail(user, email); err != nil {
+					// Failure to update email during session creation is non-critical, log and continue.
+					base.Infof(base.KeyAuth, "Unable to update email for user %s during session creation. Error:%v,", base.UD(username), err)
 				}
 			}
 		} else {
@@ -201,7 +173,7 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 
 		// Create a User with the given username, email address, and a random password.
 		user, err = h.db.Authenticator().RegisterNewUser(username, email)
-		if err != nil {
+		if err != nil && !base.IsCasMismatch(err) {
 			return err
 		}
 	}

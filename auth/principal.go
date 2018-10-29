@@ -68,6 +68,10 @@ type Principal interface {
 	validate() error
 	setChannels(ch.TimedSet)
 	getVbNo(hashFunction VBHashFunction) uint16
+
+	// Cas value for the associated principal document in the bucket
+	Cas() uint64
+	SetCas(cas uint64)
 }
 
 // Role is basically the same as Principal, just concrete. Users can inherit channels from Roles.

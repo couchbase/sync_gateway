@@ -131,6 +131,8 @@ func TestUserAPI(t *testing.T) {
 	// POST a user
 	response = rt.SendAdminRequest("POST", "/db/_user", `{"name":"snej", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 301)
+	rt.Bucket().Dump()
+
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"snej", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
@@ -896,7 +898,6 @@ func TestSessionAPI(t *testing.T) {
 	// 5. DELETE sessions when password is changed
 	// Change password for user3
 	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"password":"5678"}`)
-
 	assertStatus(t, response, 200)
 
 	// Validate that all sessions were deleted

@@ -27,6 +27,7 @@ type roleImpl struct {
 	Sequence_         uint64      `json:"sequence"`
 	PreviousChannels_ ch.TimedSet `json:"previous_channels,omitempty"`
 	vbNo              *uint16
+	cas               uint64
 }
 
 var kValidNameRegexp = regexp.MustCompile(`^[-+.@%\w]*$`)
@@ -104,6 +105,13 @@ func (role *roleImpl) Sequence() uint64 {
 }
 func (role *roleImpl) SetSequence(sequence uint64) {
 	role.Sequence_ = sequence
+}
+
+func (role *roleImpl) Cas() uint64 {
+	return role.cas
+}
+func (role *roleImpl) SetCas(cas uint64) {
+	role.cas = cas
 }
 
 func (role *roleImpl) Channels() ch.TimedSet {
