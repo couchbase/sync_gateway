@@ -26,7 +26,7 @@ var serveCmd = &cobra.Command{
 		if UUID != "" {
 			config.Uuid = UUID
 		} else {
-			config.Uuid = fmt.Sprintf("%d", time.Now().Unix())
+			config.Uuid = fmt.Sprintf("gw-%d", time.Now().Unix())
 		}
 
 		gw, err := rest.StartGateway(*config)
@@ -45,7 +45,7 @@ func init() {
 
 	rootCmd.AddCommand(serveCmd)
 
-	serveCmd.Flags().StringVarP(&UUID, "uuid", "d", "4fg6hf", "A UUID to uniquely identify this gateway node")
+	serveCmd.Flags().StringVarP(&UUID, "uuid", "d", "", "A UUID to uniquely identify this gateway node")
 
 	serveCmd.Flags().IntVarP(&PortOffset, "portoffset", "r", 0, "Use this port offset for listening ports.  For example if set to 2, then the public port will be modified from 4984 -> 4986")
 

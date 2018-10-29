@@ -15,6 +15,7 @@ import (
 	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"net/http"
 )
 
 type Gateway struct {
@@ -98,22 +99,43 @@ func (gw *Gateway) FindMobileServiceNodes() (mobileSvcHostPorts []string, err er
 		return []string{}, err
 	}
 
-	grpcTargetPorts := []int{}
-	for portOffset := 0; portOffset < len(connSpec.Addresses); portOffset++ {
-		grpcTargetPort := portOffset + mobile_mds.PortGrpcTls
-		grpcTargetPorts = append(grpcTargetPorts, grpcTargetPort)
-	}
+	// Filter out cb server addresses that don't give 200 responses to /pools/default,
+	// which probably means they have been removed from the cluster.
+	addressesInCluster := gw.filterAddressesInCluster(connSpec.Addresses)
 
 	mobileSvcHostPorts = []string{}
 
-	for _, address := range connSpec.Addresses {
-		for _, grpcTargetPort := range grpcTargetPorts {
-			hostPort := fmt.Sprintf("%s:%d", address.Host, grpcTargetPort)
-			mobileSvcHostPorts = append(mobileSvcHostPorts, hostPort)
-		}
+	for _, address := range addressesInCluster {
+
+		grpcTargetPort := mobile_mds.PortGrpcTlsOffset + address.Port
+		hostPort := fmt.Sprintf("%s:%d", address.Host, grpcTargetPort)
+		mobileSvcHostPorts = append(mobileSvcHostPorts, hostPort)
+
 	}
 
 	return mobileSvcHostPorts, nil
+
+}
+
+// Check each address to see if it's still in the cluster by seeing if it responds
+// to /pools/default with a 200 or a 404 error.  If it's a 404, consider it to no longer
+// be in the cluster and filter it out.
+// Will be superceded by GoCB change GOCBC-365
+func (gw *Gateway) filterAddressesInCluster(addresses []gocbconnstr.Address) []gocbconnstr.Address {
+	addressesInCluster := []gocbconnstr.Address{}
+	for _, address := range addresses {
+		url := fmt.Sprintf("http://%s:%d/pools/default", address.Host, address.Port)
+		resp, err := http.Get(url)
+		if err != nil {
+			base.Warnf(base.KeyAll, "Unable to connect to MobileService at %v, ignoring", url)
+			continue
+		}
+		if resp.StatusCode == 404 {
+			continue
+		}
+		addressesInCluster = append(addressesInCluster, address)
+	}
+	return addressesInCluster
 
 }
 
@@ -148,7 +170,6 @@ func (gw *Gateway) Start() error {
 	return nil
 
 }
-
 
 func (gw *Gateway) LoadConfigSnapshot() error {
 
