@@ -1,17 +1,15 @@
 package cmd
 
 import (
-	"fmt"
-
 	"bufio"
+	"fmt"
+	"io/ioutil"
+	"os"
+
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/spf13/cobra"
-	"io/ioutil"
-	"log"
-	"os"
 )
 
-// setCmd represents the set command
 var setCmd = &cobra.Command{
 	Use:   "set <metakv-key> STDIN",
 	Short: "Set a value in metakv",
@@ -60,7 +58,7 @@ echo "{\"MyKey\": 2}" | sg config metakv set /path/to/my/key
 			panic(fmt.Sprintf("Error setting config.  Key: %v Error: %v Val: %v", key, err, val))
 		}
 
-		log.Printf("Successfully set key: %v.  Value size: %d bytes", key, len(val))
+		fmt.Printf("Successfully set key: %v.  Value size: %d bytes\n", key, len(val))
 
 	},
 }

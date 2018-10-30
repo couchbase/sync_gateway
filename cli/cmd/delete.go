@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// deleteCmd represents the delete command
 var deleteCmd = &cobra.Command{
 	Use:   "delete <metakv-key>",
 	Short: "Delete a key in metakv",
@@ -37,7 +36,6 @@ var deleteCmd = &cobra.Command{
 			fmt.Printf("Deleted key %v\n", key)
 		}
 
-
 	},
 }
 
@@ -45,8 +43,6 @@ func init() {
 
 	metakvCmd.AddCommand(deleteCmd)
 
-
 	rootCmd.Flags().BoolVar(&RecursiveDelete, "--recursive-delete", false, "Perform a recursive delete")
-
 
 }

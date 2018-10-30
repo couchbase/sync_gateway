@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// getCmd represents the get command
 var getCmd = &cobra.Command{
 	Use:   "get <metakv-key>",
 	Short: "Get the value of the given metakv key",

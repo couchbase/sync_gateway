@@ -47,11 +47,8 @@ func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *s
 	}
 	defer listener.Close()
 
-
+	// TODO: return the server so callers can call server.Shutdown().  example: https://gist.github.com/peterhellberg/38117e546c217960747aacf689af3dc2
 	server := &http.Server{Addr: addr, Handler: handler}
-	// TODO: return the server so callers can call server.Shutdown()
-	// TODO: see https://gist.github.com/peterhellberg/38117e546c217960747aacf689af3dc2 for example
-
 
 	if readTimeout != nil {
 		server.ReadTimeout = time.Duration(*readTimeout) * time.Second

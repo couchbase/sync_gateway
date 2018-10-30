@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// listCmd represents the list command
 var listCmd = &cobra.Command{
 	Use:   "list <metakv-key>",
 	Short: "List all child keys recursively of a given metakv",

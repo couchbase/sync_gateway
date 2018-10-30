@@ -10,7 +10,7 @@ import (
 
 var cfgFile string
 
-// rootCmd represents the base command when called without any subcommands
+// The rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "sg",
 	Short: "Sync Gateway -- Couchbase Mobile",
@@ -18,7 +18,8 @@ var rootCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 
-		// TODO: this will need to accept log file path and other params being overridden in the service scripts.
+		// TODO: this will need to accept log file path and other params being passed in by the service scripts.
+		// but it does not need to accept all legacy CLI args.
 
 		// Legacy mode
 		pathToConfigFile := args[0]
@@ -27,8 +28,6 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -38,10 +37,28 @@ func Execute() {
 
 func init() {
 
-	rootCmd.PersistentFlags().StringVarP(&GoCBConnstr, "connstr", "c", "http://localhost:9000,localhost:9001", "The Couchbase server(s) to connect to with an http:// or couchbase:// URI")
+	rootCmd.PersistentFlags().StringVarP(
+		&GoCBConnstr,
+		"connstr",
+		"c",
+		"http://localhost:9000,localhost:9001",
+		"The Couchbase server(s) to connect to with an http:// or couchbase:// URI",
+	)
 
-	rootCmd.PersistentFlags().StringVarP(&CBUsername, "username", "u", "username", "The Couchbase username to connect as")
+	rootCmd.PersistentFlags().StringVarP(
+		&CBUsername,
+		"username",
+		"u",
+		"username",
+		"The Couchbase username to connect as",
+	)
 
-	rootCmd.PersistentFlags().StringVarP(&CBPassword, "password", "p", "xxxxxxxx", "The password for the given username")
+	rootCmd.PersistentFlags().StringVarP(
+		&CBPassword,
+		"password",
+		"p",
+		"xxxxxxxx",
+		"The password for the given username",
+	)
 
 }

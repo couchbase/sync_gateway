@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/couchbase/sync_gateway/rest"
-	"github.com/spf13/cobra"
 	"math/rand"
 	"time"
+
+	"github.com/couchbase/sync_gateway/rest"
+	"github.com/spf13/cobra"
 )
 
-// serveCmd represents the serve command
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Sync Gateway Server",
@@ -23,9 +23,13 @@ var serveCmd = &cobra.Command{
 		config.PortOffset = PortOffset
 		config.CBUsername = CBUsername
 		config.CBPassword = CBPassword
+
+		// If the user passes in an explicit UUID on the CLI, then use it.
 		if UUID != "" {
 			config.Uuid = UUID
 		} else {
+			// Otherwise, make one up.
+			// TODO: this should re-use the same UUID that CBGT uses, after CBGT is integrated
 			config.Uuid = fmt.Sprintf("gw-%d", time.Now().Unix())
 		}
 
@@ -34,7 +38,7 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			panic(fmt.Sprintf("Error starting gateway: %v", err))
 		}
-		gw.Wait()
+		gw.Wait() // blocks indefinitely
 
 	},
 }
@@ -45,8 +49,22 @@ func init() {
 
 	rootCmd.AddCommand(serveCmd)
 
-	serveCmd.Flags().StringVarP(&UUID, "uuid", "d", "", "A UUID to uniquely identify this gateway node")
+	serveCmd.Flags().StringVarP(
+		&UUID,
+		"uuid",
+		"d",
+		"",
+		"A UUID to uniquely identify this gateway node",
+	)
 
-	serveCmd.Flags().IntVarP(&PortOffset, "portoffset", "r", 0, "Use this port offset for listening ports.  For example if set to 2, then the public port will be modified from 4984 -> 4986")
+	serveCmd.Flags().IntVarP(
+		&PortOffset,
+		"portoffset",
+		"r",
+		0,
+		"Offset that will be added to the port of configured listening ports under "+
+			"metakv://mobile/gateway/config/listener.  Useful for running multiple SG's locally "+
+			"with the identical config in MetaKV",
+	)
 
 }

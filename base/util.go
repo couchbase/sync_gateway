@@ -1056,6 +1056,7 @@ func ReplaceAll(s, chars, new string) string {
 	return s
 }
 
+// Find a random integer in the given range.  Inclusive for both min and max.
 func RandIntRange(min, max int) int {
 	return math_rand.Intn(max-min) + min
 }

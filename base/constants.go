@@ -90,9 +90,12 @@ const (
 )
 
 const (
+
+	// This is a special interface/port combination to be used when using the RestTester in conjunction with
+	// SG Mercury integration tests that receive configuration from a running MobileService.  If this is used
+	// in the configuration, then during the Sync Gateway startup process, it will skip the Http listener steps.
 	RestTesterInterface = "resttester:-1"
 )
-
 
 func UnitTestUrl() string {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
