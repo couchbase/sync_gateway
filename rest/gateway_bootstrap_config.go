@@ -26,10 +26,9 @@ func NewGatewayBootstrapConfig(connStr string) (config *BootstrapConfig, err err
 }
 
 func (c *BootstrapConfig) Validate() error {
-	connSpec, err := gocbconnstr.Parse(c.GoCBConnstr)
+	_, err := gocbconnstr.Parse(c.GoCBConnstr)
 	if err != nil {
 		return err
 	}
-	log.Printf("connSpec: %+v", connSpec)
 	return nil
 }
