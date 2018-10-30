@@ -37,6 +37,12 @@ type Gateway struct {
 	BootstrapConfig GatewayBootstrapConfig
 }
 
+type ChooseMobileSvcStrategy int
+const (
+	ChooseMobileSvcFirst ChooseMobileSvcStrategy = iota
+	ChooseMobileSvcRandom
+)
+
 func NewGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 	gw := Gateway{
 		BootstrapConfig: bootstrapConfig,
@@ -45,7 +51,7 @@ func NewGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 		Config:          map[string]*mobile_service.MetaKVPair{},
 	}
 
-	err := gw.ConnectMobileSvc()
+	err := gw.ConnectMobileSvc(ChooseMobileSvcFirst)
 	if err != nil {
 		panic(fmt.Sprintf("Error connecting to mobile service: %v", err))
 	}
@@ -57,9 +63,9 @@ func NewGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
 //
 //   - Push stats on a regular basis
 //   - Receive configuration updates
-func (gw *Gateway) ConnectMobileSvc() error {
+func (gw *Gateway) ConnectMobileSvc(strategy ChooseMobileSvcStrategy) error {
 
-	mobileSvcHostPort, err := gw.ChooseRandomMobileService()
+	mobileSvcHostPort, err := gw.ChooseMobileServiceNode(strategy)
 	if err != nil {
 		panic(fmt.Sprintf("Error finding mobile service to connect to: %v", err))
 	}
@@ -79,14 +85,22 @@ func (gw *Gateway) ConnectMobileSvc() error {
 
 }
 
-func (gw *Gateway) ChooseRandomMobileService() (mobileSvcHostPort string, err error) {
+func (gw *Gateway) ChooseMobileServiceNode(strategy ChooseMobileSvcStrategy) (mobileSvcHostPort string, err error) {
 
 	mobileServiceNodes, err := gw.FindMobileServiceNodes()
 	if err != nil {
 		return "", err
 	}
 
-	return mobileServiceNodes[base.RandIntRange(0, len(mobileServiceNodes))], nil
+	switch strategy {
+	case ChooseMobileSvcFirst:
+		return mobileServiceNodes[0], nil
+	case ChooseMobileSvcRandom:
+		return mobileServiceNodes[base.RandIntRange(0, len(mobileServiceNodes))], nil
+	default:
+		return "", fmt.Errorf("Unknown strategy: %v", strategy)
+	}
+
 
 }
 
@@ -498,7 +512,7 @@ func (gw *Gateway) PushStatsStreamWithReconnect() error {
 		for {
 			log.Printf("Attempting to reconnect to grpc server")
 
-			err := gw.ConnectMobileSvc()
+			err := gw.ConnectMobileSvc(ChooseMobileSvcRandom)
 			if err != nil {
 				log.Printf("Error connecting to grpc server: %v.  Retrying", err)
 				time.Sleep(time.Second)
