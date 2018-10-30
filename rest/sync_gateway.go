@@ -18,16 +18,20 @@ import (
 )
 
 type SyncGateway struct {
+
 	Uuid     string // The uuid of this gateway node (the same one used by CBGT and stored in a local file)
 	Hostname string // The hostname of this gateway node, not sure where this would come from
 
-	GrpcConn   *grpc.ClientConn
+	// The GRPC client that is used to push stats and retrieve MetaKV config
 	GrpcClient mobile_service.MobileServiceClient
 
-	// The current configuration state.
+	// The underlying client connection that is used by the GRPC client
+	GrpcConn   *grpc.ClientConn
+
+	// A cached version of the MetaKV configuration state.
 	// Key: path in metakv (eg, /mobile/config/databases/db1)
 	// Val: a MetaKVPair whose value contains a JSON dictionary
-	Config map[string]*mobile_service.MetaKVPair
+	MetaKVCache map[string]*mobile_service.MetaKVPair
 
 	// The SG server context
 	ServerContext *ServerContext
@@ -36,19 +40,26 @@ type SyncGateway struct {
 	BootstrapConfig BootstrapConfig
 }
 
+// The bootstrap config might contain a list of Couchbase Server hostnames to connect to.
+// This type is an enumeration of the different connection strategies, currently just
+// to choose the first one in the list or to choose a random host in the list.  Before
+// either strategy is employed, the list of bootstrap nodes is pre-filterd to only include
+// nodes that are detected to be "active", meaning that it returns a 200 response on the
+// ns-server /pools/default REST API.
 type ChooseMobileSvcStrategy int
-
 const (
 	ChooseMobileSvcFirst ChooseMobileSvcStrategy = iota
 	ChooseMobileSvcRandom
 )
 
+// Create a new Sync Gateway
 func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
+
 	gw := SyncGateway{
 		BootstrapConfig: bootstrapConfig,
 		Uuid:            bootstrapConfig.Uuid,
-		Hostname:        GATEWAY_HOSTNAME,
-		Config:          map[string]*mobile_service.MetaKVPair{},
+		Hostname:        GATEWAY_HOSTNAME,  // TODO: discover from the OS
+		MetaKVCache:     map[string]*mobile_service.MetaKVPair{},
 	}
 
 	err := gw.ConnectMobileSvc(ChooseMobileSvcFirst)
@@ -65,17 +76,19 @@ func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
 //   - Receive configuration updates
 func (gw *SyncGateway) ConnectMobileSvc(strategy ChooseMobileSvcStrategy) error {
 
-	mobileSvcHostPort, err := gw.ChooseMobileServiceNode(strategy)
+	mobileSvcHostPort, err := gw.ChooseActiveMobileSvcGrpcEndpoint(strategy)
 	if err != nil {
 		return err
 	}
-	log.Printf("Connecting to mobile service: %v", mobileSvcHostPort)
+	base.Infof(base.KeyMobileService, "Connecting to mobile service: %v", mobileSvcHostPort)
 
 	// Set up a connection to the server.
 	conn, err := grpc.Dial(mobileSvcHostPort, grpc.WithInsecure())
 	if err != nil {
 		return err
 	}
+
+	// Save the grpc connection to be able to access it later if needed
 	gw.GrpcConn = conn
 
 	// Create client
@@ -85,9 +98,12 @@ func (gw *SyncGateway) ConnectMobileSvc(strategy ChooseMobileSvcStrategy) error 
 
 }
 
-func (gw *SyncGateway) ChooseMobileServiceNode(strategy ChooseMobileSvcStrategy) (mobileSvcHostPort string, err error) {
+// Check the list of Couchbase Server hosts given in the bootstrap config, filter to
+// remove nodes that are detected to be inactive (GET /pools/default != 200), and choose one based
+// on the strategy parameter and return the host:port combination for the GRPC endpoint.
+func (gw *SyncGateway) ChooseActiveMobileSvcGrpcEndpoint(strategy ChooseMobileSvcStrategy) (mobileSvcHostPort string, err error) {
 
-	mobileServiceNodes, err := gw.FindMobileServiceNodes()
+	mobileServiceNodes, err := gw.ActiveMobileSvcGrpcEndpoints()
 	if err != nil {
 		return "", err
 	}
@@ -107,10 +123,12 @@ func (gw *SyncGateway) ChooseMobileServiceNode(strategy ChooseMobileSvcStrategy)
 
 }
 
-// Since we don't know which mobile service node will be assigned which grpc port, we
-// need to generate every combination of server ip and grpc port starting with the known grpc start port.
-func (gw *SyncGateway) FindMobileServiceNodes() (mobileSvcHostPorts []string, err error) {
+// Check the list of Couchbase Server hosts given in the bootstrap config, filter to
+// remove nodes that are detected to be inactive (GET /pools/default != 200), and return the
+// host:port combination for the GRPC endpoints of each of the nodes.
+func (gw *SyncGateway) ActiveMobileSvcGrpcEndpoints() (mobileSvcHostPorts []string, err error) {
 
+	// Get the raw connection spec from the bootstrap config
 	connSpec, err := gocbconnstr.Parse(gw.BootstrapConfig.GoCBConnstr)
 	if err != nil {
 		return []string{}, err
@@ -122,6 +140,7 @@ func (gw *SyncGateway) FindMobileServiceNodes() (mobileSvcHostPorts []string, er
 
 	mobileSvcHostPorts = []string{}
 
+	// Calculate the GRPC endpoint port based on the couchbase server port and the PortGrpcTlsOffset
 	for _, address := range connSpec.Addresses {
 
 		grpcTargetPort := mobile_mds.PortGrpcTlsOffset + address.Port
@@ -175,7 +194,7 @@ func (gw *SyncGateway) LoadConfigSnapshot() error {
 		return err
 	}
 	for _, metakvPair := range metaKvPairs.Items {
-		gw.Config[metakvPair.Path] = metakvPair
+		gw.MetaKVCache[metakvPair.Path] = metakvPair
 	}
 	return nil
 }
@@ -257,7 +276,7 @@ func (gw *SyncGateway) ObserveMetaKVChanges(path string) error {
 }
 
 func (gw *SyncGateway) ProcessDatabaseMetaKVPair(metakvPair *mobile_service.MetaKVPair) error {
-	existingMetaKVConfig, found := gw.Config[metakvPair.Path]
+	existingMetaKVConfig, found := gw.MetaKVCache[metakvPair.Path]
 	switch found {
 	case true:
 		// If we got here, we already know about this db key in the config state
@@ -289,7 +308,7 @@ func (gw *SyncGateway) ProcessDatabaseMetaKVPair(metakvPair *mobile_service.Meta
 
 func (gw *SyncGateway) HandleServerConfigUpdated(metaKvPair *mobile_service.MetaKVPair) error {
 
-	gw.Config[metaKvPair.Path] = metaKvPair
+	gw.MetaKVCache[metaKvPair.Path] = metaKvPair
 
 	// TODO: reload server level config
 
@@ -306,7 +325,7 @@ func (gw *SyncGateway) HandleDbDelete(metaKvPair, existingDbConfig *mobile_servi
 	}
 
 	// Delete from config map
-	delete(gw.Config, metaKvPair.Path)
+	delete(gw.MetaKVCache, metaKvPair.Path)
 
 	// The metakv pair path will be: /mobile/gateway/config/databases/database-1
 	// Get the last item from the path and use that as the dbname
@@ -332,7 +351,7 @@ func (gw *SyncGateway) HandleDbDelete(metaKvPair, existingDbConfig *mobile_servi
 
 func (gw *SyncGateway) HandleDbAdd(metaKvPair *mobile_service.MetaKVPair) error {
 
-	gw.Config[metaKvPair.Path] = metaKvPair
+	gw.MetaKVCache[metaKvPair.Path] = metaKvPair
 
 	dbConfig, err := gw.LoadDbConfig(metaKvPair.Path)
 	if err != nil {
@@ -394,7 +413,7 @@ func (gw *SyncGateway) LoadServerConfig() (serverConfig *ServerConfig, err error
 	serverGeneralConfig := ServerConfig{}
 
 	//Get the general + listener config
-	for _, metaKvPair := range gw.Config {
+	for _, metaKvPair := range gw.MetaKVCache {
 		switch {
 		case metaKvPair.Path == mobile_mds.KeyMobileGatewayListener:
 			gotListenerConfig = true
@@ -447,7 +466,7 @@ func (gw *SyncGateway) LoadServerConfig() (serverConfig *ServerConfig, err error
 func (gw *SyncGateway) LoadDbConfigAllDbs() error {
 
 	// Second pass to get the databases
-	for _, metaKvPair := range gw.Config {
+	for _, metaKvPair := range gw.MetaKVCache {
 		switch {
 		case strings.HasPrefix(metaKvPair.Path, mobile_mds.KeyMobileGatewayDatabases):
 			if err := gw.ProcessDatabaseMetaKVPair(metaKvPair); err != nil {
@@ -463,7 +482,7 @@ func (gw *SyncGateway) LoadDbConfigAllDbs() error {
 
 func (gw *SyncGateway) LoadDbConfig(path string) (dbConfig *DbConfig, err error) {
 
-	metaKvPair, found := gw.Config[path]
+	metaKvPair, found := gw.MetaKVCache[path]
 	if !found {
 		return nil, fmt.Errorf("Key not found: %v", path)
 	}

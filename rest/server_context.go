@@ -472,7 +472,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Initialize Views or GSI indexes
 	if !useViews {
-
 		// Couchbase Server version must be 5.5 or higher to use GSI
 		gsiSupported, errServerVersion := base.IsMinimumServerVersion(bucket, 5, 5)
 		if errServerVersion != nil {
@@ -492,7 +491,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		if indexErr != nil {
 			return nil, indexErr
 		}
-
 	} else {
 		viewErr := db.InitializeViews(bucket)
 		if viewErr != nil {
