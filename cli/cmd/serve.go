@@ -33,7 +33,7 @@ var serveCmd = &cobra.Command{
 			config.Uuid = fmt.Sprintf("gw-%d", time.Now().Unix())
 		}
 
-		gw, err := rest.StartGateway(*config)
+		gw, err := rest.StartSyncGateway(*config)
 		defer gw.Close()
 		if err != nil {
 			panic(fmt.Sprintf("Error starting gateway: %v", err))

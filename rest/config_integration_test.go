@@ -36,7 +36,7 @@ func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
 	}
 
 	// Start a gateway in resttester mode
-	gw, err := StartGateway(*testHelper.BootstrapConfig)
+	gw, err := StartSyncGateway(*testHelper.BootstrapConfig)
 	defer gw.Close()
 	if err != nil {
 		t.Fatalf("Error starting gateway: %+v", err)
@@ -67,7 +67,7 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 	testHelper.InsertGeneralListenerTestConfig()
 
 	// Start a gateway in resttester mode
-	gw, err := StartGateway(*testHelper.BootstrapConfig)
+	gw, err := StartSyncGateway(*testHelper.BootstrapConfig)
 	defer gw.Close()
 	if err != nil {
 		t.Fatalf("Error starting gateway: %+v", err)
@@ -114,7 +114,7 @@ func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
 	}
 
 	// Start a gateway in resttester mode
-	gw, err := StartGateway(*testHelper.BootstrapConfig)
+	gw, err := StartSyncGateway(*testHelper.BootstrapConfig)
 	defer gw.Close()
 	if err != nil {
 		t.Fatalf("Error starting gateway: %+v", err)
@@ -265,7 +265,7 @@ func GetTestBootstrapConfigOrPanic() (config *BootstrapConfig) {
 
 }
 
-func SendAdminRequest(gw *Gateway, method, resource string, body string) *TestResponse {
+func SendAdminRequest(gw *SyncGateway, method, resource string, body string) *TestResponse {
 
 	// TODO: don't recreate admin handler for every request
 

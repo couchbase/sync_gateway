@@ -9,14 +9,14 @@ import (
 )
 
 type MetaKVClient struct {
-	gateway *Gateway
+	gateway *SyncGateway
 	context context.Context
 }
 
 func NewMetaKVClient(bootstrapConfig BootstrapConfig) *MetaKVClient {
 
 	return &MetaKVClient{
-		gateway: NewGateway(bootstrapConfig),
+		gateway: NewSyncGateway(bootstrapConfig),
 		context: context.Background(),
 	}
 }

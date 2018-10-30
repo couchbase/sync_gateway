@@ -23,7 +23,7 @@ var rootCmd = &cobra.Command{
 
 		// Legacy mode
 		pathToConfigFile := args[0]
-		rest.RunGatewayLegacyMode(pathToConfigFile)
+		rest.RunSyncGatewayLegacyMode(pathToConfigFile)
 
 	},
 }
