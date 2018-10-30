@@ -15,7 +15,6 @@ import (
 	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
 	"google.golang.org/grpc"
-	"net/http"
 )
 
 type Gateway struct {
@@ -38,6 +37,7 @@ type Gateway struct {
 }
 
 type ChooseMobileSvcStrategy int
+
 const (
 	ChooseMobileSvcFirst ChooseMobileSvcStrategy = iota
 	ChooseMobileSvcRandom
@@ -67,7 +67,7 @@ func (gw *Gateway) ConnectMobileSvc(strategy ChooseMobileSvcStrategy) error {
 
 	mobileSvcHostPort, err := gw.ChooseMobileServiceNode(strategy)
 	if err != nil {
-		panic(fmt.Sprintf("Error finding mobile service to connect to: %v", err))
+		return err
 	}
 	log.Printf("Connecting to mobile service: %v", mobileSvcHostPort)
 
@@ -92,6 +92,10 @@ func (gw *Gateway) ChooseMobileServiceNode(strategy ChooseMobileSvcStrategy) (mo
 		return "", err
 	}
 
+	if len(mobileServiceNodes) == 0 {
+		return "", fmt.Errorf("Cannot find any active mobile service nodes to connect to")
+	}
+
 	switch strategy {
 	case ChooseMobileSvcFirst:
 		return mobileServiceNodes[0], nil
@@ -100,7 +104,6 @@ func (gw *Gateway) ChooseMobileServiceNode(strategy ChooseMobileSvcStrategy) (mo
 	default:
 		return "", fmt.Errorf("Unknown strategy: %v", strategy)
 	}
-
 
 }
 
@@ -115,11 +118,11 @@ func (gw *Gateway) FindMobileServiceNodes() (mobileSvcHostPorts []string, err er
 
 	// Filter out cb server addresses that don't give 200 responses to /pools/default,
 	// which probably means they have been removed from the cluster.
-	addressesInCluster := gw.filterAddressesInCluster(connSpec.Addresses)
+	connSpec = base.FilterAddressesInCluster(connSpec, gw.BootstrapConfig.CBUsername, gw.BootstrapConfig.CBPassword)
 
 	mobileSvcHostPorts = []string{}
 
-	for _, address := range addressesInCluster {
+	for _, address := range connSpec.Addresses {
 
 		grpcTargetPort := mobile_mds.PortGrpcTlsOffset + address.Port
 		hostPort := fmt.Sprintf("%s:%d", address.Host, grpcTargetPort)
@@ -128,28 +131,6 @@ func (gw *Gateway) FindMobileServiceNodes() (mobileSvcHostPorts []string, err er
 	}
 
 	return mobileSvcHostPorts, nil
-
-}
-
-// Check each address to see if it's still in the cluster by seeing if it responds
-// to /pools/default with a 200 or a 404 error.  If it's a 404, consider it to no longer
-// be in the cluster and filter it out.
-// Will be superceded by GoCB change GOCBC-365
-func (gw *Gateway) filterAddressesInCluster(addresses []gocbconnstr.Address) []gocbconnstr.Address {
-	addressesInCluster := []gocbconnstr.Address{}
-	for _, address := range addresses {
-		url := fmt.Sprintf("http://%s:%d/pools/default", address.Host, address.Port)
-		resp, err := http.Get(url)
-		if err != nil {
-			base.Warnf(base.KeyAll, "Unable to connect to MobileService at %v, ignoring", url)
-			continue
-		}
-		if resp.StatusCode == 404 {
-			continue
-		}
-		addressesInCluster = append(addressesInCluster, address)
-	}
-	return addressesInCluster
 
 }
 

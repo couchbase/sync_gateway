@@ -44,7 +44,7 @@ const (
 )
 
 const (
-	DataBucket CouchbaseBucketType = iota
+	DataBucket   CouchbaseBucketType = iota
 	IndexBucket
 	ShadowBucket
 )
@@ -137,6 +137,9 @@ func (spec BucketSpec) GetGoCBConnString() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	username, password, _ := spec.Auth.GetCredentials()
+	connSpec = FilterAddressesInCluster(connSpec, username, password)
 
 	// Increase the number of idle connections per-host to fix SG #3534
 	if connSpec.Options == nil {
