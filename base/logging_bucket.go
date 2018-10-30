@@ -84,12 +84,12 @@ func (b *LoggingBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v 
 	}()
 	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
-func (b *LoggingBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (err error) {
+func (b *LoggingBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
 	start := time.Now()
 	defer func() { Tracef(KeyBucket, "Update(%q, %d, ...) --> %v [%v]", UD(k), exp, err, time.Since(start)) }()
 	return b.bucket.Update(k, exp, callback)
 }
-func (b *LoggingBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
+func (b *LoggingBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
 	start := time.Now()
 	defer func() { Tracef(KeyBucket, "WriteUpdate(%q, %d, ...) --> %v [%v]", UD(k), exp, err, time.Since(start)) }()
 	return b.bucket.WriteUpdate(k, exp, callback)

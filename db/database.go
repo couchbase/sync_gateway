@@ -857,7 +857,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		Sync string
 	}
 
-	err = context.Bucket.Update(kSyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+	_, err = context.Bucket.Update(kSyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := json.Unmarshal(currentValue, &syncData)
@@ -979,7 +979,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			}
 			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, nil, writeUpdateFunc)
 		} else {
-			err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+			_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 				// Be careful: this block can be invoked multiple times if there are races!
 				if currentValue == nil {
 					return nil, nil, base.ErrUpdateCancel // someone deleted it?!

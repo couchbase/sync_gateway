@@ -89,10 +89,10 @@ func (b *LeakyBucket) Write(k string, flags int, exp uint32, v interface{}, opt 
 func (b *LeakyBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
 	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
-func (b *LeakyBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (err error) {
+func (b *LeakyBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
 	return b.bucket.Update(k, exp, callback)
 }
-func (b *LeakyBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
+func (b *LeakyBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
 func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
