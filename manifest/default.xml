@@ -40,7 +40,7 @@
   <project groups="notdefault,sg-accel" name="cb-heartbeat" path="godeps/src/github.com/couchbase/cb-heartbeat" remote="couchbase" revision="aedb0776e80d25a79d4b17c1f322a75a2c52a518"/>
 
   <project groups="notdefault,sg-accel" name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="3d39b57188c372649beedd5c13c9003156d5a055"/>
-  
+
 
   <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
   <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>

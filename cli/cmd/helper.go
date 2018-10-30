@@ -4,11 +4,11 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 )
 
-func BootstrapConfigFromParams() (rest.GatewayBootstrapConfig, error) {
+func BootstrapConfigFromParams() (rest.BootstrapConfig, error) {
 
 	config, err := rest.NewGatewayBootstrapConfig(GoCBConnstr)
 	if err != nil {
-		return rest.GatewayBootstrapConfig{}, err
+		return rest.BootstrapConfig{}, err
 	}
 
 	config.PortOffset = PortOffset

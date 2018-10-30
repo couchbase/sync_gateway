@@ -6,7 +6,8 @@ import (
 	"github.com/couchbaselabs/gocbconnstr"
 )
 
-type GatewayBootstrapConfig struct {
+// A container for all of the bootstrap configuration parameters
+type BootstrapConfig struct {
 	GoCBConnstr string // A "connection spec" string as expected by couchbaselabs/gocbconnstr
 	CBUsername  string // The Couchbase Username to connect as
 	CBPassword  string // The password corresponding to CBUsername
@@ -14,8 +15,8 @@ type GatewayBootstrapConfig struct {
 	PortOffset  int    // If non-zero, the listening ports will be offset by this amount.  Eg, if "2" then 4984 -> 4986
 }
 
-func NewGatewayBootstrapConfig(connStr string) (config *GatewayBootstrapConfig, err error) {
-	config = &GatewayBootstrapConfig{
+func NewGatewayBootstrapConfig(connStr string) (config *BootstrapConfig, err error) {
+	config = &BootstrapConfig{
 		GoCBConnstr: connStr,
 	}
 	if err := config.Validate(); err != nil {
@@ -24,7 +25,7 @@ func NewGatewayBootstrapConfig(connStr string) (config *GatewayBootstrapConfig, 
 	return config, nil
 }
 
-func (c *GatewayBootstrapConfig) Validate() error {
+func (c *BootstrapConfig) Validate() error {
 	connSpec, err := gocbconnstr.Parse(c.GoCBConnstr)
 	if err != nil {
 		return err

@@ -1,15 +1,14 @@
 package rest
 
 import (
-	"fmt"
-	"testing"
-	"time"
-
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"testing"
+	"time"
 
 	"github.com/couchbase/mobile-service"
 	"github.com/couchbase/sync_gateway/base"
@@ -96,7 +95,6 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 
 }
 
-
 func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
@@ -174,17 +172,12 @@ func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
 		t.Fatalf("Error waiting for expected response code: %v", err)
 	}
 
-
 }
-
-
-
-
 
 // ----------- Test Helper
 
 type SGIntegrationTestHelper struct {
-	BootstrapConfig *GatewayBootstrapConfig
+	BootstrapConfig *BootstrapConfig
 	MetaKVClient    *MetaKVClient
 	Test            *testing.T
 }
@@ -253,7 +246,7 @@ func WaitForExpectation(expectation ResponseExpectation, apiCall RestApiCall) er
 
 }
 
-func GetTestBootstrapConfigOrPanic() (config *GatewayBootstrapConfig) {
+func GetTestBootstrapConfigOrPanic() (config *BootstrapConfig) {
 
 	bootstrapConfig, err := NewGatewayBootstrapConfig(base.UnitTestUrl())
 
@@ -328,7 +321,6 @@ func DefaultMetaKVDbConfig() string {
 	// Using "use_views: true" due to a strange issue I'm seeing when running
 	// GSI when building couchbase from source: https://gist.github.com/tleyden/46c2a2a4dfe79a2cdd759aaf22a4b88d
 	// I'm not seeing this when using a toy build: http://server.jenkins.couchbase.com/view/Toys/job/toy-unix/3474/artifact/couchbase-server-enterprise-6.5.0-10002-centos7.x86_64.rpm
-
 
 	return fmt.Sprintf(`
 {

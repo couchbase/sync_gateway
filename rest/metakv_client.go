@@ -13,7 +13,7 @@ type MetaKVClient struct {
 	context context.Context
 }
 
-func NewMetaKVClient(bootstrapConfig GatewayBootstrapConfig) *MetaKVClient {
+func NewMetaKVClient(bootstrapConfig BootstrapConfig) *MetaKVClient {
 
 	return &MetaKVClient{
 		gateway: NewGateway(bootstrapConfig),

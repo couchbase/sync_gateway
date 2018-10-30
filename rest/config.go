@@ -32,13 +32,12 @@ import (
 )
 
 var (
-	DefaultInterface       = ":4984"
-	DefaultAdminInterface  = "127.0.0.1:4985" // Only accessible on localhost!
 	DefaultPublicInterface = "0.0.0.0"
 	DefaultPublicPort      = 4984
 	DefaultAdminPort       = 4985
+	DefaultInterface       = fmt.Sprintf(":%d", DefaultPublicPort)
+	DefaultAdminInterface  = fmt.Sprintf("127.0.0.1:%d", DefaultAdminPort) // Only accessible on localhost!
 	DefaultServer          = "walrus:"
-	DefaultPool            = "default"
 )
 
 // The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
@@ -288,7 +287,7 @@ func (dbConfig *DbConfig) setup(name string) error {
 		dbConfig.Server = &DefaultServer
 	}
 	if dbConfig.Pool == nil {
-		dbConfig.Pool = &DefaultPool
+		dbConfig.Pool = &base.DefaultPool
 	}
 
 	url, err := url.Parse(*dbConfig.Server)
@@ -728,7 +727,7 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	configServer := flag.String("configServer", "", "URL of server that can return database configs")
 	deploymentID := flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
 	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
-	poolName := flag.String("pool", DefaultPool, "Name of pool")
+	poolName := flag.String("pool", base.DefaultPool, "Name of pool")
 	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
 	dbName := flag.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
 	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
@@ -964,17 +963,17 @@ func RunServer(config *ServerConfig) *ServerContext {
 	go sc.PostStartup()
 
 	if *config.AdminInterface != base.RestTesterInterface {
-		base.Infof(base.KeyAll, "Starting admin server on %s", base.UD(*config.AdminInterface))
+		base.Infof(base.KeyAll, "Starting admin API server on %s", base.UD(*config.AdminInterface))
 		go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
 	} else {
-		base.Infof(base.KeyAll, "Starting admin server in RestTester mode")
+		base.Infof(base.KeyAll, "RestTester mode: admin API server via in-memory operations")
 	}
 
 	if *config.Interface != base.RestTesterInterface {
-		base.Infof(base.KeyAll, "Starting server on %s ...", base.UD(*config.Interface))
+		base.Infof(base.KeyAll, "Starting public API server on %s", base.UD(*config.Interface))
 		go config.Serve(*config.Interface, CreatePublicHandler(sc))
 	} else {
-		base.Infof(base.KeyAll, "Starting server in RestTester mode")
+		base.Infof(base.KeyAll, "RestTester mode: public API server via in-memory operations")
 	}
 
 	return sc

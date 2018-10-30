@@ -33,7 +33,7 @@ type Gateway struct {
 	ServerContext *ServerContext
 
 	// The "bootstrap config" for this gateway to be able to connect to Couchbase Server to get actual config
-	BootstrapConfig GatewayBootstrapConfig
+	BootstrapConfig BootstrapConfig
 }
 
 type ChooseMobileSvcStrategy int
@@ -43,7 +43,7 @@ const (
 	ChooseMobileSvcRandom
 )
 
-func NewGateway(bootstrapConfig GatewayBootstrapConfig) *Gateway {
+func NewGateway(bootstrapConfig BootstrapConfig) *Gateway {
 	gw := Gateway{
 		BootstrapConfig: bootstrapConfig,
 		Uuid:            bootstrapConfig.Uuid,
@@ -562,7 +562,7 @@ func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffs
 
 }
 
-func StartGateway(bootstrapConfig GatewayBootstrapConfig) (*Gateway, error) {
+func StartGateway(bootstrapConfig BootstrapConfig) (*Gateway, error) {
 
 	// Client setup
 	gw := NewGateway(bootstrapConfig)

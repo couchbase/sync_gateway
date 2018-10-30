@@ -87,6 +87,7 @@ const (
 	// Set this to true to dump stacktraces (for pkgerrors wrapped errors only) whenever an error is returned to
 	// an API client.  Currently only works with REST API calls.
 	StacktraceOnAPIErrors = false
+
 )
 
 const (
@@ -95,6 +96,11 @@ const (
 	// SG Mercury integration tests that receive configuration from a running MobileService.  If this is used
 	// in the configuration, then during the Sync Gateway startup process, it will skip the Http listener steps.
 	RestTesterInterface = "resttester:-1"
+)
+
+var (
+	DefaultPool = "default"
+
 )
 
 func UnitTestUrl() string {
