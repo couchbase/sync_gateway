@@ -10,6 +10,7 @@ pipeline {
         GOPATH = "${WORKSPACE}/godeps"
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
+        EE_BUILD_TAG = "cb_sg_enterprise"
     }
 
     stages {
@@ -77,7 +78,7 @@ pipeline {
             steps {
                 echo 'Building..'
                 withEnv(["PATH+=${GO}"]) {
-                    sh './build.sh -v -tags "sg_enterprise"'
+                    sh "./build.sh -v -tags ${EE_BUILD_TAG}"
                 }
             }
         }
@@ -115,7 +116,7 @@ pipeline {
         stage('EE Test -cover') {
             steps {
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    sh 'go test -tags "sg_enterprise" -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ee_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
+                    sh "go test -tags ${EE_BUILD_TAG} -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ee_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/..."
                     sh 'go tool cover -func=cover_ee_private.out | awk \'END{print "Total SG EE+SGA Coverage: " $3}\''
                     sh 'mkdir -p reports'
                     sh 'go tool cover -html=cover_ee_private.out -o reports/coverage-ee.html'
@@ -135,7 +136,7 @@ pipeline {
             steps {
                 echo 'Testing with -race..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    sh './test.sh -race -tags "sg_enterprise"'
+                    sh "./test.sh -race -tags ${EE_BUILD_TAG}"
                 }
             }
         }
