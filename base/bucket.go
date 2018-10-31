@@ -138,9 +138,6 @@ func (spec BucketSpec) GetGoCBConnString() (string, error) {
 		return "", err
 	}
 
-	username, password, _ := spec.Auth.GetCredentials()
-	connSpec = FilterAddressesInCluster(connSpec, username, password)
-
 	// Increase the number of idle connections per-host to fix SG #3534
 	if connSpec.Options == nil {
 		connSpec.Options = map[string][]string{}

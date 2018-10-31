@@ -1073,13 +1073,23 @@ func FilterAddressesInCluster(original gocbconnstr.ConnSpec, username, password 
 
 	addressesInCluster := []gocbconnstr.Address{}
 	for _, address := range original.Addresses {
-		url := fmt.Sprintf(
-			"http://%s:%s@%s:%d/pools/%s",
-			username,
-			password,
-			address.Host,
-			address.Port,
-			DefaultPool)
+		var url string
+		if username != "" {
+			url = fmt.Sprintf(
+				"http://%s:%s@%s:%d/pools/%s",
+				username,
+				password,
+				address.Host,
+				address.Port,
+				DefaultPool)
+		} else {
+			url = fmt.Sprintf(
+				"http://%s:%d/pools/%s",
+				address.Host,
+				address.Port,
+				DefaultPool)
+		}
+
 		resp, err := http.Get(url)
 		if err != nil {
 			Warnf(KeyAll, "Unable to connect to MobileService at %v, ignoring", url)
