@@ -136,7 +136,7 @@ pipeline {
             steps {
                 echo 'Testing with -race..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    sh "./test.sh -race -tags ${EE_BUILD_TAG}"
+                    sh "./test.sh -race -count=1 -tags ${EE_BUILD_TAG}"
                 }
             }
         }
