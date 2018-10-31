@@ -845,8 +845,6 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 		t.Errorf("Unexpected number of changes results.  Last_Seq: %v  len(changes): %v", changes.Last_Seq, len(changes.Results))
 	}
 
-	goassert.Equals(t, len(changes.Results), 8)
-	goassert.Equals(t, changes.Last_Seq, "13")
 }
 
 // Test low sequence handling of late arriving sequences to a one-shot changes feed, ensuring that
@@ -974,8 +972,6 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 		t.Errorf("Unexpected number of changes results.  Last_Seq: %v  len(changes): %v", changes.Last_Seq, len(changes.Results))
 	}
 
-	goassert.Equals(t, len(changes.Results), 8)
-	goassert.Equals(t, changes.Last_Seq, "13")
 }
 
 // Test low sequence handling of late arriving sequences to a longpoll changes feed, ensuring that
