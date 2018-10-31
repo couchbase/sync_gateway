@@ -6,8 +6,6 @@
   <remote fetch="https://github.com/couchbasedeps/" name="couchbasedeps"/>
 
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
-  <remote fetch="https://github.com/mreiferson/" name="mreiferson"/>
-  <remote fetch="https://github.com/spf13/" name="spf13"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
@@ -20,14 +18,11 @@
     <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
   </project>
 
-  
   <!-- Sync Gateway -->
   <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase"/> 
 
-  
   <!-- Mobile Service -->
   <project name="mobile-service" path="godeps/src/github.com/couchbase/mobile-service"/>
-
 
   <!-- Sync Gateway Accel-->
   <project groups="notdefault,sg-accel" name="sync-gateway-accel" path="godeps/src/github.com/couchbaselabs/sync-gateway-accel" remote="couchbaselabs_private" revision="74bf43222348706c6bae5825846cec0b2326d6fd"/>
@@ -40,7 +35,6 @@
   <project groups="notdefault,sg-accel" name="cb-heartbeat" path="godeps/src/github.com/couchbase/cb-heartbeat" remote="couchbase" revision="aedb0776e80d25a79d4b17c1f322a75a2c52a518"/>
 
   <project groups="notdefault,sg-accel" name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="3d39b57188c372649beedd5c13c9003156d5a055"/>
-
 
   <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
   <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
@@ -83,13 +77,13 @@
 
   <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="084795c8f01f195a88c0ca4af0d7228a5ef40c83"/>
 
-  <project name="text"           remote="couchbasedeps" revision="88f656faf3f37f690df1a32515b479415e1a6769" path="godeps/src/golang.org/x/text"/>
+  <project name="text" remote="couchbasedeps" revision="88f656faf3f37f690df1a32515b479415e1a6769" path="godeps/src/golang.org/x/text"/>
 
-  <project name="crypto"         remote="couchbasedeps" revision="bd6f299fb381e4c3393d1c4b1f0b94f5e77650c8" path="godeps/src/golang.org/x/crypto"/>
+  <project name="crypto" remote="couchbasedeps" revision="bd6f299fb381e4c3393d1c4b1f0b94f5e77650c8" path="godeps/src/golang.org/x/crypto"/>
 
-  <project name="net"            remote="couchbasedeps" revision="44b7c21cbf19450f38b337eb6b6fe4f6496fb5b3" path="godeps/src/golang.org/x/net"/>
+  <project name="net" remote="couchbasedeps" revision="44b7c21cbf19450f38b337eb6b6fe4f6496fb5b3" path="godeps/src/golang.org/x/net"/>
 
-  <project name="sys"            remote="couchbasedeps" revision="661970f62f5897bc0cd5fdca7e087ba8a98a8fa1" path="godeps/src/golang.org/x/sys"/>
+  <project name="sys" remote="couchbasedeps" revision="661970f62f5897bc0cd5fdca7e087ba8a98a8fa1" path="godeps/src/golang.org/x/sys"/>
 
   <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="6231e870020191bd89f9e89aa5a0c3de32ba6303"/>
 
@@ -118,22 +112,20 @@
   <project name="uuid" path="godeps/src/github.com/google/uuid" remote="couchbasedeps" revision="e704694aed0ea004bb7eb1fc2e911d048a54606a"/>
 
   <project name="opentracing-go" path="godeps/src/github.com/opentracing/opentracing-go" remote="couchbasedeps" revision="6c572c00d1830223701e155de97408483dfcd14a"/>
-
-
+  
   <!-- Mobile Service Deps -->
 
-  <project name="protobuf"       remote="couchbasedeps" revision="ddf22928ea3c56eb4292a0adbbf5001b1e8e7d0d" path="godeps/src/github.com/golang/protobuf"/>
+  <project name="protobuf" remote="couchbasedeps" revision="ddf22928ea3c56eb4292a0adbbf5001b1e8e7d0d" path="godeps/src/github.com/golang/protobuf"/>
 
   <project name="grpc-go" remote="couchbasedeps" revision="afc05b9e1d36f289ea16ba294894486a3e458246" path="godeps/src/google.golang.org/grpc"/>
 
   <project name="go-genproto" remote="couchbasedeps" revision="2b5a72b8730b0b16380010cfe5286c42108d88e7" path="godeps/src/google.golang.org/genproto"/>
 
-  <project name="cobra"          remote="spf13" revision="ef82de70bb3f60c65fb8eebacbb2d122ef517385" path="godeps/src/github.com/spf13/cobra"/>
+  <project name="cobra" remote="couchbasedeps" revision="ef82de70bb3f60c65fb8eebacbb2d122ef517385" path="godeps/src/github.com/spf13/cobra"/>
 
-  <project name="pflag"          remote="spf13" revision="9a97c102cda95a86cec2345a6f09f55a939babf5" path="godeps/src/github.com/spf13/pflag"/>
+  <project name="pflag" remote="couchbasedeps" revision="9a97c102cda95a86cec2345a6f09f55a939babf5" path="godeps/src/github.com/spf13/pflag"/>
 
   <project name="cbauth" path="godeps/src/github.com/couchbase/cbauth" remote="couchbase"/>
-
 
   <!-- gozip tools -->
   <project name="ns_server" path="godeps/src/github.com/couchbase/ns_server" remote="couchbase" revision="6d835931f574f25e3781192c09e45a3ee30deb51"/>
