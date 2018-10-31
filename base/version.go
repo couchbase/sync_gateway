@@ -31,14 +31,14 @@ func init() {
 		if len(versionTokens) > 1 {
 			BuildNumberString = fmt.Sprintf("%s;", versionTokens[1])
 		}
-		LongVersionString = fmt.Sprintf("%s %s/%s(%s%.7s)",
-			ServerName, productEditionShortName, BuildVersionString, BuildNumberString, VersionCommitSHA)
+		LongVersionString = fmt.Sprintf("%s/%s(%s%.7s) %s",
+			ServerName, BuildVersionString, BuildNumberString, VersionCommitSHA, productEditionShortName)
 
-		VersionString = fmt.Sprintf("%s %s/%s", ServerName, productEditionShortName, BuildVersionString)
+		VersionString = fmt.Sprintf("%s/%s %s", ServerName, BuildVersionString, productEditionShortName)
 		ProductName = ServerName
 	} else {
-		LongVersionString = fmt.Sprintf("%s %s/%s(%.7s%s)", GitProductName, productEditionShortName, GitBranch, GitCommit, GitDirty)
-		VersionString = fmt.Sprintf("%s %s/%s branch/%s commit/%.7s%s", GitProductName, productEditionShortName, VersionNumber, GitBranch, GitCommit, GitDirty)
+		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s) %s", GitProductName, GitBranch, GitCommit, GitDirty, productEditionShortName)
+		VersionString = fmt.Sprintf("%s/%s branch/%s commit/%.7s%s %s", GitProductName, VersionNumber, GitBranch, GitCommit, GitDirty, productEditionShortName)
 		ProductName = GitProductName
 	}
 }
