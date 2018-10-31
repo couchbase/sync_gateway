@@ -920,8 +920,12 @@ func (config *ServerConfig) NumIndexWriters() int {
 	return n
 }
 
-// Starts and runs the server given its configuration. (This function never returns.)
-func RunServer(config *ServerConfig) *ServerContext {
+// Starts and runs the server given its configuration.  This kicks off async goroutines
+// and returns the ServerContext immediately.  If runPostStartup is true, it also kicks off
+// any post-startup functionality associated with the ServerContext, which currently is to
+// kick off replicators.
+func StartHttpListeners(config *ServerConfig, runPostStartup bool) *ServerContext {
+
 	PrettyPrint = config.Pretty
 
 	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKey().EnabledLogKeys())
@@ -960,7 +964,9 @@ func RunServer(config *ServerConfig) *ServerContext {
 		}()
 	}
 
-	go sc.PostStartup()
+	if runPostStartup {
+		go sc.PostStartup()
+	}
 
 	if *config.AdminInterface != base.RestTesterInterface {
 		base.Infof(base.KeyAll, "Starting admin API server on %s", base.UD(*config.AdminInterface))
@@ -1046,33 +1052,4 @@ func panicHandler() (panicHandler func()) {
 		}
 	}
 
-}
-
-// Main entry point for a simple server; you can have your main() function just call this.
-// It parses command-line flags, reads the optional configuration file, then starts the server.
-func ServerMain(runMode SyncGatewayRunMode) {
-	RegisterSignalHandler()
-	defer panicHandler()()
-
-	ParseCommandLine(runMode)
-
-	// Logging config will now have been loaded from command line
-	// or from a sync_gateway config file so we can validate the
-	// configuration and setup logging now
-	warnings, err := config.setupAndValidateLogging()
-	if err != nil {
-		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
-	}
-
-	// This is the earliest opportunity to log a startup indicator
-	// that will be persisted in log files.
-	base.LogSyncGatewayVersion()
-
-	// Execute any deferred warnings from setup.
-	for _, logFn := range warnings {
-		logFn()
-	}
-
-	ValidateConfigOrPanic(runMode)
-	RunServer(config)
 }

@@ -25,13 +25,13 @@ var deleteCmd = &cobra.Command{
 		if RecursiveDelete {
 			err = metakvHelper.RecursiveDelete(key)
 			if err != nil {
-				panic(fmt.Sprintf("Error recursively deleting key: %v.  Err: %v", key, err))
+				panic(fmt.Sprintf("Error recursively deleting key: %+v.  Err: %v", key, err))
 			}
 			fmt.Printf("Recursively deleted key %v\n", key)
 		} else {
 			err = metakvHelper.Delete(key)
 			if err != nil {
-				panic(fmt.Sprintf("Error deleting key: %v.  Err: %v", key, err))
+				panic(fmt.Sprintf("Error deleting key: %v.  Err: %+v", key, err))
 			}
 			fmt.Printf("Deleted key %v\n", key)
 		}

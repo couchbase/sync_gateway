@@ -138,21 +138,19 @@ func (gw *SyncGateway) ActiveMobileSvcGrpcEndpoints() (mobileSvcHostPorts []stri
 	// which probably means they have been removed from the cluster.
 	connSpec = base.FilterAddressesInCluster(connSpec, gw.BootstrapConfig.CBUsername, gw.BootstrapConfig.CBPassword)
 
-	mobileSvcHostPorts = []string{}
-
 	// Calculate the GRPC endpoint port based on the couchbase server port and the PortGrpcTlsOffset
+	mobileSvcHostPorts = []string{}
 	for _, address := range connSpec.Addresses {
-
 		grpcTargetPort := mobile_service.PortGrpcTlsOffset + address.Port
 		hostPort := fmt.Sprintf("%s:%d", address.Host, grpcTargetPort)
 		mobileSvcHostPorts = append(mobileSvcHostPorts, hostPort)
-
 	}
 
 	return mobileSvcHostPorts, nil
 
 }
 
+// Start a Sync Gateway
 func (gw *SyncGateway) Start() error {
 
 	// Load snapshot of configuration from MetaKV
@@ -160,16 +158,30 @@ func (gw *SyncGateway) Start() error {
 		return err
 	}
 
-	// Kick off http/s server
-	if err := gw.RunServer(); err != nil {
+	// Parse json stored in metakv into a ServerConfig
+	serverConfig, err := gw.LoadServerConfig()
+	if err != nil {
 		return err
 	}
+
+	// Kick off http listeners
+	serverContext := StartHttpListeners(serverConfig, false)
+
+	// Save the server context
+	gw.ServerContext = serverContext
+
+	// This has to be done separately _after_ the call to gw.ServerContext, because
+	// without a valid gw.ServerContext, loading databases will fail.
+	if err := gw.LoadDbConfigAllDbs(); err != nil {
+		return err
+	}
+
 
 	// Kick off goroutine to observe stream of metakv changes
 	go func() {
 		err := gw.ObserveMetaKVChangesRetry(mobile_service.KeyDirMobileRoot)
 		if err != nil {
-			base.Warnf(base.KeyAll, fmt.Sprintf("Error observing metakv changes: %v", err))
+			base.Warnf(base.KeyMobileService, fmt.Sprintf("Error observing metakv changes: %v", err))
 
 		}
 	}()
@@ -177,7 +189,7 @@ func (gw *SyncGateway) Start() error {
 	// Kick off goroutine to push stats
 	go func() {
 		if err := gw.PushStatsStreamWithReconnect(); err != nil {
-			base.Warnf(base.KeyAll, fmt.Sprintf("Error pushing stats: %v.  Stats will no longer be pushed.", err))
+			base.Warnf(base.KeyMobileService, fmt.Sprintf("Error pushing stats: %v.  Stats will no longer be pushed.", err))
 		}
 	}()
 
@@ -185,13 +197,14 @@ func (gw *SyncGateway) Start() error {
 
 }
 
+// Synchronously load a snapshot of the mobile config from MetakV
 func (gw *SyncGateway) LoadConfigSnapshot() error {
 
 	// Get snapshot of MetaKV tree
 	keyMobileConfig := mobile_service.KeyDirMobileGateway
 	metaKvPairs, err := gw.GrpcClient.MetaKVListAllChildren(context.Background(), &msgrpc.MetaKVPath{Path: keyMobileConfig})
 	if err != nil {
-		return err
+		return pkgerrors.Wrapf(err, "Error listing metakv children for path: %v", keyMobileConfig)
 	}
 	for _, metakvPair := range metaKvPairs.Items {
 		gw.MetaKVCache[metakvPair.Path] = metakvPair
@@ -201,21 +214,7 @@ func (gw *SyncGateway) LoadConfigSnapshot() error {
 
 func (gw *SyncGateway) RunServer() error {
 
-	// Parse json stored in metakv into a ServerConfig
-	serverConfig, err := gw.LoadServerConfig()
-	if err != nil {
-		return err
-	}
 
-	serverContext := RunServer(serverConfig)
-
-	gw.ServerContext = serverContext
-
-	// This has to be done separately _after_ the call to gw.ServerContext, because
-	// without a valid gw.ServerContext, loading databases will fail.
-	if err := gw.LoadDbConfigAllDbs(); err != nil {
-		return err
-	}
 
 	return nil
 }
@@ -225,56 +224,60 @@ func (gw *SyncGateway) Wait() {
 	select {}
 }
 
+// Close any resources associated with this Sync Gateway instance
 func (gw *SyncGateway) Close() {
 	gw.GrpcConn.Close()
+	gw.ServerContext.Close()
 }
 
+// Observe changes in MetaKV in a retry loop.  Does _not_ try to re-establish a GRPC connection,
+// since it assumes that something else in the system is handling that.
 func (gw *SyncGateway) ObserveMetaKVChangesRetry(path string) error {
-
 	for {
-		log.Printf("Starting ObserveMetaKVChanges")
+		base.Debugf(base.KeyMobileService, "Starting ObserveMetaKVChanges on path: %v", path)
 		if err := gw.ObserveMetaKVChanges(path); err != nil {
-			log.Printf("ObserveMetaKVChanges returned error: %v, retrying.", err)
+			base.Infof(base.KeyMobileService, "ObserveMetaKVChanges on path: %v returned error: %+v  Retrying", path, err)
 			time.Sleep(time.Second * 1)
 			gw.ObserveMetaKVChanges(path)
 		}
-
 	}
-
 }
 
+// Observe changes in MetaKV in a retry loop and delegates handling to other methods.  Does not retry on errors.
 func (gw *SyncGateway) ObserveMetaKVChanges(path string) error {
 
 	stream, err := gw.GrpcClient.MetaKVObserveChildren(context.Background(), &msgrpc.MetaKVPath{Path: path})
 	if err != nil {
-		return err
+		return pkgerrors.Wrapf(err, "Error calling MetaKVObserveChildren for path: %v", path)
 	}
 
 	for {
+
 		updatedConfigKV, err := stream.Recv()
 		if err != nil {
-			return err
+			return pkgerrors.Wrapf(err, "Error calling stream.Recv() while observing MetaKV path: %v", path)
 		}
 
-		log.Printf("ObserveMetaKVChanges got metakv change for %v: %+v", path, updatedConfigKV)
-
+		base.Tracef(base.KeyMobileService, "ObserveMetaKVChanges got metakv change for %v: %+v", path, updatedConfigKV)
 		if strings.HasPrefix(updatedConfigKV.Path, mobile_service.KeyMobileGatewayDatabases) {
-
 			if err := gw.ProcessDatabaseMetaKVPair(updatedConfigKV); err != nil {
 				return err
 			}
-
-		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_service.KeyMobileGateway) {
-			// Server level config updated
-			if err := gw.HandleServerConfigUpdated(updatedConfigKV); err != nil {
+		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_service.KeyDirMobileGatewayGeneral) {
+			if err := gw.HandleGeneralConfigUpdated(updatedConfigKV); err != nil {
+				return err
+			}
+		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_service.KeyDirMobileGatewayListener) {
+			if err := gw.HandleListenerConfigUpdated(updatedConfigKV); err != nil {
 				return err
 			}
 		}
 
 	}
-
 }
 
+// If a MetaKV entry related to database config is edited, handle the change by either
+// deleting, updating, or adding a database to this Sync Gateway.
 func (gw *SyncGateway) ProcessDatabaseMetaKVPair(metakvPair *msgrpc.MetaKVPair) error {
 	existingMetaKVConfig, found := gw.MetaKVCache[metakvPair.Path]
 	switch found {
@@ -290,7 +293,6 @@ func (gw *SyncGateway) ProcessDatabaseMetaKVPair(metakvPair *msgrpc.MetaKVPair) 
 			}
 		default:
 			// Db is being updated
-			log.Printf("updatedDbConfig: %v", string(metakvPair.Value))
 			if err := gw.HandleDbUpdate(metakvPair, existingMetaKVConfig); err != nil {
 				return err
 			}
@@ -306,17 +308,31 @@ func (gw *SyncGateway) ProcessDatabaseMetaKVPair(metakvPair *msgrpc.MetaKVPair) 
 
 }
 
-func (gw *SyncGateway) HandleServerConfigUpdated(metaKvPair *msgrpc.MetaKVPair) error {
+
+func (gw *SyncGateway) HandleGeneralConfigUpdated(metaKvPair *msgrpc.MetaKVPair) error {
 
 	gw.MetaKVCache[metaKvPair.Path] = metaKvPair
 
-	// TODO: reload server level config
+	// TODO: reload general config
 
-	base.Warnf(base.KeyAll, "HandleServerConfigUpdated ignoring change: %v", metaKvPair.Path)
+	base.Warnf(base.KeyAll, "HandleGeneralConfigUpdated ignoring change: %v", metaKvPair.Path)
 
 	return nil
 
 }
+
+func (gw *SyncGateway) HandleListenerConfigUpdated(metaKvPair *msgrpc.MetaKVPair) error {
+
+	gw.MetaKVCache[metaKvPair.Path] = metaKvPair
+
+	// TODO: reload listener config -- will require interrupting existing http listeners and creating new ones
+
+	base.Warnf(base.KeyAll, "HandleListenerConfigUpdated ignoring change: %v", metaKvPair.Path)
+
+	return nil
+
+}
+
 
 func (gw *SyncGateway) HandleDbDelete(metaKvPair, existingDbConfig *msgrpc.MetaKVPair) error {
 
@@ -324,7 +340,7 @@ func (gw *SyncGateway) HandleDbDelete(metaKvPair, existingDbConfig *msgrpc.MetaK
 		return fmt.Errorf("If db config is being deleted, incoming value should be empty")
 	}
 
-	// Delete from config map
+	// Delete from MetaKv config cache
 	delete(gw.MetaKVCache, metaKvPair.Path)
 
 	// The metakv pair path will be: /mobile/gateway/config/databases/database-1
@@ -583,7 +599,12 @@ func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffs
 
 func StartSyncGateway(bootstrapConfig BootstrapConfig) (*SyncGateway, error) {
 
-	// Client setup
+	RegisterSignalHandler()
+	defer panicHandler()()
+
+	InitLogging()
+
+	// Create and start Sync Gateway using bootstrap config
 	gw := NewSyncGateway(bootstrapConfig)
 	err := gw.Start()
 	return gw, err
@@ -591,6 +612,13 @@ func StartSyncGateway(bootstrapConfig BootstrapConfig) (*SyncGateway, error) {
 }
 
 func RunSyncGatewayLegacyMode(pathToConfigFile string) {
+
+	RegisterSignalHandler()
+	defer panicHandler()()
+
+	InitLogging()
+
+	// TODO: call ParseCommandLine() and extract subset of CLI params used in service scripts
 
 	serverConfig, err := ReadServerConfig(SyncGatewayRunModeNormal, pathToConfigFile)
 	if err != nil {
@@ -606,8 +634,30 @@ func RunSyncGatewayLegacyMode(pathToConfigFile string) {
 		serverConfig.AdminInterface = &DefaultAdminInterface
 	}
 
-	_ = RunServer(serverConfig)
+	_ = StartHttpListeners(serverConfig, true)
 
 	select {} // block forever
+
+}
+
+
+func InitLogging() {
+
+	// Logging config will now have been loaded from command line
+	// or from a sync_gateway config file so we can validate the
+	// configuration and setup logging now
+	warnings, err := config.setupAndValidateLogging()
+	if err != nil {
+		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
+	}
+
+	// This is the earliest opportunity to log a startup indicator
+	// that will be persisted in log files.
+	base.LogSyncGatewayVersion()
+
+	// Execute any deferred warnings from setup.
+	for _, logFn := range warnings {
+		logFn()
+	}
 
 }

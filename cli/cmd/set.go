@@ -55,7 +55,7 @@ echo "{\"MyKey\": 2}" | sg config metakv set /path/to/my/key
 		metakvHelper := rest.NewMetaKVClient(bootstrapConfig)
 		key := args[0]
 		if err := metakvHelper.Upsert(key, val); err != nil {
-			panic(fmt.Sprintf("Error setting config.  Key: %v Error: %v Val: %v", key, err, val))
+			panic(fmt.Sprintf("Error setting config.  Key: %v Error: %+v Val: %v", key, err, val))
 		}
 
 		fmt.Printf("Successfully set key: %v.  Value size: %d bytes\n", key, len(val))
