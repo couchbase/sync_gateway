@@ -6,7 +6,7 @@ import (
 	"log"
 	"testing"
 
-	assert "github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestFileShouldLog(t *testing.T) {
@@ -69,7 +69,7 @@ func TestFileShouldLog(t *testing.T) {
 
 		t.Run(name, func(ts *testing.T) {
 			got := l.shouldLog(test.logToLevel)
-			assert.Equals(ts, got, test.expected)
+			goassert.Equals(ts, got, test.expected)
 		})
 	}
 }

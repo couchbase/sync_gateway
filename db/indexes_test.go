@@ -7,7 +7,8 @@ import (
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestInitializeIndexes(t *testing.T) {
@@ -20,16 +21,16 @@ func TestInitializeIndexes(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	goCbBucket, isGoCBBucket := base.AsGoCBBucket(testBucket)
-	assert.True(t, isGoCBBucket)
+	goassert.True(t, isGoCBBucket)
 
 	dropErr := base.DropAllBucketIndexes(goCbBucket)
-	assertNoError(t, dropErr, "Error dropping all indexes")
+	assert.NoError(t, dropErr, "Error dropping all indexes")
 
 	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0)
-	assertNoError(t, initErr, "Error initializing all indexes")
+	assert.NoError(t, initErr, "Error initializing all indexes")
 
 	validateErr := validateAllIndexesOnline(testBucket)
-	assertNoError(t, validateErr, "Error validating indexes online")
+	assert.NoError(t, validateErr, "Error validating indexes online")
 
 }
 
@@ -85,22 +86,22 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	// an initial cleanup to remove existing obsolete indexes
 	removedIndexes, removeErr := removeObsoleteIndexes(testBucket.Bucket, false, db.UseXattrs())
 	log.Printf("removedIndexes: %+v", removedIndexes)
-	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
+	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
 	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, true, !db.UseXattrs())
-	assert.Equals(t, len(removedIndexes), int(expectedIndexes))
-	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
+	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
+	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
 	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, false, !db.UseXattrs())
-	assert.Equals(t, len(removedIndexes), int(expectedIndexes))
-	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
+	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
+	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone
 	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, false, !db.UseXattrs())
-	assert.Equals(t, len(removedIndexes), 0)
-	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
+	goassert.Equals(t, len(removedIndexes), 0)
+	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
 }
 
@@ -117,8 +118,8 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	// Validate that removeObsoleteIndexes is a no-op for the default case
 	removedIndexes, removeErr := removeObsoleteIndexes(testBucket.Bucket, true, db.UseXattrs())
 	log.Printf("removedIndexes: %+v", removedIndexes)
-	assert.Equals(t, len(removedIndexes), 0)
-	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
+	goassert.Equals(t, len(removedIndexes), 0)
+	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
 
 	// Hack sgIndexes to simulate new version of indexes
 	accessIndex := sgIndexes[IndexAccess]
@@ -134,6 +135,6 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	// Validate that removeObsoleteIndexes now triggers removal of one index
 	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, true, db.UseXattrs())
 	log.Printf("removedIndexes: %+v", removedIndexes)
-	assert.Equals(t, len(removedIndexes), 1)
-	assertNoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
+	goassert.Equals(t, len(removedIndexes), 1)
+	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
 }

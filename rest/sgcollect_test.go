@@ -7,25 +7,26 @@ import (
 	"strings"
 	"testing"
 
-	assert "github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSgcollectFilename(t *testing.T) {
 	filename := sgcollectFilename()
 
 	// Check it doesn't have forbidden chars
-	assert.False(t, strings.ContainsAny(filename, "\\/:*?\"<>|"))
+	goassert.False(t, strings.ContainsAny(filename, "\\/:*?\"<>|"))
 
 	pattern := `^sgcollectinfo\-\d{4}\-\d{2}\-\d{2}t\d{6}\-sga?@(\d{1,3}\.){4}zip$`
 	matched, err := regexp.Match(pattern, []byte(filename))
-	assertNoError(t, err, "unexpected regexp error")
-	assertTrue(t, matched, fmt.Sprintf("Filename: %s did not match pattern: %s", filename, pattern))
+	assert.NoError(t, err, "unexpected regexp error")
+	assert.True(t, matched, fmt.Sprintf("Filename: %s did not match pattern: %s", filename, pattern))
 }
 
 func TestSgcollectOptionsValidate(t *testing.T) {
 
 	binPath, err := os.Executable()
-	assertNoError(t, err, "unexpected error getting executable path")
+	assert.NoError(t, err, "unexpected error getting executable path")
 
 	tests := []struct {
 		options     *sgCollectOptions
@@ -93,8 +94,8 @@ func TestSgcollectOptionsValidate(t *testing.T) {
 				errStr = err.Error()
 			}
 
-			assert.Equals(ts, err != nil, test.errContains != "")
-			assert.StringContains(ts, errStr, test.errContains)
+			goassert.Equals(ts, err != nil, test.errContains != "")
+			goassert.StringContains(ts, errStr, test.errContains)
 
 		})
 	}
@@ -103,7 +104,7 @@ func TestSgcollectOptionsValidate(t *testing.T) {
 
 func TestSgcollectOptionsArgs(t *testing.T) {
 	binPath, err := os.Executable()
-	assertNoError(t, err, "unexpected error getting executable path")
+	assert.NoError(t, err, "unexpected error getting executable path")
 
 	tests := []struct {
 		options      *sgCollectOptions
@@ -169,7 +170,7 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 			_ = test.options.Validate()
 
 			args := test.options.Args()
-			assert.DeepEquals(ts, args, test.expectedArgs)
+			goassert.DeepEquals(ts, args, test.expectedArgs)
 		})
 	}
 }

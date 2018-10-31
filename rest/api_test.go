@@ -31,8 +31,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/robertkrimen/otto/underscore"
+	"github.com/stretchr/testify/assert"
 )
 
 func init() {
@@ -52,16 +53,16 @@ func TestRoot(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["couchdb"], "Welcome")
+	goassert.Equals(t, body["couchdb"], "Welcome")
 
 	response = rt.SendRequest("HEAD", "/", "")
 	assertStatus(t, response, 200)
 	response = rt.SendRequest("OPTIONS", "/", "")
 	assertStatus(t, response, 204)
-	assert.Equals(t, response.Header().Get("Allow"), "GET, HEAD")
+	goassert.Equals(t, response.Header().Get("Allow"), "GET, HEAD")
 	response = rt.SendRequest("PUT", "/", "")
 	assertStatus(t, response, 405)
-	assert.Equals(t, response.Header().Get("Allow"), "GET, HEAD")
+	goassert.Equals(t, response.Header().Get("Allow"), "GET, HEAD")
 }
 
 func (rt *RestTester) createDoc(t *testing.T, docid string) string {
@@ -69,7 +70,7 @@ func (rt *RestTester) createDoc(t *testing.T, docid string) string {
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revid := body["rev"].(string)
 	if revid == "" {
 		t.Fatalf("No revid in response for PUT doc")
@@ -82,7 +83,7 @@ func TestDocLifecycle(t *testing.T) {
 	defer rt.Close()
 
 	revid := rt.createDoc(t, "doc")
-	assert.Equals(t, revid, "1-45ca73d819d5b1c9b8eea95290e79004")
+	goassert.Equals(t, revid, "1-45ca73d819d5b1c9b8eea95290e79004")
 
 	response := rt.SendRequest("DELETE", "/db/doc?rev="+revid, "")
 	assertStatus(t, response, 200)
@@ -97,32 +98,32 @@ func TestDocEtag(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revid := body["rev"].(string)
 	if revid == "" {
 		t.Fatalf("No revid in response for PUT doc")
 	}
 
 	//Validate Etag returned on doc creation
-	assert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
+	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
 
 	response = rt.SendRequest("GET", "/db/doc", "")
 	assertStatus(t, response, 200)
 
 	//Validate Etag returned when retrieving doc
-	assert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
+	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
 
 	//Validate Etag returned when updating doc
 	response = rt.SendRequest("PUT", "/db/doc?rev="+revid, `{"prop":false}`)
 	revid = body["rev"].(string)
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revid = body["rev"].(string)
 	if revid == "" {
 		t.Fatalf("No revid in response for PUT doc")
 	}
 
-	assert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
+	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revid))
 
 	//Test Attachments
 	attachmentBody := "this is the body of attachment"
@@ -136,25 +137,25 @@ func TestDocEtag(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revIdAfterAttachment := body["rev"].(string)
 	if revIdAfterAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	assert.True(t, revIdAfterAttachment != revid)
+	goassert.True(t, revIdAfterAttachment != revid)
 
 	//validate Etag returned from adding an attachment
-	assert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revIdAfterAttachment))
+	goassert.Equals(t, response.Header().Get("Etag"), strconv.Quote(revIdAfterAttachment))
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc/attach1", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.Equals(t, response.Header().Get("Content-Disposition"), "")
-	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.Equals(t, response.Header().Get("Content-Disposition"), "")
+	goassert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 
 	//Validate Etag returned from retrieving an attachment
-	assert.Equals(t, response.Header().Get("Etag"), "\"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=\"")
+	goassert.Equals(t, response.Header().Get("Etag"), "\"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=\"")
 
 }
 
@@ -182,20 +183,20 @@ func TestDocAttachment(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc/attach1", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
-	assert.Equals(t, response.Header().Get("Content-Disposition"), "")
-	assert.Equals(t, response.Header().Get("Content-Length"), "30")
-	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
+	goassert.Equals(t, response.Header().Get("Content-Disposition"), "")
+	goassert.Equals(t, response.Header().Get("Content-Length"), "30")
+	goassert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 
 	// retrieve subrange
 	response = rt.SendRequestWithHeaders("GET", "/db/doc/attach1", "", map[string]string{"Range": "bytes=5-6"})
 	assertStatus(t, response, 206)
-	assert.Equals(t, string(response.Body.Bytes()), "is")
-	assert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
-	assert.Equals(t, response.Header().Get("Content-Length"), "2")
-	assert.Equals(t, response.Header().Get("Content-Range"), "bytes 5-6/30")
-	assert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), "is")
+	goassert.Equals(t, response.Header().Get("Accept-Ranges"), "bytes")
+	goassert.Equals(t, response.Header().Get("Content-Length"), "2")
+	goassert.Equals(t, response.Header().Get("Content-Range"), "bytes 5-6/30")
+	goassert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 }
 
 // Add an attachment to a document that has been removed from the users channels
@@ -205,10 +206,10 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	user, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	//Create a test user
 	user, err = a.NewUser("user1", "letmein", channels.SetOf("foo"))
@@ -243,10 +244,10 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	user, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	//Create a test user
 	user, err = a.NewUser("user1", "letmein", channels.SetOf("foo"))
@@ -309,8 +310,8 @@ func TestDocumentLargeNumbers(t *testing.T) {
 			var rawResponse RawResponse
 			json.Unmarshal(getRawResponse.Body.Bytes(), &rawResponse)
 			log.Printf("raw response: %s", getRawResponse.Body.Bytes())
-			assert.Equals(t, len(rawResponse.Sync.Channels), 1)
-			assertTrue(t, HasActiveChannel(rawResponse.Sync.Channels, test.expectedChannel), fmt.Sprintf("Expected channel %s was not found in document channels", test.expectedChannel))
+			goassert.Equals(t, len(rawResponse.Sync.Channels), 1)
+			assert.True(t, HasActiveChannel(rawResponse.Sync.Channels, test.expectedChannel), fmt.Sprintf("Expected channel %s was not found in document channels", test.expectedChannel))
 
 		})
 	}
@@ -377,15 +378,15 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revIdAfterAttachment := body["rev"].(string)
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc1/attachpath%2Fattachment.txt", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == "")
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Disposition") == "")
+	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// add attachment with two embedded '/' (%2F HEX)
 	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attachpath%2Fattachpath2%2Fattachment.txt?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
@@ -394,9 +395,9 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc1/attachpath%2Fattachpath2%2Fattachment.txt", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == "")
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Disposition") == "")
+	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	//Create Doc with embedded '/' (%2F HEX) in name
 	doc1revId = rt.createDoc(t, "AC%2FDC")
@@ -409,15 +410,15 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revIdAfterAttachment = body["rev"].(string)
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/AC%2FDC/attachpath%2Fattachment.txt", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == "")
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Disposition") == "")
+	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// add attachment with two embedded '/' (%2F HEX)
 	response = rt.SendRequestWithHeaders("PUT", "/db/AC%2FDC/attachpath%2Fattachpath2%2Fattachment.txt?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
@@ -426,9 +427,9 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/AC%2FDC/attachpath%2Fattachpath2%2Fattachment.txt", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == "")
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Disposition") == "")
+	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	//Create Doc with embedded '+' (%2B HEX) in name
 	doc1revId = rt.createDoc(t, "AC%2BDC%2BGC2")
@@ -441,15 +442,15 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revIdAfterAttachment = body["rev"].(string)
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/AC%2BDC%2BGC2/attachpath%2Fattachment.txt", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == "")
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Disposition") == "")
+	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// add attachment with two embedded '/' (%2F HEX)
 	response = rt.SendRequestWithHeaders("PUT", "/db/AC%2BDC%2BGC2/attachpath%2Fattachpath2%2Fattachment.txt?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
@@ -458,9 +459,9 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/AC%2BDC%2BGC2/attachpath%2Fattachpath2%2Fattachment.txt", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == "")
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Disposition") == "")
+	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 }
 
 func TestCORSOrigin(t *testing.T) {
@@ -472,7 +473,7 @@ func TestCORSOrigin(t *testing.T) {
 		"Origin": "http://example.com",
 	}
 	response := rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://example.com")
+	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://example.com")
 
 	// now test a non-listed origin
 	// b/c * is in config we get *
@@ -480,21 +481,21 @@ func TestCORSOrigin(t *testing.T) {
 		"Origin": "http://hack0r.com",
 	}
 	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "*")
+	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "*")
 
 	// now test another origin in config
 	reqHeaders = map[string]string{
 		"Origin": "http://staging.example.com",
 	}
 	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://staging.example.com")
+	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "http://staging.example.com")
 
 	// test no header on _admin apis
 	reqHeaders = map[string]string{
 		"Origin": "http://example.com",
 	}
 	response = rt.SendAdminRequestWithHeaders("GET", "/db/_all_docs", "", reqHeaders)
-	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
 
 	// test with a config without * should reject non-matches
 	sc := rt.ServerContext()
@@ -505,7 +506,7 @@ func TestCORSOrigin(t *testing.T) {
 		"Origin": "http://hack0r.com",
 	}
 	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	assert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
+	goassert.Equals(t, response.Header().Get("Access-Control-Allow-Origin"), "")
 }
 
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
@@ -575,7 +576,7 @@ func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
 
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["reason"], "no session")
+	goassert.Equals(t, body["reason"], "no session")
 }
 
 func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
@@ -595,7 +596,7 @@ func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
 
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["reason"], "No CORS")
+	goassert.Equals(t, body["reason"], "No CORS")
 }
 
 func TestNoCORSOriginOnSessionDelete(t *testing.T) {
@@ -611,7 +612,7 @@ func TestNoCORSOriginOnSessionDelete(t *testing.T) {
 
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["reason"], "No CORS")
+	goassert.Equals(t, body["reason"], "No CORS")
 }
 
 func TestManualAttachment(t *testing.T) {
@@ -644,27 +645,27 @@ func TestManualAttachment(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revIdAfterAttachment := body["rev"].(string)
 	if revIdAfterAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	assert.True(t, revIdAfterAttachment != doc1revId)
+	goassert.True(t, revIdAfterAttachment != doc1revId)
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc1/attach1", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == "")
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Disposition") == "")
+	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// retrieve attachment as admin should have
 	// Content-disposition: attachment
 	response = rt.SendAdminRequest("GET", "/db/doc1/attach1", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Disposition") == `attachment; filename="attach1"`)
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Disposition") == `attachment; filename="attach1"`)
+	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// try to overwrite that attachment
 	attachmentBody = "updated content"
@@ -672,12 +673,12 @@ func TestManualAttachment(t *testing.T) {
 	assertStatus(t, response, 201)
 	body = db.Body{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revIdAfterUpdateAttachment := body["rev"].(string)
 	if revIdAfterUpdateAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	assert.True(t, revIdAfterUpdateAttachment != revIdAfterAttachment)
+	goassert.True(t, revIdAfterUpdateAttachment != revIdAfterAttachment)
 
 	// try to overwrite that attachment again, this time using If-Match header
 	attachmentBody = "updated content again"
@@ -686,19 +687,19 @@ func TestManualAttachment(t *testing.T) {
 	assertStatus(t, response, 201)
 	body = db.Body{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revIdAfterUpdateAttachmentAgain := body["rev"].(string)
 	if revIdAfterUpdateAttachmentAgain == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	assert.True(t, revIdAfterUpdateAttachmentAgain != revIdAfterUpdateAttachment)
+	goassert.True(t, revIdAfterUpdateAttachmentAgain != revIdAfterUpdateAttachment)
 	delete(reqHeaders, "If-Match")
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc1/attach1", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// add another attachment to the document
 	// also no explicit Content-Type header on this one
@@ -708,18 +709,18 @@ func TestManualAttachment(t *testing.T) {
 	assertStatus(t, response, 201)
 	body = db.Body{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revIdAfterSecondAttachment := body["rev"].(string)
 	if revIdAfterSecondAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	assert.True(t, revIdAfterSecondAttachment != revIdAfterUpdateAttachment)
+	goassert.True(t, revIdAfterSecondAttachment != revIdAfterUpdateAttachment)
 
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/doc1/attach2", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Type") == "application/octet-stream")
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Type") == "application/octet-stream")
 
 	// now check the attachments index on the document
 	response = rt.SendRequest("GET", "/db/doc1", "")
@@ -730,7 +731,7 @@ func TestManualAttachment(t *testing.T) {
 	if !ok {
 		t.Errorf("Attachments must be map")
 	} else {
-		assert.Equals(t, len(bodyAttachments), 2)
+		goassert.Equals(t, len(bodyAttachments), 2)
 	}
 	// make sure original document property has remained
 	prop, ok := body["prop"]
@@ -764,7 +765,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revIdAfterAttachment := body["rev"].(string)
 	if revIdAfterAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
@@ -773,8 +774,8 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	// retrieve attachment
 	response = rt.SendRequest("GET", "/db/notexistyet/attach1", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
+	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
+	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// now check the document
 	body = db.Body{}
@@ -782,7 +783,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	// body should only have 3 top-level entries _id, _rev, _attachments
-	assert.True(t, len(body) == 3)
+	goassert.True(t, len(body) == 3)
 }
 
 func TestBulkDocs(t *testing.T) {
@@ -794,29 +795,29 @@ func TestBulkDocs(t *testing.T) {
 	assertStatus(t, response, 201)
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
-	assert.Equals(t, len(docs), 3)
-	assert.DeepEquals(t, docs[0],
+	goassert.Equals(t, len(docs), 3)
+	goassert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "1-50133ddd8e49efad34ad9ecae4cb9907", "id": "bulk1"})
 	response = rt.SendRequest("GET", "/db/bulk1", "")
-	assert.Equals(t, response.Body.String(), `{"_id":"bulk1","_rev":"1-50133ddd8e49efad34ad9ecae4cb9907","n":1}`)
-	assert.DeepEquals(t, docs[1],
+	goassert.Equals(t, response.Body.String(), `{"_id":"bulk1","_rev":"1-50133ddd8e49efad34ad9ecae4cb9907","n":1}`)
+	goassert.DeepEquals(t, docs[1],
 		map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"})
-	assert.DeepEquals(t, docs[2],
+	goassert.DeepEquals(t, docs[2],
 		map[string]interface{}{"rev": "0-1", "id": "_local/bulk3"})
 	response = rt.SendRequest("GET", "/db/_local/bulk3", "")
-	assert.Equals(t, response.Body.String(), `{"_id":"_local/bulk3","_rev":"0-1","n":3}`)
+	goassert.Equals(t, response.Body.String(), `{"_id":"_local/bulk3","_rev":"0-1","n":3}`)
 	assertStatus(t, response, 200)
 
 	// update all documents
 	input = `{"docs": [{"_id": "bulk1", "_rev" : "1-50133ddd8e49efad34ad9ecae4cb9907", "n": 10}, {"_id": "bulk2", "_rev":"1-035168c88bd4b80fb098a8da72f881ce", "n": 20}, {"_id": "_local/bulk3","_rev":"0-1","n": 30}]}`
 	response = rt.SendRequest("POST", "/db/_bulk_docs", input)
 	json.Unmarshal(response.Body.Bytes(), &docs)
-	assert.Equals(t, len(docs), 3)
-	assert.DeepEquals(t, docs[0],
+	goassert.Equals(t, len(docs), 3)
+	goassert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "2-7e384b16e63ee3218349ee568f156d6f", "id": "bulk1"})
 
 	response = rt.SendRequest("GET", "/db/_local/bulk3", "")
-	assert.Equals(t, response.Body.String(), `{"_id":"_local/bulk3","_rev":"0-2","n":30}`)
+	goassert.Equals(t, response.Body.String(), `{"_id":"_local/bulk3","_rev":"0-2","n":30}`)
 	assertStatus(t, response, 200)
 }
 
@@ -831,11 +832,11 @@ func TestBulkDocsIDGeneration(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &docs)
 	log.Printf("response: %s", response.Body.Bytes())
 	assertStatus(t, response, 201)
-	assert.Equals(t, len(docs), 2)
-	assert.Equals(t, docs[0]["rev"], "1-50133ddd8e49efad34ad9ecae4cb9907")
-	assert.True(t, docs[0]["id"] != "")
-	assert.Equals(t, docs[1]["rev"], "1-035168c88bd4b80fb098a8da72f881ce")
-	assert.True(t, docs[1]["id"] != "")
+	goassert.Equals(t, len(docs), 2)
+	goassert.Equals(t, docs[0]["rev"], "1-50133ddd8e49efad34ad9ecae4cb9907")
+	goassert.True(t, docs[0]["id"] != "")
+	goassert.Equals(t, docs[1]["rev"], "1-035168c88bd4b80fb098a8da72f881ce")
+	goassert.True(t, docs[1]["id"] != "")
 }
 
 func TestBulkDocsUnusedSequences(t *testing.T) {
@@ -849,17 +850,17 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	doc1Rev, err := rt.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc1Rev.Sequence, uint64(1))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	doc3Rev, err := rt.GetDatabase().GetDocSyncData("bulk3")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc3Rev.Sequence, uint64(2))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
 	lastSequence, err := rt.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
-	assert.Equals(t, lastSequence, uint64(3))
+	assert.NoError(t, err, "LastSequence error")
+	goassert.Equals(t, lastSequence, uint64(3))
 
 	//send another _bulk_docs and validate the sequences used
 	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23}]}`
@@ -868,21 +869,21 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 
 	//Sequence 3 get used here
 	doc21Rev, err := rt.GetDatabase().GetDocSyncData("bulk21")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc21Rev.Sequence, uint64(3))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc21Rev.Sequence, uint64(3))
 
 	doc22Rev, err := rt.GetDatabase().GetDocSyncData("bulk22")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc22Rev.Sequence, uint64(4))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc22Rev.Sequence, uint64(4))
 
 	doc23Rev, err := rt.GetDatabase().GetDocSyncData("bulk23")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc23Rev.Sequence, uint64(5))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc23Rev.Sequence, uint64(5))
 
 	//Get current sequence number
 	lastSequence, err = rt.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
-	assert.Equals(t, lastSequence, uint64(5))
+	assert.NoError(t, err, "LastSequence error")
+	goassert.Equals(t, lastSequence, uint64(5))
 }
 
 func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
@@ -896,17 +897,17 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	doc1Rev, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc1Rev.Sequence, uint64(1))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	doc3Rev, err := rt1.GetDatabase().GetDocSyncData("bulk3")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc3Rev.Sequence, uint64(2))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
 	lastSequence, err := rt1.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
-	assert.Equals(t, lastSequence, uint64(3))
+	assert.NoError(t, err, "LastSequence error")
+	goassert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt2.Close()
@@ -919,13 +920,13 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	// For the second rest tester, create a copy of the original database config and
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
-	assertNoError(t, err, "Failed to add database to rest tester")
+	assert.NoError(t, err, "Failed to add database to rest tester")
 
 	//send another _bulk_docs to rt2 and validate the sequences used
 	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23}]}`
@@ -934,21 +935,21 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	//Sequence 3 does not get used here as its using a different sequence allocator
 	doc21Rev, err := rt2.GetDatabase().GetDocSyncData("bulk21")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc21Rev.Sequence, uint64(4))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc21Rev.Sequence, uint64(4))
 
 	doc22Rev, err := rt2.GetDatabase().GetDocSyncData("bulk22")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc22Rev.Sequence, uint64(5))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc22Rev.Sequence, uint64(5))
 
 	doc23Rev, err := rt2.GetDatabase().GetDocSyncData("bulk23")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc23Rev.Sequence, uint64(6))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc23Rev.Sequence, uint64(6))
 
 	//Get current sequence number
 	lastSequence, err = rt2.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
-	assert.Equals(t, lastSequence, uint64(6))
+	assert.NoError(t, err, "LastSequence error")
+	goassert.Equals(t, lastSequence, uint64(6))
 
 	//Now send a bulk_doc to rt1 and see if it uses sequence 3
 	input = `{"docs": [{"_id": "bulk31", "n": 31}, {"_id": "bulk32", "n": 32}, {"_id": "bulk33", "n": 33}]}`
@@ -957,16 +958,16 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	//Sequence 3 get used here as its using first sequence allocator
 	doc31Rev, err := rt1.GetDatabase().GetDocSyncData("bulk31")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc31Rev.Sequence, uint64(3))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc31Rev.Sequence, uint64(3))
 
 	doc32Rev, err := rt1.GetDatabase().GetDocSyncData("bulk32")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc32Rev.Sequence, uint64(7))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc32Rev.Sequence, uint64(7))
 
 	doc33Rev, err := rt1.GetDatabase().GetDocSyncData("bulk33")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc33Rev.Sequence, uint64(8))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc33Rev.Sequence, uint64(8))
 
 }
 
@@ -982,20 +983,20 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	doc1Rev, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc1Rev.Sequence, uint64(1))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID := doc1Rev.CurrentRev
 
 	doc3Rev, err := rt1.GetDatabase().GetDocSyncData("bulk3")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc3Rev.Sequence, uint64(2))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
 	lastSequence, err := rt1.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
-	assert.Equals(t, lastSequence, uint64(3))
+	assert.NoError(t, err, "LastSequence error")
+	goassert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt2.Close()
@@ -1008,13 +1009,13 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	// For the second rest tester, create a copy of the original database config and
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
-	assertNoError(t, err, "Unexpected error calling DeepCopy()")
+	assert.NoError(t, err, "Unexpected error calling DeepCopy()")
 	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
-	assertNoError(t, err, "Failed to add database to rest tester")
+	assert.NoError(t, err, "Failed to add database to rest tester")
 
 	//send another _bulk_docs to rt2, including an update to doc "bulk1" and validate the sequences used
 	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23}, {"_id": "bulk1", "_rev": "` + doc1RevID + `", "n": 2}]}`
@@ -1023,29 +1024,29 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	//Sequence 3 does not get used here as its using a different sequence allocator
 	doc21Rev, err := rt2.GetDatabase().GetDocSyncData("bulk21")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc21Rev.Sequence, uint64(4))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc21Rev.Sequence, uint64(4))
 
 	doc22Rev, err := rt2.GetDatabase().GetDocSyncData("bulk22")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc22Rev.Sequence, uint64(5))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc22Rev.Sequence, uint64(5))
 
 	doc23Rev, err := rt2.GetDatabase().GetDocSyncData("bulk23")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc23Rev.Sequence, uint64(6))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc23Rev.Sequence, uint64(6))
 
 	//Validate rev2 of doc "bulk1" has a new revision
 	doc1Rev2, err := rt2.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc1Rev2.Sequence, uint64(7))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc1Rev2.Sequence, uint64(7))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID2 := doc1Rev2.CurrentRev
 
 	//Get current sequence number
 	lastSequence, err = rt2.GetDatabase().LastSequence()
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, lastSequence, uint64(7))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, lastSequence, uint64(7))
 
 	//Now send a bulk_doc to rt1 to update doc bulk1 again
 	input = `{"docs": [{"_id": "bulk1", "_rev": "` + doc1RevID2 + `", "n": 2}]}`
@@ -1054,15 +1055,15 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	//Sequence 8 should get used here as sequence 3 should have been dropped by the first sequence allocator
 	doc1Rev3, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc1Rev3.Sequence, uint64(8))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc1Rev3.Sequence, uint64(8))
 
 	//validate the doc _sync metadata, should see last sequence lower than previous sequence
 	rs := doc1Rev3.RecentSequences
-	assert.Equals(t, len(rs), 3)
-	assert.Equals(t, rs[0], uint64(1))
-	assert.Equals(t, rs[1], uint64(7))
-	assert.Equals(t, rs[2], uint64(8))
+	goassert.Equals(t, len(rs), 3)
+	goassert.Equals(t, rs[0], uint64(1))
+	goassert.Equals(t, rs[1], uint64(7))
+	goassert.Equals(t, rs[2], uint64(8))
 
 }
 
@@ -1078,20 +1079,20 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	doc1Rev, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc1Rev.Sequence, uint64(1))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc1Rev.Sequence, uint64(1))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID := doc1Rev.CurrentRev
 
 	doc3Rev, err := rt1.GetDatabase().GetDocSyncData("bulk3")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc3Rev.Sequence, uint64(2))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc3Rev.Sequence, uint64(2))
 
 	//Get current sequence number, this will be 3, as SG allocates enough sequences to process all bulk docs
 	lastSequence, err := rt1.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
-	assert.Equals(t, lastSequence, uint64(3))
+	assert.NoError(t, err, "LastSequence error")
+	goassert.Equals(t, lastSequence, uint64(3))
 
 	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt2.Close()
@@ -1104,13 +1105,13 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	// For the second rest tester, create a copy of the original database config and
 	// clear out the sync function.
 	dbConfigCopy, err := rt1.DatabaseConfig.DeepCopy()
-	assertNoError(t, err, "Unexpected error calling DeepCopy()")
+	assert.NoError(t, err, "Unexpected error calling DeepCopy()")
 	dbConfigCopy.Sync = base.StringPointer("")
 
 	// Add a second database that uses the same underlying bucket.
 	_, err = rt2.RestTesterServerContext.AddDatabaseFromConfig(dbConfigCopy)
 
-	assertNoError(t, err, "Failed to add database to rest tester")
+	assert.NoError(t, err, "Failed to add database to rest tester")
 
 	//send another _bulk_docs to rt2, including an update to doc "bulk1" and another invalid rev to create an unused sequence
 	input = `{"docs": [{"_id": "bulk21", "n": 21}, {"_id": "bulk22", "n": 22}, {"_id": "bulk23", "n": 23, "type": "invalid"}, {"_id": "bulk1", "_rev": "` + doc1RevID + `", "n": 2}]}`
@@ -1119,25 +1120,25 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	//Sequence 3 does not get used here as its using a different sequence allocator
 	doc21Rev, err := rt2.GetDatabase().GetDocSyncData("bulk21")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc21Rev.Sequence, uint64(4))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc21Rev.Sequence, uint64(4))
 
 	doc22Rev, err := rt2.GetDatabase().GetDocSyncData("bulk22")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc22Rev.Sequence, uint64(5))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc22Rev.Sequence, uint64(5))
 
 	//Validate rev2 of doc "bulk1" has a new revision
 	doc1Rev2, err := rt2.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc1Rev2.Sequence, uint64(7))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc1Rev2.Sequence, uint64(7))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID2 := doc1Rev2.CurrentRev
 
 	//Get current sequence number
 	lastSequence, err = rt2.GetDatabase().LastSequence()
-	assertNoError(t, err, "LastSequence error")
-	assert.Equals(t, lastSequence, uint64(7))
+	assert.NoError(t, err, "LastSequence error")
+	goassert.Equals(t, lastSequence, uint64(7))
 
 	//Now send a bulk_doc to rt1 to update doc bulk1 again
 	input = `{"docs": [{"_id": "bulk1", "_rev": "` + doc1RevID2 + `", "n": 2}]}`
@@ -1146,8 +1147,8 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	//Sequence 8 should get used here as sequence 3 should have been dropped by the first sequence allocator
 	doc1Rev3, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc1Rev3.Sequence, uint64(8))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc1Rev3.Sequence, uint64(8))
 
 	//Get the revID for doc "bulk1"
 	doc1RevID3 := doc1Rev3.CurrentRev
@@ -1159,16 +1160,16 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	//Sequence 9 should get used here as sequence 6 should have been dropped by the second sequence allocator
 	doc1Rev4, err := rt1.GetDatabase().GetDocSyncData("bulk1")
-	assertNoError(t, err, "GetDocSyncData error")
-	assert.Equals(t, doc1Rev4.Sequence, uint64(9))
+	assert.NoError(t, err, "GetDocSyncData error")
+	goassert.Equals(t, doc1Rev4.Sequence, uint64(9))
 
 	//validate the doc _sync metadata, should see last sequence lower than previous sequence
 	rs := doc1Rev4.RecentSequences
-	assert.Equals(t, len(rs), 4)
-	assert.Equals(t, rs[0], uint64(1))
-	assert.Equals(t, rs[1], uint64(7))
-	assert.Equals(t, rs[2], uint64(8))
-	assert.Equals(t, rs[3], uint64(9))
+	goassert.Equals(t, len(rs), 4)
+	goassert.Equals(t, rs[0], uint64(1))
+	goassert.Equals(t, rs[1], uint64(7))
+	goassert.Equals(t, rs[2], uint64(8))
+	goassert.Equals(t, rs[3], uint64(9))
 
 }
 
@@ -1214,10 +1215,10 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	user, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	//Create a test user
 	user, err = a.NewUser("user1", "letmein", nil)
@@ -1230,10 +1231,10 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
-	assert.Equals(t, len(docs), 2)
-	assert.DeepEquals(t, docs[0],
+	goassert.Equals(t, len(docs), 2)
+	goassert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "1-afbcffa8a4641a0f4dd94d3fc9593e74", "id": "bulk1"})
-	assert.DeepEquals(t, docs[1],
+	goassert.DeepEquals(t, docs[1],
 		map[string]interface{}{"rev": "1-4d79588b9fe9c38faae61f0c1b9471c0", "id": "bulk2"})
 }
 
@@ -1261,7 +1262,7 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 	user, err := authenticator.NewUser("user1", "letmein", nil)
 	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)})
 	err = authenticator.Save(user)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// Bulk docs with 2 docs.  First doc grants role1 access to chan1.  Second requires chan1 for write.
 	input := `{"docs": [
@@ -1282,10 +1283,10 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
-	assert.Equals(t, len(docs), 2)
-	assert.DeepEquals(t, docs[0],
+	goassert.Equals(t, len(docs), 2)
+	goassert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "1-17424d2a21bf113768dfdbcd344741ac", "id": "bulk1"})
-	assert.DeepEquals(t, docs[1],
+	goassert.DeepEquals(t, docs[1],
 		map[string]interface{}{"rev": "1-f120ccb33c0a6ef43ef202ade28f98ef", "id": "bulk2"})
 }
 
@@ -1303,10 +1304,10 @@ func TestBulkDocsNoEdits(t *testing.T) {
 	assertStatus(t, response, 201)
 	var docs []interface{}
 	json.Unmarshal(response.Body.Bytes(), &docs)
-	assert.Equals(t, len(docs), 2)
-	assert.DeepEquals(t, docs[0],
+	goassert.Equals(t, len(docs), 2)
+	goassert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "12-abc", "id": "bdne1"})
-	assert.DeepEquals(t, docs[1],
+	goassert.DeepEquals(t, docs[1],
 		map[string]interface{}{"rev": "34-def", "id": "bdne2"})
 
 	// Now update the first doc with two new revisions:
@@ -1317,8 +1318,8 @@ func TestBulkDocsNoEdits(t *testing.T) {
 	response = rt.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
 	json.Unmarshal(response.Body.Bytes(), &docs)
-	assert.Equals(t, len(docs), 1)
-	assert.DeepEquals(t, docs[0],
+	goassert.Equals(t, len(docs), 1)
+	goassert.DeepEquals(t, docs[0],
 		map[string]interface{}{"rev": "14-jkl", "id": "bdne1"})
 }
 
@@ -1350,7 +1351,7 @@ func TestRevsDiff(t *testing.T) {
 	var diffResponse RevsDiffResponse
 	json.Unmarshal(response.Body.Bytes(), &diffResponse)
 	sort.Strings(diffResponse["rd1"]["possible_ancestors"])
-	assert.DeepEquals(t, diffResponse, RevsDiffResponse{
+	goassert.DeepEquals(t, diffResponse, RevsDiffResponse{
 		"rd1": RevDiffResponse{"missing": []string{"13-def", "12-xyz"},
 			"possible_ancestors": []string{"11-eleven", "12-abc"}},
 		"rd9": RevDiffResponse{"missing": []string{"1-a", "2-b", "3-c"}}})
@@ -1373,7 +1374,7 @@ func TestOpenRevs(t *testing.T) {
 	}
 	response = rt.SendRequestWithHeaders("GET", `/db/or1?open_revs=["12-abc","10-ten"]`, "", reqHeaders)
 	assertStatus(t, response, 200)
-	assert.Equals(t, response.Body.String(), `[
+	goassert.Equals(t, response.Body.String(), `[
 {"ok":{"_id":"or1","_rev":"12-abc","n":1}}
 ,{"missing":"10-ten"}
 ]`)
@@ -1443,14 +1444,14 @@ func TestBulkGetPerDocRevsLimit(t *testing.T) {
 				}
 			]
 		}`, docs["doc1"], docs["doc2"], docs["doc3"], docs["doc4"]))
-	assert.Equals(t, bulkGetResponse.Code, http.StatusOK)
+	goassert.Equals(t, bulkGetResponse.Code, http.StatusOK)
 
 	bulkGetResponse.DumpBody()
 
 	// Parse multipart/mixed docs and create reader
 	contentType, attrs, _ := mime.ParseMediaType(bulkGetResponse.Header().Get("Content-Type"))
 	log.Printf("content-type: %v.  attrs: %v", contentType, attrs)
-	assert.Equals(t, contentType, "multipart/mixed")
+	goassert.Equals(t, contentType, "multipart/mixed")
 	reader := multipart.NewReader(bulkGetResponse.Body, attrs["boundary"])
 
 readerLoop:
@@ -1466,13 +1467,13 @@ readerLoop:
 		}
 
 		partBytes, err := ioutil.ReadAll(part)
-		assertNoError(t, err, "Unexpected error")
+		assert.NoError(t, err, "Unexpected error")
 
 		log.Printf("multipart part: %+v", string(partBytes))
 
 		partJSON := map[string]interface{}{}
 		err = json.Unmarshal(partBytes, &partJSON)
-		assertNoError(t, err, "Unexpected error")
+		assert.NoError(t, err, "Unexpected error")
 
 		var exp int
 
@@ -1483,18 +1484,18 @@ readerLoop:
 			exp = 1
 		case "doc3":
 			// revs_limit of zero should display no revision object at all
-			assert.Equals(t, partJSON[db.BodyRevisions], nil)
+			goassert.Equals(t, partJSON[db.BodyRevisions], nil)
 			break readerLoop
 		case "doc4":
 			// revs_limit must be >= 0
-			assert.Equals(t, partJSON["error"], "bad_request")
+			goassert.Equals(t, partJSON["error"], "bad_request")
 			break readerLoop
 		default:
 			t.Error("unrecognised part in response")
 		}
 
 		revisions := partJSON[db.BodyRevisions].(map[string]interface{})
-		assert.Equals(t, len(revisions[db.RevisionsIds].([]interface{})), exp)
+		goassert.Equals(t, len(revisions[db.RevisionsIds].([]interface{})), exp)
 	}
 
 }
@@ -1510,7 +1511,7 @@ func TestLocalDocs(t *testing.T) {
 	assertStatus(t, response, 201)
 	response = rt.SendRequest("GET", "/db/_local/loc1", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-1","hi":"there"}`)
+	goassert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-1","hi":"there"}`)
 
 	response = rt.SendRequest("PUT", "/db/_local/loc1", `{"hi": "there"}`)
 	assertStatus(t, response, 409)
@@ -1518,14 +1519,14 @@ func TestLocalDocs(t *testing.T) {
 	assertStatus(t, response, 201)
 	response = rt.SendRequest("GET", "/db/_local/loc1", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-2","hi":"again"}`)
+	goassert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-2","hi":"again"}`)
 
 	// Check the handling of large integers, which caused trouble for us at one point:
 	response = rt.SendRequest("PUT", "/db/_local/loc1", `{"big": 123456789, "_rev": "0-2"}`)
 	assertStatus(t, response, 201)
 	response = rt.SendRequest("GET", "/db/_local/loc1", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-3","big":123456789}`)
+	goassert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-3","big":123456789}`)
 
 	response = rt.SendRequest("DELETE", "/db/_local/loc1", "")
 	assertStatus(t, response, 409)
@@ -1561,13 +1562,13 @@ func TestResponseEncoding(t *testing.T) {
 	response = rt.SendRequestWithHeaders("GET", "/db/_local/loc1", "",
 		map[string]string{"Accept-Encoding": "foo, gzip, bar"})
 	assertStatus(t, response, 200)
-	assert.DeepEquals(t, response.HeaderMap["Content-Encoding"], []string{"gzip"})
+	goassert.DeepEquals(t, response.HeaderMap["Content-Encoding"], []string{"gzip"})
 	unzip, err := gzip.NewReader(response.Body)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	unjson := json.NewDecoder(unzip)
 	var body db.Body
-	assert.Equals(t, unjson.Decode(&body), nil)
-	assert.Equals(t, body["long"], str)
+	goassert.Equals(t, unjson.Decode(&body), nil)
+	goassert.Equals(t, body["long"], str)
 }
 
 func TestLogin(t *testing.T) {
@@ -1576,14 +1577,14 @@ func TestLogin(t *testing.T) {
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	user, err = a.GetUser("")
-	assert.Equals(t, err, nil)
-	assert.True(t, user.Disabled())
+	goassert.Equals(t, err, nil)
+	goassert.True(t, user.Disabled())
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
 	assertStatus(t, response, 401)
@@ -1596,7 +1597,7 @@ func TestLogin(t *testing.T) {
 	response = rt.SendRequest("POST", "/db/_session", `{"name":"pupshaw", "password":"letmein"}`)
 	assertStatus(t, response, 200)
 	log.Printf("Set-Cookie: %s", response.Header().Get("Set-Cookie"))
-	assert.True(t, response.Header().Get("Set-Cookie") != "")
+	goassert.True(t, response.Header().Get("Set-Cookie") != "")
 }
 
 func TestCustomCookieName(t *testing.T) {
@@ -1616,10 +1617,10 @@ func TestCustomCookieName(t *testing.T) {
 	// Disable guest user
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// Create a user
 	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
@@ -1627,25 +1628,25 @@ func TestCustomCookieName(t *testing.T) {
 
 	// Create a session
 	resp := rt.SendRequest("POST", "/db/_session", `{"name":"user1", "password":"1234"}`)
-	assert.Equals(t, resp.Code, 200)
+	goassert.Equals(t, resp.Code, 200)
 
 	// Extract the cookie from the create session response to verify the "Set-Cookie" value returned by Sync Gateway
 	cookies := resp.Result().Cookies()
-	assert.True(t, len(cookies) == 1)
+	goassert.True(t, len(cookies) == 1)
 	cookie := cookies[0]
-	assert.Equals(t, cookie.Name, customCookieName)
-	assert.Equals(t, cookie.Path, "/db")
+	goassert.Equals(t, cookie.Name, customCookieName)
+	goassert.Equals(t, cookie.Path, "/db")
 
 	// Attempt to use default cookie name to authenticate -- expect a 401 error
 	headers := map[string]string{}
 	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, cookie.Value)
 	resp = rt.SendRequestWithHeaders("GET", "/db/foo", `{}`, headers)
-	assert.Equals(t, resp.Result().StatusCode, 401)
+	goassert.Equals(t, resp.Result().StatusCode, 401)
 
 	// Attempt to use custom cookie name to authenticate
 	headers["Cookie"] = fmt.Sprintf("%s=%s", customCookieName, cookie.Value)
 	resp = rt.SendRequestWithHeaders("POST", "/db/", `{"_id": "foo", "key": "val"}`, headers)
-	assert.Equals(t, resp.Result().StatusCode, 200)
+	goassert.Equals(t, resp.Result().StatusCode, 200)
 
 }
 
@@ -1658,53 +1659,53 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	optStr := `{"feed":"longpoll", "since": "123456:78", "limit":123, "style": "all_docs",
 				"include_docs": true, "filter": "Melitta", "channels": "ABC,BBC"}`
 	feed, options, filter, channelsArray, _, _, err := h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.Equals(t, err, nil)
-	assert.Equals(t, feed, "longpoll")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, feed, "longpoll")
 
-	assert.Equals(t, options.Since.Seq, uint64(78))
-	assert.Equals(t, options.Since.TriggeredBy, uint64(123456))
-	assert.Equals(t, options.Limit, 123)
-	assert.Equals(t, options.Conflicts, true)
-	assert.Equals(t, options.IncludeDocs, true)
-	assert.Equals(t, options.HeartbeatMs, uint64(kDefaultHeartbeatMS))
-	assert.Equals(t, options.TimeoutMs, uint64(kDefaultTimeoutMS))
+	goassert.Equals(t, options.Since.Seq, uint64(78))
+	goassert.Equals(t, options.Since.TriggeredBy, uint64(123456))
+	goassert.Equals(t, options.Limit, 123)
+	goassert.Equals(t, options.Conflicts, true)
+	goassert.Equals(t, options.IncludeDocs, true)
+	goassert.Equals(t, options.HeartbeatMs, uint64(kDefaultHeartbeatMS))
+	goassert.Equals(t, options.TimeoutMs, uint64(kDefaultTimeoutMS))
 
-	assert.Equals(t, filter, "Melitta")
-	assert.DeepEquals(t, channelsArray, []string{"ABC", "BBC"})
+	goassert.Equals(t, filter, "Melitta")
+	goassert.DeepEquals(t, channelsArray, []string{"ABC", "BBC"})
 
 	// Attempt to set heartbeat, timeout to valid values
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":30000, "timeout":60000}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.Equals(t, err, nil)
-	assert.Equals(t, options.HeartbeatMs, uint64(30000))
-	assert.Equals(t, options.TimeoutMs, uint64(60000))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, options.HeartbeatMs, uint64(30000))
+	goassert.Equals(t, options.TimeoutMs, uint64(60000))
 
 	// Attempt to set valid timeout, no heartbeat
 	optStr = `{"feed":"longpoll", "since": "1", "timeout":2000}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.Equals(t, err, nil)
-	assert.Equals(t, options.TimeoutMs, uint64(2000))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, options.TimeoutMs, uint64(2000))
 
 	// Disable heartbeat, timeout by explicitly setting to zero
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":0, "timeout":0}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.Equals(t, err, nil)
-	assert.Equals(t, options.HeartbeatMs, uint64(0))
-	assert.Equals(t, options.TimeoutMs, uint64(0))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, options.HeartbeatMs, uint64(0))
+	goassert.Equals(t, options.TimeoutMs, uint64(0))
 
 	// Attempt to set heartbeat less than minimum heartbeat, timeout greater than max timeout
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":1000, "timeout":1000000}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.Equals(t, err, nil)
-	assert.Equals(t, options.HeartbeatMs, uint64(kMinHeartbeatMS))
-	assert.Equals(t, options.TimeoutMs, uint64(kMaxTimeoutMS))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, options.HeartbeatMs, uint64(kMinHeartbeatMS))
+	goassert.Equals(t, options.TimeoutMs, uint64(kMaxTimeoutMS))
 
 	// Set max heartbeat in server context, attempt to set heartbeat greater than max
 	h.server.config.MaxHeartbeat = 60
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":90000}`
 	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
-	assert.Equals(t, err, nil)
-	assert.Equals(t, options.HeartbeatMs, uint64(60000))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, options.HeartbeatMs, uint64(60000))
 }
 
 // Test _all_docs API call under different security scenarios
@@ -1732,10 +1733,10 @@ func TestAllDocsAccessControl(t *testing.T) {
 	// Create some docs:
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	guest, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc5", `{"channels":"Cinemax"}`), 201)
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc4", `{"channels":["WB", "Cinemax"]}`), 201)
@@ -1745,7 +1746,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	guest.SetDisabled(true)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// Create a user:
 	alice, err := a.NewUser("alice", "letmein", channels.SetOf("Cinemax"))
@@ -1771,14 +1772,14 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 3)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
-	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
-	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 3)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
+	goassert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
+	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
 
 	//Check all docs limit option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?limit=1&channels=true", nil)
@@ -1788,10 +1789,10 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	//Check all docs startkey option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?startkey=doc5&channels=true", nil)
@@ -1801,10 +1802,10 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	//Check all docs startkey option with double quote
 	request, _ = http.NewRequest("GET", `/db/_all_docs?startkey="doc5"&channels=true`, nil)
@@ -1814,10 +1815,10 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	//Check all docs endkey option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?endkey=doc3&channels=true", nil)
@@ -1827,10 +1828,10 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	//Check all docs endkey option
 	request, _ = http.NewRequest("GET", `/db/_all_docs?endkey="doc3"&channels=true`, nil)
@@ -1840,10 +1841,10 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	// Check _all_docs with include_docs option:
 	request, _ = http.NewRequest("GET", "/db/_all_docs?include_docs=true", nil)
@@ -1853,11 +1854,11 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 3)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	assert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
-	assert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 3)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
+	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
 
 	// Check POST to _all_docs:
 	body := `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
@@ -1868,17 +1869,17 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 4)
-	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
-	assert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
-	assert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
-	assert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 4)
+	goassert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
+	goassert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
+	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
+	goassert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
 
 	// Check GET to _all_docs with keys parameter:
 	request, _ = http.NewRequest("GET", `/db/_all_docs?channels=true&keys=%5B%22doc4%22%2C%22doc1%22%2C%22doc3%22%2C%22b0gus%22%5D`, nil)
@@ -1888,17 +1889,17 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response from GET _all_docs = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 4)
-	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
-	assert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
-	assert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
-	assert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 4)
+	goassert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
+	goassert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
+	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
+	goassert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
 
 	// Check POST to _all_docs with limit option:
 	body = `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
@@ -1909,11 +1910,11 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	// Check _all_docs as admin:
 	response = rt.SendAdminRequest("GET", "/db/_all_docs", "")
@@ -1921,10 +1922,10 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 5)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	assert.Equals(t, allDocsResult.Rows[1].ID, "doc2")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 5)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc2")
 }
 
 // Test _all_docs API call when using vector sequences (accel), under different security scenarios
@@ -1953,10 +1954,10 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 	// Create some docs:
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	guest, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"channels":[]}`), 201)
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"channels":["CBS"]}`), 201)
@@ -1966,7 +1967,7 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	guest.SetDisabled(true)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// Create a user:
 	alice, err := a.NewUser("alice", "letmein", channels.SetOf("Cinemax"))
@@ -1992,14 +1993,14 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 3)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
-	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
-	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 3)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
+	goassert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
+	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
 
 	//Check all docs limit option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?limit=1&channels=true", nil)
@@ -2009,10 +2010,10 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	//Check all docs startkey option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?startkey=doc5&channels=true", nil)
@@ -2022,10 +2023,10 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	//Check all docs startkey option with double quote
 	request, _ = http.NewRequest("GET", `/db/_all_docs?startkey="doc5"&channels=true`, nil)
@@ -2035,10 +2036,10 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc5")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	//Check all docs endkey option
 	request, _ = http.NewRequest("GET", "/db/_all_docs?endkey=doc3&channels=true", nil)
@@ -2048,10 +2049,10 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	//Check all docs endkey option
 	request, _ = http.NewRequest("GET", `/db/_all_docs?endkey="doc3"&channels=true`, nil)
@@ -2061,10 +2062,10 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	// Check _all_docs with include_docs option:
 	request, _ = http.NewRequest("GET", "/db/_all_docs?include_docs=true", nil)
@@ -2074,11 +2075,11 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 3)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
-	assert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
-	assert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 3)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
+	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc5")
 
 	// Check POST to _all_docs:
 	body := `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
@@ -2089,17 +2090,17 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 4)
-	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
-	assert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
-	assert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
-	assert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 4)
+	goassert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
+	goassert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
+	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
+	goassert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
 
 	// Check GET to _all_docs with keys parameter:
 	request, _ = http.NewRequest("GET", `/db/_all_docs?channels=true&keys=%5B%22doc4%22%2C%22doc1%22%2C%22doc3%22%2C%22b0gus%22%5D`, nil)
@@ -2109,17 +2110,17 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response from GET _all_docs = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 4)
-	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
-	assert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
-	assert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
-	assert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
-	assert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 4)
+	goassert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
+	goassert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
+	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
+	goassert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
 
 	// Check POST to _all_docs with limit option:
 	body = `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
@@ -2130,11 +2131,11 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 
 	// Check _all_docs as admin:
 	response = rt.SendAdminRequest("GET", "/db/_all_docs", "")
@@ -2142,10 +2143,10 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 5)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	assert.Equals(t, allDocsResult.Rows[1].ID, "doc2")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 5)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc2")
 
 }
 
@@ -2158,10 +2159,10 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// Create users:
 	alice, err := a.NewUser("alice", "letmein", channels.SetOf("zero"))
@@ -2174,7 +2175,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	alphaRevID := body["rev"].(string)
 
 	assertStatus(t, rt.Send(request("PUT", "/db/beta", `{"owner":"boadecia"}`)), 201) // seq=2
@@ -2192,15 +2193,15 @@ func TestChannelAccessChanges(t *testing.T) {
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
 
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 1)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
-	assert.Equals(t, changes.Results[0].ID, "g1")
-	assert.Equals(t, since.Seq, uint64(8))
+	goassert.Equals(t, changes.Results[0].ID, "g1")
+	goassert.Equals(t, since.Seq, uint64(8))
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(
+	goassert.DeepEquals(
 		t,
 		alice.Channels(),
 		channels.TimedSet{
@@ -2211,7 +2212,7 @@ func TestChannelAccessChanges(t *testing.T) {
 		})
 
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(
+	goassert.DeepEquals(
 		t,
 		zegpold.Channels(),
 		channels.TimedSet{
@@ -2226,7 +2227,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(
+	goassert.DeepEquals(
 		t,
 		alice.Channels(),
 		channels.TimedSet{
@@ -2236,7 +2237,7 @@ func TestChannelAccessChanges(t *testing.T) {
 		})
 
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(
+	goassert.DeepEquals(
 		t,
 		zegpold.Channels(),
 		channels.TimedSet{
@@ -2252,21 +2253,21 @@ func TestChannelAccessChanges(t *testing.T) {
 	changes = changesResults{}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 1)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, changes.Results[0].ID, "d1")
+	goassert.Equals(t, len(changes.Results), 1)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, changes.Results[0].ID, "d1")
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
 	changes = changesResults{}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 2)
-	assert.Equals(t, changes.Results[0].ID, "g1")
-	assert.Equals(t, changes.Results[0].Seq.Seq, uint64(8))
-	assert.Equals(t, changes.Results[1].ID, "a1")
-	assert.Equals(t, changes.Results[1].Seq.Seq, uint64(5))
-	assert.Equals(t, changes.Results[1].Seq.TriggeredBy, uint64(9))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 2)
+	goassert.Equals(t, changes.Results[0].ID, "g1")
+	goassert.Equals(t, changes.Results[0].Seq.Seq, uint64(8))
+	goassert.Equals(t, changes.Results[1].ID, "a1")
+	goassert.Equals(t, changes.Results[1].Seq.Seq, uint64(5))
+	goassert.Equals(t, changes.Results[1].Seq.TriggeredBy, uint64(9))
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
@@ -2275,8 +2276,8 @@ func TestChannelAccessChanges(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 1)
-	assert.Equals(t, changes.Results[0].ID, "a1")
+	goassert.Equals(t, len(changes.Results), 1)
+	goassert.Equals(t, changes.Results[0].ID, "a1")
 
 	// What happens if we call access() with a nonexistent username?
 	assertStatus(t, rt.Send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201) // seq 10
@@ -2292,31 +2293,31 @@ func TestChannelAccessChanges(t *testing.T) {
 	database, _ := db.GetDatabase(dbc, nil)
 
 	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
-	assert.Equals(t, err, nil)
-	assert.True(t, changed)
+	goassert.Equals(t, err, nil)
+	goassert.True(t, changed)
 	changeCount, err := database.UpdateAllDocChannels()
-	assert.Equals(t, err, nil)
-	assert.Equals(t, changeCount, 9)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, changeCount, 9)
 
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
 	changes, err = rt.WaitForChanges(len(expectedIDs), "/db/_changes", "alice", false)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	log.Printf("_changes looks like: %+v", changes)
-	assert.Equals(t, len(changes.Results), len(expectedIDs))
+	goassert.Equals(t, len(changes.Results), len(expectedIDs))
 
 	for i, expectedID := range expectedIDs {
 		if changes.Results[i].ID != expectedID {
 			log.Printf("changes.Results[i].ID != expectedID.  changes.Results: %+v, expectedIDs: %v", changes.Results, expectedIDs)
 		}
-		assert.Equals(t, changes.Results[i].ID, expectedID)
+		goassert.Equals(t, changes.Results[i].ID, expectedID)
 	}
 
 	// Check accumulated statistics:
-	assert.Equals(t, database.ChangesClientStats.TotalCount(), uint32(5))
-	assert.Equals(t, database.ChangesClientStats.MaxCount(), uint32(1))
+	goassert.Equals(t, database.ChangesClientStats.TotalCount(), uint32(5))
+	goassert.Equals(t, database.ChangesClientStats.MaxCount(), uint32(1))
 	database.ChangesClientStats.Reset()
-	assert.Equals(t, database.ChangesClientStats.TotalCount(), uint32(0))
-	assert.Equals(t, database.ChangesClientStats.MaxCount(), uint32(0))
+	goassert.Equals(t, database.ChangesClientStats.TotalCount(), uint32(0))
+	goassert.Equals(t, database.ChangesClientStats.MaxCount(), uint32(0))
 }
 
 func TestAccessOnTombstone(t *testing.T) {
@@ -2336,10 +2337,10 @@ func TestAccessOnTombstone(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// Create user:
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("zero"))
@@ -2350,7 +2351,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revId := body["rev"].(string)
 
 	rt.WaitForPendingChanges()
@@ -2363,10 +2364,10 @@ func TestAccessOnTombstone(t *testing.T) {
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 1)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 1)
 	if len(changes.Results) > 0 {
-		assert.Equals(t, changes.Results[0].ID, "alpha")
+		goassert.Equals(t, changes.Results[0].ID, "alpha")
 	}
 
 	// Delete the document
@@ -2380,10 +2381,10 @@ func TestAccessOnTombstone(t *testing.T) {
 	changes.Results = nil
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 1)
+	goassert.Equals(t, len(changes.Results), 1)
 	if len(changes.Results) > 0 {
-		assert.Equals(t, changes.Results[0].ID, "alpha")
-		assert.Equals(t, changes.Results[0].Deleted, true)
+		goassert.Equals(t, changes.Results[0].ID, "alpha")
+		goassert.Equals(t, changes.Results[0].Deleted, true)
 	}
 
 }
@@ -2402,10 +2403,10 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// Create user1
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
@@ -2419,19 +2420,19 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	limit := 50
 	changesResults, err := rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user1", false)
-	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(changesResults.Results), 50)
+	assert.NoError(t, err, "Unexpected error")
+	goassert.Equals(t, len(changesResults.Results), 50)
 	since := changesResults.Results[49].Seq
-	assert.Equals(t, changesResults.Results[49].ID, "doc48")
-	assert.Equals(t, since.Seq, uint64(50))
+	goassert.Equals(t, changesResults.Results[49].ID, "doc48")
+	goassert.Equals(t, since.Seq, uint64(50))
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
-	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(changesResults.Results), 50)
+	assert.NoError(t, err, "Unexpected error")
+	goassert.Equals(t, len(changesResults.Results), 50)
 	since = changesResults.Results[49].Seq
-	assert.Equals(t, changesResults.Results[49].ID, "doc98")
-	assert.Equals(t, since.Seq, uint64(100))
+	goassert.Equals(t, changesResults.Results[49].ID, "doc98")
+	goassert.Equals(t, since.Seq, uint64(100))
 
 	// Create user2
 	response = rt.SendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
@@ -2439,9 +2440,9 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	//Retrieve all changes for user2 with no limits
 	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/db/_changes"), "user2", false)
-	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(changesResults.Results), 101)
-	assert.Equals(t, changesResults.Results[99].ID, "doc99")
+	assert.NoError(t, err, "Unexpected error")
+	goassert.Equals(t, len(changesResults.Results), 101)
+	goassert.Equals(t, changesResults.Results[99].ID, "doc99")
 
 	// Create user3
 	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
@@ -2449,36 +2450,36 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	//Get first 50 document changes
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user3", false)
-	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(changesResults.Results), 50)
+	assert.NoError(t, err, "Unexpected error")
+	goassert.Equals(t, len(changesResults.Results), 50)
 	since = changesResults.Results[49].Seq
-	assert.Equals(t, changesResults.Results[49].ID, "doc49")
-	assert.Equals(t, since.Seq, uint64(51))
-	assert.Equals(t, since.TriggeredBy, uint64(103))
+	goassert.Equals(t, changesResults.Results[49].ID, "doc49")
+	goassert.Equals(t, since.Seq, uint64(51))
+	goassert.Equals(t, since.TriggeredBy, uint64(103))
 
 	//// Get remainder of changes i.e. no limit parameter
 	changesResults, err = rt.WaitForChanges(51, fmt.Sprintf("/db/_changes?since=\"%s\"", since), "user3", false)
-	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(changesResults.Results), 51)
-	assert.Equals(t, changesResults.Results[49].ID, "doc99")
+	assert.NoError(t, err, "Unexpected error")
+	goassert.Equals(t, len(changesResults.Results), 51)
+	goassert.Equals(t, changesResults.Results[49].ID, "doc99")
 
 	// Create user4
 	response = rt.SendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
 	assertStatus(t, response, 201)
 
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user4", false)
-	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, len(changesResults.Results), 50)
+	assert.NoError(t, err, "Unexpected error")
+	goassert.Equals(t, len(changesResults.Results), 50)
 	since = changesResults.Results[49].Seq
-	assert.Equals(t, changesResults.Results[49].ID, "doc49")
-	assert.Equals(t, since.Seq, uint64(51))
-	assert.Equals(t, since.TriggeredBy, uint64(104))
+	goassert.Equals(t, changesResults.Results[49].ID, "doc49")
+	goassert.Equals(t, since.Seq, uint64(51))
+	goassert.Equals(t, since.TriggeredBy, uint64(104))
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "user4", false)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changesResults.Results), 50)
-	assert.Equals(t, changesResults.Results[49].ID, "doc99")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changesResults.Results), 50)
+	goassert.Equals(t, changesResults.Results[49].ID, "doc99")
 
 }
 
@@ -2491,10 +2492,10 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// POST a role
 	response := rt.SendAdminRequest("POST", "/db/_role/", `{"name":"role1","admin_channels":["chan1"]}`)
@@ -2503,14 +2504,14 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], "role1")
+	goassert.Equals(t, body["name"], "role1")
 
 	//Put document to trigger sync function
 	response = rt.Send(request("PUT", "/db/doc1", `{"user":"user1", "role":"role:role1", "channel":"chan1"}`)) // seq=1
 	assertStatus(t, response, 201)
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 
 	// POST the new user the GET and verify that it shows the assigned role
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"letmein"}`)
@@ -2519,12 +2520,12 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	assertStatus(t, response, 200)
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], "user1")
-	assert.DeepEquals(t, body["roles"], []interface{}{"role1"})
-	assert.DeepEquals(t, body["all_channels"], []interface{}{"!", "chan1"})
+	goassert.Equals(t, body["name"], "user1")
+	goassert.DeepEquals(t, body["roles"], []interface{}{"role1"})
+	goassert.DeepEquals(t, body["all_channels"], []interface{}{"!", "chan1"})
 
-	//assert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
-	//assert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
+	//goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
+	//goassert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
 }
 
 func TestRoleAccessChanges(t *testing.T) {
@@ -2536,10 +2537,10 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// Create users:
 	alice, err := a.NewUser("alice", "letmein", channels.SetOf("alpha"))
@@ -2556,7 +2557,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	fashionRevID := body["rev"].(string)
 
 	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201) // seq=2
@@ -2566,7 +2567,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t,
+	goassert.DeepEquals(t,
 		alice.InheritedChannels(),
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
@@ -2574,7 +2575,7 @@ func TestRoleAccessChanges(t *testing.T) {
 			"gamma": channels.NewVbSimpleSequence(0x1),
 		},
 	)
-	assert.DeepEquals(t,
+	goassert.DeepEquals(t,
 		alice.RoleNames(),
 		channels.TimedSet{
 			"bogus":   channels.NewVbSimpleSequence(0x1),
@@ -2582,14 +2583,14 @@ func TestRoleAccessChanges(t *testing.T) {
 		},
 	)
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t,
+	goassert.DeepEquals(t,
 		zegpold.InheritedChannels(),
 		channels.TimedSet{
 			"!":    channels.NewVbSimpleSequence(0x1),
 			"beta": channels.NewVbSimpleSequence(0x1),
 		},
 	)
-	assert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
+	goassert.DeepEquals(t, zegpold.RoleNames(), channels.TimedSet{})
 
 	// Check the _changes feed:
 	var changes struct {
@@ -2601,18 +2602,18 @@ func TestRoleAccessChanges(t *testing.T) {
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("1st _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 2)
+	goassert.Equals(t, len(changes.Results), 2)
 	since := changes.Last_Seq
-	assert.Equals(t, since, fmt.Sprintf("%d", expectedSeq))
+	goassert.Equals(t, since, fmt.Sprintf("%d", expectedSeq))
 
 	expectedSeq = uint64(4)
 	rt.WaitForSequence(expectedSeq)
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("2nd _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 1)
+	goassert.Equals(t, len(changes.Results), 1)
 	since = changes.Last_Seq
-	assert.Equals(t, since, fmt.Sprintf("%d", expectedSeq))
+	goassert.Equals(t, since, fmt.Sprintf("%d", expectedSeq))
 
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
 	str := fmt.Sprintf(`{"user":"zegpold", "role":"role:hipster", "_rev":%q}`, fashionRevID)
@@ -2620,7 +2621,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
-	assert.DeepEquals(t,
+	goassert.DeepEquals(t,
 		alice.InheritedChannels(),
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
@@ -2628,7 +2629,7 @@ func TestRoleAccessChanges(t *testing.T) {
 		},
 	)
 	zegpold, _ = a.GetUser("zegpold")
-	assert.DeepEquals(t,
+	goassert.DeepEquals(t,
 		zegpold.InheritedChannels(),
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
@@ -2644,11 +2645,11 @@ func TestRoleAccessChanges(t *testing.T) {
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("3rd _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 2)
+	goassert.Equals(t, len(changes.Results), 2)
 	log.Printf("changes: %+v", changes.Results)
-	assert.Equals(t, changes.Last_Seq, "6:2") // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
-	assert.Equals(t, changes.Results[0].ID, "b1")
-	assert.Equals(t, changes.Results[1].ID, "g1")
+	goassert.Equals(t, changes.Last_Seq, "6:2") // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
+	goassert.Equals(t, changes.Results[0].ID, "b1")
+	goassert.Equals(t, changes.Results[1].ID, "g1")
 
 	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
@@ -2656,8 +2657,8 @@ func TestRoleAccessChanges(t *testing.T) {
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, len(changes.Results), 1)
-	assert.Equals(t, changes.Results[0].ID, "g1")
+	goassert.Equals(t, len(changes.Results), 1)
+	goassert.Equals(t, changes.Results[0].ID, "g1")
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
@@ -2684,17 +2685,17 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// Create a doc
 	response := rt.Send(request("PUT", "/db/doc1", `{"foo":"bar", "channels":["ch1"]}`))
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	doc1RevID := body["rev"].(string)
 
 	// Run GET _all_docs as admin with channels=true:
@@ -2703,10 +2704,10 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
 
 	// Run POST _all_docs as admin with explicit docIDs and channels=true:
 	keys := `{"keys": ["doc1"]}`
@@ -2715,10 +2716,10 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
 
 	//Commit rev 2 that maps to a differenet channel
 	str := fmt.Sprintf(`{"foo":"bar", "channels":["ch2"], "_rev":%q}`, doc1RevID)
@@ -2731,10 +2732,10 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
 
 	// Run POST _all_docs as admin with explicit docIDs and channels=true
 	// Make sure that only the new channel appears in the docs channel list
@@ -2744,10 +2745,10 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 1)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	assert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
 }
 
 //Test for regression of issue #447
@@ -2769,12 +2770,12 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	revIdAfterAttachment := body["rev"].(string)
 	if revIdAfterAttachment == "" {
 		t.Fatalf("No revid in response for PUT attachment")
 	}
-	assert.True(t, revIdAfterAttachment != doc1revId)
+	goassert.True(t, revIdAfterAttachment != doc1revId)
 
 	reqHeaders = map[string]string{
 		"Accept": "application/json",
@@ -2782,24 +2783,24 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 
 	log.Printf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, doc1revId)
 	response = rt.SendRequestWithHeaders("GET", fmt.Sprintf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, doc1revId), "", reqHeaders)
-	assert.Equals(t, response.Code, 200)
+	goassert.Equals(t, response.Code, 200)
 	//validate attachment has data property
 	json.Unmarshal(response.Body.Bytes(), &body)
 	log.Printf("response body revid1 = %s", body)
 	attachments := body["_attachments"].(map[string]interface{})
 	attach1 := attachments["attach1"].(map[string]interface{})
 	data := attach1["data"]
-	assert.True(t, data != nil)
+	goassert.True(t, data != nil)
 
 	log.Printf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, revIdAfterAttachment)
 	response = rt.SendRequestWithHeaders("GET", fmt.Sprintf("/db/doc1?rev=%s&revs=true&attachments=true&atts_since=[\"%s\"]", revIdAfterAttachment, revIdAfterAttachment), "", reqHeaders)
-	assert.Equals(t, response.Code, 200)
+	goassert.Equals(t, response.Code, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	log.Printf("response body revid1 = %s", body)
 	attachments = body["_attachments"].(map[string]interface{})
 	attach1 = attachments["attach1"].(map[string]interface{})
 	data = attach1["data"]
-	assert.True(t, data == nil)
+	goassert.True(t, data == nil)
 
 }
 
@@ -2822,10 +2823,10 @@ func TestOldDocHandling(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	// Create user:
 	frank, err := a.NewUser("charles", "1234", nil)
@@ -2836,7 +2837,7 @@ func TestOldDocHandling(t *testing.T) {
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["ok"], true)
+	goassert.Equals(t, body["ok"], true)
 	alphaRevID := body["rev"].(string)
 
 	// Update a document to validate oldDoc id handling.  Will reject if old doc id not available
@@ -2875,10 +2876,10 @@ func TestStarAccess(t *testing.T) {
 		Results []db.ChangeEntry
 	}
 	guest, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(false)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"channels":["books"]}`), 201)
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"channels":["gifts"]}`), 201)
@@ -2890,7 +2891,7 @@ func TestStarAccess(t *testing.T) {
 
 	guest.SetDisabled(true)
 	err = a.Save(guest)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	//
 	// Part 1 - Tests for user with single channel access:
 	//
@@ -2916,12 +2917,12 @@ func TestStarAccess(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 3)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"books"})
-	assert.Equals(t, allDocsResult.Rows[1].ID, "doc3")
-	assert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"!"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 3)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"books"})
+	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc3")
+	goassert.DeepEquals(t, allDocsResult.Rows[1].Value.Channels, []string{"!"})
 
 	// Ensure docs have been processed before issuing changes requests
 	expectedSeq := uint64(6)
@@ -2931,38 +2932,38 @@ func TestStarAccess(t *testing.T) {
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 3)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 3)
 	since := changes.Results[0].Seq
-	assert.Equals(t, changes.Results[0].ID, "doc1")
-	assert.Equals(t, since.Seq, uint64(1))
+	goassert.Equals(t, changes.Results[0].ID, "doc1")
+	goassert.Equals(t, since.Seq, uint64(1))
 
 	// GET /db/_changes for single channel
 	response = rt.Send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=books", "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 1)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 1)
 	since = changes.Results[0].Seq
-	assert.Equals(t, changes.Results[0].ID, "doc1")
-	assert.Equals(t, since.Seq, uint64(1))
+	goassert.Equals(t, changes.Results[0].ID, "doc1")
+	goassert.Equals(t, since.Seq, uint64(1))
 
 	// GET /db/_changes for ! channel
 	response = rt.Send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 2)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 2)
 	since = changes.Results[0].Seq
-	assert.Equals(t, changes.Results[0].ID, "doc3")
-	assert.Equals(t, since.Seq, uint64(3))
+	goassert.Equals(t, changes.Results[0].ID, "doc3")
+	goassert.Equals(t, since.Seq, uint64(3))
 
 	// GET /db/_changes for unauthorized channel
 	response = rt.Send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=gifts", "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 0)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 0)
 
 	//
 	// Part 2 - Tests for user with * channel access
@@ -2987,30 +2988,30 @@ func TestStarAccess(t *testing.T) {
 
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 6)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
-	assert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"books"})
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 6)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
+	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"books"})
 
 	// GET /db/_changes
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "fran"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 6)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 6)
 	since = changes.Results[0].Seq
-	assert.Equals(t, changes.Results[0].ID, "doc1")
-	assert.Equals(t, since.Seq, uint64(1))
+	goassert.Equals(t, changes.Results[0].ID, "doc1")
+	goassert.Equals(t, since.Seq, uint64(1))
 
 	// GET /db/_changes for ! channel
 	response = rt.Send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "fran"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 2)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 2)
 	since = changes.Results[0].Seq
-	assert.Equals(t, changes.Results[0].ID, "doc3")
-	assert.Equals(t, since.Seq, uint64(3))
+	goassert.Equals(t, changes.Results[0].ID, "doc3")
+	goassert.Equals(t, since.Seq, uint64(3))
 
 	//
 	// Part 3 - Tests for user with no user channel access
@@ -3033,29 +3034,29 @@ func TestStarAccess(t *testing.T) {
 	assertStatus(t, response, 200)
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(allDocsResult.Rows), 2)
-	assert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(allDocsResult.Rows), 2)
+	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
 
 	// GET /db/_changes
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "manny"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 2)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 2)
 	since = changes.Results[0].Seq
-	assert.Equals(t, changes.Results[0].ID, "doc3")
-	assert.Equals(t, since.Seq, uint64(3))
+	goassert.Equals(t, changes.Results[0].ID, "doc3")
+	goassert.Equals(t, since.Seq, uint64(3))
 
 	// GET /db/_changes for ! channel
 	response = rt.Send(requestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "manny"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, len(changes.Results), 2)
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, len(changes.Results), 2)
 	since = changes.Results[0].Seq
-	assert.Equals(t, changes.Results[0].ID, "doc3")
-	assert.Equals(t, since.Seq, uint64(3))
+	goassert.Equals(t, changes.Results[0].ID, "doc3")
+	goassert.Equals(t, since.Seq, uint64(3))
 }
 
 // Test for issue #562
@@ -3086,7 +3087,7 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	// Create a session for the first user
 	response = rt.Send(requestByUser("POST", "/db/_session", `{"name":"bernard", "password":"letmein"}`, "bernard"))
 	log.Println("response.Header()", response.Header())
-	assert.True(t, response.Header().Get("Set-Cookie") != "")
+	goassert.True(t, response.Header().Get("Set-Cookie") != "")
 
 	cookie := response.Header().Get("Set-Cookie")
 
@@ -3142,10 +3143,10 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 
 	var dbConfig DbConfig
 	err := json.Unmarshal([]byte(configJSON), &dbConfig)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(&dbConfig)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 	sc.Close()
 
@@ -3177,11 +3178,11 @@ func TestEventConfigValidationInvalid(t *testing.T) {
 
 	var dbConfig DbConfig
 	err := json.Unmarshal([]byte(configJSON), &dbConfig)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(&dbConfig)
-	assert.True(t, err != nil)
-	assert.True(t, strings.Contains(err.Error(), "document_scribbled_on"))
+	goassert.True(t, err != nil)
+	goassert.True(t, strings.Contains(err.Error(), "document_scribbled_on"))
 
 }
 
@@ -3304,7 +3305,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	couchbaseDoc := db.Body{}
 	bucket := rt.Bucket()
 	_, err := bucket.Get(docIdDoc1, &couchbaseDoc)
-	assertNoError(t, err, "Error getting couchbaseDoc")
+	assert.NoError(t, err, "Error getting couchbaseDoc")
 	log.Printf("couchbase doc: %+v", couchbaseDoc)
 
 	// Doc at this point
@@ -3350,7 +3351,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	// Put the doc back into couchbase
 	err = bucket.Set(docIdDoc1, 0, couchbaseDoc)
-	assertNoError(t, err, "Error putting couchbaseDoc")
+	assert.NoError(t, err, "Error putting couchbaseDoc")
 
 	// Get latest rev id
 	response = rt.SendRequest("GET", resource, "")
@@ -3369,7 +3370,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// Parse multipart/mixed docs and create reader
 	contentType, attrs, _ := mime.ParseMediaType(bulkGetResponse.Header().Get("Content-Type"))
 	log.Printf("content-type: %v.  attrs: %v", contentType, attrs)
-	assert.Equals(t, contentType, "multipart/mixed")
+	goassert.Equals(t, contentType, "multipart/mixed")
 	reader := multipart.NewReader(bulkGetResponse.Body, attrs["boundary"])
 
 	// Make sure we see both docs
@@ -3413,21 +3414,21 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 		}
 
 		partBytes, err := ioutil.ReadAll(part)
-		assertNoError(t, err, "Unexpected error")
+		assert.NoError(t, err, "Unexpected error")
 
 		log.Printf("multipart part: %+v", string(partBytes))
 
 		partJson := map[string]interface{}{}
 		err = json.Unmarshal(partBytes, &partJson)
-		assertNoError(t, err, "Unexpected error")
+		assert.NoError(t, err, "Unexpected error")
 
 		// Assert expectations for the doc with attachment errors
 		rawId, ok := partJson["id"]
 		if ok {
 			// expect an error
 			_, hasErr := partJson["error"]
-			assertTrue(t, hasErr, "Expected error field for this doc")
-			assert.Equals(t, docIdDoc1, rawId)
+			assert.True(t, hasErr, "Expected error field for this doc")
+			goassert.Equals(t, docIdDoc1, rawId)
 			sawDoc1 = true
 
 		}
@@ -3436,15 +3437,15 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 		rawId, ok = partJson[db.BodyId]
 		if ok {
 			_, hasErr := partJson["error"]
-			assertTrue(t, !hasErr, "Did not expect error field for this doc")
-			assert.Equals(t, docIdDoc2, rawId)
+			assert.True(t, !hasErr, "Did not expect error field for this doc")
+			goassert.Equals(t, docIdDoc2, rawId)
 			sawDoc2 = true
 		}
 
 	}
 
-	assertTrue(t, sawDoc2, "Did not see doc 2")
-	assertTrue(t, sawDoc1, "Did not see doc 1")
+	assert.True(t, sawDoc2, "Did not see doc 2")
+	assert.True(t, sawDoc1, "Did not see doc 1")
 
 }
 
@@ -3463,25 +3464,25 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	_, ok := body["_exp"]
-	assert.Equals(t, ok, false)
+	goassert.Equals(t, ok, false)
 
 	bulkGetDocs := `{"docs": [{"id": "expNumericTTL", "rev": "1-ca9ad22802b66f662ff171f226211d5c"}]}`
 	response = rt.SendRequest("POST", "/db/_bulk_get", bulkGetDocs)
 	assertStatus(t, response, 200)
 	responseString := string(response.Body.Bytes())
-	assertTrue(t, !strings.Contains(responseString, "_exp"), "Bulk get response contains _exp property when show_exp not set.")
+	assert.True(t, !strings.Contains(responseString, "_exp"), "Bulk get response contains _exp property when show_exp not set.")
 
 	response = rt.SendRequest("POST", "/db/_bulk_get?show_exp=true", bulkGetDocs)
 	assertStatus(t, response, 200)
 	responseString = string(response.Body.Bytes())
-	assertTrue(t, strings.Contains(responseString, "_exp"), "Bulk get response doesn't contain _exp property when show_exp was set.")
+	assert.True(t, strings.Contains(responseString, "_exp"), "Bulk get response doesn't contain _exp property when show_exp was set.")
 
 	body = nil
 	response = rt.SendRequest("GET", "/db/expNumericTTL?show_exp=true", "")
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	_, ok = body["_exp"]
-	assert.Equals(t, ok, true)
+	goassert.Equals(t, ok, true)
 
 	// Validate other exp formats
 	body = nil
@@ -3492,7 +3493,7 @@ func TestDocExpiry(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	log.Printf("numeric unix response: %s", response.Body.Bytes())
 	_, ok = body["_exp"]
-	assert.Equals(t, ok, true)
+	goassert.Equals(t, ok, true)
 
 	body = nil
 	response = rt.SendRequest("PUT", "/db/expNumericString", `{"val":1, "_exp":"100"}`)
@@ -3501,7 +3502,7 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	_, ok = body["_exp"]
-	assert.Equals(t, ok, true)
+	goassert.Equals(t, ok, true)
 
 	body = nil
 	response = rt.SendRequest("PUT", "/db/expBadString", `{"_exp":"abc"}`)
@@ -3510,7 +3511,7 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 404)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	_, ok = body["_exp"]
-	assert.Equals(t, ok, false)
+	goassert.Equals(t, ok, false)
 
 	body = nil
 	response = rt.SendRequest("PUT", "/db/expDateString", `{"_exp":"2105-01-01T00:00:00.000+00:00"}`)
@@ -3519,7 +3520,7 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	_, ok = body["_exp"]
-	assert.Equals(t, ok, true)
+	goassert.Equals(t, ok, true)
 
 	body = nil
 	response = rt.SendRequest("PUT", "/db/expBadDateString", `{"_exp":"2105-0321-01T00:00:00.000+00:00"}`)
@@ -3528,7 +3529,7 @@ func TestDocExpiry(t *testing.T) {
 	assertStatus(t, response, 404)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	_, ok = body["_exp"]
-	assert.Equals(t, ok, false)
+	goassert.Equals(t, ok, false)
 
 }
 
@@ -3545,7 +3546,7 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 	assertStatus(t, response, 200)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	value, ok := body["_exp"]
-	assert.Equals(t, ok, true)
+	goassert.Equals(t, ok, true)
 	log.Printf("value: %v", value)
 }
 
@@ -3590,7 +3591,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 
 	bulkDocsResponse := []map[string]interface{}{}
 	err := json.Unmarshal(response.Body.Bytes(), &bulkDocsResponse)
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 	log.Printf("bulkDocsResponse: %+v", bulkDocsResponse)
 	for _, bulkDocResponse := range bulkDocsResponse {
 		bulkDocErr, gotErr := bulkDocResponse["error"]
@@ -3605,8 +3606,8 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	_, err = gocbBucket.GetWithXattr("-21SK00U-ujxUO9fU2HezxL", "_sync", &retrievedVal, &retrievedXattr)
-	assertNoError(t, err, "Unexpected Error")
-	assert.True(t, retrievedXattr["rev"].(string) == "2-466a1fab90a810dc0a63565b70680e4e")
+	assert.NoError(t, err, "Unexpected Error")
+	goassert.True(t, retrievedXattr["rev"].(string) == "2-466a1fab90a810dc0a63565b70680e4e")
 
 }
 
@@ -3630,7 +3631,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 
 	// Create user:
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 	a.Save(bernard)
 
 	// Issue is only reproducible when the wait counter is zero for all requested channels (including the user channel) - the count=0
@@ -3638,7 +3639,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// otherwise the count for the user pseudo-channel will always be non-zero
 	db, _ := rt.ServerContext().GetDatabase("db")
 	err = db.RestartListener()
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 	// Put a document to increment the counter for the * channel
 	response := rt.Send(request("PUT", "/db/lost", `{"channel":["ABC"]}`))
 	assertStatus(t, response, 201)
@@ -3657,7 +3658,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 		// Checkthat the changes loop isn't returning an empty result immediately (the previous bug) - should
 		// be waiting until entry 'sherlock', created below, appears.
-		assert.True(t, len(changes.Results) > 0)
+		goassert.True(t, len(changes.Results) > 0)
 	}()
 
 	// Send a doc that will properly close the longpoll response
@@ -3682,10 +3683,10 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	var testProviderOnlyConfig DbConfig
 	err := json.Unmarshal([]byte(testProviderOnlyJSON), &testProviderOnlyConfig)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(&testProviderOnlyConfig)
-	assertNoError(t, err, "Error adding testProviderOnly database.")
+	assert.NoError(t, err, "Error adding testProviderOnly database.")
 
 	viewsOnlyJSON := `{"name": "views_only",
         			"server": "walrus:",
@@ -3699,10 +3700,10 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	var viewsOnlyConfig DbConfig
 	err = json.Unmarshal([]byte(viewsOnlyJSON), &viewsOnlyConfig)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(&viewsOnlyConfig)
-	assertNoError(t, err, "Error adding viewsOnlyConfig database.")
+	assert.NoError(t, err, "Error adding viewsOnlyConfig database.")
 
 	viewsAndTestJSON := `{"name": "views_and_test",
         			"server": "walrus:",
@@ -3720,10 +3721,10 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	var viewsAndTestConfig DbConfig
 	err = json.Unmarshal([]byte(viewsAndTestJSON), &viewsAndTestConfig)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 	_, err = sc.AddDatabaseFromConfig(&viewsAndTestConfig)
-	assertNoError(t, err, "Error adding viewsAndTestConfig database.")
+	assert.NoError(t, err, "Error adding viewsAndTestConfig database.")
 
 	sc.Close()
 }

@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func testPartitionMap() *base.IndexPartitions {
@@ -87,9 +88,9 @@ func TestIndexBlockCreation(t *testing.T) {
 	defer testStorage.bucket.Close()
 	entry := makeEntry(1, 1, false)
 	block := testStorage.getIndexBlockForEntry(entry)
-	assert.Equals(t, testStorage.indexBlockCache.Count(), 1)
+	goassert.Equals(t, testStorage.indexBlockCache.Count(), 1)
 	blockEntries := block.GetAllEntries()
-	assert.Equals(t, len(blockEntries), 0)
+	goassert.Equals(t, len(blockEntries), 0)
 
 }
 
@@ -101,25 +102,25 @@ func TestIndexBlockStorage(t *testing.T) {
 	// Add entries
 	block := testStorage.getIndexBlockForEntry(makeEntry(5, 100, false))
 
-	assertNoError(t, block.AddEntry(makeEntry(5, 100, false)), "Add entry 5_100")
-	assertNoError(t, block.AddEntry(makeEntry(5, 105, true)), "Add entry 5_105")
-	assertNoError(t, block.AddEntry(makeEntry(7, 100, true)), "Add entry 7_100")
-	assertNoError(t, block.AddEntry(makeEntry(9, 100, true)), "Add entry 9_100")
-	assertNoError(t, block.AddEntry(makeEntry(9, 101, true)), "Add entry 9_101")
+	assert.NoError(t, block.AddEntry(makeEntry(5, 100, false)), "Add entry 5_100")
+	assert.NoError(t, block.AddEntry(makeEntry(5, 105, true)), "Add entry 5_105")
+	assert.NoError(t, block.AddEntry(makeEntry(7, 100, true)), "Add entry 7_100")
+	assert.NoError(t, block.AddEntry(makeEntry(9, 100, true)), "Add entry 9_100")
+	assert.NoError(t, block.AddEntry(makeEntry(9, 101, true)), "Add entry 9_101")
 
 	// validate in-memory storage
 	storedEntries := block.GetAllEntries()
-	assert.Equals(t, 5, len(storedEntries))
+	goassert.Equals(t, 5, len(storedEntries))
 	log.Printf("Stored: %+v", storedEntries)
 
 	marshalledBlock, err := block.Marshal()
-	assertNoError(t, err, "Marshal block")
+	assert.NoError(t, err, "Marshal block")
 	log.Printf("Marshalled size: %d", len(marshalledBlock))
 
 	newBlock := newBitFlagBufferBlock("ABC", 0, 0, testStorage.partitions.VbPositionMaps[0])
-	assertNoError(t, newBlock.Unmarshal(marshalledBlock), "Unmarshal block")
+	assert.NoError(t, newBlock.Unmarshal(marshalledBlock), "Unmarshal block")
 	loadedEntries := newBlock.GetAllEntries()
-	assert.Equals(t, 5, len(loadedEntries))
+	goassert.Equals(t, 5, len(loadedEntries))
 	log.Printf("Unmarshalled: %+v", loadedEntries)
 
 }
@@ -140,10 +141,10 @@ func TestAddPartitionSet(t *testing.T) {
 		makeEntry(9, 1001, false),
 	}
 	// Add entries
-	assertNoError(t, channelIndex.addPartitionSet(channelIndex.partitionMap[5], entrySet), "Add partition set")
+	assert.NoError(t, channelIndex.addPartitionSet(channelIndex.partitionMap[5], entrySet), "Add partition set")
 
 	block := channelIndex.getIndexBlockForEntry(makeEntry(5, 100, false))
-	assert.Equals(t, len(block.GetAllEntries()), 5)
+	goassert.Equals(t, len(block.GetAllEntries()), 5)
 
 	// Validate error when sending updates for multiple partitions
 
@@ -153,7 +154,7 @@ func TestAddPartitionSet(t *testing.T) {
 	}
 	err := channelIndex.addPartitionSet(channelIndex.partitionMap[25], entrySet)
 	log.Printf("error adding set? %v", err)
-	assertTrue(t, err != nil, "Adding mixed-partition set should fail.")
+	assert.True(t, err != nil, "Adding mixed-partition set should fail.")
 }
 
 func TestAddPartitionSetMultiBlock(t *testing.T) {
@@ -171,14 +172,14 @@ func TestAddPartitionSetMultiBlock(t *testing.T) {
 		makeEntry(9, 25000, false),
 	}
 	// Add entries
-	assertNoError(t, channelIndex.addPartitionSet(channelIndex.partitionMap[5], entrySet), "Add partition set")
+	assert.NoError(t, channelIndex.addPartitionSet(channelIndex.partitionMap[5], entrySet), "Add partition set")
 
 	block := channelIndex.getIndexBlockForEntry(makeEntry(5, 100, false))
-	assert.Equals(t, len(block.GetAllEntries()), 3) // 5_100, 7_100, 9_100
+	goassert.Equals(t, len(block.GetAllEntries()), 3) // 5_100, 7_100, 9_100
 	block = channelIndex.getIndexBlockForEntry(makeEntry(5, 15000, false))
-	assert.Equals(t, len(block.GetAllEntries()), 1) // 5_15000
+	goassert.Equals(t, len(block.GetAllEntries()), 1) // 5_15000
 	block = channelIndex.getIndexBlockForEntry(makeEntry(9, 25000, false))
-	assert.Equals(t, len(block.GetAllEntries()), 1) // 9_25000
+	goassert.Equals(t, len(block.GetAllEntries()), 1) // 9_25000
 
 }
 */
@@ -194,48 +195,48 @@ func TestVbCache(t *testing.T) {
 		makeLogEntry(17, "doc2"),
 		makeLogEntry(23, "doc3"),
 	}
-	assertNoError(t, vbCache.appendEntries(entries, uint64(5), uint64(25)), "Error appending entries")
+	assert.NoError(t, vbCache.appendEntries(entries, uint64(5), uint64(25)), "Error appending entries")
 
 	from, to, results := vbCache.getEntries(uint64(10), uint64(20))
-	assert.Equals(t, from, uint64(10))
-	assert.Equals(t, to, uint64(20))
-	assert.Equals(t, len(results), 2)
-	assert.Equals(t, results[0].DocID, "doc1")
-	assert.Equals(t, results[0].Sequence, uint64(15))
-	assert.Equals(t, results[1].DocID, "doc2")
-	assert.Equals(t, results[1].Sequence, uint64(17))
+	goassert.Equals(t, from, uint64(10))
+	goassert.Equals(t, to, uint64(20))
+	goassert.Equals(t, len(results), 2)
+	goassert.Equals(t, results[0].DocID, "doc1")
+	goassert.Equals(t, results[0].Sequence, uint64(15))
+	goassert.Equals(t, results[1].DocID, "doc2")
+	goassert.Equals(t, results[1].Sequence, uint64(17))
 
 	// Request for a range earlier than the cache is valid
 	from, to, results = vbCache.getEntries(uint64(0), uint64(15))
-	assert.Equals(t, from, uint64(5))
-	assert.Equals(t, to, uint64(15))
-	assert.Equals(t, len(results), 1)
-	assert.Equals(t, results[0].DocID, "doc1")
-	assert.Equals(t, results[0].Sequence, uint64(15))
+	goassert.Equals(t, from, uint64(5))
+	goassert.Equals(t, to, uint64(15))
+	goassert.Equals(t, len(results), 1)
+	goassert.Equals(t, results[0].DocID, "doc1")
+	goassert.Equals(t, results[0].Sequence, uint64(15))
 
 	// Request for a range later than the cache is valid
 	from, to, results = vbCache.getEntries(uint64(20), uint64(30))
-	assert.Equals(t, from, uint64(20))
-	assert.Equals(t, to, uint64(25))
-	assert.Equals(t, len(results), 1)
-	assert.Equals(t, results[0].DocID, "doc3")
-	assert.Equals(t, results[0].Sequence, uint64(23))
+	goassert.Equals(t, from, uint64(20))
+	goassert.Equals(t, to, uint64(25))
+	goassert.Equals(t, len(results), 1)
+	goassert.Equals(t, results[0].DocID, "doc3")
+	goassert.Equals(t, results[0].Sequence, uint64(23))
 
 	// Prepend older entries, including one duplicate doc id
 	olderEntries := []*LogEntry{
 		makeLogEntry(3, "doc1"),
 		makeLogEntry(4, "doc4"),
 	}
-	assertNoError(t, vbCache.prependEntries(olderEntries, uint64(3), uint64(4)), "Error prepending entries")
+	assert.NoError(t, vbCache.prependEntries(olderEntries, uint64(3), uint64(4)), "Error prepending entries")
 
 	from, to, results = vbCache.getEntries(uint64(0), uint64(50))
-	assert.Equals(t, from, uint64(3))
-	assert.Equals(t, to, uint64(25))
-	assert.Equals(t, len(results), 4)
-	assert.Equals(t, results[0].DocID, "doc4")
-	assert.Equals(t, results[1].DocID, "doc1")
-	assert.Equals(t, results[2].DocID, "doc2")
-	assert.Equals(t, results[3].DocID, "doc3")
+	goassert.Equals(t, from, uint64(3))
+	goassert.Equals(t, to, uint64(25))
+	goassert.Equals(t, len(results), 4)
+	goassert.Equals(t, results[0].DocID, "doc4")
+	goassert.Equals(t, results[1].DocID, "doc1")
+	goassert.Equals(t, results[2].DocID, "doc2")
+	goassert.Equals(t, results[3].DocID, "doc3")
 
 	// Append newer entries, including two duplicate doc ids
 	newerEntries := []*LogEntry{
@@ -243,17 +244,17 @@ func TestVbCache(t *testing.T) {
 		makeLogEntry(31, "doc5"),
 		makeLogEntry(35, "doc3"),
 	}
-	assertNoError(t, vbCache.appendEntries(newerEntries, uint64(25), uint64(35)), "Error appending entries")
+	assert.NoError(t, vbCache.appendEntries(newerEntries, uint64(25), uint64(35)), "Error appending entries")
 
 	from, to, results = vbCache.getEntries(uint64(0), uint64(50))
-	assert.Equals(t, from, uint64(3))
-	assert.Equals(t, to, uint64(35))
-	assert.Equals(t, len(results), 5)
-	assert.Equals(t, results[0].DocID, "doc4")
-	assert.Equals(t, results[1].DocID, "doc2")
-	assert.Equals(t, results[2].DocID, "doc1")
-	assert.Equals(t, results[3].DocID, "doc5")
-	assert.Equals(t, results[4].DocID, "doc3")
+	goassert.Equals(t, from, uint64(3))
+	goassert.Equals(t, to, uint64(35))
+	goassert.Equals(t, len(results), 5)
+	goassert.Equals(t, results[0].DocID, "doc4")
+	goassert.Equals(t, results[1].DocID, "doc2")
+	goassert.Equals(t, results[2].DocID, "doc1")
+	goassert.Equals(t, results[3].DocID, "doc5")
+	goassert.Equals(t, results[4].DocID, "doc3")
 
 	// Attempt to add out-of-order entries
 	newerEntries = []*LogEntry{
@@ -262,23 +263,23 @@ func TestVbCache(t *testing.T) {
 		makeLogEntry(43, "doc3"),
 	}
 	err := vbCache.appendEntries(newerEntries, uint64(35), uint64(43))
-	assertTrue(t, err != nil, "Adding out-of-sequence entries should return error")
+	assert.True(t, err != nil, "Adding out-of-sequence entries should return error")
 	from, to, results = vbCache.getEntries(uint64(0), uint64(50))
-	assert.Equals(t, len(results), 5)
+	goassert.Equals(t, len(results), 5)
 
 	// Attempt to append entries with gaps
 	newerEntries = []*LogEntry{
 		makeLogEntry(40, "doc1"),
 	}
 	err = vbCache.appendEntries(newerEntries, uint64(40), uint64(45))
-	assertTrue(t, err != nil, "Appending with gap should return error")
+	assert.True(t, err != nil, "Appending with gap should return error")
 
 	// Attempt to prepend entries with gaps
 	newerEntries = []*LogEntry{
 		makeLogEntry(1, "doc1"),
 	}
 	err = vbCache.prependEntries(newerEntries, uint64(0), uint64(1))
-	assertTrue(t, err != nil, "Prepending with gap should return error")
+	assert.True(t, err != nil, "Prepending with gap should return error")
 
 }
 */

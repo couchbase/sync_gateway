@@ -24,7 +24,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestChangesAccessNotifyInteger(t *testing.T) {
@@ -41,7 +42,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC"))
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 	a.Save(bernard)
 
 	// Put several documents in channel PBS
@@ -64,7 +65,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
 		changesResponse := it.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.Equals(t, len(changes.Results), 3)
+		goassert.Equals(t, len(changes.Results), 3)
 	}()
 
 	// Wait for changes to start.
@@ -104,7 +105,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	/*
 		a := it.ServerContext().Database("db").Authenticator()
 		bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC"))
-		assert.True(t, err == nil)
+		goassert.True(t, err == nil)
 		a.Save(bernard)
 	*/
 
@@ -131,9 +132,9 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
 	changesResponse := it.Send(requestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))
 	err := json.Unmarshal(changesResponse.Body.Bytes(), &initialChanges)
-	assertNoError(t, err, "Unexpected error unmarshalling initialChanges")
+	assert.NoError(t, err, "Unexpected error unmarshalling initialChanges")
 	lastSeq := initialChanges.Last_Seq.String()
-	assert.Equals(t, lastSeq, "1")
+	goassert.Equals(t, lastSeq, "1")
 
 	// Start longpoll changes request, requesting (unavailable) channel PBS.  Should block.
 	var wg sync.WaitGroup
@@ -147,7 +148,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		sinceLastJSON := fmt.Sprintf(changesJSON, lastSeq)
 		changesResponse := it.Send(requestByUser("POST", "/db/_changes", sinceLastJSON, "bernard"))
 		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
-		assert.Equals(t, len(changes.Results), 1)
+		goassert.Equals(t, len(changes.Results), 1)
 	}()
 
 	// Wait to see if the longpoll will terminate before a document shows up on the channel

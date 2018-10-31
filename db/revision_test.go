@@ -6,7 +6,8 @@ import (
 	"log"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseRevID(t *testing.T) {
@@ -16,22 +17,22 @@ func TestParseRevID(t *testing.T) {
 
 	generation, _ = ParseRevID("ljlkjl")
 	log.Printf("generation: %v", generation)
-	assertTrue(t, generation == -1, "Expected -1 generation for invalid rev id")
+	assert.True(t, generation == -1, "Expected -1 generation for invalid rev id")
 
 	generation, digest = ParseRevID("1-ljlkjl")
 	log.Printf("generation: %v, digest: %v", generation, digest)
-	assertTrue(t, generation == 1, "Expected 1 generation")
-	assertTrue(t, digest == "ljlkjl", "Unexpected digest")
+	assert.True(t, generation == 1, "Expected 1 generation")
+	assert.True(t, digest == "ljlkjl", "Unexpected digest")
 
 	generation, digest = ParseRevID("2222-")
 	log.Printf("generation: %v, digest: %v", generation, digest)
-	assertTrue(t, generation == 2222, "Expected invalid generation")
-	assertTrue(t, digest == "", "Unexpected digest")
+	assert.True(t, generation == 2222, "Expected invalid generation")
+	assert.True(t, digest == "", "Unexpected digest")
 
 	generation, digest = ParseRevID("333-a")
 	log.Printf("generation: %v, digest: %v", generation, digest)
-	assertTrue(t, generation == 333, "Expected generation")
-	assertTrue(t, digest == "a", "Unexpected digest")
+	assert.True(t, generation == 333, "Expected generation")
+	assert.True(t, digest == "a", "Unexpected digest")
 
 }
 
@@ -59,11 +60,11 @@ func TestBodyUnmarshal(t *testing.T) {
 
 			if unmarshalErr != nil {
 				// If json.Unmarshal returns error for input, body.Unmarshal should do the same
-				assertTrue(t, err != nil, fmt.Sprintf("Expected error when unmarshalling %s", test.name))
+				assert.True(t, err != nil, fmt.Sprintf("Expected error when unmarshalling %s", test.name))
 			} else {
-				assertNoError(t, err, fmt.Sprintf("Expected no error when unmarshalling %s", test.name))
-				assert.DeepEquals(t, b, test.expectedBody) // Check against expected body
-				assert.DeepEquals(t, b, jsonUnmarshalBody) // Check against json.Unmarshal results
+				assert.NoError(t, err, fmt.Sprintf("Expected no error when unmarshalling %s", test.name))
+				goassert.DeepEquals(t, b, test.expectedBody) // Check against expected body
+				goassert.DeepEquals(t, b, jsonUnmarshalBody) // Check against json.Unmarshal results
 			}
 
 		})

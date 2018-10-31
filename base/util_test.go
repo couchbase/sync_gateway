@@ -19,56 +19,57 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFixJSONNumbers(t *testing.T) {
-	assert.DeepEquals(t, FixJSONNumbers(1), 1)
-	assert.DeepEquals(t, FixJSONNumbers(float64(1.23)), float64(1.23))
-	assert.DeepEquals(t, FixJSONNumbers(float64(123456)), int64(123456))
-	assert.DeepEquals(t, FixJSONNumbers(float64(123456789)), int64(123456789))
-	assert.DeepEquals(t, FixJSONNumbers(float64(12345678901234567890)),
+	goassert.DeepEquals(t, FixJSONNumbers(1), 1)
+	goassert.DeepEquals(t, FixJSONNumbers(float64(1.23)), float64(1.23))
+	goassert.DeepEquals(t, FixJSONNumbers(float64(123456)), int64(123456))
+	goassert.DeepEquals(t, FixJSONNumbers(float64(123456789)), int64(123456789))
+	goassert.DeepEquals(t, FixJSONNumbers(float64(12345678901234567890)),
 		float64(12345678901234567890))
-	assert.DeepEquals(t, FixJSONNumbers("foo"), "foo")
-	assert.DeepEquals(t, FixJSONNumbers([]interface{}{1, float64(123456)}),
+	goassert.DeepEquals(t, FixJSONNumbers("foo"), "foo")
+	goassert.DeepEquals(t, FixJSONNumbers([]interface{}{1, float64(123456)}),
 		[]interface{}{1, int64(123456)})
-	assert.DeepEquals(t, FixJSONNumbers(map[string]interface{}{"foo": float64(123456)}),
+	goassert.DeepEquals(t, FixJSONNumbers(map[string]interface{}{"foo": float64(123456)}),
 		map[string]interface{}{"foo": int64(123456)})
 }
 
 func TestConvertJSONString(t *testing.T) {
-	assert.Equals(t, ConvertJSONString(`"blah"`), "blah")
-	assert.Equals(t, ConvertJSONString("blah"), "blah")
+	goassert.Equals(t, ConvertJSONString(`"blah"`), "blah")
+	goassert.Equals(t, ConvertJSONString("blah"), "blah")
 }
 
 func TestBackQuotedStrings(t *testing.T) {
 	input := `{"foo": "bar"}`
 	output := ConvertBackQuotedStrings([]byte(input))
-	assert.Equals(t, string(output), input)
+	goassert.Equals(t, string(output), input)
 
 	input = "{\"foo\": `bar`}"
 	output = ConvertBackQuotedStrings([]byte(input))
-	assert.Equals(t, string(output), `{"foo": "bar"}`)
+	goassert.Equals(t, string(output), `{"foo": "bar"}`)
 
 	input = "{\"foo\": `bar\nbaz\nboo`}"
 	output = ConvertBackQuotedStrings([]byte(input))
-	assert.Equals(t, string(output), `{"foo": "bar\nbaz\nboo"}`)
+	goassert.Equals(t, string(output), `{"foo": "bar\nbaz\nboo"}`)
 
 	input = "{\"foo\": `bar\n\"baz\n\tboo`}"
 	output = ConvertBackQuotedStrings([]byte(input))
-	assert.Equals(t, string(output), `{"foo": "bar\n\"baz\n\tboo"}`)
+	goassert.Equals(t, string(output), `{"foo": "bar\n\"baz\n\tboo"}`)
 
 	input = "{\"foo\": `bar\n`, \"baz\": `howdy`}"
 	output = ConvertBackQuotedStrings([]byte(input))
-	assert.Equals(t, string(output), `{"foo": "bar\n", "baz": "howdy"}`)
+	goassert.Equals(t, string(output), `{"foo": "bar\n", "baz": "howdy"}`)
 
 	input = "{\"foo\": `bar\r\n`, \"baz\": `\r\nhowdy`}"
 	output = ConvertBackQuotedStrings([]byte(input))
-	assert.Equals(t, string(output), `{"foo": "bar\n", "baz": "\nhowdy"}`)
+	goassert.Equals(t, string(output), `{"foo": "bar\n", "baz": "\nhowdy"}`)
 
 	input = "{\"foo\": `bar\\baz`, \"something\": `else\\is\\here`}"
 	output = ConvertBackQuotedStrings([]byte(input))
-	assert.Equals(t, string(output), `{"foo": "bar\\baz", "something": "else\\is\\here"}`)
+	goassert.Equals(t, string(output), `{"foo": "bar\\baz", "something": "else\\is\\here"}`)
 }
 
 func TestCouchbaseUrlWithAuth(t *testing.T) {
@@ -80,8 +81,8 @@ func TestCouchbaseUrlWithAuth(t *testing.T) {
 		"password",
 		"bucket",
 	)
-	assert.True(t, err == nil)
-	assert.Equals(t, result, "http://username:password@127.0.0.1:8091")
+	goassert.True(t, err == nil)
+	goassert.Equals(t, result, "http://username:password@127.0.0.1:8091")
 
 	// default bucket
 	result, err = CouchbaseUrlWithAuth(
@@ -90,8 +91,8 @@ func TestCouchbaseUrlWithAuth(t *testing.T) {
 		"",
 		"default",
 	)
-	assert.True(t, err == nil)
-	assert.Equals(t, result, "http://127.0.0.1:8091")
+	goassert.True(t, err == nil)
+	goassert.Equals(t, result, "http://127.0.0.1:8091")
 
 }
 
@@ -102,15 +103,15 @@ func TestCreateDoublingSleeperFunc(t *testing.T) {
 	sleeper := CreateDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs)
 
 	shouldContinue, timeTosleepMs := sleeper(1)
-	assert.True(t, shouldContinue)
-	assert.Equals(t, timeTosleepMs, initialTimeToSleepMs)
+	goassert.True(t, shouldContinue)
+	goassert.Equals(t, timeTosleepMs, initialTimeToSleepMs)
 
 	shouldContinue, timeTosleepMs = sleeper(2)
-	assert.True(t, shouldContinue)
-	assert.Equals(t, timeTosleepMs, initialTimeToSleepMs*2)
+	goassert.True(t, shouldContinue)
+	goassert.Equals(t, timeTosleepMs, initialTimeToSleepMs*2)
 
 	shouldContinue, _ = sleeper(3)
-	assert.False(t, shouldContinue)
+	goassert.False(t, shouldContinue)
 
 }
 
@@ -141,9 +142,9 @@ func TestRetryLoop(t *testing.T) {
 	err, result := RetryLoop(description, worker, sleeper)
 
 	// We shouldn't get an error, because it will retry a few times and then succeed
-	assert.True(t, err == nil)
-	assert.Equals(t, result, "result")
-	assert.True(t, numTimesInvoked == 4)
+	goassert.True(t, err == nil)
+	goassert.Equals(t, result, "result")
+	goassert.True(t, numTimesInvoked == 4)
 
 }
 
@@ -173,9 +174,9 @@ func TestRetryLoopTimeoutSafe(t *testing.T) {
 	err, result := RetryLoopTimeout(description, worker, sleeper, time.Hour)
 
 	// We shouldn't get an error, because it will retry a few times and then succeed
-	assert.True(t, err == nil)
-	assert.Equals(t, result, "result")
-	assert.True(t, numTimesInvoked == 4)
+	goassert.True(t, err == nil)
+	goassert.Equals(t, result, "result")
+	goassert.True(t, numTimesInvoked == 4)
 
 }
 
@@ -195,37 +196,37 @@ func TestRetryLoopTimeoutEffective(t *testing.T) {
 	err, _ := RetryLoopTimeout(description, worker, sleeper, time.Millisecond*100)
 
 	// We should get a timeout error
-	assert.True(t, err != nil)
-	assert.True(t, strings.Contains(err.Error(), "timeout"))
+	goassert.True(t, err != nil)
+	goassert.True(t, strings.Contains(err.Error(), "timeout"))
 
 }
 
 func TestSyncSourceFromURL(t *testing.T) {
 	u, err := url.Parse("http://www.test.com:4985/mydb")
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 	result := SyncSourceFromURL(u)
-	assert.Equals(t, result, "http://www.test.com:4985")
+	goassert.Equals(t, result, "http://www.test.com:4985")
 
 	u, err = url.Parse("http://www.test.com:4984/mydb/some otherinvalidpath?query=yes#fragment")
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 	result = SyncSourceFromURL(u)
-	assert.Equals(t, result, "http://www.test.com:4984")
+	goassert.Equals(t, result, "http://www.test.com:4984")
 
 	u, err = url.Parse("MyDB")
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 	result = SyncSourceFromURL(u)
-	assert.Equals(t, result, "")
+	goassert.Equals(t, result, "")
 }
 
 func TestValueToStringArray(t *testing.T) {
 	result := ValueToStringArray("foobar")
-	assert.DeepEquals(t, result, []string{"foobar"})
+	goassert.DeepEquals(t, result, []string{"foobar"})
 
 	result = ValueToStringArray([]string{"foobar", "moocar"})
-	assert.DeepEquals(t, result, []string{"foobar", "moocar"})
+	goassert.DeepEquals(t, result, []string{"foobar", "moocar"})
 
 	result = ValueToStringArray([]interface{}{"foobar", 1, true})
-	assert.DeepEquals(t, result, []string{"foobar"})
+	goassert.DeepEquals(t, result, []string{"foobar"})
 }
 
 func TestHighSeqNosToSequenceClock(t *testing.T) {
@@ -243,13 +244,13 @@ func TestHighSeqNosToSequenceClock(t *testing.T) {
 
 	seqClock, err = HighSeqNosToSequenceClock(highSeqs)
 
-	assertNoError(t, err, "Unexpected error")
+	assert.NoError(t, err, "Unexpected error")
 
-	assert.True(t, seqClock.GetSequence(0) == 568)
-	assert.True(t, seqClock.GetSequence(1) == 98798)
-	assert.True(t, seqClock.GetSequence(2) == 100)
-	assert.True(t, seqClock.GetSequence(3) == 2)
-	assert.True(t, seqClock.GetSequence(5) == 250)
+	goassert.True(t, seqClock.GetSequence(0) == 568)
+	goassert.True(t, seqClock.GetSequence(1) == 98798)
+	goassert.True(t, seqClock.GetSequence(2) == 100)
+	goassert.True(t, seqClock.GetSequence(3) == 2)
+	goassert.True(t, seqClock.GetSequence(5) == 250)
 
 }
 
@@ -282,15 +283,15 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 
 	for _, inputAndExpected := range inputsAndExpected {
 		actual, err := CouchbaseURIToHttpURL(nil, inputAndExpected.input)
-		assertNoError(t, err, "Unexpected error")
-		assert.DeepEquals(t, actual, inputAndExpected.expected)
+		assert.NoError(t, err, "Unexpected error")
+		goassert.DeepEquals(t, actual, inputAndExpected.expected)
 	}
 
 	// With a nil (or walrus bucket) and a couchbase or couchbases url, expect errors
 	_, err := CouchbaseURIToHttpURL(nil, "couchbases://host1:18191,host2:18191")
-	assert.True(t, err != nil)
+	goassert.True(t, err != nil)
 	_, err = CouchbaseURIToHttpURL(nil, "couchbase://host1")
-	assert.True(t, err != nil)
+	goassert.True(t, err != nil)
 
 }
 
@@ -298,56 +299,56 @@ func TestReflectExpiry(t *testing.T) {
 	exp := time.Now().Add(time.Hour)
 
 	expiry, err := ReflectExpiry(uint(1234))
-	assert.Equals(t, err.Error(), "Unrecognized expiry format")
-	assert.Equals(t, expiry, (*uint32)(nil))
+	goassert.Equals(t, err.Error(), "Unrecognized expiry format")
+	goassert.Equals(t, expiry, (*uint32)(nil))
 
 	expiry, err = ReflectExpiry(true)
-	assert.Equals(t, err.Error(), "Unrecognized expiry format")
-	assert.Equals(t, expiry, (*uint32)(nil))
+	goassert.Equals(t, err.Error(), "Unrecognized expiry format")
+	goassert.Equals(t, expiry, (*uint32)(nil))
 
 	expiry, err = ReflectExpiry(int64(1234))
-	assert.Equals(t, err, nil)
-	assert.Equals(t, *expiry, uint32(1234))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, *expiry, uint32(1234))
 
 	expiry, err = ReflectExpiry(float64(1234))
-	assert.Equals(t, err, nil)
-	assert.Equals(t, *expiry, uint32(1234))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, *expiry, uint32(1234))
 
 	expiry, err = ReflectExpiry("1234")
-	assert.Equals(t, err, nil)
-	assert.Equals(t, *expiry, uint32(1234))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, *expiry, uint32(1234))
 
 	expiry, err = ReflectExpiry(exp.Format(time.RFC3339))
-	assert.Equals(t, err, nil)
-	assert.Equals(t, *expiry, uint32(exp.Unix()))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, *expiry, uint32(exp.Unix()))
 
 	expiry, err = ReflectExpiry("invalid")
-	assert.Equals(t, err.Error(), `Unable to parse expiry invalid as either numeric or date expiry: parsing time "invalid" as "2006-01-02T15:04:05Z07:00": cannot parse "invalid" as "2006"`)
-	assert.Equals(t, expiry, (*uint32)(nil))
+	goassert.Equals(t, err.Error(), `Unable to parse expiry invalid as either numeric or date expiry: parsing time "invalid" as "2006-01-02T15:04:05Z07:00": cannot parse "invalid" as "2006"`)
+	goassert.Equals(t, expiry, (*uint32)(nil))
 
 	expiry, err = ReflectExpiry(nil)
-	assert.Equals(t, err, nil)
-	assert.Equals(t, expiry, (*uint32)(nil))
+	goassert.Equals(t, err, nil)
+	goassert.Equals(t, expiry, (*uint32)(nil))
 }
 
 // IsMinimumVersion takes (major, minor, minimumMajor, minimumMinor)
 func TestIsMinimumVersion(t *testing.T) {
 
 	// Expected true
-	assertTrue(t, isMinimumVersion(1, 0, 0, 0), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(1, 0, 1, 0), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(2, 5, 2, 5), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(3, 0, 2, 5), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(3, 5, 3, 4), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(5, 5, 4, 4), "Invalid minimum version check - expected true")
-	assertTrue(t, isMinimumVersion(0, 0, 0, 0), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(1, 0, 0, 0), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(1, 0, 1, 0), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(2, 5, 2, 5), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(3, 0, 2, 5), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(3, 5, 3, 4), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(5, 5, 4, 4), "Invalid minimum version check - expected true")
+	assert.True(t, isMinimumVersion(0, 0, 0, 0), "Invalid minimum version check - expected true")
 
 	// Expected false
-	assertTrue(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
-	assertTrue(t, !isMinimumVersion(5, 0, 6, 0), "Invalid minimum version check - expected false")
-	assertTrue(t, !isMinimumVersion(4, 5, 5, 0), "Invalid minimum version check - expected false")
-	assertTrue(t, !isMinimumVersion(5, 0, 5, 1), "Invalid minimum version check - expected false")
-	assertTrue(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !isMinimumVersion(5, 0, 6, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !isMinimumVersion(4, 5, 5, 0), "Invalid minimum version check - expected false")
+	assert.True(t, !isMinimumVersion(5, 0, 5, 1), "Invalid minimum version check - expected false")
+	assert.True(t, !isMinimumVersion(0, 0, 1, 0), "Invalid minimum version check - expected false")
 }
 
 func TestSanitizeRequestURL(t *testing.T) {
@@ -389,9 +390,9 @@ func TestSanitizeRequestURL(t *testing.T) {
 
 	for _, test := range tests {
 		req, err := http.NewRequest(http.MethodGet, test.input, nil)
-		assertNoError(t, err, "Unable to create request")
+		assert.NoError(t, err, "Unable to create request")
 		sanitizedURL := SanitizeRequestURL(req, nil)
-		assert.Equals(t, sanitizedURL, test.output)
+		goassert.Equals(t, sanitizedURL, test.output)
 	}
 
 }
@@ -448,15 +449,15 @@ func TestSanitizeRequestURLRedaction(t *testing.T) {
 
 	for _, test := range tests {
 		req, err := http.NewRequest(http.MethodGet, test.input, nil)
-		assertNoError(t, err, "Unable to create request")
+		assert.NoError(t, err, "Unable to create request")
 
 		SetRedaction(RedactNone)
 		sanitizedURL := SanitizeRequestURL(req, nil)
-		assert.Equals(t, sanitizedURL, test.output)
+		goassert.Equals(t, sanitizedURL, test.output)
 
 		SetRedaction(RedactPartial)
 		sanitizedURL = SanitizeRequestURL(req, nil)
-		assert.Equals(t, sanitizedURL, test.outputRedacted)
+		goassert.Equals(t, sanitizedURL, test.outputRedacted)
 	}
 
 }
@@ -469,9 +470,9 @@ func TestFindPrimaryAddr(t *testing.T) {
 		t.Skipf("WARNING: network is unreachable: %s", err)
 	}
 
-	assert.NotEquals(t, ip, nil)
-	assert.NotEquals(t, ip.String(), "")
-	assert.NotEquals(t, ip.String(), "<nil>")
+	goassert.NotEquals(t, ip, nil)
+	goassert.NotEquals(t, ip.String(), "")
+	goassert.NotEquals(t, ip.String(), "<nil>")
 }
 
 func TestReplaceAll(t *testing.T) {
@@ -490,7 +491,7 @@ func TestReplaceAll(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.chars, func(ts *testing.T) {
 			output := ReplaceAll(test.input, test.chars, test.new)
-			assert.Equals(ts, output, test.expected)
+			goassert.Equals(ts, output, test.expected)
 		})
 	}
 }
@@ -578,38 +579,38 @@ func TestRedactBasicAuthURL(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		assert.Equals(t, RedactBasicAuthURL(test.input), test.expected)
+		goassert.Equals(t, RedactBasicAuthURL(test.input), test.expected)
 	}
 }
 
 func TestSetUpTestLogging(t *testing.T) {
 	// Check default state of logging is as expected.
-	assert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
-	assert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
+	goassert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
+	goassert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
 
 	teardownFn := SetUpTestLogging(LevelDebug, KeyDCP|KeySync)
-	assert.Equals(t, *consoleLogger.LogLevel, LevelDebug)
-	assert.Equals(t, *consoleLogger.LogKey, KeyDCP|KeySync)
+	goassert.Equals(t, *consoleLogger.LogLevel, LevelDebug)
+	goassert.Equals(t, *consoleLogger.LogKey, KeyDCP|KeySync)
 
 	teardownFn()
-	assert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
-	assert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
+	goassert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
+	goassert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
 
 	teardownFn = DisableTestLogging()
-	assert.Equals(t, *consoleLogger.LogLevel, LevelNone)
-	assert.Equals(t, *consoleLogger.LogKey, KeyNone)
+	goassert.Equals(t, *consoleLogger.LogLevel, LevelNone)
+	goassert.Equals(t, *consoleLogger.LogKey, KeyNone)
 
 	teardownFn()
-	assert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
-	assert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
+	goassert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
+	goassert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
 
 	SetUpTestLogging(LevelDebug, KeyDCP|KeySync)
-	assert.Equals(t, *consoleLogger.LogLevel, LevelDebug)
-	assert.Equals(t, *consoleLogger.LogKey, KeyDCP|KeySync)
+	goassert.Equals(t, *consoleLogger.LogLevel, LevelDebug)
+	goassert.Equals(t, *consoleLogger.LogKey, KeyDCP|KeySync)
 
 	// Now we should panic because we forgot to call teardown!
 	defer func() {
-		assertTrue(t, recover() != nil, "Expected panic from multiple SetUpTestLogging calls")
+		assert.True(t, recover() != nil, "Expected panic from multiple SetUpTestLogging calls")
 	}()
 	SetUpTestLogging(LevelError, KeyAuth|KeyCRUD)
 }

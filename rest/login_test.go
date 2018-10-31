@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	assert "github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/tleyden/fakehttp"
 )
 
@@ -40,8 +40,8 @@ func TestVerifyFacebook(t *testing.T) {
 	}
 
 	log.Printf("facebookResponse: %s, err: %s", facebookResponse, err)
-	assert.True(t, true)
-	assert.Equals(t, facebookResponse.Email, "alice@dot.com")
+	goassert.True(t, true)
+	goassert.Equals(t, facebookResponse.Email, "alice@dot.com")
 
 }
 

@@ -8,7 +8,8 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 // There are additional tests that exercise the import functionality in rest/import_test.go
@@ -36,13 +37,13 @@ func TestMigrateMetadata(t *testing.T) {
 	bodyBytes := rawDocWithSyncMeta()
 	body := Body{}
 	err := body.Unmarshal(bodyBytes)
-	assertNoError(t, err, "Error unmarshalling body")
+	assert.NoError(t, err, "Error unmarshalling body")
 
 	// Create via the SDK with sync metadata intact
 	expirySeconds := time.Second * 30
 	syncMetaExpiry := time.Now().Add(expirySeconds)
 	_, err = testBucket.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
-	assertNoError(t, err, "Error writing doc w/ expiry")
+	assert.NoError(t, err, "Error writing doc w/ expiry")
 
 	// Get the existing bucket doc
 	_, existingBucketDoc, err := db.GetDocWithXattr(key, DocUnmarshalAll)
@@ -71,8 +72,8 @@ func TestMigrateMetadata(t *testing.T) {
 		body,
 		existingBucketDoc,
 	)
-	assert.True(t, err != nil)
-	assert.True(t, err == base.ErrCasFailureShouldRetry)
+	goassert.True(t, err != nil)
+	goassert.True(t, err == base.ErrCasFailureShouldRetry)
 
 }
 
@@ -127,21 +128,21 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			bodyBytes := testCase.docBody
 			body := Body{}
 			err := body.Unmarshal(bodyBytes)
-			assertNoError(t, err, "Error unmarshalling body")
+			assert.NoError(t, err, "Error unmarshalling body")
 
 			// Create via the SDK
 			expiryDuration := time.Minute * 30
 			syncMetaExpiry := time.Now().Add(expiryDuration)
 			_, err = testBucket.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
-			assertNoError(t, err, "Error writing doc w/ expiry")
+			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
 			_, existingBucketDoc, err := db.GetDocWithXattr(key, DocUnmarshalAll)
-			assertNoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
+			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
 
 			body = Body{}
 			err = body.Unmarshal(existingBucketDoc.Body)
-			assertNoError(t, err, "Error unmarshalling body")
+			assert.NoError(t, err, "Error unmarshalling body")
 
 			// Set the expiry value
 			existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
@@ -163,7 +164,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
 			_, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
-			assertNoError(t, errImportDoc, "Unexpected error")
+			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
 			assertXattrSyncMetaRevGeneration(t, testBucket.Bucket, key, testCase.expectedGeneration)
@@ -171,8 +172,8 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			// Verify the expiry has been preserved after the import
 			gocbBucket, _ := base.AsGoCBBucket(testBucket.Bucket)
 			expiry, err := gocbBucket.GetExpiry(key)
-			assertNoError(t, err, "Error calling GetExpiry()")
-			assert.True(t, expiry == uint32(laterSyncMetaExpiry.Unix()))
+			assert.NoError(t, err, "Error calling GetExpiry()")
+			goassert.True(t, expiry == uint32(laterSyncMetaExpiry.Unix()))
 
 		})
 	}
@@ -233,14 +234,14 @@ func TestImportNullDoc(t *testing.T) {
 
 	// Import a null document
 	importedDoc, err := db.importDoc(key+"1", body, false, existingDoc, ImportOnDemand)
-	assert.Equals(t, err, base.ErrEmptyDocument)
-	assertTrue(t, importedDoc == nil, "Expected no imported doc")
+	goassert.Equals(t, err, base.ErrEmptyDocument)
+	assert.True(t, importedDoc == nil, "Expected no imported doc")
 
 	// Do a valid on-demand import from a null document
 	body = Body{"new": true}
 	importedDoc, err = db.importDoc(key+"2", body, false, existingDoc, ImportOnDemand)
-	assert.Equals(t, err, nil)
-	assertFalse(t, importedDoc == nil, "Expected imported doc")
+	goassert.Equals(t, err, nil)
+	assert.False(t, importedDoc == nil, "Expected imported doc")
 }
 
 func TestImportNullDocRaw(t *testing.T) {
@@ -253,17 +254,17 @@ func TestImportNullDocRaw(t *testing.T) {
 	// Feed import of null doc
 	exp := uint32(0)
 	importedDoc, err := db.ImportDocRaw("TestImportNullDoc", []byte("null"), []byte("{}"), false, 1, &exp, ImportFromFeed)
-	assert.Equals(t, err, base.ErrEmptyDocument)
-	assertTrue(t, importedDoc == nil, "Expected no imported doc")
+	goassert.Equals(t, err, base.ErrEmptyDocument)
+	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
 	_, err := bucket.GetWithXattr(key, "_sync", nil, &xattr)
-	assertNoError(t, err, "Error Getting Xattr")
+	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
-	assert.True(t, ok)
+	goassert.True(t, ok)
 	generation, _ := ParseRevID(revision.(string))
 	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
-	assert.True(t, generation == expectedRevGeneration)
+	goassert.True(t, generation == expectedRevGeneration)
 }

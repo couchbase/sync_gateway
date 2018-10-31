@@ -21,7 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 	"golang.org/x/net/websocket"
 )
 
@@ -206,7 +206,7 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 
 func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
 	err := rt.WaitForDoc(docid)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 }
 
@@ -1090,6 +1090,9 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 	docs = map[string]RestDocument{}
+
+	// Mutex to avoid write contention on docs while PullDocs is running (as rev messages may be processed concurrently)
+	var docsLock sync.Mutex
 	changesFinishedWg := sync.WaitGroup{}
 	revsFinishedWg := sync.WaitGroup{}
 
@@ -1156,7 +1159,10 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 		docRev := request.Properties["rev"]
 		doc.SetID(docId)
 		doc.SetRevID(docRev)
+
+		docsLock.Lock()
 		docs[docId] = doc
+		docsLock.Unlock()
 
 		attachments, err := doc.GetAttachments()
 		if err != nil {

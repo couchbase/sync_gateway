@@ -10,7 +10,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func makeExternalBucket() base.TestBucket {
@@ -28,7 +29,7 @@ func waitFor(t *testing.T, condition func() bool) bool {
 	var start = time.Now()
 	for !condition() {
 		if time.Since(start) >= 15*time.Second {
-			assertFailed(t, "Timeout!")
+			t.Fatal("Timeout!")
 			return false
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -54,7 +55,7 @@ func TestShadowerPull(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
 	t.Logf("Waiting for shadower to catch up...")
@@ -65,8 +66,8 @@ func TestShadowerPull(t *testing.T) {
 	})
 	doc1, _ = db.GetDocument("key1", DocUnmarshalAll)
 	doc2, _ = db.GetDocument("key2", DocUnmarshalAll)
-	assert.DeepEquals(t, doc1.Body(), Body{"foo": json.Number("1")})
-	assert.DeepEquals(t, doc2.Body(), Body{"bar": json.Number("-1")})
+	goassert.DeepEquals(t, doc1.Body(), Body{"foo": json.Number("1")})
+	goassert.DeepEquals(t, doc2.Body(), Body{"bar": json.Number("-1")})
 
 	t.Logf("Deleting remote doc")
 	bucket.Delete("key1")
@@ -77,9 +78,9 @@ func TestShadowerPull(t *testing.T) {
 	})
 
 	doc1, _ = db.GetDocument("key1", DocUnmarshalAll)
-	assert.True(t, doc1.hasFlag(channels.Deleted))
+	goassert.True(t, doc1.hasFlag(channels.Deleted))
 	_, err = db.Get("key1")
-	assert.DeepEquals(t, err, &base.HTTPError{Status: 404, Message: "deleted"})
+	goassert.DeepEquals(t, err, &base.HTTPError{Status: 404, Message: "deleted"})
 
 	waitFor(t, func() bool {
 		return atomic.LoadUint64(&shadower.pullCount) >= 4
@@ -115,7 +116,7 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
 	t.Logf("Waiting for shadower to catch up...")
@@ -147,7 +148,7 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 
 	channelSize := len(resultChannel)
 
-	assert.True(t, channelSize == 3)
+	goassert.True(t, channelSize == 3)
 
 	waitFor(t, func() bool {
 		return atomic.LoadUint64(&shadower.pullCount) >= 4
@@ -171,12 +172,12 @@ func TestShadowerPush(t *testing.T) {
 
 	var err error
 	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 
 	key1rev1, err := db.Put("key1", Body{"aaa": "bbb"})
-	assertNoError(t, err, "Put")
+	assert.NoError(t, err, "Put")
 	_, err = db.Put("key2", Body{"ccc": "ddd"})
-	assertNoError(t, err, "Put")
+	assert.NoError(t, err, "Put")
 
 	t.Log("Waiting for shadower to catch up...")
 	var doc1, doc2 Body
@@ -185,8 +186,8 @@ func TestShadowerPush(t *testing.T) {
 		_, err2 := bucket.Get("key2", &doc2)
 		return err1 == nil && err2 == nil
 	})
-	assert.DeepEquals(t, doc1, Body{"aaa": "bbb"})
-	assert.DeepEquals(t, doc2, Body{"ccc": "ddd"})
+	goassert.DeepEquals(t, doc1, Body{"aaa": "bbb"})
+	goassert.DeepEquals(t, doc2, Body{"ccc": "ddd"})
 
 	t.Logf("Deleting local doc")
 	db.DeleteDoc("key1", key1rev1)
@@ -195,7 +196,7 @@ func TestShadowerPush(t *testing.T) {
 		_, err = bucket.Get("key1", &doc1)
 		return err != nil
 	})
-	assert.True(t, base.IsDocNotFoundError(err))
+	goassert.True(t, base.IsDocNotFoundError(err))
 
 	waitFor(t, func() bool {
 		return atomic.LoadUint64(&db.Shadower.pullCount) >= 3
@@ -221,7 +222,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 
 	var err error
 	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 
 	// Push an existing doc revision (the way a client's push replicator would)
 	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"}, false)
@@ -231,7 +232,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 
 	// Make sure the echoed pull didn't create a new revision:
 	doc, _ := db.GetDocument("foo", DocUnmarshalAll)
-	assert.Equals(t, len(doc.History), 1)
+	goassert.Equals(t, len(doc.History), 1)
 }
 
 // Ensure that a new rev pushed from a shadow bucket update, wehre the UpstreamRev does not exist as a parent func init() {
@@ -255,7 +256,7 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 
 	var err error
 	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 
 	// Push an existing doc revision (the way a client's push replicator would)
 	db.PutExistingRev("foo", Body{"a": "b"}, []string{"1-madeup"}, false)
@@ -285,7 +286,7 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 	//validate that upstream_rev was changed in DB
 	raw, _, _ = db.Bucket.GetRaw("foo")
 	json.Unmarshal(raw, &docObj)
-	assert.Equals(t, docObj["upstream_rev"], "1-notexist")
+	goassert.Equals(t, docObj["upstream_rev"], "1-notexist")
 
 	waitFor(t, func() bool {
 		return atomic.LoadUint64(&db.Shadower.pullCount) >= 2
@@ -293,9 +294,9 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 
 	//Assert that we can get the two conflicing revisions
 	gotBody, err := db.GetRev("foo", "1-madeup", false, nil)
-	assert.DeepEquals(t, gotBody, Body{BodyId: "foo", "a": "b", BodyRev: "1-madeup"})
+	goassert.DeepEquals(t, gotBody, Body{BodyId: "foo", "a": "b", BodyRev: "1-madeup"})
 	gotBody, err = db.GetRev("foo", "2-edce85747420ad6781bdfccdebf82180", false, nil)
-	assert.DeepEquals(t, gotBody, Body{BodyId: "foo", "a": "c", BodyRev: "2-edce85747420ad6781bdfccdebf82180"})
+	goassert.DeepEquals(t, gotBody, Body{BodyId: "foo", "a": "c", BodyRev: "2-edce85747420ad6781bdfccdebf82180"})
 }
 
 func TestShadowerPattern(t *testing.T) {
@@ -317,7 +318,7 @@ func TestShadowerPattern(t *testing.T) {
 
 	pattern, _ := regexp.Compile(`key\d+`)
 	shadower, err := NewShadower(db.DatabaseContext, bucket, pattern)
-	assertNoError(t, err, "NewShadower")
+	assert.NoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
 	t.Logf("Waiting for shadower to catch up...")
@@ -326,14 +327,14 @@ func TestShadowerPattern(t *testing.T) {
 		return seq >= 2
 	})
 	doc1, err := db.GetDocument("key1", DocUnmarshalAll)
-	assertNoError(t, err, fmt.Sprintf("Error getting key1: %v", err))
+	assert.NoError(t, err, fmt.Sprintf("Error getting key1: %v", err))
 	docI, _ := db.GetDocument("ignorekey", DocUnmarshalAll)
 	doc2, err := db.GetDocument("key2", DocUnmarshalAll)
-	assertNoError(t, err, fmt.Sprintf("Error getting key2: %v", err))
+	assert.NoError(t, err, fmt.Sprintf("Error getting key2: %v", err))
 
-	assert.DeepEquals(t, doc1.Body(), Body{"foo": json.Number("1")})
-	assert.True(t, docI == nil)
-	assert.DeepEquals(t, doc2.Body(), Body{"bar": json.Number("-1")})
+	goassert.DeepEquals(t, doc1.Body(), Body{"foo": json.Number("1")})
+	goassert.True(t, docI == nil)
+	goassert.DeepEquals(t, doc2.Body(), Body{"bar": json.Number("-1")})
 
 	waitFor(t, func() bool {
 		return atomic.LoadUint64(&shadower.pullCount) >= 2

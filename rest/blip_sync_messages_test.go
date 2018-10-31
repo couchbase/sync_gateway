@@ -5,7 +5,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestAddRevision(t *testing.T) {
@@ -53,7 +53,7 @@ func TestAddRevision(t *testing.T) {
 		revMessage := &revMessage{
 			Message: &blipMessage,
 		}
-		assert.Equals(t, revMessage.deleted(), testCase.expectedDeletedVal)
+		goassert.Equals(t, revMessage.deleted(), testCase.expectedDeletedVal)
 	}
 
 }
@@ -78,10 +78,10 @@ func TestSubChangesSince(t *testing.T) {
 		zeroSinceVal,
 		testDb.ParseSequenceID,
 	)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 	seqId := subChangesParams.since()
-	assert.True(t, seqId.SeqType == db.IntSequenceType)
-	assert.True(t, seqId.Seq == 1)
+	goassert.True(t, seqId.SeqType == db.IntSequenceType)
+	goassert.True(t, seqId.Seq == 1)
 
 }

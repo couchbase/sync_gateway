@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 	"testing"
 
-	assert "github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestConsoleShouldLog(t *testing.T) {
@@ -95,7 +95,7 @@ func TestConsoleShouldLog(t *testing.T) {
 
 		t.Run(name, func(ts *testing.T) {
 			got := l.shouldLog(test.logToLevel, test.logToKey)
-			assert.Equals(ts, got, test.expected)
+			goassert.Equals(ts, got, test.expected)
 		})
 	}
 }

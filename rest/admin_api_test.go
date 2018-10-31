@@ -26,7 +26,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
@@ -51,7 +52,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	}
 	revId := responseDoc["rev"].(string)
 	revGeneration, revIdHash := db.ParseRevID(revId)
-	assert.Equals(t, revGeneration, 1)
+	goassert.Equals(t, revGeneration, 1)
 
 	// Update doc (normal update, no conflicting revisions added)
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), fmt.Sprintf(`{"value":"secondval", db.BodyRev:"%s"}`, revId))
@@ -69,7 +70,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	}
 	revId = responseDoc["rev"].(string)
 	revGeneration, _ = db.ParseRevID(revId)
-	assert.Equals(t, revGeneration, 2)
+	goassert.Equals(t, revGeneration, 2)
 
 	// Create conflict again, should be a no-op and return the same response as previous attempt
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", docId), input)
@@ -79,7 +80,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	}
 	revId = responseDoc["rev"].(string)
 	revGeneration, _ = db.ParseRevID(revId)
-	assert.Equals(t, revGeneration, 2)
+	goassert.Equals(t, revGeneration, 2)
 
 }
 
@@ -98,30 +99,30 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], "snej")
-	assert.Equals(t, body["email"], "jens@couchbase.com")
-	assert.DeepEquals(t, body["admin_channels"], []interface{}{"bar", "foo"})
-	assert.DeepEquals(t, body["all_channels"], []interface{}{"!", "bar", "foo"})
-	assert.Equals(t, body["password"], nil)
+	goassert.Equals(t, body["name"], "snej")
+	goassert.Equals(t, body["email"], "jens@couchbase.com")
+	goassert.DeepEquals(t, body["admin_channels"], []interface{}{"bar", "foo"})
+	goassert.DeepEquals(t, body["all_channels"], []interface{}{"!", "bar", "foo"})
+	goassert.Equals(t, body["password"], nil)
 
 	// Check the list of all users:
 	response = rt.SendAdminRequest("GET", "/db/_user/", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), `["snej"]`)
+	goassert.Equals(t, string(response.Body.Bytes()), `["snej"]`)
 
 	// Check that the actual User object is correct:
 	user, _ := rt.ServerContext().Database("db").Authenticator().GetUser("snej")
-	assert.Equals(t, user.Name(), "snej")
-	assert.Equals(t, user.Email(), "jens@couchbase.com")
-	assert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)})
-	assert.True(t, user.Authenticate("letmein"))
+	goassert.Equals(t, user.Name(), "snej")
+	goassert.Equals(t, user.Email(), "jens@couchbase.com")
+	goassert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)})
+	goassert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"123", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 200)
 
 	user, _ = rt.ServerContext().Database("db").Authenticator().GetUser("snej")
-	assert.True(t, user.Authenticate("123"))
+	goassert.True(t, user.Authenticate("123"))
 
 	// DELETE the user
 	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
@@ -136,7 +137,7 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, response, 200)
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], "snej")
+	goassert.Equals(t, body["name"], "snej")
 
 	// Create a role
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
@@ -152,8 +153,8 @@ func TestUserAPI(t *testing.T) {
 	assertStatus(t, response, 200)
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
-	assert.DeepEquals(t, body["all_channels"], []interface{}{"!", "bar", "fedoras", "fixies", "foo"})
+	goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
+	goassert.DeepEquals(t, body["all_channels"], []interface{}{"!", "bar", "fedoras", "fixies", "foo"})
 
 	// DELETE the user
 	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
@@ -380,7 +381,7 @@ function(doc, oldDoc) {
 			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
 
 			changes, err := readContinuousChanges(changesResponse)
-			assert.Equals(t, err, nil)
+			goassert.Equals(t, err, nil)
 
 			changesAccumulated = append(changesAccumulated, changes...)
 
@@ -441,7 +442,7 @@ func TestLoggingKeys(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/_logging", "")
 	var logKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &logKeys)
-	assert.DeepEquals(t, logKeys, map[string]interface{}{})
+	goassert.DeepEquals(t, logKeys, map[string]interface{}{})
 
 	//Set logKeys, Changes+ should enable Changes (PUT replaces any existing log keys)
 	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{"Changes+":true, "Cache":true, "HTTP":true}`), 200)
@@ -449,7 +450,7 @@ func TestLoggingKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var updatedLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &updatedLogKeys)
-	assert.DeepEquals(t, updatedLogKeys, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true})
+	goassert.DeepEquals(t, updatedLogKeys, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true})
 
 	//Disable Changes logKey which should also disable Changes+
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes":false}`), 200)
@@ -457,7 +458,7 @@ func TestLoggingKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var deletedLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &deletedLogKeys)
-	assert.DeepEquals(t, deletedLogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
+	goassert.DeepEquals(t, deletedLogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
 
 	//Enable Changes++, which should enable Changes (POST append logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
@@ -465,7 +466,7 @@ func TestLoggingKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var appendedLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &appendedLogKeys)
-	assert.DeepEquals(t, appendedLogKeys, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true})
+	goassert.DeepEquals(t, appendedLogKeys, map[string]interface{}{"Changes": true, "Cache": true, "HTTP": true})
 
 	//Disable Changes++ (POST modifies logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":false}`), 200)
@@ -473,7 +474,7 @@ func TestLoggingKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabledLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &disabledLogKeys)
-	assert.DeepEquals(t, disabledLogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
+	goassert.DeepEquals(t, disabledLogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
 
 	//Re-Enable Changes++, which should enable Changes (POST append logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
@@ -484,7 +485,7 @@ func TestLoggingKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabled2LogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &disabled2LogKeys)
-	assert.DeepEquals(t, disabled2LogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
+	goassert.DeepEquals(t, disabled2LogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
 
 	//Re-Enable Changes++, which should enable Changes (POST append logKeys)
 	assertStatus(t, rt.SendAdminRequest("POST", "/_logging", `{"Changes++":true}`), 200)
@@ -495,7 +496,7 @@ func TestLoggingKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var disabled3LogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &disabled3LogKeys)
-	assert.DeepEquals(t, disabled3LogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
+	goassert.DeepEquals(t, disabled3LogKeys, map[string]interface{}{"Cache": true, "HTTP": true})
 
 	//Disable all logKeys by using PUT with an empty channel list
 	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging", `{}`), 200)
@@ -503,7 +504,7 @@ func TestLoggingKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	var noLogKeys map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &noLogKeys)
-	assert.DeepEquals(t, noLogKeys, map[string]interface{}{})
+	goassert.DeepEquals(t, noLogKeys, map[string]interface{}{})
 }
 
 func TestLoggingLevels(t *testing.T) {
@@ -517,7 +518,7 @@ func TestLoggingLevels(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/_logging", "")
 	var logKeys map[string]bool
 	json.Unmarshal(response.Body.Bytes(), &logKeys)
-	assert.DeepEquals(t, logKeys, map[string]bool{})
+	goassert.DeepEquals(t, logKeys, map[string]bool{})
 
 	// Set log level via logLevel query parameter
 	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=error", ``), http.StatusOK)
@@ -551,14 +552,14 @@ func TestLoggingCombined(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/_logging", "")
 	var logKeys map[string]bool
 	json.Unmarshal(response.Body.Bytes(), &logKeys)
-	assert.DeepEquals(t, logKeys, map[string]bool{})
+	goassert.DeepEquals(t, logKeys, map[string]bool{})
 
 	// Set log keys and log level in a single request
 	assertStatus(t, rt.SendAdminRequest("PUT", "/_logging?logLevel=trace", `{"Changes":true, "Cache":true, "HTTP":true}`), http.StatusOK)
 
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	json.Unmarshal(response.Body.Bytes(), &logKeys)
-	assert.DeepEquals(t, logKeys, map[string]bool{"Changes": true, "Cache": true, "HTTP": true})
+	goassert.DeepEquals(t, logKeys, map[string]bool{"Changes": true, "Cache": true, "HTTP": true})
 }
 
 // Test user delete while that user has an active changes feed (see issue 809)
@@ -592,7 +593,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 			// case 2 - ensure no error processing the changes response.  The number of entries may vary, depending
 			// on whether the changes loop performed an additional iteration before catching the deleted user.
 			_, err := readContinuousChanges(changesResponse)
-			assert.Equals(t, err, nil)
+			goassert.Equals(t, err, nil)
 		}
 	}()
 
@@ -656,13 +657,13 @@ func TestRoleAPI(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], "hipster")
-	assert.DeepEquals(t, body["admin_channels"], []interface{}{"fedoras", "fixies"})
-	assert.Equals(t, body["password"], nil)
+	goassert.Equals(t, body["name"], "hipster")
+	goassert.DeepEquals(t, body["admin_channels"], []interface{}{"fedoras", "fixies"})
+	goassert.Equals(t, body["password"], nil)
 
 	response = rt.SendAdminRequest("GET", "/db/_role/", "")
 	assertStatus(t, response, 200)
-	assert.Equals(t, string(response.Body.Bytes()), `["hipster"]`)
+	goassert.Equals(t, string(response.Body.Bytes()), `["hipster"]`)
 
 	// DELETE the role
 	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
@@ -677,7 +678,7 @@ func TestRoleAPI(t *testing.T) {
 	assertStatus(t, response, 200)
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], "hipster")
+	goassert.Equals(t, body["name"], "hipster")
 	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
 }
 
@@ -692,9 +693,9 @@ func TestGuestUser(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], base.GuestUsername)
+	goassert.Equals(t, body["name"], base.GuestUsername)
 	// This ain't no admin-party, this ain't no nightclub, this ain't no fooling around:
-	assert.DeepEquals(t, body["admin_channels"], nil)
+	goassert.DeepEquals(t, body["admin_channels"], nil)
 
 	// Disable the guest user:
 	response = rt.SendAdminRequest(http.MethodPut, guestUserEndpoint, `{"disabled":true}`)
@@ -704,14 +705,14 @@ func TestGuestUser(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
 	assertStatus(t, response, http.StatusOK)
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.Equals(t, body["name"], base.GuestUsername)
-	assert.DeepEquals(t, body["disabled"], true)
+	goassert.Equals(t, body["name"], base.GuestUsername)
+	goassert.DeepEquals(t, body["disabled"], true)
 
 	// Check that the actual User object is correct:
 	user, _ := rt.ServerContext().Database("db").Authenticator().GetUser("")
-	assert.Equals(t, user.Name(), "")
-	assert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{})
-	assert.Equals(t, user.Disabled(), true)
+	goassert.Equals(t, user.Name(), "")
+	goassert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{})
+	goassert.Equals(t, user.Disabled(), true)
 
 	// We can't delete the guest user, but we should get a reasonable error back.
 	response = rt.SendAdminRequest(http.MethodDelete, guestUserEndpoint, "")
@@ -727,14 +728,14 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	user, err = a.GetUser("")
-	assert.Equals(t, err, nil)
-	assert.True(t, user.Disabled())
+	goassert.Equals(t, err, nil)
+	goassert.True(t, user.Disabled())
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
 	assertStatus(t, response, 401)
@@ -753,7 +754,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 	log.Printf("expires %s", body["expires"].(string))
 	expires, err := time.Parse(layout, body["expires"].(string)[:19])
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	//create a session with a ttl value one second greater thatn the max offset ttl 2592001 seconds
 	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592001}`)
@@ -763,13 +764,13 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	log.Printf("expires2 %s", body["expires"].(string))
 	expires2, err := time.Parse(layout, body["expires"].(string)[:19])
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	//Allow a ten second drift between the expires dates, to pass test on slow servers
 	acceptableTimeDelta := time.Duration(10) * time.Second
 
 	//The difference between the two expires dates should be less than the acceptable time delta
-	assert.True(t, expires2.Sub(expires) < acceptableTimeDelta)
+	goassert.True(t, expires2.Sub(expires) < acceptableTimeDelta)
 }
 
 func TestSessionExtension(t *testing.T) {
@@ -783,14 +784,14 @@ func TestSessionExtension(t *testing.T) {
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, err, nil)
 
 	user, err = a.GetUser("")
-	assert.Equals(t, err, nil)
-	assert.True(t, user.Disabled())
+	goassert.Equals(t, err, nil)
+	goassert.True(t, user.Disabled())
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
 	assertStatus(t, response, 401)
@@ -807,9 +808,9 @@ func TestSessionExtension(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	sessionId := body["session_id"].(string)
 	sessionExpiration := body["expires"].(string)
-	assert.True(t, sessionId != "")
-	assert.True(t, sessionExpiration != "")
-	assert.True(t, body["cookie_name"].(string) == "SyncGatewaySession")
+	goassert.True(t, sessionId != "")
+	goassert.True(t, sessionExpiration != "")
+	goassert.True(t, body["cookie_name"].(string) == "SyncGatewaySession")
 
 	reqHeaders := map[string]string{
 		"Cookie": "SyncGatewaySession=" + body["session_id"].(string),
@@ -817,7 +818,7 @@ func TestSessionExtension(t *testing.T) {
 	response = rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
 	assertStatus(t, response, 201)
 
-	assert.True(t, response.Header().Get("Set-Cookie") == "")
+	goassert.True(t, response.Header().Get("Set-Cookie") == "")
 
 	//Sleep for 2 seconds, this will ensure 10% of the 100 seconds session ttl has elapsed and
 	//should cause a new Cookie to be sent by the server with the same session ID and an extended expiration date
@@ -825,7 +826,7 @@ func TestSessionExtension(t *testing.T) {
 	response = rt.SendRequestWithHeaders("PUT", "/db/doc2", `{"hi": "there"}`, reqHeaders)
 	assertStatus(t, response, 201)
 
-	assert.True(t, response.Header().Get("Set-Cookie") != "")
+	goassert.True(t, response.Header().Get("Set-Cookie") != "")
 }
 
 func TestSessionAPI(t *testing.T) {
@@ -951,14 +952,14 @@ func TestDBOfflineSingle(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 }
 
 //Make two concurrent calls to take DB offline
@@ -974,7 +975,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	//Take DB offline concurrently using two goroutines
 	//Both should return success and DB should be offline
@@ -997,12 +998,12 @@ func TestDBOfflineConcurrent(t *testing.T) {
 	}()
 
 	err := WaitWithTimeout(&wg, time.Second*30)
-	assertNoError(t, err, "Error waiting for waitgroup")
+	assert.NoError(t, err, "Error waiting for waitgroup")
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 }
 
@@ -1016,14 +1017,14 @@ func TestStartDBOffline(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 }
 
 //Take DB offline and ensure that normal REST calls
@@ -1038,7 +1039,7 @@ func TestDBOffline503Response(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
@@ -1046,7 +1047,7 @@ func TestDBOffline503Response(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	assertStatus(t, rt.SendRequest("GET", "/db/doc1", ""), 503)
 }
@@ -1062,7 +1063,7 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
@@ -1070,7 +1071,7 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	assertStatus(t, rt.SendRequest("PUT", "/db/_config", ""), 404)
 }
@@ -1096,10 +1097,10 @@ func TestDBGetConfigNames(t *testing.T) {
 	var body DbConfig
 	json.Unmarshal(response.Body.Bytes(), &body)
 
-	assert.Equals(t, len(body.Users), len(rt.DatabaseConfig.Users))
+	goassert.Equals(t, len(body.Users), len(rt.DatabaseConfig.Users))
 
 	for k, v := range body.Users {
-		assert.Equals(t, *v.Name, k)
+		goassert.Equals(t, *v.Name, k)
 	}
 
 }
@@ -1119,7 +1120,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
@@ -1127,7 +1128,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync", ""), 200)
 }
@@ -1153,7 +1154,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
@@ -1161,7 +1162,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	input := bytes.NewBufferString("")
 	request, _ := http.NewRequest("POST", "http://localhost/db/_resync", input)
@@ -1187,7 +1188,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 
 	// Extract the recorded result and make sure it was a 200 response
 	recordedResponseInitialResync := recorder.Result()
-	assert.Equals(t, recordedResponseInitialResync.StatusCode, 200)
+	goassert.Equals(t, recordedResponseInitialResync.StatusCode, 200)
 
 }
 
@@ -1202,7 +1203,7 @@ func TestDBOnlineSingle(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
@@ -1210,7 +1211,7 @@ func TestDBOnlineSingle(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	rt.SendAdminRequest("POST", "/db/_online", "")
 	assertStatus(t, response, 200)
@@ -1220,7 +1221,7 @@ func TestDBOnlineSingle(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 }
 
 //Take DB online concurrently using two goroutines
@@ -1236,7 +1237,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
@@ -1244,7 +1245,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -1269,7 +1270,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 
 	// Wait for DB to come online (retry loop)
 	errDbOnline := rt.WaitForDBOnline()
-	assertNoError(t, errDbOnline, "Error waiting for db to come online")
+	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
 
 }
 
@@ -1288,7 +1289,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
@@ -1296,7 +1297,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
 	assertStatus(t, response, 200)
@@ -1304,14 +1305,14 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	// Wait until after the 1 second delay, since the online request explicitly asked for a delay
 	time.Sleep(1500 * time.Millisecond)
 
 	// Wait for DB to come online (retry loop)
 	errDbOnline := rt.WaitForDBOnline()
-	assertNoError(t, errDbOnline, "Error waiting for db to come online")
+	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
 
 }
 
@@ -1333,7 +1334,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
@@ -1341,7 +1342,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	//Bring DB online with delay of two seconds
 	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":2}")
@@ -1353,19 +1354,19 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 
 	// Wait for DB to come online (retry loop)
 	errDbOnline := rt.WaitForDBOnline()
-	assertNoError(t, errDbOnline, "Error waiting for db to come online")
+	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	// Wait until after the 2 second delay, since the online request explicitly asked for a delay
 	time.Sleep(2500 * time.Millisecond)
 
 	// Wait for DB to come online (retry loop)
 	errDbOnline = rt.WaitForDBOnline()
-	assertNoError(t, errDbOnline, "Error waiting for db to come online")
+	assert.NoError(t, errDbOnline, "Error waiting for db to come online")
 
 }
 
@@ -1387,7 +1388,7 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, 200)
@@ -1395,7 +1396,7 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	//Bring DB online with delay of one seconds
 	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
@@ -1408,21 +1409,21 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Offline")
+	goassert.True(t, body["state"].(string) == "Offline")
 
 	time.Sleep(1500 * time.Millisecond)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 
 	time.Sleep(600 * time.Millisecond)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.True(t, body["state"].(string) == "Online")
+	goassert.True(t, body["state"].(string) == "Online")
 }
 
 func (rt *RestTester) createSession(t *testing.T, username string) string {
@@ -1456,7 +1457,7 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
+	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithEmptyRevisionList(t *testing.T) {
@@ -1469,7 +1470,7 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
+	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
@@ -1482,7 +1483,7 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
+	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithNonStarRevision(t *testing.T) {
@@ -1495,7 +1496,7 @@ func TestPurgeWithNonStarRevision(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
+	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 }
 
 func TestPurgeWithStarRevision(t *testing.T) {
@@ -1508,7 +1509,7 @@ func TestPurgeWithStarRevision(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
+	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
 
 	//Create new versions of the doc1 without conflicts
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
@@ -1526,7 +1527,7 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}, "doc2": []interface{}{"*"}}})
+	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}, "doc2": []interface{}{"*"}}})
 
 	//Create new versions of the docs without conflicts
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
@@ -1543,20 +1544,20 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
 
 	changes, err := rt.WaitForChanges(2, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
-	assertNoError(t, err, "Error waiting for changes")
-	assert.Equals(t, changes.Results[0].ID, "doc1")
-	assert.Equals(t, changes.Results[1].ID, "doc2")
+	assert.NoError(t, err, "Error waiting for changes")
+	goassert.Equals(t, changes.Results[0].ID, "doc1")
+	goassert.Equals(t, changes.Results[1].ID, "doc2")
 
 	// Purge "doc1"
 	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
 	assertStatus(t, resp, http.StatusOK)
 	var body map[string]interface{}
 	json.Unmarshal(resp.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
+	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
 
 	changes, err = rt.WaitForChanges(1, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
-	assertNoError(t, err, "Error waiting for changes")
-	assert.Equals(t, changes.Results[0].ID, "doc2")
+	assert.NoError(t, err, "Error waiting for changes")
+	goassert.Equals(t, changes.Results[0].ID, "doc2")
 
 }
 
@@ -1571,7 +1572,7 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body map[string]interface{}
 	json.Unmarshal(response.Body.Bytes(), &body)
-	assert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
+	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
 
 	//Create new versions of the doc1 without conflicts
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)

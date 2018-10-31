@@ -8,7 +8,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 var numShards = uint16(64)
@@ -48,7 +49,7 @@ func TestShardedSequenceClock(t *testing.T) {
 
 	// Validate sequence
 	postUpdateClock := shardedClock.AsClock()
-	assert.Equals(t, postUpdateClock.GetSequence(50), uint64(100))
+	goassert.Equals(t, postUpdateClock.GetSequence(50), uint64(100))
 
 	bucket.Dump()
 
@@ -72,12 +73,12 @@ func TestShardedSequenceClockCasError(t *testing.T) {
 
 	updateClock2 := NewSequenceClockImpl()
 	updateClock2.SetSequence(51, 101)
-	assertNoError(t, shardedClock2.UpdateAndWrite(updateClock2.ValueAsMap()), "Second update failed")
+	assert.NoError(t, shardedClock2.UpdateAndWrite(updateClock2.ValueAsMap()), "Second update failed")
 
 	// Validate sequence
 	postUpdateClock := shardedClock2.AsClock()
-	assert.Equals(t, postUpdateClock.GetSequence(50), uint64(100))
-	assert.Equals(t, postUpdateClock.GetSequence(51), uint64(101))
+	goassert.Equals(t, postUpdateClock.GetSequence(50), uint64(100))
+	goassert.Equals(t, postUpdateClock.GetSequence(51), uint64(101))
 
 	// Apply a second uipdate using the first sharded clock (which should now have invalid cas value for the partition)
 	updateClock3 := NewSequenceClockImpl()
@@ -85,18 +86,18 @@ func TestShardedSequenceClockCasError(t *testing.T) {
 	shardedClock1.UpdateAndWrite(updateClock3.ValueAsMap())
 	// Validate sequence
 	postUpdateClock = shardedClock1.AsClock()
-	assert.Equals(t, postUpdateClock.GetSequence(50), uint64(100))
-	assert.Equals(t, postUpdateClock.GetSequence(51), uint64(102))
+	goassert.Equals(t, postUpdateClock.GetSequence(50), uint64(100))
+	goassert.Equals(t, postUpdateClock.GetSequence(51), uint64(102))
 	bucket.Dump()
 
 	// Check the partition contents directly from the bucket
 	key := "_idx_c:myClock:clock-3"
 	bytes, _, err := bucket.GetRaw(key)
-	assertTrue(t, err == nil, fmt.Sprintf("Error retrieving partition from bucket:%v", err))
+	assert.True(t, err == nil, fmt.Sprintf("Error retrieving partition from bucket:%v", err))
 
 	partition := NewShardedClockPartitionForBytes(key, bytes, indexPartitions)
-	assert.Equals(t, partition.GetSequence(50), uint64(100))
-	assert.Equals(t, partition.GetSequence(51), uint64(102))
+	goassert.Equals(t, partition.GetSequence(50), uint64(100))
+	goassert.Equals(t, partition.GetSequence(51), uint64(102))
 }
 
 func TestShardedClockSizes(t *testing.T) {
@@ -148,8 +149,8 @@ func TestShardedClockPartitionBasic(t *testing.T) {
 	p := NewShardedClockPartition("testKey", 5, vbNos)
 	p.SetSequence(vbNos[0], 50)
 
-	assert.Equals(t, p.GetSequence(vbNos[0]), uint64(50))
-	assert.Equals(t, p.GetIndex(), uint16(5))
+	goassert.Equals(t, p.GetSequence(vbNos[0]), uint64(50))
+	goassert.Equals(t, p.GetIndex(), uint16(5))
 
 	clock := NewSequenceClockImpl()
 	p.AddToClock(clock)
@@ -169,7 +170,7 @@ func TestShardedClockPartitionResize(t *testing.T) {
 
 	// validate initial retrieval
 	for i := 0; i < 15; i++ {
-		assert.Equals(t, p.GetSequence(vbNos[i]), uint64(i*1000))
+		goassert.Equals(t, p.GetSequence(vbNos[i]), uint64(i*1000))
 	}
 
 	// Set a odd vbnos to higher values, but less than MaxUint32 (4294967295)
@@ -177,20 +178,20 @@ func TestShardedClockPartitionResize(t *testing.T) {
 		p.SetSequence(vbNos[2*i], uint64(2*i*10000000))
 	}
 
-	assert.Equals(t, p.GetSeqSize(), uint8(2))
+	goassert.Equals(t, p.GetSeqSize(), uint8(2))
 	// validate retrieval
 	for i := 0; i < 7; i++ {
-		assert.Equals(t, p.GetSequence(vbNos[2*i]), uint64(2*i*10000000))
-		assert.Equals(t, p.GetSequence(vbNos[2*i+1]), uint64((2*i+1)*1000))
+		goassert.Equals(t, p.GetSequence(vbNos[2*i]), uint64(2*i*10000000))
+		goassert.Equals(t, p.GetSequence(vbNos[2*i+1]), uint64((2*i+1)*1000))
 	}
 
 	// one more resize
 	p.SetSequence(vbNos[6], 6000000000)
-	assert.Equals(t, p.GetSeqSize(), uint8(3))
+	goassert.Equals(t, p.GetSeqSize(), uint8(3))
 	log.Printf("vbNos[4]:%d", p.GetSequence(vbNos[4]))
-	assert.Equals(t, p.GetSequence(vbNos[4]), uint64(40000000))
-	assert.Equals(t, p.GetSequence(vbNos[5]), uint64(5000))
-	assert.Equals(t, p.GetSequence(vbNos[6]), uint64(6000000000))
+	goassert.Equals(t, p.GetSequence(vbNos[4]), uint64(40000000))
+	goassert.Equals(t, p.GetSequence(vbNos[5]), uint64(5000))
+	goassert.Equals(t, p.GetSequence(vbNos[6]), uint64(6000000000))
 
 }
 
@@ -207,7 +208,7 @@ func TestShardedClockPartitionResizeLarge(t *testing.T) {
 
 	// validate initial retrieval
 	for i := 0; i < 15; i++ {
-		assert.Equals(t, p.GetSequence(vbNos[i]), uint64(i*1000))
+		goassert.Equals(t, p.GetSequence(vbNos[i]), uint64(i*1000))
 	}
 
 	// Set a odd vbnos to higher values, greater than MaxUint32 (4294967295)
@@ -215,11 +216,11 @@ func TestShardedClockPartitionResizeLarge(t *testing.T) {
 		p.SetSequence(vbNos[2*i], uint64(i*100000000000000))
 	}
 
-	assert.Equals(t, p.GetSeqSize(), uint8(4))
+	goassert.Equals(t, p.GetSeqSize(), uint8(4))
 	// validate retrieval
 	for i := 0; i < 7; i++ {
-		assert.Equals(t, p.GetSequence(vbNos[2*i]), uint64(i*100000000000000))
-		assert.Equals(t, p.GetSequence(vbNos[2*i+1]), uint64((2*i+1)*1000))
+		goassert.Equals(t, p.GetSequence(vbNos[2*i]), uint64(i*100000000000000))
+		goassert.Equals(t, p.GetSequence(vbNos[2*i+1]), uint64((2*i+1)*1000))
 	}
 
 }
@@ -396,18 +397,18 @@ func (scp *GobShardedClockPartition) AddToClock(clock SequenceClock) error {
 func TestCompareVbAndSequence(t *testing.T) {
 
 	// Vb and Seq equal
-	assert.Equals(t, CompareVbAndSequence(10, 100, 10, 100), CompareEquals)
+	goassert.Equals(t, CompareVbAndSequence(10, 100, 10, 100), CompareEquals)
 
 	// Vb equal
-	assert.Equals(t, CompareVbAndSequence(10, 100, 10, 101), CompareLessThan)
-	assert.Equals(t, CompareVbAndSequence(10, 100, 10, 99), CompareGreaterThan)
+	goassert.Equals(t, CompareVbAndSequence(10, 100, 10, 101), CompareLessThan)
+	goassert.Equals(t, CompareVbAndSequence(10, 100, 10, 99), CompareGreaterThan)
 
 	// Vb different
-	assert.Equals(t, CompareVbAndSequence(10, 100, 11, 100), CompareLessThan)
-	assert.Equals(t, CompareVbAndSequence(10, 100, 11, 99), CompareLessThan)
-	assert.Equals(t, CompareVbAndSequence(10, 100, 11, 101), CompareLessThan)
-	assert.Equals(t, CompareVbAndSequence(10, 100, 9, 100), CompareGreaterThan)
-	assert.Equals(t, CompareVbAndSequence(10, 100, 9, 99), CompareGreaterThan)
-	assert.Equals(t, CompareVbAndSequence(10, 100, 9, 101), CompareGreaterThan)
+	goassert.Equals(t, CompareVbAndSequence(10, 100, 11, 100), CompareLessThan)
+	goassert.Equals(t, CompareVbAndSequence(10, 100, 11, 99), CompareLessThan)
+	goassert.Equals(t, CompareVbAndSequence(10, 100, 11, 101), CompareLessThan)
+	goassert.Equals(t, CompareVbAndSequence(10, 100, 9, 100), CompareGreaterThan)
+	goassert.Equals(t, CompareVbAndSequence(10, 100, 9, 99), CompareGreaterThan)
+	goassert.Equals(t, CompareVbAndSequence(10, 100, 9, 101), CompareGreaterThan)
 
 }

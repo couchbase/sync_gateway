@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -70,10 +71,10 @@ func TestRepairBucket(t *testing.T) {
 
 	repairedDocs, err := repairBucket.RepairBucket()
 
-	assertNoError(t, err, fmt.Sprintf("Unexpected error: %v", err))
+	assert.NoError(t, err, fmt.Sprintf("Unexpected error: %v", err))
 
 	// All docs will be repaired due to the repairJob function that indiscriminately repairs all docs
-	assert.True(t, len(repairedDocs) == numDocs)
+	goassert.True(t, len(repairedDocs) == numDocs)
 
 }
 
@@ -105,28 +106,28 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	repairedDocs, err := repairBucket.RepairBucket()
 
-	assertNoError(t, err, fmt.Sprintf("Error repairing bucket: %v", err))
-	assert.True(t, len(repairedDocs) == 2)
+	assert.NoError(t, err, fmt.Sprintf("Error repairing bucket: %v", err))
+	goassert.True(t, len(repairedDocs) == 2)
 
 	// Now get the doc from the bucket
 	rawVal, _, errGetDoc := bucket.GetRaw(docIdProblematicRevTree)
-	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting doc: %v", errGetDoc))
+	assert.NoError(t, errGetDoc, fmt.Sprintf("Error getting doc: %v", errGetDoc))
 
 	repairedDoc, errUnmarshal := unmarshalDocument(docIdProblematicRevTree, rawVal)
-	assertNoError(t, errUnmarshal, fmt.Sprintf("Error unmarshalling doc: %v", errUnmarshal))
+	assert.NoError(t, errUnmarshal, fmt.Sprintf("Error unmarshalling doc: %v", errUnmarshal))
 
 	// Since doc was repaired, should contain no cycles
-	assert.False(t, repairedDoc.History.ContainsCycles())
+	goassert.False(t, repairedDoc.History.ContainsCycles())
 
 	// There should be a backup doc in the bucket with ID _sync:repair:backup:docIdProblematicRevTree
 	rawVal, _, errGetDoc = bucket.GetRaw("_sync:repair:backup:docIdProblematicRevTree")
-	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting backup doc: %v", errGetDoc))
+	assert.NoError(t, errGetDoc, fmt.Sprintf("Error getting backup doc: %v", errGetDoc))
 
 	backupDoc, errUnmarshalBackup := unmarshalDocument(docIdProblematicRevTree, rawVal)
-	assertNoError(t, errUnmarshalBackup, fmt.Sprintf("Error umarshalling backup doc: %v", errUnmarshalBackup))
+	assert.NoError(t, errUnmarshalBackup, fmt.Sprintf("Error umarshalling backup doc: %v", errUnmarshalBackup))
 
 	// The backup doc should contain revtree cycles
-	assert.True(t, backupDoc.History.ContainsCycles())
+	goassert.True(t, backupDoc.History.ContainsCycles())
 
 }
 
@@ -155,26 +156,26 @@ func TestRepairBucketDryRun(t *testing.T) {
 
 	repairedDocs, err := repairBucket.RepairBucket()
 
-	assertNoError(t, err, fmt.Sprintf("Error repairing bucket: %v", err))
-	assert.True(t, len(repairedDocs) == 2)
+	assert.NoError(t, err, fmt.Sprintf("Error repairing bucket: %v", err))
+	goassert.True(t, len(repairedDocs) == 2)
 
 	// Now get the doc from the bucket
 	rawVal, _, errGetDoc := bucket.GetRaw(docIdProblematicRevTree2)
-	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting doc: %v", errGetDoc))
+	assert.NoError(t, errGetDoc, fmt.Sprintf("Error getting doc: %v", errGetDoc))
 
 	repairedDoc, errUnmarshal := unmarshalDocument(docIdProblematicRevTree2, rawVal)
-	assertNoError(t, errUnmarshal, fmt.Sprintf("Error unmarshalling doc: %v", errUnmarshal))
+	assert.NoError(t, errUnmarshal, fmt.Sprintf("Error unmarshalling doc: %v", errUnmarshal))
 
 	// Since doc was not repaired due to dry, should still contain cycles
-	assert.True(t, repairedDoc.History.ContainsCycles())
+	goassert.True(t, repairedDoc.History.ContainsCycles())
 
 	rawVal, _, errGetDoc = bucket.GetRaw("_sync:repair:dryrun:docIdProblematicRevTree2")
-	assertNoError(t, errGetDoc, fmt.Sprintf("Error getting backup doc: %v", errGetDoc))
+	assert.NoError(t, errGetDoc, fmt.Sprintf("Error getting backup doc: %v", errGetDoc))
 
 	backupDoc, errUnmarshalBackup := unmarshalDocument(docIdProblematicRevTree2, rawVal)
-	assertNoError(t, errUnmarshalBackup, fmt.Sprintf("Error umarshalling backup doc: %v", errUnmarshalBackup))
+	assert.NoError(t, errUnmarshalBackup, fmt.Sprintf("Error umarshalling backup doc: %v", errUnmarshalBackup))
 
 	// The dry run fixed doc should not contain revtree cycles
-	assert.False(t, backupDoc.History.ContainsCycles())
+	goassert.False(t, backupDoc.History.ContainsCycles())
 
 }

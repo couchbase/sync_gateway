@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 var testN1qlOptions = &N1qlIndexOptions{
@@ -35,7 +36,7 @@ func TestN1qlQuery(t *testing.T) {
 		if err != nil {
 			t.Errorf("Error adding doc for TestN1qlQuery: %v", err)
 		}
-		assertTrue(t, added, "AddRaw returned added=false, expected true")
+		assert.True(t, added, "AddRaw returned added=false, expected true")
 	}
 
 	indexExpression := "val"
@@ -54,10 +55,10 @@ func TestN1qlQuery(t *testing.T) {
 
 	// Check index state
 	exists, state, stateErr := bucket.GetIndexMeta("testIndex_value")
-	assertNoError(t, stateErr, "Error validating index state")
-	assertTrue(t, state != nil, "No state returned for index")
-	assert.Equals(t, state.State, "online")
-	assert.Equals(t, exists, true)
+	assert.NoError(t, stateErr, "Error validating index state")
+	assert.True(t, state != nil, "No state returned for index")
+	goassert.Equals(t, state.State, "online")
+	goassert.Equals(t, exists, true)
 
 	// Defer index teardown
 	defer func() {
@@ -69,7 +70,7 @@ func TestN1qlQuery(t *testing.T) {
 	}()
 
 	readyErr := bucket.WaitForIndexOnline("testIndex_value")
-	assertNoError(t, readyErr, "Error validating index online")
+	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Query the index
 	queryExpression := fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", BucketQueryToken)
@@ -77,7 +78,7 @@ func TestN1qlQuery(t *testing.T) {
 	params["minvalue"] = 2
 
 	queryResults, queryErr := bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assertNoError(t, queryErr, "Error executing n1ql query")
+	assert.NoError(t, queryErr, "Error executing n1ql query")
 
 	// Struct to receive the query response (META().id, val)
 	var queryResult struct {
@@ -94,7 +95,7 @@ func TestN1qlQuery(t *testing.T) {
 			queryCloseErr = queryResults.Close()
 			break
 		}
-		assertTrue(t, queryResult.Val > 2, "Query returned unexpected result")
+		assert.True(t, queryResult.Val > 2, "Query returned unexpected result")
 		count++
 	}
 
@@ -103,7 +104,7 @@ func TestN1qlQuery(t *testing.T) {
 	params["minvalue"] = 10
 
 	queryResults, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assertNoError(t, queryErr, "Error executing n1ql query")
+	assert.NoError(t, queryErr, "Error executing n1ql query")
 
 	count = 0
 	for {
@@ -112,12 +113,12 @@ func TestN1qlQuery(t *testing.T) {
 			queryCloseErr = queryResults.Close()
 			break
 		}
-		assertTrue(t, queryResult.Val > 10, "Query returned unexpected result")
+		assert.True(t, queryResult.Val > 10, "Query returned unexpected result")
 		count++
 	}
 
-	assertNoError(t, queryCloseErr, "Unexpected error closing query results")
-	assert.Equals(t, count, 0)
+	assert.NoError(t, queryCloseErr, "Unexpected error closing query results")
+	goassert.Equals(t, count, 0)
 
 }
 
@@ -142,7 +143,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 		if err != nil {
 			t.Errorf("Error adding doc for TestIndexFilterExpression: %v", err)
 		}
-		assertTrue(t, added, "AddRaw returned added=false, expected true")
+		assert.True(t, added, "AddRaw returned added=false, expected true")
 	}
 
 	indexExpression := "val"
@@ -154,7 +155,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 
 	// Wait for index readiness
 	readyErr := bucket.WaitForIndexOnline("testIndex_filtered_value")
-	assertNoError(t, readyErr, "Error validating index online")
+	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
 	defer func() {
@@ -168,7 +169,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 	// Query the index
 	queryExpression := fmt.Sprintf("SELECT META().id, val FROM %s WHERE %s AND META().id = 'doc1'", BucketQueryToken, filterExpression)
 	queryResults, queryErr := bucket.Query(queryExpression, nil, gocb.RequestPlus, false)
-	assertNoError(t, queryErr, "Error executing n1ql query")
+	assert.NoError(t, queryErr, "Error executing n1ql query")
 
 	// Struct to receive the query response (META().id, val)
 	var queryResult struct {
@@ -183,14 +184,14 @@ func TestN1qlFilterExpression(t *testing.T) {
 		ok := queryResults.Next(&queryResult)
 		if !ok {
 			queryCloseErr = queryResults.Close()
-			assertNoError(t, queryCloseErr, "Error closing queryResults")
+			assert.NoError(t, queryCloseErr, "Error closing queryResults")
 			break
 		}
-		assertTrue(t, queryResult.Val < 3, "Query returned unexpected result")
-		assert.Equals(t, queryResult.Id, "doc1")
+		assert.True(t, queryResult.Val < 3, "Query returned unexpected result")
+		goassert.Equals(t, queryResult.Id, "doc1")
 		count++
 	}
-	assert.Equals(t, count, 1)
+	goassert.Equals(t, count, 1)
 
 }
 
@@ -209,8 +210,8 @@ func TestIndexMeta(t *testing.T) {
 
 	// Check index state pre-creation
 	exists, meta, err := bucket.GetIndexMeta("testIndex_value")
-	assert.Equals(t, exists, false)
-	assertNoError(t, err, "Error getting meta for non-existent index")
+	goassert.Equals(t, exists, false)
+	assert.NoError(t, err, "Error getting meta for non-existent index")
 
 	indexExpression := "val"
 	err = bucket.CreateIndex("testIndex_value", indexExpression, "", testN1qlOptions)
@@ -219,7 +220,7 @@ func TestIndexMeta(t *testing.T) {
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndex_value")
-	assertNoError(t, readyErr, "Error validating index online")
+	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
 	defer func() {
@@ -232,9 +233,9 @@ func TestIndexMeta(t *testing.T) {
 
 	// Check index state post-creation
 	exists, meta, err = bucket.GetIndexMeta("testIndex_value")
-	assert.Equals(t, exists, true)
-	assert.Equals(t, meta.State, "online")
-	assertNoError(t, err, "Error retrieving index state")
+	goassert.Equals(t, exists, true)
+	goassert.Equals(t, meta.State, "online")
+	assert.NoError(t, err, "Error retrieving index state")
 }
 
 // Ensure that n1ql query errors are handled and returned (and don't result in panic etc)
@@ -257,7 +258,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 		if err != nil {
 			t.Errorf("Error adding doc for TestN1qlQuery: %v", err)
 		}
-		assertTrue(t, added, "AddRaw returned added=false, expected true")
+		assert.True(t, added, "AddRaw returned added=false, expected true")
 	}
 
 	indexExpression := "val"
@@ -267,7 +268,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndex_value_malformed")
-	assertNoError(t, readyErr, "Error validating index online")
+	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
 	defer func() {
@@ -282,25 +283,25 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	queryExpression := "SELECT META().id, val WHERE val > $minvalue"
 	params := make(map[string]interface{})
 	_, queryErr := bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assertTrue(t, queryErr != nil, "Expected error for malformed n1ql query (syntax)")
+	assert.True(t, queryErr != nil, "Expected error for malformed n1ql query (syntax)")
 
 	// Query against non-existing bucket
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", "badBucket")
 	params = map[string]interface{}{"minvalue": 2}
 	_, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assertTrue(t, queryErr != nil, "Expected error for malformed n1ql query (no bucket)")
+	assert.True(t, queryErr != nil, "Expected error for malformed n1ql query (no bucket)")
 
 	// Specify params for non-parameterized query (no error expected, ensure doesn't break)
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > 5", BucketQueryToken)
 	params = map[string]interface{}{"minvalue": 2}
 	_, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assertTrue(t, queryErr == nil, "Unexpected error for malformed n1ql query (extra params)")
+	assert.True(t, queryErr == nil, "Unexpected error for malformed n1ql query (extra params)")
 
 	// Omit params for parameterized query
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", BucketQueryToken)
 	params = make(map[string]interface{})
 	_, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assertTrue(t, queryErr != nil, "Expected error for malformed n1ql query (missing params)")
+	assert.True(t, queryErr != nil, "Expected error for malformed n1ql query (missing params)")
 
 }
 
@@ -322,7 +323,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndex_sequence")
-	assertNoError(t, readyErr, "Error validating index online")
+	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Drop the index
 	err = bucket.DropIndex("testIndex_sequence")
@@ -349,11 +350,11 @@ func TestCreateDuplicateIndex(t *testing.T) {
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndexDuplicateSequence")
-	assertNoError(t, readyErr, "Error validating index online")
+	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Attempt to create duplicate, validate duplicate error
 	duplicateErr := bucket.CreateIndex("testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
-	assert.Equals(t, duplicateErr, ErrIndexAlreadyExists)
+	goassert.Equals(t, duplicateErr, ErrIndexAlreadyExists)
 
 	// Drop the index
 	err = bucket.DropIndex("testIndexDuplicateSequence")
@@ -380,7 +381,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndex-sequence")
-	assertNoError(t, readyErr, "Error validating index online")
+	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Drop the index
 	err = bucket.DropIndex("testIndex-sequence")
@@ -402,7 +403,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 	}
 
 	indexName := "testIndexDeferred"
-	assertNoError(t, tearDownTestIndex(bucket, indexName), "Error in pre-test cleanup")
+	assert.NoError(t, tearDownTestIndex(bucket, indexName), "Error in pre-test cleanup")
 
 	deferN1qlOptions := &N1qlIndexOptions{
 		NumReplica: 0,
@@ -424,10 +425,10 @@ func TestDeferredCreateIndex(t *testing.T) {
 	}()
 
 	buildErr := bucket.buildIndexes([]string{indexName})
-	assertNoError(t, buildErr, "Error building indexes")
+	assert.NoError(t, buildErr, "Error building indexes")
 
 	readyErr := bucket.WaitForIndexOnline(indexName)
-	assertNoError(t, readyErr, "Error validating index online")
+	assert.NoError(t, readyErr, "Error validating index online")
 
 }
 
@@ -445,8 +446,8 @@ func TestBuildDeferredIndexes(t *testing.T) {
 
 	deferredIndexName := "testIndexDeferred"
 	nonDeferredIndexName := "testIndexNonDeferred"
-	assertNoError(t, tearDownTestIndex(bucket, deferredIndexName), "Error in pre-test cleanup")
-	assertNoError(t, tearDownTestIndex(bucket, nonDeferredIndexName), "Error in pre-test cleanup")
+	assert.NoError(t, tearDownTestIndex(bucket, deferredIndexName), "Error in pre-test cleanup")
+	assert.NoError(t, tearDownTestIndex(bucket, nonDeferredIndexName), "Error in pre-test cleanup")
 
 	deferN1qlOptions := &N1qlIndexOptions{
 		NumReplica: 0,
@@ -481,19 +482,19 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	}()
 
 	buildErr := bucket.BuildDeferredIndexes([]string{deferredIndexName, nonDeferredIndexName})
-	assertNoError(t, buildErr, "Error building indexes")
+	assert.NoError(t, buildErr, "Error building indexes")
 
 	readyErr := bucket.WaitForIndexOnline(deferredIndexName)
-	assertNoError(t, readyErr, "Error validating index online")
+	assert.NoError(t, readyErr, "Error validating index online")
 	readyErr = bucket.WaitForIndexOnline(nonDeferredIndexName)
-	assertNoError(t, readyErr, "Error validating index online")
+	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Ensure no errors from no-op scenarios
 	alreadyBuiltErr := bucket.BuildDeferredIndexes([]string{deferredIndexName, nonDeferredIndexName})
-	assertNoError(t, alreadyBuiltErr, "Error building already built indexes")
+	assert.NoError(t, alreadyBuiltErr, "Error building already built indexes")
 
 	emptySetErr := bucket.BuildDeferredIndexes([]string{})
-	assertNoError(t, emptySetErr, "Error building empty set")
+	assert.NoError(t, emptySetErr, "Error building empty set")
 }
 
 func TestCreateAndDropIndexErrors(t *testing.T) {

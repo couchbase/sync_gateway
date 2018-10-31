@@ -14,8 +14,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
-	"runtime/debug"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSetFromArray(t *testing.T) {
@@ -28,32 +28,32 @@ func TestSetFromArray(t *testing.T) {
 	}
 	for _, cas := range cases {
 		channels := SetFromArray(cas[0])
-		assert.DeepEquals(t, channels, SetOf(cas[1]...))
+		goassert.DeepEquals(t, channels, SetOf(cas[1]...))
 	}
 }
 
 func TestSet(t *testing.T) {
 	set := SetFromArray(nil)
-	assert.Equals(t, len(set), 0)
-	assert.DeepEquals(t, set.ToArray(), []string{})
+	goassert.Equals(t, len(set), 0)
+	goassert.DeepEquals(t, set.ToArray(), []string{})
 
 	set = SetFromArray([]string{})
-	assert.Equals(t, len(set), 0)
+	goassert.Equals(t, len(set), 0)
 
 	set = SetFromArray([]string{"foo"})
-	assert.Equals(t, len(set), 1)
-	assert.True(t, set.Contains("foo"))
-	assert.False(t, set.Contains("bar"))
+	goassert.Equals(t, len(set), 1)
+	goassert.True(t, set.Contains("foo"))
+	goassert.False(t, set.Contains("bar"))
 
 	values := []string{"bar", "foo", "zog"}
 	set = SetFromArray(values)
-	assert.Equals(t, len(set), 3)
+	goassert.Equals(t, len(set), 3)
 	asArray := set.ToArray()
 	sort.Strings(asArray)
-	assert.DeepEquals(t, asArray, values)
+	goassert.DeepEquals(t, asArray, values)
 
 	set2 := set.copy()
-	assert.DeepEquals(t, set2, set)
+	goassert.DeepEquals(t, set2, set)
 }
 
 func TestUnion(t *testing.T) {
@@ -61,12 +61,12 @@ func TestUnion(t *testing.T) {
 	empty := Set{}
 	set1 := SetOf("foo", "bar", "baz")
 	set2 := SetOf("bar", "block", "deny")
-	assert.DeepEquals(t, set1.Union(empty), set1)
-	assert.DeepEquals(t, empty.Union(set1), set1)
-	assert.DeepEquals(t, set1.Union(nilSet), set1)
-	assert.DeepEquals(t, nilSet.Union(set1), set1)
-	assert.DeepEquals(t, nilSet.Union(nilSet), nilSet)
-	assert.Equals(t, set1.Union(set2).String(), "{bar, baz, block, deny, foo}")
+	goassert.DeepEquals(t, set1.Union(empty), set1)
+	goassert.DeepEquals(t, empty.Union(set1), set1)
+	goassert.DeepEquals(t, set1.Union(nilSet), set1)
+	goassert.DeepEquals(t, nilSet.Union(set1), set1)
+	goassert.DeepEquals(t, nilSet.Union(nilSet), nilSet)
+	goassert.Equals(t, set1.Union(set2).String(), "{bar, baz, block, deny, foo}")
 }
 
 func TestSetMarshal(t *testing.T) {
@@ -74,18 +74,18 @@ func TestSetMarshal(t *testing.T) {
 		Channels Set
 	}
 	bytes, err := json.Marshal(str)
-	assertNoError(t, err, "Marshal")
-	assert.Equals(t, string(bytes), `{"Channels":null}`)
+	assert.NoError(t, err, "Marshal")
+	goassert.Equals(t, string(bytes), `{"Channels":null}`)
 
 	str.Channels = SetOf()
 	bytes, err = json.Marshal(str)
-	assertNoError(t, err, "Marshal")
-	assert.Equals(t, string(bytes), `{"Channels":[]}`)
+	assert.NoError(t, err, "Marshal")
+	goassert.Equals(t, string(bytes), `{"Channels":[]}`)
 
 	str.Channels = SetOf("a", "b")
 	bytes, err = json.Marshal(str)
-	assertNoError(t, err, "Marshal")
-	assert.Equals(t, string(bytes), `{"Channels":["a","b"]}`)
+	assert.NoError(t, err, "Marshal")
+	goassert.Equals(t, string(bytes), `{"Channels":["a","b"]}`)
 }
 
 func TestSetUnmarshal(t *testing.T) {
@@ -93,31 +93,15 @@ func TestSetUnmarshal(t *testing.T) {
 		Channels Set
 	}
 	err := json.Unmarshal([]byte(`{"channels":null}`), &str)
-	assertNoError(t, err, "Unmarshal")
-	assert.DeepEquals(t, str.Channels, Set(nil))
+	assert.NoError(t, err, "Unmarshal")
+	goassert.DeepEquals(t, str.Channels, Set(nil))
 
 	err = json.Unmarshal([]byte(`{"channels":[]}`), &str)
-	assertNoError(t, err, "Unmarshal")
-	assert.DeepEquals(t, str.Channels, SetOf())
+	assert.NoError(t, err, "Unmarshal")
+	goassert.DeepEquals(t, str.Channels, SetOf())
 
 	err = json.Unmarshal([]byte(`{"channels":["foo"]}`), &str)
-	assertNoError(t, err, "Unmarshal")
-	assert.DeepEquals(t, str.Channels.ToArray(), []string{"foo"})
+	assert.NoError(t, err, "Unmarshal")
+	goassert.DeepEquals(t, str.Channels.ToArray(), []string{"foo"})
 
-}
-
-//////// HELPERS:
-
-func assertNoError(t *testing.T, err error, message string) {
-	if err != nil {
-		debug.PrintStack()
-		t.Fatalf("%s: %v", message, err)
-	}
-}
-
-func assertTrue(t *testing.T, success bool, message string) {
-	if !success {
-		debug.PrintStack()
-		t.Fatalf("%s", message)
-	}
 }

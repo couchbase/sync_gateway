@@ -14,14 +14,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"reflect"
 	"testing"
 
-	"reflect"
-
 	"github.com/couchbase/gocb"
-	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/go.assert"
+	"github.com/couchbase/sg-bucket"
+	goassert "github.com/couchbaselabs/go.assert"
 	pkgerrors "github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
@@ -39,14 +39,14 @@ func TestTranscoder(t *testing.T) {
 	jsonFlags := gocbcore.EncodeCommonFlags(gocbcore.JsonType, gocbcore.NoCompression)
 
 	resultBytes, flags, err := transcoder.Encode([]byte(jsonBody))
-	assert.Equals(t, bytes.Compare(resultBytes, jsonBytes), 0)
-	assert.Equals(t, flags, jsonFlags)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, bytes.Compare(resultBytes, jsonBytes), 0)
+	goassert.Equals(t, flags, jsonFlags)
+	goassert.Equals(t, err, nil)
 
 	resultBytes, flags, err = transcoder.Encode(BinaryDocument(jsonBody))
-	assert.Equals(t, bytes.Compare(resultBytes, jsonBytes), 0)
-	assert.Equals(t, flags, binaryFlags)
-	assert.Equals(t, err, nil)
+	goassert.Equals(t, bytes.Compare(resultBytes, jsonBytes), 0)
+	goassert.Equals(t, flags, binaryFlags)
+	goassert.Equals(t, err, nil)
 }
 
 func TestSetGetRaw(t *testing.T) {
@@ -96,7 +96,7 @@ func TestAddRaw(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error calling AddRaw(): %v", err)
 	}
-	assertTrue(t, added, "AddRaw returned added=false, expected true")
+	assert.True(t, added, "AddRaw returned added=false, expected true")
 
 	rv, _, err := bucket.GetRaw(key)
 	if string(rv) != string(val) {
@@ -108,7 +108,7 @@ func TestAddRaw(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error calling AddRaw(): %v", err)
 	}
-	assertTrue(t, added == false, "AddRaw returned added=true for duplicate, expected false")
+	assert.True(t, added == false, "AddRaw returned added=true for duplicate, expected false")
 
 	err = bucket.Delete(key)
 	if err != nil {
@@ -157,26 +157,26 @@ func TestBulkGetRaw(t *testing.T) {
 	}
 
 	results, err := bucket.GetBulkRaw(keySet)
-	assertNoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
-	assert.True(t, len(results) == 1000)
+	assert.NoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
+	goassert.True(t, len(results) == 1000)
 
 	// validate results, and prepare new keySet with non-existent keys
 	mixedKeySet := make([]string, 2000)
 	for index, key := range keySet {
 		// Verify value
-		assert.True(t, bytes.Equal(results[key], valueSet[key]))
+		goassert.True(t, bytes.Equal(results[key], valueSet[key]))
 		mixedKeySet[2*index] = key
 		mixedKeySet[2*index+1] = fmt.Sprintf("%s_invalid", key)
 	}
 
 	// Validate bulkGet that include non-existent keys work as expected
 	mixedResults, err := bucket.GetBulkRaw(mixedKeySet)
-	assertNoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
-	assert.True(t, len(results) == 1000)
+	assert.NoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
+	goassert.True(t, len(results) == 1000)
 
 	for _, key := range keySet {
 		// validate mixed results
-		assert.True(t, bytes.Equal(mixedResults[key], valueSet[key]))
+		goassert.True(t, bytes.Equal(mixedResults[key], valueSet[key]))
 	}
 
 	// if passed all non-existent keys, should return an empty map
@@ -185,9 +185,9 @@ func TestBulkGetRaw(t *testing.T) {
 		nonExistentKeySet[index] = fmt.Sprintf("%s_invalid", key)
 	}
 	emptyResults, err := bucket.GetBulkRaw(nonExistentKeySet)
-	assertNoError(t, err, fmt.Sprintf("Unexpected error calling GetBulkRaw(): %v", err))
-	assert.False(t, emptyResults == nil)
-	assert.True(t, len(emptyResults) == 0)
+	assert.NoError(t, err, fmt.Sprintf("Unexpected error calling GetBulkRaw(): %v", err))
+	goassert.False(t, emptyResults == nil)
+	goassert.True(t, len(emptyResults) == 0)
 
 }
 
@@ -257,12 +257,12 @@ func TestWriteCasAdvanced(t *testing.T) {
 
 	// try to write doc to bucket, giving cas value of 0 again -- exepct a failure
 	secondWriteCas, err := bucket.WriteCas(key, 0, 0, casZero, []byte("bar"), sgbucket.Raw)
-	assert.True(t, err != nil)
+	goassert.True(t, err != nil)
 
 	// try to write doc to bucket again, giving invalid cas value -- expect a failure
 	// also, expect no retries, however there is currently no easy way to detect that.
 	_, err = bucket.WriteCas(key, 0, 0, secondWriteCas-1, []byte("bar"), sgbucket.Raw)
-	assert.True(t, err != nil)
+	goassert.True(t, err != nil)
 
 	err = bucket.Delete(key)
 	if err != nil {
@@ -333,15 +333,15 @@ func TestSetBulk(t *testing.T) {
 
 	doSingleFakeRecoverableGOCBError = true
 	err = bucket.SetBulk(entries)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
 	// Expect one error for the casStale key
-	assert.Equals(t, numNonNilErrors(entries), 1)
+	goassert.Equals(t, numNonNilErrors(entries), 1)
 
 	// Expect that the other key was correctly written
 	_, err = bucket.Get(key2, &returnVal)
-	assert.True(t, err == nil)
-	assert.Equals(t, returnVal, "key2-initial")
+	goassert.True(t, err == nil)
+	goassert.Equals(t, returnVal, "key2-initial")
 
 	// Retry with bulk set with another new key and casFresh key
 	entries = []*sgbucket.BulkSetEntry{}
@@ -360,12 +360,12 @@ func TestSetBulk(t *testing.T) {
 	err = bucket.SetBulk(entries)
 
 	// Expect no errors
-	assert.Equals(t, numNonNilErrors(entries), 0)
+	goassert.Equals(t, numNonNilErrors(entries), 0)
 
 	// Make sure the original key that previously failed now works
 	_, err = bucket.Get(key, &returnVal)
-	assert.True(t, err == nil)
-	assert.Equals(t, returnVal, "key-updated3")
+	goassert.True(t, err == nil)
+	goassert.Equals(t, returnVal, "key-updated3")
 
 }
 
@@ -449,21 +449,21 @@ func TestIncrCounter(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error incrementing non-existent counter")
 	}
-	assert.Equals(t, value, uint64(1))
+	goassert.Equals(t, value, uint64(1))
 
 	// Retrieve an existing counter using delta=0
 	retrieval, err := bucket.Incr(key, 0, 0, 0)
 	if err != nil {
 		t.Errorf("Error retrieving value for existing counter")
 	}
-	assert.Equals(t, retrieval, uint64(1))
+	goassert.Equals(t, retrieval, uint64(1))
 
 	// Increment existing counter
 	retrieval, err = bucket.Incr(key, 1, 1, 0)
 	if err != nil {
 		t.Errorf("Error incrementing value for existing counter")
 	}
-	assert.Equals(t, retrieval, uint64(2))
+	goassert.Equals(t, retrieval, uint64(2))
 
 }
 
@@ -497,7 +497,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 	}
 
 	rv, _, err := bucket.GetRaw(key)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 	if string(rv) != string(val) {
 		t.Errorf("%v != %v", string(rv), string(val))
 	}
@@ -507,8 +507,8 @@ func TestGetAndTouchRaw(t *testing.T) {
 		log.Printf("Error calling GetAndTouchRaw: %v", err)
 	}
 
-	assert.True(t, err == nil)
-	assert.Equals(t, len(rv), len(val))
+	goassert.True(t, err == nil)
+	goassert.Equals(t, len(rv), len(val))
 
 }
 
@@ -541,14 +541,14 @@ func TestCreateBatchesEntries(t *testing.T) {
 	batchSize := uint(2)
 	batches := createBatchesEntries(batchSize, entries)
 	log.Printf("batches: %+v", batches)
-	assert.Equals(t, len(batches), 4)
-	assert.Equals(t, batches[0][0].Key, "one")
-	assert.Equals(t, batches[0][1].Key, "two")
-	assert.Equals(t, batches[1][0].Key, "three")
-	assert.Equals(t, batches[1][1].Key, "four")
-	assert.Equals(t, batches[2][0].Key, "five")
-	assert.Equals(t, batches[2][1].Key, "six")
-	assert.Equals(t, batches[3][0].Key, "seven")
+	goassert.Equals(t, len(batches), 4)
+	goassert.Equals(t, batches[0][0].Key, "one")
+	goassert.Equals(t, batches[0][1].Key, "two")
+	goassert.Equals(t, batches[1][0].Key, "three")
+	goassert.Equals(t, batches[1][1].Key, "four")
+	goassert.Equals(t, batches[2][0].Key, "five")
+	goassert.Equals(t, batches[2][1].Key, "six")
+	goassert.Equals(t, batches[3][0].Key, "seven")
 }
 
 func TestCreateBatchesKeys(t *testing.T) {
@@ -556,14 +556,14 @@ func TestCreateBatchesKeys(t *testing.T) {
 	batchSize := uint(2)
 	batches := createBatchesKeys(batchSize, keys)
 	log.Printf("batches: %+v", batches)
-	assert.Equals(t, len(batches), 4)
-	assert.Equals(t, batches[0][0], "one")
-	assert.Equals(t, batches[0][1], "two")
-	assert.Equals(t, batches[1][0], "three")
-	assert.Equals(t, batches[1][1], "four")
-	assert.Equals(t, batches[2][0], "five")
-	assert.Equals(t, batches[2][1], "six")
-	assert.Equals(t, batches[3][0], "seven")
+	goassert.Equals(t, len(batches), 4)
+	goassert.Equals(t, batches[0][0], "one")
+	goassert.Equals(t, batches[0][1], "two")
+	goassert.Equals(t, batches[1][0], "three")
+	goassert.Equals(t, batches[1][1], "four")
+	goassert.Equals(t, batches[2][0], "five")
+	goassert.Equals(t, batches[2][1], "six")
+	goassert.Equals(t, batches[3][0], "seven")
 }
 
 func SkipXattrTestsIfNotEnabled(t *testing.T) {
@@ -592,7 +592,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	val["body_field"] = "1234"
 
 	valBytes, marshalErr := json.Marshal(val)
-	assertNoError(t, marshalErr, "Error marshalling document body")
+	assert.NoError(t, marshalErr, "Error marshalling document body")
 
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = float64(123)
@@ -607,7 +607,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	cas := uint64(0)
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
-	assertNoError(t, err, "WriteCasWithXattr error")
+	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal map[string]interface{}
@@ -617,25 +617,25 @@ func TestXattrWriteCasSimple(t *testing.T) {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
 
-	assert.Equals(t, getCas, cas)
-	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
-	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
-	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+	goassert.Equals(t, getCas, cas)
+	goassert.Equals(t, retrievedVal["body_field"], val["body_field"])
+	goassert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	goassert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
 	macroCasString, ok := retrievedXattr[xattrMacroCas].(string)
-	assertTrue(t, ok, "Unable to retrieve xattrMacroCas as string")
-	assert.Equals(t, HexCasToUint64(macroCasString), cas)
+	assert.True(t, ok, "Unable to retrieve xattrMacroCas as string")
+	goassert.Equals(t, HexCasToUint64(macroCasString), cas)
 	macroBodyHashString, ok := retrievedXattr[xattrMacroValueCrc32c].(string)
-	assertTrue(t, ok, "Unable to retrieve xattrMacroValueCrc32c as string")
-	assert.Equals(t, macroBodyHashString, Crc32cHashString(valBytes))
+	assert.True(t, ok, "Unable to retrieve xattrMacroValueCrc32c as string")
+	goassert.Equals(t, macroBodyHashString, Crc32cHashString(valBytes))
 
 	// Validate against $document.value_crc32c
 	var retrievedVxattr map[string]interface{}
 	_, err = bucket.GetWithXattr(key, "$document", retrievedVal, &retrievedVxattr)
 	vxattrCrc32c, ok := retrievedVxattr["value_crc32c"].(string)
-	assertTrue(t, ok, "Unable to retrieve virtual xattr crc32c as string")
+	assert.True(t, ok, "Unable to retrieve virtual xattr crc32c as string")
 
-	assert.Equals(t, vxattrCrc32c, Crc32cHashString(valBytes))
-	assert.Equals(t, vxattrCrc32c, macroBodyHashString)
+	goassert.Equals(t, vxattrCrc32c, Crc32cHashString(valBytes))
+	goassert.Equals(t, vxattrCrc32c, macroBodyHashString)
 
 }
 
@@ -672,7 +672,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 
 	cas := uint64(0)
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
-	assertNoError(t, err, "WriteCasWithXattr error")
+	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal map[string]interface{}
@@ -683,10 +683,10 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	}
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
-	assert.Equals(t, getCas, cas)
-	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
-	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
-	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+	goassert.Equals(t, getCas, cas)
+	goassert.Equals(t, retrievedVal["body_field"], val["body_field"])
+	goassert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	goassert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
 
 	val2 := make(map[string]interface{})
 	val2["body_field"] = "5678"
@@ -694,7 +694,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	xattrVal2["seq"] = float64(124)
 	xattrVal2["rev"] = "2-5678"
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, val2, xattrVal2)
-	assertNoError(t, err, "WriteCasWithXattr error")
+	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal2 map[string]interface{}
@@ -704,10 +704,10 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal2, retrievedXattr2)
-	assert.Equals(t, getCas, cas)
-	assert.Equals(t, retrievedVal2["body_field"], val2["body_field"])
-	assert.Equals(t, retrievedXattr2["seq"], xattrVal2["seq"])
-	assert.Equals(t, retrievedXattr2["rev"], xattrVal2["rev"])
+	goassert.Equals(t, getCas, cas)
+	goassert.Equals(t, retrievedVal2["body_field"], val2["body_field"])
+	goassert.Equals(t, retrievedXattr2["seq"], xattrVal2["seq"])
+	goassert.Equals(t, retrievedXattr2["rev"], xattrVal2["rev"])
 
 }
 
@@ -738,7 +738,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 
 	cas := uint64(0)
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
-	assertNoError(t, err, "WriteCasWithXattr error")
+	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
 
 	var retrievedVal map[string]interface{}
@@ -748,10 +748,10 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
-	assert.Equals(t, getCas, cas)
-	assert.Equals(t, retrievedVal["sg_field"], val["sg_field"])
-	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
-	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+	goassert.Equals(t, getCas, cas)
+	goassert.Equals(t, retrievedVal["sg_field"], val["sg_field"])
+	goassert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	goassert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
 
 	// Simulate an SDK update
 	updatedVal := make(map[string]interface{})
@@ -762,7 +762,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	val["sg_field"] = "sg_value_mod"
 	xattrVal["rev"] = "2-1234"
 	_, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, val, xattrVal)
-	assert.Equals(t, err, gocb.ErrKeyExists)
+	goassert.Equals(t, err, gocb.ErrKeyExists)
 
 	// Retrieve again, ensure we get the SDK value, SG xattr
 	retrievedVal = nil
@@ -772,10 +772,10 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
-	assert.Equals(t, retrievedVal["sg_field"], nil)
-	assert.Equals(t, retrievedVal["sdk_field"], updatedVal["sdk_field"])
-	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
-	assert.Equals(t, retrievedXattr["rev"], "1-1234")
+	goassert.Equals(t, retrievedVal["sg_field"], nil)
+	goassert.Equals(t, retrievedVal["sdk_field"], updatedVal["sdk_field"])
+	goassert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	goassert.Equals(t, retrievedXattr["rev"], "1-1234")
 
 }
 
@@ -826,10 +826,10 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	}
 	// TODO: Fails until https://issues.couchbase.com/browse/GOCBC-183 is available
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
-	assert.Equals(t, getCas, cas)
-	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
-	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
-	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+	goassert.Equals(t, getCas, cas)
+	goassert.Equals(t, retrievedVal["body_field"], val["body_field"])
+	goassert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	goassert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
 }
 
 // TestWriteCasTombstoneResurrect.  Verifies writing a new document body and xattr to a logically deleted document (xattr still exists)
@@ -879,10 +879,10 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	}
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
-	assert.Equals(t, getCas, cas)
-	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
-	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
-	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+	goassert.Equals(t, getCas, cas)
+	goassert.Equals(t, retrievedVal["body_field"], val["body_field"])
+	goassert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	goassert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
 
 	// Delete the body (retains xattr)
 	err = bucket.Delete(key)
@@ -908,9 +908,9 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	}
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
-	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
-	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
-	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+	goassert.Equals(t, retrievedVal["body_field"], val["body_field"])
+	goassert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	goassert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
 
 }
 
@@ -965,10 +965,10 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	log.Printf("Retrieved document")
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
-	assert.Equals(t, getCas, cas)
-	assert.Equals(t, retrievedVal["body_field"], val["body_field"])
-	assert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
-	assert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
+	goassert.Equals(t, getCas, cas)
+	goassert.Equals(t, retrievedVal["body_field"], val["body_field"])
+	goassert.Equals(t, retrievedXattr["seq"], xattrVal["seq"])
+	goassert.Equals(t, retrievedXattr["rev"], xattrVal["rev"])
 
 	err = bucket.Delete(key)
 	if err != nil {
@@ -996,8 +996,8 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	log.Printf("Retrieved tombstoned document")
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved modified: %s, %s", modifiedVal, modifiedXattr)
-	assert.Equals(t, modifiedXattr["seq"], xattrVal["seq"])
-	assert.Equals(t, modifiedXattr["rev"], xattrVal["rev"])
+	goassert.Equals(t, modifiedXattr["seq"], xattrVal["seq"])
+	goassert.Equals(t, modifiedXattr["rev"], xattrVal["rev"])
 
 }
 
@@ -1098,8 +1098,8 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
-	assert.Equals(t, retrievedVal["counter"], float64(1))
-	assert.Equals(t, retrievedXattr["seq"], float64(1))
+	goassert.Equals(t, retrievedVal["counter"], float64(1))
+	goassert.Equals(t, retrievedXattr["seq"], float64(1))
 
 	// Update
 	_, err = bucket.WriteUpdateWithXattr(key, xattrName, 0, nil, writeUpdateFunc)
@@ -1112,8 +1112,8 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	}
 	log.Printf("Retrieval after WriteUpdate update: doc: %v, xattr: %v", retrievedVal, retrievedXattr)
 
-	assert.Equals(t, retrievedVal["counter"], float64(2))
-	assert.Equals(t, retrievedXattr["seq"], float64(2))
+	goassert.Equals(t, retrievedVal["counter"], float64(2))
+	goassert.Equals(t, retrievedXattr["seq"], float64(2))
 
 }
 
@@ -1167,8 +1167,8 @@ func TestXattrDeleteDocument(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
-	assert.Equals(t, len(retrievedVal), 0)
-	assert.Equals(t, retrievedXattr["seq"], float64(123))
+	goassert.Equals(t, len(retrievedVal), 0)
+	goassert.Equals(t, retrievedXattr["seq"], float64(123))
 
 }
 
@@ -1222,8 +1222,8 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
-	assert.Equals(t, len(retrievedVal), 0)
-	assert.Equals(t, retrievedXattr["seq"], float64(1))
+	goassert.Equals(t, len(retrievedVal), 0)
+	goassert.Equals(t, retrievedXattr["seq"], float64(1))
 	log.Printf("Post-delete xattr (1): %s", retrievedXattr)
 	log.Printf("Post-delete cas (1): %x", getCas)
 
@@ -1231,16 +1231,16 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	xattrVal["seq"] = 2
 	xattrVal["rev"] = "1-1234"
 	casOut, writeErr := bucket.WriteCasWithXattr(key, xattrName, 0, getCas, nil, xattrVal)
-	assertNoError(t, writeErr, "Error updating xattr post-delete")
+	assert.NoError(t, writeErr, "Error updating xattr post-delete")
 	log.Printf("WriteCasWithXattr cas: %d", casOut)
 
 	// Retrieve the document, validate cas values
 	var postDeleteVal map[string]interface{}
 	var postDeleteXattr map[string]interface{}
 	getCas2, err := bucket.GetWithXattr(key, xattrName, &postDeleteVal, &postDeleteXattr)
-	assertNoError(t, err, "Error getting document post-delete")
-	assert.Equals(t, postDeleteXattr["seq"], float64(2))
-	assert.Equals(t, len(postDeleteVal), 0)
+	assert.NoError(t, err, "Error getting document post-delete")
+	goassert.Equals(t, postDeleteXattr["seq"], float64(2))
+	goassert.Equals(t, len(postDeleteVal), 0)
 	log.Printf("Post-delete xattr (2): %s", postDeleteXattr)
 	log.Printf("Post-delete cas (2): %x", getCas2)
 
@@ -1293,8 +1293,8 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	mutateCas, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
-	assert.Equals(t, len(retrievedVal), 0)
-	assert.Equals(t, retrievedXattr["seq"], float64(123))
+	goassert.Equals(t, len(retrievedVal), 0)
+	goassert.Equals(t, retrievedXattr["seq"], float64(123))
 	log.Printf("value: %v, xattr: %v", retrievedVal, retrievedXattr)
 	log.Printf("MutateInEx cas: %v", mutateCas)
 
@@ -1383,20 +1383,20 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 		log.Printf("Delete testing for key: %v", key)
 		// First attempt to update with a bad cas value, and ensure we're getting the expected error
 		_, errCasMismatch := bucket.UpdateXattr(key, xattrName, 0, uint64(1234), &updatedXattrVal, shouldDeleteBody[i])
-		assertTrue(t, errCasMismatch == gocb.ErrKeyExists, fmt.Sprintf("Expected cas mismatch error, got: %v", err))
+		assert.True(t, errCasMismatch == gocb.ErrKeyExists, fmt.Sprintf("Expected cas mismatch error, got: %v", err))
 
 		_, errDelete := bucket.UpdateXattr(key, xattrName, 0, uint64(casValues[i]), &updatedXattrVal, shouldDeleteBody[i])
 		log.Printf("Delete error: %v", errDelete)
 
-		assertNoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
-		assertTrue(t, verifyDocDeletedXattrExists(bucket, key, xattrName), fmt.Sprintf("Expected doc %s to be deleted", key))
+		assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
+		assert.True(t, verifyDocDeletedXattrExists(bucket, key, xattrName), fmt.Sprintf("Expected doc %s to be deleted", key))
 	}
 
 	// Now attempt to tombstone key4 (NoDocNoXattr), should not return an error (per SG #3307).  Should save xattr metadata.
 	log.Printf("Deleting key: %v", key4)
 	_, errDelete := bucket.UpdateXattr(key4, xattrName, 0, uint64(0), &updatedXattrVal, false)
-	assertNoError(t, errDelete, "Unexpected error tombstoning non-existent doc")
-	assertTrue(t, verifyDocDeletedXattrExists(bucket, key4, xattrName), "Expected doc to be deleted, but xattrs to exist")
+	assert.NoError(t, errDelete, "Unexpected error tombstoning non-existent doc")
+	assert.True(t, verifyDocDeletedXattrExists(bucket, key4, xattrName), "Expected doc to be deleted, but xattrs to exist")
 
 }
 
@@ -1479,15 +1479,15 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 	for _, key := range keys {
 		log.Printf("Deleting key: %v", key)
 		errDelete := bucket.DeleteWithXattr(key, xattrName)
-		assertNoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
-		assertTrue(t, verifyDocAndXattrDeleted(bucket, key, xattrName), "Expected doc to be deleted")
+		assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
+		assert.True(t, verifyDocAndXattrDeleted(bucket, key, xattrName), "Expected doc to be deleted")
 	}
 
 	// Now attempt to delete key4 (NoDocNoXattr), which is expected to return a Key Not Found error
 	log.Printf("Deleting key: %v", key4)
 	errDelete := bucket.DeleteWithXattr(key4, xattrName)
-	assertTrue(t, bucket.IsKeyNotFoundError(errDelete), "Exepcted keynotfound error")
-	assertTrue(t, verifyDocAndXattrDeleted(bucket, key4, xattrName), "Expected doc to be deleted")
+	assert.True(t, bucket.IsKeyNotFoundError(errDelete), "Exepcted keynotfound error")
+	assert.True(t, verifyDocAndXattrDeleted(bucket, key4, xattrName), "Expected doc to be deleted")
 
 }
 
@@ -1536,7 +1536,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 	deleteErr := bucket.deleteWithXattrInternal(key, xattrName, callback)
 
-	assertTrue(t, deleteErr != nil, "We expected an error here, because deleteWithXattrInternal should have "+
+	assert.True(t, deleteErr != nil, "We expected an error here, because deleteWithXattrInternal should have "+
 		" detected that the doc was resurrected during its execution")
 
 }
@@ -1606,30 +1606,30 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 	var key1DocResult map[string]interface{}
 	var key1XattrResult map[string]interface{}
 	_, key1err := bucket.GetWithXattr(key1, xattrName, &key1DocResult, &key1XattrResult)
-	assertNoError(t, key1err, "Unexpected error retrieving doc w/ xattr")
-	assert.Equals(t, key1DocResult["type"], key1)
-	assert.Equals(t, key1XattrResult["rev"], "1-1234")
+	assert.NoError(t, key1err, "Unexpected error retrieving doc w/ xattr")
+	goassert.Equals(t, key1DocResult["type"], key1)
+	goassert.Equals(t, key1XattrResult["rev"], "1-1234")
 
 	var key2DocResult map[string]interface{}
 	var key2XattrResult map[string]interface{}
 	_, key2err := bucket.GetWithXattr(key2, xattrName, &key2DocResult, &key2XattrResult)
-	assertNoError(t, key2err, "Unexpected error retrieving doc w/out xattr")
-	assert.Equals(t, key2DocResult["type"], key2)
-	assert.True(t, key2XattrResult == nil)
+	assert.NoError(t, key2err, "Unexpected error retrieving doc w/out xattr")
+	goassert.Equals(t, key2DocResult["type"], key2)
+	goassert.True(t, key2XattrResult == nil)
 
 	var key3DocResult map[string]interface{}
 	var key3XattrResult map[string]interface{}
 	_, key3err := bucket.GetWithXattr(key3, xattrName, &key3DocResult, &key3XattrResult)
-	assertNoError(t, key3err, "Unexpected error retrieving doc w/out xattr")
-	assert.True(t, key3DocResult == nil)
-	assert.Equals(t, key3XattrResult["rev"], "1-1234")
+	assert.NoError(t, key3err, "Unexpected error retrieving doc w/out xattr")
+	goassert.True(t, key3DocResult == nil)
+	goassert.Equals(t, key3XattrResult["rev"], "1-1234")
 
 	var key4DocResult map[string]interface{}
 	var key4XattrResult map[string]interface{}
 	_, key4err := bucket.GetWithXattr(key4, xattrName, &key4DocResult, &key4XattrResult)
-	assert.Equals(t, key4err, gocb.ErrKeyNotFound)
-	assert.True(t, key4DocResult == nil)
-	assert.True(t, key4XattrResult == nil)
+	goassert.Equals(t, key4err, gocb.ErrKeyNotFound)
+	goassert.True(t, key4DocResult == nil)
+	goassert.True(t, key4XattrResult == nil)
 
 }
 
@@ -1710,39 +1710,39 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	exp := uint32(0)
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key1)
 	_, key1err := bucket.WriteCasWithXattr(key1, xattrName, exp, cas1, &updatedVal, &updatedXattrVal)
-	assertNoError(t, key1err, fmt.Sprintf("Unexpected error mutating %s", key1))
+	assert.NoError(t, key1err, fmt.Sprintf("Unexpected error mutating %s", key1))
 	var key1DocResult map[string]interface{}
 	var key1XattrResult map[string]interface{}
 	_, key1err = bucket.GetWithXattr(key1, xattrName, &key1DocResult, &key1XattrResult)
-	assert.Equals(t, key1DocResult["type"], fmt.Sprintf("updated_%s", key1))
-	assert.Equals(t, key1XattrResult["rev"], "2-1234")
+	goassert.Equals(t, key1DocResult["type"], fmt.Sprintf("updated_%s", key1))
+	goassert.Equals(t, key1XattrResult["rev"], "2-1234")
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key2)
 	_, key2err := bucket.WriteCasWithXattr(key2, xattrName, exp, uint64(cas2), &updatedVal, &updatedXattrVal)
-	assertNoError(t, key2err, fmt.Sprintf("Unexpected error mutating %s", key2))
+	assert.NoError(t, key2err, fmt.Sprintf("Unexpected error mutating %s", key2))
 	var key2DocResult map[string]interface{}
 	var key2XattrResult map[string]interface{}
 	_, key2err = bucket.GetWithXattr(key2, xattrName, &key2DocResult, &key2XattrResult)
-	assert.Equals(t, key2DocResult["type"], fmt.Sprintf("updated_%s", key2))
-	assert.Equals(t, key2XattrResult["rev"], "2-1234")
+	goassert.Equals(t, key2DocResult["type"], fmt.Sprintf("updated_%s", key2))
+	goassert.Equals(t, key2XattrResult["rev"], "2-1234")
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key3)
 	_, key3err := bucket.WriteCasWithXattr(key3, xattrName, exp, uint64(cas3), &updatedVal, &updatedXattrVal)
-	assertNoError(t, key3err, fmt.Sprintf("Unexpected error mutating %s", key3))
+	assert.NoError(t, key3err, fmt.Sprintf("Unexpected error mutating %s", key3))
 	var key3DocResult map[string]interface{}
 	var key3XattrResult map[string]interface{}
 	_, key3err = bucket.GetWithXattr(key3, xattrName, &key3DocResult, &key3XattrResult)
-	assert.Equals(t, key3DocResult["type"], fmt.Sprintf("updated_%s", key3))
-	assert.Equals(t, key3XattrResult["rev"], "2-1234")
+	goassert.Equals(t, key3DocResult["type"], fmt.Sprintf("updated_%s", key3))
+	goassert.Equals(t, key3XattrResult["rev"], "2-1234")
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key4)
 	_, key4err := bucket.WriteCasWithXattr(key4, xattrName, exp, uint64(cas4), &updatedVal, &updatedXattrVal)
-	assertNoError(t, key4err, fmt.Sprintf("Unexpected error mutating %s", key4))
+	assert.NoError(t, key4err, fmt.Sprintf("Unexpected error mutating %s", key4))
 	var key4DocResult map[string]interface{}
 	var key4XattrResult map[string]interface{}
 	_, key4err = bucket.GetWithXattr(key4, xattrName, &key4DocResult, &key4XattrResult)
-	assert.Equals(t, key4DocResult["type"], fmt.Sprintf("updated_%s", key4))
-	assert.Equals(t, key4XattrResult["rev"], "2-1234")
+	goassert.Equals(t, key4DocResult["type"], fmt.Sprintf("updated_%s", key4))
+	goassert.Equals(t, key4XattrResult["rev"], "2-1234")
 
 }
 
@@ -1778,7 +1778,7 @@ func TestApplyViewQueryOptions(t *testing.T) {
 
 	findStringValue := func(mapKeys []reflect.Value, reflectMap reflect.Value, key string) string {
 		mapKey, found := findStringKeyValue(mapKeys, key)
-		assert.True(t, found)
+		goassert.True(t, found)
 		return getStringFromReflectUrlValuesMap(mapKey, reflectMap)
 	}
 
@@ -1819,46 +1819,46 @@ func TestApplyViewQueryOptions(t *testing.T) {
 	mapKeys := optionsReflectedVal.MapKeys()
 
 	// "stale"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamStale), "false")
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamStale), "false")
 
 	// "reduce"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamReduce), "true")
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamReduce), "true")
 
 	// "startkey"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamStartKey), wrapInDoubleQuotes("foo"))
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamStartKey), wrapInDoubleQuotes("foo"))
 
 	// "endkey"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamEndKey), wrapInDoubleQuotes("bar"))
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamEndKey), wrapInDoubleQuotes("bar"))
 
 	// "inclusive_end"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamInclusiveEnd), "true")
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamInclusiveEnd), "true")
 
 	// "limit"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamLimit), "1")
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamLimit), "1")
 
 	// "descending"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamDescending), "true")
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamDescending), "true")
 
 	// "group"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamGroup), "true")
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamGroup), "true")
 
 	// "skip"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamSkip), "2")
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamSkip), "2")
 
 	// "group_level"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamGroupLevel), "3")
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamGroupLevel), "3")
 
 	// "startkey_docid"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamStartKeyDocId), "baz")
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamStartKeyDocId), "baz")
 
 	// "endkey_docid"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamEndKeyDocId), "blah")
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamEndKeyDocId), "blah")
 
 	// "key"
-	assert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamKey), wrapInDoubleQuotes("hello"))
+	goassert.Equals(t, findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamKey), wrapInDoubleQuotes("hello"))
 
 	// "keys"
-	assert.Equals(t,
+	goassert.Equals(t,
 		findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamKeys),
 		fmt.Sprintf("[%v,%v]", wrapInDoubleQuotes("a"), wrapInDoubleQuotes("b")))
 
@@ -1933,9 +1933,9 @@ func TestParseCouchbaseServerVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	assert.Equals(t, major, uint64(4))
-	assert.Equals(t, minor, uint64(1))
-	assert.Equals(t, micro, "0-5005")
+	goassert.Equals(t, major, uint64(4))
+	goassert.Equals(t, minor, uint64(1))
+	goassert.Equals(t, micro, "0-5005")
 
 }
 
@@ -1968,8 +1968,8 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 
 	gocbBucket := bucket.(*CouchbaseBucketGoCB)
 	maxTTL, err := gocbBucket.GetMaxTTL()
-	assertNoError(t, err, "Unexpected error")
-	assert.Equals(t, maxTTL, 0)
+	assert.NoError(t, err, "Unexpected error")
+	goassert.Equals(t, maxTTL, 0)
 
 }
 
@@ -1981,7 +1981,7 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 
 	// Bad auth creds cause a fatal error with logs indicating the reason why.
 	_, err := GetBucketWithInvalidUsernamePassword(DataBucket)
-	assert.Equals(t, err, ErrFatalBucketConnection)
+	goassert.Equals(t, err, ErrFatalBucketConnection)
 
 }
 

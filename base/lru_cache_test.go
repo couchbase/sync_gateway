@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 type testStruct struct {
@@ -24,9 +24,9 @@ func valueForTest(i int) *testStruct {
 }
 
 func verifyValue(t *testing.T, value *testStruct, i int) {
-	assert.True(t, value != nil)
-	assert.Equals(t, value.x, i)
-	assert.Equals(t, value.y, i*i)
+	goassert.True(t, value != nil)
+	goassert.Equals(t, value.x, i)
+	goassert.Equals(t, value.y, i*i)
 }
 
 func TestLRUCache(t *testing.T) {
@@ -36,7 +36,7 @@ func TestLRUCache(t *testing.T) {
 	}
 
 	cache, err := NewLRUCache(10)
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 	for i := 0; i < 10; i++ {
 		key := keyForTest(i)
 		value := valueForTest(i)
@@ -46,7 +46,7 @@ func TestLRUCache(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		value, _ := cache.Get(keyForTest(i))
 		testValue, ok := value.(*testStruct)
-		assert.True(t, ok)
+		goassert.True(t, ok)
 		verifyValue(t, testValue, i)
 	}
 
@@ -58,12 +58,12 @@ func TestLRUCache(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		value, _ := cache.Get(keyForTest(i))
-		assert.True(t, value == nil)
+		goassert.True(t, value == nil)
 	}
 	for i := 3; i < 13; i++ {
 		value, _ := cache.Get(keyForTest(i))
 		testValue, ok := value.(*testStruct)
-		assert.True(t, ok)
+		goassert.True(t, ok)
 		verifyValue(t, testValue, i)
 	}
 }

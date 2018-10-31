@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestDuplicateDocID(t *testing.T) {
@@ -36,34 +36,34 @@ func TestDuplicateDocID(t *testing.T) {
 	cache.addToCache(e(3, "doc5", "5-a"), false)
 
 	entries, err := cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 3)
-	assert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc5"}))
-	assert.True(t, err == nil)
+	goassert.Equals(t, len(entries), 3)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc5"}))
+	goassert.True(t, err == nil)
 
 	// Add a new revision matching mid-list
 	cache.addToCache(e(4, "doc3", "3-b"), false)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 3)
-	assert.True(t, verifyChannelSequences(entries, []uint64{1, 3, 4}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc5", "doc3"}))
-	assert.True(t, err == nil)
+	goassert.Equals(t, len(entries), 3)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{1, 3, 4}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc5", "doc3"}))
+	goassert.True(t, err == nil)
 
 	// Add a new revision matching first
 	cache.addToCache(e(5, "doc1", "1-b"), false)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 3)
-	assert.True(t, verifyChannelSequences(entries, []uint64{3, 4, 5}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc5", "doc3", "doc1"}))
-	assert.True(t, err == nil)
+	goassert.Equals(t, len(entries), 3)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{3, 4, 5}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc5", "doc3", "doc1"}))
+	goassert.True(t, err == nil)
 
 	// Add a new revision matching last
 	cache.addToCache(e(6, "doc1", "1-c"), false)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 3)
-	assert.True(t, verifyChannelSequences(entries, []uint64{3, 4, 6}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc5", "doc3", "doc1"}))
-	assert.True(t, err == nil)
+	goassert.Equals(t, len(entries), 3)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{3, 4, 6}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc5", "doc3", "doc1"}))
+	goassert.True(t, err == nil)
 
 }
 
@@ -83,20 +83,20 @@ func TestLateArrivingSequence(t *testing.T) {
 	cache.addToCache(e(5, "doc5", "5-a"), false)
 
 	entries, err := cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 3)
-	assert.True(t, verifyChannelSequences(entries, []uint64{1, 3, 5}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc5"}))
-	assert.True(t, err == nil)
+	goassert.Equals(t, len(entries), 3)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{1, 3, 5}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc5"}))
+	goassert.True(t, err == nil)
 
 	// Add a late-arriving sequence
 	cache.AddLateSequence(e(2, "doc2", "2-a"))
 	cache.addToCache(e(2, "doc2", "2-a"), false)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 4)
+	goassert.Equals(t, len(entries), 4)
 	writeEntries(entries)
-	assert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3, 5}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc2", "doc3", "doc5"}))
-	assert.True(t, err == nil)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3, 5}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc2", "doc3", "doc5"}))
+	goassert.True(t, err == nil)
 
 }
 
@@ -116,20 +116,20 @@ func TestLateSequenceAsFirst(t *testing.T) {
 	cache.addToCache(e(15, "doc3", "3-a"), false)
 
 	entries, err := cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 3)
-	assert.True(t, verifyChannelSequences(entries, []uint64{5, 10, 15}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc2", "doc3"}))
-	assert.True(t, err == nil)
+	goassert.Equals(t, len(entries), 3)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{5, 10, 15}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc2", "doc3"}))
+	goassert.True(t, err == nil)
 
 	// Add a late-arriving sequence
 	cache.AddLateSequence(e(3, "doc0", "0-a"))
 	cache.addToCache(e(3, "doc0", "0-a"), false)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 4)
+	goassert.Equals(t, len(entries), 4)
 	writeEntries(entries)
-	assert.True(t, verifyChannelSequences(entries, []uint64{3, 5, 10, 15}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc0", "doc1", "doc2", "doc3"}))
-	assert.True(t, err == nil)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{3, 5, 10, 15}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc0", "doc1", "doc2", "doc3"}))
+	goassert.True(t, err == nil)
 
 }
 
@@ -150,60 +150,60 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	cache.addToCache(e(40, "doc4", "4-a"), false)
 
 	entries, err := cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 4)
-	assert.True(t, verifyChannelSequences(entries, []uint64{10, 20, 30, 40}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc2", "doc3", "doc4"}))
-	assert.True(t, err == nil)
+	goassert.Equals(t, len(entries), 4)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{10, 20, 30, 40}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc2", "doc3", "doc4"}))
+	goassert.True(t, err == nil)
 
 	// Add a late-arriving sequence that should replace earlier sequence
 	cache.AddLateSequence(e(25, "doc1", "1-c"))
 	cache.addToCache(e(25, "doc1", "1-c"), false)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 4)
+	goassert.Equals(t, len(entries), 4)
 	writeEntries(entries)
-	assert.True(t, verifyChannelSequences(entries, []uint64{20, 25, 30, 40}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc2", "doc1", "doc3", "doc4"}))
-	assert.True(t, err == nil)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{20, 25, 30, 40}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc2", "doc1", "doc3", "doc4"}))
+	goassert.True(t, err == nil)
 
 	// Add a late-arriving sequence that should be ignored (later sequence exists for that docID)
 	cache.AddLateSequence(e(15, "doc1", "1-b"))
 	cache.addToCache(e(15, "doc1", "1-b"), false)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 4)
+	goassert.Equals(t, len(entries), 4)
 	writeEntries(entries)
-	assert.True(t, verifyChannelSequences(entries, []uint64{20, 25, 30, 40}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc2", "doc1", "doc3", "doc4"}))
-	assert.True(t, err == nil)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{20, 25, 30, 40}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc2", "doc1", "doc3", "doc4"}))
+	goassert.True(t, err == nil)
 
 	// Add a late-arriving sequence adjacent to same ID (cache inserts differently)
 	cache.AddLateSequence(e(27, "doc1", "1-d"))
 	cache.addToCache(e(27, "doc1", "1-d"), false)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 4)
+	goassert.Equals(t, len(entries), 4)
 	writeEntries(entries)
-	assert.True(t, verifyChannelSequences(entries, []uint64{20, 27, 30, 40}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc2", "doc1", "doc3", "doc4"}))
-	assert.True(t, err == nil)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{20, 27, 30, 40}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc2", "doc1", "doc3", "doc4"}))
+	goassert.True(t, err == nil)
 
 	// Add a late-arriving sequence adjacent to same ID (cache inserts differently)
 	cache.AddLateSequence(e(41, "doc4", "4-b"))
 	cache.addToCache(e(41, "doc4", "4-b"), false)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 4)
+	goassert.Equals(t, len(entries), 4)
 	writeEntries(entries)
-	assert.True(t, verifyChannelSequences(entries, []uint64{20, 27, 30, 41}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc2", "doc1", "doc3", "doc4"}))
-	assert.True(t, err == nil)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{20, 27, 30, 41}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc2", "doc1", "doc3", "doc4"}))
+	goassert.True(t, err == nil)
 
 	// Add late arriving that's duplicate of oldest in cache
 	cache.AddLateSequence(e(45, "doc2", "2-b"))
 	cache.addToCache(e(45, "doc2", "2-b"), false)
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 4)
+	goassert.Equals(t, len(entries), 4)
 	writeEntries(entries)
-	assert.True(t, verifyChannelSequences(entries, []uint64{27, 30, 41, 45}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc4", "doc2"}))
-	assert.True(t, err == nil)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{27, 30, 41, 45}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc4", "doc2"}))
+	goassert.True(t, err == nil)
 
 }
 
@@ -224,12 +224,12 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	numPrepended := cache.prependChanges(changesToPrepend, 5, true)
-	assert.Equals(t, numPrepended, 3)
+	goassert.Equals(t, numPrepended, 3)
 
 	// Validate cache
 	validFrom, cachedChanges := cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(5))
-	assert.Equals(t, len(cachedChanges), 3)
+	goassert.Equals(t, validFrom, uint64(5))
+	goassert.Equals(t, len(cachedChanges), 3)
 
 	// 2. Test prepend to populated cache, with overlap and duplicates
 	cache = newChannelCache(context, "PrependPopulatedCache", 0)
@@ -246,44 +246,44 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
-	assert.Equals(t, numPrepended, 2)
+	goassert.Equals(t, numPrepended, 2)
 
 	// Validate cache
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(5))
-	assert.Equals(t, len(cachedChanges), 4)
+	goassert.Equals(t, validFrom, uint64(5))
+	goassert.Equals(t, len(cachedChanges), 4)
 	if len(cachedChanges) == 4 {
-		assert.Equals(t, cachedChanges[0].DocID, "doc3")
-		assert.Equals(t, cachedChanges[0].RevID, "2-a")
-		assert.Equals(t, cachedChanges[1].DocID, "doc5")
-		assert.Equals(t, cachedChanges[1].RevID, "2-a")
-		assert.Equals(t, cachedChanges[2].DocID, "doc1")
-		assert.Equals(t, cachedChanges[2].RevID, "2-a")
-		assert.Equals(t, cachedChanges[3].DocID, "doc2")
-		assert.Equals(t, cachedChanges[3].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[0].DocID, "doc3")
+		goassert.Equals(t, cachedChanges[0].RevID, "2-a")
+		goassert.Equals(t, cachedChanges[1].DocID, "doc5")
+		goassert.Equals(t, cachedChanges[1].RevID, "2-a")
+		goassert.Equals(t, cachedChanges[2].DocID, "doc1")
+		goassert.Equals(t, cachedChanges[2].RevID, "2-a")
+		goassert.Equals(t, cachedChanges[3].DocID, "doc2")
+		goassert.Equals(t, cachedChanges[3].RevID, "3-a")
 	}
 
 	// Write a new revision for a prepended doc to the cache, validate that old entry is removed
 	cache.addToCache(e(24, "doc3", "3-a"), false)
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(5))
-	assert.Equals(t, len(cachedChanges), 4)
+	goassert.Equals(t, validFrom, uint64(5))
+	goassert.Equals(t, len(cachedChanges), 4)
 	if len(cachedChanges) == 4 {
-		assert.Equals(t, cachedChanges[0].DocID, "doc5")
-		assert.Equals(t, cachedChanges[0].RevID, "2-a")
-		assert.Equals(t, cachedChanges[1].DocID, "doc1")
-		assert.Equals(t, cachedChanges[1].RevID, "2-a")
-		assert.Equals(t, cachedChanges[2].DocID, "doc2")
-		assert.Equals(t, cachedChanges[2].RevID, "3-a")
-		assert.Equals(t, cachedChanges[3].DocID, "doc3")
-		assert.Equals(t, cachedChanges[3].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[0].DocID, "doc5")
+		goassert.Equals(t, cachedChanges[0].RevID, "2-a")
+		goassert.Equals(t, cachedChanges[1].DocID, "doc1")
+		goassert.Equals(t, cachedChanges[1].RevID, "2-a")
+		goassert.Equals(t, cachedChanges[2].DocID, "doc2")
+		goassert.Equals(t, cachedChanges[2].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[3].DocID, "doc3")
+		goassert.Equals(t, cachedChanges[3].RevID, "3-a")
 	}
 
 	// Prepend empty set, validate validFrom update
 	cache.prependChanges(LogEntries{}, 5, true)
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(5))
-	assert.Equals(t, len(cachedChanges), 4)
+	goassert.Equals(t, validFrom, uint64(5))
+	goassert.Equals(t, len(cachedChanges), 4)
 
 	// 3. Test prepend that exceeds cache capacity
 	cache = newChannelCache(context, "PrependToFillCache", 0)
@@ -303,23 +303,23 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
-	assert.Equals(t, numPrepended, 1)
+	goassert.Equals(t, numPrepended, 1)
 
 	// Validate cache
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(10))
-	assert.Equals(t, len(cachedChanges), 5)
+	goassert.Equals(t, validFrom, uint64(10))
+	goassert.Equals(t, len(cachedChanges), 5)
 	if len(cachedChanges) == 5 {
-		assert.Equals(t, cachedChanges[0].DocID, "doc6")
-		assert.Equals(t, cachedChanges[0].RevID, "2-a")
-		assert.Equals(t, cachedChanges[1].DocID, "doc1")
-		assert.Equals(t, cachedChanges[1].RevID, "2-a")
-		assert.Equals(t, cachedChanges[2].DocID, "doc2")
-		assert.Equals(t, cachedChanges[2].RevID, "3-a")
-		assert.Equals(t, cachedChanges[3].DocID, "doc3")
-		assert.Equals(t, cachedChanges[3].RevID, "3-a")
-		assert.Equals(t, cachedChanges[4].DocID, "doc4")
-		assert.Equals(t, cachedChanges[4].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[0].DocID, "doc6")
+		goassert.Equals(t, cachedChanges[0].RevID, "2-a")
+		goassert.Equals(t, cachedChanges[1].DocID, "doc1")
+		goassert.Equals(t, cachedChanges[1].RevID, "2-a")
+		goassert.Equals(t, cachedChanges[2].DocID, "doc2")
+		goassert.Equals(t, cachedChanges[2].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[3].DocID, "doc3")
+		goassert.Equals(t, cachedChanges[3].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[4].DocID, "doc4")
+		goassert.Equals(t, cachedChanges[4].RevID, "3-a")
 	}
 
 	// 4. Test prepend where all docids are already present in cache.  Cache entries shouldn't change, but validFrom is updated
@@ -337,19 +337,19 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
-	assert.Equals(t, numPrepended, 0)
+	goassert.Equals(t, numPrepended, 0)
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(5))
-	assert.Equals(t, len(cachedChanges), 4)
+	goassert.Equals(t, validFrom, uint64(5))
+	goassert.Equals(t, len(cachedChanges), 4)
 	if len(cachedChanges) == 5 {
-		assert.Equals(t, cachedChanges[0].DocID, "doc1")
-		assert.Equals(t, cachedChanges[0].RevID, "2-a")
-		assert.Equals(t, cachedChanges[1].DocID, "doc2")
-		assert.Equals(t, cachedChanges[1].RevID, "3-a")
-		assert.Equals(t, cachedChanges[2].DocID, "doc3")
-		assert.Equals(t, cachedChanges[2].RevID, "3-a")
-		assert.Equals(t, cachedChanges[3].DocID, "doc4")
-		assert.Equals(t, cachedChanges[3].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[0].DocID, "doc1")
+		goassert.Equals(t, cachedChanges[0].RevID, "2-a")
+		goassert.Equals(t, cachedChanges[1].DocID, "doc2")
+		goassert.Equals(t, cachedChanges[1].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[2].DocID, "doc3")
+		goassert.Equals(t, cachedChanges[2].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[3].DocID, "doc4")
+		goassert.Equals(t, cachedChanges[3].RevID, "3-a")
 	}
 
 	// 5. Test prepend for an already full cache
@@ -371,23 +371,23 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	numPrepended = cache.prependChanges(changesToPrepend, 6, true)
-	assert.Equals(t, numPrepended, 0)
+	goassert.Equals(t, numPrepended, 0)
 
 	// Validate cache
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
-	assert.Equals(t, validFrom, uint64(13))
-	assert.Equals(t, len(cachedChanges), 5)
+	goassert.Equals(t, validFrom, uint64(13))
+	goassert.Equals(t, len(cachedChanges), 5)
 	if len(cachedChanges) == 5 {
-		assert.Equals(t, cachedChanges[0].DocID, "doc1")
-		assert.Equals(t, cachedChanges[0].RevID, "2-a")
-		assert.Equals(t, cachedChanges[1].DocID, "doc2")
-		assert.Equals(t, cachedChanges[1].RevID, "3-a")
-		assert.Equals(t, cachedChanges[2].DocID, "doc3")
-		assert.Equals(t, cachedChanges[2].RevID, "3-a")
-		assert.Equals(t, cachedChanges[3].DocID, "doc4")
-		assert.Equals(t, cachedChanges[3].RevID, "3-a")
-		assert.Equals(t, cachedChanges[4].DocID, "doc5")
-		assert.Equals(t, cachedChanges[4].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[0].DocID, "doc1")
+		goassert.Equals(t, cachedChanges[0].RevID, "2-a")
+		goassert.Equals(t, cachedChanges[1].DocID, "doc2")
+		goassert.Equals(t, cachedChanges[1].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[2].DocID, "doc3")
+		goassert.Equals(t, cachedChanges[2].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[3].DocID, "doc4")
+		goassert.Equals(t, cachedChanges[3].RevID, "3-a")
+		goassert.Equals(t, cachedChanges[4].DocID, "doc5")
+		goassert.Equals(t, cachedChanges[4].RevID, "3-a")
 	}
 }
 
@@ -407,28 +407,28 @@ func TestChannelCacheRemove(t *testing.T) {
 	cache.addToCache(e(3, "doc5", "5-a"), false)
 
 	entries, err := cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 3)
-	assert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc5"}))
-	assert.True(t, err == nil)
+	goassert.Equals(t, len(entries), 3)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{1, 2, 3}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc1", "doc3", "doc5"}))
+	goassert.True(t, err == nil)
 
 	// Now remove doc1
 	cache.Remove([]string{"doc1"}, time.Now())
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 2)
-	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc3", "doc5"}))
-	assert.True(t, err == nil)
+	goassert.Equals(t, len(entries), 2)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc3", "doc5"}))
+	goassert.True(t, err == nil)
 
 	// Try to remove doc5 with a startTime before it was added to ensure it's not removed
 	// This will print a debug level log:
 	// [DBG] Cache+: Skipping removal of doc "doc5" from cache "Test1" - received after purge
 	cache.Remove([]string{"doc5"}, time.Now().Add(-time.Second*5))
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
-	assert.Equals(t, len(entries), 2)
-	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
-	assert.True(t, verifyChannelDocIDs(entries, []string{"doc3", "doc5"}))
-	assert.True(t, err == nil)
+	goassert.Equals(t, len(entries), 2)
+	goassert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
+	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc3", "doc5"}))
+	goassert.True(t, err == nil)
 }
 
 func verifyChannelSequences(entries []*LogEntry, sequences []uint64) bool {

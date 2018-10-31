@@ -8,7 +8,8 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 // TODO: Could consider checking this in as a file and include it into the compiled test binary using something like https://github.com/jteeuwen/go-bindata
@@ -205,21 +206,21 @@ func TestParseXattr(t *testing.T) {
 	dcpBody = append(dcpBody, body...)
 
 	resultBody, resultXattr, err := parseXattrStreamData("_sync", dcpBody)
-	assertNoError(t, err, "Unexpected error parsing dcp body")
-	assert.Equals(t, string(resultBody), string(body))
-	assert.Equals(t, string(resultXattr), string(xattrValue))
+	assert.NoError(t, err, "Unexpected error parsing dcp body")
+	goassert.Equals(t, string(resultBody), string(body))
+	goassert.Equals(t, string(resultXattr), string(xattrValue))
 
 	// Attempt to retrieve non-existent xattr
 	resultBody, resultXattr, err = parseXattrStreamData("nonexistent", dcpBody)
-	assertNoError(t, err, "Unexpected error parsing dcp body")
-	assert.Equals(t, string(resultBody), string(body))
-	assert.Equals(t, string(resultXattr), "")
+	assert.NoError(t, err, "Unexpected error parsing dcp body")
+	goassert.Equals(t, string(resultBody), string(body))
+	goassert.Equals(t, string(resultXattr), "")
 
 	// Attempt to retrieve xattr from empty dcp body
 	emptyBody, emptyXattr, emptyErr := parseXattrStreamData("_sync", []byte{})
-	assert.Equals(t, emptyErr, base.ErrEmptyMetadata)
-	assertTrue(t, emptyBody == nil, "Nil body expected")
-	assertTrue(t, emptyXattr == nil, "Nil xattr expected")
+	goassert.Equals(t, emptyErr, base.ErrEmptyMetadata)
+	assert.True(t, emptyBody == nil, "Nil body expected")
+	assert.True(t, emptyXattr == nil, "Nil xattr expected")
 }
 
 func TestParseDocumentCas(t *testing.T) {
@@ -228,5 +229,5 @@ func TestParseDocumentCas(t *testing.T) {
 
 	casInt := syncData.GetSyncCas()
 
-	assert.Equals(t, casInt, uint64(1492749160563736576))
+	goassert.Equals(t, casInt, uint64(1492749160563736576))
 }

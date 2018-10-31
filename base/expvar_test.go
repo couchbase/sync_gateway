@@ -14,7 +14,8 @@ import (
 	"log"
 	"testing"
 
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRollingMeanExpvar(t *testing.T) {
@@ -25,23 +26,23 @@ func TestRollingMeanExpvar(t *testing.T) {
 	rollingMean.AddValue(4)
 	rollingMean.AddValue(6)
 	rollingMean.AddValue(8)
-	assert.Equals(t, rollingMean.String(), "5")
+	goassert.Equals(t, rollingMean.String(), "5")
 
 	// Add a few more to exceed capacity
 	rollingMean.AddValue(10)
 	rollingMean.AddValue(22)
-	assert.Equals(t, rollingMean.String(), "10")
+	goassert.Equals(t, rollingMean.String(), "10")
 
 	// Go around the capacity loop a few times to make sure things don't break
 	for i := 0; i < 100; i++ {
 		rollingMean.AddValue(100)
 	}
-	assert.Equals(t, rollingMean.String(), "100")
+	goassert.Equals(t, rollingMean.String(), "100")
 
 }
 
 func assertMapEntry(t *testing.T, e SequenceTimingExpvar, key string) {
-	assertTrue(t, e.timingMap.Get(key) != nil, fmt.Sprintf("Expected map key %s not found", key))
+	assert.True(t, e.timingMap.Get(key) != nil, fmt.Sprintf("Expected map key %s not found", key))
 }
 
 func TestTimingExpvarSequenceOnly(t *testing.T) {

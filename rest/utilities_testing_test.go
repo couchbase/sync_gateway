@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 func TestDocumentUnmarshal(t *testing.T) {
@@ -33,21 +33,21 @@ func TestDocumentUnmarshal(t *testing.T) {
 	if err != nil {
 		log.Printf("Error: %v", err)
 	}
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 	log.Printf("doc: %+v", doc)
 
-	assert.True(t, doc.ID() == "docid")
+	goassert.True(t, doc.ID() == "docid")
 
 	docFooField, hasFoo := doc["foo"]
-	assert.True(t, hasFoo)
+	goassert.True(t, hasFoo)
 	log.Printf("docFooField: %v", docFooField)
 
 	attachments, err := doc.GetAttachments()
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
-	assert.Equals(t, len(attachments), 1)
+	goassert.Equals(t, len(attachments), 1)
 	myattachment := attachments["myattachment"]
-	assert.Equals(t, myattachment.ContentType, "text")
+	goassert.Equals(t, myattachment.ContentType, "text")
 
 }
 
@@ -68,13 +68,13 @@ func TestAttachmentRoundTrip(t *testing.T) {
 	doc.SetAttachments(attachmentMap)
 
 	attachments, err := doc.GetAttachments()
-	assert.True(t, err == nil)
+	goassert.True(t, err == nil)
 
-	assert.Equals(t, len(attachments), 2)
+	goassert.Equals(t, len(attachments), 2)
 
 	for attachName, attachment := range attachments {
-		assert.Equals(t, attachment.ContentType, "text")
-		assert.True(t, attachName == "foo" || attachName == "bar")
+		goassert.Equals(t, attachment.ContentType, "text")
+		goassert.True(t, attachName == "foo" || attachName == "bar")
 	}
 
 }

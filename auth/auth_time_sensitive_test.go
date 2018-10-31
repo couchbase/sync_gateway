@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/go.assert"
+	goassert "github.com/couchbaselabs/go.assert"
 )
 
 // Test that multiple authentications of the same user/password are fast.
@@ -20,11 +20,11 @@ func TestAuthenticationSpeed(t *testing.T) {
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	user, _ := auth.NewUser("me", "goIsKewl", nil)
-	assert.True(t, user.Authenticate("goIsKewl"))
+	goassert.True(t, user.Authenticate("goIsKewl"))
 
 	start := time.Now()
 	for i := 0; i < 1000; i++ {
-		assert.True(t, user.Authenticate("goIsKewl"))
+		goassert.True(t, user.Authenticate("goIsKewl"))
 	}
 	durationPerAuth := time.Since(start) / 1000
 	if durationPerAuth > time.Millisecond {
