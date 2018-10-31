@@ -998,6 +998,7 @@ func GetConfig() *ServerConfig {
 	return config
 }
 
+// TODO: re-add/remove pending decision to continue to support SG Accel
 func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 
 	// if the user passes -skipRunModeValidation on the command line, then skip validation
@@ -1021,35 +1022,4 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 
 }
 
-func RegisterSignalHandler() {
-	signalchannel := make(chan os.Signal, 1)
-	signal.Notify(signalchannel, syscall.SIGHUP, os.Interrupt, os.Kill)
 
-	go func() {
-		for sig := range signalchannel {
-			base.Infof(base.KeyAll, "Handling signal: %v", sig)
-			switch sig {
-			case syscall.SIGHUP:
-				HandleSighup()
-			case os.Interrupt, os.Kill:
-				// Ensure log buffers are flushed before exiting.
-				base.FlushLogBuffers()
-				os.Exit(130) // 130 == exit code 128 + 2 (interrupt)
-			}
-		}
-	}()
-}
-
-func panicHandler() (panicHandler func()) {
-	return func() {
-		// Recover from any panics to allow for graceful shutdown.
-		if r := recover(); r != nil {
-			base.Errorf(base.KeyAll, "Handling panic: %v", r)
-			// Ensure log buffers are flushed before exiting.
-			base.FlushLogBuffers()
-
-			panic(r)
-		}
-	}
-
-}

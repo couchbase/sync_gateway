@@ -88,6 +88,9 @@ const (
 	// an API client.  Currently only works with REST API calls.
 	StacktraceOnAPIErrors = false
 
+	// How often to push stats to the Mobile Service
+	PushStatsFreqSeconds = 5
+
 )
 
 const (

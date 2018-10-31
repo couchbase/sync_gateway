@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/couchbase/mobile-service"
@@ -19,14 +22,17 @@ import (
 
 type SyncGateway struct {
 
-	Uuid     string // The uuid of this gateway node (the same one used by CBGT and stored in a local file)
-	Hostname string // The hostname of this gateway node, not sure where this would come from
+	// The uuid of this sync gateway node (the same one used by CBGT and stored in a local file)
+	Uuid string
+
+	// The hostname of this sync gateway node, not sure where this would come from
+	Hostname string
 
 	// The GRPC client that is used to push stats and retrieve MetaKV config
 	GrpcClient msgrpc.MobileServiceClient
 
 	// The underlying client connection that is used by the GRPC client
-	GrpcConn   *grpc.ClientConn
+	GrpcConn *grpc.ClientConn
 
 	// A cached version of the MetaKV configuration state.
 	// Key: path in metakv (eg, /mobile/config/databases/db1)
@@ -47,6 +53,7 @@ type SyncGateway struct {
 // nodes that are detected to be "active", meaning that it returns a 200 response on the
 // ns-server /pools/default REST API.
 type ChooseMobileSvcStrategy int
+
 const (
 	ChooseMobileSvcFirst ChooseMobileSvcStrategy = iota
 	ChooseMobileSvcRandom
@@ -58,7 +65,7 @@ func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
 	gw := SyncGateway{
 		BootstrapConfig: bootstrapConfig,
 		Uuid:            bootstrapConfig.Uuid,
-		Hostname:        GATEWAY_HOSTNAME,  // TODO: discover from the OS
+		Hostname:        GATEWAY_HOSTNAME, // TODO: discover from the OS
 		MetaKVCache:     map[string]*msgrpc.MetaKVPair{},
 	}
 
@@ -176,7 +183,6 @@ func (gw *SyncGateway) Start() error {
 		return err
 	}
 
-
 	// Kick off goroutine to observe stream of metakv changes
 	go func() {
 		err := gw.ObserveMetaKVChangesRetry(mobile_service.KeyDirMobileRoot)
@@ -213,8 +219,6 @@ func (gw *SyncGateway) LoadConfigSnapshot() error {
 }
 
 func (gw *SyncGateway) RunServer() error {
-
-
 
 	return nil
 }
@@ -308,7 +312,6 @@ func (gw *SyncGateway) ProcessDatabaseMetaKVPair(metakvPair *msgrpc.MetaKVPair) 
 
 }
 
-
 func (gw *SyncGateway) HandleGeneralConfigUpdated(metaKvPair *msgrpc.MetaKVPair) error {
 
 	gw.MetaKVCache[metaKvPair.Path] = metaKvPair
@@ -332,7 +335,6 @@ func (gw *SyncGateway) HandleListenerConfigUpdated(metaKvPair *msgrpc.MetaKVPair
 	return nil
 
 }
-
 
 func (gw *SyncGateway) HandleDbDelete(metaKvPair, existingDbConfig *msgrpc.MetaKVPair) error {
 
@@ -517,7 +519,7 @@ func (gw *SyncGateway) PushStatsStreamWithReconnect() error {
 
 	for {
 
-		log.Printf("Starting push stats stream")
+		base.Debugf(base.KeyMobileService, "Starting push stats stream")
 
 		if err := gw.PushStatsStream(); err != nil {
 			log.Printf("Error pushing stats: %v.  Retrying", err)
@@ -542,25 +544,24 @@ func (gw *SyncGateway) PushStatsStreamWithReconnect() error {
 
 }
 
+// TODO: this section needs complete overhaul
 func (gw *SyncGateway) PushStatsStream() error {
 
 	// Stream stats
 	stream, err := gw.GrpcClient.SendStats(context.Background())
 	if err != nil {
-		return err
+		return pkgerrors.Wrapf(err, "Error opening stream to send stats")
 	}
 	gatewayMeta := msgrpc.Gateway{
 		Uuid:     gw.Uuid,
 		Hostname: gw.Hostname,
 	}
-	creds := msgrpc.Creds{
-		Username: gw.BootstrapConfig.CBUsername,
-		Password: gw.BootstrapConfig.CBPassword,
-	}
+
+	// TODO: replace with real stats
 	stats := []msgrpc.Stats{
-		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "10", Creds: &creds},
-		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "20", Creds: &creds},
-		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "30", Creds: &creds},
+		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "10"},
+		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "20"},
+		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "30"},
 	}
 
 	i := 0
@@ -568,13 +569,13 @@ func (gw *SyncGateway) PushStatsStream() error {
 
 		statIndex := i % len(stats)
 		stat := stats[statIndex]
-		log.Printf("Sending stat: %v", stat)
+		base.Tracef(base.KeyMobileService, "Sending stat: %v", stat)
 		if err := stream.Send(&stat); err != nil {
-			return err
+			return pkgerrors.Wrapf(err, "Error sending stat")
 		}
 		i += 1
 
-		time.Sleep(time.Second * 5)
+		time.Sleep(time.Second * time.Duration(base.PushStatsFreqSeconds))
 
 	}
 
@@ -597,6 +598,7 @@ func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffs
 
 }
 
+// Start Sync Gateway with a bootstrap config to enable pulling the config from a Mobile Service node
 func StartSyncGateway(bootstrapConfig BootstrapConfig) (*SyncGateway, error) {
 
 	RegisterSignalHandler()
@@ -611,6 +613,7 @@ func StartSyncGateway(bootstrapConfig BootstrapConfig) (*SyncGateway, error) {
 
 }
 
+// Start Sync Gateway in legacy mode that expects a static file JSON config
 func RunSyncGatewayLegacyMode(pathToConfigFile string) {
 
 	RegisterSignalHandler()
@@ -640,7 +643,6 @@ func RunSyncGatewayLegacyMode(pathToConfigFile string) {
 
 }
 
-
 func InitLogging() {
 
 	// Logging config will now have been loaded from command line
@@ -658,6 +660,39 @@ func InitLogging() {
 	// Execute any deferred warnings from setup.
 	for _, logFn := range warnings {
 		logFn()
+	}
+
+}
+
+func RegisterSignalHandler() {
+	signalchannel := make(chan os.Signal, 1)
+	signal.Notify(signalchannel, syscall.SIGHUP, os.Interrupt, os.Kill)
+
+	go func() {
+		for sig := range signalchannel {
+			base.Infof(base.KeyAll, "Handling signal: %v", sig)
+			switch sig {
+			case syscall.SIGHUP:
+				HandleSighup()
+			case os.Interrupt, os.Kill:
+				// Ensure log buffers are flushed before exiting.
+				base.FlushLogBuffers()
+				os.Exit(130) // 130 == exit code 128 + 2 (interrupt)
+			}
+		}
+	}()
+}
+
+func panicHandler() (panicHandler func()) {
+	return func() {
+		// Recover from any panics to allow for graceful shutdown.
+		if r := recover(); r != nil {
+			base.Errorf(base.KeyAll, "Handling panic: %v", r)
+			// Ensure log buffers are flushed before exiting.
+			base.FlushLogBuffers()
+
+			panic(r)
+		}
 	}
 
 }
