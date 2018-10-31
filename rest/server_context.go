@@ -184,11 +184,17 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 func (sc *ServerContext) GetDatabaseConfig(name string) *DbConfig {
 	sc.lock.RLock()
 	config := sc.config.Databases[name]
+
+	// TODO: at the very least, the password should be masked.  Might also consider completely removing username/pass here.
+
 	sc.lock.RUnlock()
 	return config
 }
 
 func (sc *ServerContext) GetConfig() *ServerConfig {
+
+	// TODO: at the very least, the password should be masked for all db configs.  Might also consider completely removing username/pass here.
+
 	return sc.config
 }
 

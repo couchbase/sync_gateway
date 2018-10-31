@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -14,12 +16,15 @@ import (
 
 	"github.com/couchbase/mobile-service"
 	msgrpc "github.com/couchbase/mobile-service/mobile_service_grpc"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
 
+// This is the "ServerContext" for a SyncGateway that receives it's configuration via the Mobile Service
+// component running inside of Couchbase Server.
 type SyncGateway struct {
 
 	// The uuid of this sync gateway node (the same one used by CBGT and stored in a local file)
@@ -75,6 +80,144 @@ func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
 	}
 
 	return &gw
+}
+
+// Start a Sync Gateway
+func (gw *SyncGateway) Start() error {
+
+	// Load snapshot of configuration from MetaKV
+	if err := gw.LoadConfigSnapshot(); err != nil {
+		return err
+	}
+
+	// Parse json stored in metakv into a ServerConfig
+	serverConfig, err := gw.LoadServerConfig()
+	if err != nil {
+		return err
+	}
+
+	// Kick off http listeners
+	serverContext := StartHttpListeners(serverConfig, false)
+
+	// Save the server context
+	gw.ServerContext = serverContext
+
+	// This has to be done separately _after_ the call to gw.ServerContext, because
+	// without a valid gw.ServerContext, loading databases will fail.
+	if err := gw.LoadDbConfigAllDbs(); err != nil {
+		return err
+	}
+
+	// Kick off goroutine to observe stream of metakv changes
+	go func() {
+		err := gw.ObserveMetaKVChangesRetry(mobile_service.KeyDirMobileRoot)
+		if err != nil {
+			base.Warnf(base.KeyMobileService, fmt.Sprintf("Error observing metakv changes: %v", err))
+
+		}
+	}()
+
+	// Kick off goroutine to push stats
+	go func() {
+		if err := gw.PushStatsStreamWithReconnect(); err != nil {
+			base.Warnf(base.KeyMobileService, fmt.Sprintf("Error pushing stats: %v.  Stats will no longer be pushed.", err))
+		}
+	}()
+
+	return nil
+
+}
+
+// Synchronously load a snapshot of the mobile config from MetakV
+func (gw *SyncGateway) LoadConfigSnapshot() error {
+
+	// Get snapshot of MetaKV tree
+	keyMobileConfig := mobile_service.KeyDirMobileGateway
+	metaKvPairs, err := gw.GrpcClient.MetaKVListAllChildren(context.Background(), &msgrpc.MetaKVPath{Path: keyMobileConfig})
+	if err != nil {
+		return pkgerrors.Wrapf(err, "Error listing metakv children for path: %v", keyMobileConfig)
+	}
+	for _, metakvPair := range metaKvPairs.Items {
+		gw.MetaKVCache[metakvPair.Path] = metakvPair
+	}
+	return nil
+}
+
+// Load the top-level configuration elements (General, Listener, ..)
+func (gw *SyncGateway) LoadServerConfig() (serverConfig *ServerConfig, err error) {
+
+	gotListenerConfig := false
+	gotGeneralConfig := false
+	serverListenerConfig := ServerConfig{}
+	serverGeneralConfig := ServerConfig{}
+
+	//Get the general + listener config
+	for _, metaKvPair := range gw.MetaKVCache {
+		switch {
+		case metaKvPair.Path == mobile_service.KeyMobileGatewayListener:
+			gotListenerConfig = true
+			if err := json.Unmarshal(metaKvPair.Value, &serverListenerConfig); err != nil {
+				return nil, pkgerrors.Wrapf(err, "Error unmarshalling")
+			}
+
+		case metaKvPair.Path == mobile_service.KeyMobileGatewayGeneral:
+			gotGeneralConfig = true
+			if err := json.Unmarshal(metaKvPair.Value, &serverGeneralConfig); err != nil {
+				return nil, pkgerrors.Wrapf(err, "Error unmarshalling")
+			}
+		}
+
+	}
+
+	if !gotListenerConfig {
+		return nil, fmt.Errorf("Did not find required MetaKV config: %v", mobile_service.KeyMobileGatewayListener)
+	}
+
+	if !gotGeneralConfig {
+		return nil, fmt.Errorf("Did not find required MetaKV config: %v", mobile_service.KeyMobileGatewayGeneral)
+	}
+
+	// Copy over the values from listener into general
+	// TODO: figure out a less hacky/brittle way to do this
+	if serverListenerConfig.Interface != nil {
+		serverGeneralConfig.Interface = serverListenerConfig.Interface
+		if gw.BootstrapConfig.PortOffset != 0 {
+			*serverGeneralConfig.Interface = ApplyPortOffset(*serverGeneralConfig.Interface, gw.BootstrapConfig.PortOffset)
+		}
+	}
+	if serverListenerConfig.AdminInterface != nil {
+		serverGeneralConfig.AdminInterface = serverListenerConfig.AdminInterface
+		if gw.BootstrapConfig.PortOffset != 0 {
+			*serverGeneralConfig.AdminInterface = ApplyPortOffset(*serverGeneralConfig.AdminInterface, gw.BootstrapConfig.PortOffset)
+		}
+	}
+	if serverListenerConfig.SSLCert != nil {
+		serverGeneralConfig.SSLCert = serverListenerConfig.SSLCert
+	}
+	if serverListenerConfig.SSLKey != nil {
+		serverGeneralConfig.SSLKey = serverListenerConfig.SSLKey
+	}
+
+	return &serverGeneralConfig, nil
+
+}
+
+// Load the the cached metakv configuration for all databases
+func (gw *SyncGateway) LoadDbConfigAllDbs() error {
+
+	// Second pass to get the databases
+	for _, metaKvPair := range gw.MetaKVCache {
+		switch {
+		case strings.HasPrefix(metaKvPair.Path, mobile_service.KeyMobileGatewayDatabases):
+			if err := gw.ProcessDatabaseMetaKVPair(metaKvPair); err != nil {
+				return err
+			}
+		}
+
+	}
+
+	return nil
+
 }
 
 // Connect to the mobile service and:
@@ -155,83 +298,6 @@ func (gw *SyncGateway) ActiveMobileSvcGrpcEndpoints() (mobileSvcHostPorts []stri
 
 	return mobileSvcHostPorts, nil
 
-}
-
-// Start a Sync Gateway
-func (gw *SyncGateway) Start() error {
-
-	// Load snapshot of configuration from MetaKV
-	if err := gw.LoadConfigSnapshot(); err != nil {
-		return err
-	}
-
-	// Parse json stored in metakv into a ServerConfig
-	serverConfig, err := gw.LoadServerConfig()
-	if err != nil {
-		return err
-	}
-
-	// Kick off http listeners
-	serverContext := StartHttpListeners(serverConfig, false)
-
-	// Save the server context
-	gw.ServerContext = serverContext
-
-	// This has to be done separately _after_ the call to gw.ServerContext, because
-	// without a valid gw.ServerContext, loading databases will fail.
-	if err := gw.LoadDbConfigAllDbs(); err != nil {
-		return err
-	}
-
-	// Kick off goroutine to observe stream of metakv changes
-	go func() {
-		err := gw.ObserveMetaKVChangesRetry(mobile_service.KeyDirMobileRoot)
-		if err != nil {
-			base.Warnf(base.KeyMobileService, fmt.Sprintf("Error observing metakv changes: %v", err))
-
-		}
-	}()
-
-	// Kick off goroutine to push stats
-	go func() {
-		if err := gw.PushStatsStreamWithReconnect(); err != nil {
-			base.Warnf(base.KeyMobileService, fmt.Sprintf("Error pushing stats: %v.  Stats will no longer be pushed.", err))
-		}
-	}()
-
-	return nil
-
-}
-
-// Synchronously load a snapshot of the mobile config from MetakV
-func (gw *SyncGateway) LoadConfigSnapshot() error {
-
-	// Get snapshot of MetaKV tree
-	keyMobileConfig := mobile_service.KeyDirMobileGateway
-	metaKvPairs, err := gw.GrpcClient.MetaKVListAllChildren(context.Background(), &msgrpc.MetaKVPath{Path: keyMobileConfig})
-	if err != nil {
-		return pkgerrors.Wrapf(err, "Error listing metakv children for path: %v", keyMobileConfig)
-	}
-	for _, metakvPair := range metaKvPairs.Items {
-		gw.MetaKVCache[metakvPair.Path] = metakvPair
-	}
-	return nil
-}
-
-func (gw *SyncGateway) RunServer() error {
-
-	return nil
-}
-
-// Dummy method that just blocks forever
-func (gw *SyncGateway) Wait() {
-	select {}
-}
-
-// Close any resources associated with this Sync Gateway instance
-func (gw *SyncGateway) Close() {
-	gw.GrpcConn.Close()
-	gw.ServerContext.Close()
 }
 
 // Observe changes in MetaKV in a retry loop.  Does _not_ try to re-establish a GRPC connection,
@@ -394,7 +460,6 @@ func (gw *SyncGateway) HandleDbAdd(metaKvPair *msgrpc.MetaKVPair) error {
 		return err
 	}
 
-	// TODO: other db add handling
 	return nil
 }
 
@@ -420,81 +485,6 @@ func (gw *SyncGateway) HandleDbUpdate(metaKvPair, existingDbConfig *msgrpc.MetaK
 
 	// Re-add DB based on updated config
 	return gw.HandleDbAdd(metaKvPair)
-
-}
-
-func (gw *SyncGateway) LoadServerConfig() (serverConfig *ServerConfig, err error) {
-
-	gotListenerConfig := false
-	gotGeneralConfig := false
-	serverListenerConfig := ServerConfig{}
-	serverGeneralConfig := ServerConfig{}
-
-	//Get the general + listener config
-	for _, metaKvPair := range gw.MetaKVCache {
-		switch {
-		case metaKvPair.Path == mobile_service.KeyMobileGatewayListener:
-			gotListenerConfig = true
-			if err := json.Unmarshal(metaKvPair.Value, &serverListenerConfig); err != nil {
-				return nil, pkgerrors.Wrapf(err, "Error unmarshalling")
-			}
-
-		case metaKvPair.Path == mobile_service.KeyMobileGatewayGeneral:
-			gotGeneralConfig = true
-			if err := json.Unmarshal(metaKvPair.Value, &serverGeneralConfig); err != nil {
-				return nil, pkgerrors.Wrapf(err, "Error unmarshalling")
-			}
-		}
-
-	}
-
-	if !gotListenerConfig {
-		return nil, fmt.Errorf("Did not find required MetaKV config: %v", mobile_service.KeyMobileGatewayListener)
-	}
-
-	if !gotGeneralConfig {
-		return nil, fmt.Errorf("Did not find required MetaKV config: %v", mobile_service.KeyMobileGatewayGeneral)
-	}
-
-	// Copy over the values from listener into general
-	// TODO: figure out a less hacky/brittle way to do this
-	if serverListenerConfig.Interface != nil {
-		serverGeneralConfig.Interface = serverListenerConfig.Interface
-		if gw.BootstrapConfig.PortOffset != 0 {
-			*serverGeneralConfig.Interface = ApplyPortOffset(*serverGeneralConfig.Interface, gw.BootstrapConfig.PortOffset)
-		}
-	}
-	if serverListenerConfig.AdminInterface != nil {
-		serverGeneralConfig.AdminInterface = serverListenerConfig.AdminInterface
-		if gw.BootstrapConfig.PortOffset != 0 {
-			*serverGeneralConfig.AdminInterface = ApplyPortOffset(*serverGeneralConfig.AdminInterface, gw.BootstrapConfig.PortOffset)
-		}
-	}
-	if serverListenerConfig.SSLCert != nil {
-		serverGeneralConfig.SSLCert = serverListenerConfig.SSLCert
-	}
-	if serverListenerConfig.SSLKey != nil {
-		serverGeneralConfig.SSLKey = serverListenerConfig.SSLKey
-	}
-
-	return &serverGeneralConfig, nil
-
-}
-
-func (gw *SyncGateway) LoadDbConfigAllDbs() error {
-
-	// Second pass to get the databases
-	for _, metaKvPair := range gw.MetaKVCache {
-		switch {
-		case strings.HasPrefix(metaKvPair.Path, mobile_service.KeyMobileGatewayDatabases):
-			if err := gw.ProcessDatabaseMetaKVPair(metaKvPair); err != nil {
-				return err
-			}
-		}
-
-	}
-
-	return nil
 
 }
 
@@ -544,7 +534,7 @@ func (gw *SyncGateway) PushStatsStreamWithReconnect() error {
 
 }
 
-// TODO: this section needs complete overhaul
+// TODO: this section needs complete overhaul, should be moved to it's own file/struct
 func (gw *SyncGateway) PushStatsStream() error {
 
 	// Stream stats
@@ -584,17 +574,82 @@ func (gw *SyncGateway) PushStatsStream() error {
 
 }
 
-// "localhost:4984" with port offset 2 -> "localhost:4986"
-func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffset string) {
+// Dummy method that just blocks forever
+func (gw *SyncGateway) Wait() {
+	select {}
+}
 
-	components := strings.Split(mobileSvcHostPort, ":")
-	portStr := components[1]
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		panic(fmt.Sprintf("Unable to apply port offset to %s", mobileSvcHostPort))
+// Close any resources associated with this Sync Gateway instance
+func (gw *SyncGateway) Close() {
+	gw.GrpcConn.Close()
+	gw.ServerContext.Close()
+}
+
+// ---- Helper functions
+
+// Starts and runs the server given its configuration.  This kicks off async goroutines
+// and returns the ServerContext immediately.  If runPostStartup is true, it also kicks off
+// any post-startup functionality associated with the ServerContext, which currently is to
+// kick off replicators.
+func StartHttpListeners(config *ServerConfig, runPostStartup bool) *ServerContext {
+
+	PrettyPrint = config.Pretty
+
+	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKey().EnabledLogKeys())
+	base.Infof(base.KeyAll, "Console LogLevel: %v", base.ConsoleLogLevel())
+	base.Infof(base.KeyAll, "Log Redaction Level: %s", config.Logging.RedactionLevel)
+
+	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
+		cpus := runtime.NumCPU()
+		if cpus > 1 {
+			runtime.GOMAXPROCS(cpus)
+			base.Infof(base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
+		}
 	}
-	port += portOffset
-	return fmt.Sprintf("%s:%d", components[0], port)
+
+	SetMaxFileDescriptors(config.MaxFileDescriptors)
+
+	// Set global bcrypt cost if configured
+	if config.BcryptCost > 0 {
+		if err := auth.SetBcryptCost(config.BcryptCost); err != nil {
+			base.Fatalf(base.KeyAll, "Configuration error: %v", err)
+		}
+	}
+
+	sc := NewServerContext(config)
+	for _, dbConfig := range config.Databases {
+		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
+			base.Fatalf(base.KeyAll, "Error opening database %s: %+v", base.MD(dbConfig.Name), err)
+		}
+	}
+
+	if config.ProfileInterface != nil {
+		//runtime.MemProfileRate = 10 * 1024
+		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(*config.ProfileInterface))
+		go func() {
+			http.ListenAndServe(*config.ProfileInterface, nil)
+		}()
+	}
+
+	if runPostStartup {
+		go sc.PostStartup()
+	}
+
+	if *config.AdminInterface != base.RestTesterInterface {
+		base.Infof(base.KeyAll, "Starting admin API server on %s", base.UD(*config.AdminInterface))
+		go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
+	} else {
+		base.Infof(base.KeyAll, "RestTester mode: admin API server via in-memory operations")
+	}
+
+	if *config.Interface != base.RestTesterInterface {
+		base.Infof(base.KeyAll, "Starting public API server on %s", base.UD(*config.Interface))
+		go config.Serve(*config.Interface, CreatePublicHandler(sc))
+	} else {
+		base.Infof(base.KeyAll, "RestTester mode: public API server via in-memory operations")
+	}
+
+	return sc
 
 }
 
@@ -640,6 +695,20 @@ func RunSyncGatewayLegacyMode(pathToConfigFile string) {
 	_ = StartHttpListeners(serverConfig, true)
 
 	select {} // block forever
+
+}
+
+// "localhost:4984" with port offset 2 -> "localhost:4986"
+func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffset string) {
+
+	components := strings.Split(mobileSvcHostPort, ":")
+	portStr := components[1]
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to apply port offset to %s", mobileSvcHostPort))
+	}
+	port += portOffset
+	return fmt.Sprintf("%s:%d", components[0], port)
 
 }
 

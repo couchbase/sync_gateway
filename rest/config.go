@@ -18,7 +18,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -916,72 +915,6 @@ func (config *ServerConfig) NumIndexWriters() int {
 		}
 	}
 	return n
-}
-
-// Starts and runs the server given its configuration.  This kicks off async goroutines
-// and returns the ServerContext immediately.  If runPostStartup is true, it also kicks off
-// any post-startup functionality associated with the ServerContext, which currently is to
-// kick off replicators.
-func StartHttpListeners(config *ServerConfig, runPostStartup bool) *ServerContext {
-
-	PrettyPrint = config.Pretty
-
-	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKey().EnabledLogKeys())
-	base.Infof(base.KeyAll, "Console LogLevel: %v", base.ConsoleLogLevel())
-	base.Infof(base.KeyAll, "Log Redaction Level: %s", config.Logging.RedactionLevel)
-
-	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
-		cpus := runtime.NumCPU()
-		if cpus > 1 {
-			runtime.GOMAXPROCS(cpus)
-			base.Infof(base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
-		}
-	}
-
-	SetMaxFileDescriptors(config.MaxFileDescriptors)
-
-	// Set global bcrypt cost if configured
-	if config.BcryptCost > 0 {
-		if err := auth.SetBcryptCost(config.BcryptCost); err != nil {
-			base.Fatalf(base.KeyAll, "Configuration error: %v", err)
-		}
-	}
-
-	sc := NewServerContext(config)
-	for _, dbConfig := range config.Databases {
-		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Fatalf(base.KeyAll, "Error opening database %s: %+v", base.MD(dbConfig.Name), err)
-		}
-	}
-
-	if config.ProfileInterface != nil {
-		//runtime.MemProfileRate = 10 * 1024
-		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(*config.ProfileInterface))
-		go func() {
-			http.ListenAndServe(*config.ProfileInterface, nil)
-		}()
-	}
-
-	if runPostStartup {
-		go sc.PostStartup()
-	}
-
-	if *config.AdminInterface != base.RestTesterInterface {
-		base.Infof(base.KeyAll, "Starting admin API server on %s", base.UD(*config.AdminInterface))
-		go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
-	} else {
-		base.Infof(base.KeyAll, "RestTester mode: admin API server via in-memory operations")
-	}
-
-	if *config.Interface != base.RestTesterInterface {
-		base.Infof(base.KeyAll, "Starting public API server on %s", base.UD(*config.Interface))
-		go config.Serve(*config.Interface, CreatePublicHandler(sc))
-	} else {
-		base.Infof(base.KeyAll, "RestTester mode: public API server via in-memory operations")
-	}
-
-	return sc
-
 }
 
 func HandleSighup() {

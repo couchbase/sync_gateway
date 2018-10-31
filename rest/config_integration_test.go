@@ -30,7 +30,7 @@ func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
 	testHelper.InsertGeneralListenerTestConfig()
 
 	// Add metakv database config
-	dbKey := fmt.Sprintf("%s/%s", mobile_mds.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
+	dbKey := fmt.Sprintf("%s/%s", mobile_service.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
 	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(DefaultMetaKVDbConfig())); err != nil {
 		t.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 	assert.Equals(t, resp.Result().StatusCode, 404)
 
 	// Add a database config to metakv
-	dbKey := fmt.Sprintf("%s/%s", mobile_mds.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
+	dbKey := fmt.Sprintf("%s/%s", mobile_service.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
 	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(DefaultMetaKVDbConfig())); err != nil {
 		t.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
 	testHelper.InsertGeneralListenerTestConfig()
 
 	// Add metakv database config
-	dbKey := fmt.Sprintf("%s/%s", mobile_mds.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
+	dbKey := fmt.Sprintf("%s/%s", mobile_service.KeyMobileGatewayDatabases, base.DefaultTestBucketname)
 	if err := testHelper.MetaKVClient.Upsert(dbKey, []byte(DefaultMetaKVDbConfig())); err != nil {
 		t.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
@@ -189,7 +189,7 @@ func NewSGIntegrationTestHelper(t *testing.T) *SGIntegrationTestHelper {
 	metakvHelper := NewMetaKVClient(*bootstrapConfig)
 
 	// Remove all existing config from metakv
-	if err := metakvHelper.RecursiveDelete(mobile_mds.KeyDirMobileRoot); err != nil {
+	if err := metakvHelper.RecursiveDelete(mobile_service.KeyDirMobileRoot); err != nil {
 		t.Fatalf("Error deleting metakv key.  Error: %v", err)
 	}
 
@@ -203,12 +203,12 @@ func NewSGIntegrationTestHelper(t *testing.T) *SGIntegrationTestHelper {
 func (ith *SGIntegrationTestHelper) InsertGeneralListenerTestConfig() {
 
 	// Add metakv general config
-	if err := ith.MetaKVClient.Upsert(mobile_mds.KeyMobileGatewayGeneral, []byte(DefaultMetaKVGeneralConfig())); err != nil {
+	if err := ith.MetaKVClient.Upsert(mobile_service.KeyMobileGatewayGeneral, []byte(DefaultMetaKVGeneralConfig())); err != nil {
 		ith.Test.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
 
 	// Add metakv listener config
-	if err := ith.MetaKVClient.Upsert(mobile_mds.KeyMobileGatewayListener, []byte(InMemoryListenerConfig())); err != nil {
+	if err := ith.MetaKVClient.Upsert(mobile_service.KeyMobileGatewayListener, []byte(InMemoryListenerConfig())); err != nil {
 		ith.Test.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
 
