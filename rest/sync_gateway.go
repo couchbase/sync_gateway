@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/couchbase/mobile-service"
-	"github.com/couchbase/mobile-service/mobile_service"
+	msgrpc "github.com/couchbase/mobile-service/mobile_service_grpc"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
@@ -23,7 +23,7 @@ type SyncGateway struct {
 	Hostname string // The hostname of this gateway node, not sure where this would come from
 
 	// The GRPC client that is used to push stats and retrieve MetaKV config
-	GrpcClient mobile_service.MobileServiceClient
+	GrpcClient msgrpc.MobileServiceClient
 
 	// The underlying client connection that is used by the GRPC client
 	GrpcConn   *grpc.ClientConn
@@ -31,7 +31,7 @@ type SyncGateway struct {
 	// A cached version of the MetaKV configuration state.
 	// Key: path in metakv (eg, /mobile/config/databases/db1)
 	// Val: a MetaKVPair whose value contains a JSON dictionary
-	MetaKVCache map[string]*mobile_service.MetaKVPair
+	MetaKVCache map[string]*msgrpc.MetaKVPair
 
 	// The SG server context
 	ServerContext *ServerContext
@@ -59,7 +59,7 @@ func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
 		BootstrapConfig: bootstrapConfig,
 		Uuid:            bootstrapConfig.Uuid,
 		Hostname:        GATEWAY_HOSTNAME,  // TODO: discover from the OS
-		MetaKVCache:     map[string]*mobile_service.MetaKVPair{},
+		MetaKVCache:     map[string]*msgrpc.MetaKVPair{},
 	}
 
 	err := gw.ConnectMobileSvc(ChooseMobileSvcFirst)
@@ -92,7 +92,7 @@ func (gw *SyncGateway) ConnectMobileSvc(strategy ChooseMobileSvcStrategy) error 
 	gw.GrpcConn = conn
 
 	// Create client
-	gw.GrpcClient = mobile_service.NewMobileServiceClient(conn)
+	gw.GrpcClient = msgrpc.NewMobileServiceClient(conn)
 
 	return nil
 
@@ -143,7 +143,7 @@ func (gw *SyncGateway) ActiveMobileSvcGrpcEndpoints() (mobileSvcHostPorts []stri
 	// Calculate the GRPC endpoint port based on the couchbase server port and the PortGrpcTlsOffset
 	for _, address := range connSpec.Addresses {
 
-		grpcTargetPort := mobile_mds.PortGrpcTlsOffset + address.Port
+		grpcTargetPort := mobile_service.PortGrpcTlsOffset + address.Port
 		hostPort := fmt.Sprintf("%s:%d", address.Host, grpcTargetPort)
 		mobileSvcHostPorts = append(mobileSvcHostPorts, hostPort)
 
@@ -167,7 +167,7 @@ func (gw *SyncGateway) Start() error {
 
 	// Kick off goroutine to observe stream of metakv changes
 	go func() {
-		err := gw.ObserveMetaKVChangesRetry(mobile_mds.KeyDirMobileRoot)
+		err := gw.ObserveMetaKVChangesRetry(mobile_service.KeyDirMobileRoot)
 		if err != nil {
 			base.Warnf(base.KeyAll, fmt.Sprintf("Error observing metakv changes: %v", err))
 
@@ -188,8 +188,8 @@ func (gw *SyncGateway) Start() error {
 func (gw *SyncGateway) LoadConfigSnapshot() error {
 
 	// Get snapshot of MetaKV tree
-	keyMobileConfig := mobile_mds.KeyDirMobileGateway
-	metaKvPairs, err := gw.GrpcClient.MetaKVListAllChildren(context.Background(), &mobile_service.MetaKVPath{Path: keyMobileConfig})
+	keyMobileConfig := mobile_service.KeyDirMobileGateway
+	metaKvPairs, err := gw.GrpcClient.MetaKVListAllChildren(context.Background(), &msgrpc.MetaKVPath{Path: keyMobileConfig})
 	if err != nil {
 		return err
 	}
@@ -245,7 +245,7 @@ func (gw *SyncGateway) ObserveMetaKVChangesRetry(path string) error {
 
 func (gw *SyncGateway) ObserveMetaKVChanges(path string) error {
 
-	stream, err := gw.GrpcClient.MetaKVObserveChildren(context.Background(), &mobile_service.MetaKVPath{Path: path})
+	stream, err := gw.GrpcClient.MetaKVObserveChildren(context.Background(), &msgrpc.MetaKVPath{Path: path})
 	if err != nil {
 		return err
 	}
@@ -258,13 +258,13 @@ func (gw *SyncGateway) ObserveMetaKVChanges(path string) error {
 
 		log.Printf("ObserveMetaKVChanges got metakv change for %v: %+v", path, updatedConfigKV)
 
-		if strings.HasPrefix(updatedConfigKV.Path, mobile_mds.KeyMobileGatewayDatabases) {
+		if strings.HasPrefix(updatedConfigKV.Path, mobile_service.KeyMobileGatewayDatabases) {
 
 			if err := gw.ProcessDatabaseMetaKVPair(updatedConfigKV); err != nil {
 				return err
 			}
 
-		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_mds.KeyMobileGateway) {
+		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_service.KeyMobileGateway) {
 			// Server level config updated
 			if err := gw.HandleServerConfigUpdated(updatedConfigKV); err != nil {
 				return err
@@ -275,7 +275,7 @@ func (gw *SyncGateway) ObserveMetaKVChanges(path string) error {
 
 }
 
-func (gw *SyncGateway) ProcessDatabaseMetaKVPair(metakvPair *mobile_service.MetaKVPair) error {
+func (gw *SyncGateway) ProcessDatabaseMetaKVPair(metakvPair *msgrpc.MetaKVPair) error {
 	existingMetaKVConfig, found := gw.MetaKVCache[metakvPair.Path]
 	switch found {
 	case true:
@@ -306,7 +306,7 @@ func (gw *SyncGateway) ProcessDatabaseMetaKVPair(metakvPair *mobile_service.Meta
 
 }
 
-func (gw *SyncGateway) HandleServerConfigUpdated(metaKvPair *mobile_service.MetaKVPair) error {
+func (gw *SyncGateway) HandleServerConfigUpdated(metaKvPair *msgrpc.MetaKVPair) error {
 
 	gw.MetaKVCache[metaKvPair.Path] = metaKvPair
 
@@ -318,7 +318,7 @@ func (gw *SyncGateway) HandleServerConfigUpdated(metaKvPair *mobile_service.Meta
 
 }
 
-func (gw *SyncGateway) HandleDbDelete(metaKvPair, existingDbConfig *mobile_service.MetaKVPair) error {
+func (gw *SyncGateway) HandleDbDelete(metaKvPair, existingDbConfig *msgrpc.MetaKVPair) error {
 
 	if len(metaKvPair.Value) != 0 {
 		return fmt.Errorf("If db config is being deleted, incoming value should be empty")
@@ -349,7 +349,7 @@ func (gw *SyncGateway) HandleDbDelete(metaKvPair, existingDbConfig *mobile_servi
 	return nil
 }
 
-func (gw *SyncGateway) HandleDbAdd(metaKvPair *mobile_service.MetaKVPair) error {
+func (gw *SyncGateway) HandleDbAdd(metaKvPair *msgrpc.MetaKVPair) error {
 
 	gw.MetaKVCache[metaKvPair.Path] = metaKvPair
 
@@ -380,7 +380,7 @@ func (gw *SyncGateway) HandleDbAdd(metaKvPair *mobile_service.MetaKVPair) error 
 	return nil
 }
 
-func (gw *SyncGateway) HandleDbUpdate(metaKvPair, existingDbConfig *mobile_service.MetaKVPair) error {
+func (gw *SyncGateway) HandleDbUpdate(metaKvPair, existingDbConfig *msgrpc.MetaKVPair) error {
 
 	// The metakv pair path will be: /mobile/gateway/config/databases/database-1
 	// Get the last item from the path and use that as the dbname
@@ -415,13 +415,13 @@ func (gw *SyncGateway) LoadServerConfig() (serverConfig *ServerConfig, err error
 	//Get the general + listener config
 	for _, metaKvPair := range gw.MetaKVCache {
 		switch {
-		case metaKvPair.Path == mobile_mds.KeyMobileGatewayListener:
+		case metaKvPair.Path == mobile_service.KeyMobileGatewayListener:
 			gotListenerConfig = true
 			if err := json.Unmarshal(metaKvPair.Value, &serverListenerConfig); err != nil {
 				return nil, pkgerrors.Wrapf(err, "Error unmarshalling")
 			}
 
-		case metaKvPair.Path == mobile_mds.KeyMobileGatewayGeneral:
+		case metaKvPair.Path == mobile_service.KeyMobileGatewayGeneral:
 			gotGeneralConfig = true
 			if err := json.Unmarshal(metaKvPair.Value, &serverGeneralConfig); err != nil {
 				return nil, pkgerrors.Wrapf(err, "Error unmarshalling")
@@ -431,11 +431,11 @@ func (gw *SyncGateway) LoadServerConfig() (serverConfig *ServerConfig, err error
 	}
 
 	if !gotListenerConfig {
-		return nil, fmt.Errorf("Did not find required MetaKV config: %v", mobile_mds.KeyMobileGatewayListener)
+		return nil, fmt.Errorf("Did not find required MetaKV config: %v", mobile_service.KeyMobileGatewayListener)
 	}
 
 	if !gotGeneralConfig {
-		return nil, fmt.Errorf("Did not find required MetaKV config: %v", mobile_mds.KeyMobileGatewayGeneral)
+		return nil, fmt.Errorf("Did not find required MetaKV config: %v", mobile_service.KeyMobileGatewayGeneral)
 	}
 
 	// Copy over the values from listener into general
@@ -468,7 +468,7 @@ func (gw *SyncGateway) LoadDbConfigAllDbs() error {
 	// Second pass to get the databases
 	for _, metaKvPair := range gw.MetaKVCache {
 		switch {
-		case strings.HasPrefix(metaKvPair.Path, mobile_mds.KeyMobileGatewayDatabases):
+		case strings.HasPrefix(metaKvPair.Path, mobile_service.KeyMobileGatewayDatabases):
 			if err := gw.ProcessDatabaseMetaKVPair(metaKvPair); err != nil {
 				return err
 			}
@@ -533,18 +533,18 @@ func (gw *SyncGateway) PushStatsStream() error {
 	if err != nil {
 		return err
 	}
-	gatewayMeta := mobile_service.Gateway{
+	gatewayMeta := msgrpc.Gateway{
 		Uuid:     gw.Uuid,
 		Hostname: gw.Hostname,
 	}
-	creds := mobile_service.Creds{
+	creds := msgrpc.Creds{
 		Username: gw.BootstrapConfig.CBUsername,
 		Password: gw.BootstrapConfig.CBPassword,
 	}
-	stats := []mobile_service.Stats{
-		mobile_service.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "10", Creds: &creds},
-		mobile_service.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "20", Creds: &creds},
-		mobile_service.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "30", Creds: &creds},
+	stats := []msgrpc.Stats{
+		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "10", Creds: &creds},
+		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "20", Creds: &creds},
+		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "30", Creds: &creds},
 	}
 
 	i := 0

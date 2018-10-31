@@ -1,8 +1,6 @@
 package rest
 
 import (
-	"log"
-
 	"github.com/couchbaselabs/gocbconnstr"
 )
 

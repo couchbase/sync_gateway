@@ -37,7 +37,6 @@ import (
 	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/gorilla/mux"
 	pkgerrors "github.com/pkg/errors"
-	"github.com/couchbase/sync_gateway/rest"
 )
 
 const (
