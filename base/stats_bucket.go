@@ -162,11 +162,11 @@ func (b *StatsBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v in
 	}
 	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
-func (b *StatsBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (err error) {
+func (b *StatsBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
 	defer b.docWrite(1, -1)
 	return b.bucket.Update(k, exp, callback)
 }
-func (b *StatsBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (err error) {
+func (b *StatsBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
 	defer b.docWrite(1, -1)
 	return b.bucket.WriteUpdate(k, exp, callback)
 }

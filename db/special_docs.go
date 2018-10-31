@@ -58,7 +58,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 	if expPresent && expiry == 0 && doctype == "local" {
 		expiry = uint32(base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs)))
 	}
-	err = db.Bucket.Update(key, expiry, func(value []byte) ([]byte, *uint32, error) {
+	_, err = db.Bucket.Update(key, expiry, func(value []byte) ([]byte, *uint32, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
 				return nil, nil, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")

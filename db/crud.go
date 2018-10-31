@@ -1047,7 +1047,7 @@ func (db *Database) updateAndReturnDoc(
 	upgradeInProgress := false
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
-		err = db.Bucket.WriteUpdate(key, expiry, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, syncFuncExpiry *uint32, err error) {
+		_, err = db.Bucket.WriteUpdate(key, expiry, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return

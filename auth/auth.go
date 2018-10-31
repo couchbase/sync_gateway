@@ -104,7 +104,7 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
-	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+	_, err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
@@ -444,7 +444,7 @@ func (auth *Authenticator) UpdateUserVbucketSequences(docID string, sequence uin
 func (auth *Authenticator) updateVbucketSequences(docID string, factory func() Principal, seq uint64) error {
 
 	sequence := ch.NewVbSimpleSequence(seq)
-	err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+	_, err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			return nil, nil, base.ErrUpdateCancel

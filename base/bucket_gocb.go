@@ -1485,7 +1485,7 @@ func (bucket *CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, 
 
 }
 
-func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket.UpdateFunc) error {
+func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
 
 	for {
 
@@ -1502,7 +1502,7 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 		if err != nil {
 			if !bucket.IsKeyNotFoundError(err) {
 				// Unexpected error, abort
-				return err
+				return cas, err
 			}
 			cas = 0 // Key not found error
 		}
@@ -1510,30 +1510,31 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 		// Invoke callback to get updated value
 		value, callbackExpiry, err = callback(value)
 		if err != nil {
-			return err
+			return cas, err
 		}
 		if callbackExpiry != nil {
 			exp = *callbackExpiry
 		}
 
+		var casGoCB gocb.Cas
 		if cas == 0 {
 			// If the Get fails, the cas will be 0 and so call Insert().
 			// If we get an error on the insert, due to a race, this will
 			// go back through the cas loop
 
 			gocbExpvars.Add("Update_Insert", 1)
-			_, err = bucket.Bucket.Insert(k, value, exp)
+			casGoCB, err = bucket.Bucket.Insert(k, value, exp)
 		} else {
 			if value == nil {
 				// In order to match the go-couchbase bucket behavior, if the
 				// callback returns nil, we delete the doc
 				gocbExpvars.Add("Update_Remove", 1)
-				_, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
+				casGoCB, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
 				gocbExpvars.Add("Update_Replace", 1)
-				_, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), exp)
+				casGoCB, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), exp)
 			}
 		}
 
@@ -1543,14 +1544,14 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 			// retry on recoverable failure
 		} else {
 			// err will be nil if successful
-			return err
+			return uint64(casGoCB), err
 		}
 
 	}
 
 }
 
-func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) error {
+func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
 
 	for {
 		var value []byte
@@ -1564,7 +1565,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 		if err != nil {
 			if !bucket.IsKeyNotFoundError(err) {
 				// Unexpected error, abort
-				return err
+				return cas, err
 			}
 			cas = 0 // Key not found error
 		}
@@ -1573,12 +1574,13 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 		var callbackExpiry *uint32
 		value, writeOpts, callbackExpiry, err = callback(value)
 		if err != nil {
-			return err
+			return cas, err
 		}
 		if callbackExpiry != nil {
 			exp = *callbackExpiry
 		}
 
+		var casGoCB gocb.Cas
 		if cas == 0 {
 			// If the Get fails, the cas will be 0 and so call Insert().
 			// If we get an error on the insert, due to a race, this will
@@ -1586,9 +1588,9 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 
 			gocbExpvars.Add("Update_Insert", 1)
 			if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
-				_, err = bucket.Bucket.InsertDura(k, value, exp, numNodesReplicateTo, numNodesPersistTo)
+				casGoCB, err = bucket.Bucket.InsertDura(k, value, exp, numNodesReplicateTo, numNodesPersistTo)
 			} else {
-				_, err = bucket.Bucket.Insert(k, value, exp)
+				casGoCB, err = bucket.Bucket.Insert(k, value, exp)
 			}
 
 		} else {
@@ -1602,16 +1604,16 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 				//
 				// If this functionality is re-added, this method should probably take a flag called
 				// allowDeletes (bool) so that callers must intentionally allow deletes
-				return fmt.Errorf("The ability to remove items via WriteUpdate has been removed.  See code comments in bucket_gocb.go")
+				return 0, fmt.Errorf("The ability to remove items via WriteUpdate has been removed.  See code comments in bucket_gocb.go")
 
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
 				gocbExpvars.Add("Update_Replace", 1)
 				if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
-					_, err = bucket.Bucket.ReplaceDura(k, value, gocb.Cas(cas), exp, numNodesReplicateTo, numNodesPersistTo)
+					casGoCB, err = bucket.Bucket.ReplaceDura(k, value, gocb.Cas(cas), exp, numNodesReplicateTo, numNodesPersistTo)
 				} else {
-					_, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), exp)
+					casGoCB, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), exp)
 				}
 
 			}
@@ -1623,7 +1625,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 			// retry on recoverable failure
 		} else {
 			// err will be nil if successful
-			return err
+			return uint64(casGoCB), err
 		}
 	}
 }

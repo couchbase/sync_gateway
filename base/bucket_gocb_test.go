@@ -401,10 +401,13 @@ func TestUpdate(t *testing.T) {
 			return valUpdated, nil, nil
 		}
 	}
-
-	err = bucket.Update(key, 0, updateFunc)
+	var cas uint64
+	cas, err = bucket.Update(key, 0, updateFunc)
 	if err != nil {
 		t.Errorf("Error calling Update: %v", err)
+	}
+	if cas == 0 {
+		t.Errorf("Unexpected cas returned by bucket.Update")
 	}
 
 	rv, _, err := bucket.GetRaw(key)
@@ -412,9 +415,12 @@ func TestUpdate(t *testing.T) {
 		t.Errorf("%v != %v", string(rv), string(valInitial))
 	}
 
-	err = bucket.Update(key, 0, updateFunc)
+	cas, err = bucket.Update(key, 0, updateFunc)
 	if err != nil {
 		t.Errorf("Error calling Update: %v", err)
+	}
+	if cas == 0 {
+		t.Errorf("Unexpected cas returned by bucket.Update")
 	}
 
 	rv, _, err = bucket.GetRaw(key)
