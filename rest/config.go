@@ -17,11 +17,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -1021,5 +1019,3 @@ func ValidateConfigOrPanic(runMode SyncGatewayRunMode) {
 	}
 
 }
-
-
