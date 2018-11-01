@@ -66,19 +66,11 @@ pipeline {
             }
         }
 
-        stage('CE Build') {
+        stage('Build') {
             steps {
                 echo 'Building..'
                 withEnv(["PATH+=${GO}"]) {
                     sh './build.sh -v'
-                }
-            }
-        }
-        stage('EE Build') {
-            steps {
-                echo 'Building..'
-                withEnv(["PATH+=${GO}"]) {
-                    sh "./build.sh -v -tags ${EE_BUILD_TAG}"
                 }
             }
         }
@@ -124,19 +116,11 @@ pipeline {
             }
         }
 
-        stage('CE Test -race') {
+        stage('Test -race') {
             steps {
                 echo 'Testing with -race..'
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                     sh './test.sh -race -count=1'
-                }
-            }
-        }
-        stage('EE Test -race') {
-            steps {
-                echo 'Testing with -race..'
-                withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    sh "./test.sh -race -count=1 -tags ${EE_BUILD_TAG}"
                 }
             }
         }
