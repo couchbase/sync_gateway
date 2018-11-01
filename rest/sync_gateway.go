@@ -96,6 +96,10 @@ func (gw *SyncGateway) Start() error {
 		return err
 	}
 
+	// Init logging
+	// TODO: will anything before this call get logged?  Maybe we should bootstrap this with "basic logging" and have it overridden later once contacting the mobile service?
+	InitLogging(serverConfig)
+
 	// Kick off http listeners
 	serverContext := StartHttpListeners(serverConfig, false)
 
@@ -659,8 +663,6 @@ func StartSyncGateway(bootstrapConfig BootstrapConfig) (*SyncGateway, error) {
 	RegisterSignalHandler()
 	defer panicHandler()()
 
-	InitLogging()
-
 	// Create and start Sync Gateway using bootstrap config
 	gw := NewSyncGateway(bootstrapConfig)
 	err := gw.Start()
@@ -674,7 +676,7 @@ func RunSyncGatewayLegacyMode(pathToConfigFile string) {
 	RegisterSignalHandler()
 	defer panicHandler()()
 
-	InitLogging()
+	InitLogging(config)
 
 	// TODO: call ParseCommandLine() and extract subset of CLI params used in service scripts
 
@@ -712,12 +714,12 @@ func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffs
 
 }
 
-func InitLogging() {
+func InitLogging(serverConfig *ServerConfig) {
 
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
-	warnings, err := config.setupAndValidateLogging()
+	warnings, err := serverConfig.setupAndValidateLogging()
 	if err != nil {
 		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
 	}

@@ -40,6 +40,8 @@ var (
 // The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 var defaultLogFilePath string
 
+// Package level serverconfig.  Should only be used by legacy code.
+// TODO: should there be a LegacySyncGateway or StaticFileConfigSyncGateway and this would become a field of that?
 var config *ServerConfig
 
 const (
