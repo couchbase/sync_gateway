@@ -4,6 +4,8 @@
 #
 # - Set GOPATH and call 'go install' to compile and build Sync Gateway binaries
 
+set -e
+
 if [ -d "godeps" ]; then
   export GOPATH=`pwd`/godeps
 fi
