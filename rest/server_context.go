@@ -652,6 +652,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	dbcontext.ExitChanges = make(chan struct{})
 
 	// Register it so HTTP handlers can find it:
+	if sc.databases_ == nil {
+		return nil, fmt.Errorf("sc.databases_ is nil")
+	}
 	sc.databases_[dbcontext.Name] = dbcontext
 
 	// Save the config

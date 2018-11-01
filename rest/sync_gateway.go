@@ -113,6 +113,7 @@ func (gw *SyncGateway) Start() error {
 	}
 
 	// Kick off goroutine to observe stream of metakv changes
+	// TODO: this goroutine is never shutdown.  Might be cause of test failure: https://gist.github.com/tleyden/538ce7f32792e85a4dcb66cda24d5116 (http://uberjenkins.sc.couchbase.com/view/Build/job/sync-gateway-integration-mercury/55/consolehttp://uberjenkins.sc.couchbase.com/view/Build/job/sync-gateway-integration-mercury/55/console)
 	go func() {
 		err := gw.ObserveMetaKVChangesRetry(mobile_service.KeyDirMobileRoot)
 		if err != nil {
@@ -122,6 +123,7 @@ func (gw *SyncGateway) Start() error {
 	}()
 
 	// Kick off goroutine to push stats
+	// TODO: this goroutine is never shutdown
 	go func() {
 		if err := gw.PushStatsStreamWithReconnect(); err != nil {
 			base.Warnf(base.KeyMobileService, fmt.Sprintf("Error pushing stats: %v.  Stats will no longer be pushed.", err))
