@@ -716,6 +716,10 @@ func ApplyPortOffset(mobileSvcHostPort string, portOffset int) (hostPortWithOffs
 
 func InitLogging(serverConfig *ServerConfig) {
 
+	if serverConfig == nil {
+		base.Fatalf(base.KeyAll, "Error setting up logging due to nil serverConfig")
+	}
+
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
