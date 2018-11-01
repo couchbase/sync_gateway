@@ -287,7 +287,7 @@ func DefaultMetaKVGeneralConfig() string {
   "logging": {
     "console": {
       "log_level": "trace",
-      "log_keys": ["HTTP", "Query"]
+      "log_keys": ["HTTP", "Query", "MobileService"]
     }
   },
   "compressResponses": false
