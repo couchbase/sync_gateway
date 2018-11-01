@@ -37,7 +37,7 @@ func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
 
 	// Start a gateway in resttester mode
 	gw, err := StartSyncGateway(*testHelper.BootstrapConfig)
-	defer gw.Close()
+	defer gw.Stop()
 	if err != nil {
 		t.Fatalf("Error starting gateway: %+v", err)
 	}
@@ -51,6 +51,11 @@ func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
 	}
 	log.Printf("db: %+v", db)
 	assert.Equals(t, db.DbName, base.DefaultTestBucketname)
+
+	// TEMP Close() + sleep.  Demonstrates that calling Close() leaves lots of resources open
+	gw.Stop()
+	time.Sleep(time.Second * 60)
+
 
 }
 
@@ -68,7 +73,7 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 
 	// Start a gateway in resttester mode
 	gw, err := StartSyncGateway(*testHelper.BootstrapConfig)
-	defer gw.Close()
+	defer gw.Stop()
 	if err != nil {
 		t.Fatalf("Error starting gateway: %+v", err)
 	}
@@ -115,7 +120,7 @@ func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
 
 	// Start a gateway in resttester mode
 	gw, err := StartSyncGateway(*testHelper.BootstrapConfig)
-	defer gw.Close()
+	defer gw.Stop()
 	if err != nil {
 		t.Fatalf("Error starting gateway: %+v", err)
 	}
@@ -171,6 +176,7 @@ func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
 	if err := WaitForResponseCode(404, getDatabaseStatus); err != nil {
 		t.Fatalf("Error waiting for expected response code: %v", err)
 	}
+
 
 }
 

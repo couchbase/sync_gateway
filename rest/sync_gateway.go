@@ -49,6 +49,9 @@ type SyncGateway struct {
 
 	// The "bootstrap config" for this gateway to be able to connect to Couchbase Server to get actual config
 	BootstrapConfig BootstrapConfig
+
+	StateMachine base.StateMachine
+
 }
 
 // The bootstrap config might contain a list of Couchbase Server hostnames to connect to.
@@ -82,8 +85,35 @@ func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
 	return &gw
 }
 
+
+//
+// ┌──────────────┐               ┌──────────────┐               ┌──────────────┐
+// │              │               │              │               │              │
+// │  NotStarted  │────Start()───▶│   Running    │─────Stop()───▶│   Finished   │◀─┐
+// │              │               │              │               │              │  │
+// └──────────────┘               └──────────────┘               └──────────────┘  │
+//                                                                       │         │
+//                                                                       │   Start/Stop()
+//                                                                       └─────────┘
+//
+func (gw *SyncGateway) initStateMachine() {
+
+	stateMachine := base.NewStateMachine()
+	stateMachine.AddState(NotStarted)
+	stateMachine.AddState(Running)
+	stateMachine.AddState(Finished)
+	stateMachine.AddTransition(Start, NotStarted, Running)
+	stateMachine.AddTransition(Stop, Running, Finished)
+	stateMachine.SetInitialState(NotStarted)
+
+}
+
 // Start a Sync Gateway
 func (gw *SyncGateway) Start() error {
+
+	if err := gw.StateMachine.DoTransition(Start); err != nil {
+		return err
+	}
 
 	// Load snapshot of configuration from MetaKV
 	if err := gw.LoadConfigSnapshot(); err != nil {
@@ -312,7 +342,11 @@ func (gw *SyncGateway) ObserveMetaKVChangesRetry(path string) error {
 	for {
 		base.Debugf(base.KeyMobileService, "Starting ObserveMetaKVChanges on path: %v", path)
 		if err := gw.ObserveMetaKVChanges(path); err != nil {
-			base.Infof(base.KeyMobileService, "ObserveMetaKVChanges on path: %v returned error: %+v  Retrying", path, err)
+			base.Infof(base.KeyMobileService, "ObserveMetaKVChanges on path: %v returned error: %+v.", path, err)
+			if gw.StateMachine.InState(Finished) {
+				base.Tracef(base.KeyMobileService, "ObserveMetaKVChanges for path %v returned error %v, but SG in finished state.  Not retrying", path, err)
+				return nil
+			}
 			time.Sleep(time.Second * 1)
 			gw.ObserveMetaKVChanges(path)
 		}
@@ -518,7 +552,7 @@ func (gw *SyncGateway) PushStatsStreamWithReconnect() error {
 		base.Debugf(base.KeyMobileService, "Starting push stats stream")
 
 		if err := gw.PushStatsStream(); err != nil {
-			log.Printf("Error pushing stats: %v.  Retrying", err)
+			log.Printf("Error pushing stats: %v", err)
 		}
 
 		// TODO: this should be a backoff / retry and only give up after a number of retries
@@ -528,7 +562,14 @@ func (gw *SyncGateway) PushStatsStreamWithReconnect() error {
 
 			err := gw.ConnectMobileSvc(ChooseMobileSvcRandom)
 			if err != nil {
-				log.Printf("Error connecting to grpc server: %v.  Retrying", err)
+				log.Printf("Error connecting to grpc server: %v", err)
+
+				if gw.StateMachine.InState(Finished) {
+					base.Tracef(base.KeyMobileService, "PushStatsStream returned error %v, but SG in finished state.  Not retrying", err)
+					return nil
+				}
+
+				// Retry
 				time.Sleep(time.Second)
 				continue
 			}
@@ -586,9 +627,17 @@ func (gw *SyncGateway) Wait() {
 }
 
 // Close any resources associated with this Sync Gateway instance
-func (gw *SyncGateway) Close() {
+func (gw *SyncGateway) Stop() error {
+
+	if err := gw.StateMachine.DoTransition(Stop); err != nil {
+		return err
+	}
+
 	gw.GrpcConn.Close()
 	gw.ServerContext.Close()
+
+	return nil
+
 }
 
 // ---- Helper functions
