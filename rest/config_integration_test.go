@@ -51,7 +51,7 @@ func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
 	}
 	log.Printf("db: %+v", db)
 	assert.Equals(t, db.DbName, base.DefaultTestBucketname)
-	
+
 }
 
 func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {

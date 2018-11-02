@@ -246,6 +246,9 @@ func (gw *SyncGateway) ConnectMobileSvc(strategy ChooseMobileSvcStrategy) error 
 	if err != nil {
 		return err
 	}
+
+	log.Printf("Connecting to mobile service: %v", mobileSvcHostPort) // Temp duplicate since logging not started yet
+
 	base.Infof(base.KeyMobileService, "Connecting to mobile service: %v", mobileSvcHostPort)
 
 	// Set up a connection to the server.
@@ -578,11 +581,17 @@ func (gw *SyncGateway) PushStatsStream() error {
 		Hostname: gw.Hostname,
 	}
 
-	// TODO: replace with real stats
+	// The creds are needed as a temporary crutch so that the mobile-service can authenticate
+	// the client before updating metakv
+	// TODO: should be completely reworked.
+	creds := msgrpc.Creds{
+		Username: gw.BootstrapConfig.CBUsername,
+		Password: gw.BootstrapConfig.CBPassword,
+	}
 	stats := []msgrpc.Stats{
-		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "10"},
-		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "20"},
-		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "30"},
+		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "10", Creds: &creds},
+		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "20", Creds: &creds},
+		msgrpc.Stats{Gateway: &gatewayMeta, NumChangesFeeds: "30", Creds: &creds},
 	}
 
 	i := 0
