@@ -356,11 +356,11 @@ func (gw *SyncGateway) ObserveMetaKVChanges(path string) error {
 			if err := gw.ProcessDatabaseMetaKVPair(updatedConfigKV); err != nil {
 				return err
 			}
-		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_service.KeyDirMobileGatewayGeneral) {
+		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_service.KeyMobileGatewayGeneral) {
 			if err := gw.HandleGeneralConfigUpdated(updatedConfigKV); err != nil {
 				return err
 			}
-		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_service.KeyDirMobileGatewayListener) {
+		} else if strings.HasPrefix(updatedConfigKV.Path, mobile_service.KeyMobileGatewayListener) {
 			if err := gw.HandleListenerConfigUpdated(updatedConfigKV); err != nil {
 				return err
 			}
@@ -407,6 +407,17 @@ func (gw *SyncGateway) HandleGeneralConfigUpdated(metaKvPair *msgrpc.MetaKVPair)
 
 	// TODO: reload general config
 
+
+	newServerConfig, err := gw.LoadServerConfig()
+	if err != nil {
+		return err
+	}
+
+	newContext := NewServerContextFromExisting(newServerConfig, gw.ServerContext)
+
+	// TODO: gw.lock.Lock() / defer unlock
+	gw.ServerContext = newContext
+	
 	base.Warnf(base.KeyAll, "HandleGeneralConfigUpdated ignoring change: %v", metaKvPair.Path)
 
 	return nil

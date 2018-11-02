@@ -87,6 +87,20 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 	return sc
 }
 
+
+func NewServerContextFromExisting(config *ServerConfig, existing *ServerContext) *ServerContext {
+
+	existing.lock.RLock()
+	defer existing.lock.RUnlock()
+
+	newServerContext := NewServerContext(config)
+
+	newServerContext.databases_ = existing.databases_
+
+	return newServerContext
+
+}
+
 // PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
 	// Introduce a minor delay if there are any replications
