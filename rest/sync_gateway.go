@@ -21,15 +21,11 @@ import (
 	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
 	"google.golang.org/grpc"
-	"sync"
 )
 
 // This is the "ServerContext" for a SyncGateway that receives it's configuration via the Mobile Service
 // component running inside of Couchbase Server.
 type SyncGateway struct {
-
-	// Read/Write Mutex lock to prevent concurrent changes
-	lock sync.RWMutex
 
 	// The uuid of this sync gateway node (the same one used by CBGT and stored in a local file)
 	Uuid string
@@ -49,6 +45,7 @@ type SyncGateway struct {
 	MetaKVCache map[string]*msgrpc.MetaKVPair
 
 	// The SG server context
+	// TODO: there are data races that need to be addressed when the metakv observer goroutine updates this
 	ServerContext *ServerContext
 
 	// The "bootstrap config" for this gateway to be able to connect to Couchbase Server to get actual config
@@ -62,7 +59,6 @@ type SyncGateway struct {
 
 	// A state machine to track the current Sync Gateway state (not started, running, finished)
 	StateMachine *base.StateMachine
-
 }
 
 // The bootstrap config might contain a list of Couchbase Server hostnames to connect to.
@@ -97,13 +93,8 @@ func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
 	return &gw
 }
 
-
 // Start a Sync Gateway
 func (gw *SyncGateway) Start() error {
-
-	// Lock due to the fact that we're updating the server context
-	gw.lock.Lock()
-	defer gw.lock.Unlock()
 
 	if err := gw.StateMachine.DoTransition(Start); err != nil {
 		return err
@@ -419,9 +410,6 @@ func (gw *SyncGateway) ProcessDatabaseMetaKVPair(metakvPair *msgrpc.MetaKVPair) 
 
 func (gw *SyncGateway) HandleGeneralConfigUpdated(metaKvPair *msgrpc.MetaKVPair) error {
 
-	gw.lock.Lock()
-	defer gw.lock.Unlock()
-
 	gw.MetaKVCache[metaKvPair.Path] = metaKvPair
 
 	// TODO: reload general config
@@ -455,10 +443,6 @@ func (gw *SyncGateway) HandleListenerConfigUpdated(metaKvPair *msgrpc.MetaKVPair
 
 func (gw *SyncGateway) HandleDbDelete(metaKvPair, existingDbConfig *msgrpc.MetaKVPair) error {
 
-	// Lock due to the fact that the gw.servercontext is being modified
-	gw.lock.Lock()
-	defer gw.lock.Unlock()
-
 	if len(metaKvPair.Value) != 0 {
 		return fmt.Errorf("If db config is being deleted, incoming value should be empty")
 	}
@@ -490,10 +474,6 @@ func (gw *SyncGateway) HandleDbDelete(metaKvPair, existingDbConfig *msgrpc.MetaK
 
 func (gw *SyncGateway) HandleDbAdd(metaKvPair *msgrpc.MetaKVPair) error {
 
-	// Lock due to the fact that the gw.servercontext is being modified
-	gw.lock.Lock()
-	defer gw.lock.Unlock()
-
 	gw.MetaKVCache[metaKvPair.Path] = metaKvPair
 
 	dbConfig, err := gw.LoadDbConfig(metaKvPair.Path)
@@ -523,10 +503,6 @@ func (gw *SyncGateway) HandleDbAdd(metaKvPair *msgrpc.MetaKVPair) error {
 }
 
 func (gw *SyncGateway) HandleDbUpdate(metaKvPair, existingDbConfig *msgrpc.MetaKVPair) error {
-
-	// Lock due to the fact that the gw.servercontext is being modified
-	gw.lock.Lock()
-	defer gw.lock.Unlock()
 
 	// The metakv pair path will be: /mobile/gateway/config/databases/database-1
 	// Get the last item from the path and use that as the dbname
@@ -589,12 +565,9 @@ func (gw *SyncGateway) PushStatsStreamWithReconnect() error {
 
 			log.Printf("Attempting to reconnect to grpc server")
 
-
 			err := gw.ConnectMobileSvc(ChooseMobileSvcRandom)
 			if err != nil {
 				log.Printf("Error connecting to grpc server: %v", err)
-
-
 
 				// Retry
 				time.Sleep(time.Second)
@@ -664,10 +637,6 @@ func (gw *SyncGateway) Wait() {
 // Close any resources associated with this Sync Gateway instance
 func (gw *SyncGateway) Stop() error {
 
-	// Lock due to reading server context
-	gw.lock.RLock()
-	defer gw.lock.RUnlock()
-
 	if err := gw.StateMachine.DoTransition(Stop); err != nil {
 		return err
 	}
@@ -681,7 +650,6 @@ func (gw *SyncGateway) Stop() error {
 	return nil
 
 }
-
 
 //
 // ┌──────────────┐               ┌──────────────┐               ┌──────────────┐
