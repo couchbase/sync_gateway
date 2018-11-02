@@ -15,6 +15,9 @@ import (
 	"github.com/couchbaselabs/go.assert"
 )
 
+var DefaultConsoleLogLevel = "trace"
+
+
 // Integration tests that verify that Sync Gateway loads the correct configuration from the mobile-service
 
 func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
@@ -136,10 +139,7 @@ func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
 		t.Fatalf("Error updating metakv key.  Error: %v", err)
 	}
 
-	getConfig := func() *TestResponse {
-		resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/_config"), "")
-		return resp
-	}
+	invokeGetConfigFn := InvokeGetConfigFn(gw)
 
 	expectation := func(resp *TestResponse) bool {
 		serverConfig := ServerConfig{}
@@ -153,7 +153,7 @@ func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
 		return *dbConfig.RevsLimit == updatedRevsLimit
 	}
 
-	if err := WaitForExpectation(expectation, getConfig); err != nil {
+	if err := WaitForExpectation(expectation, invokeGetConfigFn); err != nil {
 		t.Fatalf("Error waiting for expected response: %v", err)
 	}
 
@@ -174,6 +174,56 @@ func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
 
 
 }
+
+func TestGatewayUpdateGeneralConfig(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test only works with a Couchbase server")
+	}
+
+	// Create a test helper that initializes the testing bootstrap config and MetaKV Client
+	testHelper := NewSGIntegrationTestHelper(t)
+
+	// Add listener with resttester interfaces and general config to metakv
+	testHelper.InsertGeneralListenerTestConfig()
+
+	// Start a gateway in resttester mode
+	gw, err := StartSyncGateway(*testHelper.BootstrapConfig)
+	defer gw.Stop()
+	if err != nil {
+		t.Fatalf("Error starting gateway: %+v", err)
+	}
+
+	// Closure
+	invokeGetConfig := InvokeGetConfigFn(gw)
+
+	if err := WaitForExpectation(ExpectationForLogLevelFn(t, base.LevelTrace), invokeGetConfig); err != nil {
+		t.Fatalf("Error waiting for expected response: %v", err)
+	}
+
+	newConfig := `{
+		  "logging": {
+			"console": {
+			  "log_level": "info",
+			  "log_keys": ["HTTP", "Query", "MobileService"]
+			}
+		  },
+		  "compressResponses": false
+		}`
+
+	// Add metakv general config
+	if err := testHelper.MetaKVClient.Upsert(mobile_service.KeyMobileGatewayGeneral, []byte(newConfig)); err != nil {
+		testHelper.Test.Fatalf("Error updating metakv key.  Error: %v", err)
+	}
+
+	if err := WaitForExpectation(ExpectationForLogLevelFn(t, base.LevelInfo), invokeGetConfig); err != nil {
+		t.Fatalf("Error waiting for expected response: %v", err)
+	}
+
+
+
+}
+
 
 // ----------- Test Helper
 
@@ -281,19 +331,20 @@ func SendAdminRequest(gw *SyncGateway, method, resource string, body string) *Te
 	return response
 }
 
+
 func DefaultMetaKVGeneralConfig() string {
 
-	return `
+	return fmt.Sprintf(`
 {
   "logging": {
     "console": {
-      "log_level": "trace",
+      "log_level": "%s",
       "log_keys": ["HTTP", "Query", "MobileService"]
     }
   },
   "compressResponses": false
 }
-`
+`, DefaultConsoleLogLevel)
 
 }
 
@@ -335,4 +386,24 @@ func DefaultMetaKVDbConfig() string {
 }
 `, base.DefaultTestBucketname)
 
+}
+
+func InvokeGetConfigFn(gw *SyncGateway) RestApiCall {
+	f := func() *TestResponse {
+		resp := SendAdminRequest(gw, "GET", fmt.Sprintf("/_config"), "")
+		return resp
+	}
+	return f
+}
+
+func ExpectationForLogLevelFn(t *testing.T, expectedLogLevel base.LogLevel) ResponseExpectation {
+	expectation := func(resp *TestResponse) bool {
+		serverConfig := ServerConfig{}
+		if err := json.Unmarshal(resp.Body.Bytes(), &serverConfig); err != nil {
+			t.Fatalf("Error getting config.  Error: %v", err)
+		}
+		consoleLogging := serverConfig.Logging.Console
+		return *consoleLogging.LogLevel == expectedLogLevel
+	}
+	return expectation
 }
