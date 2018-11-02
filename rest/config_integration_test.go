@@ -51,12 +51,7 @@ func TestGatewayLoadDbConfigBeforeStartup(t *testing.T) {
 	}
 	log.Printf("db: %+v", db)
 	assert.Equals(t, db.DbName, base.DefaultTestBucketname)
-
-	// TEMP Close() + sleep.  Demonstrates that calling Close() leaves lots of resources open
-	gw.Stop()
-	time.Sleep(time.Second * 60)
-
-
+	
 }
 
 func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {

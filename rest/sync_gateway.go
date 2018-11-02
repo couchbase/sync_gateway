@@ -50,7 +50,8 @@ type SyncGateway struct {
 	// The "bootstrap config" for this gateway to be able to connect to Couchbase Server to get actual config
 	BootstrapConfig BootstrapConfig
 
-	StateMachine base.StateMachine
+	// A state machine to track the current Sync Gateway state (not started, running, finished)
+	StateMachine *base.StateMachine
 
 }
 
@@ -76,6 +77,7 @@ func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
 		Hostname:        GATEWAY_HOSTNAME, // TODO: discover from the OS
 		MetaKVCache:     map[string]*msgrpc.MetaKVPair{},
 	}
+	gw.initStateMachine()
 
 	err := gw.ConnectMobileSvc(ChooseMobileSvcFirst)
 	if err != nil {
@@ -85,28 +87,6 @@ func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
 	return &gw
 }
 
-
-//
-// ┌──────────────┐               ┌──────────────┐               ┌──────────────┐
-// │              │               │              │               │              │
-// │  NotStarted  │────Start()───▶│   Running    │─────Stop()───▶│   Finished   │◀─┐
-// │              │               │              │               │              │  │
-// └──────────────┘               └──────────────┘               └──────────────┘  │
-//                                                                       │         │
-//                                                                       │   Start/Stop()
-//                                                                       └─────────┘
-//
-func (gw *SyncGateway) initStateMachine() {
-
-	stateMachine := base.NewStateMachine()
-	stateMachine.AddState(NotStarted)
-	stateMachine.AddState(Running)
-	stateMachine.AddState(Finished)
-	stateMachine.AddTransition(Start, NotStarted, Running)
-	stateMachine.AddTransition(Stop, Running, Finished)
-	stateMachine.SetInitialState(NotStarted)
-
-}
 
 // Start a Sync Gateway
 func (gw *SyncGateway) Start() error {
@@ -558,16 +538,20 @@ func (gw *SyncGateway) PushStatsStreamWithReconnect() error {
 		// TODO: this should be a backoff / retry and only give up after a number of retries
 		// TODO: also, this should happen in a central place in the codebase rather than arbitrarily in the PushStatsStream()
 		for {
+
+			if gw.StateMachine.InState(Finished) {
+				base.Tracef(base.KeyMobileService, "SG finished.  Not retrying to reconnect to grpc server")
+				return nil
+			}
+
 			log.Printf("Attempting to reconnect to grpc server")
+
 
 			err := gw.ConnectMobileSvc(ChooseMobileSvcRandom)
 			if err != nil {
 				log.Printf("Error connecting to grpc server: %v", err)
 
-				if gw.StateMachine.InState(Finished) {
-					base.Tracef(base.KeyMobileService, "PushStatsStream returned error %v, but SG in finished state.  Not retrying", err)
-					return nil
-				}
+
 
 				// Retry
 				time.Sleep(time.Second)
@@ -639,6 +623,30 @@ func (gw *SyncGateway) Stop() error {
 	return nil
 
 }
+
+
+//
+// ┌──────────────┐               ┌──────────────┐               ┌──────────────┐
+// │              │               │              │               │              │
+// │  NotStarted  │────Start()───▶│   Running    │─────Stop()───▶│   Finished   │◀─┐
+// │              │               │              │               │              │  │
+// └──────────────┘               └──────────────┘               └──────────────┘  │
+//                                                                       │         │
+//                                                                       │   Start/Stop()
+//                                                                       └─────────┘
+//
+func (gw *SyncGateway) initStateMachine() {
+
+	stateMachine := base.NewStateMachine(NotStarted)
+	stateMachine.AddState(Running)
+	stateMachine.AddState(Finished)
+	stateMachine.AddTransition(Start, NotStarted, Running)
+	stateMachine.AddTransition(Stop, Running, Finished)
+	gw.StateMachine = stateMachine
+
+}
+
+
 
 // ---- Helper functions
 

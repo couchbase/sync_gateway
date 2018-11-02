@@ -5,7 +5,6 @@ import (
 	"sync"
 )
 
-
 // State Machine
 type StateMachine struct {
 
@@ -15,8 +14,7 @@ type StateMachine struct {
 
 	stateGraph map[stateNode][]transitionEdge
 
-	mutex sync.Mutex
-
+	mutex sync.RWMutex
 }
 
 type State interface {
@@ -53,7 +51,6 @@ func (sm *StateMachine) AddState(state State) error {
 
 	return nil
 }
-
 
 func (sm *StateMachine) AddTransition(transition Transition, fromState State, toState State) error {
 
@@ -119,25 +116,23 @@ func (sm *StateMachine) DoTransition(transition Transition) error {
 		return fmt.Errorf("Did not expect transition %v from state: %v", transition, *sm.currentState)
 	}
 
-
 	return nil
 
 }
 
+func (sm *StateMachine) InState(state State) (inState bool) {
 
-func (sm *StateMachine) InState(state State) (inState bool, err error) {
-
-	sm.mutex.Lock()
-	defer sm.mutex.Unlock()
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
 
 	if sm.currentState == nil {
-		return false, fmt.Errorf("Invalid current state (nil)")
+		Warnf(KeyAll, "StateMachine InState() called, but current state is nil.  This indicates a bug")
+		return false
 	}
 
-	return sm.currentState.state == state, nil
+	return sm.currentState.state == state
 
 }
-
 
 func (sm *StateMachine) setInitialState(state State) error {
 
