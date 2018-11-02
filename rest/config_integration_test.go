@@ -318,6 +318,10 @@ func GetTestBootstrapConfigOrPanic() (config *BootstrapConfig) {
 
 func SendAdminRequest(gw *SyncGateway, method, resource string, body string) *TestResponse {
 
+	// Lock due to reading the server context
+	gw.lock.RLock()
+	defer gw.lock.RUnlock()
+
 	// TODO: don't recreate admin handler for every request
 
 	// TODO: merge w/ RestTester
