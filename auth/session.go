@@ -61,6 +61,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 			return nil, err
 		}
 		base.AddDbPathToCookie(rq, cookie)
+		auth.AddDomainToCookie(rq, cookie)
 		cookie.Expires = session.Expiration
 		http.SetCookie(response, cookie)
 	}

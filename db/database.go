@@ -93,12 +93,13 @@ type DatabaseContextOptions struct {
 	OIDCOptions               *auth.OIDCOptions
 	DBOnlineCallback          DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions             ImportOptions
-	EnableXattr               bool   // Use xattr for _sync
-	LocalDocExpirySecs        uint32 // The _local doc expiry time in seconds
-	SessionCookieName         string // Pass-through DbConfig.SessionCookieName
-	AllowConflicts            *bool  // False forbids creating conflicts
-	SendWWWAuthenticateHeader *bool  // False disables setting of 'WWW-Authenticate' header
-	UseViews                  bool   // Force use of views
+	EnableXattr               bool              // Use xattr for _sync
+	LocalDocExpirySecs        uint32            // The _local doc expiry time in seconds
+	SessionCookieName         string            // Pass-through DbConfig.SessionCookieName
+	SessionCookieDomains      map[string]string // Pass-through DbConfig.SessionCookieDomains
+	AllowConflicts            *bool             // False forbids creating conflicts
+	SendWWWAuthenticateHeader *bool             // False disables setting of 'WWW-Authenticate' header
+	UseViews                  bool              // Force use of views
 }
 
 type OidcTestProviderOptions struct {
@@ -574,6 +575,7 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	if context.Options.SessionCookieName != "" {
 		authenticator.SetSessionCookieName(context.Options.SessionCookieName)
 	}
+	authenticator.SetSessionCookieDomains(context.Options.SessionCookieDomains)
 	return authenticator
 }
 

@@ -189,6 +189,7 @@ type DbConfig struct {
 	LocalDocExpirySecs        *uint32                        `json:"local_doc_expiry_secs,omitempty"`        // The _local doc expiry time in seconds
 	EnableXattrs              *bool                          `json:"enable_shared_bucket_access,omitempty"`  // Whether to use extended attributes to store _sync metadata
 	SessionCookieName         string                         `json:"session_cookie_name"`                    // Custom per-database session cookie name
+	SessionCookieDomains      map[string]string            	 `json:"session_cookie_domains,omitempty"`       // Cookie domain name per request origin: keys = origins, values = domain name to set for session cookies from that origin.
 	AllowConflicts            *bool                          `json:"allow_conflicts,omitempty"`              // False forbids creating conflicts
 	NumIndexReplicas          *uint                          `json:"num_index_replicas"`                     // Number of GSI index replicas used for core indexes
 	UseViews                  bool                           `json:"use_views"`                              // Force use of views instead of GSI

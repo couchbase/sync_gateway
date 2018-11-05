@@ -130,6 +130,7 @@ func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sess
 	}
 	cookie := auth.MakeSessionCookie(session)
 	base.AddDbPathToCookie(h.rq, cookie)
+	auth.AddDomainToCookie(h.rq, cookie)
 	http.SetCookie(h.response, cookie)
 	return session.ID, nil
 }
