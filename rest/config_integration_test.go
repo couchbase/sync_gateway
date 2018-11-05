@@ -178,6 +178,8 @@ func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
 
 }
 
+// TODO: this currently fails with the -race flag enabled, with these errors: https://gist.github.com/tleyden/c549ef36ba6b147919dcdf273a61b8bf
+// Failing for known reasons that are documented in comments on the SyncGateway.ServerContext field.
 func TestGatewayUpdateGeneralConfig(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {

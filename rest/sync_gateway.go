@@ -45,7 +45,8 @@ type SyncGateway struct {
 	MetaKVCache map[string]*msgrpc.MetaKVPair
 
 	// The SG server context
-	// TODO: there are data races that need to be addressed when the metakv observer goroutine updates this
+	// TODO: there are data races that need to be addressed when the metakv observer goroutine updates this concurrently w/
+	//       other goroutines accessing this *ServerContext
 	ServerContext *ServerContext
 
 	// The "bootstrap config" for this gateway to be able to connect to Couchbase Server to get actual config
