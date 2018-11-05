@@ -51,16 +51,11 @@ type SyncGateway struct {
 	// The "bootstrap config" for this gateway to be able to connect to Couchbase Server to get actual config
 	BootstrapConfig BootstrapConfig
 
-	// The cancel function for the MetaKVObserveChildren grpc stream
-	CancelMetaKVObserveChildren context.CancelFunc
+	// Context + cancel function for the CancelPushStats grpc stream
+	PushStatsContext base.CancellableContext
 
-	// The cancel function for pushing stats
-	CancelPushStats context.CancelFunc
-
-	MetaKVObserveChildrenContext context.Context
-
-	// A state machine to track the current Sync Gateway state (not started, running, finished)
-	StateMachine *base.StateMachine
+	// Context + cancel function for the MetaKVObserveChildren grpc stream
+	MetaKVObserveChildrenContext base.CancellableContext
 }
 
 // The bootstrap config might contain a list of Couchbase Server hostnames to connect to.
@@ -85,7 +80,6 @@ func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
 		Hostname:        GATEWAY_HOSTNAME, // TODO: discover from the OS
 		MetaKVCache:     map[string]*msgrpc.MetaKVPair{},
 	}
-	gw.initStateMachine()
 
 	err := gw.ConnectMobileSvc(ChooseMobileSvcFirst)
 	if err != nil {
@@ -97,10 +91,6 @@ func NewSyncGateway(bootstrapConfig BootstrapConfig) *SyncGateway {
 
 // Start a Sync Gateway
 func (gw *SyncGateway) Start() error {
-
-	if err := gw.StateMachine.DoTransition(Start); err != nil {
-		return err
-	}
 
 	// Load snapshot of configuration from MetaKV
 	if err := gw.LoadConfigSnapshot(); err != nil {
@@ -333,14 +323,11 @@ func (gw *SyncGateway) ObserveMetaKVChangesRetry(path string) error {
 		base.Debugf(base.KeyMobileService, "Starting ObserveMetaKVChanges on path: %v", path)
 		if err := gw.ObserveMetaKVChanges(path); err != nil {
 			base.Infof(base.KeyMobileService, "ObserveMetaKVChanges on path: %v returned error: %+v.", path, err)
-			if gw.StateMachine.InState(Finished) {
-				base.Tracef(base.KeyMobileService, "ObserveMetaKVChanges for path %v returned error %v, but SG in finished state.  Not retrying", path, err)
-				return nil
-			}
 
+			// Has the context been cancelled?  If so, stop the retry loop
 			isDone := false
 			select {
-			case <-gw.MetaKVObserveChildrenContext.Done():
+			case <-gw.MetaKVObserveChildrenContext.Context.Done():
 				isDone = true
 			default:
 				isDone = false
@@ -360,16 +347,17 @@ func (gw *SyncGateway) ObserveMetaKVChangesRetry(path string) error {
 // Observe changes in MetaKV in a retry loop and delegates handling to other methods.  Does not retry on errors.
 func (gw *SyncGateway) ObserveMetaKVChanges(path string) error {
 
-	ctx := context.Background()
-	ctx, gw.CancelMetaKVObserveChildren = context.WithCancel(ctx)
+	// Create and store a cancellable context for the ObserveMetaKVChnages grpc stream
+	gw.MetaKVObserveChildrenContext = base.CancellableContext{}
+	gw.MetaKVObserveChildrenContext.Context, gw.MetaKVObserveChildrenContext.CancelFunc = context.WithCancel(context.Background())
 
-	gw.MetaKVObserveChildrenContext = ctx
-
-	stream, err := gw.GrpcClient.MetaKVObserveChildren(ctx, &msgrpc.MetaKVPath{Path: path})
+	// Create grpc stream
+	stream, err := gw.GrpcClient.MetaKVObserveChildren(gw.MetaKVObserveChildrenContext.Context, &msgrpc.MetaKVPath{Path: path})
 	if err != nil {
 		return pkgerrors.Wrapf(err, "Error calling MetaKVObserveChildren for path: %v", path)
 	}
 
+	// Receive results from stream
 	for {
 
 		updatedConfigKV, err := stream.Recv()
@@ -570,30 +558,39 @@ func (gw *SyncGateway) PushStatsStreamWithReconnect() error {
 		base.Debugf(base.KeyMobileService, "Starting push stats stream")
 
 		if err := gw.PushStatsStream(); err != nil {
-			log.Printf("Error pushing stats: %v", err)
+			base.Errorf(base.KeyMobileService, "Error pushing stats: %+v", err)
 		}
 
 		// TODO: this should be a backoff / retry and only give up after a number of retries
 		// TODO: also, this should happen in a central place in the codebase rather than arbitrarily in the PushStatsStream()
 		for {
 
-			if gw.StateMachine.InState(Finished) {
-				base.Tracef(base.KeyMobileService, "SG finished.  Not retrying to reconnect to grpc server")
+			// Has the context been cancelled?  If so, stop the retry loop
+			isDone := false
+			select {
+			case <-gw.PushStatsContext.Context.Done():
+				isDone = true
+			default:
+				isDone = false
+			}
+
+			if isDone {
+				base.Tracef(base.KeyMobileService, "PushStatsStream has been cancelled.  Not retrying")
 				return nil
 			}
 
-			log.Printf("Attempting to reconnect to grpc server")
+			base.Debugf(base.KeyMobileService, "Attempting to reconnect to grpc server")
 
 			err := gw.ConnectMobileSvc(ChooseMobileSvcRandom)
 			if err != nil {
-				log.Printf("Error connecting to grpc server: %v", err)
+
+				base.Errorf(base.KeyMobileService, "Error connecting to grpc server: %+v.  Retrying", err)
 
 				// Retry
 				time.Sleep(time.Second)
 				continue
 			}
 
-			break
 		}
 
 	}
@@ -603,10 +600,12 @@ func (gw *SyncGateway) PushStatsStreamWithReconnect() error {
 // TODO: this section needs complete overhaul, should be moved to it's own file/struct
 func (gw *SyncGateway) PushStatsStream() error {
 
-	// Stream stats
-	ctx := context.Background()
-	ctx, gw.CancelPushStats = context.WithCancel(ctx)
-	stream, err := gw.GrpcClient.SendStats(ctx)
+	// Create and store a cancellable context for the PushSTats grpc stream
+	gw.PushStatsContext = base.CancellableContext{}
+	gw.PushStatsContext.Context, gw.PushStatsContext.CancelFunc = context.WithCancel(context.Background())
+
+	// Create grpc stream to push stats
+	stream, err := gw.GrpcClient.SendStats(gw.PushStatsContext.Context)
 	if err != nil {
 		return pkgerrors.Wrapf(err, "Error opening stream to send stats")
 	}
@@ -639,7 +638,12 @@ func (gw *SyncGateway) PushStatsStream() error {
 		}
 		i += 1
 
-		time.Sleep(time.Second * time.Duration(base.PushStatsFreqSeconds))
+		select {
+		case <-time.After(time.Second * time.Duration(base.PushStatsFreqSeconds)):
+		case <-gw.PushStatsContext.Context.Done():
+			base.Debugf(base.KeyMobileService, "PushStatsContext cancelled, breaking out of PushStatsStream loop")
+			break
+		}
 
 	}
 
@@ -656,38 +660,13 @@ func (gw *SyncGateway) Wait() {
 // Close any resources associated with this Sync Gateway instance
 func (gw *SyncGateway) Stop() error {
 
-	if err := gw.StateMachine.DoTransition(Stop); err != nil {
-		return err
-	}
-
-	gw.CancelMetaKVObserveChildren()
-	gw.CancelPushStats()
+	gw.PushStatsContext.CancelFunc()
+	gw.MetaKVObserveChildrenContext.CancelFunc()
 
 	gw.GrpcConn.Close()
 	gw.ServerContext.Close()
 
 	return nil
-
-}
-
-//
-// ┌──────────────┐               ┌──────────────┐               ┌──────────────┐
-// │              │               │              │               │              │
-// │  NotStarted  │────Start()───▶│   Running    │─────Stop()───▶│   Finished   │◀─┐
-// │              │               │              │               │              │  │
-// └──────────────┘               └──────────────┘               └──────────────┘  │
-//                                                                       │         │
-//                                                                       │   Start/Stop()
-//                                                                       └─────────┘
-//
-func (gw *SyncGateway) initStateMachine() {
-
-	stateMachine := base.NewStateMachine(NotStarted)
-	stateMachine.AddState(Running)
-	stateMachine.AddState(Finished)
-	stateMachine.AddTransition(Start, NotStarted, Running)
-	stateMachine.AddTransition(Stop, Running, Finished)
-	gw.StateMachine = stateMachine
 
 }
 

@@ -96,11 +96,9 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 		t.Fatalf("Error waiting for expected response code: %v", err)
 	}
 
-	time.Sleep(time.Second * 10)
+	gw.Stop()
 
-	gw.CancelMetaKVObserveChildren()
-	time.Sleep(time.Second * 30)
-
+	time.Sleep(time.Second * 5)
 }
 
 func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
