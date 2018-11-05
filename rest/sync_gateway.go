@@ -57,6 +57,8 @@ type SyncGateway struct {
 	// The cancel function for pushing stats
 	CancelPushStats context.CancelFunc
 
+	MetaKVObserveChildrenContext context.Context
+
 	// A state machine to track the current Sync Gateway state (not started, running, finished)
 	StateMachine *base.StateMachine
 }
@@ -127,8 +129,8 @@ func (gw *SyncGateway) Start() error {
 		return err
 	}
 
-	// Kick off goroutine to observe stream of metakv changes.  To shut this goroutine down, call gw.Stop()
-	// followed by gw.CancelMetaKVObserveChildren()
+	// Kick off goroutine to observe stream of metakv changes.  To shut this goroutine down, call gw.Stop(),
+	// which will call gw.CancelMetaKVObserveChildren()
 	go func() {
 		err := gw.ObserveMetaKVChangesRetry(mobile_service.KeyDirMobileRoot)
 		if err != nil {
@@ -137,8 +139,8 @@ func (gw *SyncGateway) Start() error {
 		}
 	}()
 
-	// Kick off goroutine to push stats.  To shut this goroutine down, call gw.Stop()
-	// followed by gw.CancelPushStats()
+	// Kick off goroutine to push stats.  To shut this goroutine down, call gw.Stop(),
+	// which will call gw.CancelPushStats()
 	go func() {
 		if err := gw.PushStatsStreamWithReconnect(); err != nil {
 			base.Warnf(base.KeyMobileService, fmt.Sprintf("Error pushing stats: %v.  Stats will no longer be pushed.", err))
@@ -335,6 +337,20 @@ func (gw *SyncGateway) ObserveMetaKVChangesRetry(path string) error {
 				base.Tracef(base.KeyMobileService, "ObserveMetaKVChanges for path %v returned error %v, but SG in finished state.  Not retrying", path, err)
 				return nil
 			}
+
+			isDone := false
+			select {
+			case <-gw.MetaKVObserveChildrenContext.Done():
+				isDone = true
+			default:
+				isDone = false
+			}
+
+			if isDone {
+				base.Tracef(base.KeyMobileService, "ObserveMetaKVChanges for path %v returned error %v, but ObserveMetaKVChanges has been cancelled.  Not retrying", path, err)
+				return nil
+			}
+
 			time.Sleep(time.Second * 1)
 			gw.ObserveMetaKVChanges(path)
 		}
@@ -346,6 +362,9 @@ func (gw *SyncGateway) ObserveMetaKVChanges(path string) error {
 
 	ctx := context.Background()
 	ctx, gw.CancelMetaKVObserveChildren = context.WithCancel(ctx)
+
+	gw.MetaKVObserveChildrenContext = ctx
+
 	stream, err := gw.GrpcClient.MetaKVObserveChildren(ctx, &msgrpc.MetaKVPath{Path: path})
 	if err != nil {
 		return pkgerrors.Wrapf(err, "Error calling MetaKVObserveChildren for path: %v", path)
