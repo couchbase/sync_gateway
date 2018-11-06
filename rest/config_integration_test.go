@@ -96,9 +96,6 @@ func TestGatewayLoadDbConfigAfterStartup(t *testing.T) {
 		t.Fatalf("Error waiting for expected response code: %v", err)
 	}
 
-	gw.Stop()
-
-	time.Sleep(time.Second * 5)
 }
 
 func TestGatewayUpdateDeleteDbConfig(t *testing.T) {
