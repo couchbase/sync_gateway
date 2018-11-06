@@ -41,7 +41,7 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 	dbExpvars.Add("sequence_gets", 1)
 	last, err := s.incrWithRetry(SyncSeqKey, 0)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error from Incr in lastSequence(): %v", err)
+		base.Warnf(base.KeyAll, "Error from Incr in lastSequence() for bucket %s: %v", base.MD(s.bucket.GetName()), err)
 	}
 	return last, err
 }
@@ -66,7 +66,7 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 	dbExpvars.Add("sequence_reserves", 1)
 	max, err := s.incrWithRetry(SyncSeqKey, numToReserve)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
+		base.Warnf(base.KeyAll, "Error from Incr in _reserveSequences(%d) for bucket %s: %v", numToReserve, base.MD(s.bucket.GetName()), err)
 		return err
 	}
 	s.max = max
@@ -99,13 +99,13 @@ func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint
 		max, err = s.bucket.Incr(key, numToReserve, numToReserve, 0)
 		if err != nil {
 			retries++
-			base.Warnf(base.KeyAll, "Error from Incr in sequence allocator (%d) - attempt (%d/%d): %v", numToReserve, retries, kMaxIncrRetries, err)
+			base.Warnf(base.KeyAll, "Error from Incr in sequence allocator (%d) for bucket %s - attempt (%d/%d): %v", numToReserve, base.MD(s.bucket.GetName()), retries, kMaxIncrRetries, err)
 			time.Sleep(10 * time.Millisecond)
 		} else {
 			return max, err
 		}
 	}
-	base.Warnf(base.KeyAll, "Too many unsuccessful Incr attempts in sequence allocator - giving up (%d): %v", numToReserve, err)
+	base.Warnf(base.KeyAll, "Too many unsuccessful Incr attempts in sequence allocator for bucket %s - giving up (%d): %v", numToReserve, base.MD(s.bucket.GetName()), err)
 	// Note: 'err' should be non-nil here (from Incr response above) but as described on issue #1810, there are cases where the value
 	//       is nil by the time we log the warning above.  This seems most likely to be a race/scope issue with the callback processing
 	//       in the go-couchbase Incr/Do, and the sleep after the last attempt above.  Forcing the error to non-nil here to ensure we don't
@@ -119,6 +119,6 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
 	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
-	base.Debugf(base.KeyCRUD, "Released unused sequence #%d", sequence)
+	base.Debugf(base.KeyCRUD, "Released unused sequence #%d for bucket %s", sequence, base.MD(s.bucket.GetName()))
 	return err
 }

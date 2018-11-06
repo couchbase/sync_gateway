@@ -110,7 +110,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 
 	if tree == nil {
-		// base.Warnf(base.KeyAll, "No RevTree for input %q", inputjson)
+		// db.Warnf(base.KeyAll, "No RevTree for input %q", inputjson)
 		return nil
 	}
 	var rep revTreeList

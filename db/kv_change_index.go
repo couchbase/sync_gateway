@@ -179,7 +179,7 @@ func (k *kvChangeIndex) setIndexPartitionMap(partitionMap base.IndexPartitionMap
 
 func (k *kvChangeIndex) DocChanged(event sgbucket.FeedEvent) {
 	// no-op for reader
-	base.Warnf(base.KeyAll, "DocChanged called in index reader for doc %s, will be ignored.", base.UD(event.Key))
+	k.context.Warnf(base.KeyAll, "DocChanged called in index reader for doc %s, will be ignored.", base.UD(event.Key))
 }
 
 // No-ops - pending refactoring of change_cache.go to remove usage (or deprecation of
@@ -413,7 +413,7 @@ func (k *kvChangeIndex) generatePartitionStats() (PartitionStats, error) {
 }
 
 // The following are no-ops for kvChangeIndex.
-func (k *kvChangeIndex) Start() (error) { return nil }
+func (k *kvChangeIndex) Start() error { return nil }
 
 func IsNotFoundError(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "not found")

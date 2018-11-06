@@ -62,10 +62,10 @@ func (s *Shadower) readTapFeed() {
 		switch event.Opcode {
 		case sgbucket.FeedOpBeginBackfill:
 			if vbucketsFilling == 0 {
-				base.Infof(base.KeyShadow, "Reading history of external bucket")
+				s.context.Infof(base.KeyShadow, "Reading history of external bucket")
 			}
 			vbucketsFilling++
-			// base.Infof(base.KeyShadow, "Reading history of external bucket")
+			// db.Infof(base.KeyShadow, "Reading history of external bucket")
 		case sgbucket.FeedOpMutation, sgbucket.FeedOpDeletion:
 			key := string(event.Key)
 			if !s.docIDMatches(key) {
@@ -77,16 +77,16 @@ func (s *Shadower) readTapFeed() {
 			}
 			err := s.pullDocument(key, event.Value, isDeletion, event.Cas, event.Flags)
 			if err != nil {
-				base.Warnf(base.KeyAll, "Error applying change %q from external bucket: %v", base.UD(key), err)
+				s.context.Warnf(base.KeyAll, "Error applying change %q from external bucket: %v", base.UD(key), err)
 			}
 			atomic.AddUint64(&s.pullCount, 1)
 		case sgbucket.FeedOpEndBackfill:
 			if vbucketsFilling--; vbucketsFilling == 0 {
-				base.Infof(base.KeyShadow, "Caught up with history of external bucket")
+				s.context.Infof(base.KeyShadow, "Caught up with history of external bucket")
 			}
 		}
 	}
-	base.Infof(base.KeyShadow, "End of tap feed(?)")
+	s.context.Infof(base.KeyShadow, "End of tap feed(?)")
 }
 
 // Gets an external document and applies it as a new revision to the managed document.
@@ -96,7 +96,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		body = Body{BodyDeleted: true}
 	} else {
 		if err := body.Unmarshal(value); err != nil {
-			base.Infof(base.KeyShadow, "Doc %q is not JSON; skipping", base.UD(key))
+			s.context.Infof(base.KeyShadow, "Doc %q is not JSON; skipping", base.UD(key))
 			return nil
 		}
 	}
@@ -112,7 +112,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		if doc.UpstreamCAS != nil && *doc.UpstreamCAS == cas {
 			return nil, nil, nil, base.ErrUpdateCancel // we already have this doc revision
 		}
-		base.Debugf(base.KeyShadow, "Pulling %q, CAS=%x ... have UpstreamRev=%q, UpstreamCAS=%x", base.UD(key), cas, doc.UpstreamRev, doc.UpstreamCAS)
+		db.Debugf(base.KeyShadow, "Pulling %q, CAS=%x ... have UpstreamRev=%q, UpstreamCAS=%x", base.UD(key), cas, doc.UpstreamRev, doc.UpstreamCAS)
 
 		// Compare this body to the current revision body to see if it's an echo:
 		parentRev := doc.UpstreamRev
@@ -131,17 +131,17 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 				// parent rev does not exist in the doc history
 				// set parentRev to "", this will create a  new conflicting
 				//branch in the revtree
-				base.Warnf(base.KeyAll, "Shadow: Adding revision as conflict branch, parent id %q is missing", parentRev)
+				db.Warnf(base.KeyAll, "Shadow: Adding revision as conflict branch, parent id %q is missing", parentRev)
 				parentRev = ""
 			}
 			if err = doc.History.addRevision(doc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDeletion}); err != nil {
 				return nil, nil, nil, err
 			}
-			base.Infof(base.KeyShadow, "Pulling %q, CAS=%x --> rev %q", base.UD(key), cas, newRev)
+			db.Infof(base.KeyShadow, "Pulling %q, CAS=%x --> rev %q", base.UD(key), cas, newRev)
 		} else {
 			// We already have this rev; but don't cancel, because we do need to update the
 			// doc's UpstreamRev/UpstreamCAS fields.
-			base.Debugf(base.KeyShadow, "Not pulling %q, CAS=%x (echo of rev %q)", base.UD(key), cas, newRev)
+			db.Debugf(base.KeyShadow, "Not pulling %q, CAS=%x (echo of rev %q)", base.UD(key), cas, newRev)
 		}
 		return body, nil, nil, nil
 	})
@@ -162,18 +162,18 @@ func (s *Shadower) PushRevision(doc *document) {
 
 	var err error
 	if doc.Flags&channels.Deleted != 0 {
-		base.Infof(base.KeyShadow, "Pushing %q, rev %q [deletion]", base.UD(doc.ID), doc.CurrentRev)
+		s.context.Infof(base.KeyShadow, "Pushing %q, rev %q [deletion]", base.UD(doc.ID), doc.CurrentRev)
 		err = s.bucket.Delete(doc.ID)
 	} else {
-		base.Infof(base.KeyShadow, "Pushing %q, rev %q", base.UD(doc.ID), doc.CurrentRev)
+		s.context.Infof(base.KeyShadow, "Pushing %q, rev %q", base.UD(doc.ID), doc.CurrentRev)
 		body := doc.getRevisionBody(doc.CurrentRev, s.context.RevisionBodyLoader)
 		if body == nil {
-			base.Warnf(base.KeyAll, "Can't get rev %q.%q to push to external bucket", base.UD(doc.ID), doc.CurrentRev)
+			s.context.Warnf(base.KeyAll, "Can't get rev %q.%q to push to external bucket", base.UD(doc.ID), doc.CurrentRev)
 			return
 		}
 		err = s.bucket.Set(doc.ID, 0, body)
 	}
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error pushing rev of %q to external bucket: %v", base.UD(doc.ID), err)
+		s.context.Warnf(base.KeyAll, "Error pushing rev of %q to external bucket: %v", base.UD(doc.ID), err)
 	}
 }

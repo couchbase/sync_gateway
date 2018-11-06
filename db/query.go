@@ -236,7 +236,7 @@ func (context *DatabaseContext) QueryAccess(username string) (sgbucket.QueryResu
 
 	// N1QL Query
 	if username == "" {
-		base.Warnf(base.KeyAll, "QueryAccess called with empty username - returning empty result iterator")
+		context.Warnf(base.KeyAll, "QueryAccess called with empty username - returning empty result iterator")
 		return &EmptyResultIterator{}, nil
 	}
 
@@ -257,7 +257,7 @@ func (context *DatabaseContext) QueryRoleAccess(username string) (sgbucket.Query
 
 	// N1QL Query
 	if username == "" {
-		base.Warnf(base.KeyAll, "QueryRoleAccess called with empty username")
+		context.Warnf(base.KeyAll, "QueryRoleAccess called with empty username")
 		return &EmptyResultIterator{}, nil
 	}
 
@@ -272,7 +272,7 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 
 	if context.Options.UseViews {
 		opts := changesViewOptions(channelName, startSeq, endSeq, limit)
-		base.Infof(base.KeyCRUD, "issuing view query")
+		context.Infof(base.KeyCRUD, "issuing view query")
 		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewChannels, opts)
 	}
 

@@ -105,7 +105,7 @@ func (doc *document) Body() Body {
 	if doc._body == nil && doc.rawBody != nil {
 		err := doc._body.Unmarshal(doc.rawBody)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
+			base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body for doc %s: %s", base.UD(doc.ID), err)
 			return nil
 		}
 		doc.rawBody = nil

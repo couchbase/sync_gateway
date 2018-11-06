@@ -197,7 +197,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 			//  2. SG previously crashed between index creation and index build.
 			// GSI doesn't like concurrent build requests, so wait and recheck index state before treating as option 2.
 			// (see known issue documented https://developer.couchbase.com/documentation/server/current/n1ql/n1ql-language-reference/build-index.html)
-			base.Infof(base.KeyQuery, "Index %s already in deferred state - waiting 10s to re-evaluate before issuing build to avoid concurrent build requests.", indexName)
+			base.Infof(base.KeyQuery, "Index %s already in deferred state for bucket %s - waiting 10s to re-evaluate before issuing build to avoid concurrent build requests.", indexName, base.MD(bucket.GetName()))
 			time.Sleep(10 * time.Second)
 			exists, indexMeta, metaErr = bucket.GetIndexMeta(indexName)
 			if metaErr != nil || indexMeta == nil {
@@ -211,7 +211,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 	}
 
 	// Create index
-	base.Infof(base.KeyQuery, "Index %s doesn't exist, creating...", indexName)
+	base.Infof(base.KeyQuery, "Index %s doesn't exist for bucket %s, creating...", indexName, base.MD(bucket.GetName()))
 	isDeferred = true
 	indexExpression := replaceSyncTokensIndex(i.expression, useXattrs)
 	filterExpression := replaceSyncTokensIndex(i.filterExpression, useXattrs)
@@ -239,7 +239,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 			if strings.Contains(err.Error(), "not enough indexer nodes") {
 				return false, fmt.Errorf("Unable to create indexes with the specified number of replicas (%d).  Increase the number of index nodes, or modify 'num_index_replicas' in your Sync Gateway database config.", numReplica), nil
 			}
-			base.Warnf(base.KeyAll, "Error creating index %s: %v - will retry.", indexName, err)
+			base.Warnf(base.KeyAll, "Error creating index %s for bucket %s: %v - will retry.", indexName, base.MD(bucket.GetName()), err)
 		}
 		return err != nil, err, nil
 	}
@@ -251,7 +251,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		return false, pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
 	}
 
-	base.Infof(base.KeyQuery, "Index %s created successfully", indexName)
+	base.Infof(base.KeyQuery, "Index %s created successfully for bucket %s.", indexName, base.MD(bucket.GetName()))
 	return isDeferred, nil
 }
 
@@ -260,10 +260,10 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if !ok {
-		base.Warnf(base.KeyAll, "Using a non-Couchbase bucket: %T - indexes will not be created.", bucket)
+		base.Warnf(base.KeyAll, "Using a non-Couchbase bucket: %s (%T) - indexes will not be created.", base.MD(bucket.GetName()), bucket)
 		return nil
 	}
-	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
+	base.Infof(base.KeyAll, "Initializing indexes with numReplicas for bucket %s: %d...", base.MD(bucket.GetName()), numReplicas)
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
@@ -285,7 +285,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 	if len(deferredIndexes) > 0 {
 		buildErr := gocbBucket.BuildDeferredIndexes(deferredIndexes)
 		if buildErr != nil {
-			base.Infof(base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
+			base.Infof(base.KeyQuery, "Error building deferred indexes for bucket %s.  Error: %v", base.MD(bucket.GetName()), buildErr)
 			return buildErr
 		}
 	}
@@ -310,14 +310,14 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 			indexesWg.Add(1)
 			go func(index SGIndex) {
 				defer indexesWg.Done()
-				base.Debugf(base.KeyQuery, "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
+				base.Debugf(base.KeyQuery, "Verifying index availability for index %s...", base.MD(bucket.GetName()), base.MD(index.fullIndexName(useXattrs)))
 				queryStatement := replaceSyncTokensQuery(index.readinessQuery, useXattrs)
 				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
 				if queryErr != nil {
 					base.Warnf(base.KeyAll, "Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
 				}
-				base.Debugf(base.KeyQuery, "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
+				base.Debugf(base.KeyQuery, "Index %s verified as ready for bucket %s", base.MD(index.fullIndexName(useXattrs)), base.MD(bucket.GetName()))
 			}(sgIndex)
 		}
 	}
@@ -358,7 +358,7 @@ func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool)
 
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if !ok {
-		base.Warnf(base.KeyAll, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
+		base.Warnf(base.KeyAll, "Cannot remove obsolete indexes for non-gocb bucket %s - skipping.", base.MD(bucket.GetName()))
 		return
 	}
 

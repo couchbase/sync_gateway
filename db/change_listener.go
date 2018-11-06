@@ -88,7 +88,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 	default:
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
-		base.Infof(base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.UD(bucket.GetName()))
+		base.Infof(base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.MD(bucket.GetName()))
 		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent)
 	}
 }
@@ -129,7 +129,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 // Stops a changeListener. Any pending Wait() calls will immediately return false.
 func (listener *changeListener) Stop() {
 
-	base.Debugf(base.KeyChanges, "changeListener.Stop() called")
+	base.Debugf(base.KeyChanges, "changeListener.Stop() called for bucket %s", base.MD(listener.bucketName))
 
 	if listener.terminator != nil {
 		close(listener.terminator)
@@ -182,7 +182,7 @@ func (listener *changeListener) NotifyCheckForTermination(keys base.Set) {
 		listener.terminateCheckCounter = 0
 	}
 
-	base.Debugf(base.KeyChanges, "Notifying to check for _changes feed termination")
+	base.Debugf(base.KeyChanges, "Notifying to check for _changes feed termination for bucket %s", base.MD(listener.bucketName))
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -191,7 +191,7 @@ func (listener *changeListener) notifyStopping() {
 	listener.tapNotifier.L.Lock()
 	listener.counter = 0
 	listener.keyCounts = map[string]uint64{}
-	base.Debugf(base.KeyChanges, "Notifying that changeListener is stopping")
+	base.Debugf(base.KeyChanges, "Notifying that changeListener is stopping for bucket %s", base.MD(listener.bucketName))
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }

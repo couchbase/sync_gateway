@@ -88,7 +88,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 	entries := make(LogEntries, 0)
 	activeEntryCount := 0
 
-	base.Infof(base.KeyCache, "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), startSeq, endSeq, options.Limit)
+	dbc.Infof(base.KeyCache, "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), startSeq, endSeq, options.Limit)
 
 	// Loop for active-only and limit handling.
 	// The set of changes we get back from the query applies the limit, but includes both active and non-active entries.  When retrieving changes w/ activeOnly=true and a limit,
@@ -140,7 +140,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 			if len(entries) > 0 {
 				break
 			}
-			base.Infof(base.KeyCache, "    Got no rows from query for channel:%q", base.UD(channelName))
+			dbc.Infof(base.KeyCache, "    Got no rows from query for channel:%q", base.UD(channelName))
 			return nil, nil
 		}
 
@@ -157,7 +157,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 			// Otherwise update startkey and re-query
 
 			startSeq = highSeq + 1
-			base.Infof(base.KeyCache, "  Querying 'channels' for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), highSeq+1, endSeq, options.Limit)
+			dbc.Infof(base.KeyCache, "  Querying 'channels' for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), highSeq+1, endSeq, options.Limit)
 		} else {
 			// If not active-only, we only need one iteration of the loop - the limit applied to the view query is sufficient
 			break
@@ -165,11 +165,11 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 	}
 
 	if len(entries) > 0 {
-		base.Infof(base.KeyCache, "    Got %d rows from query for %q: #%d ... #%d",
+		dbc.Infof(base.KeyCache, "    Got %d rows from query for %q: #%d ... #%d",
 			len(entries), base.UD(channelName), entries[0].Sequence, entries[len(entries)-1].Sequence)
 	}
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
-		base.Infof(base.KeyAll, "Channel query took %v to return %d rows.  Channel: %s StartSeq: %d EndSeq: %d Limit: %d",
+		dbc.Infof(base.KeyAll, "Channel query took %v to return %d rows.  Channel: %s StartSeq: %d EndSeq: %d Limit: %d",
 			elapsed, len(entries), base.UD(channelName), startSeq, endSeq, options.Limit)
 	}
 	changeCacheExpvars.Add("view_queries", 1)
