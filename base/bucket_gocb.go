@@ -1238,9 +1238,6 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 
 		if removeErr != nil {
 			shouldRetry = isRecoverableGoCBError(removeErr)
-			if !shouldRetry {
-				Warnf(KeyAll, "Unrecoverable error attempting to update xattr for key:%s cas:%d deleteBody:%v error:%v", UD(k), cas, deleteBody, removeErr)
-			}
 			return shouldRetry, removeErr, uint64(0)
 		}
 		return false, nil, uint64(docFragment.Cas())
@@ -1695,6 +1692,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 			// Retry on cas failure
 		default:
 			// WriteWithXattr already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
+			Infof(KeyCRUD, "Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), err)
 			return emptyCas, writeErr
 		}
 
