@@ -17,11 +17,7 @@ const (
 //
 func init() {
 	StatsExpvars.Add("changesFeeds_total", 0)
-	StatsExpvars.Add("changesFeeds_active", 0)
 	StatsExpvars.Add("requests_total", 0)
-	StatsExpvars.Add("requests_active", 0)
-	StatsExpvars.Add("revisionCache_hits", 0)
-	StatsExpvars.Add("revisionCache_misses", 0)
 	TimingExpvars = NewSequenceTimingExpvar(KTimingExpvarFrequency, KTimingExpvarVbNo, "st")
 	StatsExpvars.Set("sequenceTiming", TimingExpvars)
 

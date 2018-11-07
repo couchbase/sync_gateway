@@ -17,6 +17,7 @@ type Replicator struct {
 	replications      map[string]sgreplicate.SGReplication
 	replicationParams map[string]sgreplicate.ReplicationParameters
 	lock              sync.RWMutex
+	stats             *ReplicationStats
 }
 
 type Task struct {
@@ -91,6 +92,12 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 	}
 
 	Infof(KeyReplicate, "Creating replication with parameters %s", UD(parameters))
+
+	// Create stats for this replication
+	replicationStats := NewReplicationStats()
+	perReplicationStats := PerReplicationStats()
+	perReplicationStats.Set(parameters.ReplicationId, replicationStats.ExpvarMap())
+	r.stats = replicationStats
 
 	var (
 		replication sgreplicate.SGReplication
@@ -202,6 +209,8 @@ func (r *Replicator) stopReplication(parameters sgreplicate.ReplicationParameter
 
 	delete(r.replications, repID)
 	delete(r.replicationParams, repID)
+
+	RemovePerReplicationStats(repID)
 
 	return taskForReplication(replication, parameters), nil
 }

@@ -127,8 +127,6 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
 	base.StatsExpvars.Add("requests_total", 1)
-	base.StatsExpvars.Add("requests_active", 1)
-	defer base.StatsExpvars.Add("requests_active", -1)
 
 	var err error
 	if h.server.config.CompressResponses == nil || *h.server.config.CompressResponses {

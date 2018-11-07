@@ -28,6 +28,7 @@ type FileLogger struct {
 	// collateBuffer is used to store log entries to batch up multiple logs.
 	collateBuffer chan string
 	level         LogLevel
+	name          string
 	output        io.Writer
 	logger        *log.Logger
 }
@@ -47,15 +48,17 @@ type logRotationConfig struct {
 }
 
 // NewFileLogger returms a new FileLogger from a config.
-func NewFileLogger(config FileLoggerConfig, level LogLevel, logFilePath string, minAge int) (*FileLogger, error) {
+func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int) (*FileLogger, error) {
+
 	// validate and set defaults
-	if err := config.init(level, logFilePath, minAge); err != nil {
+	if err := config.init(level, name, logFilePath, minAge); err != nil {
 		return nil, err
 	}
 
 	logger := &FileLogger{
 		Enabled: *config.Enabled,
 		level:   level,
+		name: name,
 		output:  config.Output,
 		logger:  log.New(config.Output, "", 0),
 	}
@@ -107,7 +110,7 @@ func (l *FileLogger) shouldLog(logLevel LogLevel) bool {
 		l.level >= logLevel
 }
 
-func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int) error {
+func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath string, minAge int) error {
 	if lfc == nil {
 		return errors.New("nil LogFileConfig")
 	}
@@ -138,7 +141,7 @@ func (lfc *FileLoggerConfig) init(level LogLevel, logFilePath string, minAge int
 
 	if lfc.Output == nil {
 		lfc.Output = newLumberjackOutput(
-			filepath.Join(filepath.FromSlash(logFilePath), "sg_"+level.String()+".log"),
+			filepath.Join(filepath.FromSlash(logFilePath), "sg_"+name+".log"),
 			*lfc.Rotation.MaxSize,
 			*lfc.Rotation.MaxAge,
 		)

@@ -23,11 +23,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"runtime"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
+	"expvar"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -41,12 +43,13 @@ const KDefaultNumShards = 16
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config      *ServerConfig
-	databases_  map[string]*db.DatabaseContext
-	lock        sync.RWMutex
-	statsTicker *time.Ticker
-	HTTPClient  *http.Client
-	replicator  *base.Replicator
+	config             *ServerConfig
+	databases_         map[string]*db.DatabaseContext
+	lock               sync.RWMutex
+	statsTicker        *time.Ticker
+	statsLoggingTicker *time.Ticker
+	HTTPClient         *http.Client
+	replicator         *base.Replicator
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
@@ -84,6 +87,8 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		sc.startStatsReporter()
 	}
 
+	sc.startStatsLogger()
+
 	return sc
 }
 
@@ -96,6 +101,7 @@ func (sc *ServerContext) PostStartup() {
 	}
 
 	sc.startReplicators()
+
 }
 
 // startReplicators will start up any replicators for the ServerContext
@@ -144,6 +150,8 @@ func (sc *ServerContext) Close() {
 	}
 
 	sc.stopStatsReporter()
+	sc.stopStatsLogger()
+
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
 		if ctx.EventMgr.HasHandlerForEvent(db.DBStateChange) {
@@ -944,6 +952,92 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 		return nil, err
 	}
 	return &config, nil
+}
+
+//////// STATS LOGGING
+
+func (sc *ServerContext) startStatsLogger() {
+
+	statsLogFrequencySecs := 5
+	if sc.config.Unsupported != nil && sc.config.Unsupported.Logging != nil {
+		statsLogFrequencySecs = sc.config.Unsupported.Logging.StatsLogFrequencySecs
+	}
+
+	interval := time.Second * time.Duration(statsLogFrequencySecs)
+
+	sc.statsLoggingTicker = time.NewTicker(interval)
+	go func() {
+		for range sc.statsLoggingTicker.C {
+			sc.logStats()
+		}
+	}()
+	base.Infof(base.KeyAll, "Logging stats with frequency: %v", interval)
+
+}
+
+func (sc *ServerContext) stopStatsLogger() {
+	if sc.statsLoggingTicker != nil {
+		sc.statsLoggingTicker.Stop()
+	}
+}
+
+func (sc *ServerContext) logStats() {
+
+	AddGoRuntimeStats()
+
+	// Create wrapper expvar map in order to add a timestamp field for logging purposes
+	logStats := new(expvar.Map).Init()
+	logStats.Set("stats", base.Stats)
+	logStats.Set("unix_epoch_timestamp", base.ExpvarInt64Val(time.Now().Unix()))
+
+	// Marshal expvar map w/ timestamp to string and write to logs
+	base.Statsf([]byte(logStats.String()))
+
+}
+
+func AddGoRuntimeStats() {
+
+	statsResourceUtilization := base.StatsResourceUtilization()
+
+	// Num goroutines
+	statsResourceUtilization.Set("num_goroutines", base.ExpvarIntVal(runtime.NumGoroutine()))
+
+	// Read memstats (relatively expensive)
+	memstats := runtime.MemStats{}
+	runtime.ReadMemStats(&memstats)
+
+	// memory_rss (rss = resident set size)
+	// Calculate this the same way that FTS does.
+	// TODO: document why this works (blog post or email thread)
+	// TODO: according to the PRD, this should figure out the total memory in the system and express as a ratio of total memory
+	memory_rss := int(memstats.Sys - memstats.HeapReleased) // convert uint -> int since that's what expvar supports
+	statsResourceUtilization.Set("memory_rss_bytes", base.ExpvarIntVal(memory_rss))
+
+	// Sys
+	statsResourceUtilization.Set("go_memstats_sys", base.ExpvarIntVal(int(memstats.Sys)))
+
+	// HeapAlloc
+	statsResourceUtilization.Set("go_memstats_heapalloc", base.ExpvarIntVal(int(memstats.HeapAlloc)))
+
+	// HeapIdle
+	statsResourceUtilization.Set("go_memstats_heapidle", base.ExpvarIntVal(int(memstats.HeapIdle)))
+
+	// HeapInuse
+	statsResourceUtilization.Set("go_memstats_heapinuse", base.ExpvarIntVal(int(memstats.HeapInuse)))
+
+	// HeapReleased
+	statsResourceUtilization.Set("go_memstats_heapreleased", base.ExpvarIntVal(int(memstats.HeapReleased)))
+
+	// StackInuse
+	statsResourceUtilization.Set("go_memstats_stackinuse", base.ExpvarIntVal(int(memstats.StackInuse)))
+
+	// StackSys
+	statsResourceUtilization.Set("go_memstats_stacksys", base.ExpvarIntVal(int(memstats.StackSys)))
+
+	// PauseTotalNs
+	statsResourceUtilization.Set("go_memstats_pausetotalns", base.ExpvarIntVal(int(memstats.PauseTotalNs)))
+
+
 }
 
 //////// STATISTICS REPORT:

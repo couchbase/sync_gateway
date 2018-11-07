@@ -35,6 +35,8 @@ type LoggingConfig struct {
 	Warn           FileLoggerConfig    `json:"warn,omitempty"`            // Warn log file output
 	Info           FileLoggerConfig    `json:"info,omitempty"`            // Info log file output
 	Debug          FileLoggerConfig    `json:"debug,omitempty"`           // Debug log file output
+	Stats          FileLoggerConfig    `json:"stats,omitempty"`           // Stats log file output
+
 
 	DeprecatedDefaultLog *LogAppenderConfig `json:"default,omitempty"` // Deprecated "default" logging option.
 }
@@ -61,22 +63,28 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 		return warnings, err
 	}
 
-	errorLogger, err = NewFileLogger(c.Error, LevelError, c.LogFilePath, errorMinAge)
+	errorLogger, err = NewFileLogger(c.Error, LevelError, LevelError.String(), c.LogFilePath, errorMinAge)
 	if err != nil {
 		return warnings, err
 	}
 
-	warnLogger, err = NewFileLogger(c.Warn, LevelWarn, c.LogFilePath, warnMinAge)
+	warnLogger, err = NewFileLogger(c.Warn, LevelWarn, LevelWarn.String(), c.LogFilePath, warnMinAge)
 	if err != nil {
 		return warnings, err
 	}
 
-	infoLogger, err = NewFileLogger(c.Info, LevelInfo, c.LogFilePath, infoMinAge)
+	infoLogger, err = NewFileLogger(c.Info, LevelInfo, LevelInfo.String(), c.LogFilePath, infoMinAge)
 	if err != nil {
 		return warnings, err
 	}
 
-	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, c.LogFilePath, debugMinAge)
+	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, LevelDebug.String(), c.LogFilePath, debugMinAge)
+	if err != nil {
+		return warnings, err
+	}
+
+	// TODO: should this be using "LevelNone"?  There is no level checking in the stats logging, so wasn't sure what to use
+	statsLogger, err = NewFileLogger(c.Stats, LevelNone, "stats", c.LogFilePath, infoMinAge)
 	if err != nil {
 		return warnings, err
 	}

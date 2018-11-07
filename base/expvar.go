@@ -23,6 +23,213 @@ const (
 
 var TimingExpvarsEnabled = false
 
+var (
+
+	// Top level stats expvar map
+	Stats *expvar.Map
+)
+
+const (
+	PerDb          = "per_db"
+	PerReplication = "per_replication"
+	Global         = "global"
+)
+
+const (
+
+	// StatsCache
+	StatKeyRevisionCacheHits    = "rev_cache_hits"
+	StatKeyRevisionCacheMisses  = "rev_cache_misses"
+	StatKeyChanCachePerf        = "chan_cache_perf"
+	StatKeyRevCacheUtilization  = "rev_cache_utilization"
+	StatKeyChanCacheUtilization = "chan_cache_utilization"
+	StatKeyNumSkippedSeqs       = "num_skipped_seqs"
+
+	// StatsDatabase
+	StatKeyNumReplicationConnsActive     = "num_replication_conns_active"
+	StatKeyNumReplicationsPerSec         = "new_replications_per_sec"
+	StatKeyNumReplicationsClosed         = "num_replications_closed"
+	StatKeyDocWritesPerSec               = "doc_writes_per_sec"
+	StatKeyDocReadsPerSec                = "doc_reads_per_sec"
+	StatKeyReplicationReadsPerSec        = "replication_reads_per_sec"
+	StatKeyReplicationErrors             = "replication_errors"
+	StatKeyReplicationRate               = "replication_rate"
+	StatKeyReplicationBacklog            = "replication_backlog"
+	StatKeyConnsPerUser                  = "conns_per_user"
+	StatKeyNewConnsPerSec                = "new_conns_per_sec"
+	StatKeyPercentReplicationsContinuous = "percent_replications_continuous"
+	StatKeyNumberInitialSync             = "number_initial_sync"
+	StatKeyOldRevsDocMisses              = "old_revs_doc_misses"
+
+	// StatsDeltaSync
+	StatKeyNetBandwidthSavings = "net_bandwidth_savings"
+	StatKeyDeltaHitRatio       = "delta_hit_ratio"
+
+	// StatsConvergenceImport
+	StatKeyImportBacklog = "import_backlog"
+
+	// StatsCBLReplicationPush
+	StatKeyWriteProcessingTime  = "write_processing_time"
+	StatKeySyncTime             = "sync_time"
+	StatKeyProposeChangeTime    = "propose_change_time"
+	StatKeyProposeChangesPerSec = "propose_changes_per_sec"
+
+	// StatsCBLReplicationPull
+	StatKeyRequestChangesLatency = "request_changes_latency"
+	StatKeyDcpCachingLatency     = "dcp_caching_latency"
+	StatKeyRevSendLatency        = "rev_send_latency"
+	StatKeyInitPullLatency       = "init_pull_latency"
+	StatKeyMaxPending            = "max_pending"
+
+	// StatsCBLReplicationCommon
+	StatKeyAvgDocSizePull       = "avg_doc_size_pull"
+	StatKeyAvgDocSizePush       = "avg_doc_size_push"
+	StatKeyPercentDocsConflicts = "percent_docs_conflicts"
+	StatKeyAvgWritesInConflict  = "avg_writes_in_conflict"
+	StatKeyTotalNumAttachments  = "total_num_attachments"
+	StatKeyAvgAttachmentSize    = "avg_attachment_size"
+
+	// StatsSecurity
+	StatKeyAccessQueriesPerSec = "access_queries_per_sec"
+	StatKeyNumDocsRejected     = "num_docs_rejected"
+	StatKeyNumAccessErrors     = "num_access_errors"
+	StatKeyAuthSuccessCount    = "auth_success_count"
+	StatKeyAuthFailedCount     = "auth_failed_count"
+
+	// StatsGsiViews
+	StatKeyTotalQueriesPerSec      = "total_queries_per_sec"
+	StatKeyChannelQueriesPerSec    = "channel_queries_per_sec"
+	StatKeyRoleAccessQueriesPerSec = "role_access_queries_per_sec"
+	StatKeyQueryProcessingTime     = "query_processing_time"
+
+	// StatsReplication
+	StatKeyNumDocsTransferred       = "num_docs_transferred"
+	StatKeyNumDocsTransferredPerSec = "num_docs_transferred_per_sec"
+	StatKeyBandwidth                = "bandwidth"
+	StatKeyDataReplicatedSize       = "data_replicated_size"
+	StatKeyNumAttachmentsTransfered = "num_attachments_transferred"
+	StatKeyNumTempFailures          = "num_temp_failures"
+	StatKeyNumPermFailures          = "num_perm_failures"
+	StatKeyPendingBacklog           = "pending_backlog"
+	StatKeyBatchSize                = "batchsize"
+	StatKeyDocTransferLatency       = "doc_transfer_latency"
+	StatKeyDocsCheckedSent          = "docs_checked_sent"
+)
+
+const (
+	StatsGroupKeySyncGateway          = "syncgateway"
+	StatsGroupKeyResourceUtilization  = "resource_utilization"
+	StatsGroupKeyCache                = "cache"
+	StatsGroupKeyDatabase             = "database"
+	StatsGroupKeyDeltaSync            = "delta_sync"
+	StatsGroupKeyConvergenceImport    = "convergence_import"
+	StatsGroupKeyCblReplicationPush   = "cbl_replication_push"
+	StatsGroupKeyCblReplicationPull   = "cbl_replication_pull"
+	StatsGroupKeyCblReplicationCommon = "cbl_replication_common"
+	StatsGroupKeySecurity             = "security"
+	StatsGroupKeyGsiViews             = "gsi_views"
+)
+
+func init() {
+
+	// Create the expvars structure:
+	//
+	// {
+	//    "syncgateway": {
+	//      "global": {..}
+	//      "per_db": {
+	//         "db1": {..}
+	//      }
+	//      "per_replication": {
+	//         "repl1": {..}
+	//      }
+	// }
+
+	// All stats will be stored in expvars under the "syncgateway" key.
+	Stats = expvar.NewMap(StatsGroupKeySyncGateway)
+
+	globalStats := new(expvar.Map).Init()
+
+	Stats.Set(Global, globalStats)
+
+	Stats.Set(PerDb, new(expvar.Map).Init())
+
+	Stats.Set(PerReplication, new(expvar.Map).Init())
+
+	// Add StatsResourceUtilization under GlobalStats
+	globalStats.Set(StatsGroupKeyResourceUtilization, new(expvar.Map).Init())
+
+}
+
+func PerDbStats() *expvar.Map {
+	raw := Stats.Get(PerDb)
+	return raw.(*expvar.Map)
+}
+
+func PerReplicationStats() *expvar.Map {
+	raw := Stats.Get(PerReplication)
+	return raw.(*expvar.Map)
+}
+
+func GlobalStats() *expvar.Map {
+	raw := Stats.Get(Global)
+	return raw.(*expvar.Map)
+}
+
+func StatsResourceUtilization() *expvar.Map {
+	globalStats := GlobalStats()
+	raw := globalStats.Get(StatsGroupKeyResourceUtilization)
+	return raw.(*expvar.Map)
+}
+
+// Removes the per-replication stats for this replication id by
+// regenerating a new expvar map without that particular replicationUuid
+func RemovePerReplicationStats(replicationUuid string) {
+
+	newPerReplicationStats := new(expvar.Map).Init()
+
+	// Callback for every kv pair on the old map
+	callback := func(keyVal expvar.KeyValue) {
+		// Skip the per-replication stats for the replication being removed
+		if keyVal.Key == replicationUuid {
+			return
+		}
+		// Copy over the other stats
+		newPerReplicationStats.Set(keyVal.Key, keyVal.Value)
+	}
+
+	// Execute callback for all kv pairs
+	PerReplicationStats().Do(callback)
+
+	// Switch the expvar stats over to the new version
+	Stats.Set(PerReplication, newPerReplicationStats)
+
+}
+
+// Removes the per-database stats for this database by
+// regenerating a new expvar map without that particular dbname
+func RemovePerDbStats(dbName string) {
+
+	newPerDbStats := new(expvar.Map).Init()
+
+	// Callback for every kv pair on the old map
+	callback := func(keyVal expvar.KeyValue) {
+		// Skip the per-db stats for the db being removed
+		if keyVal.Key == dbName {
+			return
+		}
+		// Copy over the other stats
+		newPerDbStats.Set(keyVal.Key, keyVal.Value)
+	}
+
+	// Execute callback for all kv pairs
+	PerDbStats().Do(callback)
+
+	// Switch the expvar stats over to the new version
+	Stats.Set(PerDb, newPerDbStats)
+
+}
+
 // SequenceTimingExpvarMap attempts to track timing information for targeted sequences as they move through the system.
 // Creates a map that looks like the following, where Indexed, Polled, Changes are the incoming stages, the values are
 // nanosecond timestamps, and the sequences are the target sequences, based on the specified vb and frequency (in the example
