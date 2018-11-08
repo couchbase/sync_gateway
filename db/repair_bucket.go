@@ -123,7 +123,7 @@ This is how the view is iterated:
                                                     NumProcessed: 0
 
 * It starts with an empty start key
-* For the next pageo, it uses the last key processed as the new start key
+* For the next page, it uses the last key processed as the new start key
 * Since the start key is inclusive, it will see the start key twice (on first page, and on next page)
 * If it's iterating a result page and sees a doc with the start key (eg, doc3 in above), it will ignore it so it doesn't process it twice
 * Stop condition: if NumProcessed is 0, because the only doc in result set had already been processed.
