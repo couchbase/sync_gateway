@@ -12,6 +12,7 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
@@ -38,6 +39,8 @@ type ChannelComputer interface {
 type userByEmailInfo struct {
 	Username string
 }
+
+const PrincipalUpdateMaxCasRetries = 20 // Maximum number of attempted retries on cas failure updating principal
 
 // Creates a new Authenticator that stores user info in the given Bucket.
 func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer) *Authenticator {
@@ -104,7 +107,7 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
-	_, err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+	cas, err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
@@ -150,6 +153,12 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 	if err != nil && err != base.ErrUpdateCancel {
 		return nil, err
 	}
+
+	// If a principal was found, set the cas
+	if princ != nil {
+		princ.SetCas(cas)
+	}
+
 	return princ, nil
 }
 
@@ -224,15 +233,19 @@ func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	return auth.GetUser(info.Username)
 }
 
-// Saves the information for a user/role.
+// CAS-safe save of the information for a user/role.  For updates, expects the incoming principal to have
+// p.Cas to be set correctly (done automatically for principals retrieved via auth functions).
 func (auth *Authenticator) Save(p Principal) error {
 	if err := p.validate(); err != nil {
 		return err
 	}
 
-	if err := auth.bucket.Set(p.DocID(), 0, p); err != nil {
-		return err
+	casOut, writeErr := auth.bucket.WriteCas(p.DocID(), 0, 0, p.Cas(), p, 0)
+	if writeErr != nil {
+		return writeErr
 	}
+	p.SetCas(casOut)
+
 	if user, ok := p.(User); ok {
 		if user.Email() != "" {
 			info := userByEmailInfo{user.Name()}
@@ -249,29 +262,144 @@ func (auth *Authenticator) Save(p Principal) error {
 
 // Invalidates the channel list of a user/role by saving its Channels() property as nil.
 func (auth *Authenticator) InvalidateChannels(p Principal) error {
-	if p != nil && p.Channels() != nil {
+	invalidateChannelsCallback := func(p Principal) (updatedPrincipal Principal, err error) {
+
+		if p == nil || p.Channels() == nil {
+			return p, base.ErrUpdateCancel
+		}
+
 		base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(p.Name()))
 		if auth.channelComputer != nil && !auth.channelComputer.UseGlobalSequence() {
 			p.SetPreviousChannels(p.Channels())
 		}
 		p.setChannels(nil)
-		if err := auth.Save(p); err != nil {
-			return err
-		}
+		return p, nil
 	}
-	return nil
+	return auth.casUpdatePrincipal(p, invalidateChannelsCallback)
 }
 
 // Invalidates the role list of a user by saving its Roles() property as nil.
 func (auth *Authenticator) InvalidateRoles(user User) error {
-	if user != nil && user.Channels() != nil {
+
+	invalidateRolesCallback := func(p Principal) (updatedPrincipal Principal, err error) {
+		user, ok := p.(User)
+		if !ok {
+			return p, base.ErrUpdateCancel
+		}
+		if user == nil || user.RoleNames() == nil {
+			return p, base.ErrUpdateCancel
+		}
 		base.Infof(base.KeyAccess, "Invalidate roles of %q", base.UD(user.Name()))
 		user.setRolesSince(nil)
-		if err := auth.Save(user); err != nil {
+		return user, nil
+	}
+
+	return auth.casUpdatePrincipal(user, invalidateRolesCallback)
+}
+
+// Updates user email and writes user doc
+func (auth *Authenticator) UpdateUserEmail(u User, email string) error {
+
+	updateUserEmailCallback := func(currentPrincipal Principal) (updatedPrincipal Principal, err error) {
+		currentUser, ok := currentPrincipal.(User)
+		if !ok {
+			return nil, base.ErrUpdateCancel
+		}
+
+		if currentUser.Email() == email {
+			return currentUser, base.ErrUpdateCancel
+		}
+
+		base.Debugf(base.KeyAuth, "Updating user %s email to: %v", base.UD(u.Name()), base.UD(email))
+		err = currentUser.SetEmail(email)
+		if err != nil {
+			return nil, err
+		}
+		return currentUser, nil
+	}
+
+	return auth.casUpdatePrincipal(u, updateUserEmailCallback)
+}
+
+// rehashPassword will check the bcrypt cost of the given hash
+// and will reset the user's password if the configured cost has since changed
+// Callers must verify password is correct before calling this
+func (auth *Authenticator) rehashPassword(user User, password string) error {
+
+	// Exit early if bcryptCost has not been set
+	if !bcryptCostChanged {
+		return nil
+	}
+	var hashCost int
+	rehashPasswordCallback := func(currentPrincipal Principal) (updatedPrincipal Principal, err error) {
+
+		currentUserImpl, ok := currentPrincipal.(*userImpl)
+		if !ok {
+			return nil, base.ErrUpdateCancel
+		}
+
+		hashCost, costErr := bcrypt.Cost(currentUserImpl.PasswordHash_)
+		if costErr == nil && hashCost != bcryptCost {
+			// the cost of the existing hash is different than the configured bcrypt cost.
+			// We'll re-hash the password to adopt the new cost:
+			currentUserImpl.SetPassword(password)
+			return currentUserImpl, nil
+		} else {
+			return nil, base.ErrUpdateCancel
+		}
+	}
+
+	if err := auth.casUpdatePrincipal(user, rehashPasswordCallback); err != nil {
+		return err
+	}
+
+	base.Debugf(base.KeyAuth, "User account %q changed password hash cost from %d to %d",
+		base.UD(user.Name()), hashCost, bcryptCost)
+	return nil
+}
+
+type casUpdatePrincipalCallback func(p Principal) (updatedPrincipal Principal, err error)
+
+// Updates principal using the specified callback function, then does a cas-safe write of the updated principal
+// to the bucket.  On CAS failure, reloads the principal and reapplies the update, with up to PrincipalUpdateMaxCasRetries
+func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePrincipalCallback) error {
+	var err error
+	for i := 1; i <= PrincipalUpdateMaxCasRetries; i++ {
+		updatedPrincipal, err := callback(p)
+		if err != nil {
+			if err == base.ErrUpdateCancel {
+				return nil
+			} else {
+				return err
+			}
+		}
+
+		saveErr := auth.Save(updatedPrincipal)
+		if saveErr == nil {
+			return nil
+		}
+
+		if !base.IsCasMismatch(saveErr) {
+			return err
+		}
+
+		base.Infof(base.KeyAuth, "CAS mismatch in casUpdatePrincipal, retrying.  Principal:%s", base.UD(p.Name()))
+
+		switch p.(type) {
+		case User:
+			p, err = auth.GetUser(p.Name())
+		case Role:
+			p, err = auth.GetRole(p.Name())
+		default:
+			return fmt.Errorf("Unsupported principal type in casUpdatePrincipal (%T)", p)
+		}
+
+		if err != nil {
 			return err
 		}
 	}
-	return nil
+	base.Infof(base.KeyAuth, "Unable to update principal after %d attempts.  Principal:%s Error:%v", PrincipalUpdateMaxCasRetries, base.UD(p.Name()), err)
+	return err
 }
 
 // Deletes a user/role.
@@ -384,13 +512,9 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 	// If user found, check whether the email needs to be updated (e.g. user has changed email in
 	// external auth system)
 	if user != nil && identity.Email != "" {
-		if identity.Email != user.Email() {
-			base.Debugf(base.KeyAuth, "Updating user email to: %v", base.UD(identity.Email))
-			if err := user.SetEmail(identity.Email); err == nil {
-				auth.Save(user)
-			} else {
-				base.Warnf(base.KeyAll, "Unable to set user email to %v for OIDC", base.UD(identity.Email))
-			}
+		err := auth.UpdateUserEmail(user, identity.Email)
+		if err != nil {
+			base.Warnf(base.KeyAll, "Unable to set user email to %v for OIDC", base.UD(identity.Email))
 		}
 	}
 
@@ -400,7 +524,7 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 		base.Debugf(base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
 		var err error
 		user, err = auth.RegisterNewUser(username, identity.Email)
-		if err != nil {
+		if err != nil && !base.IsCasMismatch(err) {
 			base.Debugf(base.KeyAuth, "Error registering new user: %v", err)
 			return nil, jwt, err
 		}
@@ -410,7 +534,8 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 }
 
 // Registers a new user account based on the given verified username and optional email address.
-// Password will be random. The user will have access to no channels.
+// Password will be random. The user will have access to no channels.  If the user already exists,
+// returns the existing user along with the cas failure error
 func (auth *Authenticator) RegisterNewUser(username, email string) (User, error) {
 	user, err := auth.NewUser(username, base.GenerateRandomSecret(), base.Set{})
 	if err != nil {
@@ -422,7 +547,9 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 	}
 
 	err = auth.Save(user)
-	if err != nil {
+	if base.IsCasMismatch(err) {
+		return auth.GetUser(username)
+	} else if err != nil {
 		return nil, err
 	}
 

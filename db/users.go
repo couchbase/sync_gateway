@@ -56,6 +56,7 @@ func (p PrincipalConfig) IsPasswordValid(allowEmptyPass bool) (isValid bool, rea
 	return true, ""
 }
 
+// Test-only version of GetPrincipal that doesn't trigger channel/role recalculation
 func (dbc *DatabaseContext) GetPrincipal(name string, isUser bool) (info *PrincipalConfig, err error) {
 	var princ auth.Principal
 	if isUser {
@@ -87,83 +88,89 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 	var princ auth.Principal
 	var user auth.User
 	authenticator := dbc.Authenticator()
-	if isUser {
-		user, err = authenticator.GetUser(*newInfo.Name)
-		princ = user
-	} else {
-		princ, err = authenticator.GetRole(*newInfo.Name)
-	}
-	if err != nil {
-		return
-	}
 
-	changed := false
-	replaced = (princ != nil)
-	if !replaced {
-		// If user/role didn't exist already, instantiate a new one:
+	// Retry handling for cas failure during principal update.  Limiting retry attempts
+	// to PrincipalUpdateMaxCasRetries defensively to avoid unexpected retry loops.
+	for i := 1; i <= auth.PrincipalUpdateMaxCasRetries; i++ {
 		if isUser {
+			user, err = authenticator.GetUser(*newInfo.Name)
+			princ = user
+		} else {
+			princ, err = authenticator.GetRole(*newInfo.Name)
+		}
+		if err != nil {
+			return replaced, err
+		}
+
+		changed := false
+		replaced = (princ != nil)
+		if !replaced {
+			// If user/role didn't exist already, instantiate a new one:
+			if isUser {
+				isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
+				if !isValid {
+					err = base.HTTPErrorf(http.StatusBadRequest, reason)
+					return replaced, err
+				}
+				user, err = authenticator.NewUser(*newInfo.Name, "", nil)
+				princ = user
+			} else {
+				princ, err = authenticator.NewRole(*newInfo.Name, nil)
+			}
+			if err != nil {
+				return replaced, err
+			}
+			changed = true
+		} else if !allowReplace {
+			err = base.HTTPErrorf(http.StatusConflict, "Already exists")
+			return
+		} else if isUser && newInfo.Password != nil {
 			isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
 			if !isValid {
 				err = base.HTTPErrorf(http.StatusBadRequest, reason)
-				return
+				return replaced, err
 			}
-			user, err = authenticator.NewUser(*newInfo.Name, "", nil)
-			princ = user
-		} else {
-			princ, err = authenticator.NewRole(*newInfo.Name, nil)
 		}
-		if err != nil {
-			return
-		}
-		changed = true
-	} else if !allowReplace {
-		err = base.HTTPErrorf(http.StatusConflict, "Already exists")
-		return
-	} else if isUser && newInfo.Password != nil {
-		isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
-		if !isValid {
-			err = base.HTTPErrorf(http.StatusBadRequest, reason)
-			return
-		}
-	}
 
-	updatedChannels := princ.ExplicitChannels()
-	if updatedChannels == nil {
-		updatedChannels = ch.TimedSet{}
-	}
-	if !updatedChannels.Equals(newInfo.ExplicitChannels) {
-		changed = true
-	}
-
-	var updatedRoles ch.TimedSet
-
-	// Then the user-specific fields like roles:
-	if isUser {
-		if newInfo.Email != user.Email() {
-			user.SetEmail(newInfo.Email)
-			changed = true
+		updatedChannels := princ.ExplicitChannels()
+		if updatedChannels == nil {
+			updatedChannels = ch.TimedSet{}
 		}
-		if newInfo.Password != nil {
-			user.SetPassword(*newInfo.Password)
-			changed = true
-		}
-		if newInfo.Disabled != user.Disabled() {
-			user.SetDisabled(newInfo.Disabled)
+		if !updatedChannels.Equals(newInfo.ExplicitChannels) {
 			changed = true
 		}
 
-		updatedRoles = user.ExplicitRoles()
-		if updatedRoles == nil {
-			updatedRoles = ch.TimedSet{}
-		}
-		if !updatedRoles.Equals(base.SetFromArray(newInfo.ExplicitRoleNames)) {
-			changed = true
+		var updatedRoles ch.TimedSet
+
+		// Then the user-specific fields like roles:
+		if isUser {
+			if newInfo.Email != user.Email() {
+				user.SetEmail(newInfo.Email)
+				changed = true
+			}
+			if newInfo.Password != nil {
+				user.SetPassword(*newInfo.Password)
+				changed = true
+			}
+			if newInfo.Disabled != user.Disabled() {
+				user.SetDisabled(newInfo.Disabled)
+				changed = true
+			}
+
+			updatedRoles = user.ExplicitRoles()
+			if updatedRoles == nil {
+				updatedRoles = ch.TimedSet{}
+			}
+			if !updatedRoles.Equals(base.SetFromArray(newInfo.ExplicitRoleNames)) {
+				changed = true
+			}
 		}
 
-	}
+		// And finally save the Principal:
+		if !changed {
+			return replaced, nil
+		}
 
-	// And finally save the Principal:
-	if changed {
 		// Update the persistent sequence number of this principal (only allocate a sequence when needed - issue #673):
 		nextSeq := uint64(0)
 		if dbc.writeSequences() {
@@ -186,6 +193,14 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 			}
 		}
 		err = authenticator.Save(princ)
+		// On cas error, retry.  Otherwise break out of loop
+		if base.IsCasMismatch(err) {
+			base.Infof(base.KeyAuth, "CAS mismatch updating principal %s - will retry", base.UD(princ.Name()))
+		} else {
+			return replaced, err
+		}
 	}
-	return
+
+	base.Errorf(base.KeyAuth, "CAS mismatch updating principal %s - exceeded retry count. Latest failure: %v", base.UD(princ.Name()), err)
+	return replaced, err
 }

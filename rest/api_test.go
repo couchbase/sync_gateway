@@ -1965,6 +1965,8 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc4", `{"channels":["WB", "Cinemax"]}`), 201)
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc5", `{"channels":"Cinemax"}`), 201)
 
+	guest, err = a.GetUser("")
+	goassert.Equals(t, err, nil)
 	guest.SetDisabled(true)
 	err = a.Save(guest)
 	goassert.Equals(t, err, nil)
