@@ -211,7 +211,10 @@ func (user *userImpl) Authenticate(password string) bool {
 
 		// password was correct, we'll rehash the password if required
 		// e.g: in the case of bcryptCost changes
-		user.auth.rehashPassword(user, password)
+		if err := user.auth.rehashPassword(user, password); err != nil {
+			// rehash is best effort, just log a warning on error.
+			base.Warnf(base.KeyAll, "Error when rehashing password for user %s: %v", base.UD(user.Name()), err)
+		}
 	} else {
 		// no hash, but (incorrect) password provided
 		if password != "" {

@@ -153,7 +153,7 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 			if email != user.Email() {
 				if err = h.db.Authenticator().UpdateUserEmail(user, email); err != nil {
 					// Failure to update email during session creation is non-critical, log and continue.
-					base.Infof(base.KeyAuth, "Unable to update email for user %s during session creation. Error:%v,", base.UD(username), err)
+					base.Infof(base.KeyAuth, "Unable to update email for user %s during session creation.  Session will still be created. Error:%v,", base.UD(username), err)
 				}
 			}
 		} else {
@@ -172,6 +172,7 @@ func (h *handler) makeSessionFromNameAndEmail(username, email string, createUser
 		}
 
 		// Create a User with the given username, email address, and a random password.
+		// CAS mismatch indicates the user has been created by another request underneath us, can continue with session creation
 		user, err = h.db.Authenticator().RegisterNewUser(username, email)
 		if err != nil && !base.IsCasMismatch(err) {
 			return err

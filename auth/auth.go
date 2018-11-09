@@ -318,11 +318,7 @@ func (auth *Authenticator) UpdateUserEmail(u User, email string) error {
 		return currentUser, nil
 	}
 
-	updateError := auth.casUpdatePrincipal(u, updateUserEmailCallback)
-	if updateError != nil {
-		base.Infof(base.KeyAuth, "Unable to update user email.  User:%s Error:%v", base.UD(u.Name()), updateError)
-	}
-	return updateError
+	return auth.casUpdatePrincipal(u, updateUserEmailCallback)
 }
 
 // rehashPassword will check the bcrypt cost of the given hash
@@ -353,11 +349,10 @@ func (auth *Authenticator) rehashPassword(user User, password string) error {
 		}
 	}
 
-	err := auth.casUpdatePrincipal(user, rehashPasswordCallback)
-	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to save user when rehashing password: %v", err)
+	if err := auth.casUpdatePrincipal(user, rehashPasswordCallback); err != nil {
 		return err
 	}
+
 	base.Debugf(base.KeyAuth, "User account %q changed password hash cost from %d to %d",
 		base.UD(user.Name()), hashCost, bcryptCost)
 	return nil

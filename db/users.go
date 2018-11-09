@@ -201,6 +201,6 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		}
 	}
 
-	base.Infof(base.KeyAuth, "CAS mismatch updating principal %s - exceeded retry count. Latest failure: %v", base.UD(princ.Name()), err)
+	base.Errorf(base.KeyAuth, "CAS mismatch updating principal %s - exceeded retry count. Latest failure: %v", base.UD(princ.Name()), err)
 	return replaced, err
 }
