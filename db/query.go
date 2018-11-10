@@ -75,8 +75,8 @@ var QueryChannels = SGQuery{
 	name: QueryTypeChannels,
 	statement: fmt.Sprintf(
 		"SELECT [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][1] AS seq, "+
-			"[op.name, LEAST($sync, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][2] AS rRev, "+
-			"[op.name, LEAST($sync, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][3] AS rDel, "+
+			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][2] AS rRev, "+
+			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][3] AS rDel, "+
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
 			"META(`%s`).id AS id "+
@@ -210,6 +210,20 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 	return results, err
 }
 
+// N1QlExplain issues an EXPLAIN query for the given statement
+func (context *DatabaseContext) N1QLExplain(statement string, params interface{}, consistency gocb.ConsistencyMode) (results gocb.QueryResults, err error) {
+
+	explainStatement := fmt.Sprintf("EXPLAIN %s", statement)
+
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
+	if !ok {
+		return nil, errors.New("Cannot perform N1QL query on non-Couchbase bucket.")
+	}
+
+	results, err = gocbBucket.Query(explainStatement, params, consistency, false)
+	return results, err
+}
+
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
 func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
 
@@ -239,11 +253,16 @@ func (context *DatabaseContext) QueryAccess(username string) (sgbucket.QueryResu
 		base.Warnf(base.KeyAll, "QueryAccess called with empty username - returning empty result iterator")
 		return &EmptyResultIterator{}, nil
 	}
-
+	accessQueryStatement := context.buildAccessQuery(username)
 	// Can't use prepared query because username is in select clause
-	accessQueryStatement := replaceSyncTokensQuery(QueryAccess.statement, context.UseXattrs())
-	accessQueryStatement = strings.Replace(accessQueryStatement, "$"+QueryParamUserName, username, -1)
 	return context.N1QLQueryWithStats(QueryAccess.name, accessQueryStatement, nil, gocb.RequestPlus, QueryAccess.adhoc)
+}
+
+// Builds the query statement for an access N1QL query.
+func (context *DatabaseContext) buildAccessQuery(username string) string {
+	statement := replaceSyncTokensQuery(QueryAccess.statement, context.UseXattrs())
+	statement = strings.Replace(statement, "$"+QueryParamUserName, username, -1)
+	return statement
 }
 
 // Query to compute the set of roles granted to the specified user via the Sync Function
@@ -261,10 +280,16 @@ func (context *DatabaseContext) QueryRoleAccess(username string) (sgbucket.Query
 		return &EmptyResultIterator{}, nil
 	}
 
+	accessQueryStatement := context.buildRoleAccessQuery(username)
 	// Can't use prepared query because username is in select clause
-	accessQueryStatement := replaceSyncTokensQuery(QueryRoleAccess.statement, context.UseXattrs())
-	accessQueryStatement = strings.Replace(accessQueryStatement, "$"+QueryParamUserName, username, -1)
 	return context.N1QLQueryWithStats(QueryTypeRoleAccess, accessQueryStatement, nil, gocb.RequestPlus, true)
+}
+
+// Builds the query statement for a roleAccess N1QL query.
+func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
+	statement := replaceSyncTokensQuery(QueryRoleAccess.statement, context.UseXattrs())
+	statement = strings.Replace(statement, "$"+QueryParamUserName, username, -1)
+	return statement
 }
 
 // Query to compute the set of documents assigned to the specified channel within the sequence range
@@ -280,6 +305,14 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 	// Standard channel index/query doesn't support the star channel.  For star channel queries, QueryStarChannel
 	// (which is backed by IndexAllDocs) is used.  The QueryStarChannel result schema is a subset of the
 	// QueryChannels result schema (removal handling isn't needed for the star channel).
+	channelQueryStatement, params := context.buildChannelsQuery(channelName, startSeq, endSeq, limit)
+
+	return context.N1QLQueryWithStats(QueryChannels.name, channelQueryStatement, params, gocb.RequestPlus, QueryChannels.adhoc)
+}
+
+// Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int) (statement string, params map[string]interface{}) {
 
 	channelQuery := QueryChannels
 	if channelName == "*" {
@@ -292,7 +325,7 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 	}
 
 	// Channel queries use a prepared query
-	params := make(map[string]interface{}, 3)
+	params = make(map[string]interface{}, 3)
 	params[QueryParamChannelName] = channelName
 	params[QueryParamStartSeq] = startSeq
 	if endSeq == 0 {
@@ -303,7 +336,8 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 		endSeq++
 	}
 	params[QueryParamEndSeq] = endSeq
-	return context.N1QLQueryWithStats(channelQuery.name, channelQueryStatement, params, gocb.RequestPlus, channelQuery.adhoc)
+
+	return channelQueryStatement, params
 }
 
 func (context *DatabaseContext) QueryResync() (sgbucket.QueryResultIterator, error) {
