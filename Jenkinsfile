@@ -4,7 +4,7 @@ pipeline {
     agent { label 'sync-gateway-ami-builder' }
 
     environment {
-        GO_VERSION = 'go1.11.1'
+        GO_VERSION = 'go1.11.2'
         GVM = "/root/.gvm/bin/gvm"
         GO = "/root/.gvm/gos/${GO_VERSION}/bin"
         GOPATH = "${WORKSPACE}/godeps"
