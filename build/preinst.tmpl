@@ -19,7 +19,7 @@ case "$1" in
       groupadd -r @@PRODUCT_BASE@@ || exit 1
     getent passwd @@PRODUCT_BASE@@ >/dev/null || \
       useradd -r -g @@PRODUCT_BASE@@ -d @@PREFIX@@ -s /bin/bash \
-              -c "@@PRODUCT_BASE_CAP@@ system user" @@PRODUCT_BASE@@ || exit 1
+              -c "@@PRODUCT_BASE_CAP@@ system user" --create-home @@PRODUCT_BASE@@ || exit 1
     exit 0
     ;;
 
