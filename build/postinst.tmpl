@@ -32,12 +32,18 @@ EOF
       exit 1
     fi
 
+    # create home dir if it does not exist (maybe it has been deleted upon previous uninstall)
+    if [ ! -d "@@PREFIX@@" ]; then
+      mkdir -p @@PREFIX@@
+    fi
+
     chown -R @@PRODUCT_BASE@@:@@PRODUCT_BASE@@ @@PREFIX@@
 
     chmod 755 @@PREFIX@@/service/@@PRODUCT_EXEC@@_service_install.sh
 
     chmod 755 @@PREFIX@@/examples
 
+    # create user if it does not exist
     if [ -z `id -u @@PRODUCT_EXEC@@ 2>/dev/null` ]; then
       useradd -m @@PRODUCT_EXEC@@
     fi
