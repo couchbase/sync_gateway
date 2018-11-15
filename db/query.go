@@ -210,20 +210,6 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 	return results, err
 }
 
-// N1QlExplain issues an EXPLAIN query for the given statement
-func (context *DatabaseContext) N1QLExplain(statement string, params interface{}, consistency gocb.ConsistencyMode) (results gocb.QueryResults, err error) {
-
-	explainStatement := fmt.Sprintf("EXPLAIN %s", statement)
-
-	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
-	if !ok {
-		return nil, errors.New("Cannot perform N1QL query on non-Couchbase bucket.")
-	}
-
-	results, err = gocbBucket.Query(explainStatement, params, consistency, false)
-	return results, err
-}
-
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
 func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
 
