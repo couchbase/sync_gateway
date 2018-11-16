@@ -52,7 +52,7 @@ function init_cluster {
     # FTS is currently needed, but once MB-31682 is implemented, that can be removed.
     "$cb_cli_tool" cluster-init -c $CB_SERVER_URL --cluster-name default --cluster-username $CB_ADMIN_USERNAME \
         --cluster-password $CB_ADMIN_PASSWORD --cluster-ramsize $SG_CLUSTER_RAMSIZE_MB --cluster-index-ramsize 512 \
-        --cluster-fts-ramsize 256 --services data,index,query,fts
+        --cluster-fts-ramsize 256 --services data,index,query,fts,mobile
     set -e
 }
 
