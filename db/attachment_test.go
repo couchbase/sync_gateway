@@ -139,3 +139,32 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	assert.True(t, err != nil, "Expect error when attempting to retrieve attachment document after doc is rejected.")
 
 }
+
+func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
+
+	testBucket := base.GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	// Test creating & updating a document:
+	log.Printf("Create rev 1...")
+	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
+                                    "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
+	var body Body
+	json.Unmarshal([]byte(rev1input), &body)
+	_, err = db.Put("doc1", unjson(rev1input))
+	//rev1id := revid
+	assert.NoError(t, err, "Couldn't create document")
+
+	log.Printf("Retrieve doc...")
+	rev1output := `{"_attachments":{"bye.txt":{"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA==","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":1},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"1-54f3a105fb903018c160712ffddb74dc"}`
+	gotbody, err := db.GetRev("doc1", "", false, []string{})
+	assert.NoError(t, err, "Couldn't get document")
+	goassert.Equals(t, tojson(gotbody), rev1output)
+}

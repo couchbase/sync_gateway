@@ -3,11 +3,23 @@ package db
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
+
+func testDocRev(revId string, body Body, history Revisions, channels base.Set, expiry *time.Time, attachments AttachmentsMeta) DocumentRevision {
+	return DocumentRevision{
+		RevID:       revId,
+		Body:        body,
+		History:     history,
+		Channels:    channels,
+		Expiry:      expiry,
+		Attachments: attachments,
+	}
+}
 
 func TestRevisionCache(t *testing.T) {
 	ids := make([]string, 20)
@@ -37,32 +49,34 @@ func TestRevisionCache(t *testing.T) {
 	cache := NewRevisionCache(10, nil)
 	for i := 0; i < 10; i++ {
 		body, history, channels := revForTest(i)
-		cache.Put(body[BodyId].(string), body[BodyRev].(string), body, history, channels)
+		docRev := testDocRev(body[BodyRev].(string), body, history, channels, nil, nil)
+		cache.Put(body[BodyId].(string), docRev)
 	}
 
 	for i := 0; i < 10; i++ {
-		body, history, channels, _ := cache.Get(ids[i], "x")
-		verify(body, history, channels, i)
+		getDocRev, _ := cache.Get(ids[i], "x")
+		verify(getDocRev.Body, getDocRev.History, getDocRev.Channels, i)
 	}
 
 	for i := 10; i < 13; i++ {
 		body, history, channels := revForTest(i)
-		cache.Put(body[BodyId].(string), body[BodyRev].(string), body, history, channels)
+		docRev := testDocRev(body[BodyRev].(string), body, history, channels, nil, nil)
+		cache.Put(body[BodyId].(string), docRev)
 	}
 
 	for i := 0; i < 3; i++ {
-		body, _, _, _ := cache.Get(ids[i], "x")
-		goassert.True(t, body == nil)
+		docRev, _ := cache.Get(ids[i], "x")
+		goassert.True(t, docRev.Body == nil)
 	}
 	for i := 3; i < 13; i++ {
-		body, history, channels, _ := cache.Get(ids[i], "x")
-		verify(body, history, channels, i)
+		docRev, _ := cache.Get(ids[i], "x")
+		verify(docRev.Body, docRev.History, docRev.Channels, i)
 	}
 }
 
 func TestLoaderFunction(t *testing.T) {
 	var callsToLoader = 0
-	loader := func(id IDAndRev) (body Body, history Revisions, channels base.Set, err error) {
+	loader := func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
 		callsToLoader++
 		if id.DocID[0] != 'J' {
 			err = base.HTTPErrorf(404, "missing")
@@ -78,27 +92,27 @@ func TestLoaderFunction(t *testing.T) {
 	}
 	cache := NewRevisionCache(10, loader)
 
-	body, history, channels, err := cache.Get("Jens", "1")
-	goassert.Equals(t, body[BodyId], "Jens")
-	goassert.True(t, history != nil)
-	goassert.True(t, channels != nil)
+	docRev, err := cache.Get("Jens", "1")
+	goassert.Equals(t, docRev.Body[BodyId], "Jens")
+	goassert.True(t, docRev.History != nil)
+	goassert.True(t, docRev.Channels != nil)
 	goassert.Equals(t, err, error(nil))
 	goassert.Equals(t, callsToLoader, 1)
 
-	body, history, channels, err = cache.Get("Peter", "1")
-	goassert.DeepEquals(t, body, Body(nil))
+	docRev, err = cache.Get("Peter", "1")
+	goassert.DeepEquals(t, docRev.Body, Body(nil))
 	goassert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
 	goassert.Equals(t, callsToLoader, 2)
 
-	body, history, channels, err = cache.Get("Jens", "1")
-	goassert.Equals(t, body[BodyId], "Jens")
-	goassert.True(t, history != nil)
-	goassert.True(t, channels != nil)
+	docRev, err = cache.Get("Jens", "1")
+	goassert.Equals(t, docRev.Body[BodyId], "Jens")
+	goassert.True(t, docRev.History != nil)
+	goassert.True(t, docRev.Channels != nil)
 	goassert.Equals(t, err, error(nil))
 	goassert.Equals(t, callsToLoader, 2)
 
-	body, history, channels, err = cache.Get("Peter", "1")
-	goassert.DeepEquals(t, body, Body(nil))
+	docRev, err = cache.Get("Peter", "1")
+	goassert.DeepEquals(t, docRev.Body, Body(nil))
 	goassert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
 	goassert.Equals(t, callsToLoader, 3)
 }
@@ -142,7 +156,8 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	if !ok {
 		t.Errorf("Expected _revisions property not found in document retrieved from rev cache: %s", validRevisions)
 	}
-	validRevisionsMap, ok := validRevisions.(map[string]interface{})
+
+	validRevisionsMap, ok := validRevisions.(Revisions)
 	_, startOk := validRevisionsMap[RevisionsStart]
 	goassert.True(t, startOk)
 	_, idsOk := validRevisionsMap[RevisionsIds]

@@ -24,10 +24,11 @@ import (
 type Body map[string]interface{}
 
 const (
-	BodyDeleted   = "_deleted"
-	BodyRev       = "_rev"
-	BodyId        = "_id"
-	BodyRevisions = "_revisions"
+	BodyDeleted     = "_deleted"
+	BodyRev         = "_rev"
+	BodyId          = "_id"
+	BodyRevisions   = "_revisions"
+	BodyAttachments = "_attachments"
 )
 
 // A revisions property found within a Body.  Expected to be of the form:
@@ -58,6 +59,9 @@ func (b *Body) Unmarshal(data []byte) error {
 }
 
 func (body Body) ShallowCopy() Body {
+	if body == nil {
+		return body
+	}
 	copied := make(Body, len(body))
 	for key, value := range body {
 		copied[key] = value
@@ -71,6 +75,44 @@ func (revisions Revisions) ShallowCopy() Revisions {
 		copied[key] = value
 	}
 	return copied
+}
+
+// Version of doc.History.findAncestorFromSet that works against formatted Revisions.
+// Returns the most recent ancestor found in revisions
+func (revisions Revisions) findAncestor(ancestors []string) (revId string) {
+
+	start, ids := splitRevisionList(revisions)
+	for _, id := range ids {
+		revid := fmt.Sprintf("%d-%s", start, id)
+		for _, a := range ancestors {
+			if a == revid {
+				return a
+			}
+		}
+		start--
+	}
+	return ""
+}
+
+func (attachments AttachmentsMeta) ShallowCopy() AttachmentsMeta {
+	if attachments == nil {
+		return attachments
+	}
+	copied := copyMap(attachments)
+	return AttachmentsMeta(copied)
+}
+
+func copyMap(sourceMap map[string]interface{}) map[string]interface{} {
+	copy := make(map[string]interface{}, len(sourceMap))
+	for k, v := range sourceMap {
+		if valueMap, ok := v.(map[string]interface{}); ok {
+			copiedValue := copyMap(valueMap)
+			copy[k] = copiedValue
+		} else {
+			copy[k] = v
+		}
+	}
+	return copy
 }
 
 // Returns the expiry as uint32 (using getExpiry), and removes the _exp property from the body
@@ -209,7 +251,7 @@ func compareRevIDs(id1, id2 string) int {
 func stripSpecialProperties(body Body) Body {
 	stripped := Body{}
 	for key, value := range body {
-		if key == "" || key[0] != '_' || key == "_attachments" || key == BodyDeleted {
+		if key == "" || key[0] != '_' || key == BodyAttachments || key == BodyDeleted {
 			stripped[key] = value
 		}
 	}
@@ -218,7 +260,7 @@ func stripSpecialProperties(body Body) Body {
 
 func containsUserSpecialProperties(body Body) bool {
 	for key := range body {
-		if key != "" && key[0] == '_' && key != BodyId && key != BodyRev && key != BodyDeleted && key != "_attachments" && key != BodyRevisions {
+		if key != "" && key[0] == '_' && key != BodyId && key != BodyRev && key != BodyDeleted && key != BodyAttachments && key != BodyRevisions {
 			return true
 		}
 	}

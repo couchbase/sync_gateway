@@ -231,7 +231,7 @@ func TestDatabase(t *testing.T) {
 	// Test the _revisions property:
 	log.Printf("Check _revisions...")
 	gotbody, err = db.GetRev("doc1", rev2id, true, nil)
-	revisions := gotbody[BodyRevisions].(map[string]interface{})
+	revisions := gotbody[BodyRevisions].(Revisions)
 	goassert.Equals(t, revisions[RevisionsStart], 2)
 	goassert.DeepEquals(t, revisions[RevisionsIds],
 		[]string{"488724414d0ed6b398d6d2aeb228d797",
@@ -296,7 +296,7 @@ func TestGetDeleted(t *testing.T) {
 		BodyId:        "doc1",
 		BodyRev:       rev2id,
 		BodyDeleted:   true,
-		BodyRevisions: map[string]interface{}{RevisionsStart: 2, RevisionsIds: []string{"bc6d97f6e97c0d034a34f8aac2bf8b44", "dfd5e19813767eeddd08270fc5f385cd"}},
+		BodyRevisions: Revisions{RevisionsStart: 2, RevisionsIds: []string{"bc6d97f6e97c0d034a34f8aac2bf8b44", "dfd5e19813767eeddd08270fc5f385cd"}},
 	}
 	goassert.DeepEquals(t, body, expectedResult)
 
@@ -355,7 +355,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	expectedResult := Body{
 		"key1":     1234,
 		"channels": []string{"NBC"},
-		BodyRevisions: map[string]interface{}{
+		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 		BodyId:  "doc1",
@@ -386,7 +386,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		BodyId:     "doc1",
 		BodyRev:    rev2id,
 		"_removed": true,
-		BodyRevisions: map[string]interface{}{
+		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
@@ -439,7 +439,7 @@ func TestGetRemoved(t *testing.T) {
 	expectedResult := Body{
 		"key1":     1234,
 		"channels": []string{"NBC"},
-		BodyRevisions: map[string]interface{}{
+		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 		BodyId:  "doc1",
@@ -461,7 +461,7 @@ func TestGetRemoved(t *testing.T) {
 		BodyId:     "doc1",
 		BodyRev:    rev2id,
 		"_removed": true,
-		BodyRevisions: map[string]interface{}{
+		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
@@ -514,7 +514,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	expectedResult := Body{
 		"key1":      1234,
 		BodyDeleted: true,
-		BodyRevisions: map[string]interface{}{
+		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 		BodyId:  "doc1",
@@ -537,7 +537,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		BodyRev:     rev2id,
 		"_removed":  true,
 		BodyDeleted: true,
-		BodyRevisions: map[string]interface{}{
+		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}

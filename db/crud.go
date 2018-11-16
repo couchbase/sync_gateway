@@ -173,30 +173,30 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
-func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Revisions, channels base.Set, err error) {
+func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
 	var doc *document
 	if doc, err = context.GetDocument(id.DocID, DocUnmarshalAll); doc == nil {
-		return body, history, channels, err
+		return body, history, channels, attachments, expiry, err
 	}
 	return context.revCacheLoaderForDocument(doc, id.RevID)
 
 }
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
-func (context *DatabaseContext) revCacheLoaderForDocument(doc *document, revid string) (body Body, history Revisions, channels base.Set, err error) {
+func (context *DatabaseContext) revCacheLoaderForDocument(doc *document, revid string) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
 
 	if body, err = context.getRevision(doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
 		removalBody, removalHistory, removalChannels, isRemoval, isRemovalErr := doc.IsChannelRemoval(revid)
 		if isRemovalErr != nil {
-			return body, history, channels, isRemovalErr
+			return body, history, channels, nil, nil, isRemovalErr
 		}
 		if isRemoval {
-			return removalBody, removalHistory, removalChannels, nil
+			return removalBody, removalHistory, removalChannels, nil, nil, nil
 		} else {
 			// If this wasn't a removal, return the original error from getRevision
-			return body, history, channels, err
+			return body, history, channels, nil, nil, err
 		}
 	}
 	if doc.History[revid].Deleted {
@@ -205,11 +205,12 @@ func (context *DatabaseContext) revCacheLoaderForDocument(doc *document, revid s
 
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 	if getHistoryErr != nil {
-		return body, history, channels, getHistoryErr
+		return body, history, channels, nil, nil, getHistoryErr
 	}
 	history = encodeRevisions(validatedHistory)
 	channels = doc.History[revid].Channels
-	return body, history, channels, err
+
+	return body, history, channels, doc.Attachments, doc.Expiry, err
 }
 
 // Returns the body of the current revision of a document
@@ -235,109 +236,98 @@ func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince [
 //   revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //   that hasn't changed since one of those revisions will be returned as a stub.
 func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
-	var doc *document
-	var body Body
-	var revisions map[string]interface{}
-	var inChannels base.Set
 	var err error
+	var revision DocumentRevision
 	revIDGiven := (revid != "")
 	if revIDGiven {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		body, revisions, inChannels, err = db.revisionCache.Get(docid, revid)
+		revision, err = db.revisionCache.Get(docid, revid)
 	} else {
 		// No rev ID given, so load active revision
-		body, revisions, inChannels, revid, err = db.revisionCache.GetActive(docid, db.DatabaseContext)
+		revision, err = db.revisionCache.GetActive(docid, db.DatabaseContext)
+		if revision.Body != nil {
+			revid = revision.RevID
+		}
 	}
 
-	if body == nil {
+	if revision.Body == nil {
 		if err == nil {
 			err = base.HTTPErrorf(404, "missing")
 		}
 		return nil, err
 	}
+
+	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
+	// during attachment processing below
+	requestedHistory := revision.History
 	if maxHistory == 0 {
-		revisions = nil
+		requestedHistory = nil
 	}
-	if revisions != nil {
-		_, revisions = trimEncodedRevisionsToAncestor(revisions, historyFrom, maxHistory)
+	if requestedHistory != nil {
+		_, requestedHistory = trimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
 	}
 
 	// Authorize the access:
 	if db.user != nil {
-		if err := db.user.AuthorizeAnyChannel(inChannels); err != nil {
+		if err := db.user.AuthorizeAnyChannel(revision.Channels); err != nil {
 			if !revIDGiven {
 				return nil, base.HTTPErrorf(403, "forbidden")
 			}
 			// On access failure, return (only) the doc history and deletion/removal
 			// status instead of returning an error. For justification see the comment in
 			// the getRevFromDoc method, below
-			deleted, _ := body[BodyDeleted].(bool)
+			deleted, _ := revision.Body[BodyDeleted].(bool)
 			redactedBody := Body{BodyId: docid, BodyRev: revid}
 			if deleted {
 				redactedBody[BodyDeleted] = true
 			} else {
 				redactedBody["_removed"] = true
 			}
-			if revisions != nil {
-				redactedBody[BodyRevisions] = revisions
+			if requestedHistory != nil {
+				redactedBody[BodyRevisions] = requestedHistory
 			}
 			return redactedBody, nil
 		}
 	}
 
 	if !revIDGiven {
-		if deleted, _ := body[BodyDeleted].(bool); deleted {
+		if deleted, _ := revision.Body[BodyDeleted].(bool); deleted {
 			return nil, base.HTTPErrorf(404, "deleted")
 		}
 	}
 
 	// Add revision metadata:
-	if revisions != nil {
-		body[BodyRevisions] = revisions
+	if requestedHistory != nil {
+		revision.Body[BodyRevisions] = requestedHistory
 	}
 
-	// If doc is nil (we got the rev from the rev cache)
-	// look up the doc sync to get attachment metadata and exp
-	// TODO: Issue #3688 - We should enhance the rev cache to include attachment metadata
-	if doc == nil {
-		if doc, err = db.GetDocument(docid, DocUnmarshalSync); doc == nil {
-			return nil, err
-		}
-	}
-
-	if showExp && doc.Expiry != nil && !doc.Expiry.IsZero() {
-		body["_exp"] = doc.Expiry.Format(time.RFC3339)
+	if showExp && revision.Expiry != nil && !revision.Expiry.IsZero() {
+		revision.Body["_exp"] = revision.Expiry.Format(time.RFC3339)
 	}
 
 	// Stamp attachment metadata back into the body
-	if doc.Attachments != nil {
-		body["_attachments"] = doc.Attachments
+	if revision.Attachments != nil {
+		revision.Body[BodyAttachments] = revision.Attachments
 	}
 
 	// Add attachment bodies if requested:
-	if attachmentsSince != nil && len(BodyAttachments(body)) > 0 {
+	if attachmentsSince != nil && len(GetBodyAttachments(revision.Body)) > 0 {
 		minRevpos := 1
 		if len(attachmentsSince) > 0 {
-			if doc == nil { // if rev was in the cache, we don't have the document struct yet
-				if doc, err = db.GetDocument(docid, DocUnmarshalSync); doc == nil {
-					return nil, err
-				}
-			}
-
-			ancestor := doc.History.findAncestorFromSet(revid, attachmentsSince)
+			ancestor := revision.History.findAncestor(attachmentsSince)
 			if ancestor != "" {
 				minRevpos, _ = ParseRevID(ancestor)
 				minRevpos++
 			}
 		}
-		body, err = db.loadBodyAttachments(body, minRevpos, docid)
+		revision.Body, err = db.loadBodyAttachments(revision.Body, minRevpos, docid)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return body, nil
+	return revision.Body, nil
 }
 
 // Returns the body of the active revision of a document, as well as the document's current channels
@@ -418,7 +408,7 @@ func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error
 	body[BodyRev] = revid
 
 	if doc.Attachments != nil {
-		body["_attachments"] = doc.Attachments
+		body[BodyAttachments] = doc.Attachments
 	}
 
 	return body, nil
@@ -642,8 +632,8 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		}
 
 		// move _attachment metadata to syncdata of doc after rev-id generation
-		doc.syncData.Attachments = BodyAttachments(body)
-		delete(body, "_attachments")
+		doc.syncData.Attachments = GetBodyAttachments(body)
+		delete(body, BodyAttachments)
 
 		return body, newAttachments, nil, nil
 	})
@@ -1150,7 +1140,15 @@ func (db *Database) updateAndReturnDoc(
 			body[BodyDeleted] = true
 		}
 		revChannels := doc.History[newRevID].Channels
-		db.revisionCache.Put(doc.ID, newRevID, storedBody, encodeRevisions(history), revChannels)
+		documentRevision := DocumentRevision{
+			RevID:       newRevID,
+			Body:        storedBody,
+			History:     encodeRevisions(history),
+			Channels:    revChannels,
+			Attachments: doc.Attachments,
+			Expiry:      doc.Expiry,
+		}
+		db.revisionCache.Put(doc.ID, documentRevision)
 
 		// Raise event if this is not an echo from a shadow bucket
 		if !shadowerEcho {

@@ -1352,12 +1352,12 @@ func (d RestDocument) SetRevID(revId string) {
 }
 
 func (d RestDocument) SetAttachments(attachments db.AttachmentMap) {
-	d["_attachments"] = attachments
+	d[db.BodyAttachments] = attachments
 }
 
 func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
 
-	rawAttachments, hasAttachments := d["_attachments"]
+	rawAttachments, hasAttachments := d[db.BodyAttachments]
 
 	// If the map doesn't even have the _attachments key, return an empty attachments map
 	if !hasAttachments {
