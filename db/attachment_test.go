@@ -157,6 +157,8 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	_, err = db.Put("doc1", unjson(rev1input))
 	assert.NoError(t, err, "Couldn't create document")
 
+	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
+	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
 	rev1output := `{"_attachments":{"bye.txt":{"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA==","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":1},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"1-54f3a105fb903018c160712ffddb74dc"}`
 	gotbody, err := db.GetRev("doc1", "1-54f3a105fb903018c160712ffddb74dc", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
@@ -164,7 +166,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 
 	getCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
 	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
-	assert.Equal(t, 0, getCount)
+	assert.Equal(t, initCount, getCount)
 
 	// Repeat, validate no additional get operations
 	gotbody, err = db.GetRev("doc1", "1-54f3a105fb903018c160712ffddb74dc", false, []string{})
@@ -172,5 +174,5 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	assert.Equal(t, rev1output, tojson(gotbody))
 	getCount, countErr = base.GetExpvarAsInt("syncGateway_db", "document_gets")
 	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
-	assert.Equal(t, 0, getCount)
+	assert.Equal(t, initCount, getCount)
 }
