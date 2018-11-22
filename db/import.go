@@ -305,16 +305,16 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 // (https://github.com/couchbase/sync_gateway/issues/3740)
 func (db *Database) backupPreImportRevision(docid, revid string) error {
 
-	previousBody, _, _, err := db.revisionCache.GetCached(docid, revid)
+	previousRev, err := db.revisionCache.GetCached(docid, revid)
 	if err != nil {
 		return fmt.Errorf("Cache error: %v", err)
 	}
 
-	if previousBody == nil {
+	if previousRev.Body == nil {
 		return nil
 	}
 
-	bodyJson, marshalErr := json.Marshal(stripSpecialProperties(previousBody))
+	bodyJson, marshalErr := json.Marshal(stripSpecialProperties(previousRev.Body))
 	if marshalErr != nil {
 		return fmt.Errorf("Marshal error: %v", marshalErr)
 	}

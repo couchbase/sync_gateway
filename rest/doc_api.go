@@ -71,7 +71,7 @@ func (h *handler) handleGetDoc() error {
 		}
 		h.setHeader("Etag", strconv.Quote(value[db.BodyRev].(string)))
 
-		hasBodies := (attachmentsSince != nil && value["_attachments"] != nil)
+		hasBodies := (attachmentsSince != nil && value[db.BodyAttachments] != nil)
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
@@ -149,7 +149,7 @@ func (h *handler) handleGetAttachment() error {
 	if body == nil {
 		return kNotFoundError
 	}
-	meta, ok := db.BodyAttachments(body)[attachmentName].(map[string]interface{})
+	meta, ok := db.GetBodyAttachments(body)[attachmentName].(map[string]interface{})
 	if !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
@@ -222,7 +222,7 @@ func (h *handler) handlePutAttachment() error {
 	}
 
 	// find attachment (if it existed)
-	attachments := db.BodyAttachments(body)
+	attachments := db.GetBodyAttachments(body)
 	if attachments == nil {
 		attachments = make(map[string]interface{})
 	}
@@ -234,7 +234,7 @@ func (h *handler) handlePutAttachment() error {
 
 	//attach it
 	attachments[attachmentName] = attachment
-	body["_attachments"] = attachments
+	body[db.BodyAttachments] = attachments
 
 	newRev, err := h.db.Put(docid, body)
 	if err != nil {

@@ -600,7 +600,7 @@ func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.Se
 	delete(body, db.BodyDeleted)
 
 	outrq.SetJSONBody(body)
-	if atts := db.BodyAttachments(body); atts != nil {
+	if atts := db.GetBodyAttachments(body); atts != nil {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bh.addAllowedAttachments(atts)
 		sender.Send(outrq.Message)

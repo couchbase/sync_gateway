@@ -28,7 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// Attachments shorter than this will be left in the JSON as base64 rather than being a separate
+// AttachmentsMeta shorter than this will be left in the JSON as base64 rather than being a separate
 // MIME part.
 const kMaxInlineAttachmentSize = 200
 
@@ -59,8 +59,8 @@ type DocAttachment struct {
 func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
 	var parentAttachments map[string]interface{}
 	newAttachmentData := make(AttachmentData, 0)
-	atts := BodyAttachments(body)
-	if atts == nil && body["_attachments"] != nil {
+	atts := GetBodyAttachments(body)
+	if atts == nil && body[BodyAttachments] != nil {
 		return nil, base.HTTPErrorf(400, "Invalid _attachments")
 	}
 	for name, value := range atts {
@@ -131,14 +131,14 @@ func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string,
 	// Attempt to find a non-pruned parent or ancestor
 	parent, _ := db.getAvailableRev(doc, parentRev)
 	if parent != nil {
-		parentAttachments, _ = parent["_attachments"].(map[string]interface{})
+		parentAttachments = GetBodyAttachments(parent)
 	} else {
 		// No non-pruned ancestor is available
 		commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory)
 		if commonAncestor != "" {
 			parentAttachments = make(map[string]interface{})
 			commonAncestorGen, _ := base.ToInt64(genOfRevID(commonAncestor))
-			for name, activeAttachment := range BodyAttachments(doc.Body()) {
+			for name, activeAttachment := range GetBodyAttachments(doc.Body()) {
 				attachmentMeta, ok := activeAttachment.(map[string]interface{})
 				if ok {
 					activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
@@ -158,7 +158,7 @@ func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string,
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
 // generation or later are loaded.
 func (db *Database) loadBodyAttachments(body Body, minRevpos int, docid string) (Body, error) {
-	for attachmentName, value := range BodyAttachments(body) {
+	for attachmentName, value := range GetBodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		revpos, ok := base.ToInt64(meta["revpos"])
 		if ok && revpos >= int64(minRevpos) {
@@ -279,7 +279,7 @@ func writeJSONPart(writer *multipart.Writer, contentType string, body Body, comp
 func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, compress bool) {
 	// First extract the attachments that should follow:
 	following := []attInfo{}
-	for name, value := range BodyAttachments(body) {
+	for name, value := range GetBodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		if meta["stub"] != true {
 			var err error
@@ -367,7 +367,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
 
 	// Collect the attachments with a "follows" property, which will appear as MIME parts:
 	followingAttachments := map[string]map[string]interface{}{}
-	for name, value := range BodyAttachments(body) {
+	for name, value := range GetBodyAttachments(body) {
 		if meta := value.(map[string]interface{}); meta["follows"] == true {
 			followingAttachments[name] = meta
 		}
@@ -450,8 +450,8 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
 func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback AttachmentCallback) error {
-	atts := BodyAttachments(body)
-	if atts == nil && body["_attachments"] != nil {
+	atts := GetBodyAttachments(body)
+	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(400, "Invalid _attachments")
 	}
 	for name, value := range atts {
@@ -498,14 +498,21 @@ func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof strin
 }
 
 //////// HELPERS:
-
-func BodyAttachments(body Body) map[string]interface{} {
-	atts, _ := body["_attachments"].(map[string]interface{})
-	return atts
+// Returns _attachments property from body, when found.  Checks for either map[string]interface{} (unmarshalled with body),
+// or AttachmentsMeta (written by body by SG)
+func GetBodyAttachments(body Body) AttachmentsMeta {
+	switch atts := body[BodyAttachments].(type) {
+	case AttachmentsMeta:
+		return atts
+	case map[string]interface{}:
+		return AttachmentsMeta(atts)
+	default:
+		return nil
+	}
 }
 
 func hasInlineAttachments(body Body) bool {
-	for _, value := range BodyAttachments(body) {
+	for _, value := range GetBodyAttachments(body) {
 		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {
 			return true
 		}

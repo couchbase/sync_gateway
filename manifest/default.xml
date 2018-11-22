@@ -45,7 +45,7 @@
 
   <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" revision="93c74bac9ddc2979ab895a37087c225c998b03bf" remote="couchbaselabs"/>
 
-  <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="c34599b076eb7194a53e8535397123a758700774"/>
+  <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="b716fa6c74c10db0ac0b3ad3815325a86a1451e9"/>
 
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="16db1f1fe037412f12738fa4d8448c549c4edd77"/>
 
