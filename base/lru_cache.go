@@ -49,13 +49,15 @@ func (lc *LRUCache) Get(key string) (result interface{}, found bool) {
 	return result, false
 }
 
-// Adds an entry to the cache.
+// Adds an entry to the cache if it's the first time seen, otherwise just updates the
+// position in the LRU cache but ignores the new value, since the entries in the cache
+// are treated as immutable.
 func (lc *LRUCache) Put(key string, value interface{}) {
 
 	// If already present, move to front
 	if elem := lc.cache[key]; elem != nil {
 		lc.lruList.MoveToFront(elem)
-		value = elem.Value.(*lruCacheValue)
+		value = elem.Value.(*lruCacheValue)  // "return" the value in the cache by updating the value param
 		return
 	}
 
