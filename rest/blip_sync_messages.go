@@ -54,6 +54,7 @@ const (
 	revMessageSequence    = "sequence"
 	revMessageHistory     = "history"
 	revMessageNoConflicts = "noconflicts"
+	revMessageDeltaSrc    = "deltaSrc"
 
 	// norev message properties
 	norevMessageId     = "id"
@@ -63,6 +64,7 @@ const (
 
 	// changes message properties
 	changesResponseMaxHistory = "maxHistory"
+	changesResponseDeltas     = "deltas"
 
 	// getAttachment message properties
 	getAttachmentDigest = "digest"
@@ -320,6 +322,13 @@ func (rm *revMessage) setDeleted(deleted bool) {
 		rm.Properties[revMessageDeleted] = "1"
 	} else {
 		delete(rm.Properties, revMessageDeleted)
+	}
+}
+
+// setProperties will add the given properties to the blip message, overwriting any that already exist.
+func (rm *revMessage) setProperties(properties blip.Properties) {
+	for k, v := range properties {
+		rm.Properties[k] = v
 	}
 }
 

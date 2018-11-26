@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -749,19 +750,22 @@ func AssertChangeEquals(t *testing.T, change []interface{}, expectedChange Expec
 
 // Test adding / retrieving attachments
 func TestAttachments(t *testing.T) {
-
+	// TODO: Write tests to cover scenario
+	t.Skip("not tested")
 }
 
 // Make sure it's not possible to have two outstanding subChanges w/ continuous=true.
 // Expected behavior is that the first continous change subscription should get discarded in favor of 2nd.
 func TestConcurrentChangesSubscriptions(t *testing.T) {
-
+	// TODO: Write tests to cover scenario
+	t.Skip("not tested")
 }
 
 // Create a continous changes subscription that has docs in multiple channels, and make sure
 // all docs are received
 func TestMultiChannelContinousChangesSubscription(t *testing.T) {
-
+	// TODO: Write tests to cover scenario
+	t.Skip("not tested")
 }
 
 // Test setting and getting checkpoints
@@ -811,7 +815,8 @@ func TestBlipSetCheckpoint(t *testing.T) {
 
 // Test no-conflicts mode replication (proposeChanges endpoint)
 func TestNoConflictsModeReplication(t *testing.T) {
-
+	// TODO: Write tests to cover scenario
+	t.Skip("not tested")
 }
 
 // Reproduce issue where ReloadUser was not being called, and so it was
@@ -1474,4 +1479,62 @@ func TestMissingNoRev(t *testing.T) {
 	docs := bt.WaitForNumDocsViaChanges(4)
 	goassert.True(t, len(docs) == 4)
 
+}
+
+// TestBlipDeltaSyncPull tests that a simple pull replication using deltas in EE,
+// and checks that full body replicaiton still happens in CE.
+func TestBlipDeltaSyncPull(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
+		restTester: &RestTester{
+			DeltaSyncEnabled: base.IsEnterpriseEdition(),
+		},
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	client, err := NewBlipTesterClient(bt)
+	assert.NoError(t, err)
+
+	client.Deltas = true
+	client.Start()
+
+	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
+	resp := bt.restTester.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
+	// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
+	resp = bt.restTester.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": "bob"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok = client.WaitForRev("doc1", "2-959f0e9ad32d84ff652fb91d8d0caa7e")
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(data))
+
+	msg, ok := client.WaitForMessage(5)
+	assert.True(t, ok)
+
+	// Check EE is delta, and CE is full-body replication
+	if base.IsEnterpriseEdition() {
+		// Check the request was sent with the correct deltaSrc property
+		assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[revMessageDeltaSrc])
+		// Check the request body was the actual delta
+		msgBody, err := msg.Body()
+		assert.NoError(t, err)
+		assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
+	} else {
+		// Check the request was NOT sent with a deltaSrc property
+		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
+		// Check the request body was NOT the delta
+		msgBody, err := msg.Body()
+		assert.NoError(t, err)
+		assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
+		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
+	}
 }

@@ -232,6 +232,10 @@ func ParseRevID(revid string) (int, string) {
 	return generation, id
 }
 
+// compareRevIDs compares the two rev IDs and returns:
+// 1  if id1 is 'greater' than id2
+// -1 if id1 is 'less' than id2
+// 0  if the two are equal.
 func compareRevIDs(id1, id2 string) int {
 	gen1, sha1 := ParseRevID(id1)
 	gen2, sha2 := ParseRevID(id2)

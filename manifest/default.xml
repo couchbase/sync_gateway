@@ -117,6 +117,10 @@
 
   <project name="testify" path="godeps/src/github.com/stretchr/testify" remote="couchbasedeps" revision="04af85275a5c7ac09d16bb3b9b2e751ed45154e5"/>
 
+  <!-- Enterprise edition dependencies -->
+  <project groups="notdefault,cb_sg_enterprise" name="go-fleecedelta" path="godeps/src/github.com/couchbaselabs/go-fleecedelta" remote="couchbaselabs_private" revision="1277ab2af4e7b861a66aadca51a7f49679f9522f"/>
+  <project groups="notdefault,cb_sg_enterprise" name="go-diff" path="godeps/src/github.com/sergi/go-diff" remote="couchbasedeps" revision="da645544ed44df016359bd4c0e3dc60ee3a0da43"/>
+
   <!-- gozip tools -->
   <project name="ns_server" path="godeps/src/github.com/couchbase/ns_server" remote="couchbase" revision="6d835931f574f25e3781192c09e45a3ee30deb51"/>
 
