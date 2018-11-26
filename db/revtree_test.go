@@ -569,8 +569,8 @@ func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
 
 	maxDepth := uint32(50)
 	numPruned, _ := revTree.pruneRevisions(maxDepth, "")
-	fmt.Printf("numPruned: %v", numPruned)
-	fmt.Printf("LongestBranch: %v", revTree.LongestBranch())
+	t.Logf("numPruned: %v", numPruned)
+	t.Logf("LongestBranch: %v", revTree.LongestBranch())
 
 	goassert.True(t, uint32(revTree.LongestBranch()) == maxDepth)
 
