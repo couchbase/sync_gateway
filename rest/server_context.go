@@ -336,7 +336,7 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 // existing DatabaseContext or an error based on the useExisting flag.
 func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
 
-	oldRevExpirySeconds := defaultDeltaSyncRevMaxAge
+	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds
 
 	// Connect to the bucket and add the database:
 	spec, err := GetBucketSpec(config)
@@ -349,8 +349,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		dbName = spec.BucketName
 	}
 
-	if config.DeltaSync.RevMaxAgeSeconds != nil && *config.DeltaSync.RevMaxAgeSeconds >= 0 {
-		oldRevExpirySeconds = *config.DeltaSync.RevMaxAgeSeconds
+	if config.OldRevExpirySeconds != nil && *config.OldRevExpirySeconds >= 0 {
+		oldRevExpirySeconds = *config.OldRevExpirySeconds
 	}
 
 	localDocExpirySecs := base.DefaultLocalDocExpirySecs

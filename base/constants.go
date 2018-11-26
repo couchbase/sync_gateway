@@ -59,6 +59,8 @@ const (
 
 	DefaultDropIndexes = false // Whether Sync Gateway drops GSI indexes before each test while running in integration mode
 
+	DefaultOldRevExpirySeconds = uint32(300)
+
 	// Default value of _local document expiry
 	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) //90 days in seconds
 
