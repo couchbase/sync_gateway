@@ -101,7 +101,7 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	var useDeltas bool
-	if enabled := h.server.GetDatabaseConfig(h.db.Name).DeltaSync.Enabled; enabled != nil {
+	if enabled := h.server.GetDatabaseConfig(h.db.Name).DeltaSync.Enable; enabled != nil {
 		useDeltas = *enabled
 	}
 

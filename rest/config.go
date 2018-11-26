@@ -204,7 +204,7 @@ type DbConfig struct {
 }
 
 type DeltaSyncConfig struct {
-	Enabled          *bool   `json:"enable,omitempty"`              // Whether delta sync is enabled (EE only)
+	Enable           *bool   `json:"enable,omitempty"`              // Whether delta sync is enabled (EE only)
 	RevMaxAgeSeconds *uint32 `json:"rev_max_age_seconds,omitempty"` // The number of seconds old revs are available for
 }
 
@@ -361,8 +361,8 @@ func (dbConfig *DbConfig) setup(name string) error {
 	}
 
 	// Set DeltaSync defaults
-	if dbConfig.DeltaSync.Enabled == nil {
-		dbConfig.DeltaSync.Enabled = &defaultDeltaSyncEnable
+	if dbConfig.DeltaSync.Enable == nil {
+		dbConfig.DeltaSync.Enable = &defaultDeltaSyncEnable
 	}
 	if dbConfig.DeltaSync.RevMaxAgeSeconds == nil || *dbConfig.DeltaSync.RevMaxAgeSeconds < 0 {
 		dbConfig.DeltaSync.RevMaxAgeSeconds = &defaultDeltaSyncRevMaxAge
@@ -409,7 +409,7 @@ func (dbConfig DbConfig) validate() error {
 	}
 
 	// Error if Delta Sync is explicitly enabled in CE
-	if *dbConfig.DeltaSync.Enabled && !base.IsEnterpriseEdition() {
+	if *dbConfig.DeltaSync.Enable && !base.IsEnterpriseEdition() {
 		return fmt.Errorf("Delta sync not supported in CE - disable via config with delta_sync.enable: false")
 	}
 
