@@ -49,6 +49,7 @@ type blipSyncContext struct {
 	handlerSerialNumber uint64    // Each handler within a context gets a unique serial number for logging
 	terminator          chan bool // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
 	hasActiveSubChanges bool      // Track whether there is a subChanges subscription currently active
+	useDeltas           bool      // Whether SG should use deltas for this connection - This may be disabled by the client.
 }
 
 type blipHandler struct {
@@ -99,6 +100,11 @@ func (h *handler) handleBLIPSync() error {
 		blip.CompressionLevel = *c
 	}
 
+	var useDeltas bool
+	if enabled := h.server.GetDatabaseConfig(h.db.Name).DeltaSync.Enabled; enabled != nil {
+		useDeltas = *enabled
+	}
+
 	// Create a BLIP context:
 	blipContext := blip.NewContext(BlipCBMobileReplication)
 	blipContext.Logger = DefaultBlipLogger(blipContext.ID)
@@ -112,6 +118,7 @@ func (h *handler) handleBLIPSync() error {
 		user:              h.user,
 		effectiveUsername: h.currentEffectiveUserName(),
 		terminator:        make(chan bool),
+		useDeltas:         useDeltas,
 	}
 	defer ctx.close()
 

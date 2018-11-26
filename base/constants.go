@@ -59,8 +59,6 @@ const (
 
 	DefaultDropIndexes = false // Whether Sync Gateway drops GSI indexes before each test while running in integration mode
 
-	DefaultOldRevExpirySeconds = uint32(300)
-
 	// Default value of _local document expiry
 	DefaultLocalDocExpirySecs = uint32(60 * 60 * 24 * 90) //90 days in seconds
 
@@ -87,7 +85,6 @@ const (
 	// Set this to true to dump stacktraces (for pkgerrors wrapped errors only) whenever an error is returned to
 	// an API client.  Currently only works with REST API calls.
 	StacktraceOnAPIErrors = false
-
 )
 
 func UnitTestUrl() string {
