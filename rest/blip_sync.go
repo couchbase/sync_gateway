@@ -49,7 +49,8 @@ type blipSyncContext struct {
 	handlerSerialNumber uint64    // Each handler within a context gets a unique serial number for logging
 	terminator          chan bool // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
 	hasActiveSubChanges bool      // Track whether there is a subChanges subscription currently active
-	useDeltas           bool      // Whether SG should use deltas for this connection - This may be disabled by the client.
+	serverContext       *ServerContext
+	useDeltas           bool // Whether deltas should be used for this connection - This should be set via setUseDeltas()
 }
 
 type blipHandler struct {
@@ -100,11 +101,6 @@ func (h *handler) handleBLIPSync() error {
 		blip.CompressionLevel = *c
 	}
 
-	var useDeltas bool
-	if enabled := h.server.GetDatabaseConfig(h.db.Name).DeltaSync.Enable; enabled != nil {
-		useDeltas = *enabled
-	}
-
 	// Create a BLIP context:
 	blipContext := blip.NewContext(BlipCBMobileReplication)
 	blipContext.Logger = DefaultBlipLogger(blipContext.ID)
@@ -118,7 +114,7 @@ func (h *handler) handleBLIPSync() error {
 		user:              h.user,
 		effectiveUsername: h.currentEffectiveUserName(),
 		terminator:        make(chan bool),
-		useDeltas:         useDeltas,
+		serverContext:     h.server,
 	}
 	defer ctx.close()
 
@@ -786,6 +782,27 @@ func (ctx *blipSyncContext) isAttachmentAllowed(digest string) bool {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 	return ctx.allowedAttachments[digest] > 0
+}
+
+// setUseDeltas will set useDeltas on the blipSyncContext as long as both sides of the connection have it enabled.
+func (ctx *blipSyncContext) setUseDeltas(clientDeltas bool) {
+	// exit early when client disables deltas
+	if !clientDeltas {
+		ctx.useDeltas = false
+		return
+	}
+
+	// determine if SG has delta sync enabled for the given database
+	sgDeltas := false
+	if sc := ctx.serverContext; sc != nil {
+		if dbc := sc.GetDatabaseConfig(ctx.dbc.Name); dbc != nil {
+			if sgDeltaEnable := dbc.DeltaSync.Enable; sgDeltaEnable != nil {
+				sgDeltas = *sgDeltaEnable
+			}
+		}
+	}
+
+	ctx.useDeltas = clientDeltas && sgDeltas
 }
 
 // NOTE: This code is taken from db/attachments.go in the feature/deltas branch, as of commit
