@@ -92,7 +92,9 @@ func Tracef(logKey LogKey, format string, args ...interface{}) {
 }
 
 func Statsf(stats []byte) {
-	statsLogger.logf("%s", string(stats))
+	if statsLogger != nil {
+		statsLogger.logf("%s", string(stats))
+	}
 }
 
 func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
