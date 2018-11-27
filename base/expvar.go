@@ -186,23 +186,8 @@ func StatsResourceUtilization() *expvar.Map {
 // regenerating a new expvar map without that particular replicationUuid
 func RemovePerReplicationStats(replicationUuid string) {
 
-	newPerReplicationStats := new(expvar.Map).Init()
-
-	// Callback for every kv pair on the old map
-	callback := func(keyVal expvar.KeyValue) {
-		// Skip the per-replication stats for the replication being removed
-		if keyVal.Key == replicationUuid {
-			return
-		}
-		// Copy over the other stats
-		newPerReplicationStats.Set(keyVal.Key, keyVal.Value)
-	}
-
-	// Execute callback for all kv pairs
-	PerReplicationStats().Do(callback)
-
-	// Switch the expvar stats over to the new version
-	Stats.Set(PerReplication, newPerReplicationStats)
+	// Clear out the stats for this replication since they will no longer be updated.
+	PerReplicationStats().Set(replicationUuid, new(expvar.Map).Init())
 
 }
 
@@ -210,23 +195,8 @@ func RemovePerReplicationStats(replicationUuid string) {
 // regenerating a new expvar map without that particular dbname
 func RemovePerDbStats(dbName string) {
 
-	newPerDbStats := new(expvar.Map).Init()
-
-	// Callback for every kv pair on the old map
-	callback := func(keyVal expvar.KeyValue) {
-		// Skip the per-db stats for the db being removed
-		if keyVal.Key == dbName {
-			return
-		}
-		// Copy over the other stats
-		newPerDbStats.Set(keyVal.Key, keyVal.Value)
-	}
-
-	// Execute callback for all kv pairs
-	PerDbStats().Do(callback)
-
-	// Switch the expvar stats over to the new version
-	Stats.Set(PerDb, newPerDbStats)
+	// Clear out the stats for this db since they will no longer be updated.
+	PerDbStats().Set(dbName, new(expvar.Map).Init())
 
 }
 
