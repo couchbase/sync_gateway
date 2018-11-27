@@ -19,8 +19,8 @@ type RevisionCache struct {
 	lruList    *list.List                 // List ordered by most recent access (Front is newest)
 	capacity   uint32                     // Max number of revisions to cache
 	loaderFunc RevisionCacheLoaderFunc
-	lock       sync.Mutex          // For thread-safety
-	statsCache *RevisionCacheStats // Per-db stats related to cache
+	lock       sync.Mutex  // For thread-safety
+	statsCache *expvar.Map // Per-db stats related to cache
 }
 
 // Revision information as returned by the rev cache
@@ -33,8 +33,10 @@ type DocumentRevision struct {
 	Attachments AttachmentsMeta
 }
 
+// Callback function signature for loading something from the rev cache
 type RevisionCacheLoaderFunc func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error)
 
+// Enum to track the different rev cache stats events (hit or miss)
 type RevCacheStatsEvent int
 
 const (
@@ -42,6 +44,7 @@ const (
 	StatsMiss
 )
 
+// Callback function signature for recording revision cache stats
 type RevisionCacheStatsFunc func(hitOrMiss RevCacheStatsEvent)
 
 // The cache payload data. Stored as the Value of a list Element.
@@ -57,13 +60,11 @@ type revCacheValue struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCacheExpVars *expvar.Map) *RevisionCache {
+func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *RevisionCache {
 
 	if capacity == 0 {
 		capacity = KDefaultRevisionCacheCapacity
 	}
-
-	statsCache := NewRevisionCacheStats(statsCacheExpVars)
 
 	return &RevisionCache{
 		cache:      map[IDAndRev]*list.Element{},
@@ -260,15 +261,4 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		dbExpvars.Add("revisionCache_adds", 1)
 	}
 	value.lock.Unlock()
-}
-
-type RevisionCacheStats struct {
-	*expvar.Map
-}
-
-func NewRevisionCacheStats(statsCacheExpVars *expvar.Map) *RevisionCacheStats {
-	statsCache := RevisionCacheStats{
-		Map: statsCacheExpVars,
-	}
-	return &statsCache
 }

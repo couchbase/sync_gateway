@@ -11,6 +11,7 @@ const (
 	errorMinAge = 180
 	warnMinAge  = 90
 	infoMinAge  = 3
+	statsMinage = infoMinAge
 	debugMinAge = 1
 
 	// defaultConsoleLoggerCollateBufferSize is the number of console logs we'll
@@ -83,8 +84,8 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 		return warnings, err
 	}
 
-	// TODO: should this be using "LevelNone"?  There is no level checking in the stats logging, so wasn't sure what to use
-	statsLogger, err = NewFileLogger(c.Stats, LevelNone, "stats", c.LogFilePath, infoMinAge)
+	// Since there is no level checking in the stats logging, use LevelNone for the level.
+	statsLogger, err = NewFileLogger(c.Stats, LevelNone, "stats", c.LogFilePath, statsMinage)
 	if err != nil {
 		return warnings, err
 	}
