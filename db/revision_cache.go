@@ -93,6 +93,9 @@ func (rc *RevisionCache) Get(docid, revid string) (DocumentRevision, error) {
 }
 
 func (rc *RevisionCache) statsRecorderFunc(hitOrMiss RevCacheStatsEvent) {
+	if rc.statsCache == nil {
+		return
+	}
 	switch hitOrMiss {
 	case StatsHit:
 		rc.statsCache.Add(base.StatKeyRevisionCacheHits, 1)
