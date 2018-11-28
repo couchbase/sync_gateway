@@ -11,7 +11,7 @@ const (
 	errorMinAge = 180
 	warnMinAge  = 90
 	infoMinAge  = 3
-	statsMinage = infoMinAge
+	statsMinage = 3
 	debugMinAge = 1
 
 	// defaultConsoleLoggerCollateBufferSize is the number of console logs we'll
@@ -37,7 +37,6 @@ type LoggingConfig struct {
 	Info           FileLoggerConfig    `json:"info,omitempty"`            // Info log file output
 	Debug          FileLoggerConfig    `json:"debug,omitempty"`           // Debug log file output
 	Stats          FileLoggerConfig    `json:"stats,omitempty"`           // Stats log file output
-
 
 	DeprecatedDefaultLog *LogAppenderConfig `json:"default,omitempty"` // Deprecated "default" logging option.
 }

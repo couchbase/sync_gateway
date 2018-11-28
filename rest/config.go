@@ -265,16 +265,9 @@ type SequenceHashConfig struct {
 	Frequency    *int    `json:"hash_frequency,omitempty"` // Frequency of sequence hashing in changes feeds
 }
 
-type Logging struct {
-
-	// How often should stats be written to stats logs
-	StatsLogFrequencySecs int `json:"stats_log_freq_secs,omitempty"`
-}
-
 type UnsupportedServerConfig struct {
-	Http2Config *Http2Config `json:"http2,omitempty"`   // Config settings for HTTP2
-	Logging     *Logging     `json:"logging,omitempty"` // Config settings for logging
-
+	Http2Config           *Http2Config `json:"http2,omitempty"`               // Config settings for HTTP2
+	StatsLogFrequencySecs int          `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
 }
 
 type Http2Config struct {
