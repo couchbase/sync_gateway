@@ -37,6 +37,7 @@ const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowQueryWarningThreshold = 500 // ms
 const KDefaultNumShards = 16
+const DefaultLogFreqencySecs = 5
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
@@ -958,9 +959,9 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 
 func (sc *ServerContext) startStatsLogger() {
 
-	statsLogFrequencySecs := 5
-	if sc.config.Unsupported != nil && sc.config.Unsupported.Logging != nil {
-		statsLogFrequencySecs = sc.config.Unsupported.Logging.StatsLogFrequencySecs
+	statsLogFrequencySecs := DefaultLogFreqencySecs
+	if sc.config.Unsupported != nil && sc.config.Unsupported.StatsLogFrequencySecs > 0 {
+		statsLogFrequencySecs = sc.config.Unsupported.StatsLogFrequencySecs
 	}
 
 	interval := time.Second * time.Duration(statsLogFrequencySecs)
