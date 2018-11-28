@@ -991,7 +991,7 @@ func (sc *ServerContext) logStats() {
 	logStats.Set("unix_epoch_timestamp", base.ExpvarInt64Val(time.Now().Unix()))
 
 	// Marshal expvar map w/ timestamp to string and write to logs
-	base.Statsf([]byte(logStats.String()))
+	base.RecordStats(logStats.String())
 
 }
 

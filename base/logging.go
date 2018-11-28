@@ -91,9 +91,11 @@ func Tracef(logKey LogKey, format string, args ...interface{}) {
 	logTo(LevelTrace, logKey, format, args...)
 }
 
-func Statsf(stats []byte) {
+// RecordStats writes the given stats JSON content to a stats log file, if enabled.
+// The content passed in is expected to be a JSON dictionary.
+func RecordStats(statsJson string) {
 	if statsLogger != nil {
-		statsLogger.logf("%s", string(stats))
+		statsLogger.logf(statsJson)
 	}
 }
 
