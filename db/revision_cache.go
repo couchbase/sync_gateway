@@ -99,8 +99,10 @@ func (rc *RevisionCache) statsRecorderFunc(hitOrMiss RevCacheStatsEvent) {
 	switch hitOrMiss {
 	case StatsHit:
 		rc.statsCache.Add(base.StatKeyRevisionCacheHits, 1)
-	default:
+	case StatsMiss:
 		rc.statsCache.Add(base.StatKeyRevisionCacheMisses, 1)
+	default:
+		base.Warnf(base.KeyCache, "Unknown RevCacheStatsEvent: %v", hitOrMiss)
 	}
 }
 
