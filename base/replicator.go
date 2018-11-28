@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
+	"expvar"
 )
 
 const (
@@ -17,7 +18,7 @@ type Replicator struct {
 	replications      map[string]sgreplicate.SGReplication
 	replicationParams map[string]sgreplicate.ReplicationParameters
 	lock              sync.RWMutex
-	stats             *ReplicationStats
+	stats             *expvar.Map
 }
 
 type Task struct {
@@ -95,7 +96,7 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 
 	// Create stats for this replication
 	replicationStats := NewReplicationStats()
-	PerReplicationStats().Set(parameters.ReplicationId, replicationStats.ExpvarMap())
+	PerReplicationStats().Set(parameters.ReplicationId, replicationStats)
 	r.stats = replicationStats
 
 	var (
