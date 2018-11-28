@@ -997,7 +997,8 @@ func (sc *ServerContext) logStats() {
 
 func AddGoRuntimeStats() {
 
-	statsResourceUtilization := base.StatsResourceUtilization()
+	statsResourceUtilizationVar := base.GlobalStats.Get(base.StatsGroupKeyResourceUtilization)
+	statsResourceUtilization := statsResourceUtilizationVar.(*expvar.Map)
 
 	// Num goroutines
 	statsResourceUtilization.Set("num_goroutines", base.ExpvarIntVal(runtime.NumGoroutine()))

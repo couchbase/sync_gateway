@@ -96,7 +96,7 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 
 	// Create stats for this replication
 	replicationStats := NewReplicationStats()
-	PerReplicationStats().Set(parameters.ReplicationId, replicationStats)
+	PerReplicationStats.Set(parameters.ReplicationId, replicationStats)
 	r.stats = replicationStats
 
 	var (

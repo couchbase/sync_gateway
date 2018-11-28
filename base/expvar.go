@@ -27,6 +27,16 @@ var (
 
 	// Top level stats expvar map
 	Stats *expvar.Map
+
+	// Global Stats
+	GlobalStats *expvar.Map
+
+	// Per-database stats
+	PerDbStats *expvar.Map
+
+	// Per-replication (sg-replicate) stats
+	PerReplicationStats *expvar.Map
+
 )
 
 const (
@@ -148,46 +158,27 @@ func init() {
 	// All stats will be stored in expvars under the "syncgateway" key.
 	Stats = expvar.NewMap(StatsGroupKeySyncGateway)
 
-	globalStats := new(expvar.Map).Init()
+	GlobalStats = new(expvar.Map).Init()
+	Stats.Set(Global, GlobalStats)
 
-	Stats.Set(Global, globalStats)
+	PerDbStats = new(expvar.Map).Init()
+	Stats.Set(PerDb, PerDbStats)
 
-	Stats.Set(PerDb, new(expvar.Map).Init())
-
-	Stats.Set(PerReplication, new(expvar.Map).Init())
+	PerReplicationStats = new(expvar.Map).Init()
+	Stats.Set(PerReplication, PerReplicationStats)
 
 	// Add StatsResourceUtilization under GlobalStats
-	globalStats.Set(StatsGroupKeyResourceUtilization, new(expvar.Map).Init())
+	GlobalStats.Set(StatsGroupKeyResourceUtilization, new(expvar.Map).Init())
 
 }
 
-func PerDbStats() *expvar.Map {
-	raw := Stats.Get(PerDb)
-	return raw.(*expvar.Map)
-}
-
-func PerReplicationStats() *expvar.Map {
-	raw := Stats.Get(PerReplication)
-	return raw.(*expvar.Map)
-}
-
-func GlobalStats() *expvar.Map {
-	raw := Stats.Get(Global)
-	return raw.(*expvar.Map)
-}
-
-func StatsResourceUtilization() *expvar.Map {
-	globalStats := GlobalStats()
-	raw := globalStats.Get(StatsGroupKeyResourceUtilization)
-	return raw.(*expvar.Map)
-}
 
 // Removes the per-replication stats for this replication id by
 // regenerating a new expvar map without that particular replicationUuid
 func RemovePerReplicationStats(replicationUuid string) {
 
 	// Clear out the stats for this replication since they will no longer be updated.
-	PerReplicationStats().Set(replicationUuid, new(expvar.Map).Init())
+	PerReplicationStats.Set(replicationUuid, new(expvar.Map).Init())
 
 }
 
@@ -196,7 +187,7 @@ func RemovePerReplicationStats(replicationUuid string) {
 func RemovePerDbStats(dbName string) {
 
 	// Clear out the stats for this db since they will no longer be updated.
-	PerDbStats().Set(dbName, new(expvar.Map).Init())
+	PerDbStats.Set(dbName, new(expvar.Map).Init())
 
 }
 
