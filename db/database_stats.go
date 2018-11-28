@@ -25,7 +25,6 @@ type DatabaseStats struct {
 func NewDatabaseStats() *DatabaseStats {
 
 	dbStats := DatabaseStats{
-		StatsCache:                NewEmptyStatsCache(),
 		StatsDatabase:             NewEmptyStatsDatabase(),
 		StatsDeltaSync:            NewEmptyStatsDeltaSync(),
 		StatsSharedBucketImport:   NewEmptyStatsSharedBucketImport(),
@@ -43,7 +42,7 @@ func NewDatabaseStats() *DatabaseStats {
 func (d *DatabaseStats) ExpvarMap() *expvar.Map {
 
 	result := new(expvar.Map).Init()
-	result.Set(base.StatsGroupKeyCache, d.StatsCache)
+	result.Set(base.StatsGroupKeyCache, d.GetStatsCache())
 	result.Set(base.StatsGroupKeyDatabase, d.StatsDatabase)
 	result.Set(base.StatsGroupKeyDeltaSync, d.StatsDeltaSync)
 	result.Set(base.StatsGroupKeySharedBucketImport, d.StatsSharedBucketImport)
@@ -54,6 +53,13 @@ func (d *DatabaseStats) ExpvarMap() *expvar.Map {
 	result.Set(base.StatsGroupKeyGsiViews, d.StatsGsiViews)
 	return result
 
+}
+
+func (d *DatabaseStats) GetStatsCache() (stats *expvar.Map) {
+	if d.StatsCache == nil {
+		d.StatsCache = NewEmptyStatsCache()
+	}
+	return d.StatsCache
 }
 
 func NewEmptyStatsCache() (dbStatsMap *expvar.Map) {
