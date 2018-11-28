@@ -1010,32 +1010,32 @@ func AddGoRuntimeStats() {
 	// Calculate this the same way that FTS does.
 	// TODO: document why this works (blog post or email thread)
 	// TODO: according to the PRD, this should figure out the total memory in the system and express as a ratio of total memory
-	memory_rss := int(memstats.Sys - memstats.HeapReleased) // convert uint -> int since that's what expvar supports
-	statsResourceUtilization.Set("memory_rss_bytes", base.ExpvarIntVal(memory_rss))
+	memory_rss := int64(memstats.Sys - memstats.HeapReleased) // convert uint -> int since that's what expvar supports
+	statsResourceUtilization.Set("memory_rss_bytes", base.ExpvarInt64Val(memory_rss))
 
 	// Sys
-	statsResourceUtilization.Set("go_memstats_sys", base.ExpvarIntVal(int(memstats.Sys)))
+	statsResourceUtilization.Set("go_memstats_sys", base.ExpvarUInt64Val(memstats.Sys))
 
 	// HeapAlloc
-	statsResourceUtilization.Set("go_memstats_heapalloc", base.ExpvarIntVal(int(memstats.HeapAlloc)))
+	statsResourceUtilization.Set("go_memstats_heapalloc", base.ExpvarUInt64Val(memstats.HeapAlloc))
 
 	// HeapIdle
-	statsResourceUtilization.Set("go_memstats_heapidle", base.ExpvarIntVal(int(memstats.HeapIdle)))
+	statsResourceUtilization.Set("go_memstats_heapidle", base.ExpvarUInt64Val(memstats.HeapIdle))
 
 	// HeapInuse
-	statsResourceUtilization.Set("go_memstats_heapinuse", base.ExpvarIntVal(int(memstats.HeapInuse)))
+	statsResourceUtilization.Set("go_memstats_heapinuse", base.ExpvarUInt64Val(memstats.HeapInuse))
 
 	// HeapReleased
-	statsResourceUtilization.Set("go_memstats_heapreleased", base.ExpvarIntVal(int(memstats.HeapReleased)))
+	statsResourceUtilization.Set("go_memstats_heapreleased", base.ExpvarUInt64Val(memstats.HeapReleased))
 
 	// StackInuse
-	statsResourceUtilization.Set("go_memstats_stackinuse", base.ExpvarIntVal(int(memstats.StackInuse)))
+	statsResourceUtilization.Set("go_memstats_stackinuse", base.ExpvarUInt64Val(memstats.StackInuse))
 
 	// StackSys
-	statsResourceUtilization.Set("go_memstats_stacksys", base.ExpvarIntVal(int(memstats.StackSys)))
+	statsResourceUtilization.Set("go_memstats_stacksys", base.ExpvarUInt64Val(memstats.StackSys))
 
 	// PauseTotalNs
-	statsResourceUtilization.Set("go_memstats_pausetotalns", base.ExpvarIntVal(int(memstats.PauseTotalNs)))
+	statsResourceUtilization.Set("go_memstats_pausetotalns", base.ExpvarUInt64Val(memstats.PauseTotalNs))
 
 
 }
