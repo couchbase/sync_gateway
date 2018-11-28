@@ -14,7 +14,7 @@ type DatabaseStats struct {
 	StatsCache                *expvar.Map
 	StatsDatabase             *expvar.Map
 	StatsDeltaSync            *expvar.Map
-	StatsConvergenceImport    *expvar.Map
+	StatsSharedBucketImport   *expvar.Map
 	StatsCblReplicationPush   *expvar.Map
 	StatsCblReplicationPull   *expvar.Map
 	StatsCblReplicationCommon *expvar.Map
@@ -28,7 +28,7 @@ func NewDatabaseStats() *DatabaseStats {
 		StatsCache:                NewEmptyStatsCache(),
 		StatsDatabase:             NewEmptyStatsDatabase(),
 		StatsDeltaSync:            NewEmptyStatsDeltaSync(),
-		StatsConvergenceImport:    NewEmptyStatsConvergenceImport(),
+		StatsSharedBucketImport:   NewEmptyStatsSharedBucketImport(),
 		StatsCblReplicationPush:   NewEmptyStatsCblReplicationPush(),
 		StatsCblReplicationPull:   NewEmptyStatsCblReplicationPull(),
 		StatsCblReplicationCommon: NewEmptyStatsCblReplicationCommon(),
@@ -46,7 +46,7 @@ func (d *DatabaseStats) ExpvarMap() *expvar.Map {
 	result.Set(base.StatsGroupKeyCache, d.StatsCache)
 	result.Set(base.StatsGroupKeyDatabase, d.StatsDatabase)
 	result.Set(base.StatsGroupKeyDeltaSync, d.StatsDeltaSync)
-	result.Set(base.StatsGroupKeyConvergenceImport, d.StatsConvergenceImport)
+	result.Set(base.StatsGroupKeySharedBucketImport, d.StatsSharedBucketImport)
 	result.Set(base.StatsGroupKeyCblReplicationPush, d.StatsCblReplicationPush)
 	result.Set(base.StatsGroupKeyCblReplicationPull, d.StatsCblReplicationPull)
 	result.Set(base.StatsGroupKeyCblReplicationCommon, d.StatsCblReplicationCommon)
@@ -96,7 +96,7 @@ func NewEmptyStatsDeltaSync() (dbStatsMap *expvar.Map) {
 	return result
 }
 
-func NewEmptyStatsConvergenceImport() (dbStatsMap *expvar.Map) {
+func NewEmptyStatsSharedBucketImport() (dbStatsMap *expvar.Map) {
 	result := new(expvar.Map).Init()
 	result.Set(base.StatKeyImportBacklog, base.ExpvarIntVal(0))
 	return result

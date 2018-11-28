@@ -65,7 +65,7 @@ const (
 	StatKeyNetBandwidthSavings = "net_bandwidth_savings"
 	StatKeyDeltaHitRatio       = "delta_hit_ratio"
 
-	// StatsConvergenceImport
+	// StatsSharedBucketImport
 	StatKeyImportBacklog = "import_backlog"
 
 	// StatsCBLReplicationPush
@@ -122,7 +122,7 @@ const (
 	StatsGroupKeyCache                = "cache"
 	StatsGroupKeyDatabase             = "database"
 	StatsGroupKeyDeltaSync            = "delta_sync"
-	StatsGroupKeyConvergenceImport    = "convergence_import"
+	StatsGroupKeySharedBucketImport   = "shared_bucket_import"
 	StatsGroupKeyCblReplicationPush   = "cbl_replication_push"
 	StatsGroupKeyCblReplicationPull   = "cbl_replication_pull"
 	StatsGroupKeyCblReplicationCommon = "cbl_replication_common"
