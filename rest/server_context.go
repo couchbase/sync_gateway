@@ -18,18 +18,19 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"runtime"
+
+	"expvar"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
-	"expvar"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -83,10 +84,6 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		slowQuery = *config.SlowQueryWarningThreshold
 	}
 	base.SlowQueryWarningThreshold = time.Duration(slowQuery) * time.Millisecond
-
-	if config.DeploymentID != nil {
-		sc.startStatsReporter()
-	}
 
 	sc.startStatsLogger()
 
@@ -150,7 +147,6 @@ func (sc *ServerContext) Close() {
 		base.Warnf(base.KeyAll, "Error stopping replications: %+v.  This could cause a resource leak.  Please restart Sync Gateway to cleanup leaked resources.", err)
 	}
 
-	sc.stopStatsReporter()
 	sc.stopStatsLogger()
 
 	for _, ctx := range sc.databases_ {
@@ -969,7 +965,10 @@ func (sc *ServerContext) startStatsLogger() {
 	sc.statsLoggingTicker = time.NewTicker(interval)
 	go func() {
 		for range sc.statsLoggingTicker.C {
-			sc.logStats()
+			err := sc.logStats()
+			if err != nil {
+				base.Warnf(base.KeyAll, "Error logging stats: %v", err)
+			}
 		}
 	}()
 	base.Infof(base.KeyAll, "Logging stats with frequency: %v", interval)
@@ -982,22 +981,32 @@ func (sc *ServerContext) stopStatsLogger() {
 	}
 }
 
-func (sc *ServerContext) logStats() {
+func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
-	logStats := new(expvar.Map).Init()
-	logStats.Set("stats", base.Stats)
-	logStats.Set("unix_epoch_timestamp", base.ExpvarInt64Val(time.Now().Unix()))
+	wrapper := struct {
+		Stats                json.RawMessage `json:"stats"`
+		Unix_epoch_timestamp int64           `json:"unix_epoch_timestamp"`
+	}{
+		Stats:                []byte(base.Stats.String()),
+		Unix_epoch_timestamp: time.Now().Unix(),
+	}
+
+	marshalled, err := json.Marshal(wrapper)
+	if err != nil {
+		return err
+	}
 
 	// Marshal expvar map w/ timestamp to string and write to logs
-	base.RecordStats(logStats.String())
+	base.RecordStats(string(marshalled))
+
+	return nil
 
 }
 
 func AddGoRuntimeStats() {
-
 
 	statsResourceUtilizationVar := base.GlobalStats.Get(base.StatsGroupKeyResourceUtilization)
 	statsResourceUtilization := statsResourceUtilizationVar.(*expvar.Map)
@@ -1040,76 +1049,6 @@ func AddGoRuntimeStats() {
 	// PauseTotalNs
 	statsResourceUtilization.Set("go_memstats_pausetotalns", base.ExpvarUInt64Val(memstats.PauseTotalNs))
 
-
-}
-
-//////// STATISTICS REPORT:
-
-func (sc *ServerContext) startStatsReporter() {
-	interval := kStatsReportInterval
-	if sc.config.StatsReportInterval != nil {
-		if *sc.config.StatsReportInterval <= 0 {
-			return
-		}
-		interval = time.Duration(*sc.config.StatsReportInterval) * time.Second
-	}
-	sc.statsTicker = time.NewTicker(interval)
-	go func() {
-		for range sc.statsTicker.C {
-			sc.reportStats()
-		}
-	}()
-	base.Infof(base.KeyAll, "Will report server stats for %q every %v",
-		base.UD(*sc.config.DeploymentID), interval)
-}
-
-func (sc *ServerContext) stopStatsReporter() {
-	if sc.statsTicker != nil {
-		sc.statsTicker.Stop()
-		sc.reportStats() // Report stuff since the last tick
-	}
-}
-
-// POST a report of database statistics
-func (sc *ServerContext) reportStats() {
-	if sc.config.DeploymentID == nil {
-		panic("Can't reportStats without DeploymentID")
-	}
-	stats := sc.Stats()
-	if stats == nil {
-		return // No activity
-	}
-	base.Infof(base.KeyAll, "Reporting server stats to %s ...", base.SD(kStatsReportURL))
-	body, _ := json.Marshal(stats)
-	bodyReader := bytes.NewReader(body)
-	_, err := sc.HTTPClient.Post(kStatsReportURL, "application/json", bodyReader)
-	if err != nil {
-		base.Warnf(base.KeyAll, "Error posting stats: %v", err)
-	}
-}
-
-func (sc *ServerContext) Stats() map[string]interface{} {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-	var stats []map[string]interface{}
-	any := false
-	for _, dbc := range sc.databases_ {
-		max := dbc.ChangesClientStats.MaxCount()
-		total := dbc.ChangesClientStats.TotalCount()
-		dbc.ChangesClientStats.Reset()
-		stats = append(stats, map[string]interface{}{
-			"max_connections":   max,
-			"total_connections": total,
-		})
-		any = any || total > 0
-	}
-	if !any {
-		return nil
-	}
-	return map[string]interface{}{
-		"deploymentID": *sc.config.DeploymentID,
-		"databases":    stats,
-	}
 }
 
 // For test use
