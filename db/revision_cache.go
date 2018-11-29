@@ -36,14 +36,6 @@ type DocumentRevision struct {
 // Callback function signature for loading something from the rev cache
 type RevisionCacheLoaderFunc func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error)
 
-// Enum to track the different rev cache stats events (hit or miss)
-type RevCacheStatsEvent int
-
-const (
-	StatsHit RevCacheStatsEvent = iota
-	StatsMiss
-)
-
 // The cache payload data. Stored as the Value of a list Element.
 type revCacheValue struct {
 	key         IDAndRev        // doc/rev IDs
@@ -90,17 +82,14 @@ func (rc *RevisionCache) Get(docid, revid string) (DocumentRevision, error) {
 	return docRev, err
 }
 
-func (rc *RevisionCache) statsRecorderFunc(hitOrMiss RevCacheStatsEvent) {
+func (rc *RevisionCache) statsRecorderFunc(cacheHit bool) {
 	if rc.statsCache == nil {
 		return
 	}
-	switch hitOrMiss {
-	case StatsHit:
+	if cacheHit {
 		rc.statsCache.Add(base.StatKeyRevisionCacheHits, 1)
-	case StatsMiss:
+	} else {
 		rc.statsCache.Add(base.StatKeyRevisionCacheMisses, 1)
-	default:
-		base.Warnf(base.KeyCache, "Unknown RevCacheStatsEvent: %v", hitOrMiss)
 	}
 }
 
@@ -193,15 +182,15 @@ func (rc *RevisionCache) purgeOldest_() {
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
 // will be called. This is synchronized so that the loader will only be called once even if
 // multiple goroutines try to load at the same time.
-func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (DocumentRevision, RevCacheStatsEvent, error) {
+func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (DocumentRevision, bool, error) {
 
 	value.lock.Lock()
 	defer value.lock.Unlock()
 
-	statEvent := StatsHit
+	cacheHit := true
 
 	if value.body == nil && value.err == nil {
-		statEvent = StatsMiss
+		cacheHit = false
 		if loaderFunc != nil {
 			value.body, value.history, value.channels, value.attachments, value.expiry, value.err = loaderFunc(value.key)
 		}
@@ -215,19 +204,19 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (DocumentRe
 		Expiry:      value.expiry,
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 	}
-	return docRev, statEvent, value.err
+	return docRev, cacheHit, value.err
 }
 
 // Retrieves the body etc. out of a revCacheValue.  If they aren't already present, loads into the cache value using
 // the provided document.
-func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) (DocumentRevision, RevCacheStatsEvent, error) {
+func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) (DocumentRevision, bool, error) {
 	value.lock.Lock()
 	defer value.lock.Unlock()
 
-	statEvent := StatsHit
+	cacheHit := true
 
 	if value.body == nil && value.err == nil {
-		statEvent = StatsMiss
+		cacheHit = false
 		value.body, value.history, value.channels, value.attachments, value.expiry, value.err = context.revCacheLoaderForDocument(doc, value.key.RevID)
 
 	}
@@ -242,7 +231,7 @@ func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) 
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 	}
 
-	return docRev, statEvent, value.err
+	return docRev, cacheHit, value.err
 }
 
 // Stores a body etc. into a revCacheValue if there isn't one already.
