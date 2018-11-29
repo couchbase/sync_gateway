@@ -18,9 +18,9 @@ type RevisionCache struct {
 	cache      map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
 	lruList    *list.List                 // List ordered by most recent access (Front is newest)
 	capacity   uint32                     // Max number of revisions to cache
-	loaderFunc RevisionCacheLoaderFunc
-	lock       sync.Mutex  // For thread-safety
-	statsCache *expvar.Map // Per-db stats related to cache
+	loaderFunc RevisionCacheLoaderFunc    // Function which does actual loading of something from rev cache
+	lock       sync.Mutex                 // For thread-safety
+	statsCache *expvar.Map                // Per-db stats related to cache
 }
 
 // Revision information as returned by the rev cache
