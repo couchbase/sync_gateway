@@ -44,9 +44,6 @@ const (
 	StatsMiss
 )
 
-// Callback function signature for recording revision cache stats
-type RevisionCacheStatsFunc func(hitOrMiss RevCacheStatsEvent)
-
 // The cache payload data. Stored as the Value of a list Element.
 type revCacheValue struct {
 	key         IDAndRev        // doc/rev IDs
@@ -84,7 +81,8 @@ func (rc *RevisionCache) Get(docid, revid string) (DocumentRevision, error) {
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
-	docRev, err := value.load(rc.loaderFunc, rc.statsRecorderFunc)
+	docRev, statEvent, err := value.load(rc.loaderFunc)
+	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
@@ -113,7 +111,8 @@ func (rc *RevisionCache) GetCached(docid, revid string) (DocumentRevision, error
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
-	docRev, err := value.load(rc.loaderFunc, rc.statsRecorderFunc)
+	docRev, statEvent, err := value.load(rc.loaderFunc)
+	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
@@ -139,7 +138,8 @@ func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (docR
 
 	// Retrieve from or add to rev cache
 	value := rc.getValue(docid, bucketDoc.CurrentRev, true)
-	docRev, err = value.loadForDoc(bucketDoc, context, rc.statsRecorderFunc)
+	docRev, statEvent, err := value.loadForDoc(bucketDoc, context)
+	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
@@ -193,20 +193,17 @@ func (rc *RevisionCache) purgeOldest_() {
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
 // will be called. This is synchronized so that the loader will only be called once even if
 // multiple goroutines try to load at the same time.
-func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc, statsRecorder RevisionCacheStatsFunc) (DocumentRevision, error) {
+func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (DocumentRevision, RevCacheStatsEvent, error) {
 
 	value.lock.Lock()
 	defer value.lock.Unlock()
+
+	statEvent := StatsHit
+
 	if value.body == nil && value.err == nil {
-		if statsRecorder != nil {
-			statsRecorder(StatsMiss)
-		}
+		statEvent = StatsMiss
 		if loaderFunc != nil {
 			value.body, value.history, value.channels, value.attachments, value.expiry, value.err = loaderFunc(value.key)
-		}
-	} else {
-		if statsRecorder != nil {
-			statsRecorder(StatsHit)
 		}
 	}
 
@@ -218,24 +215,21 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc, statsRecord
 		Expiry:      value.expiry,
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 	}
-	return docRev, value.err
+	return docRev, statEvent, value.err
 }
 
 // Retrieves the body etc. out of a revCacheValue.  If they aren't already present, loads into the cache value using
 // the provided document.
-func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext, statsRecorder RevisionCacheStatsFunc) (DocumentRevision, error) {
+func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) (DocumentRevision, RevCacheStatsEvent, error) {
 	value.lock.Lock()
 	defer value.lock.Unlock()
+
+	statEvent := StatsHit
+
 	if value.body == nil && value.err == nil {
-		if statsRecorder != nil {
-			statsRecorder(StatsMiss)
-		}
+		statEvent = StatsMiss
 		value.body, value.history, value.channels, value.attachments, value.expiry, value.err = context.revCacheLoaderForDocument(doc, value.key.RevID)
 
-	} else {
-		if statsRecorder != nil {
-			statsRecorder(StatsHit)
-		}
 	}
 
 	// Never let the caller mutate the stored body, attachments
@@ -248,7 +242,7 @@ func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext, 
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 	}
 
-	return docRev, value.err
+	return docRev, statEvent, value.err
 }
 
 // Stores a body etc. into a revCacheValue if there isn't one already.
