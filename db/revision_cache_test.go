@@ -46,7 +46,7 @@ func TestRevisionCache(t *testing.T) {
 		goassert.DeepEquals(t, channels, base.Set(nil))
 	}
 
-	cache := NewRevisionCache(10, nil)
+	cache := NewRevisionCache(10, nil, nil)
 	for i := 0; i < 10; i++ {
 		body, history, channels := revForTest(i)
 		docRev := testDocRev(body[BodyRev].(string), body, history, channels, nil, nil)
@@ -90,7 +90,7 @@ func TestLoaderFunction(t *testing.T) {
 		}
 		return
 	}
-	cache := NewRevisionCache(10, loader)
+	cache := NewRevisionCache(10, loader, nil)
 
 	docRev, err := cache.Get("Jens", "1")
 	goassert.Equals(t, docRev.Body[BodyId], "Jens")

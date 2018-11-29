@@ -18,11 +18,14 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"expvar"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
@@ -35,18 +38,20 @@ const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowQueryWarningThreshold = 500 // ms
 const KDefaultNumShards = 16
+const DefaultLogFreqencySecs = 5
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config      *ServerConfig
-	databases_  map[string]*db.DatabaseContext
-	lock        sync.RWMutex
-	statsTicker *time.Ticker
-	HTTPClient  *http.Client
-	replicator  *base.Replicator
+	config             *ServerConfig
+	databases_         map[string]*db.DatabaseContext
+	lock               sync.RWMutex
+	statsTicker        *time.Ticker
+	statsLoggingTicker *time.Ticker
+	HTTPClient         *http.Client
+	replicator         *base.Replicator
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
@@ -80,9 +85,7 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 	}
 	base.SlowQueryWarningThreshold = time.Duration(slowQuery) * time.Millisecond
 
-	if config.DeploymentID != nil {
-		sc.startStatsReporter()
-	}
+	sc.startStatsLogger()
 
 	return sc
 }
@@ -96,6 +99,7 @@ func (sc *ServerContext) PostStartup() {
 	}
 
 	sc.startReplicators()
+
 }
 
 // startReplicators will start up any replicators for the ServerContext
@@ -143,7 +147,8 @@ func (sc *ServerContext) Close() {
 		base.Warnf(base.KeyAll, "Error stopping replications: %+v.  This could cause a resource leak.  Please restart Sync Gateway to cleanup leaked resources.", err)
 	}
 
-	sc.stopStatsReporter()
+	sc.stopStatsLogger()
+
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
 		if ctx.EventMgr.HasHandlerForEvent(db.DBStateChange) {
@@ -946,73 +951,104 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	return &config, nil
 }
 
-//////// STATISTICS REPORT:
+//////// STATS LOGGING
 
-func (sc *ServerContext) startStatsReporter() {
-	interval := kStatsReportInterval
-	if sc.config.StatsReportInterval != nil {
-		if *sc.config.StatsReportInterval <= 0 {
-			return
-		}
-		interval = time.Duration(*sc.config.StatsReportInterval) * time.Second
+func (sc *ServerContext) startStatsLogger() {
+
+	statsLogFrequencySecs := DefaultLogFreqencySecs
+	if sc.config.Unsupported != nil && sc.config.Unsupported.StatsLogFrequencySecs > 0 {
+		statsLogFrequencySecs = sc.config.Unsupported.StatsLogFrequencySecs
 	}
-	sc.statsTicker = time.NewTicker(interval)
+
+	interval := time.Second * time.Duration(statsLogFrequencySecs)
+
+	sc.statsLoggingTicker = time.NewTicker(interval)
 	go func() {
-		for range sc.statsTicker.C {
-			sc.reportStats()
+		for range sc.statsLoggingTicker.C {
+			err := sc.logStats()
+			if err != nil {
+				base.Warnf(base.KeyAll, "Error logging stats: %v", err)
+			}
 		}
 	}()
-	base.Infof(base.KeyAll, "Will report server stats for %q every %v",
-		base.UD(*sc.config.DeploymentID), interval)
+	base.Infof(base.KeyAll, "Logging stats with frequency: %v", interval)
+
 }
 
-func (sc *ServerContext) stopStatsReporter() {
-	if sc.statsTicker != nil {
-		sc.statsTicker.Stop()
-		sc.reportStats() // Report stuff since the last tick
+func (sc *ServerContext) stopStatsLogger() {
+	if sc.statsLoggingTicker != nil {
+		sc.statsLoggingTicker.Stop()
 	}
 }
 
-// POST a report of database statistics
-func (sc *ServerContext) reportStats() {
-	if sc.config.DeploymentID == nil {
-		panic("Can't reportStats without DeploymentID")
+func (sc *ServerContext) logStats() error {
+
+	AddGoRuntimeStats()
+
+	// Create wrapper expvar map in order to add a timestamp field for logging purposes
+	wrapper := struct {
+		Stats                json.RawMessage `json:"stats"`
+		Unix_epoch_timestamp int64           `json:"unix_epoch_timestamp"`
+	}{
+		Stats:                []byte(base.Stats.String()),
+		Unix_epoch_timestamp: time.Now().Unix(),
 	}
-	stats := sc.Stats()
-	if stats == nil {
-		return // No activity
-	}
-	base.Infof(base.KeyAll, "Reporting server stats to %s ...", base.SD(kStatsReportURL))
-	body, _ := json.Marshal(stats)
-	bodyReader := bytes.NewReader(body)
-	_, err := sc.HTTPClient.Post(kStatsReportURL, "application/json", bodyReader)
+
+	marshalled, err := json.Marshal(wrapper)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error posting stats: %v", err)
+		return err
 	}
+
+	// Marshal expvar map w/ timestamp to string and write to logs
+	base.RecordStats(string(marshalled))
+
+	return nil
+
 }
 
-func (sc *ServerContext) Stats() map[string]interface{} {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-	var stats []map[string]interface{}
-	any := false
-	for _, dbc := range sc.databases_ {
-		max := dbc.ChangesClientStats.MaxCount()
-		total := dbc.ChangesClientStats.TotalCount()
-		dbc.ChangesClientStats.Reset()
-		stats = append(stats, map[string]interface{}{
-			"max_connections":   max,
-			"total_connections": total,
-		})
-		any = any || total > 0
-	}
-	if !any {
-		return nil
-	}
-	return map[string]interface{}{
-		"deploymentID": *sc.config.DeploymentID,
-		"databases":    stats,
-	}
+func AddGoRuntimeStats() {
+
+	statsResourceUtilizationVar := base.GlobalStats.Get(base.StatsGroupKeyResourceUtilization)
+	statsResourceUtilization := statsResourceUtilizationVar.(*expvar.Map)
+
+	// Num goroutines
+	statsResourceUtilization.Set("num_goroutines", base.ExpvarIntVal(runtime.NumGoroutine()))
+
+	// Read memstats (relatively expensive)
+	memstats := runtime.MemStats{}
+	runtime.ReadMemStats(&memstats)
+
+	// memory_rss (rss = resident set size)
+	// Calculate this the same way that FTS does.
+	// TODO: document why this works (blog post or email thread)
+	// TODO: according to the PRD, this should figure out the total memory in the system and express as a ratio of total memory
+	memory_rss := int64(memstats.Sys - memstats.HeapReleased) // convert uint -> int since that's what expvar supports
+	statsResourceUtilization.Set("memory_rss_bytes", base.ExpvarInt64Val(memory_rss))
+
+	// Sys
+	statsResourceUtilization.Set("go_memstats_sys", base.ExpvarUInt64Val(memstats.Sys))
+
+	// HeapAlloc
+	statsResourceUtilization.Set("go_memstats_heapalloc", base.ExpvarUInt64Val(memstats.HeapAlloc))
+
+	// HeapIdle
+	statsResourceUtilization.Set("go_memstats_heapidle", base.ExpvarUInt64Val(memstats.HeapIdle))
+
+	// HeapInuse
+	statsResourceUtilization.Set("go_memstats_heapinuse", base.ExpvarUInt64Val(memstats.HeapInuse))
+
+	// HeapReleased
+	statsResourceUtilization.Set("go_memstats_heapreleased", base.ExpvarUInt64Val(memstats.HeapReleased))
+
+	// StackInuse
+	statsResourceUtilization.Set("go_memstats_stackinuse", base.ExpvarUInt64Val(memstats.StackInuse))
+
+	// StackSys
+	statsResourceUtilization.Set("go_memstats_stacksys", base.ExpvarUInt64Val(memstats.StackSys))
+
+	// PauseTotalNs
+	statsResourceUtilization.Set("go_memstats_pausetotalns", base.ExpvarUInt64Val(memstats.PauseTotalNs))
+
 }
 
 // For test use

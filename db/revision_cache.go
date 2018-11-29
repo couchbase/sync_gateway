@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"expvar"
+
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -16,8 +18,9 @@ type RevisionCache struct {
 	cache      map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
 	lruList    *list.List                 // List ordered by most recent access (Front is newest)
 	capacity   uint32                     // Max number of revisions to cache
-	loaderFunc RevisionCacheLoaderFunc
-	lock       sync.Mutex // For thread-safety
+	loaderFunc RevisionCacheLoaderFunc    // Function which does actual loading of something from rev cache
+	lock       sync.Mutex                 // For thread-safety
+	statsCache *expvar.Map                // Per-db stats related to cache
 }
 
 // Revision information as returned by the rev cache
@@ -30,6 +33,7 @@ type DocumentRevision struct {
 	Attachments AttachmentsMeta
 }
 
+// Callback function signature for loading something from the rev cache
 type RevisionCacheLoaderFunc func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error)
 
 // The cache payload data. Stored as the Value of a list Element.
@@ -45,7 +49,7 @@ type revCacheValue struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc) *RevisionCache {
+func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *RevisionCache {
 
 	if capacity == 0 {
 		capacity = KDefaultRevisionCacheCapacity
@@ -56,6 +60,7 @@ func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc) *Revi
 		lruList:    list.New(),
 		capacity:   capacity,
 		loaderFunc: loaderFunc,
+		statsCache: statsCache,
 	}
 }
 
@@ -68,11 +73,24 @@ func (rc *RevisionCache) Get(docid, revid string) (DocumentRevision, error) {
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
-	docRev, err := value.load(rc.loaderFunc)
+	docRev, statEvent, err := value.load(rc.loaderFunc)
+	rc.statsRecorderFunc(statEvent)
+
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
 	return docRev, err
+}
+
+func (rc *RevisionCache) statsRecorderFunc(cacheHit bool) {
+	if rc.statsCache == nil {
+		return
+	}
+	if cacheHit {
+		rc.statsCache.Add(base.StatKeyRevisionCacheHits, 1)
+	} else {
+		rc.statsCache.Add(base.StatKeyRevisionCacheMisses, 1)
+	}
 }
 
 // Looks up a revision from the cache-only.  Will not fall back to loader function if not
@@ -82,7 +100,9 @@ func (rc *RevisionCache) GetCached(docid, revid string) (DocumentRevision, error
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
-	docRev, err := value.load(rc.loaderFunc)
+	docRev, statEvent, err := value.load(rc.loaderFunc)
+	rc.statsRecorderFunc(statEvent)
+
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
@@ -107,7 +127,9 @@ func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (docR
 
 	// Retrieve from or add to rev cache
 	value := rc.getValue(docid, bucketDoc.CurrentRev, true)
-	docRev, err = value.loadForDoc(bucketDoc, context)
+	docRev, statEvent, err := value.loadForDoc(bucketDoc, context)
+	rc.statsRecorderFunc(statEvent)
+
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
@@ -160,16 +182,18 @@ func (rc *RevisionCache) purgeOldest_() {
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
 // will be called. This is synchronized so that the loader will only be called once even if
 // multiple goroutines try to load at the same time.
-func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (DocumentRevision, error) {
+func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (DocumentRevision, bool, error) {
+
 	value.lock.Lock()
 	defer value.lock.Unlock()
+
+	cacheHit := true
+
 	if value.body == nil && value.err == nil {
-		base.StatsExpvars.Add("revisionCache_misses", 1)
+		cacheHit = false
 		if loaderFunc != nil {
 			value.body, value.history, value.channels, value.attachments, value.expiry, value.err = loaderFunc(value.key)
 		}
-	} else {
-		base.StatsExpvars.Add("revisionCache_hits", 1)
 	}
 
 	docRev := DocumentRevision{
@@ -180,19 +204,21 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc) (DocumentRe
 		Expiry:      value.expiry,
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 	}
-	return docRev, value.err
+	return docRev, cacheHit, value.err
 }
 
 // Retrieves the body etc. out of a revCacheValue.  If they aren't already present, loads into the cache value using
 // the provided document.
-func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) (DocumentRevision, error) {
+func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) (DocumentRevision, bool, error) {
 	value.lock.Lock()
 	defer value.lock.Unlock()
+
+	cacheHit := true
+
 	if value.body == nil && value.err == nil {
-		base.StatsExpvars.Add("revisionCache_misses", 1)
+		cacheHit = false
 		value.body, value.history, value.channels, value.attachments, value.expiry, value.err = context.revCacheLoaderForDocument(doc, value.key.RevID)
-	} else {
-		base.StatsExpvars.Add("revisionCache_hits", 1)
+
 	}
 
 	// Never let the caller mutate the stored body, attachments
@@ -205,7 +231,7 @@ func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext) 
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 	}
 
-	return docRev, value.err
+	return docRev, cacheHit, value.err
 }
 
 // Stores a body etc. into a revCacheValue if there isn't one already.

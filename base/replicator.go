@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
+	"expvar"
 )
 
 const (
@@ -17,6 +18,7 @@ type Replicator struct {
 	replications      map[string]sgreplicate.SGReplication
 	replicationParams map[string]sgreplicate.ReplicationParameters
 	lock              sync.RWMutex
+	stats             *expvar.Map
 }
 
 type Task struct {
@@ -91,6 +93,11 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 	}
 
 	Infof(KeyReplicate, "Creating replication with parameters %s", UD(parameters))
+
+	// Create stats for this replication
+	replicationStats := NewReplicationStats()
+	PerReplicationStats.Set(parameters.ReplicationId, replicationStats)
+	r.stats = replicationStats
 
 	var (
 		replication sgreplicate.SGReplication
@@ -203,6 +210,8 @@ func (r *Replicator) stopReplication(parameters sgreplicate.ReplicationParameter
 	delete(r.replications, repID)
 	delete(r.replicationParams, repID)
 
+	RemovePerReplicationStats(repID)
+
 	return taskForReplication(replication, parameters), nil
 }
 
@@ -249,4 +258,21 @@ func taskForReplication(replication sgreplicate.SGReplication, params sgreplicat
 		StartLastSeq:     stats.GetStartLastSeq(),
 		EndLastSeq:       stats.GetEndLastSeq(),
 	}
+}
+
+func NewReplicationStats() (expvarMap *expvar.Map) {
+	result := new(expvar.Map)
+	result.Set(StatKeyNumDocsTransferred, ExpvarFloatVal(0))
+	result.Set(StatKeyNumDocsTransferredPerSec, ExpvarFloatVal(0))
+	result.Set(StatKeyBandwidth, ExpvarFloatVal(0))
+	result.Set(StatKeyDataReplicatedSize, ExpvarFloatVal(0))
+	result.Set(StatKeyNumAttachmentsTransfered, ExpvarFloatVal(0))
+	result.Set(StatKeyAvgAttachmentSize, ExpvarFloatVal(0))
+	result.Set(StatKeyNumTempFailures, ExpvarFloatVal(0))
+	result.Set(StatKeyNumPermFailures, ExpvarFloatVal(0))
+	result.Set(StatKeyPendingBacklog, ExpvarFloatVal(0))
+	result.Set(StatKeyBatchSize, ExpvarFloatVal(0))
+	result.Set(StatKeyDocTransferLatency, ExpvarFloatVal(0))
+	result.Set(StatKeyDocsCheckedSent, ExpvarFloatVal(0))
+	return result
 }

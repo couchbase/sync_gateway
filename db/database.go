@@ -79,6 +79,7 @@ type DatabaseContext struct {
 	OIDCProviders      auth.OIDCProviderMap    // OIDC clients
 	PurgeInterval      int                     // Metadata purge interval, in hours
 	serverUUID         string                  // UUID of the server, if available
+	DbStats            *DatabaseStats          // stats that correspond to this database context
 }
 
 type DatabaseContextOptions struct {
@@ -186,9 +187,14 @@ type DBOnlineCallback func(dbContext *DatabaseContext)
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
 func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (*DatabaseContext, error) {
+
 	if err := ValidateDatabaseName(dbName); err != nil {
 		return nil, err
 	}
+
+	dbStats := NewDatabaseStats()
+
+	base.PerDbStats.Set(dbName, dbStats.ExpvarMap())
 
 	context := &DatabaseContext{
 		Name:       dbName,
@@ -197,8 +203,14 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		RevsLimit:  DefaultRevsLimit,
 		autoImport: autoImport,
 		Options:    options,
+		DbStats:    dbStats,
 	}
-	context.revisionCache = NewRevisionCache(options.RevisionCacheCapacity, context.revCacheLoader)
+
+	context.revisionCache = NewRevisionCache(
+		options.RevisionCacheCapacity,
+		context.revCacheLoader,
+		context.DbStats.StatsCache(),
+	)
 
 	context.EventMgr = NewEventManager()
 
@@ -484,6 +496,9 @@ func (context *DatabaseContext) Close() {
 	context.Shadower.Stop()
 	context.Bucket.Close()
 	context.Bucket = nil
+
+	base.RemovePerDbStats(context.Name)
+
 }
 
 func (context *DatabaseContext) IsClosed() bool {
@@ -1106,7 +1121,13 @@ func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 
 // For test usage
 func (context *DatabaseContext) FlushRevisionCache() {
-	context.revisionCache = NewRevisionCache(context.Options.RevisionCacheCapacity, context.revCacheLoader)
+
+	context.revisionCache = NewRevisionCache(
+		context.Options.RevisionCacheCapacity,
+		context.revCacheLoader,
+		context.DbStats.StatsCache(),
+	)
+
 }
 
 func (context *DatabaseContext) AllowConflicts() bool {

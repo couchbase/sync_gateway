@@ -348,8 +348,8 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 // *************************************************************************
 
 var (
-	consoleLogger                                    *ConsoleLogger
-	debugLogger, infoLogger, warnLogger, errorLogger *FileLogger
+	consoleLogger                                                 *ConsoleLogger
+	debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
 )
 
 // RotateLogfiles rotates all active log files.
@@ -361,6 +361,7 @@ func RotateLogfiles() map[*FileLogger]error {
 		infoLogger:  nil,
 		warnLogger:  nil,
 		errorLogger: nil,
+		statsLogger: nil,
 	}
 
 	for logger := range loggers {
@@ -419,6 +420,14 @@ func Debugf(logKey LogKey, format string, args ...interface{}) {
 // Tracef logs the given formatted string and args to the trace log level with an optional log key.
 func Tracef(logKey LogKey, format string, args ...interface{}) {
 	logTo(LevelTrace, logKey, format, args...)
+}
+
+// RecordStats writes the given stats JSON content to a stats log file, if enabled.
+// The content passed in is expected to be a JSON dictionary.
+func RecordStats(statsJson string) {
+	if statsLogger != nil {
+		statsLogger.logf(statsJson)
+	}
 }
 
 func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
