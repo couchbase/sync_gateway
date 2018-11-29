@@ -6,10 +6,11 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// References into expvar stats that correspond to a particular database context.  To make it easier to
-// get references to the expvar maps that compose the database stats, keep explicit references to all
-// contained expvar maps.  When the entire structure needs to be added to a parent expvar map, convert
-// to an expvar map by calling the ExparMap() method.
+// Wrapper around *expvars.Map for database stats that provide:
+//
+//    - A lazy loading mechanism
+//    - Initialize all stats in a stat group to their zero values
+//
 type DatabaseStats struct {
 
 	// The expvars map the stats for this db will be stored in
