@@ -19,7 +19,7 @@ type DatabaseStats struct {
 
 func NewDatabaseStats() *DatabaseStats {
 	dbStats := DatabaseStats{
-		storage: new(expvar.Map).Init(),
+		storage: new(expvar.Map),
 	}
 	return &dbStats
 }
@@ -80,7 +80,7 @@ func (d *DatabaseStats) StatsByKey(key string) (stats *expvar.Map) {
 
 func initEmptyStatsMap(key string) (*expvar.Map) {
 
-	result := new(expvar.Map).Init()
+	result := new(expvar.Map)
 
 	switch key {
 	case base.StatsGroupKeyCache:

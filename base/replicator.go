@@ -261,7 +261,7 @@ func taskForReplication(replication sgreplicate.SGReplication, params sgreplicat
 }
 
 func NewReplicationStats() (expvarMap *expvar.Map) {
-	result := new(expvar.Map).Init()
+	result := new(expvar.Map)
 	result.Set(StatKeyNumDocsTransferred, ExpvarFloatVal(0))
 	result.Set(StatKeyNumDocsTransferredPerSec, ExpvarFloatVal(0))
 	result.Set(StatKeyBandwidth, ExpvarFloatVal(0))
