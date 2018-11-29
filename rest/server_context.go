@@ -998,6 +998,7 @@ func (sc *ServerContext) logStats() {
 
 func AddGoRuntimeStats() {
 
+
 	statsResourceUtilizationVar := base.GlobalStats.Get(base.StatsGroupKeyResourceUtilization)
 	statsResourceUtilization := statsResourceUtilizationVar.(*expvar.Map)
 

@@ -209,7 +209,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	context.revisionCache = NewRevisionCache(
 		options.RevisionCacheCapacity,
 		context.revCacheLoader,
-		context.DbStats.GetStatsCache(),
+		context.DbStats.StatsCache(),
 	)
 
 	context.EventMgr = NewEventManager()
@@ -1125,7 +1125,7 @@ func (context *DatabaseContext) FlushRevisionCache() {
 	context.revisionCache = NewRevisionCache(
 		context.Options.RevisionCacheCapacity,
 		context.revCacheLoader,
-		context.DbStats.GetStatsCache(),
+		context.DbStats.StatsCache(),
 	)
 
 }

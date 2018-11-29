@@ -92,8 +92,8 @@ var kHandlersByProfile = map[string]blipHandlerMethod{
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
 
-	h.db.DatabaseContext.DbStats.StatsDatabase.Add(base.StatKeyNumReplicationConnsActive, 1)
-	defer h.db.DatabaseContext.DbStats.StatsDatabase.Add(base.StatKeyNumReplicationConnsActive, -1)
+	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationConnsActive, 1)
+	defer h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationConnsActive, -1)
 
 	if c := h.server.GetConfig().ReplicatorCompression; c != nil {
 		blip.CompressionLevel = *c

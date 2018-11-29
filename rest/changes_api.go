@@ -163,8 +163,8 @@ func (h *handler) handleChanges() error {
 
 	base.StatsExpvars.Add("changesFeeds_total", 1)
 
-	h.db.DatabaseContext.DbStats.StatsDatabase.Add(base.StatKeyNumReplicationConnsActive, 1)
-	defer h.db.DatabaseContext.DbStats.StatsDatabase.Add(base.StatKeyNumReplicationConnsActive, -1)
+	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationConnsActive, 1)
+	defer h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationConnsActive, -1)
 
 
 	var feed string
