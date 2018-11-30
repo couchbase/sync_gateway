@@ -1084,3 +1084,12 @@ func ExpvarFloatVal(val float64) *expvar.Float {
 	value.Set(float64(val))
 	return &value
 }
+
+// Convert an expvar.Var to an int64.  Return 0 if the expvar var is nil.
+func ExpvarVar2Int(expvarVar expvar.Var) int64 {
+	if expvarVar == nil {
+		return 0
+	}
+	asInt := expvarVar.(*expvar.Int)
+	return asInt.Value()
+}

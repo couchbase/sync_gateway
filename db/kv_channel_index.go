@@ -70,7 +70,7 @@ func (k *KvChannelIndex) IndexBucket() base.Bucket {
 
 func (k *KvChannelIndex) pollForChanges(stableClock base.SequenceClock, newChannelClock base.SequenceClock) (hasChanges bool, cancelPolling bool) {
 
-	changeCacheExpvars.Add(fmt.Sprintf("pollCount-%s", k.channelName), 1)
+	IndexExpvars.Add(fmt.Sprintf("pollCount-%s", k.channelName), 1)
 	// Increment the overall poll count since a changes request (regardless of whether there have been polled changes)
 	totalPollCount := atomic.AddUint32(&k.pollCount, 1)
 	unreadPollCount := atomic.LoadUint32(&k.unreadPollCount)

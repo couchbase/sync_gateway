@@ -33,8 +33,8 @@ var sequenceHasherGetHashTime = base.NewIntRollingMeanVar(100)
 var sequenceHasherGetClockTime = base.NewIntRollingMeanVar(100)
 
 func init() {
-	base.StatsExpvars.Set("indexReader.seqHasher.GetHash", &sequenceHasherGetHashTime)
-	base.StatsExpvars.Set("indexReader.seqHasher.GetClockTime", &sequenceHasherGetClockTime)
+	IndexExpvars.Set("indexReader.seqHasher.GetHash", &sequenceHasherGetHashTime)
+	IndexExpvars.Set("indexReader.seqHasher.GetClockTime", &sequenceHasherGetClockTime)
 }
 
 type sequenceHasher struct {

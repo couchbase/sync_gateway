@@ -2,7 +2,6 @@ package db
 
 import (
 	"errors"
-	"expvar"
 	"fmt"
 	"math"
 	"strings"
@@ -30,8 +29,6 @@ const (
 	QueryTypeResync       = "resync"
 	QueryTypeAllDocs      = "allDocs"
 )
-
-var queryExpvars = expvar.NewMap("syncGateway_query")
 
 const (
 	n1qlQueryCountExpvarFormat      = "%s_count"          // Query name
@@ -204,9 +201,11 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 
 	results, err = gocbBucket.Query(statement, params, consistency, adhoc)
 	if err != nil {
-		queryExpvars.Add(fmt.Sprintf(n1qlQueryErrorCountExpvarFormat, queryName), 1)
+		context.DbStats.StatsGsiViews().Add(fmt.Sprintf(n1qlQueryErrorCountExpvarFormat, queryName), 1)
 	}
-	queryExpvars.Add(fmt.Sprintf(n1qlQueryCountExpvarFormat, queryName), 1)
+
+	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(n1qlQueryCountExpvarFormat, queryName), 1)
+
 	return results, err
 }
 
@@ -219,9 +218,10 @@ func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string,
 
 	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
 	if err != nil {
-		queryExpvars.Add(fmt.Sprintf(viewQueryErrorCountExpvarFormat, ddoc, viewName), 1)
+		context.DbStats.StatsGsiViews().Add(fmt.Sprintf(viewQueryErrorCountExpvarFormat, ddoc, viewName), 1)
 	}
-	queryExpvars.Add(fmt.Sprintf(viewQueryCountExpvarFormat, ddoc, viewName), 1)
+	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(viewQueryCountExpvarFormat, ddoc, viewName), 1)
+
 	return results, err
 }
 

@@ -167,7 +167,6 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(channel string, options ChangesOptions, to string) (<-chan *ChangeEntry, error) {
-	dbExpvars.Add("channelChangesFeeds", 1)
 	log, err := db.changeCache.GetChanges(channel, options)
 	base.Debugf(base.KeyChanges, "[changesFeed] Found %d changes for channel %s", len(log), base.UD(channel))
 	if err != nil {
@@ -354,11 +353,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 	go func() {
 
-		base.StatsExpvars.Add("simpleChanges_total", 1)
-		base.StatsExpvars.Add("simpleChanges_active", 1)
 		defer func() {
 			base.Infof(base.KeyChanges, "MultiChangesFeed done %s", base.UD(to))
-			base.StatsExpvars.Add("simpleChanges_active", -1)
 			close(output)
 		}()
 

@@ -147,12 +147,10 @@ func (r *DCPReceiver) OnError(err error) {
 	// vbucket stream, not the entire feed.
 	// bucketName := "unknown" // this is currently ignored anyway
 	// r.notify(bucketName, err)
-	dcpExpvars.Add("onError_count", 1)
 }
 
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	dcpExpvars.Add("dataUpdate_count", 1)
 	r.updateSeq(vbucketId, seq, true)
 	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpMutation))
 	if shouldPersistCheckpoint {
@@ -163,7 +161,6 @@ func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 
 func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	dcpExpvars.Add("dataDelete_count", 1)
 	r.updateSeq(vbucketId, seq, true)
 	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpDeletion))
 	if shouldPersistCheckpoint {
@@ -214,7 +211,6 @@ func (r *DCPReceiver) SetMetaData(vbucketId uint16, value []byte) error {
 	r.m.Lock()
 	defer r.m.Unlock()
 
-	dcpExpvars.Add("setMetadata_count", 1)
 	r.meta[vbucketId] = value
 
 	// Check persistMeta to avoids persistence if the only feed events we've seen are the DCP echo of DCP checkpoint docs
@@ -250,7 +246,10 @@ func (r *DCPReceiver) GetMetaData(vbucketId uint16) (
 // it's called, logs warning and does a hard reset on metadata for the vbucket
 func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 	Warnf(KeyAll, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
+
+	// TODO: move to per-db stats, or if that's too difficult due to package dependencies, then at least under Global stats
 	dcpExpvars.Add("rollback_count", 1)
+
 	r.updateSeq(vbucketId, 0, false)
 	r.SetMetaData(vbucketId, nil)
 
@@ -262,6 +261,7 @@ func (r *DCPReceiver) RollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackS
 	Warnf(KeyAll, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 
 	dcpExpvars.Add("rollback_count", 1)
+
 	r.updateSeq(vbucketId, rollbackSeq, false)
 	r.SetMetaData(vbucketId, makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq))
 	return nil
@@ -343,7 +343,6 @@ func makeVbucketMetadataForSequence(vbucketUUID uint64, sequence uint64) []byte 
 //         - Would only result in some repeated entry processing, which is already handled by the indexer
 //         - Is a relatively infrequent operation (occurs when vbuckets are initially assigned to an accel node)
 func (r *DCPReceiver) persistCheckpoint(vbNo uint16, value []byte) error {
-	dcpExpvars.Add("persistCheckpoint_count", 1)
 	Tracef(KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
 	return r.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo), 0, value)
 }
@@ -356,7 +355,6 @@ func (r *DCPReceiver) persistCheckpoint(vbNo uint16, value []byte) error {
 //   - The ongoing performance overhead of persisting last sequence outweighs the minor performance benefit of not reprocessing a few
 //    sequences in a checkpoint on startup
 func (r *DCPReceiver) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStartSeq uint64, snapshotEndSeq uint64, err error) {
-	dcpExpvars.Add("loadCheckpoint_count", 1)
 	rawValue, _, err := r.bucket.GetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo))
 	if err != nil {
 		// On a key not found error, metadata hasn't been persisted for this vbucket
@@ -689,13 +687,6 @@ func (b *backfillStatus) init(start []uint64, end map[uint16]uint64, maxVbNo uin
 		}
 	}
 
-	// Initialize backfill expvars
-	totalVar := &expvar.Int{}
-	completedVar := &expvar.Int{}
-	totalVar.Set(int64(b.expectedSequences))
-	completedVar.Set(0)
-	dcpExpvars.Set("backfill_expected", totalVar)
-	dcpExpvars.Set("backfill_completed", completedVar)
 }
 
 func (b *backfillStatus) isActive() bool {
@@ -728,7 +719,6 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 	}
 
 	b.receivedSequences += backfillDelta
-	dcpExpvars.Add("backfill_completed", int64(backfillDelta))
 
 	// Check if it's time to persist and log backfill progress
 	if time.Since(b.lastPersistTime) > kBackfillPersistInterval {

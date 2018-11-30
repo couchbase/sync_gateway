@@ -3,7 +3,6 @@ package db
 import (
 	"encoding/json"
 	"errors"
-	"expvar"
 	"fmt"
 	"strconv"
 
@@ -13,11 +12,6 @@ import (
 	"github.com/robertkrimen/otto"
 )
 
-var importExpvars *expvar.Map
-
-func init() {
-	importExpvars = expvar.NewMap("syncGateway_import")
-}
 
 type ImportMode uint8
 
@@ -174,7 +168,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
 		// Cancel import
-		if doc.IsSGWrite(nil) {
+		if doc.IsSGWrite(db.DatabaseContext.DbStats,nil) {
 			base.Debugf(base.KeyImport, "During import, existing doc (%s) identified as SG write.  Canceling import.", base.UD(docid))
 			alreadyImportedDoc = doc
 			return nil, nil, updatedExpiry, base.ErrAlreadyImported
@@ -226,7 +220,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// If the doc was already imported, we want to return the imported version
 		docOut = alreadyImportedDoc
 	case nil:
-		importExpvars.Add("import_count", 1)
+		db.DbStats.SharedBucketImport().Add(base.StatKeyImportCount, 1)
 		base.Debugf(base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(docid), isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.
@@ -238,7 +232,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		return nil, err
 	default:
 		base.Infof(base.KeyImport, "Error importing doc %q: %v", base.UD(docid), err)
-		importExpvars.Add("import_error_count", 1)
+		db.DbStats.SharedBucketImport().Add(base.StatKeyImportErrorCount, 1)
 		return nil, err
 
 	}

@@ -301,7 +301,7 @@ func (s *syncData) GetSyncCas() uint64 {
 }
 
 // syncData.IsSGWrite - used during feed-based import
-func (s *syncData) IsSGWrite(cas uint64, rawBody []byte) bool {
+func (s *syncData) IsSGWrite(dbStats *DatabaseStats, cas uint64, rawBody []byte) bool {
 	// If cas matches, it was a SG write
 	if cas == s.GetSyncCas() {
 		return true
@@ -309,10 +309,10 @@ func (s *syncData) IsSGWrite(cas uint64, rawBody []byte) bool {
 
 	// If crc32c hash of body matches value stored in SG metadata, SG metadata is still valid
 	if base.Crc32cHashString(rawBody) == s.Crc32c {
-		importExpvars.Add("crc32c_match_count", 1)
+		dbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
 		return true
 	} else {
-		importExpvars.Add("crc32c_mismatch_count", 1)
+		dbStats.StatsDatabase().Add(base.StatKeyCrc32cMismatchCount, 1)
 	}
 
 	return false
@@ -320,11 +320,11 @@ func (s *syncData) IsSGWrite(cas uint64, rawBody []byte) bool {
 
 // doc.IsSGWrite - used during on-demand import.  Doesn't invoke syncData.IsSGWrite so that we
 // can complete the inexpensive cas check before the (potential) doc marshalling.
-func (doc *document) IsSGWrite(rawBody []byte) bool {
+func (doc *document) IsSGWrite(dbStats *DatabaseStats, rawBody []byte) bool {
 
 	// If the raw body is available, use syncData.IsSGWrite
 	if rawBody != nil && len(rawBody) > 0 {
-		if doc.syncData.IsSGWrite(doc.Cas, rawBody) {
+		if doc.syncData.IsSGWrite(dbStats, doc.Cas, rawBody) {
 			return true
 		} else {
 			base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.syncData.Cas)
@@ -337,7 +337,6 @@ func (doc *document) IsSGWrite(rawBody []byte) bool {
 		return true
 	}
 
-	importExpvars.Add("crc32c_doc_unmarshal_count", 1)
 	// Since raw body isn't available, marshal from the document to perform body hash comparison
 	docBody, err := doc.MarshalBody()
 	if err != nil {
@@ -345,10 +344,10 @@ func (doc *document) IsSGWrite(rawBody []byte) bool {
 		return false
 	}
 	if base.Crc32cHashString(docBody) == doc.syncData.Crc32c {
-		importExpvars.Add("crc32c_match_count", 1)
+		dbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
 		return true
 	} else {
-		importExpvars.Add("crc32c_mismatch_count", 1)
+		dbStats.StatsDatabase().Add(base.StatKeyCrc32cMismatchCount, 1)
 	}
 
 	base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.syncData.Cas)

@@ -12,7 +12,6 @@ package db
 import (
 	"encoding/json"
 	"errors"
-	"expvar"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -137,8 +136,6 @@ type Database struct {
 	user auth.User
 }
 
-var dbExpvars = expvar.NewMap("syncGateway_db")
-
 func ValidateDatabaseName(dbName string) error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Naming_and_Addressing
 	if match, _ := regexp.MatchString(`^[a-z][-a-z0-9_$()+/]*$`, dbName); !match {
@@ -215,7 +212,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	context.EventMgr = NewEventManager()
 
 	var err error
-	context.sequences, err = newSequenceAllocator(bucket)
+	context.sequences, err = newSequenceAllocator(bucket, dbStats)
 	if err != nil {
 		return nil, err
 	}

@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"expvar"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -30,8 +29,6 @@ import (
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
-
-var gocbExpvars *expvar.Map
 
 const (
 	MaxConcurrentSingleOps = 1000 // Max 1000 concurrent single bucket ops
@@ -57,10 +54,6 @@ var recoverableGoCBErrors = map[string]struct{}{
 	gocbcore.ErrOverload.Error(): {},
 	gocbcore.ErrBusy.Error():     {},
 	gocbcore.ErrTmpFail.Error():  {},
-}
-
-func init() {
-	gocbExpvars = expvar.NewMap("syncGateway_gocb")
 }
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb
@@ -332,13 +325,10 @@ func (bucket *CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err 
 func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err error) {
 
 	bucket.singleOps <- struct{}{}
-	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
-		gocbExpvars.Add("SingleOps", -1)
 	}()
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		gocbExpvars.Add("Get", 1)
 		casGoCB, err := bucket.Bucket.Get(k, rv)
 		shouldRetry = isRecoverableGoCBError(err)
 		return shouldRetry, err, uint64(casGoCB)
@@ -485,9 +475,6 @@ func (bucket *CouchbaseBucketGoCB) processBulkSetEntriesBatch(entries []*sgbucke
 // with a backoff loop.
 func (bucket *CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte, error) {
 
-	gocbExpvars.Add("GetBulkRaw", 1)
-	gocbExpvars.Add("GetBulkRaw_totalKeys", int64(len(keys)))
-
 	// Create a RetryWorker for the GetBulkRaw operation
 	worker := bucket.newGetBulkRawRetryWorker(keys)
 
@@ -522,9 +509,6 @@ func (bucket *CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte,
 // QueueOverflow errors that can be retried successfully, they will be retried
 // with a backoff loop.
 func (bucket *CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]uint64, error) {
-
-	gocbExpvars.Add("GetBulkRaw", 1)
-	gocbExpvars.Add("GetBulkRaw_totalKeys", int64(len(keys)))
 
 	// Create a RetryWorker for the GetBulkRaw operation
 	worker := bucket.newGetBulkCountersRetryWorker(keys)
@@ -837,16 +821,12 @@ func mapContains(mapInstance map[string]interface{}, key string) bool {
 func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
 
 	bucket.singleOps <- struct{}{}
-	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
-		gocbExpvars.Add("SingleOps", -1)
 	}()
 
 	var returnVal []byte
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-
-		gocbExpvars.Add("GetAndTouchRaw", 1)
 		casGoCB, err := bucket.Bucket.GetAndTouch(k, exp, &returnVal)
 		shouldRetry = isRecoverableGoCBError(err)
 		return shouldRetry, err, uint64(casGoCB)
@@ -882,7 +862,6 @@ func (bucket *CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (add
 	defer func() {
 		<-bucket.singleOps
 	}()
-	gocbExpvars.Add("Add", 1)
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
@@ -911,7 +890,6 @@ func (bucket *CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added
 	defer func() {
 		<-bucket.singleOps
 	}()
-	gocbExpvars.Add("AddRaw", 1)
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
@@ -948,8 +926,6 @@ func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) erro
 		<-bucket.singleOps
 	}()
 
-	gocbExpvars.Add("Set", 1)
-
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		_, err = bucket.Bucket.Upsert(k, v, exp)
@@ -974,7 +950,6 @@ func (bucket *CouchbaseBucketGoCB) SetRaw(k string, exp uint32, v []byte) error 
 	defer func() {
 		<-bucket.singleOps
 	}()
-	gocbExpvars.Add("SetRaw", 1)
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
@@ -1015,7 +990,6 @@ func (bucket *CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, 
 	defer func() {
 		<-bucket.singleOps
 	}()
-	gocbExpvars.Add("Delete", 1)
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
@@ -1066,14 +1040,12 @@ func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas
 
 		if cas == 0 {
 			// Try to insert the value into the bucket
-			gocbExpvars.Add("WriteCas_Insert", 1)
 			newCas, err := bucket.Bucket.Insert(k, v, exp)
 			shouldRetry = isRecoverableGoCBError(err)
 			return shouldRetry, err, uint64(newCas)
 		}
 
 		// Otherwise, replace existing value
-		gocbExpvars.Add("WriteCas_Replace", 1)
 		newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), exp)
 		shouldRetry = isRecoverableGoCBError(err)
 		return shouldRetry, err, uint64(newCas)
@@ -1122,7 +1094,6 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 		// cas=0 specifies an insert
 		if cas == 0 {
 			// TODO: Once that's fixed, need to wrap w/ retry handling
-			gocbExpvars.Add("WriteCasWithXattr_Insert", 1)
 
 			mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc, 0, exp).
 				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
@@ -1142,7 +1113,6 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 
 		casOut = 0
 		// Otherwise, replace existing value
-		gocbExpvars.Add("WriteCas_Replace", 1)
 		if v != nil {
 			// Have value and xattr value - update both
 			mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, gocb.Cas(cas), exp).
@@ -1275,7 +1245,6 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 	*/
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
-		gocbExpvars.Add("Get", 1)
 		// First, attempt to get the document and xattr in one shot. We can't set SubdocDocFlagAccessDeleted when attempting
 		// to retrieve the full doc body, so need to retry that scenario below.
 		res, lookupErr := bucket.Bucket.LookupInEx(k, gocb.SubdocDocFlagAccessDeleted).
@@ -1366,7 +1335,6 @@ func (bucket *CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey st
 	defer func() {
 		<-bucket.singleOps
 	}()
-	gocbExpvars.Add("Delete", 1)
 
 	Debugf(KeyCRUD, "DeleteWithXattr called with key: %v xattrKey: %v", UD(k), UD(xattrKey))
 
@@ -1494,7 +1462,6 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 		// NOTE: ignore error and assume it's a "key not found" error.  If it's a more
 		// serious error, it will probably recur when calling other ops below
 
-		gocbExpvars.Add("Update_Get", 1)
 		cas, err := bucket.Get(k, &value)
 		if err != nil {
 			if !bucket.IsKeyNotFoundError(err) {
@@ -1519,18 +1486,15 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 			// If we get an error on the insert, due to a race, this will
 			// go back through the cas loop
 
-			gocbExpvars.Add("Update_Insert", 1)
 			casGoCB, err = bucket.Bucket.Insert(k, value, exp)
 		} else {
 			if value == nil {
 				// In order to match the go-couchbase bucket behavior, if the
 				// callback returns nil, we delete the doc
-				gocbExpvars.Add("Update_Remove", 1)
 				casGoCB, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
-				gocbExpvars.Add("Update_Replace", 1)
 				casGoCB, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), exp)
 			}
 		}
@@ -1557,7 +1521,6 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 		var cas uint64
 
 		// Load the existing value.
-		gocbExpvars.Add("Update_Get", 1)
 		value, cas, err = bucket.GetRaw(k)
 		if err != nil {
 			if !bucket.IsKeyNotFoundError(err) {
@@ -1583,7 +1546,6 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 			// If we get an error on the insert, due to a race, this will
 			// go back through the cas loop
 
-			gocbExpvars.Add("Update_Insert", 1)
 			if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
 				casGoCB, err = bucket.Bucket.InsertDura(k, value, exp, numNodesReplicateTo, numNodesPersistTo)
 			} else {
@@ -1606,7 +1568,6 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
-				gocbExpvars.Add("Update_Replace", 1)
 				if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
 					casGoCB, err = bucket.Bucket.ReplaceDura(k, value, gocb.Cas(cas), exp, numNodesReplicateTo, numNodesPersistTo)
 				} else {
@@ -1648,7 +1609,6 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		// If no existing value has been provided, retrieve the current value from the bucket
 		if cas == 0 {
 			// Load the existing value.
-			gocbExpvars.Add("Update_GetWithXattr", 1)
 			cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
 
 			if err != nil {
@@ -2357,10 +2317,8 @@ func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) 
 func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
 
 	bucket.singleOps <- struct{}{}
-	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
-		gocbExpvars.Add("SingleOps", -1)
 	}()
 
 	agent := bucket.IoRouter()
@@ -2581,12 +2539,10 @@ func asStale(value interface{}) gocb.StaleMode {
 // This prevents Sync Gateway from having too many outstanding concurrent view queries against Couchbase Server
 func (bucket *CouchbaseBucketGoCB) waitForAvailViewOp() {
 	bucket.viewOps <- struct{}{}
-	gocbExpvars.Add("ViewOps", 1)
 }
 
 func (bucket *CouchbaseBucketGoCB) releaseViewOp() {
 	<-bucket.viewOps
-	gocbExpvars.Add("ViewOps", -1)
 }
 
 func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {

@@ -48,16 +48,16 @@ type kvChangeIndexReader struct {
 }
 
 func init() {
-	base.StatsExpvars.Set("indexReader.numReaders.OneShot", &indexReaderOneShotCount)
-	base.StatsExpvars.Set("indexReader.numReaders.Persistent", &indexReaderPersistentCount)
-	base.StatsExpvars.Set("indexReader.pollReaders.Time", &indexReaderPollReadersTime)
-	base.StatsExpvars.Set("indexReader.pollReaders.Count", &indexReaderPollReadersCount)
-	base.StatsExpvars.Set("indexReader.pollPrincipals.Time", &indexReaderPollPrincipalsTime)
-	base.StatsExpvars.Set("indexReader.pollPrincipals.Count", &indexReaderPollPrincipalsCount)
-	base.StatsExpvars.Set("indexReader.getChanges.Time", &indexReaderGetChangesTime)
-	base.StatsExpvars.Set("indexReader.getChanges.Count", &indexReaderGetChangesCount)
-	base.StatsExpvars.Set("indexReader.getChanges.UseCached", &indexReaderGetChangesUseCached)
-	base.StatsExpvars.Set("indexReader.getChanges.UseIndexed", &indexReaderGetChangesUseIndexed)
+	IndexExpvars.Set("indexReader.numReaders.OneShot", &indexReaderOneShotCount)
+	IndexExpvars.Set("indexReader.numReaders.Persistent", &indexReaderPersistentCount)
+	IndexExpvars.Set("indexReader.pollReaders.Time", &indexReaderPollReadersTime)
+	IndexExpvars.Set("indexReader.pollReaders.Count", &indexReaderPollReadersCount)
+	IndexExpvars.Set("indexReader.pollPrincipals.Time", &indexReaderPollPrincipalsTime)
+	IndexExpvars.Set("indexReader.pollPrincipals.Count", &indexReaderPollPrincipalsCount)
+	IndexExpvars.Set("indexReader.getChanges.Time", &indexReaderGetChangesTime)
+	IndexExpvars.Set("indexReader.getChanges.Count", &indexReaderGetChangesCount)
+	IndexExpvars.Set("indexReader.getChanges.UseCached", &indexReaderGetChangesUseCached)
+	IndexExpvars.Set("indexReader.getChanges.UseIndexed", &indexReaderGetChangesUseIndexed)
 }
 
 func (k *kvChangeIndexReader) Init(options *CacheOptions, indexOptions *ChannelIndexOptions, onChange func(base.Set), indexPartitionsCallback IndexPartitionsFunc, context *DatabaseContext) (err error) {

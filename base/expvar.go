@@ -46,6 +46,19 @@ const (
 
 const (
 
+	// StatsResourceUtilization
+	StatKeyNumGoroutines           = "num_goroutines"
+	StatKeyGoroutinesHighWatermark = "goroutines_high_watermark"
+	StatKeyMemoryRssBytes          = "memory_rss_bytes"
+	StatKeyGoMemstatsSys           = "go_memstats_sys"
+	StatKeyGoMemstatsHeapAlloc     = "go_memstats_heapalloc"
+	StatKeyGoMemstatsHeapIdle      = "go_memstats_heapidle"
+	StatKeyGoMemstatsHeapInUse     = "go_memstats_heapinuse"
+	StatKeyGoMemstatsHeapReleased  = "go_memstats_heapreleased"
+	StatKeyGoMemstatsStackInUse    = "go_memstats_stackinuse"
+	StatKeyGoMemstatsStackSys      = "go_memstats_stacksys"
+	StatKeyGoMemstatsPauseTotalNs  = "go_memstats_pausetotalns"
+
 	// StatsCache
 	StatKeyRevisionCacheHits         = "rev_cache_hits"
 	StatKeyRevisionCacheMisses       = "rev_cache_misses"
@@ -57,7 +70,8 @@ const (
 	StatKeyChannelCacheNumChannels   = "chan_cache_num_channels"
 	StatKeyChannelCacheMaxEntries    = "chan_cache_max_entries"
 	StatKeyNumSkippedSeqs            = "num_skipped_seqs"
-
+	StatKeyAbandonedSeqs        = "abandoned_seqs"
+	
 	// StatsDatabase
 	StatKeyNumReplicationConnsActive     = "num_replication_conns_active"
 	StatKeyNumReplicationsPerSec         = "new_replications_per_sec"
@@ -73,13 +87,19 @@ const (
 	StatKeyPercentReplicationsContinuous = "percent_replications_continuous"
 	StatKeyNumberInitialSync             = "number_initial_sync"
 	StatKeyOldRevsDocMisses              = "old_revs_doc_misses"
+	StatKeySequenceGets                  = "sequence_gets"
+	StatKeySequenceReserves              = "sequence_reserves"
+	StatKeyCrc32cMatchCount              = "crc32c_match_count"
+	StatKeyCrc32cMismatchCount           = "crc32c_mismatch_count"
 
 	// StatsDeltaSync
 	StatKeyNetBandwidthSavings = "net_bandwidth_savings"
 	StatKeyDeltaHitRatio       = "delta_hit_ratio"
 
 	// StatsSharedBucketImport
-	StatKeyImportBacklog = "import_backlog"
+	StatKeyImportBacklog    = "import_backlog"
+	StatKeyImportCount      = "import_count"
+	StatKeyImportErrorCount = "import_error_count"
 
 	// StatsCBLReplicationPush
 	StatKeyWriteProcessingTime  = "write_processing_time"
@@ -108,6 +128,7 @@ const (
 	StatKeyNumAccessErrors     = "num_access_errors"
 	StatKeyAuthSuccessCount    = "auth_success_count"
 	StatKeyAuthFailedCount     = "auth_failed_count"
+	StatKeyTotalAuthTime       = "total_auth_time"
 
 	// StatsGsiViews
 	StatKeyTotalQueriesPerSec      = "total_queries_per_sec"
@@ -173,6 +194,13 @@ func init() {
 	// Add StatsResourceUtilization under GlobalStats
 	GlobalStats.Set(StatsGroupKeyResourceUtilization, new(expvar.Map))
 
+}
+
+
+func StatsResourceUtilization() *expvar.Map {
+	statsResourceUtilizationVar := GlobalStats.Get(StatsGroupKeyResourceUtilization)
+	statsResourceUtilization := statsResourceUtilizationVar.(*expvar.Map)
+	return statsResourceUtilization
 }
 
 // Removes the per-replication stats for this replication id by

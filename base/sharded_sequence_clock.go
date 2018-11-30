@@ -9,10 +9,11 @@ import (
 	"sync"
 )
 
+// This is short-circuited from being included in the expvar stats due to SG Accel deprecation.
 var shardedClockExpvars *expvar.Map
 
 func init() {
-	shardedClockExpvars = expvar.NewMap("syncGateway_index_clocks")
+	shardedClockExpvars = new(expvar.Map)
 }
 
 const (
