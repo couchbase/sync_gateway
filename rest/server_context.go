@@ -1088,6 +1088,15 @@ func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxG
 
 }
 
+// Updates stats that are more efficient to calculate at stats collection time
+func (sc *ServerContext) updateCalculatedStats() {
+
+	for _, dbContext := range sc.databases_ {
+		dbContext.UpdateCalculatedStats()
+	}
+
+}
+
 // For test use
 func (sc *ServerContext) Database(name string) *db.DatabaseContext {
 	db, err := sc.GetDatabase(name)
