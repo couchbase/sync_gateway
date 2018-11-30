@@ -36,7 +36,6 @@ var (
 
 	// Per-replication (sg-replicate) stats
 	PerReplicationStats *expvar.Map
-
 )
 
 const (
@@ -48,12 +47,16 @@ const (
 const (
 
 	// StatsCache
-	StatKeyRevisionCacheHits    = "rev_cache_hits"
-	StatKeyRevisionCacheMisses  = "rev_cache_misses"
-	StatKeyChanCachePerf        = "chan_cache_perf"
-	StatKeyRevCacheUtilization  = "rev_cache_utilization"
-	StatKeyChanCacheUtilization = "chan_cache_utilization"
-	StatKeyNumSkippedSeqs       = "num_skipped_seqs"
+	StatKeyRevisionCacheHits         = "rev_cache_hits"
+	StatKeyRevisionCacheMisses       = "rev_cache_misses"
+	StatKeyChannelCacheHits          = "chan_cache_hits"
+	StatKeyChannelCacheMisses        = "chan_cache_misses"
+	StatKeyChannelCacheRevsActive    = "chan_cache_active_revs"
+	StatKeyChannelCacheRevsTombstone = "chan_cache_tombstone_revs"
+	StatKeyChannelCacheRevsRemoval   = "chan_cache_removal_revs"
+	StatKeyChannelCacheNumChannels   = "chan_cache_num_channels"
+	StatKeyChannelCacheMaxEntries    = "chan_cache_max_entries"
+	StatKeyNumSkippedSeqs            = "num_skipped_seqs"
 
 	// StatsDatabase
 	StatKeyNumReplicationConnsActive     = "num_replication_conns_active"
@@ -171,7 +174,6 @@ func init() {
 	GlobalStats.Set(StatsGroupKeyResourceUtilization, new(expvar.Map))
 
 }
-
 
 // Removes the per-replication stats for this replication id by
 // regenerating a new expvar map without that particular replicationUuid

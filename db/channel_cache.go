@@ -205,6 +205,9 @@ func (c *channelCache) Remove(docIDs []string, startTime time.Time) (count int) 
 				continue
 			}
 
+			// Decrement utilization stats for removed entry
+			c.UpdateCacheUtilization(c.logs[i], -1)
+
 			// Memory-leak safe delete from SliceTricks:
 			copy(c.logs[i:], c.logs[i+1:])
 			c.logs[len(c.logs)-1] = nil
@@ -225,6 +228,7 @@ func (c *channelCache) _pruneCacheLength() (pruned int) {
 	if len(c.logs) > c.options.ChannelCacheMaxLength {
 		pruned = len(c.logs) - c.options.ChannelCacheMaxLength
 		for i := 0; i < pruned; i++ {
+			c.UpdateCacheUtilization(c.logs[i], -1)
 			delete(c.cachedDocIDs, c.logs[i].DocID)
 		}
 		c.validFrom = c.logs[pruned-1].Sequence + 1
@@ -250,6 +254,7 @@ func (c *channelCache) pruneCacheAge() {
 	// those that fit within channelCacheMinLength and therefore not subject to cache age restrictions
 	for len(c.logs) > c.options.ChannelCacheMinLength && time.Since(c.logs[0].TimeReceived) > c.options.ChannelCacheAge {
 		c.validFrom = c.logs[0].Sequence + 1
+		c.UpdateCacheUtilization(c.logs[0], -1)
 		delete(c.cachedDocIDs, c.logs[0].DocID)
 		c.logs = c.logs[1:]
 		pruned++
@@ -317,6 +322,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	}
 	startSeq := options.Since.SafeSequence() + 1
 	if cacheValidFrom <= startSeq {
+		c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheHits, 1)
 		return resultFromCache, nil
 	}
 
@@ -333,11 +339,13 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 			base.UD(c.channelName), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
+		c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheHits, 1)
 		return resultFromCache, nil
 	}
 
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
 	// overlap, which helps confirm that we've got everything.
+	c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheMisses, 1)
 	resultFromView, err := c.context.getChangesInChannelFromQuery(c.channelName, cacheValidFrom,
 		options)
 	if err != nil {
@@ -363,6 +371,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		result = append(result, resultFromCache[0:n]...)
 	}
 	base.Infof(base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelName), len(result))
+
 	return result, nil
 }
 
@@ -392,7 +401,9 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 		if _, found := c.cachedDocIDs[change.DocID]; found {
 			for i := end; i >= 0; i-- {
 				if log[i].DocID == change.DocID {
+					c.UpdateCacheUtilization(log[i], -1)
 					copy(log[i:], log[i+1:])
+					c.UpdateCacheUtilization(change, 1)
 					log[end] = change
 					return
 				}
@@ -403,7 +414,20 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 		c._adjustFirstSeq(change)
 	}
 	c.logs = append(log, change)
+
+	c.UpdateCacheUtilization(change, 1)
 	c.cachedDocIDs[change.DocID] = struct{}{}
+}
+
+// Updates cache utilization.  Note that cache entries that are both removals and tombstones are counted as removals
+func (c *channelCache) UpdateCacheUtilization(entry *LogEntry, delta int64) {
+	if entry.IsRemoved() {
+		c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheRevsRemoval, delta)
+	} else if entry.IsDeleted() {
+		c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheRevsTombstone, delta)
+	} else {
+		c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheRevsActive, delta)
+	}
 }
 
 // Insert out-of-sequence entry into the cache.  If the docId is already present in a later
@@ -413,6 +437,7 @@ func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 
 	defer func() {
 		c.cachedDocIDs[change.DocID] = struct{}{}
+		c.UpdateCacheUtilization(change, 1)
 	}()
 
 	end := len(*log) - 1
@@ -434,7 +459,8 @@ func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 					// we've already cached a later revision of this document, can ignore update
 					return
 				} else {
-					// found existing prior to insert position
+					// found existing prior to insert position.  Decrement utilization for replaced version
+					c.UpdateCacheUtilization((*log)[i], -1)
 					if i == insertAtIndex-1 {
 						// The sequence is adjacent to another with the same docId - replace it
 						// instead of inserting
@@ -455,7 +481,6 @@ func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 	*log = append(*log, nil)
 	copy((*log)[insertAtIndex+1:], (*log)[insertAtIndex:])
 	(*log)[insertAtIndex] = change
-
 	return
 }
 
@@ -532,6 +557,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 						copy(entriesToPrepend[1:], entriesToPrepend)
 						entriesToPrepend[0] = change
 						c.cachedDocIDs[change.DocID] = struct{}{}
+						c.UpdateCacheUtilization(change, 1)
 
 						if len(entriesToPrepend) >= cacheCapacity {
 							// If we reach capacity before prepending the entire set of changes, set changesValidFrom to the oldest sequence
@@ -556,6 +582,12 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 		}
 		return 0
 	}
+}
+
+func (c *channelCache) GetSize() int {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return len(c.logs)
 }
 
 type lateLogEntry struct {

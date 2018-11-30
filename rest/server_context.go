@@ -985,6 +985,7 @@ func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
+	sc.updateCalculatedStats()
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
 	wrapper := struct {
 		Stats                json.RawMessage `json:"stats"`
@@ -1048,6 +1049,15 @@ func AddGoRuntimeStats() {
 
 	// PauseTotalNs
 	statsResourceUtilization.Set("go_memstats_pausetotalns", base.ExpvarUInt64Val(memstats.PauseTotalNs))
+
+}
+
+// Updates stats that are more efficient to calculate at stats collection time
+func (sc *ServerContext) updateCalculatedStats() {
+
+	for _, dbContext := range sc.databases_ {
+		dbContext.UpdateCalculatedStats()
+	}
 
 }
 

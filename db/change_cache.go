@@ -254,8 +254,8 @@ func (c *changeCache) CleanAgedItems() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	for channelName := range c.channelCaches {
-		c._getChannelCache(channelName).pruneCacheAge()
+	for _, channelCache := range c.channelCaches {
+		channelCache.pruneCacheAge()
 	}
 
 	return
@@ -532,8 +532,8 @@ func (c *changeCache) Remove(docIDs []string, startTime time.Time) (count int) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	for channelName := range c.channelCaches {
-		count += c._getChannelCache(channelName).Remove(docIDs, startTime)
+	for _, channelCache := range c.channelCaches {
+		count += channelCache.Remove(docIDs, startTime)
 	}
 
 	return count
@@ -764,6 +764,7 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 
 		cache = newChannelCacheWithOptions(c.context, channelName, validFrom, c.options)
 		c.channelCaches[channelName] = cache
+		c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheNumChannels, 1)
 	}
 	return cache
 }
@@ -808,6 +809,19 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	} else {
 		return uint64(0)
 	}
+}
+
+func (c *changeCache) MaxCacheSize() int {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	maxCacheSize := 0
+	for _, channelCache := range c.channelCaches {
+		channelSize := channelCache.GetSize()
+		if channelSize > maxCacheSize {
+			maxCacheSize = channelSize
+		}
+	}
+	return maxCacheSize
 }
 
 // Set the initial sequence.  Presumes that change chache is already locked.
