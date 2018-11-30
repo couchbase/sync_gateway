@@ -111,30 +111,30 @@ func TestCoveringQueries(t *testing.T) {
 	// channels
 	channelsStatement, params := db.buildChannelsQuery("ABC", 0, 10, 100)
 	plan, explainErr := gocbBucket.ExplainQuery(channelsStatement, params)
-	assert.NoError(t, explainErr, "Error generating explain for channels query")
+	assertNoError(t, explainErr, "Error generating explain for channels query")
 	covered := isCovered(plan)
-	assert.True(t, covered, "Channel query isn't covered by index")
+	assertTrue(t, covered, "Channel query isn't covered by index")
 
 	// star channel
 	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100)
 	plan, explainErr = gocbBucket.ExplainQuery(channelStarStatement, params)
-	assert.NoError(t, explainErr, "Error generating explain for star channel query")
+	assertNoError(t, explainErr, "Error generating explain for star channel query")
 	covered = isCovered(plan)
-	assert.True(t, covered, "Star channel query isn't covered by index")
+	assertTrue(t, covered, "Star channel query isn't covered by index")
 
 	// Access and roleAccess currently aren't covering, because of the need to target the user property by name
 	// in the SELECT.
 	// Including here for ease-of-conversion when we get an indexing enhancement to support covered queries.
 	accessStatement := db.buildAccessQuery("user1")
 	plan, explainErr = gocbBucket.ExplainQuery(accessStatement, nil)
-	assert.NoError(t, explainErr, "Error generating explain for access query")
+	assertNoError(t, explainErr, "Error generating explain for access query")
 	covered = isCovered(plan)
 	//assert.True(t, covered, "Access query isn't covered by index")
 
 	// roleAccess
 	roleAccessStatement := db.buildRoleAccessQuery("user1")
 	plan, explainErr = gocbBucket.ExplainQuery(roleAccessStatement, nil)
-	assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
+	assertNoError(t, explainErr, "Error generating explain for roleAccess query")
 	covered = isCovered(plan)
 	//assert.True(t, !covered, "RoleAccess query isn't covered by index")
 
