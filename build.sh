@@ -29,7 +29,7 @@ updateVersionStamp () {
 
     # Cd into SG code directory
     cd $SG_DIR
-    ./set-version-stamp.sh
+    ./set-version-stamp.sh || true
 
     # Go back to the original current directory
     cd $CURRENT_DIR
