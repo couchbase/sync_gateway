@@ -31,13 +31,19 @@ import (
 	_ "net/http/pprof"
 )
 
-var DefaultInterface = ":4984"
-var DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
-var DefaultServer = "walrus:"
-var DefaultPool = "default"
+var (
+	DefaultInterface      = ":4984"
+	DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
+	DefaultServer         = "walrus:"
+	DefaultPool           = "default"
 
-// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
-var defaultLogFilePath string
+	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
+	defaultLogFilePath string
+
+	// Default values for delta sync
+	defaultDeltaSyncEnable    = base.IsEnterpriseEdition() // true by default in EE
+	defaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24)       // 24 hours in seconds
+)
 
 var config *ServerConfig
 
@@ -194,7 +200,12 @@ type DbConfig struct {
 	UseViews                  bool                           `json:"use_views"`                              // Force use of views instead of GSI
 	SendWWWAuthenticateHeader *bool                          `json:"send_www_authenticate_header,omitempty"` // If false, disables setting of 'WWW-Authenticate' header in 401 responses
 	BucketOpTimeoutMs         *uint32                        `json:"bucket_op_timeout_ms,omitempty"`         // // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+	DeltaSync                 DeltaSyncConfig                `json:"delta_sync,omitempty"`
+}
 
+type DeltaSyncConfig struct {
+	Enable           *bool   `json:"enable,omitempty"`              // Whether delta sync is enabled (EE only)
+	RevMaxAgeSeconds *uint32 `json:"rev_max_age_seconds,omitempty"` // The number of seconds deltas for old revs are available for
 }
 
 type DeprecatedOptions struct {
@@ -343,6 +354,14 @@ func (dbConfig *DbConfig) setup(name string) error {
 		}
 	}
 
+	// Set DeltaSync defaults
+	if dbConfig.DeltaSync.Enable == nil {
+		dbConfig.DeltaSync.Enable = &defaultDeltaSyncEnable
+	}
+	if dbConfig.DeltaSync.RevMaxAgeSeconds == nil || *dbConfig.DeltaSync.RevMaxAgeSeconds < 0 {
+		dbConfig.DeltaSync.RevMaxAgeSeconds = &defaultDeltaSyncRevMaxAge
+	}
+
 	return err
 }
 
@@ -381,6 +400,11 @@ func (dbConfig DbConfig) validate() error {
 			msg := "FeedType is DCPSHARD, but no ChannelIndex declared in config"
 			return fmt.Errorf(msg)
 		}
+	}
+
+	// Error if Delta Sync is explicitly enabled in CE
+	if *dbConfig.DeltaSync.Enable && !base.IsEnterpriseEdition() {
+		return fmt.Errorf("Delta sync not supported in CE - disable via config with delta_sync.enable: false")
 	}
 
 	return nil
