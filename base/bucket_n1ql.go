@@ -76,6 +76,20 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 	return nil, err
 }
 
+func (bucket *CouchbaseBucketGoCB) ExplainQuery(statement string, params interface{}) (plan map[string]interface{}, err error) {
+	explainStatement := fmt.Sprintf("EXPLAIN %s", statement)
+
+	explainResults, explainErr := bucket.Query(explainStatement, params, gocb.RequestPlus, false)
+
+	if explainErr != nil {
+		return nil, explainErr
+	}
+
+	firstRow := explainResults.NextBytes()
+	unmarshalErr := json.Unmarshal(firstRow, &plan)
+	return plan, unmarshalErr
+}
+
 // CreateIndex issues a CREATE INDEX query in the current bucket, using the form:
 //   CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
 // Sample usage with resulting statement:
