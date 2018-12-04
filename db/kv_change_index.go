@@ -41,7 +41,6 @@ type kvChangeIndex struct {
 
 type IndexPartitionsFunc func() (*base.IndexPartitions, error)
 
-// This is short-circuited from being included in the expvar stats due to SG Accel deprecation.
 var IndexExpvars *expvar.Map
 
 func init() {
