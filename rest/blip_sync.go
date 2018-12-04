@@ -472,12 +472,11 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 				}
 			}
 
-			base.Tracef(base.KeySync, "  DELTAS: bh.useDeltas was: %v\n", bh.useDeltas)
 			if bh.useDeltas && len(knownRevs) > 0 {
-				base.Tracef(base.KeySync, "  DELTAS: sending rev as delta")
+				bh.Logf(base.LevelTrace, base.KeySync, "Attempting to send rev as delta")
 				bh.sendRevAsDelta(sender, seq, docID, revID, knownRevs, maxHistory)
 			} else {
-				base.Tracef(base.KeySync, "  DELTAS: send rev or norev (no deltas)")
+				bh.Logf(base.LevelTrace, base.KeySync, "Not sending as delta because either useDeltas was false, or knownRevs was empty")
 				bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 			}
 		}
@@ -570,7 +569,7 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 
 func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
 
-	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: getting newBody docID: %v - rev: %v", docID, revID)
+	bh.Logf(base.LevelTrace, base.KeySync, "DELTA: getting newBody docID: %v - rev: %v", docID, revID)
 	newBody, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
 		bh.Logf(base.LevelWarn, base.KeySync, "DELTA: couldn't get newBody - sending NoRev... err: %v", err)
@@ -593,32 +592,29 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 	revsStart := strconv.Itoa(newBodyRevisions[db.RevisionsStart].(int) - 1) // previous rev start
 	for _, v := range newBodyRevisions[db.RevisionsIds].([]string) {
 		rev := revsStart + "-" + v
-		bh.Logf(base.LevelTrace, base.KeySync, "DELTA:   comparing ancestor rev: %v to knownRevs: %v", rev, knownRevs)
 		if knownRevs[rev] {
-			bh.Logf(base.LevelInfo, base.KeySync, "DELTA: matched ancestor rev to known rev: %v", rev)
 			deltaSrcRevID = rev
 		}
 	}
 
-	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: getting oldBody docID: %v - rev: %v", docID, deltaSrcRevID)
+	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: getting oldBody docID: %v - deltaSrcRevID: %v", docID, deltaSrcRevID)
 	oldBody, err := bh.db.GetRev(docID, deltaSrcRevID, true, nil)
 	if err != nil {
-		bh.Logf(base.LevelInfo, base.KeySync, "DELTA: couldn't get oldBody - falling back to full body replication... err: %v", err)
+		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: couldn't get oldBody - falling back to full body replication... err: %v", err)
 		// fall back to standard full-body replication if we can't do a delta
 		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 		return
 	}
 
 	// generate delta
-	bh.Logf(base.LevelTrace, base.KeySync, "DELTA: generating delta... oldBody, newBody")
 	delta, err := base.Diff(oldBody, newBody)
 	if err != nil {
-		bh.Logf(base.LevelWarn, base.KeySync, "DELTA: couldn't generate delta - falling back to full body replicaiton... err: %v", err)
+		bh.Logf(base.LevelWarn, base.KeySync, "DELTA: couldn't generate delta - falling back to full body replication... err: %v", err)
 		// fall back to standard full-body replication if we can't diff
 		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 		return
 	}
-	bh.Logf(base.LevelTrace, base.KeySync, "DELTA: generated delta: %s", delta)
+	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: generated delta: %s", delta)
 
 	bh.sendDelta(delta, deltaSrcRevID, sender, seq, docID, revID, knownRevs, maxHistory)
 }
