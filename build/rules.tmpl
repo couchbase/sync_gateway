@@ -62,8 +62,8 @@ install-arch:
 binary-common:
 	dh_testdir
 	dh_testroot
-	cp -a opt $(CURDIR)/debian/tmp
-	cp -a etc $(CURDIR)/debian/tmp
+	cp -a opt $(CURDIR)/debian/@@PRODUCT@@
+	cp -a etc $(CURDIR)/debian/@@PRODUCT@@
 	#cp -a var $(CURDIR)/debian/tmp
 	dh_installchangelogs
 	dh_installinit --no-start
