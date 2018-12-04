@@ -43,6 +43,8 @@ doBuild () {
         binarySuffix=""
     fi
 
+    mkdir -p "${GOPATH}/bin"
+
     ## Go Install Sync Gateway
     echo "    Building Sync Gateway"
     go build -o sync_gateway${binarySuffix} ${buildTags} "${@:2}" github.com/couchbase/sync_gateway
