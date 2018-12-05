@@ -1090,6 +1090,10 @@ func ExpvarVar2Int(expvarVar expvar.Var) int64 {
 	if expvarVar == nil {
 		return 0
 	}
-	asInt := expvarVar.(*expvar.Int)
+	asInt, ok := expvarVar.(*expvar.Int)
+	if !ok {
+		Warnf(KeyAll, "ExpvarVar2Int could not convert %v to *expvar.Int", expvarVar)
+		return 0
+	}
 	return asInt.Value()
 }
