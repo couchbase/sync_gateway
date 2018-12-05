@@ -158,6 +158,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 		}
 		var err error
 		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
+		db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		if err != nil {
 			base.Warnf(base.KeyAll, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
 		}

@@ -71,6 +71,7 @@ func (h *handler) handleGetDoc() error {
 		}
 		h.setHeader("Etag", strconv.Quote(value[db.BodyRev].(string)))
 
+		h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		hasBodies := (attachmentsSince != nil && value[db.BodyAttachments] != nil)
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
@@ -111,6 +112,7 @@ func (h *handler) handleGetDoc() error {
 						revBody = db.Body{"missing": revid} //TODO: More specific error
 					}
 					h.db.WriteRevisionAsPart(revBody, err != nil, false, writer)
+					h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 				}
 				return nil
 			})
@@ -132,6 +134,7 @@ func (h *handler) handleGetDoc() error {
 				h.addJSON(revBody)
 			}
 			h.response.Write([]byte(`]`))
+			h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		}
 	}
 	return nil
@@ -186,9 +189,14 @@ func (h *handler) handleGetAttachment() error {
 	}
 	if h.privs == adminPrivs { // #720
 		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
+
 	}
+	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentsPulledCount, 1)
+	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentsPulledBytes, int64(len(data)))
+
 	h.response.WriteHeader(status)
 	h.response.Write(data)
+
 	return nil
 }
 

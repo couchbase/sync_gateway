@@ -310,7 +310,10 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 		}
 		partHeaders.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", info.name))
 		part, _ := writer.CreatePart(partHeaders)
+		db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentsPulledCount, 1)
+		db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentsPulledBytes, int64(len(info.data)))
 		part.Write(info.data)
+
 	}
 }
 

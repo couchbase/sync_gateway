@@ -113,6 +113,13 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeySequenceReserves, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAbandonedSeqs, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyCrc32cMatchCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyNumReplicationsActive, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyNumReplicationsTotal, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyNumDocWrites, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyDocWritesBytes, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyNumDocReadsRest, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyNumDocReadsBlip, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyDocReadsBytesBlip, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyDeltaSync:
 		result.Set(base.StatKeyNetBandwidthSavings, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyDeltaHitRatio, base.ExpvarFloatVal(0))
@@ -124,11 +131,20 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyProposeChangeTime, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyProposeChangesPerSec, base.ExpvarFloatVal(0))
 	case base.StatsGroupKeyCblReplicationPull:
-		result.Set(base.StatKeyRequestChangesLatency, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyDcpCachingLatency, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyRevSendLatency, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyInitPullLatency, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyMaxPending, base.ExpvarFloatVal(0))
+		result.Set(base.StatKeyPullReplicationsActiveContinuous, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyPullReplicationsActiveOneShot, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyPullReplicationsTotalContinuous, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyPullReplicationsTotalOneShot, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyPullReplicationsSinceZero, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyRequestChangesCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyRequestChangesTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyDcpCachingCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyDcpCachingTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyRevSendCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyRevSendTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyMaxPending, new(base.IntMax))
+		result.Set(base.StatKeyAttachmentsPulledCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyAttachmentsPulledBytes, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyCblReplicationCommon:
 		result.Set(base.StatKeyAvgDocSizePull, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyAvgDocSizePush, base.ExpvarFloatVal(0))
@@ -161,4 +177,10 @@ func (db *DatabaseContext) UpdateCalculatedStats() {
 		db.DbStats.StatsCache().Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(cache.MaxCacheSize()))
 	}
 
+}
+
+func (db *DatabaseContext) IncrementDocReads(bytes int, delta int) {
+	if bytes > 0 {
+
+	}
 }

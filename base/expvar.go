@@ -92,6 +92,13 @@ const (
 	StatKeySequenceGets                  = "sequence_gets"
 	StatKeySequenceReserves              = "sequence_reserves"
 	StatKeyCrc32cMatchCount              = "crc32c_match_count"
+	StatKeyNumReplicationsActive         = "num_replications_active"
+	StatKeyNumReplicationsTotal          = "num_replications_total"
+	StatKeyNumDocWrites                  = "num_doc_writes"
+	StatKeyDocWritesBytes                = "doc_writes_bytes"
+	StatKeyNumDocReadsRest               = "num_doc_reads_rest"
+	StatKeyNumDocReadsBlip               = "num_doc_reads_blip"
+	StatKeyDocReadsBytesBlip             = "doc_reads_bytes_blip"
 
 	// StatsDeltaSync
 	StatKeyNetBandwidthSavings = "net_bandwidth_savings"
@@ -109,11 +116,20 @@ const (
 	StatKeyProposeChangesPerSec = "propose_changes_per_sec"
 
 	// StatsCBLReplicationPull
-	StatKeyRequestChangesLatency = "request_changes_latency"
-	StatKeyDcpCachingLatency     = "dcp_caching_latency"
-	StatKeyRevSendLatency        = "rev_send_latency"
-	StatKeyInitPullLatency       = "init_pull_latency"
-	StatKeyMaxPending            = "max_pending"
+	StatKeyPullReplicationsActiveOneShot    = "num_pull_repl_active_one_shot"
+	StatKeyPullReplicationsActiveContinuous = "num_pull_repl_active_continuous"
+	StatKeyPullReplicationsTotalOneShot     = "num_pull_repl_total_one_shot"
+	StatKeyPullReplicationsTotalContinuous  = "num_pull_repl_total_continuous"
+	StatKeyPullReplicationsSinceZero        = "num_pull_repl_since_zero"
+	StatKeyRequestChangesCount              = "request_changes_count"
+	StatKeyRequestChangesTime               = "request_changes_time"
+	StatKeyDcpCachingCount                  = "dcp_caching_count"
+	StatKeyDcpCachingTime                   = "dcp_caching_time"
+	StatKeyRevSendCount                     = "rev_send_count"
+	StatKeyRevSendTime                      = "rev_send_time"
+	StatKeyMaxPending                       = "max_pending"
+	StatKeyAttachmentsPulledCount           = "attachment_pull_count"
+	StatKeyAttachmentsPulledBytes           = "attachment_pull_bytes"
 
 	// StatsCBLReplicationCommon
 	StatKeyAvgDocSizePull       = "avg_doc_size_pull"
