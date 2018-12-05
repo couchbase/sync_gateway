@@ -19,6 +19,6 @@ func init() {
 
 	// Sg-Accel stats -- this should be in db.IndexExpvars, but cannot be due to dependency it would create from base -> db
 	TimingExpvars = NewSequenceTimingExpvar(KTimingExpvarFrequency, KTimingExpvarVbNo, "st")
-	shardedClockExpvars.Set("sequenceTiming", TimingExpvars)
+	ShardedClockExpvars.Set("sequenceTiming", TimingExpvars)
 
 }
