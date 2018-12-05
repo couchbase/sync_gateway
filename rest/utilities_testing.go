@@ -100,18 +100,16 @@ func (rt *RestTester) Bucket() base.Bucket {
 		useXattrs := base.TestUseXattrs()
 
 		if rt.DatabaseConfig == nil {
-
 			// If no db config was passed in, create one
 			rt.DatabaseConfig = &DbConfig{}
 
 			// By default, does NOT use views when running against couchbase server, since should use GSI
 			rt.DatabaseConfig.UseViews = base.TestUseViews()
-
-			// numReplicas set to 0 for test buckets, since it should assume that there is only one node.
-			numReplicas := uint(0)
-			rt.DatabaseConfig.NumIndexReplicas = &numReplicas
-
 		}
+
+		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
+		numReplicas := uint(0)
+		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
 
 		rt.DatabaseConfig.BucketConfig = BucketConfig{
 			Server:   &server,
