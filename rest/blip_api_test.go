@@ -1481,8 +1481,8 @@ func TestMissingNoRev(t *testing.T) {
 
 }
 
-// TestBlipDeltaSyncPull tests that a simple pull replication using deltas in EE,
-// and checks that full body replicaiton still happens in CE.
+// TestBlipDeltaSyncPull tests that a simple pull replication uses deltas in EE,
+// and checks that full body replication still happens in CE.
 func TestBlipDeltaSyncPull(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()

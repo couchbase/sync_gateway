@@ -33,8 +33,8 @@ func NewBlipTesterClient(bt *BlipTester) (client *BlipTesterClient, err error) {
 	btc := BlipTesterClient{
 		id:       id.String(),
 		bt:       bt,
-		docs:     make(map[string]map[string][]byte, 0),
-		messages: make(map[blip.MessageNumber]*blip.Message, 0),
+		docs:     make(map[string]map[string][]byte),
+		messages: make(map[blip.MessageNumber]*blip.Message),
 	}
 
 	bt.blipContext.HandlerForProfile[messageChanges] = func(request *blip.Message) {
@@ -189,11 +189,16 @@ func (btc *BlipTesterClient) StartSince(continous, since string) {
 	}
 }
 
+// Close will close the underlying BlipTester, and remove the stored docs and messages.
 func (btc *BlipTesterClient) Close() {
 	btc.bt.Close()
 	btc.docsLock.Lock()
-	btc.docs = nil
+	btc.docs = make(map[string]map[string][]byte, 0)
 	btc.docsLock.Unlock()
+
+	btc.messagesLock.Lock()
+	btc.messages = make(map[blip.MessageNumber]*blip.Message, 0)
+	btc.messagesLock.Unlock()
 }
 
 // GetRev returns the data stored in the Client under the given docID and revID
