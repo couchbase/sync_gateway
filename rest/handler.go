@@ -290,11 +290,10 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	}
 
 	// Record TotalAuthTime stat
-	defer func() {
-		// TODO: nanoseconds or milliseconds?
-		delta := time.Since(time.Now()).Nanoseconds()
+	defer func(t time.Time) {
+		delta := time.Since(t).Nanoseconds()
 		context.DbStats.StatsSecurity().Add(base.StatKeyTotalAuthTime, delta)
-	}()
+	}(time.Now())
 
 	var err error
 	// If oidc enabled, check for bearer ID token
