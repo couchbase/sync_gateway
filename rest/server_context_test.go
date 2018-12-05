@@ -19,6 +19,8 @@ import (
 
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"sync/atomic"
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // Tests the ConfigServer feature.
@@ -106,11 +108,14 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 
 func TestRecordGoroutineHighwaterMark(t *testing.T) {
 
+	// Reset this to 0
+	atomic.StoreUint64(&base.MaxGoroutinesSeen, 0)
+
 	stats := new(expvar.Map)
 
-	assert.True(t, recordGoroutineHighwaterMark(stats, 10) == 10)
-	assert.True(t, recordGoroutineHighwaterMark(stats, 5) == 10)
-	assert.True(t, recordGoroutineHighwaterMark(stats, 15) == 15)
+	assert.True(t, recordGoroutineHighwaterMark(stats, 1000) == 1000)
+	assert.True(t, recordGoroutineHighwaterMark(stats, 500) == 1000)
+	assert.True(t, recordGoroutineHighwaterMark(stats, 1500) == 1500)
 
 }
 
