@@ -166,9 +166,15 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			return nil, nil, updatedExpiry, base.ErrImportCancelled
 		}
 
+		// Is this doc an SG Write?
+		isSgWrite, crc32Match := doc.IsSGWrite(nil)
+		if crc32Match {
+			db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+		}
+
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
 		// Cancel import
-		if doc.IsSGWrite(db.DatabaseContext.DbStats,nil) {
+		if isSgWrite {
 			base.Debugf(base.KeyImport, "During import, existing doc (%s) identified as SG write.  Canceling import.", base.UD(docid))
 			alreadyImportedDoc = doc
 			return nil, nil, updatedExpiry, base.ErrAlreadyImported

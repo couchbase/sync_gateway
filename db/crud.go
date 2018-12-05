@@ -51,8 +51,14 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 		if err != nil {
 			return nil, err
 		}
+
+		isSgWrite, crc32Match := doc.IsSGWrite(rawBucketDoc.Body)
+		if crc32Match {
+			db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+		}
+
 		// If existing doc wasn't an SG Write, import the doc.
-		if !doc.IsSGWrite(db.DbStats, rawBucketDoc.Body) {
+		if !isSgWrite {
 			var importErr error
 			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas)
 			if importErr != nil {
@@ -121,8 +127,13 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 			return emptySyncData, unmarshalErr
 		}
 
+		isSgWrite, crc32Match := doc.IsSGWrite(rawDoc)
+		if crc32Match {
+			db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+		}
+
 		// If existing doc wasn't an SG Write, import the doc.
-		if !doc.IsSGWrite(db.DbStats, rawDoc) {
+		if !isSgWrite {
 			var importErr error
 
 			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
@@ -589,9 +600,20 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 	return db.updateDoc(docid, allowImport, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
+		var isSgWrite bool
+		var crc32Match bool
+
+		// Is this doc an sgWrite?
+		if doc != nil {
+			isSgWrite, crc32Match = doc.IsSGWrite(nil)
+			if crc32Match {
+				db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+			}
+		}
+
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !doc.IsSGWrite(db.DatabaseContext.DbStats, nil) && db.UseXattrs() {
+		if doc != nil && !isSgWrite && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(docid, doc, body)
 			if err != nil {
 				return nil, nil, nil, err
@@ -666,8 +688,20 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 	_, err = db.updateDoc(docid, allowImport, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
+
+		var isSgWrite bool
+		var crc32Match bool
+
+		// Is this doc an sgWrite?
+		if doc != nil {
+			isSgWrite, crc32Match = doc.IsSGWrite(nil)
+			if crc32Match {
+				db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+			}
+		}
+
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !doc.IsSGWrite(db.DatabaseContext.DbStats,nil) && db.UseXattrs() {
+		if doc != nil && !isSgWrite && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(docid, doc, body)
 			if err != nil {
 				return nil, nil, nil, err
