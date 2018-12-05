@@ -90,7 +90,6 @@ const (
 	StatKeySequenceGets                  = "sequence_gets"
 	StatKeySequenceReserves              = "sequence_reserves"
 	StatKeyCrc32cMatchCount              = "crc32c_match_count"
-	StatKeyCrc32cMismatchCount           = "crc32c_mismatch_count"
 
 	// StatsDeltaSync
 	StatKeyNetBandwidthSavings = "net_bandwidth_savings"

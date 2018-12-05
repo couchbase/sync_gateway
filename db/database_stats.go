@@ -113,7 +113,6 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeySequenceReserves, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAbandonedSeqs, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyCrc32cMatchCount, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyCrc32cMismatchCount, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyDeltaSync:
 		result.Set(base.StatKeyNetBandwidthSavings, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyDeltaHitRatio, base.ExpvarFloatVal(0))
