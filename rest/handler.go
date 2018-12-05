@@ -293,7 +293,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 	defer func() {
 		// TODO: nanoseconds or milliseconds?
 		delta := time.Since(time.Now()).Nanoseconds()
-		defer h.db.DatabaseContext.DbStats.StatsSecurity().Add(base.StatKeyTotalAuthTime, delta)
+		context.DbStats.StatsSecurity().Add(base.StatKeyTotalAuthTime, delta)
 	}()
 
 	var err error
