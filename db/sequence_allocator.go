@@ -36,7 +36,7 @@ type sequenceAllocator struct {
 func newSequenceAllocator(bucket base.Bucket, dbStats *DatabaseStats) (*sequenceAllocator, error) {
 
 	if dbStats == nil {
-		dbStats = NewDatabaseStats()
+		return nil, fmt.Errorf("dbStats parameter must be non-nil")
 	}
 
 	s := &sequenceAllocator{
