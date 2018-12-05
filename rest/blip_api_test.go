@@ -1493,10 +1493,10 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		},
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
-	defer bt.Close()
 
 	client, err := NewBlipTesterClient(bt)
 	assert.NoError(t, err)
+	defer client.Close()
 
 	client.Deltas = true
 	client.Start()
