@@ -98,7 +98,7 @@ pipeline {
         }
 
         stage('Test -cover') {
-            parallel {
+            stages {
                 stage('CE -cover') {
                     stages {
                         stage('CE -cover') {
