@@ -569,7 +569,7 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 
 func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
 
-	bh.Logf(base.LevelTrace, base.KeySync, "DELTA: getting newBody docID: %v - rev: %v", docID, revID)
+	bh.Logf(base.LevelTrace, base.KeySync, "DELTA: getting newBody docID: %s - rev: %v", base.UD(docID), revID)
 	newBody, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
 		bh.Logf(base.LevelWarn, base.KeySync, "DELTA: couldn't get newBody - sending NoRev... err: %v", err)
@@ -597,7 +597,7 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 		}
 	}
 
-	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: getting oldBody docID: %v - deltaSrcRevID: %v", docID, deltaSrcRevID)
+	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: getting oldBody docID: %s - deltaSrcRevID: %v", base.UD(docID), deltaSrcRevID)
 	oldBody, err := bh.db.GetRev(docID, deltaSrcRevID, true, nil)
 	if err != nil {
 		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: couldn't get oldBody - falling back to full body replication... err: %v", err)
@@ -614,7 +614,7 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 		return
 	}
-	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: generated delta: %s", delta)
+	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: generated delta: %s", base.UD(delta))
 
 	bh.sendDelta(delta, deltaSrcRevID, sender, seq, docID, revID, knownRevs, maxHistory)
 }
