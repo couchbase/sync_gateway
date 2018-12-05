@@ -29,6 +29,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
+	"expvar"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -1008,6 +1009,8 @@ func (sc *ServerContext) logStats() error {
 
 }
 
+
+
 func AddGoRuntimeStats() {
 
 	statsResourceUtilization := base.StatsResourceUtilization()
@@ -1015,13 +1018,7 @@ func AddGoRuntimeStats() {
 	// Num goroutines
 	statsResourceUtilization.Set(base.StatKeyNumGoroutines, base.ExpvarIntVal(runtime.NumGoroutine()))
 
-	// Goroutines high watermark
-	numGoroutines := uint64(runtime.NumGoroutine())
-	if numGoroutines > base.MaxGoroutinesSeen {
-		atomic.StoreUint64(&base.MaxGoroutinesSeen, numGoroutines)
-	}
-	maxGoroutinesSeen := atomic.LoadUint64(&base.MaxGoroutinesSeen)
-	statsResourceUtilization.Set(base.StatKeyGoroutinesHighWatermark, base.ExpvarUInt64Val(maxGoroutinesSeen))
+	recordGoroutineHighwaterMark(statsResourceUtilization, uint64(runtime.NumGoroutine()))
 
 	// Read memstats (relatively expensive)
 	memstats := runtime.MemStats{}
@@ -1069,6 +1066,28 @@ func (sc *ServerContext) updateCalculatedStats() {
 	}
 
 }
+
+// Record Goroutines high watermark into expvars
+func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxGoroutinesSeen uint64) {
+
+	maxGoroutinesSeen = atomic.LoadUint64(&base.MaxGoroutinesSeen)
+
+	if numGoroutines > maxGoroutinesSeen {
+
+		// Ignore CAS failures -- this stat can be considered a "best effort"
+		_ = atomic.CompareAndSwapUint64(&base.MaxGoroutinesSeen, maxGoroutinesSeen, numGoroutines)
+
+		if stats != nil {
+			stats.Set(base.StatKeyGoroutinesHighWatermark, base.ExpvarUInt64Val(maxGoroutinesSeen))
+		}
+
+		return numGoroutines
+	}
+
+	return maxGoroutinesSeen
+
+}
+
 
 // For test use
 func (sc *ServerContext) Database(name string) *db.DatabaseContext {

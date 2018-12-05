@@ -11,12 +11,14 @@ package rest
 
 import (
 	"bytes"
+	"expvar"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"testing"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 // Tests the ConfigServer feature.
@@ -99,6 +101,16 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 	goassert.Equals(t, dbc.Bucket.GetName(), "fivez")
 
 	rt.Bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
+
+}
+
+func TestRecordGoroutineHighwaterMark(t *testing.T) {
+
+	stats := new(expvar.Map)
+
+	assert.True(t, recordGoroutineHighwaterMark(stats, 10) == 10)
+	assert.True(t, recordGoroutineHighwaterMark(stats, 5) == 10)
+	assert.True(t, recordGoroutineHighwaterMark(stats, 15) == 15)
 
 }
 
