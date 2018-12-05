@@ -97,66 +97,59 @@ pipeline {
             }
         }
 
-        stage('Test -cover') {
-            parallel {
-                stage('CE -cover') {
-                    stages {
-                        stage('CE -cover') {
-                            steps{
-                                withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                                    // Build public and private coverprofiles (private containing accel code too)
-                                    sh 'go test -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ce_public.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
-                                    sh 'go test -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ce_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
+        stage('CE -cover') {
+            steps{
+                withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                    // Build public and private coverprofiles (private containing accel code too)
+                    sh 'go test -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ce_public.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
+                    sh 'go test -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ce_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
 
-                                    // Print total coverage stats
-                                    sh 'go tool cover -func=cover_ce_public.out | awk \'END{print "Total SG CE Coverage: " $3}\''
-                                    sh 'go tool cover -func=cover_ce_private.out | awk \'END{print "Total SG CE+SGA Coverage: " $3}\''
+                    // Print total coverage stats
+                    sh 'go tool cover -func=cover_ce_public.out | awk \'END{print "Total SG CE Coverage: " $3}\''
+                    sh 'go tool cover -func=cover_ce_private.out | awk \'END{print "Total SG CE+SGA Coverage: " $3}\''
 
-                                    sh 'mkdir -p reports'
+                    sh 'mkdir -p reports'
 
-                                    // Generate junit-formatted test report
-                                    // sh 'cat test_ce.out | go-junit-report > reports/test-ce.xml'
+                    // Generate junit-formatted test report
+                    // sh 'cat test_ce.out | go-junit-report > reports/test-ce.xml'
 
-                                    // Generate HTML coverage report
-                                    sh 'go tool cover -html=cover_ce_private.out -o reports/coverage-ce.html'
+                    // Generate HTML coverage report
+                    sh 'go tool cover -html=cover_ce_private.out -o reports/coverage-ce.html'
 
-                                    // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
-                                    sh 'gocov convert cover_ce_private.out | gocov-xml > reports/coverage-ce.xml'
-                                }
-                            }
-                        }
-                        stage('Coveralls') {
-                            steps {
-                                // Travis-related variables are required as coveralls only officially supports a certain set of CI tools.
-                                withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
-                                    // Replace covermode values with set just for coveralls to reduce the variability in reports.
-                                    sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce_public.out > cover_ce_coveralls.out'
-
-                                    // Send just the SG coverage report to coveralls.io - **NOT** accel! It will expose the private codebase!!!
-                                    sh "goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN}"
-                                }
-                            }
-                        }
-                    }
+                    // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
+                    sh 'gocov convert cover_ce_private.out | gocov-xml > reports/coverage-ce.xml'
                 }
+            }
+        }
 
-                stage('EE -cover') {
-                    steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                            sh "go test -tags ${EE_BUILD_TAG} -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ee_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/..."
-                            sh 'go tool cover -func=cover_ee_private.out | awk \'END{print "Total SG EE+SGA Coverage: " $3}\''
+        stage('CE Coveralls') {
+            steps {
+                // Travis-related variables are required as coveralls only officially supports a certain set of CI tools.
+                withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                    // Replace covermode values with set just for coveralls to reduce the variability in reports.
+                    sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce_public.out > cover_ce_coveralls.out'
 
-                            sh 'mkdir -p reports'
+                    // Send just the SG coverage report to coveralls.io - **NOT** accel! It will expose the private codebase!!!
+                    sh "goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN}"
+                }
+            }
+        }
 
-                            // Generate junit-formatted test report
-                            // sh 'cat test_ee.out | go-junit-report > reports/test-ee.xml'
+        stage('EE -cover') {
+            steps {
+                withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                    sh "go test -tags ${EE_BUILD_TAG} -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ee_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/..."
+                    sh 'go tool cover -func=cover_ee_private.out | awk \'END{print "Total SG EE+SGA Coverage: " $3}\''
 
-                            sh 'go tool cover -html=cover_ee_private.out -o reports/coverage-ee.html'
-                            
-                            // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
-                            sh 'gocov convert cover_ee_private.out | gocov-xml > reports/coverage-ee.xml'
-                        }
-                    }
+                    sh 'mkdir -p reports'
+
+                    // Generate junit-formatted test report
+                    // sh 'cat test_ee.out | go-junit-report > reports/test-ee.xml'
+
+                    sh 'go tool cover -html=cover_ee_private.out -o reports/coverage-ee.html'
+
+                    // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
+                    sh 'gocov convert cover_ee_private.out | gocov-xml > reports/coverage-ee.xml'
                 }
             }
         }
