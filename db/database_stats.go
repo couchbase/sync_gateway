@@ -138,10 +138,10 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyAvgAttachmentSize, base.ExpvarFloatVal(0))
 	case base.StatsGroupKeySecurity:
 		result.Set(base.StatKeyAccessQueriesPerSec, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyNumDocsRejected, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyNumAccessErrors, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyAuthSuccessCount, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyAuthFailedCount, base.ExpvarFloatVal(0))
+		result.Set(base.StatKeyNumDocsRejected, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyNumAccessErrors, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyAuthSuccessCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyAuthFailedCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyTotalAuthTime, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyGsiViews:
 		result.Set(base.StatKeyTotalQueriesPerSec, base.ExpvarFloatVal(0))

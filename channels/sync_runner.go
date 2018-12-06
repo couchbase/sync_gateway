@@ -22,6 +22,7 @@ import (
 // Prefix used to identify roles in access grants
 const RoleAccessPrefix = "role:"
 
+// TODO: reuse SyncFnError* constants defined in base/constants.go
 const funcWrapper = `
 	function() {
 
