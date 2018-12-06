@@ -283,11 +283,30 @@ func (h *handler) logStatus(status int, message string) {
 	h.logDuration(false) // don't track actual time
 }
 
-func (h *handler) checkAuth(context *db.DatabaseContext) error {
-	h.user = nil
-	if context == nil {
-		return nil
+func (h *handler) statAuthSuccess() {
+	if h.db == nil || h.db.DatabaseContext == nil || h.db.DatabaseContext.DbStats == nil {
+		return
 	}
+	h.db.DatabaseContext.DbStats.StatsSecurity().Add(base.StatKeyAuthSuccessCount, 1)
+}
+
+func (h *handler) statAuthFailed() {
+	if h.db == nil || h.db.DatabaseContext == nil || h.db.DatabaseContext.DbStats == nil {
+		return
+	}
+	h.db.DatabaseContext.DbStats.StatsSecurity().Add(base.StatKeyAuthFailedCount, 1)
+}
+
+func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
+
+	// Record stats
+	defer func() {
+		if err != nil {
+			h.statAuthFailed()
+		} else {
+			h.statAuthSuccess()
+		}
+	}()
 
 	// Record TotalAuthTime stat
 	defer func(t time.Time) {
@@ -298,12 +317,17 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		context.DbStats.StatsSecurity().Add(base.StatKeyTotalAuthTime, delta)
 	}(time.Now())
 
-	var err error
+	h.user = nil
+	if context == nil {
+		return nil
+	}
+
 	// If oidc enabled, check for bearer ID token
 	if context.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {
-			h.user, _, err = context.Authenticator().AuthenticateUntrustedJWT(token, context.OIDCProviders, h.getOIDCCallbackURL)
-			if h.user == nil || err != nil {
+			var authJwtErr error
+			h.user, _, authJwtErr = context.Authenticator().AuthenticateUntrustedJWT(token, context.OIDCProviders, h.getOIDCCallbackURL)
+			if h.user == nil || authJwtErr != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
 			return nil
