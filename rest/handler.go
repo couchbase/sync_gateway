@@ -310,7 +310,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 
 	// Record TotalAuthTime stat
 	defer func(t time.Time) {
-		if context.DbStats == nil {
+		if context == nil || context.DbStats == nil {
 			return
 		}
 		delta := time.Since(t).Nanoseconds()
