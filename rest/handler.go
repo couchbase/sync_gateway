@@ -291,6 +291,9 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 
 	// Record TotalAuthTime stat
 	defer func(t time.Time) {
+		if context.DbStats == nil {
+			return
+		}
 		delta := time.Since(t).Nanoseconds()
 		context.DbStats.StatsSecurity().Add(base.StatKeyTotalAuthTime, delta)
 	}(time.Now())
