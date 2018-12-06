@@ -138,8 +138,6 @@ const (
 	StatKeyQueryProcessingTime     = "query_processing_time"
 
 	// StatsReplication
-	StatKeyNumDocsTransferred       = "num_docs_transferred"
-	StatKeyNumDocsTransferredPerSec = "num_docs_transferred_per_sec"
 	StatKeyBandwidth                = "bandwidth"
 	StatKeyDataReplicatedSize       = "data_replicated_size"
 	StatKeyNumAttachmentsTransfered = "num_attachments_transferred"
@@ -149,6 +147,8 @@ const (
 	StatKeyBatchSize                = "batchsize"
 	StatKeyDocTransferLatency       = "doc_transfer_latency"
 	StatKeyDocsCheckedSent          = "docs_checked_sent"
+	StatKeyNumDocsPushed            = "num_docs_pushed"
+	StatKeyNumDocsFailedToPush      = "num_docs_failed_to_push"
 )
 
 const (

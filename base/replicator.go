@@ -2,23 +2,23 @@ package base
 
 import (
 	"errors"
+	"expvar"
 	"net/http"
 	"sync"
 	"time"
 
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
-	"expvar"
 )
 
 const (
 	defaultContinuousRetryTime = 500 * time.Millisecond
 )
 
+// Replication manager
 type Replicator struct {
 	replications      map[string]sgreplicate.SGReplication
 	replicationParams map[string]sgreplicate.ReplicationParameters
 	lock              sync.RWMutex
-	stats             *expvar.Map
 }
 
 type Task struct {
@@ -66,6 +66,25 @@ func (r *Replicator) ActiveTasks() []Task {
 	return tasks
 }
 
+func (r *Replicator) SnapshotStats() {
+
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+
+	for repID, replication := range r.replications {
+
+		stats := replication.GetStats()
+		statsExpvars, ok := PerReplicationStats.Get(repID).(*expvar.Map)
+		if !ok {
+			Warnf(KeyReplicate, "Error getting stats for replication %v.  Stats for this replication will not be updated.", repID)
+		}
+		statsExpvars.Set(StatKeyNumDocsPushed, ExpvarInt64Val(int64(stats.GetDocsWritten())))
+		statsExpvars.Set(StatKeyNumDocsFailedToPush, ExpvarInt64Val(int64(stats.GetDocWriteFailures())))
+
+	}
+
+}
+
 // StopReplications stops all active replications.
 func (r *Replicator) StopReplications() error {
 	r.lock.Lock()
@@ -97,7 +116,6 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 	// Create stats for this replication
 	replicationStats := NewReplicationStats()
 	PerReplicationStats.Set(parameters.ReplicationId, replicationStats)
-	r.stats = replicationStats
 
 	var (
 		replication sgreplicate.SGReplication
@@ -262,8 +280,8 @@ func taskForReplication(replication sgreplicate.SGReplication, params sgreplicat
 
 func NewReplicationStats() (expvarMap *expvar.Map) {
 	result := new(expvar.Map)
-	result.Set(StatKeyNumDocsTransferred, ExpvarFloatVal(0))
-	result.Set(StatKeyNumDocsTransferredPerSec, ExpvarFloatVal(0))
+	result.Set(StatKeyNumDocsPushed, ExpvarIntVal(0))
+	result.Set(StatKeyNumDocsFailedToPush, ExpvarIntVal(0))
 	result.Set(StatKeyBandwidth, ExpvarFloatVal(0))
 	result.Set(StatKeyDataReplicatedSize, ExpvarFloatVal(0))
 	result.Set(StatKeyNumAttachmentsTransfered, ExpvarFloatVal(0))

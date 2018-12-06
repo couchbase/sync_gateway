@@ -987,6 +987,8 @@ func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
+	sc.replicator.SnapshotStats()
+
 	sc.updateCalculatedStats()
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
 	wrapper := struct {
