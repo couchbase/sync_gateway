@@ -58,6 +58,8 @@ const (
 	StatKeyGoMemstatsStackInUse    = "go_memstats_stackinuse"
 	StatKeyGoMemstatsStackSys      = "go_memstats_stacksys"
 	StatKeyGoMemstatsPauseTotalNs  = "go_memstats_pausetotalns"
+	StatKeyErrors                  = "errors"
+	StatKeyWarnings                = "warnings"
 
 	// StatsCache
 	StatKeyRevisionCacheHits         = "rev_cache_hits"
@@ -191,7 +193,7 @@ func init() {
 	Stats.Set(PerReplication, PerReplicationStats)
 
 	// Add StatsResourceUtilization under GlobalStats
-	GlobalStats.Set(StatsGroupKeyResourceUtilization, new(expvar.Map))
+	GlobalStats.Set(StatsGroupKeyResourceUtilization, NewStatsResourceUtilization())
 
 }
 
@@ -199,6 +201,24 @@ func StatsResourceUtilization() *expvar.Map {
 	statsResourceUtilizationVar := GlobalStats.Get(StatsGroupKeyResourceUtilization)
 	statsResourceUtilization := statsResourceUtilizationVar.(*expvar.Map)
 	return statsResourceUtilization
+}
+
+func NewStatsResourceUtilization() *expvar.Map {
+	stats := new(expvar.Map)
+	stats.Set(StatKeyNumGoroutines, ExpvarIntVal(0))
+	stats.Set(StatKeyGoroutinesHighWatermark, ExpvarIntVal(0))
+	stats.Set(StatKeyMemoryRssBytes, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsSys, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsHeapAlloc, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsHeapIdle, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsHeapInUse, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsHeapReleased, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsStackInUse, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsStackSys, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsPauseTotalNs, ExpvarIntVal(0))
+	stats.Set(StatKeyErrors, ExpvarIntVal(0))
+	stats.Set(StatKeyWarnings, ExpvarIntVal(0))
+	return stats
 }
 
 // Removes the per-replication stats for this replication id by
