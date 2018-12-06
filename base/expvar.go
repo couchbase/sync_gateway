@@ -70,8 +70,8 @@ const (
 	StatKeyChannelCacheNumChannels   = "chan_cache_num_channels"
 	StatKeyChannelCacheMaxEntries    = "chan_cache_max_entries"
 	StatKeyNumSkippedSeqs            = "num_skipped_seqs"
-	StatKeyAbandonedSeqs        = "abandoned_seqs"
-	
+	StatKeyAbandonedSeqs             = "abandoned_seqs"
+
 	// StatsDatabase
 	StatKeyNumReplicationConnsActive     = "num_replication_conns_active"
 	StatKeyNumReplicationsPerSec         = "new_replications_per_sec"
@@ -194,7 +194,6 @@ func init() {
 	GlobalStats.Set(StatsGroupKeyResourceUtilization, new(expvar.Map))
 
 }
-
 
 func StatsResourceUtilization() *expvar.Map {
 	statsResourceUtilizationVar := GlobalStats.Get(StatsGroupKeyResourceUtilization)

@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"expvar"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -29,7 +30,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
-	"expvar"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -1009,8 +1009,6 @@ func (sc *ServerContext) logStats() error {
 
 }
 
-
-
 func AddGoRuntimeStats() {
 
 	statsResourceUtilization := base.StatsResourceUtilization()
@@ -1087,7 +1085,6 @@ func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxG
 	return maxGoroutinesSeen
 
 }
-
 
 // For test use
 func (sc *ServerContext) Database(name string) *db.DatabaseContext {
