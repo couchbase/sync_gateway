@@ -2,7 +2,6 @@ package db
 
 import (
 	"expvar"
-
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -30,7 +29,8 @@ func (d *DatabaseStats) ExpvarMap() *expvar.Map {
 }
 
 func (d *DatabaseStats) StatsCache() (stats *expvar.Map) {
-	return d.StatsByKey(base.StatsGroupKeyCache)
+	statsCache := d.StatsByKey(base.StatsGroupKeyCache)
+	return statsCache
 }
 
 func (d *DatabaseStats) StatsDatabase() (stats *expvar.Map) {
@@ -78,18 +78,22 @@ func (d *DatabaseStats) StatsByKey(key string) (stats *expvar.Map) {
 	return subStatsMap
 }
 
-func initEmptyStatsMap(key string) (*expvar.Map) {
+func initEmptyStatsMap(key string) *expvar.Map {
 
 	result := new(expvar.Map)
 
 	switch key {
 	case base.StatsGroupKeyCache:
 		result.Set(base.StatKeyNumSkippedSeqs, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyRevisionCacheHits, base.ExpvarFloatVal(0.0))
-		result.Set(base.StatKeyRevisionCacheMisses, base.ExpvarFloatVal(0.0))
-		result.Set(base.StatKeyChanCachePerf, base.ExpvarFloatVal(0.0))
-		result.Set(base.StatKeyRevCacheUtilization, base.ExpvarFloatVal(0.0))
-		result.Set(base.StatKeyChanCacheUtilization, base.ExpvarFloatVal(0.0))
+		result.Set(base.StatKeyRevisionCacheHits, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyRevisionCacheMisses, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyChannelCacheHits, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyChannelCacheMisses, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyChannelCacheRevsActive, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyChannelCacheRevsRemoval, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyChannelCacheRevsTombstone, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyChannelCacheNumChannels, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyDatabase:
 		result.Set(base.StatKeyNumReplicationConnsActive, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumReplicationsPerSec, base.ExpvarFloatVal(0))
@@ -144,3 +148,12 @@ func initEmptyStatsMap(key string) (*expvar.Map) {
 	return result
 }
 
+// Update database-specific stats that are more efficiently calculated at stats collection time
+func (db *DatabaseContext) UpdateCalculatedStats() {
+
+	// Max channel cache size
+	if cache, ok := db.changeCache.(*changeCache); ok {
+		db.DbStats.StatsCache().Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(cache.MaxCacheSize()))
+	}
+
+}

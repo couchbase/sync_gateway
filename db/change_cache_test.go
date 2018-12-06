@@ -33,6 +33,13 @@ func e(seq uint64, docid string, revid string) *LogEntry {
 	}
 }
 
+// Tombstoned entry
+func et(seq uint64, docid string, revid string) *LogEntry {
+	entry := e(seq, docid, revid)
+	entry.SetDeleted()
+	return entry
+}
+
 func testBucketContext() *DatabaseContext {
 
 	context, _ := NewDatabaseContext("db", testBucket().Bucket, false, DatabaseContextOptions{})

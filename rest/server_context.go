@@ -128,6 +128,8 @@ func (sc *ServerContext) startReplicators() {
 
 func (sc *ServerContext) FindDbByBucketName(bucketName string) string {
 
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
 	// Loop through all known database contexts and return the first one
 	// that has the bucketName specified above.
 	for dbName, dbContext := range sc.databases_ {
@@ -198,8 +200,8 @@ func (sc *ServerContext) GetConfig() *ServerConfig {
 }
 
 func (sc *ServerContext) AllDatabaseNames() []string {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
 
 	names := make([]string, 0, len(sc.databases_))
 	for name := range sc.databases_ {
@@ -210,8 +212,8 @@ func (sc *ServerContext) AllDatabaseNames() []string {
 
 // AllDatabases returns a copy of the databases_ map.
 func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
 
 	databases := make(map[string]*db.DatabaseContext, len(sc.databases_))
 
@@ -224,7 +226,8 @@ func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
 // Make sure that for all nodes that are feedtype=DCPSHARD, either all of them
 // are IndexWriters, or none of them are IndexWriters, otherwise return false.
 func (sc *ServerContext) numIndexWriters() (numIndexWriters, numIndexNonWriters int) {
-
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
 	for _, dbContext := range sc.databases_ {
 		if strings.ToLower(dbContext.BucketSpec.FeedType) != base.DcpShardFeedType {
 			continue
@@ -254,8 +257,8 @@ type PostUpgradeDatabaseResult struct {
 
 // PostUpgrade performs post-upgrade processing for each database
 func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgradeResult, err error) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
 
 	postUpgradeResults = make(map[string]PostUpgradeDatabaseResult, len(sc.databases_))
 
@@ -985,6 +988,7 @@ func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
+	sc.updateCalculatedStats()
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
 	wrapper := struct {
 		Stats                json.RawMessage `json:"stats"`
@@ -1048,6 +1052,16 @@ func AddGoRuntimeStats() {
 
 	// PauseTotalNs
 	statsResourceUtilization.Set("go_memstats_pausetotalns", base.ExpvarUInt64Val(memstats.PauseTotalNs))
+
+}
+
+// Updates stats that are more efficient to calculate at stats collection time
+func (sc *ServerContext) updateCalculatedStats() {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	for _, dbContext := range sc.databases_ {
+		dbContext.UpdateCalculatedStats()
+	}
 
 }
 

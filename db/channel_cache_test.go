@@ -13,11 +13,13 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDuplicateDocID(t *testing.T) {
@@ -429,6 +431,208 @@ func TestChannelCacheRemove(t *testing.T) {
 	goassert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
 	goassert.True(t, verifyChannelDocIDs(entries, []string{"doc3", "doc5"}))
 	goassert.True(t, err == nil)
+}
+
+func TestChannelCacheStats(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+
+	context := testBucketContext()
+	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
+	cache := newChannelCache(context, "Test1", 0)
+
+	// Add some entries to cache
+	cache.addToCache(e(1, "doc1", "1-a"), false)
+	cache.addToCache(e(2, "doc2", "1-a"), false)
+	cache.addToCache(e(3, "doc3", "1-a"), false)
+
+	active, tombstones, removals := getCacheUtilization(context)
+	assert.Equal(t, 3, active)
+	assert.Equal(t, 0, tombstones)
+	assert.Equal(t, 0, removals)
+
+	// Update keys already present in the cache, shouldn't modify utilization
+	cache.addToCache(e(4, "doc1", "2-a"), false)
+	cache.addToCache(e(5, "doc2", "2-a"), false)
+	active, tombstones, removals = getCacheUtilization(context)
+	assert.Equal(t, 3, active)
+	assert.Equal(t, 0, tombstones)
+	assert.Equal(t, 0, removals)
+
+	// Add a removal rev for a doc not previously in the cache
+	cache.addToCache(e(6, "doc4", "2-a"), true)
+	active, tombstones, removals = getCacheUtilization(context)
+	assert.Equal(t, 3, active)
+	assert.Equal(t, 0, tombstones)
+	assert.Equal(t, 1, removals)
+
+	// Add a removal rev for a doc previously in the cache
+	cache.addToCache(e(7, "doc1", "3-a"), true)
+	active, tombstones, removals = getCacheUtilization(context)
+	assert.Equal(t, 2, active)
+	assert.Equal(t, 0, tombstones)
+	assert.Equal(t, 2, removals)
+
+	// Add a new tombstone to the cache
+	tombstone := e(8, "doc5", "2-a")
+	tombstone.SetDeleted()
+	cache.addToCache(tombstone, false)
+	active, tombstones, removals = getCacheUtilization(context)
+	assert.Equal(t, 2, active)
+	assert.Equal(t, 1, tombstones)
+	assert.Equal(t, 2, removals)
+
+	// Add a tombstone that's also a removal.  Should only be tracked as removal
+	tombstone = e(9, "doc6", "2-a")
+	tombstone.SetDeleted()
+	cache.addToCache(tombstone, true)
+	active, tombstones, removals = getCacheUtilization(context)
+	assert.Equal(t, 2, active)
+	assert.Equal(t, 1, tombstones)
+	assert.Equal(t, 3, removals)
+
+	// Tombstone a document id already present in the cache as an active revision
+	tombstone = e(10, "doc2", "3-a")
+	tombstone.SetDeleted()
+	cache.addToCache(tombstone, false)
+	active, tombstones, removals = getCacheUtilization(context)
+	assert.Equal(t, 1, active)
+	assert.Equal(t, 2, tombstones)
+	assert.Equal(t, 3, removals)
+}
+
+func TestChannelCacheStatsOnPrune(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+
+	context := testBucketContext()
+	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
+	cache := newChannelCache(context, "Test1", 0)
+	cache.options.ChannelCacheMaxLength = 5
+
+	// Add more than ChannelCacheMaxLength entries to cache
+	cache.addToCache(e(1, "doc1", "1-a"), false)
+	cache.addToCache(e(2, "doc2", "1-a"), true)
+	cache.addToCache(e(3, "doc3", "1-a"), false)
+	cache.addToCache(e(4, "doc4", "1-a"), true)
+	cache.addToCache(e(5, "doc5", "1-a"), false)
+	cache.addToCache(e(6, "doc6", "1-a"), true)
+	cache.addToCache(e(7, "doc7", "1-a"), false)
+	cache.addToCache(e(8, "doc8", "1-a"), true)
+	cache.addToCache(e(9, "doc9", "1-a"), false)
+	cache.addToCache(e(10, "doc10", "1-a"), true)
+
+	active, tombstones, removals := getCacheUtilization(context)
+	assert.Equal(t, 2, active)
+	assert.Equal(t, 0, tombstones)
+	assert.Equal(t, 3, removals)
+
+}
+
+func TestChannelCacheStatsOnPrepend(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+
+	context := testBucketContext()
+	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
+	cache := newChannelCache(context, "Test1", 0)
+	cache.options.ChannelCacheMaxLength = 15
+
+	// Add 9 entries to cache, 3 of each type
+	cache.addToCache(e(100, "active1", "2-a"), false)
+	cache.addToCache(e(102, "active2", "2-a"), false)
+	cache.addToCache(e(104, "removal1", "2-a"), true)
+	cache.addToCache(et(106, "tombstone1", "2-a"), false)
+	cache.addToCache(e(107, "removal2", "2-a"), true)
+	cache.addToCache(e(108, "removal3", "2-a"), true)
+	cache.addToCache(et(110, "tombstone2", "2-a"), false)
+	cache.addToCache(et(111, "tombstone3", "2-a"), false)
+	cache.addToCache(e(112, "active3", "2-a"), false)
+
+	active, tombstones, removals := getCacheUtilization(context)
+	assert.Equal(t, 3, active)
+	assert.Equal(t, 3, tombstones)
+	assert.Equal(t, 3, removals)
+
+	// Attempt to prepend entries with later sequences already in cache.  Shouldn't modify stats (note that prepend expects one overlap)
+	prependDuplicatesSet := make(LogEntries, 6)
+	prependDuplicatesSet[0] = (e(50, "active1", "1-a"))
+	prependDuplicatesSet[1] = (et(51, "active2", "1-a"))
+	prependDuplicatesSet[2] = (e(52, "removal1", "1-a"))
+	prependDuplicatesSet[3] = (et(53, "tombstone1", "1-a"))
+	prependDuplicatesSet[4] = (e(54, "tombstone3", "1-a"))
+	prependDuplicatesSet[5] = (e(100, "active1", "2-a"))
+	cache.prependChanges(prependDuplicatesSet, 50, false)
+
+	active, tombstones, removals = getCacheUtilization(context)
+	assert.Equal(t, 3, active)
+	assert.Equal(t, 3, tombstones)
+	assert.Equal(t, 3, removals)
+
+	// Prepend 10 non-duplicates - 5 active, 5 tombstone.  Cache only has room for 6, validate stats
+	prependSet := make(LogEntries, 11)
+	prependSet[0] = (e(40, "new1", "1-a"))
+	prependSet[1] = (et(41, "new2", "1-a"))
+	prependSet[2] = (e(42, "new3", "1-a"))
+	prependSet[3] = (et(43, "new4", "1-a"))
+	prependSet[4] = (e(44, "new5", "1-a"))
+	prependSet[5] = (et(45, "new6", "1-a"))
+	prependSet[6] = (e(46, "new7", "1-a"))
+	prependSet[7] = (et(47, "new8", "1-a"))
+	prependSet[8] = (e(48, "new9", "1-a"))
+	prependSet[9] = (et(49, "new10", "1-a"))
+	prependSet[10] = (e(100, "active1", "2-a"))
+	cache.prependChanges(prependSet, 40, false)
+	active, tombstones, removals = getCacheUtilization(context)
+	assert.Equal(t, 6, active)
+	assert.Equal(t, 6, tombstones)
+	assert.Equal(t, 3, removals)
+}
+
+func TestChannelCacheMaxSize(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+
+	context := testBucketContext()
+	defer context.Close()
+	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
+
+	context.changeCache.getChannelCache("TestA") // initialize, don't add any entries
+	cacheB := context.changeCache.getChannelCache("TestB")
+	cacheC := context.changeCache.getChannelCache("TestC")
+	cacheD := context.changeCache.getChannelCache("TestD")
+
+	// Add some entries to caches, leaving some empty cache
+	cacheB.addToCache(e(1, "doc1", "1-a"), false)
+	cacheB.addToCache(e(2, "doc2", "1-a"), false)
+	cacheB.addToCache(e(3, "doc3", "1-a"), false)
+
+	cacheC.addToCache(e(1, "doc1", "1-a"), false)
+	cacheC.addToCache(e(2, "doc2", "1-a"), false)
+	cacheC.addToCache(e(3, "doc3", "1-a"), false)
+	cacheC.addToCache(e(4, "doc4", "1-a"), false)
+
+	cacheD.addToCache(e(1, "doc1", "1-a"), false)
+	cacheD.addToCache(e(2, "doc2", "1-a"), false)
+	cacheD.addToCache(e(3, "doc3", "1-a"), false)
+
+	context.UpdateCalculatedStats()
+
+	maxEntries, _ := strconv.Atoi(context.DbStats.StatsCache().Get(base.StatKeyChannelCacheMaxEntries).String())
+	assert.Equal(t, 4, maxEntries)
+}
+
+func getCacheUtilization(context *DatabaseContext) (active, tombstones, removals int) {
+	active, _ = strconv.Atoi(context.DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsActive).String())
+	tombstones, _ = strconv.Atoi(context.DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsTombstone).String())
+	removals, _ = strconv.Atoi(context.DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsRemoval).String())
+	return active, tombstones, removals
 }
 
 func verifyChannelSequences(entries []*LogEntry, sequences []uint64) bool {

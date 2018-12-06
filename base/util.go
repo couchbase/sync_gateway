@@ -1055,27 +1055,31 @@ func ReplaceAll(s, chars, new string) string {
 	return s
 }
 
-// Convert an int into an expvar.Var
-func ExpvarIntVal(val int) expvar.Var {
+// Convert an int into an *expvar.Int
+func ExpvarIntVal(val int) *expvar.Int {
 	value := expvar.Int{}
 	value.Set(int64(val))
 	return &value
 }
 
-func ExpvarInt64Val(val int64) expvar.Var {
+func ExpvarInt64Val(val int64) *expvar.Int {
 	value := expvar.Int{}
 	value.Set(val)
 	return &value
 }
 
-func ExpvarUInt64Val(val uint64) expvar.Var {
+func ExpvarUInt64Val(val uint64) *expvar.Int {
 	value := expvar.Int{}
-	value.Set(int64(val))  // lossy, but expvar doesn't provide an alternative
+	if val > math.MaxInt64 {
+		value.Set(math.MaxInt64) // lossy, but expvar doesn't provide an alternative
+	} else {
+		value.Set(int64(val))
+	}
 	return &value
 }
 
-// Convert a float into an expvar.Var
-func ExpvarFloatVal(val float64) expvar.Var {
+// Convert a float into an *expvar.Float
+func ExpvarFloatVal(val float64) *expvar.Float {
 	value := expvar.Float{}
 	value.Set(float64(val))
 	return &value
