@@ -200,15 +200,14 @@ func (ctx *blipSyncContext) Logf(logLevel base.LogLevel, logKey base.LogKey, for
 	switch logLevel {
 	case base.LevelError:
 		base.Errorf(logKey, formatWithContextID, paramsWithContextID...)
-		fallthrough
 	case base.LevelWarn:
 		base.Warnf(logKey, formatWithContextID, paramsWithContextID...)
-		fallthrough
 	case base.LevelInfo:
 		base.Infof(logKey, formatWithContextID, paramsWithContextID...)
-		fallthrough
 	case base.LevelDebug:
 		base.Debugf(logKey, formatWithContextID, paramsWithContextID...)
+	case base.LevelTrace:
+		base.Tracef(logKey, formatWithContextID, paramsWithContextID...)
 	}
 }
 
@@ -440,6 +439,14 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 		maxHistory = int(max)
 	}
 
+	// Set useDeltas if the client has delta support and has it enabled
+	if clientDeltasStr, ok := response.Properties[changesResponseDeltas]; ok {
+		bh.Logf(base.LevelDebug, base.KeySync, "Value for 'deltas' property in 'changes' response: %v", clientDeltasStr)
+		bh.setUseDeltas(clientDeltasStr == "true")
+	} else {
+		bh.Logf(base.LevelDebug, base.KeySync, "No 'deltas' property found in 'changes' response.")
+	}
+
 	// Maps docID --> a map containing true for revIDs known to the client
 	knownRevsByDoc := make(map[string]map[string]bool, len(answer))
 
@@ -464,7 +471,14 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 					return
 				}
 			}
-			bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
+
+			if bh.useDeltas && len(knownRevs) > 0 {
+				bh.Logf(base.LevelTrace, base.KeySync, "Attempting to send rev as delta")
+				bh.sendRevAsDelta(sender, seq, docID, revID, knownRevs, maxHistory)
+			} else {
+				bh.Logf(base.LevelTrace, base.KeySync, "Not sending as delta because either useDeltas was false, or knownRevs was empty")
+				bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
+			}
 		}
 	}
 }
@@ -553,6 +567,70 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 
 //////// DOCUMENTS:
 
+func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+
+	bh.Logf(base.LevelTrace, base.KeySync, "DELTA: getting newBody docID: %s - rev: %v", base.UD(docID), revID)
+	newBody, err := bh.db.GetRev(docID, revID, true, nil)
+	if err != nil {
+		bh.Logf(base.LevelWarn, base.KeySync, "DELTA: couldn't get newBody - sending NoRev... err: %v", err)
+		// If we can't get the new doc, we won't be able to fall back either, so NoRev with error
+		bh.sendNoRev(err, sender, seq, docID, revID)
+		return
+	}
+
+	// Get the client's highest known rev ID to use as deltaSrc
+	bh.Logf(base.LevelTrace, base.KeySync, "DELTA: Figuring out deltaSrcRevID from client's highest known revID...")
+	var deltaSrcRevID string
+	newBodyRevisions, ok := newBody[db.BodyRevisions].(db.Revisions)
+	if !ok {
+		bh.Logf(base.LevelWarn, base.KeySync, "DELTA: couldn't get newBody[_revisions] - sending NoRev... err: %v", err)
+		// If we can't get ancestor revisions, fall back to sending full body
+		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
+		return
+	}
+
+	revsStart := strconv.Itoa(newBodyRevisions[db.RevisionsStart].(int) - 1) // previous rev start
+	for _, v := range newBodyRevisions[db.RevisionsIds].([]string) {
+		rev := revsStart + "-" + v
+		if knownRevs[rev] {
+			deltaSrcRevID = rev
+		}
+	}
+
+	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: getting oldBody docID: %s - deltaSrcRevID: %v", base.UD(docID), deltaSrcRevID)
+	oldBody, err := bh.db.GetRev(docID, deltaSrcRevID, true, nil)
+	if err != nil {
+		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: couldn't get oldBody - falling back to full body replication... err: %v", err)
+		// fall back to standard full-body replication if we can't do a delta
+		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
+		return
+	}
+
+	// generate delta
+	delta, err := base.Diff(oldBody, newBody)
+	if err != nil {
+		bh.Logf(base.LevelWarn, base.KeySync, "DELTA: couldn't generate delta - falling back to full body replication... err: %v", err)
+		// fall back to standard full-body replication if we can't diff
+		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
+		return
+	}
+	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: generated delta: %s", base.UD(delta))
+
+	bh.sendDelta(delta, deltaSrcRevID, sender, seq, docID, revID, knownRevs, maxHistory)
+}
+
+func (bh *blipHandler) sendDelta(delta []byte, deltaSrcRevID string, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+
+	var body db.Body
+	if err := body.Unmarshal(delta); err != nil {
+		bh.Logf(base.LevelError, base.KeySync, "DELTA: couldn't unmarshal delta... err: %v", err)
+		bh.sendNoRev(err, sender, seq, docID, revID)
+		return
+	}
+
+	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, knownRevs, maxHistory, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
+}
+
 func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
 
 	body, err := bh.db.GetRev(docID, revID, true, nil)
@@ -584,6 +662,11 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 
 // Pushes a revision body to the client
 func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, knownRevs, maxHistory, nil)
+}
+
+// Pushes a revision body to the client
+func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int, properties blip.Properties) {
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 
@@ -607,6 +690,9 @@ func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.Se
 	}
 	outrq.setSequence(seq)
 	outrq.setHistory(history)
+
+	// add additional properties passed through
+	outrq.setProperties(properties)
 
 	delete(body, db.BodyId)
 	delete(body, db.BodyRev)
