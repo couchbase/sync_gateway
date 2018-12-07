@@ -1072,8 +1072,8 @@ func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxG
 
 	if numGoroutines > maxGoroutinesSeen {
 
-		// Ignore CAS failures -- this stat can be considered a "best effort"
-		_ = atomic.CompareAndSwapUint64(&base.MaxGoroutinesSeen, maxGoroutinesSeen, numGoroutines)
+		// Clobber existing values rather than attempt a CAS loop. This stat can be considered a "best effort".
+		atomic.StoreUint64(&base.MaxGoroutinesSeen, numGoroutines)
 
 		if stats != nil {
 			stats.Set(base.StatKeyGoroutinesHighWatermark, base.ExpvarUInt64Val(maxGoroutinesSeen))
