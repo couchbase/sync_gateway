@@ -87,21 +87,14 @@ const (
 	// Set this to true to dump stacktraces (for pkgerrors wrapped errors only) whenever an error is returned to
 	// an API client.  Currently only works with REST API calls.
 	StacktraceOnAPIErrors = false
-
 )
 
 const (
-
-	SyncFnErrorMissingRole = "missing role"
-
-	SyncFnErrorAdminRequired = "admin required"
-
-	SyncFnErrorWrongUser = "wrong user"
-
+	SyncFnErrorMissingRole          = "missing role"
+	SyncFnErrorAdminRequired        = "admin required"
+	SyncFnErrorWrongUser            = "wrong user"
 	SyncFnErrorMissingChannelAccess = "missing channel access"
-
 )
-
 
 func UnitTestUrl() string {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
