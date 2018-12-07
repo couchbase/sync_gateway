@@ -557,6 +557,9 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
+	if bh.sgCanUseDeltas {
+		response.Properties[changesResponseDeltas] = "true"
+	}
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
 	return nil
@@ -735,6 +738,31 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	revID, rfound := revMessage.rev()
 	if !found || !rfound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
+	}
+
+	if deltaSrc, isDelta := revMessage.deltaSrc(); isDelta {
+		bh.Logf(base.LevelDebug, base.KeySync, "Recieved delta in rev message for docID: %v", docID)
+		deltaSrcBody, err := bh.db.GetRev(docID, deltaSrc, true, nil)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusNotFound, fmt.Sprintf("Can't fetch doc for deltaSrc=%s %v", deltaSrc, err))
+		}
+		bh.Logf(base.LevelTrace, base.KeySync, "deltaSrcBody: %v", deltaSrcBody)
+
+		delta, err := rq.Body()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Error getting delta body: %s", err))
+		}
+		bh.Logf(base.LevelTrace, base.KeySync, "delta: %s", delta)
+
+		// TODO: May need to copy deltaSrcBody so it doesn't get mutated in revcache
+		deltaSrcMap := map[string]interface{}(deltaSrcBody)
+		err = base.Patch(&deltaSrcMap, delta)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error patching deltaSrc with delta: %s", err))
+		}
+
+		body = db.Body(deltaSrcMap)
+		bh.Logf(base.LevelTrace, base.KeySync, "body after patching: %v", body)
 	}
 
 	if revMessage.deleted() {
