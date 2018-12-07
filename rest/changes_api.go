@@ -161,9 +161,6 @@ func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 	// http://docs.couchdb.org/en/latest/api/database/changes.html
 
-	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationConnsActive, 1)
-	defer h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationConnsActive, -1)
-
 	var feed string
 	var options db.ChangesOptions
 	var filter string
