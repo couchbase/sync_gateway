@@ -245,12 +245,7 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 	}
 
 	// Set expiry on config, if defined in response header
-	var ttl time.Duration
-	var ok bool
-	ttl, ok, err = phttp.Cacheable(resp.Header)
-	if err != nil {
-		return nil, err
-	} else if ok {
+	if ttl, ok, _ := phttp.Cacheable(resp.Header); ok {
 		oidcConfig.ExpiresAt = time.Now().UTC().Add(ttl)
 	}
 
