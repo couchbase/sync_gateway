@@ -317,9 +317,6 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Start asynchronous changes goroutine
 	go func() {
-		base.StatsExpvars.Add("subChanges_total", 1)
-		base.StatsExpvars.Add("subChanges_active", 1)
-		defer base.StatsExpvars.Add("subChanges_active", -1)
 		defer func() {
 			bh.hasActiveSubChanges = false
 		}()

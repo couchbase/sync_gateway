@@ -109,6 +109,10 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyPercentReplicationsContinuous, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyNumberInitialSync, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyOldRevsDocMisses, base.ExpvarIntVal(0))
+		result.Set(base.StatKeySequenceGets, base.ExpvarIntVal(0))
+		result.Set(base.StatKeySequenceReserves, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyAbandonedSeqs, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyCrc32cMatchCount, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyDeltaSync:
 		result.Set(base.StatKeyNetBandwidthSavings, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyDeltaHitRatio, base.ExpvarFloatVal(0))
@@ -138,6 +142,7 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyNumAccessErrors, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyAuthSuccessCount, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyAuthFailedCount, base.ExpvarFloatVal(0))
+		result.Set(base.StatKeyTotalAuthTime, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyGsiViews:
 		result.Set(base.StatKeyTotalQueriesPerSec, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyChannelQueriesPerSec, base.ExpvarFloatVal(0))

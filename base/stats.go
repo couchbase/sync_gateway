@@ -1,9 +1,9 @@
 package base
 
-import "expvar"
-
-var StatsExpvars *expvar.Map = expvar.NewMap("syncGateway_stats")
 var TimingExpvars SequenceTimingExpvar
+
+// The peak number of goroutines observed during lifetime of program
+var MaxGoroutinesSeen uint64
 
 const (
 	KTimingExpvarVbNo      = 0
@@ -16,9 +16,9 @@ const (
 //to find valid property names
 //
 func init() {
-	StatsExpvars.Add("changesFeeds_total", 0)
-	StatsExpvars.Add("requests_total", 0)
+
+	// Sg-Accel stats -- this should be in db.IndexExpvars, but cannot be due to dependency it would create from base -> db
 	TimingExpvars = NewSequenceTimingExpvar(KTimingExpvarFrequency, KTimingExpvarVbNo, "st")
-	StatsExpvars.Set("sequenceTiming", TimingExpvars)
+	ShardedClockExpvars.Set("sequenceTiming", TimingExpvars)
 
 }

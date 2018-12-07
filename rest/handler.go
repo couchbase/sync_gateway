@@ -14,7 +14,6 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
-	"expvar"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -45,8 +44,6 @@ var DebugMultipart bool = false
 
 var lastSerialNum uint64 = 0
 
-var restExpvars = expvar.NewMap("syncGateway_rest")
-
 func init() {
 	DebugMultipart = (os.Getenv("GatewayDebugMultipart") != "")
 }
@@ -54,12 +51,6 @@ func init() {
 var kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
 var kBadMethodError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Method Not Allowed")
 var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request")
-
-var checkAuthRollingMean = base.NewIntRollingMeanVar(100)
-
-func init() {
-	base.StatsExpvars.Set("handler.CheckAuthRollingMean", &checkAuthRollingMean)
-}
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
@@ -126,7 +117,6 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
-	base.StatsExpvars.Add("requests_total", 1)
 
 	var err error
 	if h.server.config.CompressResponses == nil || *h.server.config.CompressResponses {
@@ -265,8 +255,6 @@ func (h *handler) logDuration(realTime bool) {
 	var duration time.Duration
 	if realTime {
 		duration = time.Since(h.startTime)
-		bin := int(duration/(100*time.Millisecond)) * 100
-		restExpvars.Add(fmt.Sprintf("requests_%04dms", bin), 1)
 	}
 
 	// Log timings/status codes for errors under the HTTP log key
@@ -301,7 +289,14 @@ func (h *handler) checkAuth(context *db.DatabaseContext) error {
 		return nil
 	}
 
-	defer checkAuthRollingMean.AddSince(time.Now())
+	// Record TotalAuthTime stat
+	defer func(t time.Time) {
+		if context.DbStats == nil {
+			return
+		}
+		delta := time.Since(t).Nanoseconds()
+		context.DbStats.StatsSecurity().Add(base.StatKeyTotalAuthTime, delta)
+	}(time.Now())
 
 	var err error
 	// If oidc enabled, check for bearer ID token

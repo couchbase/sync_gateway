@@ -32,8 +32,8 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	queryCountExpvar := fmt.Sprintf(viewQueryCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
 	errorCountExpvar := fmt.Sprintf(viewQueryErrorCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
 
-	channelQueryCountBefore, _ := base.GetExpvarAsInt("syncGateway_query", queryCountExpvar)
-	channelQueryErrorCountBefore, _ := base.GetExpvarAsInt("syncGateway_query", errorCountExpvar)
+	channelQueryCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
 	results, queryErr := db.QueryChannels("ABC", 0, 10, 100)
@@ -44,8 +44,8 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
-	channelQueryCountAfter, _ := base.GetExpvarAsInt("syncGateway_query", queryCountExpvar)
-	channelQueryErrorCountAfter, _ := base.GetExpvarAsInt("syncGateway_query", errorCountExpvar)
+	channelQueryCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryErrorCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	goassert.Equals(t, channelQueryCountBefore+1, channelQueryCountAfter)
 	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
@@ -74,8 +74,8 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	queryCountExpvar := fmt.Sprintf(n1qlQueryCountExpvarFormat, QueryTypeChannels)
 	errorCountExpvar := fmt.Sprintf(n1qlQueryErrorCountExpvarFormat, QueryTypeChannels)
 
-	channelQueryCountBefore, _ := base.GetExpvarAsInt("syncGateway_query", queryCountExpvar)
-	channelQueryErrorCountBefore, _ := base.GetExpvarAsInt("syncGateway_query", errorCountExpvar)
+	channelQueryCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
 	results, queryErr := db.QueryChannels("ABC", 0, 10, 100)
@@ -86,8 +86,8 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
-	channelQueryCountAfter, _ := base.GetExpvarAsInt("syncGateway_query", queryCountExpvar)
-	channelQueryErrorCountAfter, _ := base.GetExpvarAsInt("syncGateway_query", errorCountExpvar)
+	channelQueryCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryErrorCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	goassert.Equals(t, channelQueryCountBefore+1, channelQueryCountAfter)
 	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)

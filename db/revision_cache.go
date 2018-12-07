@@ -246,7 +246,6 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.expiry = docRev.Expiry
 		value.attachments = docRev.Attachments.ShallowCopy() // Don't store attachments the caller might later mutate
 		value.err = nil
-		dbExpvars.Add("revisionCache_adds", 1)
 	}
 	value.lock.Unlock()
 }

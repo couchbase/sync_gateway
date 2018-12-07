@@ -237,7 +237,7 @@ func (b *BitFlagStorage) writeBlockWithCas(block IndexBlock, entries []*LogEntry
 	casOut, err := base.WriteCasRaw(b.bucket, block.Key(), value, block.Cas(), 0, func(value []byte) (updatedValue []byte, err error) {
 
 		// Note: The following is invoked upon cas failure - may be called multiple times
-		changeCacheExpvars.Add("writeSingleBlock-casRetryCount", 1)
+		IndexExpvars.Add("writeSingleBlock-casRetryCount", 1)
 		err = block.Unmarshal(value)
 		for _, entry := range entries {
 			err := block.AddEntry(entry)

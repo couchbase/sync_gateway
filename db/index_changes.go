@@ -35,14 +35,14 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
-		base.StatsExpvars.Add("vectorChanges_total", 1)
-		base.StatsExpvars.Add("vectorChanges_active", 1)
+		IndexExpvars.Add("vectorChanges_total", 1)
+		IndexExpvars.Add("vectorChanges_active", 1)
 		var cumulativeClock *base.SyncSequenceClock
 		var lastHashedValue string
 		hashedEntryCount := 0
 		defer func() {
 			base.Debugf(base.KeyChanges, "MultiChangesFeed done %s", base.UD(to))
-			base.StatsExpvars.Add("vectorChanges_active", -1)
+			IndexExpvars.Add("vectorChanges_active", -1)
 			close(output)
 		}()
 
@@ -153,7 +153,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				// Don't send any entries later than the stable sequence
 				if stableClock.GetSequence(minEntry.Seq.vbNo) < minEntry.Seq.Seq {
 					postStableSeqsFound = true
-					dbExpvars.Add("index_changes.postStableSeqs", 1)
+					IndexExpvars.Add("index_changes.postStableSeqs", 1)
 					continue
 				}
 
@@ -627,7 +627,6 @@ const (
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, secondaryTrigger channels.VbSequence, cumulativeClock *base.SyncSequenceClock, stableClock base.SequenceClock) (<-chan *ChangeEntry, error) {
-	dbExpvars.Add("channelChangesFeeds", 1)
 	changeIndex, ok := db.changeCache.(*kvChangeIndex)
 	if !ok {
 		return nil, fmt.Errorf("Called vectorChangesFeed with non-index cache type: %T", db.changeCache)

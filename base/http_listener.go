@@ -2,21 +2,11 @@ package base
 
 import (
 	"crypto/tls"
-	"expvar"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 )
-
-var httpListenerExpvars *expvar.Map
-var maxWaitExpvar, maxActiveExpvar IntMax
-
-func init() {
-	httpListenerExpvars = expvar.NewMap("syncGateway_httpListener")
-	httpListenerExpvars.Set("max_wait", &maxWaitExpvar)
-	httpListenerExpvars.Set("max_active", &maxActiveExpvar)
-}
 
 // This is like a combination of http.ListenAndServe and http.ListenAndServeTLS, which also
 // uses ThrottledListen to limit the number of open HTTP connections.
@@ -84,16 +74,12 @@ func (tl *throttledListener) Accept() (net.Conn, error) {
 	conn, err := tl.Listener.Accept()
 	if err == nil {
 		// Wait until the number of active connections drops below the limit:
-		waitStart := time.Now()
 		tl.lock.L.Lock()
 		for tl.active >= tl.limit {
 			tl.lock.Wait()
 		}
 		tl.active++
-		maxActiveExpvar.SetIfMax(int64(tl.active))
 		tl.lock.L.Unlock()
-		waitTime := time.Since(waitStart)
-		maxWaitExpvar.SetIfMax(int64(waitTime))
 	}
 	return &throttleConn{conn, tl}, err
 }

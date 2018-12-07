@@ -11,12 +11,16 @@ package rest
 
 import (
 	"bytes"
+	"expvar"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"testing"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
+	"sync/atomic"
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // Tests the ConfigServer feature.
@@ -99,6 +103,19 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 	goassert.Equals(t, dbc.Bucket.GetName(), "fivez")
 
 	rt.Bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
+
+}
+
+func TestRecordGoroutineHighwaterMark(t *testing.T) {
+
+	// Reset this to 0
+	atomic.StoreUint64(&base.MaxGoroutinesSeen, 0)
+
+	stats := new(expvar.Map)
+
+	assert.True(t, recordGoroutineHighwaterMark(stats, 1000) == 1000)
+	assert.True(t, recordGoroutineHighwaterMark(stats, 500) == 1000)
+	assert.True(t, recordGoroutineHighwaterMark(stats, 1500) == 1500)
 
 }
 

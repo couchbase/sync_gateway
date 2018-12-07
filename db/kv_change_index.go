@@ -44,7 +44,7 @@ type IndexPartitionsFunc func() (*base.IndexPartitions, error)
 var IndexExpvars *expvar.Map
 
 func init() {
-	IndexExpvars = expvar.NewMap("syncGateway_index")
+	IndexExpvars = new(expvar.Map)
 }
 
 func (k *kvChangeIndex) Init(context *DatabaseContext, onChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) (err error) {

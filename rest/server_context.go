@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"expvar"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -24,8 +25,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"expvar"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
@@ -1012,11 +1011,12 @@ func (sc *ServerContext) logStats() error {
 
 func AddGoRuntimeStats() {
 
-	statsResourceUtilizationVar := base.GlobalStats.Get(base.StatsGroupKeyResourceUtilization)
-	statsResourceUtilization := statsResourceUtilizationVar.(*expvar.Map)
+	statsResourceUtilization := base.StatsResourceUtilization()
 
 	// Num goroutines
-	statsResourceUtilization.Set("num_goroutines", base.ExpvarIntVal(runtime.NumGoroutine()))
+	statsResourceUtilization.Set(base.StatKeyNumGoroutines, base.ExpvarIntVal(runtime.NumGoroutine()))
+
+	recordGoroutineHighwaterMark(statsResourceUtilization, uint64(runtime.NumGoroutine()))
 
 	// Read memstats (relatively expensive)
 	memstats := runtime.MemStats{}
@@ -1027,31 +1027,31 @@ func AddGoRuntimeStats() {
 	// TODO: document why this works (blog post or email thread)
 	// TODO: according to the PRD, this should figure out the total memory in the system and express as a ratio of total memory
 	memory_rss := int64(memstats.Sys - memstats.HeapReleased) // convert uint -> int since that's what expvar supports
-	statsResourceUtilization.Set("memory_rss_bytes", base.ExpvarInt64Val(memory_rss))
+	statsResourceUtilization.Set(base.StatKeyMemoryRssBytes, base.ExpvarInt64Val(memory_rss))
 
 	// Sys
-	statsResourceUtilization.Set("go_memstats_sys", base.ExpvarUInt64Val(memstats.Sys))
+	statsResourceUtilization.Set(base.StatKeyGoMemstatsSys, base.ExpvarUInt64Val(memstats.Sys))
 
 	// HeapAlloc
-	statsResourceUtilization.Set("go_memstats_heapalloc", base.ExpvarUInt64Val(memstats.HeapAlloc))
+	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapAlloc, base.ExpvarUInt64Val(memstats.HeapAlloc))
 
 	// HeapIdle
-	statsResourceUtilization.Set("go_memstats_heapidle", base.ExpvarUInt64Val(memstats.HeapIdle))
+	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapIdle, base.ExpvarUInt64Val(memstats.HeapIdle))
 
 	// HeapInuse
-	statsResourceUtilization.Set("go_memstats_heapinuse", base.ExpvarUInt64Val(memstats.HeapInuse))
+	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapInUse, base.ExpvarUInt64Val(memstats.HeapInuse))
 
 	// HeapReleased
-	statsResourceUtilization.Set("go_memstats_heapreleased", base.ExpvarUInt64Val(memstats.HeapReleased))
+	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapReleased, base.ExpvarUInt64Val(memstats.HeapReleased))
 
 	// StackInuse
-	statsResourceUtilization.Set("go_memstats_stackinuse", base.ExpvarUInt64Val(memstats.StackInuse))
+	statsResourceUtilization.Set(base.StatKeyGoMemstatsStackInUse, base.ExpvarUInt64Val(memstats.StackInuse))
 
 	// StackSys
-	statsResourceUtilization.Set("go_memstats_stacksys", base.ExpvarUInt64Val(memstats.StackSys))
+	statsResourceUtilization.Set(base.StatKeyGoMemstatsStackSys, base.ExpvarUInt64Val(memstats.StackSys))
 
 	// PauseTotalNs
-	statsResourceUtilization.Set("go_memstats_pausetotalns", base.ExpvarUInt64Val(memstats.PauseTotalNs))
+	statsResourceUtilization.Set(base.StatKeyGoMemstatsPauseTotalNs, base.ExpvarUInt64Val(memstats.PauseTotalNs))
 
 }
 
@@ -1062,6 +1062,27 @@ func (sc *ServerContext) updateCalculatedStats() {
 	for _, dbContext := range sc.databases_ {
 		dbContext.UpdateCalculatedStats()
 	}
+
+}
+
+// Record Goroutines high watermark into expvars
+func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxGoroutinesSeen uint64) {
+
+	maxGoroutinesSeen = atomic.LoadUint64(&base.MaxGoroutinesSeen)
+
+	if numGoroutines > maxGoroutinesSeen {
+
+		// Clobber existing values rather than attempt a CAS loop. This stat can be considered a "best effort".
+		atomic.StoreUint64(&base.MaxGoroutinesSeen, numGoroutines)
+
+		if stats != nil {
+			stats.Set(base.StatKeyGoroutinesHighWatermark, base.ExpvarUInt64Val(maxGoroutinesSeen))
+		}
+
+		return numGoroutines
+	}
+
+	return maxGoroutinesSeen
 
 }
 

@@ -640,8 +640,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Check expvars before update
-	crcMatchesBefore, _ := base.GetExpvarAsInt("syncGateway_import", "crc32c_match_count")
-	crcMismatchesBefore, _ := base.GetExpvarAsInt("syncGateway_import", "crc32c_mismatch_count")
+	crcMatchesBefore := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyCrc32cMatchCount))
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
@@ -654,12 +653,11 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Wait until crc match count changes
-	var crcMatchesAfter, crcMismatchesAfter int
+	var crcMatchesAfter int64
 	for i := 0; i < 20; i++ {
-		crcMatchesAfter, _ = base.GetExpvarAsInt("syncGateway_import", "crc32c_match_count")
-		crcMismatchesAfter, _ = base.GetExpvarAsInt("syncGateway_import", "crc32c_mismatch_count")
+		crcMatchesAfter = base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyCrc32cMatchCount))
 		// if they changed, import has been processed
-		if crcMatchesAfter > crcMatchesBefore || crcMismatchesAfter > crcMismatchesAfter {
+		if crcMatchesAfter > crcMatchesBefore {
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
@@ -667,7 +665,6 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
 	// Expect one crcMatch, no mismatches
 	goassert.True(t, crcMatchesAfter-crcMatchesBefore == 1)
-	goassert.True(t, crcMismatchesAfter-crcMismatchesBefore == 0)
 
 	// Get the doc again, validate rev hasn't changed
 	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")

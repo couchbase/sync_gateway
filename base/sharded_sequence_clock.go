@@ -9,10 +9,10 @@ import (
 	"sync"
 )
 
-var shardedClockExpvars *expvar.Map
+var ShardedClockExpvars *expvar.Map
 
 func init() {
-	shardedClockExpvars = expvar.NewMap("syncGateway_index_clocks")
+	ShardedClockExpvars = new(expvar.Map)
 }
 
 const (
@@ -221,7 +221,7 @@ func NewShardedClockWithPartitions(baseKey string, partitions *IndexPartitions, 
 /*
 func (s *ShardedClock) write() (err error) {
 	// write all modified partitions to bucket
-	shardedClockExpvars.Add("count_write", 1)
+	ShardedClockExpvars.Add("count_write", 1)
 	var wg sync.WaitGroup
 	for _, partition := range s.partitions {
 		if partition.dirty {
@@ -234,7 +234,7 @@ func (s *ShardedClock) write() (err error) {
 
 				if err != nil {
 					Warnf(KeyAll, "Error writing sharded clock partition key: %v.  Error: %v, p.cas: %v, casOut: %v", UD(p.Key), err, p.cas, casOut)
-					shardedClockExpvars.Add("partition_cas_failures", 1)
+					ShardedClockExpvars.Add("partition_cas_failures", 1)
 					return
 				}
 
@@ -320,7 +320,7 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 		wg.Add(1)
 		// Initialize partition if needed
 		if s.partitions[partitionNo] == nil {
-			shardedClockExpvars.Add("count_update_partition_not_found", 1)
+			ShardedClockExpvars.Add("count_update_partition_not_found", 1)
 			err = s.initPartition(partitionNo)
 			if err != nil {
 				return err
@@ -353,7 +353,7 @@ func (s *ShardedClock) UpdateAndWrite(updates map[uint16]uint64) (err error) {
 			})
 			if err != nil {
 				Warnf(KeyAll, "Error writing sharded clock partition [%v]:%v", UD(p.Key), err)
-				shardedClockExpvars.Add("partition_cas_failures", 1)
+				ShardedClockExpvars.Add("partition_cas_failures", 1)
 				return
 			}
 			p.cas = casOut

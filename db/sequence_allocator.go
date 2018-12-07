@@ -26,19 +26,28 @@ const (
 )
 
 type sequenceAllocator struct {
-	bucket base.Bucket // Bucket whose counter to use
-	mutex  sync.Mutex  // Makes this object thread-safe
-	last   uint64      // Last sequence # assigned
-	max    uint64      // Max sequence # reserved
+	bucket  base.Bucket    // Bucket whose counter to use
+	dbStats *DatabaseStats // For updating per-db stats
+	mutex   sync.Mutex     // Makes this object thread-safe
+	last    uint64         // Last sequence # assigned
+	max     uint64         // Max sequence # reserved
 }
 
-func newSequenceAllocator(bucket base.Bucket) (*sequenceAllocator, error) {
-	s := &sequenceAllocator{bucket: bucket}
+func newSequenceAllocator(bucket base.Bucket, dbStats *DatabaseStats) (*sequenceAllocator, error) {
+
+	if dbStats == nil {
+		return nil, fmt.Errorf("dbStats parameter must be non-nil")
+	}
+
+	s := &sequenceAllocator{
+		bucket:  bucket,
+		dbStats: dbStats,
+	}
 	return s, s.reserveSequences(0) // just reads latest sequence from bucket
 }
 
 func (s *sequenceAllocator) lastSequence() (uint64, error) {
-	dbExpvars.Add("sequence_gets", 1)
+	s.dbStats.StatsDatabase().Add(base.StatKeySequenceGets, 1)
 	last, err := s.incrWithRetry(SyncSeqKey, 0)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Error from Incr in lastSequence(): %v", err)
@@ -63,7 +72,8 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 		return nil // Already have some sequences left; don't be greedy and waste them
 		//OPT: Could remember multiple discontiguous ranges of free sequences
 	}
-	dbExpvars.Add("sequence_reserves", 1)
+	s.dbStats.StatsDatabase().Add(base.StatKeySequenceReserves, 1)
+
 	max, err := s.incrWithRetry(SyncSeqKey, numToReserve)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
