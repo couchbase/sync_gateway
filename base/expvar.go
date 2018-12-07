@@ -138,17 +138,11 @@ const (
 	StatKeyQueryProcessingTime     = "query_processing_time"
 
 	// StatsReplication
-	StatKeyBandwidth                = "bandwidth"
-	StatKeyDataReplicatedSize       = "data_replicated_size"
-	StatKeyNumAttachmentsTransfered = "num_attachments_transferred"
-	StatKeyNumTempFailures          = "num_temp_failures"
-	StatKeyNumPermFailures          = "num_perm_failures"
-	StatKeyPendingBacklog           = "pending_backlog"
-	StatKeyBatchSize                = "batchsize"
-	StatKeyDocTransferLatency       = "doc_transfer_latency"
-	StatKeyDocsCheckedSent          = "docs_checked_sent"
-	StatKeyNumDocsPushed            = "num_docs_pushed"
-	StatKeyNumDocsFailedToPush      = "num_docs_failed_to_push"
+	StatKeyNumDocsPushed              = "num_docs_pushed"
+	StatKeyNumDocsFailedToPush        = "num_docs_failed_to_push"
+	StatKeyNumAttachmentsTransferred  = "num_attachments_transferred"
+	StatKeyAttachmentBytesTransferred = "num_attachment_bytes_transferred"
+	StatKeyDocsCheckedSent            = "docs_checked_sent"
 )
 
 const (

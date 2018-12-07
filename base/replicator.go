@@ -80,6 +80,9 @@ func (r *Replicator) SnapshotStats() {
 		}
 		statsExpvars.Set(StatKeyNumDocsPushed, ExpvarInt64Val(int64(stats.GetDocsWritten())))
 		statsExpvars.Set(StatKeyNumDocsFailedToPush, ExpvarInt64Val(int64(stats.GetDocWriteFailures())))
+		statsExpvars.Set(StatKeyNumAttachmentsTransferred, ExpvarInt64Val(int64(stats.GetNumAttachmentsTransferred())))
+		statsExpvars.Set(StatKeyAttachmentBytesTransferred, ExpvarInt64Val(int64(stats.GetAttachmentBytesTransferred())))
+		statsExpvars.Set(StatKeyDocsCheckedSent, ExpvarInt64Val(int64(stats.GetDocsCheckedSent())))
 
 	}
 
@@ -282,15 +285,7 @@ func NewReplicationStats() (expvarMap *expvar.Map) {
 	result := new(expvar.Map)
 	result.Set(StatKeyNumDocsPushed, ExpvarIntVal(0))
 	result.Set(StatKeyNumDocsFailedToPush, ExpvarIntVal(0))
-	result.Set(StatKeyBandwidth, ExpvarFloatVal(0))
-	result.Set(StatKeyDataReplicatedSize, ExpvarFloatVal(0))
-	result.Set(StatKeyNumAttachmentsTransfered, ExpvarFloatVal(0))
-	result.Set(StatKeyAvgAttachmentSize, ExpvarFloatVal(0))
-	result.Set(StatKeyNumTempFailures, ExpvarFloatVal(0))
-	result.Set(StatKeyNumPermFailures, ExpvarFloatVal(0))
-	result.Set(StatKeyPendingBacklog, ExpvarFloatVal(0))
-	result.Set(StatKeyBatchSize, ExpvarFloatVal(0))
-	result.Set(StatKeyDocTransferLatency, ExpvarFloatVal(0))
-	result.Set(StatKeyDocsCheckedSent, ExpvarFloatVal(0))
+	result.Set(StatKeyNumAttachmentsTransferred, ExpvarIntVal(0))
+	result.Set(StatKeyDocsCheckedSent, ExpvarIntVal(0))
 	return result
 }
