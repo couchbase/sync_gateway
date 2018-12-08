@@ -96,10 +96,15 @@ const (
 	StatKeyImportErrorCount = "import_error_count"
 
 	// StatsCBLReplicationPush
-	StatKeyWriteProcessingTime  = "write_processing_time"
-	StatKeySyncTime             = "sync_time"
-	StatKeyProposeChangeTime    = "propose_change_time"
-	StatKeyProposeChangesPerSec = "propose_changes_per_sec"
+	StatKeyDocPushCount        = "doc_push_count"
+	StatKeyWriteProcessingTime = "write_processing_time"
+	StatKeySyncFunctionTime    = "sync_function_time"
+	StatKeySyncFunctionCount   = "sync_function_count"
+	StatKeyProposeChangeTime   = "propose_change_time"
+	StatKeyProposeChangeCount  = "propose_change_count"
+	StatKeyAttachmentPushCount = "attachment_push_count"
+	StatKeyAttachmentPushBytes = "attachment_push_bytes"
+	StatKeyConflictWriteCount  = "conflict_write_count"
 
 	// StatsCBLReplicationPull
 	StatKeyPullReplicationsActiveOneShot    = "num_pull_repl_active_one_shot"
@@ -107,6 +112,7 @@ const (
 	StatKeyPullReplicationsTotalOneShot     = "num_pull_repl_total_one_shot"
 	StatKeyPullReplicationsTotalContinuous  = "num_pull_repl_total_continuous"
 	StatKeyPullReplicationsSinceZero        = "num_pull_repl_since_zero"
+	StatKeyPullReplicationsCaughtUp         = "num_pull_repl_caught_up"
 	StatKeyRequestChangesCount              = "request_changes_count"
 	StatKeyRequestChangesTime               = "request_changes_time"
 	StatKeyDcpCachingCount                  = "dcp_caching_count"
@@ -114,16 +120,8 @@ const (
 	StatKeyRevSendCount                     = "rev_send_count"
 	StatKeyRevSendTime                      = "rev_send_time"
 	StatKeyMaxPending                       = "max_pending"
-	StatKeyAttachmentsPulledCount           = "attachment_pull_count"
-	StatKeyAttachmentsPulledBytes           = "attachment_pull_bytes"
-
-	// StatsCBLReplicationCommon
-	StatKeyAvgDocSizePull       = "avg_doc_size_pull"
-	StatKeyAvgDocSizePush       = "avg_doc_size_push"
-	StatKeyPercentDocsConflicts = "percent_docs_conflicts"
-	StatKeyAvgWritesInConflict  = "avg_writes_in_conflict"
-	StatKeyTotalNumAttachments  = "total_num_attachments"
-	StatKeyAvgAttachmentSize    = "avg_attachment_size"
+	StatKeyAttachmentPullCount              = "attachment_pull_count"
+	StatKeyAttachmentPullBytes              = "attachment_pull_bytes"
 
 	// StatsSecurity
 	StatKeyAccessQueriesPerSec = "access_queries_per_sec"
@@ -148,17 +146,16 @@ const (
 )
 
 const (
-	StatsGroupKeySyncGateway          = "syncgateway"
-	StatsGroupKeyResourceUtilization  = "resource_utilization"
-	StatsGroupKeyCache                = "cache"
-	StatsGroupKeyDatabase             = "database"
-	StatsGroupKeyDeltaSync            = "delta_sync"
-	StatsGroupKeySharedBucketImport   = "shared_bucket_import"
-	StatsGroupKeyCblReplicationPush   = "cbl_replication_push"
-	StatsGroupKeyCblReplicationPull   = "cbl_replication_pull"
-	StatsGroupKeyCblReplicationCommon = "cbl_replication_common"
-	StatsGroupKeySecurity             = "security"
-	StatsGroupKeyGsiViews             = "gsi_views"
+	StatsGroupKeySyncGateway         = "syncgateway"
+	StatsGroupKeyResourceUtilization = "resource_utilization"
+	StatsGroupKeyCache               = "cache"
+	StatsGroupKeyDatabase            = "database"
+	StatsGroupKeyDeltaSync           = "delta_sync"
+	StatsGroupKeySharedBucketImport  = "shared_bucket_import"
+	StatsGroupKeyCblReplicationPush  = "cbl_replication_push"
+	StatsGroupKeyCblReplicationPull  = "cbl_replication_pull"
+	StatsGroupKeySecurity            = "security"
+	StatsGroupKeyGsiViews            = "gsi_views"
 )
 
 func init() {

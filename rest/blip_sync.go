@@ -520,6 +520,14 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	output.Write([]byte("["))
 	jsonOutput := json.NewEncoder(output)
 	nWritten := 0
+
+	// Include changes messages w/ proposeChanges stats, although CBL should only be using proposeChanges
+	startTime := time.Now()
+	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
+	defer func() {
+		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, time.Since(startTime).Nanoseconds())
+	}()
+
 	for _, change := range changeList {
 		docID := change[1].(string)
 		revID := change[2].(string)
@@ -556,6 +564,14 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 	output := bytes.NewBuffer(make([]byte, 0, 5*len(changeList)))
 	output.Write([]byte("["))
 	nWritten := 0
+
+	// proposeChanges stats
+	startTime := time.Now()
+	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
+	defer func() {
+		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, time.Since(startTime).Nanoseconds())
+	}()
+
 	for i, change := range changeList {
 		docID := change[0].(string)
 		revID := change[1].(string)
@@ -751,6 +767,11 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
+	startTime := time.Now()
+	defer func() {
+		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
+	}()
+
 	//addRevisionParams := newAddRevisionParams(rq)
 	revMessage := revMessage{Message: rq}
 
@@ -833,6 +854,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	// Finally, save the revision (with the new attachments inline)
+	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyDocPushCount, 1)
 	return bh.db.PutExistingRev(docID, body, history, noConflicts)
 }
 
@@ -859,8 +881,8 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	response := rq.Response()
 	response.SetBody(attachment)
 	response.SetCompressed(rq.Properties[blipCompress] == "true")
-	bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentsPulledCount, 1)
-	bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentsPulledBytes, int64(len(attachment)))
+	bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
+	bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(attachment)))
 
 	return nil
 }

@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -191,8 +192,8 @@ func (h *handler) handleGetAttachment() error {
 		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
 
 	}
-	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentsPulledCount, 1)
-	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentsPulledBytes, int64(len(data)))
+	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
+	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(data)))
 
 	h.response.WriteHeader(status)
 	h.response.Write(data)
@@ -256,6 +257,12 @@ func (h *handler) handlePutAttachment() error {
 
 // HTTP handler for a PUT of a document
 func (h *handler) handlePutDoc() error {
+
+	startTime := time.Now()
+	defer func() {
+		h.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
+	}()
+
 	docid := h.PathVar("docid")
 	body, err := h.readDocument()
 	if err != nil {

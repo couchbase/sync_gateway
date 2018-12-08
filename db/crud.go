@@ -1065,6 +1065,7 @@ func (db *Database) updateAndReturnDoc(
 	var shadowerEcho bool
 
 	// Update the document
+	inConflict := false
 	upgradeInProgress := false
 	docBytes := 0 // Track size of document written, for write stats
 	if !db.UseXattrs() {
@@ -1078,7 +1079,7 @@ func (db *Database) updateAndReturnDoc(
 			if err != nil {
 				return
 			}
-
+			inConflict = docOut.hasFlag(channels.Conflict)
 			// Return the new raw document value for the bucket to store.
 			raw, err = json.Marshal(docOut)
 			base.Debugf(base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
@@ -1109,6 +1110,7 @@ func (db *Database) updateAndReturnDoc(
 			if err != nil {
 				return
 			}
+			inConflict = docOut.hasFlag(channels.Conflict)
 
 			currentRevFromHistory, ok := docOut.History[docOut.CurrentRev]
 			if !ok {
@@ -1162,6 +1164,9 @@ func (db *Database) updateAndReturnDoc(
 
 	db.DbStats.StatsDatabase().Add(base.StatKeyNumDocWrites, 1)
 	db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesBytes, int64(docBytes))
+	if inConflict {
+		db.DbStats.StatsDatabase().Add(base.StatKeyConflictWriteCount, 1)
+	}
 
 	if doc.History[newRevID] != nil {
 		// Store the new revision in the cache
@@ -1319,9 +1324,15 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 
 	if db.ChannelMapper != nil {
 		// Call the ChannelMapper:
+		startTime := time.Now()
+		db.DbStats.CblReplicationPush().Add(base.StatKeySyncFunctionCount, 1)
+
 		var output *channels.ChannelMapperOutput
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson,
 			makeUserCtx(db.user))
+
+		db.DbStats.CblReplicationPush().Add(base.StatKeySyncFunctionTime, time.Since(startTime).Nanoseconds())
+
 		if err == nil {
 			result = output.Channels
 			access = output.Access

@@ -53,10 +53,6 @@ func (d *DatabaseStats) StatsCblReplicationPull() (stats *expvar.Map) {
 	return d.StatsByKey(base.StatsGroupKeyCblReplicationPull)
 }
 
-func (d *DatabaseStats) StatsCblReplicationCommon() (stats *expvar.Map) {
-	return d.StatsByKey(base.StatsGroupKeyCblReplicationCommon)
-}
-
 func (d *DatabaseStats) StatsSecurity() (stats *expvar.Map) {
 	return d.StatsByKey(base.StatsGroupKeySecurity)
 }
@@ -112,16 +108,22 @@ func initEmptyStatsMap(key string) *expvar.Map {
 	case base.StatsGroupKeySharedBucketImport:
 		result.Set(base.StatKeyImportBacklog, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyCblReplicationPush:
-		result.Set(base.StatKeyWriteProcessingTime, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeySyncTime, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyProposeChangeTime, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyProposeChangesPerSec, base.ExpvarFloatVal(0))
+		result.Set(base.StatKeyDocPushCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyWriteProcessingTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeySyncFunctionCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeySyncFunctionTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyProposeChangeCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyProposeChangeTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyAttachmentPushCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyAttachmentPushBytes, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyConflictWriteCount, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyCblReplicationPull:
 		result.Set(base.StatKeyPullReplicationsActiveContinuous, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyPullReplicationsActiveOneShot, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyPullReplicationsTotalContinuous, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyPullReplicationsTotalOneShot, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyPullReplicationsSinceZero, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyPullReplicationsCaughtUp, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyRequestChangesCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyRequestChangesTime, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDcpCachingCount, base.ExpvarIntVal(0))
@@ -129,15 +131,8 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyRevSendCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyRevSendTime, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyMaxPending, new(base.IntMax))
-		result.Set(base.StatKeyAttachmentsPulledCount, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyAttachmentsPulledBytes, base.ExpvarIntVal(0))
-	case base.StatsGroupKeyCblReplicationCommon:
-		result.Set(base.StatKeyAvgDocSizePull, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyAvgDocSizePush, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyPercentDocsConflicts, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyAvgWritesInConflict, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyTotalNumAttachments, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyAvgAttachmentSize, base.ExpvarFloatVal(0))
+		result.Set(base.StatKeyAttachmentPullCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyAttachmentPullBytes, base.ExpvarIntVal(0))
 	case base.StatsGroupKeySecurity:
 		result.Set(base.StatKeyAccessQueriesPerSec, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyNumDocsRejected, base.ExpvarIntVal(0))

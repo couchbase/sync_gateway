@@ -659,7 +659,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					break waitForChanges
 				}
 
+				db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, 1)
 				waitResponse := changeWaiter.Wait()
+				db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, -1)
+
 				if waitResponse == WaiterClosed {
 					break outer
 				} else if waitResponse == WaiterHasChanges {
