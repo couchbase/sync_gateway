@@ -90,10 +90,10 @@ const (
 )
 
 const (
-	SyncFnErrorMissingRole          = "missing role"
-	SyncFnErrorAdminRequired        = "admin required"
-	SyncFnErrorWrongUser            = "wrong user"
-	SyncFnErrorMissingChannelAccess = "missing channel access"
+	SyncFnErrorMissingRole          = "sg missing role"
+	SyncFnErrorAdminRequired        = "sg admin required"
+	SyncFnErrorWrongUser            = "sg wrong user"
+	SyncFnErrorMissingChannelAccess = "sg missing channel access"
 )
 
 func UnitTestUrl() string {

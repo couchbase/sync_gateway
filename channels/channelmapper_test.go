@@ -242,7 +242,7 @@ func TestCheckUser(t *testing.T) {
 	var linus = map[string]interface{}{"name": "linus", "channels": []string{}}
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"owner": "sally"}`), `{}`, linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, "wrong user"))
+	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, base.SyncFnErrorWrongUser))
 
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"owner": "sally"}`), `{}`, nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -262,7 +262,7 @@ func TestCheckUserArray(t *testing.T) {
 	var linus = map[string]interface{}{"name": "linus", "channels": []string{}}
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"owners": ["sally", "joe"]}`), `{}`, linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, "wrong user"))
+	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, base.SyncFnErrorWrongUser))
 
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"owners": ["sally"]}`), `{}`, nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -282,7 +282,7 @@ func TestCheckRole(t *testing.T) {
 	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}}
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, "missing role"))
+	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, base.SyncFnErrorMissingRole))
 
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -302,7 +302,7 @@ func TestCheckRoleArray(t *testing.T) {
 	var linus = map[string]interface{}{"name": "linus", "roles": map[string]int{"boy": 1, "musician": 1}}
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"roles": ["girl"]}`), `{}`, linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, "missing role"))
+	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, base.SyncFnErrorMissingRole))
 
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"roles": ["girl"]}`), `{}`, nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -322,7 +322,7 @@ func TestCheckAccess(t *testing.T) {
 	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}, "channels": []string{"party", "school"}}
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"channel": "work"}`), `{}`, linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, "missing channel access"))
+	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess))
 
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"channel": "magic"}`), `{}`, nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -342,7 +342,7 @@ func TestCheckAccessArray(t *testing.T) {
 	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}, "channels": []string{"party", "school"}}
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"channels": ["work"]}`), `{}`, linus)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, "missing channel access"))
+	goassert.DeepEquals(t, res.Rejection, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess))
 
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"channels": ["magic"]}`), `{}`, nil)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")

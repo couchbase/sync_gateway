@@ -22,7 +22,6 @@ import (
 // Prefix used to identify roles in access grants
 const RoleAccessPrefix = "role:"
 
-// TODO: reuse SyncFnError* constants defined in base/constants.go
 const funcWrapper = `
 	function() {
 
@@ -59,28 +58,28 @@ const funcWrapper = `
 
 		function requireAdmin() {
 			if (shouldValidate)
-				throw({forbidden: "admin required"});
+				throw({forbidden: "sg admin required"});
 		}
 
 		function requireUser(names) {
 				if (!shouldValidate) return;
 				names = makeArray(names);
 				if (!inArray(realUserCtx.name, names))
-					throw({forbidden: "wrong user"});
+					throw({forbidden: "sg wrong user"});
 		}
 
 		function requireRole(roles) {
 				if (!shouldValidate) return;
 				roles = makeArray(roles);
 				if (!anyKeysInArray(realUserCtx.roles, roles))
-					throw({forbidden: "missing role"});
+					throw({forbidden: "sg missing role"});
 		}
 
 		function requireAccess(channels) {
 				if (!shouldValidate) return;
 				channels = makeArray(channels);
 				if (!anyInArray(realUserCtx.channels, channels))
-					throw({forbidden: "missing channel access"});
+					throw({forbidden: "sg missing channel access"});
 		}
 
 		return function (newDoc, oldDoc, _realUserCtx) {

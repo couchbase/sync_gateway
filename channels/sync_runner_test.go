@@ -17,7 +17,7 @@ func TestRequireUser(t *testing.T) {
 	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["beta", "gamma"]}`), parse(`{"name": "beta"}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["delta"]}`), parse(`{"name": "beta"}`))
-	assertRejected(t, result, base.HTTPErrorf(403, "wrong user"))
+	assertRejected(t, result, base.HTTPErrorf(403, base.SyncFnErrorWrongUser))
 }
 
 func TestRequireRole(t *testing.T) {
@@ -30,7 +30,7 @@ func TestRequireRole(t *testing.T) {
 	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["beta", "gamma"]}`), parse(`{"name": "", "roles": {"beta": ""}}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["delta"]}`), parse(`{"name": "", "roles": {"beta":""}}`))
-	assertRejected(t, result, base.HTTPErrorf(403, "missing role"))
+	assertRejected(t, result, base.HTTPErrorf(403, base.SyncFnErrorMissingRole))
 }
 
 func TestRequireAccess(t *testing.T) {
@@ -43,7 +43,7 @@ func TestRequireAccess(t *testing.T) {
 	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["beta", "gamma"]}`), parse(`{"name": "", "channels": ["beta"]}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["delta"]}`), parse(`{"name": "", "channels": ["beta"]}`))
-	assertRejected(t, result, base.HTTPErrorf(403, "missing channel access"))
+	assertRejected(t, result, base.HTTPErrorf(403, base.SyncFnErrorMissingChannelAccess))
 }
 
 func TestRequireAdmin(t *testing.T) {
@@ -54,11 +54,11 @@ func TestRequireAdmin(t *testing.T) {
 	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{}`))
 	assertNotRejected(t, result)
 	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{"name": ""}`))
-	assertRejected(t, result, base.HTTPErrorf(403, "admin required"))
+	assertRejected(t, result, base.HTTPErrorf(403, base.SyncFnErrorAdminRequired))
 	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{"name": "GUEST"}`))
-	assertRejected(t, result, base.HTTPErrorf(403, "admin required"))
+	assertRejected(t, result, base.HTTPErrorf(403, base.SyncFnErrorAdminRequired))
 	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{"name": "beta"}`))
-	assertRejected(t, result, base.HTTPErrorf(403, "admin required"))
+	assertRejected(t, result, base.HTTPErrorf(403, base.SyncFnErrorAdminRequired))
 }
 
 // Helpers
