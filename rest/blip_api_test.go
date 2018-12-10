@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1489,6 +1488,8 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	rt := RestTester{DeltaSyncEnabled: base.IsEnterpriseEdition()}
+	defer rt.Close()
+
 	client, err := NewBlipTesterClient(&rt)
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1541,6 +1542,8 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	rt := RestTester{DeltaSyncEnabled: base.IsEnterpriseEdition()}
+	defer rt.Close()
+
 	client, err := NewBlipTesterClient(&rt)
 	assert.NoError(t, err)
 	defer client.Close()

@@ -237,8 +237,6 @@ func (btc *BlipTesterClient) Close() {
 
 	btc.pullReplication.Close()
 	btc.pushReplication.Close()
-
-	btc.rt.Close()
 }
 
 func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {

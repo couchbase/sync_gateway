@@ -757,7 +757,12 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		}
 
 		// TODO: need to add deep-copy support to revcache so deltaSrcBody doesn't get mutated
-		deltaSrcMap := map[string]interface{}(deltaSrcBody)
+		var deltaSrcBodyCopy map[string]interface{}
+		if err := base.DeepCopyInefficient(&deltaSrcBodyCopy, deltaSrcBody); err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "Error copying deltaSrcBody: %s", err)
+		}
+
+		deltaSrcMap := map[string]interface{}(deltaSrcBodyCopy)
 		err = base.Patch(&deltaSrcMap, delta)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
