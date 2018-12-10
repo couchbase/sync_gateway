@@ -2,50 +2,54 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
 	blip "github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 )
 
+// BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
 type BlipTesterClient struct {
-	Deltas bool // Support deltas on the client side
+	ClientDeltas bool // Support deltas on the client side
 
+	rt *RestTester
+
+	docs     map[string]map[string][]byte // Client's local store of documents - Map of docID to rev ID to bytes
+	docsLock sync.RWMutex                 // lock for docs map
+
+	pullReplication *BlipTesterReplicator // SG -> CBL replications
+	pushReplication *BlipTesterReplicator // CBL -> SG replications
+}
+
+// BlipTesterReplicator is a BlipTester which stores a map of messages keyed by Serial Number
+type BlipTesterReplicator struct {
 	bt *BlipTester
 	id string // Generated UUID on creation
-
-	docsLock sync.RWMutex                 // lock for docs map
-	docs     map[string]map[string][]byte // Map of docID to rev ID to bytes
 
 	messagesLock sync.RWMutex                         // lock for messages map
 	messages     map[blip.MessageNumber]*blip.Message // Map of blip messages keyed by message number
 }
 
-// NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
-func NewBlipTesterClient(bt *BlipTester) (client *BlipTesterClient, err error) {
-	id, err := uuid.NewRandom()
-	if err != nil {
-		return nil, err
-	}
+func (btr *BlipTesterReplicator) Close() {
+	btr.messagesLock.Lock()
+	btr.messages = make(map[blip.MessageNumber]*blip.Message, 0)
+	btr.messagesLock.Unlock()
+}
 
-	btc := BlipTesterClient{
-		id:       id.String(),
-		bt:       bt,
-		docs:     make(map[string]map[string][]byte),
-		messages: make(map[blip.MessageNumber]*blip.Message),
-	}
-
-	bt.blipContext.HandlerForProfile[messageChanges] = func(request *blip.Message) {
-		btc.storeMessage(request)
+func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
+	btr.bt.blipContext.HandlerForProfile[messageChanges] = func(msg *blip.Message) {
+		btr.storeMessage(msg)
 
 		// Exit early when there's nothing to do
-		if request.NoReply() {
+		if msg.NoReply() {
 			return
 		}
 
-		body, err := request.Body()
+		body, err := msg.Body()
 		if err != nil {
 			panic(err)
 		}
@@ -84,8 +88,8 @@ func NewBlipTesterClient(bt *BlipTester) (client *BlipTesterClient, err error) {
 			btc.docsLock.RUnlock()
 		}
 
-		response := request.Response()
-		if btc.Deltas {
+		response := msg.Response()
+		if btc.ClientDeltas {
 			// Enable deltas from the client side
 			response.Properties["deltas"] = "true"
 		}
@@ -96,23 +100,26 @@ func NewBlipTesterClient(bt *BlipTester) (client *BlipTesterClient, err error) {
 		}
 
 		response.SetBody(b)
-		btc.storeMessage(response)
 	}
 
-	bt.blipContext.HandlerForProfile[messageRev] = func(request *blip.Message) {
-		btc.storeMessage(request)
+	btr.bt.blipContext.HandlerForProfile[messageProposeChanges] = func(msg *blip.Message) {
+		btc.pullReplication.storeMessage(msg)
+	}
 
-		docID := request.Properties[revMessageId]
-		revID := request.Properties[revMessageRev]
-		deltaSrc := request.Properties[revMessageDeltaSrc]
+	btr.bt.blipContext.HandlerForProfile[messageRev] = func(msg *blip.Message) {
+		btc.pullReplication.storeMessage(msg)
 
-		body, err := request.Body()
+		docID := msg.Properties[revMessageId]
+		revID := msg.Properties[revMessageRev]
+		deltaSrc := msg.Properties[revMessageDeltaSrc]
+
+		body, err := msg.Body()
 		if err != nil {
 			panic(err)
 		}
 
 		// If deltas are enabled, and we see a deltaSrc property, we'll need to patch it before storing
-		if btc.Deltas && deltaSrc != "" {
+		if btc.ClientDeltas && deltaSrc != "" {
 			// unmarshal body to extract deltaSrc
 			var delta map[string]interface{}
 			if err := json.Unmarshal(body, &delta); err != nil {
@@ -145,60 +152,184 @@ func NewBlipTesterClient(bt *BlipTester) (client *BlipTesterClient, err error) {
 		}
 		btc.docsLock.Unlock()
 
-		if !request.NoReply() {
-			response := request.Response()
+		if !msg.NoReply() {
+			response := msg.Response()
 			response.SetBody([]byte(`[]`))
-			btc.storeMessage(response)
 		}
 	}
 
-	bt.blipContext.HandlerForProfile[messageGetAttachment] = func(request *blip.Message) {
-		btc.storeMessage(request)
-		panic("getAttachment not implemented")
+	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
+		btr.storeMessage(msg)
+		panic("unexpected msg to DefaultHandler")
+	}
+}
+
+func newBlipTesterReplication(id string, btc *BlipTesterClient) (*BlipTesterReplicator, error) {
+	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{restTester: btc.rt})
+	if err != nil {
+		return nil, err
 	}
 
-	bt.blipContext.DefaultHandler = func(request *blip.Message) {
-		btc.storeMessage(request)
-		panic("unexpected request to DefaultHandler")
+	r := &BlipTesterReplicator{
+		id:       id,
+		bt:       bt,
+		messages: make(map[blip.MessageNumber]*blip.Message),
+	}
+
+	r.initHandlers(btc)
+
+	return r, nil
+}
+
+// NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
+func NewBlipTesterClient(rt *RestTester) (client *BlipTesterClient, err error) {
+	btc := BlipTesterClient{
+		rt:   rt,
+		docs: make(map[string]map[string][]byte),
+	}
+
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return nil, err
+	}
+
+	if btc.pushReplication, err = newBlipTesterReplication("push"+id.String(), &btc); err != nil {
+		return nil, err
+	}
+	if btc.pullReplication, err = newBlipTesterReplication("pull"+id.String(), &btc); err != nil {
+		return nil, err
 	}
 
 	return &btc, nil
 }
 
-// Start will begin a continous replication since 0 between the client and server
-func (btc *BlipTesterClient) Start() {
-	btc.StartSince("true", "0")
+// StartPull will begin a continuous pull replication since 0 between the client and server
+func (btc *BlipTesterClient) StartPull() (err error) {
+	return btc.StartPullSince("true", "0")
 }
 
-// Start will begin a replication between the client and server with the given params.
-func (btc *BlipTesterClient) StartSince(continous, since string) {
+// StartPullSince will begin a pull replication between the client and server with the given params.
+func (btc *BlipTesterClient) StartPullSince(continuous, since string) (err error) {
 	getCheckpointRequest := blip.NewRequest()
 	getCheckpointRequest.SetProfile(messageGetCheckpoint)
-	getCheckpointRequest.Properties[blipClient] = btc.id
-	if !btc.bt.sender.Send(getCheckpointRequest) {
-		panic("unable to send getCheckpointRequest")
+	getCheckpointRequest.Properties[blipClient] = btc.pullReplication.id
+	if err := btc.pullReplication.sendMsg(getCheckpointRequest); err != nil {
+		return err
 	}
 
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile(messageSubChanges)
-	subChangesRequest.Properties[subChangesContinuous] = continous
+	subChangesRequest.Properties[subChangesContinuous] = continuous
 	subChangesRequest.Properties[subChangesSince] = since
 	subChangesRequest.SetNoReply(true)
-	if !btc.bt.sender.Send(subChangesRequest) {
-		panic("unable to send subChangesRequest")
+	if err := btc.pullReplication.sendMsg(subChangesRequest); err != nil {
+		return err
 	}
+
+	return nil
 }
 
-// Close will close the underlying BlipTester, and remove the stored docs and messages.
+// Close will empty GetServerUUIDthe stored docs, close the underlying replications, and finally close the rest tester.
 func (btc *BlipTesterClient) Close() {
-	btc.bt.Close()
 	btc.docsLock.Lock()
 	btc.docs = make(map[string]map[string][]byte, 0)
 	btc.docsLock.Unlock()
 
-	btc.messagesLock.Lock()
-	btc.messages = make(map[blip.MessageNumber]*blip.Message, 0)
-	btc.messagesLock.Unlock()
+	btc.pullReplication.Close()
+	btc.pushReplication.Close()
+
+	btc.rt.Close()
+}
+
+func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
+	if !btr.bt.sender.Send(msg) {
+		return fmt.Errorf("error sending message")
+	}
+	btr.storeMessage(msg)
+	return nil
+}
+
+// PushRev creates a revision on the client, and immediately sends a changes request for it.
+func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revID string, err error) {
+	var parentDocBody []byte
+
+	// generate fake rev for gen+1
+	parentRevGen, _ := db.ParseRevID(parentRev)
+	newRevID := fmt.Sprintf("%d-%s", parentRevGen+1, "abcxyz")
+	btc.docsLock.Lock()
+	if parentRev != "" {
+		if _, ok := btc.docs[docID]; ok {
+			// create new rev if doc and parent rev already exists
+			if parentDoc, okParent := btc.docs[docID][parentRev]; okParent {
+				parentDocBody = parentDoc
+				btc.docs[docID][newRevID] = body
+			} else {
+				return "", fmt.Errorf("docID: %v with parent rev: %v was not found on the client", docID, parentRev)
+			}
+		} else {
+			return "", fmt.Errorf("docID: %v was not found on the client", docID)
+		}
+	} else {
+		// create new doc + rev
+		btc.docs[docID] = map[string][]byte{newRevID: body}
+	}
+	btc.docsLock.Unlock()
+
+	// send msg proposeChanges with rev
+	proposeChangesRequest := blip.NewRequest()
+	proposeChangesRequest.SetProfile(messageProposeChanges)
+	proposeChangesRequest.SetBody([]byte(fmt.Sprintf(`[["%s","%s","%s"]]`, docID, newRevID, parentRev)))
+	if err := btc.pushReplication.sendMsg(proposeChangesRequest); err != nil {
+		return "", err
+	}
+
+	proposeChangesResponse := proposeChangesRequest.Response()
+	rspBody, err := proposeChangesResponse.Body()
+	if err != nil || string(rspBody) != `[]` {
+		return "", fmt.Errorf("error from proposeChangesResponse: %v %s\n", err, string(rspBody))
+	}
+
+	// send msg rev with new doc
+	revRequest := blip.NewRequest()
+	revRequest.SetProfile(messageRev)
+	revRequest.Properties[revMessageId] = docID
+	revRequest.Properties[revMessageRev] = newRevID
+
+	if btc.ClientDeltas && proposeChangesResponse.Properties[proposeChangesResponseDeltas] == "true" {
+		base.Debugf(base.KeySync, "TEST: sending deltas from test client")
+		var parentDocJSON, newDocJSON map[string]interface{}
+		err := json.Unmarshal(parentDocBody, &parentDocJSON)
+		if err != nil {
+			return "", err
+		}
+
+		err = json.Unmarshal(body, &newDocJSON)
+		if err != nil {
+			return "", err
+		}
+
+		delta, err := base.Diff(parentDocJSON, newDocJSON)
+		if err != nil {
+			return "", err
+		}
+		revRequest.Properties[revMessageDeltaSrc] = parentRev
+		body = delta
+	} else {
+		base.Debugf(base.KeySync, "TEST: not sending deltas from client")
+	}
+
+	revRequest.SetBody(body)
+	if err := btc.pushReplication.sendMsg(revRequest); err != nil {
+		return "", err
+	}
+
+	revResponse := revRequest.Response()
+	rspBody, err = revResponse.Body()
+	if err != nil {
+		return "", fmt.Errorf("error from revResponse: %v", err)
+	}
+
+	return newRevID, nil
 }
 
 // GetRev returns the data stored in the Client under the given docID and revID
@@ -228,32 +359,32 @@ func (btc *BlipTesterClient) WaitForRev(docID, revID string) (data []byte, found
 }
 
 // GetMessage returns the message stored in the Client under the given serial number
-func (btc *BlipTesterClient) GetMessage(serialNumber blip.MessageNumber) (msg *blip.Message, found bool) {
-	btc.messagesLock.RLock()
-	defer btc.messagesLock.RUnlock()
+func (btr *BlipTesterReplicator) GetMessage(serialNumber blip.MessageNumber) (msg *blip.Message, found bool) {
+	btr.messagesLock.RLock()
+	defer btr.messagesLock.RUnlock()
 
-	if msg, ok := btc.messages[serialNumber]; ok {
+	if msg, ok := btr.messages[serialNumber]; ok {
 		return msg, ok
 	}
 
 	return nil, false
 }
 
-// WaitForMessage blocks until the given message serial number has been stored by the client, and returns the message when found.
-func (btc *BlipTesterClient) WaitForMessage(serialNumber blip.MessageNumber) (msg *blip.Message, found bool) {
+// WaitForMessage blocks until the given message serial number has been stored by the replicator, and returns the message when found.
+func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber) (msg *blip.Message, found bool) {
 	ticker := time.NewTicker(time.Millisecond * 50)
 	for {
 		select {
 		case <-ticker.C:
-			if msg, ok := btc.GetMessage(serialNumber); ok {
+			if msg, ok := btr.GetMessage(serialNumber); ok {
 				return msg, ok
 			}
 		}
 	}
 }
 
-func (btc *BlipTesterClient) storeMessage(msg *blip.Message) {
-	btc.messagesLock.Lock()
-	defer btc.messagesLock.Unlock()
-	btc.messages[msg.SerialNumber()] = msg
+func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
+	btr.messagesLock.Lock()
+	defer btr.messagesLock.Unlock()
+	btr.messages[msg.SerialNumber()] = msg
 }
