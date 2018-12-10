@@ -740,29 +740,31 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
 
-	if deltaSrc, isDelta := revMessage.deltaSrc(); isDelta {
-		bh.Logf(base.LevelDebug, base.KeySync, "Recieved delta in rev message for docID: %v", docID)
-		deltaSrcBody, err := bh.db.GetRev(docID, deltaSrc, true, nil)
-		if err != nil {
-			return base.HTTPErrorf(http.StatusNotFound, fmt.Sprintf("Can't fetch doc for deltaSrc=%s %v", deltaSrc, err))
+	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
+		bh.Logf(base.LevelDebug, base.KeySync, "docID: %s - Received rev message as delta", base.UD(docID))
+		if !bh.sgCanUseDeltas {
+			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
 		}
-		bh.Logf(base.LevelTrace, base.KeySync, "deltaSrcBody: %v", deltaSrcBody)
 
 		delta, err := rq.Body()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Error getting delta body: %s", err))
+			return base.HTTPErrorf(http.StatusBadRequest, "Error getting delta body: %s", err)
 		}
-		bh.Logf(base.LevelTrace, base.KeySync, "delta: %s", delta)
 
-		// TODO: May need to copy deltaSrcBody so it doesn't get mutated in revcache
+		deltaSrcBody, err := bh.db.GetRev(docID, deltaSrcRevID, true, nil)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc for deltaSrc=%s %v", deltaSrcRevID, err)
+		}
+
+		// TODO: need to add deep-copy support to revcache so deltaSrcBody doesn't get mutated
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
 		err = base.Patch(&deltaSrcMap, delta)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error patching deltaSrc with delta: %s", err))
+			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 
 		body = db.Body(deltaSrcMap)
-		bh.Logf(base.LevelTrace, base.KeySync, "body after patching: %v", body)
+		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(body))
 	}
 
 	if revMessage.deleted() {
@@ -776,7 +778,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		var err error
 		noConflicts, err = strconv.ParseBool(val)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Invalid value for noconflicts: %s", err))
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid value for noconflicts: %s", err)
 		}
 	}
 
