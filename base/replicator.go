@@ -78,11 +78,11 @@ func (r *Replicator) SnapshotStats() {
 		if !ok {
 			Warnf(KeyReplicate, "Error getting stats for replication %v.  Stats for this replication will not be updated.", repID)
 		}
-		statsExpvars.Set(StatKeyNumDocsPushed, ExpvarInt64Val(int64(stats.GetDocsWritten())))
-		statsExpvars.Set(StatKeyNumDocsFailedToPush, ExpvarInt64Val(int64(stats.GetDocWriteFailures())))
-		statsExpvars.Set(StatKeyNumAttachmentsTransferred, ExpvarInt64Val(int64(stats.GetNumAttachmentsTransferred())))
-		statsExpvars.Set(StatKeyAttachmentBytesTransferred, ExpvarInt64Val(int64(stats.GetAttachmentBytesTransferred())))
-		statsExpvars.Set(StatKeyDocsCheckedSent, ExpvarInt64Val(int64(stats.GetDocsCheckedSent())))
+		statsExpvars.Set(StatKeySgrNumDocsPushed, ExpvarInt64Val(int64(stats.GetDocsWritten())))
+		statsExpvars.Set(StatKeySgrNumDocsFailedToPush, ExpvarInt64Val(int64(stats.GetDocWriteFailures())))
+		statsExpvars.Set(StatKeySgrNumAttachmentsTransferred, ExpvarInt64Val(int64(stats.GetNumAttachmentsTransferred())))
+		statsExpvars.Set(StatKeySgrAttachmentBytesTransferred, ExpvarInt64Val(int64(stats.GetAttachmentBytesTransferred())))
+		statsExpvars.Set(StatKeySgrDocsCheckedSent, ExpvarInt64Val(int64(stats.GetDocsCheckedSent())))
 
 	}
 
@@ -283,9 +283,10 @@ func taskForReplication(replication sgreplicate.SGReplication, params sgreplicat
 
 func NewReplicationStats() (expvarMap *expvar.Map) {
 	result := new(expvar.Map)
-	result.Set(StatKeyNumDocsPushed, ExpvarIntVal(0))
-	result.Set(StatKeyNumDocsFailedToPush, ExpvarIntVal(0))
-	result.Set(StatKeyNumAttachmentsTransferred, ExpvarIntVal(0))
-	result.Set(StatKeyDocsCheckedSent, ExpvarIntVal(0))
+	result.Set(StatKeySgrNumDocsPushed, ExpvarIntVal(0))
+	result.Set(StatKeySgrNumDocsFailedToPush, ExpvarIntVal(0))
+	result.Set(StatKeySgrNumAttachmentsTransferred, ExpvarIntVal(0))
+	result.Set(StatKeySgrAttachmentBytesTransferred, ExpvarIntVal(0))
+	result.Set(StatKeySgrDocsCheckedSent, ExpvarIntVal(0))
 	return result
 }

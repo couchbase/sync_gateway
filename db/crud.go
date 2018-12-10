@@ -1390,19 +1390,7 @@ func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
 }
 
 func isAccessError(err error) bool {
-	if err.Error() == base.SyncFnErrorMissingRole {
-		return true
-	}
-	if err.Error() == base.SyncFnErrorAdminRequired {
-		return true
-	}
-	if err.Error() == base.SyncFnErrorWrongUser {
-		return true
-	}
-	if err.Error() == base.SyncFnErrorMissingChannelAccess {
-		return true
-	}
-	return false
+	return base.ContainsString(base.SyncFnAccessErrors, err.Error())
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.

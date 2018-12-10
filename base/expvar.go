@@ -58,8 +58,8 @@ const (
 	StatKeyGoMemstatsStackInUse    = "go_memstats_stackinuse"
 	StatKeyGoMemstatsStackSys      = "go_memstats_stacksys"
 	StatKeyGoMemstatsPauseTotalNs  = "go_memstats_pausetotalns"
-	StatKeyErrors                  = "errors"
-	StatKeyWarnings                = "warnings"
+	StatKeyErrorCount              = "error_count"
+	StatKeyWarnCount               = "warn_count"
 
 	// StatsCache
 	StatKeyRevisionCacheHits         = "rev_cache_hits"
@@ -138,11 +138,11 @@ const (
 	StatKeyQueryProcessingTime     = "query_processing_time"
 
 	// StatsReplication
-	StatKeyNumDocsPushed              = "num_docs_pushed"
-	StatKeyNumDocsFailedToPush        = "num_docs_failed_to_push"
-	StatKeyNumAttachmentsTransferred  = "num_attachments_transferred"
-	StatKeyAttachmentBytesTransferred = "num_attachment_bytes_transferred"
-	StatKeyDocsCheckedSent            = "docs_checked_sent"
+	StatKeySgrNumDocsPushed              = "sgr_num_docs_pushed"
+	StatKeySgrNumDocsFailedToPush        = "sgr_num_docs_failed_to_push"
+	StatKeySgrNumAttachmentsTransferred  = "sgr_num_attachments_transferred"
+	StatKeySgrAttachmentBytesTransferred = "sgr_num_attachment_bytes_transferred"
+	StatKeySgrDocsCheckedSent            = "sgr_docs_checked_sent"
 )
 
 const (
@@ -210,8 +210,8 @@ func NewStatsResourceUtilization() *expvar.Map {
 	stats.Set(StatKeyGoMemstatsStackInUse, ExpvarIntVal(0))
 	stats.Set(StatKeyGoMemstatsStackSys, ExpvarIntVal(0))
 	stats.Set(StatKeyGoMemstatsPauseTotalNs, ExpvarIntVal(0))
-	stats.Set(StatKeyErrors, ExpvarIntVal(0))
-	stats.Set(StatKeyWarnings, ExpvarIntVal(0))
+	stats.Set(StatKeyErrorCount, ExpvarIntVal(0))
+	stats.Set(StatKeyWarnCount, ExpvarIntVal(0))
 	return stats
 }
 

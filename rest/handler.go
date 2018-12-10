@@ -283,44 +283,26 @@ func (h *handler) logStatus(status int, message string) {
 	h.logDuration(false) // don't track actual time
 }
 
-func (h *handler) statAuthSuccess() {
-	if h.db == nil || h.db.DatabaseContext == nil || h.db.DatabaseContext.DbStats == nil {
-		return
-	}
-	h.db.DatabaseContext.DbStats.StatsSecurity().Add(base.StatKeyAuthSuccessCount, 1)
-}
-
-func (h *handler) statAuthFailed() {
-	if h.db == nil || h.db.DatabaseContext == nil || h.db.DatabaseContext.DbStats == nil {
-		return
-	}
-	h.db.DatabaseContext.DbStats.StatsSecurity().Add(base.StatKeyAuthFailedCount, 1)
-}
-
 func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
-
-	// Record stats
-	defer func() {
-		if err != nil {
-			h.statAuthFailed()
-		} else {
-			h.statAuthSuccess()
-		}
-	}()
-
-	// Record TotalAuthTime stat
-	defer func(t time.Time) {
-		if context == nil || context.DbStats == nil {
-			return
-		}
-		delta := time.Since(t).Nanoseconds()
-		context.DbStats.StatsSecurity().Add(base.StatKeyTotalAuthTime, delta)
-	}(time.Now())
 
 	h.user = nil
 	if context == nil {
 		return nil
 	}
+
+	// Record TotalAuthTime stat
+	defer func(t time.Time) {
+		delta := time.Since(t).Nanoseconds()
+		context.DbStats.StatsSecurity().Add(base.StatKeyTotalAuthTime, delta)
+	}(time.Now())
+
+	defer func() {
+		if err != nil {
+			h.db.DatabaseContext.DbStats.StatsSecurity().Add(base.StatKeyAuthFailedCount, 1)
+		} else {
+			h.db.DatabaseContext.DbStats.StatsSecurity().Add(base.StatKeyAuthSuccessCount, 1)
+		}
+	}()
 
 	// If oidc enabled, check for bearer ID token
 	if context.Options.OIDCOptions != nil {

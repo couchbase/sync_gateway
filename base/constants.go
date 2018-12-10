@@ -96,6 +96,15 @@ const (
 	SyncFnErrorMissingChannelAccess = "sg missing channel access"
 )
 
+var (
+	SyncFnAccessErrors = []string{
+		SyncFnErrorMissingRole,
+		SyncFnErrorAdminRequired,
+		SyncFnErrorWrongUser,
+		SyncFnErrorMissingChannelAccess,
+	}
+)
+
 func UnitTestUrl() string {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
 	switch {
