@@ -1494,7 +1494,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	client.ClientDeltas = base.IsEnterpriseEdition()
+	client.ClientDeltas = true
 	client.StartPull()
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
@@ -1548,7 +1548,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	client.ClientDeltas = base.IsEnterpriseEdition()
+	client.ClientDeltas = true
 	client.StartPull()
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
