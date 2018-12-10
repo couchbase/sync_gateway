@@ -297,6 +297,9 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	}(time.Now())
 
 	defer func() {
+		if h.db == nil || h.db.DatabaseContext == nil ||  h.db.DatabaseContext.DbStats == nil {
+			return
+		}
 		if err != nil {
 			h.db.DatabaseContext.DbStats.StatsSecurity().Add(base.StatKeyAuthFailedCount, 1)
 		} else {
