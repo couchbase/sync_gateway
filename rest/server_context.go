@@ -33,6 +33,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/elastic/gosigar"
 	pkgerrors "github.com/pkg/errors"
+	"os"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -990,7 +991,9 @@ func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
-	AddGoSigarStats()
+	if err := AddGoSigarStats(); err != nil {
+		base.Warnf(base.KeyAll, "Error getting sigar based system resource stats: %v", err)
+	}
 
 	sc.replicator.SnapshotStats()
 
@@ -1016,11 +1019,84 @@ func (sc *ServerContext) logStats() error {
 
 }
 
-func AddGoSigarStats() {
+// https://codereview.stackexchange.com/questions/67904/calculate-cpu-by-process-from-proc-stat-and-proc-pid-stat
+// https://stackoverflow.com/questions/16726779/how-do-i-get-the-total-cpu-usage-of-an-application-from-proc-pid-stat
+// https://stackoverflow.com/questions/23367857/accurate-calculation-of-cpu-usage-given-in-percentage-in-linux/23376195#23376195
+// https://stackoverflow.com/questions/1420426/how-to-calculate-the-cpu-usage-of-a-process-by-pid-in-linux-from-c
+
+// TODO: run this with a separate time.Ticker, save it to a sync.atomic variable, then read it from logStats()
+func AddGoSigarStats() error {
+
+
+	// Best explanation so far: https://stackoverflow.com/questions/1420426/how-to-calculate-the-cpu-usage-of-a-process-by-pid-in-linux-from-c
+
+	/*
+
+	You're probably after utime and/or stime. You'll also need to read the cpu line from /proc/stat, which looks like:
+
+cpu  192369 7119 480152 122044337 14142 9937 26747 0 0
+This tells you the cumulative CPU time that's been used in various categories, in units of jiffies. You need to take the sum of the values on this line to get a time_total measure.
+
+Read both utime and stime for the process you're interested in, and read time_total from /proc/stat. Then sleep for a second or so, and read them all again. You can now calculate the CPU usage of the process over the sampling time, with:
+
+user_util = 100 * (utime_after - utime_before) / (time_total_after - time_total_before);
+sys_util = 100 * (stime_after - stime_before) / (time_total_after - time_total_before);
+
+
+	 */
+
+	pid := os.Getpid()
+
+
+	// ----------------- Sample 1
 
 	pids := gosigar.ProcList{}
-	pids.Get()
+	if err := pids.Get(); err != nil {
+		return err
+	}
 	log.Printf("pids: %v", pids)
+
+	// Find the sync gateway PID  (/proc/pid/self/?)
+
+	// Invoke func (self *ProcTime) Get(pid int) error {
+
+	cpu := gosigar.Cpu{}
+	if err := cpu.Get(); err != nil {
+		return err
+	}
+	time_total_before := cpu.Total()
+
+	procTime := gosigar.ProcTime{}
+	if err := procTime.Get(pid); err != nil {
+		return err
+	}
+	user_time_before := procTime.User
+	system_time_before := procTime.Sys
+
+	// ----------------- Pause between sample
+	time.Sleep(time.Second * 1)
+
+	// ----------------- Sample 2
+	if err := cpu.Get(); err != nil {
+		return err
+	}
+	time_total_after := cpu.Total()
+
+	if err := procTime.Get(pid); err != nil {
+		return err
+	}
+	user_time_after := procTime.User
+	system_time_after := procTime.Sys
+
+	user_percent_utilization := 100 * float64(user_time_after - user_time_before) / float64(time_total_after - time_total_before)
+	system_percent_utilization := 100 * float64(system_time_after - system_time_before) / float64(time_total_after - time_total_before)
+
+	avg := (user_percent_utilization + system_percent_utilization) / 2.0
+	log.Printf("Average cpu percent for pid %v: %v", avg, pid)
+
+
+	return nil
+
 
 }
 
