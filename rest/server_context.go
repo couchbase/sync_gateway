@@ -26,9 +26,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"log"
+
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/elastic/gosigar"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -987,6 +990,8 @@ func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
+	AddGoSigarStats()
+
 	sc.replicator.SnapshotStats()
 
 	sc.updateCalculatedStats()
@@ -1008,6 +1013,14 @@ func (sc *ServerContext) logStats() error {
 	base.RecordStats(string(marshalled))
 
 	return nil
+
+}
+
+func AddGoSigarStats() {
+
+	pids := gosigar.ProcList{}
+	pids.Get()
+	log.Printf("pids: %v", pids)
 
 }
 
