@@ -51,7 +51,6 @@ const (
 	StatKeyProcessMemoryPercentUtilization = "process_memory_percent_utilization"
 	StatKeyNumGoroutines                   = "num_goroutines"
 	StatKeyGoroutinesHighWatermark         = "goroutines_high_watermark"
-	StatKeyMemoryRssBytes                  = "memory_rss_bytes"
 	StatKeyGoMemstatsSys                   = "go_memstats_sys"
 	StatKeyGoMemstatsHeapAlloc             = "go_memstats_heapalloc"
 	StatKeyGoMemstatsHeapIdle              = "go_memstats_heapidle"
@@ -205,7 +204,6 @@ func NewStatsResourceUtilization() *expvar.Map {
 	stats.Set(StatKeyProcessMemoryPercentUtilization, ExpvarFloatVal(0))
 	stats.Set(StatKeyNumGoroutines, ExpvarIntVal(0))
 	stats.Set(StatKeyGoroutinesHighWatermark, ExpvarIntVal(0))
-	stats.Set(StatKeyMemoryRssBytes, ExpvarIntVal(0))
 	stats.Set(StatKeyGoMemstatsSys, ExpvarIntVal(0))
 	stats.Set(StatKeyGoMemstatsHeapAlloc, ExpvarIntVal(0))
 	stats.Set(StatKeyGoMemstatsHeapIdle, ExpvarIntVal(0))

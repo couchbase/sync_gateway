@@ -1155,13 +1155,6 @@ func AddGoRuntimeStats() {
 	memstats := runtime.MemStats{}
 	runtime.ReadMemStats(&memstats)
 
-	// memory_rss (rss = resident set size)
-	// Calculate this the same way that FTS does.
-	// TODO: document why this works (blog post or email thread)
-	// TODO: according to the PRD, this should figure out the total memory in the system and express as a ratio of total memory
-	memory_rss := int64(memstats.Sys - memstats.HeapReleased) // convert uint -> int since that's what expvar supports
-	statsResourceUtilization.Set(base.StatKeyMemoryRssBytes, base.ExpvarInt64Val(memory_rss))
-
 	// Sys
 	statsResourceUtilization.Set(base.StatKeyGoMemstatsSys, base.ExpvarUInt64Val(memstats.Sys))
 
