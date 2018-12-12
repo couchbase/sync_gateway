@@ -18,6 +18,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -26,14 +27,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"log"
-
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/elastic/gosigar"
 	pkgerrors "github.com/pkg/errors"
-	"os"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -1019,7 +1017,6 @@ func (sc *ServerContext) logStats() error {
 
 }
 
-
 func (sc *ServerContext) addGoSigarStats() error {
 
 	if err := sc.addProcessCpuPercentage(); err != nil {
@@ -1044,8 +1041,6 @@ func (sc *ServerContext) addProcessCpuPercentage() error {
 		return err
 	}
 
-	log.Printf("Average cpu percent for pid %v: %v", cpuPercentUtilization, os.Getpid())
-
 	// Record stat
 	statsResourceUtilization.Set(base.StatKeyProcessCpuPercentUtilization, base.ExpvarFloatVal(cpuPercentUtilization))
 
@@ -1063,15 +1058,12 @@ func (sc *ServerContext) addProcessMemoryPercentage() error {
 		return err
 	}
 
-	log.Printf("Average memory percent for pid %v: %v", memoryPercentUtilization, os.Getpid())
-
 	// Record stat
 	statsResourceUtilization.Set(base.StatKeyProcessMemoryPercentUtilization, base.ExpvarFloatVal(memoryPercentUtilization))
 
 	return nil
 
 }
-
 
 // Calculate the percentage of CPU used by this process over the sampling time specified in statsLogFrequencySecs
 //
