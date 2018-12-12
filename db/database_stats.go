@@ -159,9 +159,3 @@ func (db *DatabaseContext) UpdateCalculatedStats() {
 	}
 
 }
-
-func (db *DatabaseContext) IncrementDocReads(bytes int, delta int) {
-	if bytes > 0 {
-
-	}
-}

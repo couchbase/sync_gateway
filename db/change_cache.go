@@ -648,7 +648,10 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		numPending := len(c.pendingLogs)
 		base.Infof(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d)",
 			sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1)
-		c.context.DbStats.StatsCblReplicationPull().Get(base.StatKeyMaxPending).(*base.IntMax).SetIfMax(int64(numPending))
+
+		// Update max pending high watermark stat
+		base.SetIfMax(c.context.DbStats.StatsCblReplicationPull(), base.StatKeyMaxPending, int64(numPending))
+
 		if numPending > c.options.CachePendingSeqMaxNum {
 			// Too many pending; add the oldest one:
 			changedChannels = c._addPendingLogs()

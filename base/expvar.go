@@ -472,6 +472,16 @@ func (v *IntMax) SetIfMax(value int64) {
 	}
 }
 
+func SetIfMax(expvarMap *expvar.Map, key string, val int64) {
+	if expvarMap == nil {
+		return
+	}
+	mapVar := expvarMap.Get(key)
+	if intMaxVar, ok := mapVar.(*IntMax); ok {
+		intMaxVar.SetIfMax(val)
+	}
+}
+
 // IntMean is an expvar.Value that returns the mean of all values that
 // are sent via AddValue or AddSince.
 type IntMeanVar struct {

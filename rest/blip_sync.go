@@ -525,7 +525,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	startTime := time.Now()
 	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
 	defer func() {
-		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, time.Since(startTime).Nanoseconds())
+		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
 	}()
 
 	for _, change := range changeList {
@@ -569,7 +569,7 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 	startTime := time.Now()
 	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
 	defer func() {
-		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, time.Since(startTime).Nanoseconds())
+		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
 	}()
 
 	for i, change := range changeList {
