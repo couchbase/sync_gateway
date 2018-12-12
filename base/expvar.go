@@ -47,7 +47,8 @@ const (
 const (
 
 	// StatsResourceUtilization
-	StatKeyNumCpuPercentUtilizationProcess = "cpu_percent_utilization_process"
+	StatKeyProcessCpuPercentUtilization    = "process_cpu_percent_utilization"
+	StatKeyProcessMemoryPercentUtilization = "process_memory_percent_utilization"
 	StatKeyNumGoroutines                   = "num_goroutines"
 	StatKeyGoroutinesHighWatermark         = "goroutines_high_watermark"
 	StatKeyMemoryRssBytes                  = "memory_rss_bytes"
@@ -200,7 +201,8 @@ func StatsResourceUtilization() *expvar.Map {
 
 func NewStatsResourceUtilization() *expvar.Map {
 	stats := new(expvar.Map)
-	stats.Set(StatKeyNumCpuPercentUtilizationProcess, ExpvarFloatVal(0))
+	stats.Set(StatKeyProcessCpuPercentUtilization, ExpvarFloatVal(0))
+	stats.Set(StatKeyProcessMemoryPercentUtilization, ExpvarFloatVal(0))
 	stats.Set(StatKeyNumGoroutines, ExpvarIntVal(0))
 	stats.Set(StatKeyGoroutinesHighWatermark, ExpvarIntVal(0))
 	stats.Set(StatKeyMemoryRssBytes, ExpvarIntVal(0))

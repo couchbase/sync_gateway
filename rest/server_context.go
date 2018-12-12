@@ -1026,6 +1026,10 @@ func (sc *ServerContext) addGoSigarStats() error {
 		return err
 	}
 
+	if err := sc.addProcessMemoryPercentage(); err != nil {
+		return err
+	}
+
 	return nil
 
 }
@@ -1043,11 +1047,31 @@ func (sc *ServerContext) addProcessCpuPercentage() error {
 	log.Printf("Average cpu percent for pid %v: %v", cpuPercentUtilization, os.Getpid())
 
 	// Record stat
-	statsResourceUtilization.Set(base.StatKeyNumCpuPercentUtilizationProcess, base.ExpvarFloatVal(cpuPercentUtilization))
+	statsResourceUtilization.Set(base.StatKeyProcessCpuPercentUtilization, base.ExpvarFloatVal(cpuPercentUtilization))
 
 	return nil
 
 }
+
+func (sc *ServerContext) addProcessMemoryPercentage() error {
+
+	statsResourceUtilization := base.StatsResourceUtilization()
+
+	// Calculate the memory utilization percentage for the process
+	memoryPercentUtilization, err := sc.calculateProcessMemoryPercentage()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Average memory percent for pid %v: %v", memoryPercentUtilization, os.Getpid())
+
+	// Record stat
+	statsResourceUtilization.Set(base.StatKeyProcessMemoryPercentUtilization, base.ExpvarFloatVal(memoryPercentUtilization))
+
+	return nil
+
+}
+
 
 // Calculate the percentage of CPU used by this process over the sampling time specified in statsLogFrequencySecs
 //
@@ -1095,6 +1119,26 @@ func (sc *ServerContext) calculateProcessCpuPercentage() (cpuPercentUtilization 
 	sc.statsContext.cpuStatsSnapshot = currentSnapshot
 
 	return avgCpuPercent, nil
+
+}
+
+func (sc *ServerContext) calculateProcessMemoryPercentage() (memoryPercentUtilization float64, err error) {
+
+	pid := os.Getpid()
+
+	procMem := gosigar.ProcMem{}
+	if err := procMem.Get(pid); err != nil {
+		return 0, nil
+	}
+
+	totalMem := gosigar.Mem{}
+	if err := totalMem.Get(); err != nil {
+		return 0, nil
+	}
+
+	memoryPercentUtilization = float64(procMem.Resident) / float64(totalMem.Total)
+
+	return memoryPercentUtilization, nil
 
 }
 
