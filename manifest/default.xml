@@ -133,7 +133,6 @@
   <project name="gosigar" path="godeps/src/github.com/elastic/gosigar" remote="elastic" revision="f498c67133bcded80f5966ee63acfe68cff4e6bf"/>
   <project name="wmi" path="godeps/src/github.com/StackExchange/wmi" remote="StackExchange" revision="b12b22c5341f0c26d88c4d66176330500e84db68"/>
   <project name="go-ole" path="godeps/src/github.com/go-ole/go-ole" remote="go-ole" revision="ae2e2a20879aabdd3a51104ab6a4328af2773948"/>
-  <project name="oleutil" path="godeps/src/github.com/go-ole/go-ole/oleutil" remote="go-ole" revision="ae2e2a20879aabdd3a51104ab6a4328af2773948"/>
 
-  
+
 </manifest>
