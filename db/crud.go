@@ -1326,6 +1326,10 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 			err = output.Rejection
 			if err != nil {
 				base.Infof(base.KeyAll, "Sync fn rejected: new=%+v  old=%s --> %s", base.UD(body), base.UD(oldJson), err)
+				db.DbStats.StatsSecurity().Add(base.StatKeyNumDocsRejected, 1)
+				if isAccessError(err) {
+					db.DbStats.StatsSecurity().Add(base.StatKeyNumAccessErrors, 1)
+				}
 			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = base.HTTPErrorf(500, "Error in JS sync function")
 			}
@@ -1383,6 +1387,10 @@ func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
 		}
 	}
 	return true
+}
+
+func isAccessError(err error) bool {
+	return base.ContainsString(base.SyncFnAccessErrors, err.Error())
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.

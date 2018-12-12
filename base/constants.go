@@ -89,6 +89,22 @@ const (
 	StacktraceOnAPIErrors = false
 )
 
+const (
+	SyncFnErrorMissingRole          = "sg missing role"
+	SyncFnErrorAdminRequired        = "sg admin required"
+	SyncFnErrorWrongUser            = "sg wrong user"
+	SyncFnErrorMissingChannelAccess = "sg missing channel access"
+)
+
+var (
+	SyncFnAccessErrors = []string{
+		SyncFnErrorMissingRole,
+		SyncFnErrorAdminRequired,
+		SyncFnErrorWrongUser,
+		SyncFnErrorMissingChannelAccess,
+	}
+)
+
 func UnitTestUrl() string {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
 	switch {

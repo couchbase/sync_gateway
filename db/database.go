@@ -446,6 +446,9 @@ func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err 
 
 func (context *DatabaseContext) GetServerUUID() string {
 
+	context.BucketLock.RLock()
+	defer context.BucketLock.RUnlock()
+
 	// Lazy load the server UUID, if we can get it.
 	if context.serverUUID == "" {
 		b, ok := base.AsGoCBBucket(context.Bucket)

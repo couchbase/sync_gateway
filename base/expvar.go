@@ -58,6 +58,8 @@ const (
 	StatKeyGoMemstatsStackInUse    = "go_memstats_stackinuse"
 	StatKeyGoMemstatsStackSys      = "go_memstats_stacksys"
 	StatKeyGoMemstatsPauseTotalNs  = "go_memstats_pausetotalns"
+	StatKeyErrorCount              = "error_count"
+	StatKeyWarnCount               = "warn_count"
 
 	// StatsCache
 	StatKeyRevisionCacheHits         = "rev_cache_hits"
@@ -136,17 +138,11 @@ const (
 	StatKeyQueryProcessingTime     = "query_processing_time"
 
 	// StatsReplication
-	StatKeyNumDocsTransferred       = "num_docs_transferred"
-	StatKeyNumDocsTransferredPerSec = "num_docs_transferred_per_sec"
-	StatKeyBandwidth                = "bandwidth"
-	StatKeyDataReplicatedSize       = "data_replicated_size"
-	StatKeyNumAttachmentsTransfered = "num_attachments_transferred"
-	StatKeyNumTempFailures          = "num_temp_failures"
-	StatKeyNumPermFailures          = "num_perm_failures"
-	StatKeyPendingBacklog           = "pending_backlog"
-	StatKeyBatchSize                = "batchsize"
-	StatKeyDocTransferLatency       = "doc_transfer_latency"
-	StatKeyDocsCheckedSent          = "docs_checked_sent"
+	StatKeySgrNumDocsPushed              = "sgr_num_docs_pushed"
+	StatKeySgrNumDocsFailedToPush        = "sgr_num_docs_failed_to_push"
+	StatKeySgrNumAttachmentsTransferred  = "sgr_num_attachments_transferred"
+	StatKeySgrAttachmentBytesTransferred = "sgr_num_attachment_bytes_transferred"
+	StatKeySgrDocsCheckedSent            = "sgr_docs_checked_sent"
 )
 
 const (
@@ -191,7 +187,7 @@ func init() {
 	Stats.Set(PerReplication, PerReplicationStats)
 
 	// Add StatsResourceUtilization under GlobalStats
-	GlobalStats.Set(StatsGroupKeyResourceUtilization, new(expvar.Map))
+	GlobalStats.Set(StatsGroupKeyResourceUtilization, NewStatsResourceUtilization())
 
 }
 
@@ -199,6 +195,24 @@ func StatsResourceUtilization() *expvar.Map {
 	statsResourceUtilizationVar := GlobalStats.Get(StatsGroupKeyResourceUtilization)
 	statsResourceUtilization := statsResourceUtilizationVar.(*expvar.Map)
 	return statsResourceUtilization
+}
+
+func NewStatsResourceUtilization() *expvar.Map {
+	stats := new(expvar.Map)
+	stats.Set(StatKeyNumGoroutines, ExpvarIntVal(0))
+	stats.Set(StatKeyGoroutinesHighWatermark, ExpvarIntVal(0))
+	stats.Set(StatKeyMemoryRssBytes, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsSys, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsHeapAlloc, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsHeapIdle, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsHeapInUse, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsHeapReleased, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsStackInUse, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsStackSys, ExpvarIntVal(0))
+	stats.Set(StatKeyGoMemstatsPauseTotalNs, ExpvarIntVal(0))
+	stats.Set(StatKeyErrorCount, ExpvarIntVal(0))
+	stats.Set(StatKeyWarnCount, ExpvarIntVal(0))
+	return stats
 }
 
 // Removes the per-replication stats for this replication id by

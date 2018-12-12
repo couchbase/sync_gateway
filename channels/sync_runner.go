@@ -58,28 +58,28 @@ const funcWrapper = `
 
 		function requireAdmin() {
 			if (shouldValidate)
-				throw({forbidden: "admin required"});
+				throw({forbidden: "%s"});
 		}
 
 		function requireUser(names) {
 				if (!shouldValidate) return;
 				names = makeArray(names);
 				if (!inArray(realUserCtx.name, names))
-					throw({forbidden: "wrong user"});
+					throw({forbidden: "%s"});
 		}
 
 		function requireRole(roles) {
 				if (!shouldValidate) return;
 				roles = makeArray(roles);
 				if (!anyKeysInArray(realUserCtx.roles, roles))
-					throw({forbidden: "missing role"});
+					throw({forbidden: "%s"});
 		}
 
 		function requireAccess(channels) {
 				if (!shouldValidate) return;
 				channels = makeArray(channels);
 				if (!anyInArray(realUserCtx.channels, channels))
-					throw({forbidden: "missing channel access"});
+					throw({forbidden: "%s"});
 		}
 
 		return function (newDoc, oldDoc, _realUserCtx) {
@@ -116,7 +116,7 @@ type SyncRunner struct {
 }
 
 func NewSyncRunner(funcSource string) (*SyncRunner, error) {
-	funcSource = fmt.Sprintf(funcWrapper, funcSource)
+	funcSource = wrappedFuncSource(funcSource)
 	runner := &SyncRunner{}
 	err := runner.Init(funcSource)
 	if err != nil {
@@ -210,7 +210,7 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 }
 
 func (runner *SyncRunner) SetFunction(funcSource string) (bool, error) {
-	funcSource = fmt.Sprintf(funcWrapper, funcSource)
+	funcSource = wrappedFuncSource(funcSource)
 	return runner.JSRunner.SetFunction(funcSource)
 }
 
@@ -265,4 +265,15 @@ func ottoValueToStringArray(value otto.Value) []string {
 	}
 
 	return result
+}
+
+func wrappedFuncSource(funcSource string) string {
+	return fmt.Sprintf(
+		funcWrapper,
+		funcSource,
+		base.SyncFnErrorAdminRequired,
+		base.SyncFnErrorWrongUser,
+		base.SyncFnErrorMissingRole,
+		base.SyncFnErrorMissingChannelAccess,
+	)
 }
