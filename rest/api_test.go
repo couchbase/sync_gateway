@@ -2314,12 +2314,6 @@ func TestChannelAccessChanges(t *testing.T) {
 		goassert.Equals(t, changes.Results[i].ID, expectedID)
 	}
 
-	// Check accumulated statistics:
-	goassert.Equals(t, database.ChangesClientStats.TotalCount(), uint32(5))
-	goassert.Equals(t, database.ChangesClientStats.MaxCount(), uint32(1))
-	database.ChangesClientStats.Reset()
-	goassert.Equals(t, database.ChangesClientStats.TotalCount(), uint32(0))
-	goassert.Equals(t, database.ChangesClientStats.MaxCount(), uint32(0))
 }
 
 func TestAccessOnTombstone(t *testing.T) {

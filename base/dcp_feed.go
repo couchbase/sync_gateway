@@ -181,13 +181,14 @@ func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.
 	// expiry/flags information, and snapshot handling is done by cbdatasource and sent as
 	// SnapshotStart, SnapshotEnd
 	event := sgbucket.FeedEvent{
-		Opcode:      opcode,
-		Key:         rq.Key,
-		Value:       rq.Body,
-		DataType:    rq.DataType,
-		Cas:         rq.Cas,
-		Expiry:      ExtractExpiryFromDCPMutation(rq),
-		Synchronous: true,
+		Opcode:       opcode,
+		Key:          rq.Key,
+		Value:        rq.Body,
+		DataType:     rq.DataType,
+		Cas:          rq.Cas,
+		Expiry:       ExtractExpiryFromDCPMutation(rq),
+		Synchronous:  true,
+		TimeReceived: time.Now(),
 	}
 	return event
 }

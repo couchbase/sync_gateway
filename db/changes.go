@@ -158,6 +158,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 		}
 		var err error
 		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
+		db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		if err != nil {
 			base.Warnf(base.KeyAll, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
 		}
@@ -658,7 +659,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					break waitForChanges
 				}
 
+				db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, 1)
 				waitResponse := changeWaiter.Wait()
+				db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, -1)
+
 				if waitResponse == WaiterClosed {
 					break outer
 				} else if waitResponse == WaiterHasChanges {

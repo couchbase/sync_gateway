@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -71,6 +72,7 @@ func (h *handler) handleGetDoc() error {
 		}
 		h.setHeader("Etag", strconv.Quote(value[db.BodyRev].(string)))
 
+		h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		hasBodies := (attachmentsSince != nil && value[db.BodyAttachments] != nil)
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
@@ -111,6 +113,7 @@ func (h *handler) handleGetDoc() error {
 						revBody = db.Body{"missing": revid} //TODO: More specific error
 					}
 					h.db.WriteRevisionAsPart(revBody, err != nil, false, writer)
+					h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 				}
 				return nil
 			})
@@ -132,6 +135,7 @@ func (h *handler) handleGetDoc() error {
 				h.addJSON(revBody)
 			}
 			h.response.Write([]byte(`]`))
+			h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		}
 	}
 	return nil
@@ -186,9 +190,14 @@ func (h *handler) handleGetAttachment() error {
 	}
 	if h.privs == adminPrivs { // #720
 		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
+
 	}
+	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
+	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(data)))
+
 	h.response.WriteHeader(status)
 	h.response.Write(data)
+
 	return nil
 }
 
@@ -248,6 +257,12 @@ func (h *handler) handlePutAttachment() error {
 
 // HTTP handler for a PUT of a document
 func (h *handler) handlePutDoc() error {
+
+	startTime := time.Now()
+	defer func() {
+		h.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
+	}()
+
 	docid := h.PathVar("docid")
 	body, err := h.readDocument()
 	if err != nil {

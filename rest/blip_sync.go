@@ -94,8 +94,9 @@ var kHandlersByProfile = map[string]blipHandlerMethod{
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
 
-	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationConnsActive, 1)
-	defer h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationConnsActive, -1)
+	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsActive, 1)
+	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsTotal, 1)
+	defer h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsActive, -1)
 
 	if c := h.server.GetConfig().ReplicatorCompression; c != nil {
 		blip.CompressionLevel = *c
@@ -317,6 +318,17 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Start asynchronous changes goroutine
 	go func() {
+		// Pull replication stats by type
+		if bh.continuous {
+			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, 1)
+			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalContinuous, 1)
+			defer bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, -1)
+		} else {
+			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, 1)
+			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalOneShot, 1)
+			defer bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, -1)
+		}
+
 		defer func() {
 			bh.hasActiveSubChanges = false
 		}()
@@ -403,8 +415,9 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	outrq.SetJSONBody(changeArray)
 	if len(changeArray) > 0 {
 		// Spawn a goroutine to await the client's response:
+		sendTime := time.Now()
 		sender.Send(outrq)
-		go bh.handleChangesResponse(sender, outrq.Response(), changeArray)
+		go bh.handleChangesResponse(sender, outrq.Response(), changeArray, sendTime)
 	} else {
 		outrq.SetNoReply(true)
 		sender.Send(outrq)
@@ -418,7 +431,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}) {
+func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warnf(base.KeyAll, "[%s] PANIC handling 'changes' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
@@ -430,6 +443,10 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 		bh.Logf(base.LevelInfo, base.KeySync, "Invalid response to 'changes' message: %s -- %s.  User:%s", response, err, base.UD(bh.effectiveUsername))
 		return
 	}
+	changesResponseReceived := time.Now()
+
+	bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRequestChangesCount, 1)
+	bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRequestChangesTime, time.Since(requestSent).Nanoseconds())
 
 	maxHistory := 0
 	if max, err := strconv.ParseUint(response.Properties[changesResponseMaxHistory], 10, 64); err == nil {
@@ -476,6 +493,10 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 				bh.Logf(base.LevelTrace, base.KeySync, "Not sending as delta because either useDeltas was false, or knownRevs was empty")
 				bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 			}
+
+			bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendCount, 1)
+			bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendTime, time.Since(changesResponseReceived).Nanoseconds())
+
 		}
 	}
 }
@@ -499,6 +520,14 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	output.Write([]byte("["))
 	jsonOutput := json.NewEncoder(output)
 	nWritten := 0
+
+	// Include changes messages w/ proposeChanges stats, although CBL should only be using proposeChanges
+	startTime := time.Now()
+	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
+	defer func() {
+		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
+	}()
+
 	for _, change := range changeList {
 		docID := change[1].(string)
 		revID := change[2].(string)
@@ -535,6 +564,14 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 	output := bytes.NewBuffer(make([]byte, 0, 5*len(changeList)))
 	output.Write([]byte("["))
 	nWritten := 0
+
+	// proposeChanges stats
+	startTime := time.Now()
+	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
+	defer func() {
+		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
+	}()
+
 	for i, change := range changeList {
 		docID := change[0].(string)
 		revID := change[1].(string)
@@ -699,6 +736,13 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 	delete(body, db.BodyDeleted)
 
 	outrq.SetJSONBody(body)
+
+	// Update read stats
+	if messageBody, err := outrq.Body(); err != nil {
+		bh.db.DbStats.StatsDatabase().Add(base.StatKeyDocReadsBytesBlip, int64(len(messageBody)))
+	}
+	bh.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
+
 	if atts := db.GetBodyAttachments(body); atts != nil {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bh.addAllowedAttachments(atts)
@@ -722,6 +766,11 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleRev(rq *blip.Message) error {
+
+	startTime := time.Now()
+	defer func() {
+		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
+	}()
 
 	//addRevisionParams := newAddRevisionParams(rq)
 	revMessage := revMessage{Message: rq}
@@ -805,6 +854,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	// Finally, save the revision (with the new attachments inline)
+	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyDocPushCount, 1)
 	return bh.db.PutExistingRev(docID, body, history, noConflicts)
 }
 
@@ -831,6 +881,9 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	response := rq.Response()
 	response.SetBody(attachment)
 	response.SetCompressed(rq.Properties[blipCompress] == "true")
+	bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
+	bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(attachment)))
+
 	return nil
 }
 

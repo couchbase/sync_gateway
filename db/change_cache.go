@@ -368,16 +368,16 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc?
 	if strings.HasPrefix(docID, auth.UserKeyPrefix) {
-		c.processPrincipalDoc(docID, docJSON, true)
+		c.processPrincipalDoc(docID, docJSON, true, event.TimeReceived)
 		return
 	} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
-		c.processPrincipalDoc(docID, docJSON, false)
+		c.processPrincipalDoc(docID, docJSON, false, event.TimeReceived)
 		return
 	}
 
 	// Is this an unused sequence notification?
 	if strings.HasPrefix(docID, UnusedSequenceKeyPrefix) {
-		c.processUnusedSequence(docID)
+		c.processUnusedSequence(docID, event.TimeReceived)
 		return
 	}
 
@@ -470,7 +470,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		base.Infof(base.KeyCache, "Received unused #%d for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 		change := &LogEntry{
 			Sequence:     seq,
-			TimeReceived: time.Now(),
+			TimeReceived: event.TimeReceived,
 		}
 		changedChannels := c.processEntry(change)
 		changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
@@ -493,7 +493,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 				base.Infof(base.KeyCache, "Received deduplicated #%d for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
-					TimeReceived: time.Now(),
+					TimeReceived: event.TimeReceived,
 				}
 
 				//if the doc was removed from one or more channels at this sequence
@@ -516,7 +516,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		DocID:        docID,
 		RevID:        syncData.CurrentRev,
 		Flags:        syncData.Flags,
-		TimeReceived: time.Now(),
+		TimeReceived: event.TimeReceived,
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
 	}
@@ -562,7 +562,7 @@ func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Prin
 }
 
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
-func (c *changeCache) processUnusedSequence(docID string) {
+func (c *changeCache) processUnusedSequence(docID string, timeReceived time.Time) {
 	sequenceStr := strings.TrimPrefix(docID, UnusedSequenceKeyPrefix)
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
@@ -571,7 +571,7 @@ func (c *changeCache) processUnusedSequence(docID string) {
 	}
 	change := &LogEntry{
 		Sequence:     sequence,
-		TimeReceived: time.Now(),
+		TimeReceived: timeReceived,
 	}
 	base.Infof(base.KeyCache, "Received #%d (unused sequence)", sequence)
 
@@ -584,7 +584,8 @@ func (c *changeCache) processUnusedSequence(docID string) {
 
 }
 
-func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool) {
+func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool, timeReceived time.Time) {
+
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
 	// have gaps in it, causing later sequences to get stuck in the queue.
@@ -602,7 +603,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	// Now add the (somewhat fictitious) entry:
 	change := &LogEntry{
 		Sequence:     sequence,
-		TimeReceived: time.Now(),
+		TimeReceived: timeReceived,
 	}
 	if isUser {
 		change.DocID = "_user/" + princ.Name()
@@ -647,7 +648,10 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		numPending := len(c.pendingLogs)
 		base.Infof(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d)",
 			sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1)
-		changeCacheExpvars.Get("maxPending").(*base.IntMax).SetIfMax(int64(numPending))
+
+		// Update max pending high watermark stat
+		base.SetIfMax(c.context.DbStats.StatsCblReplicationPull(), base.StatKeyMaxPending, int64(numPending))
+
 		if numPending > c.options.CachePendingSeqMaxNum {
 			// Too many pending; add the oldest one:
 			changedChannels = c._addPendingLogs()
@@ -715,6 +719,11 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 			}
 		}
 	}()
+
+	if !change.TimeReceived.IsZero() {
+		c.context.DbStats.StatsCblReplicationPull().Add(base.StatKeyDcpCachingCount, 1)
+		c.context.DbStats.StatsCblReplicationPull().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
+	}
 
 	// Record a histogram of the overall lag from the time the doc was saved:
 	lag := time.Since(change.TimeSaved)

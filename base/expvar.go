@@ -75,23 +75,16 @@ const (
 	StatKeyAbandonedSeqs             = "abandoned_seqs"
 
 	// StatsDatabase
-	StatKeyNumReplicationConnsActive     = "num_replication_conns_active"
-	StatKeyNumReplicationsPerSec         = "new_replications_per_sec"
-	StatKeyNumReplicationsClosed         = "num_replications_closed"
-	StatKeyDocWritesPerSec               = "doc_writes_per_sec"
-	StatKeyDocReadsPerSec                = "doc_reads_per_sec"
-	StatKeyReplicationReadsPerSec        = "replication_reads_per_sec"
-	StatKeyReplicationErrors             = "replication_errors"
-	StatKeyReplicationRate               = "replication_rate"
-	StatKeyReplicationBacklog            = "replication_backlog"
-	StatKeyConnsPerUser                  = "conns_per_user"
-	StatKeyNewConnsPerSec                = "new_conns_per_sec"
-	StatKeyPercentReplicationsContinuous = "percent_replications_continuous"
-	StatKeyNumberInitialSync             = "number_initial_sync"
-	StatKeyOldRevsDocMisses              = "old_revs_doc_misses"
-	StatKeySequenceGets                  = "sequence_gets"
-	StatKeySequenceReserves              = "sequence_reserves"
-	StatKeyCrc32cMatchCount              = "crc32c_match_count"
+	StatKeySequenceGets          = "sequence_gets"
+	StatKeySequenceReserves      = "sequence_reserves"
+	StatKeyCrc32cMatchCount      = "crc32c_match_count"
+	StatKeyNumReplicationsActive = "num_replications_active"
+	StatKeyNumReplicationsTotal  = "num_replications_total"
+	StatKeyNumDocWrites          = "num_doc_writes"
+	StatKeyDocWritesBytes        = "doc_writes_bytes"
+	StatKeyNumDocReadsRest       = "num_doc_reads_rest"
+	StatKeyNumDocReadsBlip       = "num_doc_reads_blip"
+	StatKeyDocReadsBytesBlip     = "doc_reads_bytes_blip"
 
 	// StatsDeltaSync
 	StatKeyNetBandwidthSavings = "net_bandwidth_savings"
@@ -103,25 +96,32 @@ const (
 	StatKeyImportErrorCount = "import_error_count"
 
 	// StatsCBLReplicationPush
-	StatKeyWriteProcessingTime  = "write_processing_time"
-	StatKeySyncTime             = "sync_time"
-	StatKeyProposeChangeTime    = "propose_change_time"
-	StatKeyProposeChangesPerSec = "propose_changes_per_sec"
+	StatKeyDocPushCount        = "doc_push_count"
+	StatKeyWriteProcessingTime = "write_processing_time"
+	StatKeySyncFunctionTime    = "sync_function_time"
+	StatKeySyncFunctionCount   = "sync_function_count"
+	StatKeyProposeChangeTime   = "propose_change_time"
+	StatKeyProposeChangeCount  = "propose_change_count"
+	StatKeyAttachmentPushCount = "attachment_push_count"
+	StatKeyAttachmentPushBytes = "attachment_push_bytes"
+	StatKeyConflictWriteCount  = "conflict_write_count"
 
 	// StatsCBLReplicationPull
-	StatKeyRequestChangesLatency = "request_changes_latency"
-	StatKeyDcpCachingLatency     = "dcp_caching_latency"
-	StatKeyRevSendLatency        = "rev_send_latency"
-	StatKeyInitPullLatency       = "init_pull_latency"
-	StatKeyMaxPending            = "max_pending"
-
-	// StatsCBLReplicationCommon
-	StatKeyAvgDocSizePull       = "avg_doc_size_pull"
-	StatKeyAvgDocSizePush       = "avg_doc_size_push"
-	StatKeyPercentDocsConflicts = "percent_docs_conflicts"
-	StatKeyAvgWritesInConflict  = "avg_writes_in_conflict"
-	StatKeyTotalNumAttachments  = "total_num_attachments"
-	StatKeyAvgAttachmentSize    = "avg_attachment_size"
+	StatKeyPullReplicationsActiveOneShot    = "num_pull_repl_active_one_shot"
+	StatKeyPullReplicationsActiveContinuous = "num_pull_repl_active_continuous"
+	StatKeyPullReplicationsTotalOneShot     = "num_pull_repl_total_one_shot"
+	StatKeyPullReplicationsTotalContinuous  = "num_pull_repl_total_continuous"
+	StatKeyPullReplicationsSinceZero        = "num_pull_repl_since_zero"
+	StatKeyPullReplicationsCaughtUp         = "num_pull_repl_caught_up"
+	StatKeyRequestChangesCount              = "request_changes_count"
+	StatKeyRequestChangesTime               = "request_changes_time"
+	StatKeyDcpCachingCount                  = "dcp_caching_count"
+	StatKeyDcpCachingTime                   = "dcp_caching_time"
+	StatKeyRevSendCount                     = "rev_send_count"
+	StatKeyRevSendTime                      = "rev_send_time"
+	StatKeyMaxPending                       = "max_pending"
+	StatKeyAttachmentPullCount              = "attachment_pull_count"
+	StatKeyAttachmentPullBytes              = "attachment_pull_bytes"
 
 	// StatsSecurity
 	StatKeyAccessQueriesPerSec = "access_queries_per_sec"
@@ -146,17 +146,16 @@ const (
 )
 
 const (
-	StatsGroupKeySyncGateway          = "syncgateway"
-	StatsGroupKeyResourceUtilization  = "resource_utilization"
-	StatsGroupKeyCache                = "cache"
-	StatsGroupKeyDatabase             = "database"
-	StatsGroupKeyDeltaSync            = "delta_sync"
-	StatsGroupKeySharedBucketImport   = "shared_bucket_import"
-	StatsGroupKeyCblReplicationPush   = "cbl_replication_push"
-	StatsGroupKeyCblReplicationPull   = "cbl_replication_pull"
-	StatsGroupKeyCblReplicationCommon = "cbl_replication_common"
-	StatsGroupKeySecurity             = "security"
-	StatsGroupKeyGsiViews             = "gsi_views"
+	StatsGroupKeySyncGateway         = "syncgateway"
+	StatsGroupKeyResourceUtilization = "resource_utilization"
+	StatsGroupKeyCache               = "cache"
+	StatsGroupKeyDatabase            = "database"
+	StatsGroupKeyDeltaSync           = "delta_sync"
+	StatsGroupKeySharedBucketImport  = "shared_bucket_import"
+	StatsGroupKeyCblReplicationPush  = "cbl_replication_push"
+	StatsGroupKeyCblReplicationPull  = "cbl_replication_pull"
+	StatsGroupKeySecurity            = "security"
+	StatsGroupKeyGsiViews            = "gsi_views"
 )
 
 func init() {
@@ -470,6 +469,16 @@ func (v *IntMax) SetIfMax(value int64) {
 	defer v.mu.Unlock()
 	if value > v.i {
 		v.i = value
+	}
+}
+
+func SetIfMax(expvarMap *expvar.Map, key string, val int64) {
+	if expvarMap == nil {
+		return
+	}
+	mapVar := expvarMap.Get(key)
+	if intMaxVar, ok := mapVar.(*IntMax); ok {
+		intMaxVar.SetIfMax(val)
 	}
 }
 

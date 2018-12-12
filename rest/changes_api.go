@@ -161,10 +161,6 @@ func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 	// http://docs.couchdb.org/en/latest/api/database/changes.html
 
-	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationConnsActive, 1)
-	defer h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationConnsActive, -1)
-
-
 	var feed string
 	var options db.ChangesOptions
 	var filter string
@@ -277,8 +273,21 @@ func (h *handler) handleChanges() error {
 		}
 	}
 
-	h.db.ChangesClientStats.Increment()
-	defer h.db.ChangesClientStats.Decrement()
+	// Pull replication stats by type
+	if feed == "normal" {
+		h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, 1)
+		h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalOneShot, 1)
+		defer h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, -1)
+	} else {
+		h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, 1)
+		h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalContinuous, 1)
+		defer h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, -1)
+	}
+
+	// Overall replication counts
+	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsActive, 1)
+	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsTotal, 1)
+	defer h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyNumReplicationsActive, -1)
 
 	options.Terminator = make(chan bool)
 
@@ -465,6 +474,10 @@ func generateChanges(database *db.Database, inChannels base.Set, options db.Chan
 
 	if options.Continuous {
 		options.Wait = true // we want the feed channel to wait for changes
+	}
+
+	if !options.Since.IsNonZero() {
+		database.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsSinceZero, 1)
 	}
 
 	var lastSeq db.SequenceID

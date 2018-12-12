@@ -199,10 +199,14 @@ func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 }
 
 func (db *Database) setAttachments(attachments AttachmentData) error {
+
 	for key, data := range attachments {
+		attachmentSize := int64(len(data))
 		_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, data)
 		if err == nil {
 			base.Infof(base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
+			db.DbStats.CblReplicationPush().Add(base.StatKeyAttachmentPushCount, 1)
+			db.DbStats.CblReplicationPush().Add(base.StatKeyAttachmentPushBytes, attachmentSize)
 		} else {
 			return err
 		}
@@ -310,7 +314,10 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 		}
 		partHeaders.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", info.name))
 		part, _ := writer.CreatePart(partHeaders)
+		db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
+		db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(info.data)))
 		part.Write(info.data)
+
 	}
 }
 

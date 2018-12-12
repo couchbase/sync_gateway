@@ -18,6 +18,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
@@ -423,6 +424,8 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			h.db.WriteRevisionAsPart(body, err != nil, canCompressParts, writer)
+
+			h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		}
 		return nil
 	})
@@ -431,10 +434,16 @@ func (h *handler) handleBulkGet() error {
 // HTTP handler for a POST to _bulk_docs
 func (h *handler) handleBulkDocs() error {
 
+	startTime := time.Now()
+	defer func() {
+		h.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
+	}()
+
 	body, err := h.readJSON()
 	if err != nil {
 		return err
 	}
+
 	newEdits, ok := body["new_edits"].(bool)
 	if !ok {
 		newEdits = true

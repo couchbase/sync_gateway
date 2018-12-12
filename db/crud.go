@@ -688,7 +688,6 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 	_, err = db.updateDoc(docid, allowImport, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
-
 		var isSgWrite bool
 		var crc32Match bool
 
@@ -1066,7 +1065,9 @@ func (db *Database) updateAndReturnDoc(
 	var shadowerEcho bool
 
 	// Update the document
+	inConflict := false
 	upgradeInProgress := false
+	docBytes := 0 // Track size of document written, for write stats
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
 		_, err = db.Bucket.WriteUpdate(key, expiry, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, syncFuncExpiry *uint32, err error) {
@@ -1078,11 +1079,11 @@ func (db *Database) updateAndReturnDoc(
 			if err != nil {
 				return
 			}
-
+			inConflict = docOut.hasFlag(channels.Conflict)
 			// Return the new raw document value for the bucket to store.
 			raw, err = json.Marshal(docOut)
 			base.Debugf(base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
-
+			docBytes = len(raw)
 			return raw, writeOpts, syncFuncExpiry, err
 		})
 
@@ -1109,6 +1110,7 @@ func (db *Database) updateAndReturnDoc(
 			if err != nil {
 				return
 			}
+			inConflict = docOut.hasFlag(channels.Conflict)
 
 			currentRevFromHistory, ok := docOut.History[docOut.CurrentRev]
 			if !ok {
@@ -1120,6 +1122,7 @@ func (db *Database) updateAndReturnDoc(
 
 			// Return the new raw document value for the bucket to store.
 			raw, rawXattr, err = docOut.MarshalWithXattr()
+			docBytes = len(raw)
 			base.Debugf(base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", docOut.Sequence, base.UD(docOut.ID), docOut.CurrentRev)
 			return raw, rawXattr, deleteDoc, syncFuncExpiry, err
 		})
@@ -1157,6 +1160,12 @@ func (db *Database) updateAndReturnDoc(
 			base.UD(docid), newRevID)
 	} else if err != nil {
 		return nil, "", err
+	}
+
+	db.DbStats.StatsDatabase().Add(base.StatKeyNumDocWrites, 1)
+	db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesBytes, int64(docBytes))
+	if inConflict {
+		db.DbStats.StatsDatabase().Add(base.StatKeyConflictWriteCount, 1)
 	}
 
 	if doc.History[newRevID] != nil {
@@ -1315,9 +1324,15 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 
 	if db.ChannelMapper != nil {
 		// Call the ChannelMapper:
+		startTime := time.Now()
+		db.DbStats.CblReplicationPush().Add(base.StatKeySyncFunctionCount, 1)
+
 		var output *channels.ChannelMapperOutput
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson,
 			makeUserCtx(db.user))
+
+		db.DbStats.CblReplicationPush().Add(base.StatKeySyncFunctionTime, time.Since(startTime).Nanoseconds())
+
 		if err == nil {
 			result = output.Channels
 			access = output.Access
