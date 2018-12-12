@@ -48,21 +48,21 @@ const DefaultLogFreqencySecs = 5
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config             *ServerConfig
-	databases_         map[string]*db.DatabaseContext
-	lock               sync.RWMutex
-	statsTicker        *time.Ticker
-	statsLoggingTicker *time.Ticker
-	HTTPClient         *http.Client
-	replicator         *base.Replicator
+	config       *ServerConfig
+	databases_   map[string]*db.DatabaseContext
+	lock         sync.RWMutex
+	statsContext *statsContext
+	HTTPClient   *http.Client
+	replicator   *base.Replicator
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
 	sc := &ServerContext{
-		config:     config,
-		databases_: map[string]*db.DatabaseContext{},
-		HTTPClient: http.DefaultClient,
-		replicator: base.NewReplicator(),
+		config:       config,
+		databases_:   map[string]*db.DatabaseContext{},
+		HTTPClient:   http.DefaultClient,
+		replicator:   base.NewReplicator(),
+		statsContext: &statsContext{},
 	}
 	if config.Databases == nil {
 		config.Databases = DbConfigMap{}
@@ -968,9 +968,9 @@ func (sc *ServerContext) startStatsLogger() {
 
 	interval := time.Second * time.Duration(statsLogFrequencySecs)
 
-	sc.statsLoggingTicker = time.NewTicker(interval)
+	sc.statsContext.statsLoggingTicker = time.NewTicker(interval)
 	go func() {
-		for range sc.statsLoggingTicker.C {
+		for range sc.statsContext.statsLoggingTicker.C {
 			err := sc.logStats()
 			if err != nil {
 				base.Warnf(base.KeyAll, "Error logging stats: %v", err)
@@ -982,8 +982,8 @@ func (sc *ServerContext) startStatsLogger() {
 }
 
 func (sc *ServerContext) stopStatsLogger() {
-	if sc.statsLoggingTicker != nil {
-		sc.statsLoggingTicker.Stop()
+	if sc.statsContext.statsLoggingTicker != nil {
+		sc.statsContext.statsLoggingTicker.Stop()
 	}
 }
 
@@ -991,7 +991,7 @@ func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
-	if err := AddGoSigarStats(); err != nil {
+	if err := sc.addGoSigarStats(); err != nil {
 		base.Warnf(base.KeyAll, "Error getting sigar based system resource stats: %v", err)
 	}
 
@@ -1019,84 +1019,82 @@ func (sc *ServerContext) logStats() error {
 
 }
 
-// https://codereview.stackexchange.com/questions/67904/calculate-cpu-by-process-from-proc-stat-and-proc-pid-stat
-// https://stackoverflow.com/questions/16726779/how-do-i-get-the-total-cpu-usage-of-an-application-from-proc-pid-stat
-// https://stackoverflow.com/questions/23367857/accurate-calculation-of-cpu-usage-given-in-percentage-in-linux/23376195#23376195
-// https://stackoverflow.com/questions/1420426/how-to-calculate-the-cpu-usage-of-a-process-by-pid-in-linux-from-c
 
-// TODO: run this with a separate time.Ticker, save it to a sync.atomic variable, then read it from logStats()
-func AddGoSigarStats() error {
+func (sc *ServerContext) addGoSigarStats() error {
 
-
-	// Best explanation so far: https://stackoverflow.com/questions/1420426/how-to-calculate-the-cpu-usage-of-a-process-by-pid-in-linux-from-c
-
-	/*
-
-	You're probably after utime and/or stime. You'll also need to read the cpu line from /proc/stat, which looks like:
-
-cpu  192369 7119 480152 122044337 14142 9937 26747 0 0
-This tells you the cumulative CPU time that's been used in various categories, in units of jiffies. You need to take the sum of the values on this line to get a time_total measure.
-
-Read both utime and stime for the process you're interested in, and read time_total from /proc/stat. Then sleep for a second or so, and read them all again. You can now calculate the CPU usage of the process over the sampling time, with:
-
-user_util = 100 * (utime_after - utime_before) / (time_total_after - time_total_before);
-sys_util = 100 * (stime_after - stime_before) / (time_total_after - time_total_before);
-
-
-	 */
-
-	pid := os.Getpid()
-
-
-	// ----------------- Sample 1
-
-	pids := gosigar.ProcList{}
-	if err := pids.Get(); err != nil {
+	if err := sc.addProcessCpuPercentage(); err != nil {
 		return err
 	}
-	log.Printf("pids: %v", pids)
-
-	// Find the sync gateway PID  (/proc/pid/self/?)
-
-	// Invoke func (self *ProcTime) Get(pid int) error {
-
-	cpu := gosigar.Cpu{}
-	if err := cpu.Get(); err != nil {
-		return err
-	}
-	time_total_before := cpu.Total()
-
-	procTime := gosigar.ProcTime{}
-	if err := procTime.Get(pid); err != nil {
-		return err
-	}
-	user_time_before := procTime.User
-	system_time_before := procTime.Sys
-
-	// ----------------- Pause between sample
-	time.Sleep(time.Second * 1)
-
-	// ----------------- Sample 2
-	if err := cpu.Get(); err != nil {
-		return err
-	}
-	time_total_after := cpu.Total()
-
-	if err := procTime.Get(pid); err != nil {
-		return err
-	}
-	user_time_after := procTime.User
-	system_time_after := procTime.Sys
-
-	user_percent_utilization := 100 * float64(user_time_after - user_time_before) / float64(time_total_after - time_total_before)
-	system_percent_utilization := 100 * float64(system_time_after - system_time_before) / float64(time_total_after - time_total_before)
-
-	avg := (user_percent_utilization + system_percent_utilization) / 2.0
-	log.Printf("Average cpu percent for pid %v: %v", avg, pid)
-
 
 	return nil
 
+}
+
+func (sc *ServerContext) addProcessCpuPercentage() error {
+
+	statsResourceUtilization := base.StatsResourceUtilization()
+
+	// Calculate the cpu percentage for the process
+	cpuPercentUtilization, err := sc.calculateProcessCpuPercentage()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Average cpu percent for pid %v: %v", cpuPercentUtilization, os.Getpid())
+
+	// Record stat
+	statsResourceUtilization.Set(base.StatKeyNumCpuPercentUtilizationProcess, base.ExpvarFloatVal(cpuPercentUtilization))
+
+	return nil
+
+}
+
+// Calculate the percentage of CPU used by this process over the sampling time specified in statsLogFrequencySecs
+//
+// Based on the accepted answer by "caf" in: https://stackoverflow.com/questions/1420426/how-to-calculate-the-cpu-usage-of-a-process-by-pid-in-linux-from-c
+//
+//  Read the cpu line from /proc/stat, which looks like:
+//
+//	cpu  192369 7119 480152 122044337 14142 9937 26747 0 0
+//
+//  This tells you the cumulative CPU time that's been used in various categories, in units of jiffies.
+//  You need to take the sum of the values on this line to get a time_total measure.
+//
+//	Read both utime and stime for the process you're interested in, and read time_total from /proc/stat.
+// Then sleep for a second or so, and read them all again. You can now calculate the CPU usage of the process over the sampling time, with:
+//
+//	user_util = 100 * (utime_after - utime_before) / (time_total_after - time_total_before);
+//	sys_util = 100 * (stime_after - stime_before) / (time_total_after - time_total_before);
+func (sc *ServerContext) calculateProcessCpuPercentage() (cpuPercentUtilization float64, err error) {
+
+	// Get current value
+	currentSnapshot, err := newCpuStatsSnapshot()
+	if err != nil {
+		return 0, err
+	}
+
+	// Is there a previous value?  If not, store current value as previous value and don't log a stat
+	if sc.statsContext.cpuStatsSnapshot == nil {
+		sc.statsContext.cpuStatsSnapshot = currentSnapshot
+		return 0, nil
+	}
+
+	// Otherwise calculate the cpu percentage based on current vs previous
+	prevSnapshot := sc.statsContext.cpuStatsSnapshot
+
+	deltaUserTimeJiffies := float64(currentSnapshot.procUserTimeJiffies - prevSnapshot.procUserTimeJiffies)
+	deltaSystemTimeJiffies := float64(currentSnapshot.procSystemTimeJiffies - prevSnapshot.procSystemTimeJiffies)
+	deltaTotalTimeJiffies := float64(currentSnapshot.totalTimeJiffies - prevSnapshot.totalTimeJiffies)
+
+	userCpuPercent := 100 * deltaUserTimeJiffies / deltaTotalTimeJiffies
+	systemCpuPercent := 100 * deltaSystemTimeJiffies / deltaTotalTimeJiffies
+
+	avgCpuPercent := (userCpuPercent + systemCpuPercent) / 2.0
+
+	// Store the current values as the previous values
+	sc.statsContext.cpuStatsSnapshot = currentSnapshot
+
+	return avgCpuPercent, nil
 
 }
 
