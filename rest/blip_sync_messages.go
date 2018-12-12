@@ -66,6 +66,9 @@ const (
 	changesResponseMaxHistory = "maxHistory"
 	changesResponseDeltas     = "deltas"
 
+	// proposeChanges message properties
+	proposeChangesResponseDeltas = "deltas"
+
 	// getAttachment message properties
 	getAttachmentDigest = "digest"
 
@@ -297,6 +300,11 @@ func (rm *revMessage) deleted() bool {
 		return false
 	}
 	return deleted != "0" && deleted != "false"
+}
+
+func (rm *revMessage) deltaSrc() (deltaSrc string, found bool) {
+	deltaSrc, found = rm.Properties[revMessageDeltaSrc]
+	return deltaSrc, found
 }
 
 func (rm *revMessage) hasDeletedProperty() bool {

@@ -557,6 +557,9 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
+	if bh.sgCanUseDeltas {
+		response.Properties[changesResponseDeltas] = "true"
+	}
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
 	return nil
@@ -737,6 +740,38 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
 
+	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
+		bh.Logf(base.LevelDebug, base.KeySync, "docID: %s - Received rev message as delta", base.UD(docID))
+		if !bh.sgCanUseDeltas {
+			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
+		}
+
+		delta, err := rq.Body()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Error getting delta body: %s", err)
+		}
+
+		deltaSrcBody, err := bh.db.GetRev(docID, deltaSrcRevID, true, nil)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc for deltaSrc=%s %v", deltaSrcRevID, err)
+		}
+
+		// TODO: need to add deep-copy support to revcache so deltaSrcBody doesn't get mutated
+		var deltaSrcBodyCopy map[string]interface{}
+		if err := base.DeepCopyInefficient(&deltaSrcBodyCopy, deltaSrcBody); err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "Error copying deltaSrcBody: %s", err)
+		}
+
+		deltaSrcMap := map[string]interface{}(deltaSrcBodyCopy)
+		err = base.Patch(&deltaSrcMap, delta)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
+		}
+
+		body = db.Body(deltaSrcMap)
+		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(body))
+	}
+
 	if revMessage.deleted() {
 		body[db.BodyDeleted] = true
 	}
@@ -748,7 +783,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		var err error
 		noConflicts, err = strconv.ParseBool(val)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("Invalid value for noconflicts: %s", err))
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid value for noconflicts: %s", err)
 		}
 	}
 
