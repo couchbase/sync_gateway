@@ -290,22 +290,17 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 		return nil
 	}
 
-	// Record TotalAuthTime stat
+	// Record Auth stats
 	defer func(t time.Time) {
 		delta := time.Since(t).Nanoseconds()
 		context.DbStats.StatsSecurity().Add(base.StatKeyTotalAuthTime, delta)
-	}(time.Now())
-
-	defer func() {
-		if h.db == nil || h.db.DatabaseContext == nil ||  h.db.DatabaseContext.DbStats == nil {
-			return
-		}
 		if err != nil {
-			h.db.DatabaseContext.DbStats.StatsSecurity().Add(base.StatKeyAuthFailedCount, 1)
+			context.DbStats.StatsSecurity().Add(base.StatKeyAuthFailedCount, 1)
 		} else {
-			h.db.DatabaseContext.DbStats.StatsSecurity().Add(base.StatKeyAuthSuccessCount, 1)
+			context.DbStats.StatsSecurity().Add(base.StatKeyAuthSuccessCount, 1)
 		}
-	}()
+
+	}(time.Now())
 
 	// If oidc enabled, check for bearer ID token
 	if context.Options.OIDCOptions != nil {
