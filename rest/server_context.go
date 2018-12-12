@@ -1077,18 +1077,16 @@ func (sc *ServerContext) addProcessMemoryPercentage() error {
 //
 // Based on the accepted answer by "caf" in: https://stackoverflow.com/questions/1420426/how-to-calculate-the-cpu-usage-of-a-process-by-pid-in-linux-from-c
 //
-//  Read the cpu line from /proc/stat, which looks like:
+// This has a minor variation, and rather than directly:
 //
-//	cpu  192369 7119 480152 122044337 14142 9937 26747 0 0
+// - Collect stats sample
+// - Sleep for sample time (1s in the SO post, but that's fairly arbitrary)
+// - Collect stats sample again
+// - Calculate process cpu percentage over sample period
 //
-//  This tells you the cumulative CPU time that's been used in various categories, in units of jiffies.
-//  You need to take the sum of the values on this line to get a time_total measure.
-//
-//	Read both utime and stime for the process you're interested in, and read time_total from /proc/stat.
-// Then sleep for a second or so, and read them all again. You can now calculate the CPU usage of the process over the sampling time, with:
-//
-//	user_util = 100 * (utime_after - utime_before) / (time_total_after - time_total_before);
-//	sys_util = 100 * (stime_after - stime_before) / (time_total_after - time_total_before);
+// It uses the same time.Ticker as for the other stats collection, and stores a previous stats sample and compares
+// the current against the previous to calcuate the cpu percentage.  If it's the first time it's invoked, there
+// won't be a previous value and so it will record 0.0 as the cpu percentage in that case.
 func (sc *ServerContext) calculateProcessCpuPercentage() (cpuPercentUtilization float64, err error) {
 
 	// Get current value
@@ -1106,16 +1104,23 @@ func (sc *ServerContext) calculateProcessCpuPercentage() (cpuPercentUtilization 
 	// Otherwise calculate the cpu percentage based on current vs previous
 	prevSnapshot := sc.statsContext.cpuStatsSnapshot
 
+	// The delta in user time for the process
 	deltaUserTimeJiffies := float64(currentSnapshot.procUserTimeJiffies - prevSnapshot.procUserTimeJiffies)
+
+	// The delta in system time for the process
 	deltaSystemTimeJiffies := float64(currentSnapshot.procSystemTimeJiffies - prevSnapshot.procSystemTimeJiffies)
+
+	// The delta in total time for the machine
 	deltaTotalTimeJiffies := float64(currentSnapshot.totalTimeJiffies - prevSnapshot.totalTimeJiffies)
 
+	// Calculate the CPU usage percentage for the process for user time and system time
 	userCpuPercent := 100 * deltaUserTimeJiffies / deltaTotalTimeJiffies
 	systemCpuPercent := 100 * deltaSystemTimeJiffies / deltaTotalTimeJiffies
 
+	// Average the two values to come up with an overal number
 	avgCpuPercent := (userCpuPercent + systemCpuPercent) / 2.0
 
-	// Store the current values as the previous values
+	// Store the current values as the previous values for the next time this function is called
 	sc.statsContext.cpuStatsSnapshot = currentSnapshot
 
 	return avgCpuPercent, nil

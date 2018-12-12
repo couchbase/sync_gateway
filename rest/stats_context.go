@@ -6,11 +6,13 @@ import (
 	"github.com/elastic/gosigar"
 )
 
+// Group the stats related context that is associated w/ a ServerContext into a struct
 type statsContext struct {
 	statsLoggingTicker *time.Ticker
 	cpuStatsSnapshot   *cpuStatsSnapshot
 }
 
+// A snapshot of the cpu stats that are used for stats calculation
 type cpuStatsSnapshot struct {
 
 	// The cumulative CPU time that's been used in various categories, in units of jiffies (clock ticks).
@@ -24,29 +26,22 @@ type cpuStatsSnapshot struct {
 	procSystemTimeJiffies uint64
 }
 
+// Create a new cpu stats snapshot based on calling gosigar
 func newCpuStatsSnapshot() (snapshot *cpuStatsSnapshot, err error) {
 
 	snapshot = &cpuStatsSnapshot{}
 
+	// Get the PID of this process
 	pid := os.Getpid()
 
-	// ----------------- Sample 1
-
-	pids := gosigar.ProcList{}
-	if err := pids.Get(); err != nil {
-		return nil, err
-	}
-
-	// Find the sync gateway PID  (/proc/pid/self/?)
-
-	// Invoke func (self *ProcTime) Get(pid int) error {
-
+	// Find the total CPU time in jiffies for the machine
 	cpu := gosigar.Cpu{}
 	if err := cpu.Get(); err != nil {
 		return nil, err
 	}
 	snapshot.totalTimeJiffies = cpu.Total()
 
+	// Find the per-process CPU stats: user time and system time
 	procTime := gosigar.ProcTime{}
 	if err := procTime.Get(pid); err != nil {
 		return nil, err
