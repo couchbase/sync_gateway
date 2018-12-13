@@ -133,14 +133,21 @@ func (statsContext *statsContext) addProcessMemoryPercentage() error {
 
 	statsResourceUtilization := base.StatsResourceUtilization()
 
-	// Calculate the memory utilization percentage for the process
-	memoryPercentUtilization, err := statsContext.calculateProcessMemoryPercentage()
-	if err != nil {
+	pid := os.Getpid()
+
+	procMem := gosigar.ProcMem{}
+	if err := procMem.Get(pid); err != nil {
 		return err
 	}
 
-	// Record stat
-	statsResourceUtilization.Set(base.StatKeyProcessMemoryPercentUtilization, base.ExpvarFloatVal(memoryPercentUtilization))
+	totalMem := gosigar.Mem{}
+	if err := totalMem.Get(); err != nil {
+		return err
+	}
+
+	// Record stats
+	statsResourceUtilization.Set(base.StatKeyProcessMemoryResident, base.ExpvarFloatVal(float64(procMem.Resident)))
+	statsResourceUtilization.Set(base.StatKeySystemMemoryTotal, base.ExpvarFloatVal(float64(totalMem.Total)))
 
 	return nil
 
@@ -160,30 +167,6 @@ func (statsContext *statsContext) addGoSigarStats() error {
 	return nil
 
 }
-
-
-func (statsContext *statsContext) calculateProcessMemoryPercentage() (memoryPercentUtilization float64, err error) {
-
-	pid := os.Getpid()
-
-	procMem := gosigar.ProcMem{}
-	if err := procMem.Get(pid); err != nil {
-		return 0, nil
-	}
-
-	totalMem := gosigar.Mem{}
-	if err := totalMem.Get(); err != nil {
-		return 0, nil
-	}
-
-	memoryPercentUtilization = float64(procMem.Resident) / float64(totalMem.Total)
-
-	return memoryPercentUtilization, nil
-
-}
-
-
-
 
 func AddGoRuntimeStats() {
 
