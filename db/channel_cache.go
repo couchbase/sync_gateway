@@ -664,7 +664,7 @@ func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*L
 
 	// Remove listener from the sinceSequence entry, and add a listener to the latest
 	previousEntry.removeListener()
-	lastEntry := c.mostRecentLateLog()
+	lastEntry := c._mostRecentLateLog()
 	lastEntry.addListener()
 	lastSequence = lastEntry.logEntry.Sequence
 
@@ -675,7 +675,10 @@ func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*L
 // Called on first call to the channel during changes processing, to get starting point for
 // subsequent checks for late arriving sequences.
 func (c *channelCache) InitLateSequenceClient() uint64 {
-	latestLog := c.mostRecentLateLog()
+
+	c.lateLogLock.RLock()
+	defer c.lateLogLock.RUnlock()
+	latestLog := c._mostRecentLateLog()
 	latestLog.addListener()
 	return latestLog.logEntry.Sequence
 }
@@ -729,7 +732,8 @@ func (c *channelCache) purgeLateLogEntries() {
 
 }
 
-func (c *channelCache) mostRecentLateLog() *lateLogEntry {
+// mostRecentLateLog assumes caller has at least read lock on c.lateLogLock
+func (c *channelCache) _mostRecentLateLog() *lateLogEntry {
 	if len(c.lateLogs) > 0 {
 		return c.lateLogs[len(c.lateLogs)-1]
 	}
