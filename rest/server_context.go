@@ -1102,20 +1102,19 @@ func (sc *ServerContext) calculateProcessCpuPercentage() (cpuPercentUtilization 
 	// The delta in system time for the process
 	deltaSystemTimeJiffies := float64(currentSnapshot.procSystemTimeJiffies - prevSnapshot.procSystemTimeJiffies)
 
+	// The combined delta of user + system time for the process
+	deltaSgProcessTimeJiffies := deltaUserTimeJiffies + deltaSystemTimeJiffies
+
 	// The delta in total time for the machine
 	deltaTotalTimeJiffies := float64(currentSnapshot.totalTimeJiffies - prevSnapshot.totalTimeJiffies)
 
-	// Calculate the CPU usage percentage for the process for user time and system time
-	userCpuPercent := 100 * deltaUserTimeJiffies / deltaTotalTimeJiffies
-	systemCpuPercent := 100 * deltaSystemTimeJiffies / deltaTotalTimeJiffies
-
-	// Average the two values to come up with an overal number
-	avgCpuPercent := (userCpuPercent + systemCpuPercent) / 2.0
+	// Calculate the CPU usage percentage for the SG process
+	cpuPercentUtilization = 100 * deltaSgProcessTimeJiffies / deltaTotalTimeJiffies
 
 	// Store the current values as the previous values for the next time this function is called
 	sc.statsContext.cpuStatsSnapshot = currentSnapshot
 
-	return avgCpuPercent, nil
+	return cpuPercentUtilization, nil
 
 }
 
