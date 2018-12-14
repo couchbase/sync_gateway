@@ -562,7 +562,7 @@ loop:
 						break collect
 					}
 				}
-				base.Infof(base.KeyChanges, "sending %d change(s)", len(entries))
+				base.Tracef(base.KeyChanges, "sending %d change(s)", len(entries))
 				err = send(entries)
 
 				if err == nil && waiting {
