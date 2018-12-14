@@ -47,19 +47,21 @@ const (
 const (
 
 	// StatsResourceUtilization
-	StatKeyNumGoroutines           = "num_goroutines"
-	StatKeyGoroutinesHighWatermark = "goroutines_high_watermark"
-	StatKeyMemoryRssBytes          = "memory_rss_bytes"
-	StatKeyGoMemstatsSys           = "go_memstats_sys"
-	StatKeyGoMemstatsHeapAlloc     = "go_memstats_heapalloc"
-	StatKeyGoMemstatsHeapIdle      = "go_memstats_heapidle"
-	StatKeyGoMemstatsHeapInUse     = "go_memstats_heapinuse"
-	StatKeyGoMemstatsHeapReleased  = "go_memstats_heapreleased"
-	StatKeyGoMemstatsStackInUse    = "go_memstats_stackinuse"
-	StatKeyGoMemstatsStackSys      = "go_memstats_stacksys"
-	StatKeyGoMemstatsPauseTotalNs  = "go_memstats_pausetotalns"
-	StatKeyErrorCount              = "error_count"
-	StatKeyWarnCount               = "warn_count"
+	StatKeyProcessCpuPercentUtilization = "process_cpu_percent_utilization"
+	StatKeyProcessMemoryResident        = "process_memory_resident"
+	StatKeySystemMemoryTotal            = "system_memory_total"
+	StatKeyNumGoroutines                = "num_goroutines"
+	StatKeyGoroutinesHighWatermark      = "goroutines_high_watermark"
+	StatKeyGoMemstatsSys                = "go_memstats_sys"
+	StatKeyGoMemstatsHeapAlloc          = "go_memstats_heapalloc"
+	StatKeyGoMemstatsHeapIdle           = "go_memstats_heapidle"
+	StatKeyGoMemstatsHeapInUse          = "go_memstats_heapinuse"
+	StatKeyGoMemstatsHeapReleased       = "go_memstats_heapreleased"
+	StatKeyGoMemstatsStackInUse         = "go_memstats_stackinuse"
+	StatKeyGoMemstatsStackSys           = "go_memstats_stacksys"
+	StatKeyGoMemstatsPauseTotalNs       = "go_memstats_pausetotalns"
+	StatKeyErrorCount                   = "error_count"
+	StatKeyWarnCount                    = "warn_count"
 
 	// StatsCache
 	StatKeyRevisionCacheHits         = "rev_cache_hits"
@@ -198,9 +200,11 @@ func StatsResourceUtilization() *expvar.Map {
 
 func NewStatsResourceUtilization() *expvar.Map {
 	stats := new(expvar.Map)
+	stats.Set(StatKeyProcessCpuPercentUtilization, ExpvarFloatVal(0))
+	stats.Set(StatKeyProcessMemoryResident, ExpvarIntVal(0))
+	stats.Set(StatKeySystemMemoryTotal, ExpvarIntVal(0))
 	stats.Set(StatKeyNumGoroutines, ExpvarIntVal(0))
 	stats.Set(StatKeyGoroutinesHighWatermark, ExpvarIntVal(0))
-	stats.Set(StatKeyMemoryRssBytes, ExpvarIntVal(0))
 	stats.Set(StatKeyGoMemstatsSys, ExpvarIntVal(0))
 	stats.Set(StatKeyGoMemstatsHeapAlloc, ExpvarIntVal(0))
 	stats.Set(StatKeyGoMemstatsHeapIdle, ExpvarIntVal(0))

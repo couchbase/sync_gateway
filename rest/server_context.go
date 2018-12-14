@@ -13,13 +13,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"expvar"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,21 +42,21 @@ const DefaultLogFreqencySecs = 5
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config             *ServerConfig
-	databases_         map[string]*db.DatabaseContext
-	lock               sync.RWMutex
-	statsTicker        *time.Ticker
-	statsLoggingTicker *time.Ticker
-	HTTPClient         *http.Client
-	replicator         *base.Replicator
+	config       *ServerConfig
+	databases_   map[string]*db.DatabaseContext
+	lock         sync.RWMutex
+	statsContext *statsContext
+	HTTPClient   *http.Client
+	replicator   *base.Replicator
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
 	sc := &ServerContext{
-		config:     config,
-		databases_: map[string]*db.DatabaseContext{},
-		HTTPClient: http.DefaultClient,
-		replicator: base.NewReplicator(),
+		config:       config,
+		databases_:   map[string]*db.DatabaseContext{},
+		HTTPClient:   http.DefaultClient,
+		replicator:   base.NewReplicator(),
+		statsContext: &statsContext{},
 	}
 	if config.Databases == nil {
 		config.Databases = DbConfigMap{}
@@ -964,9 +962,9 @@ func (sc *ServerContext) startStatsLogger() {
 
 	interval := time.Second * time.Duration(statsLogFrequencySecs)
 
-	sc.statsLoggingTicker = time.NewTicker(interval)
+	sc.statsContext.statsLoggingTicker = time.NewTicker(interval)
 	go func() {
-		for range sc.statsLoggingTicker.C {
+		for range sc.statsContext.statsLoggingTicker.C {
 			err := sc.logStats()
 			if err != nil {
 				base.Warnf(base.KeyAll, "Error logging stats: %v", err)
@@ -978,14 +976,18 @@ func (sc *ServerContext) startStatsLogger() {
 }
 
 func (sc *ServerContext) stopStatsLogger() {
-	if sc.statsLoggingTicker != nil {
-		sc.statsLoggingTicker.Stop()
+	if sc.statsContext.statsLoggingTicker != nil {
+		sc.statsContext.statsLoggingTicker.Stop()
 	}
 }
 
 func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
+
+	if err := sc.statsContext.addGoSigarStats(); err != nil {
+		base.Warnf(base.KeyAll, "Error getting sigar based system resource stats: %v", err)
+	}
 
 	sc.replicator.SnapshotStats()
 
@@ -1011,51 +1013,6 @@ func (sc *ServerContext) logStats() error {
 
 }
 
-func AddGoRuntimeStats() {
-
-	statsResourceUtilization := base.StatsResourceUtilization()
-
-	// Num goroutines
-	statsResourceUtilization.Set(base.StatKeyNumGoroutines, base.ExpvarIntVal(runtime.NumGoroutine()))
-
-	recordGoroutineHighwaterMark(statsResourceUtilization, uint64(runtime.NumGoroutine()))
-
-	// Read memstats (relatively expensive)
-	memstats := runtime.MemStats{}
-	runtime.ReadMemStats(&memstats)
-
-	// memory_rss (rss = resident set size)
-	// Calculate this the same way that FTS does.
-	// TODO: document why this works (blog post or email thread)
-	// TODO: according to the PRD, this should figure out the total memory in the system and express as a ratio of total memory
-	memory_rss := int64(memstats.Sys - memstats.HeapReleased) // convert uint -> int since that's what expvar supports
-	statsResourceUtilization.Set(base.StatKeyMemoryRssBytes, base.ExpvarInt64Val(memory_rss))
-
-	// Sys
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsSys, base.ExpvarUInt64Val(memstats.Sys))
-
-	// HeapAlloc
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapAlloc, base.ExpvarUInt64Val(memstats.HeapAlloc))
-
-	// HeapIdle
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapIdle, base.ExpvarUInt64Val(memstats.HeapIdle))
-
-	// HeapInuse
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapInUse, base.ExpvarUInt64Val(memstats.HeapInuse))
-
-	// HeapReleased
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapReleased, base.ExpvarUInt64Val(memstats.HeapReleased))
-
-	// StackInuse
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsStackInUse, base.ExpvarUInt64Val(memstats.StackInuse))
-
-	// StackSys
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsStackSys, base.ExpvarUInt64Val(memstats.StackSys))
-
-	// PauseTotalNs
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsPauseTotalNs, base.ExpvarUInt64Val(memstats.PauseTotalNs))
-
-}
 
 // Updates stats that are more efficient to calculate at stats collection time
 func (sc *ServerContext) updateCalculatedStats() {
@@ -1067,26 +1024,6 @@ func (sc *ServerContext) updateCalculatedStats() {
 
 }
 
-// Record Goroutines high watermark into expvars
-func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxGoroutinesSeen uint64) {
-
-	maxGoroutinesSeen = atomic.LoadUint64(&base.MaxGoroutinesSeen)
-
-	if numGoroutines > maxGoroutinesSeen {
-
-		// Clobber existing values rather than attempt a CAS loop. This stat can be considered a "best effort".
-		atomic.StoreUint64(&base.MaxGoroutinesSeen, numGoroutines)
-
-		if stats != nil {
-			stats.Set(base.StatKeyGoroutinesHighWatermark, base.ExpvarUInt64Val(maxGoroutinesSeen))
-		}
-
-		return numGoroutines
-	}
-
-	return maxGoroutinesSeen
-
-}
 
 // For test use
 func (sc *ServerContext) Database(name string) *db.DatabaseContext {
