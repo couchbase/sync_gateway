@@ -12,7 +12,7 @@ import (
 var ShardedClockExpvars *expvar.Map
 
 func init() {
-	ShardedClockExpvars = new(expvar.Map)
+	ShardedClockExpvars = new(expvar.Map).Init()
 }
 
 const (

@@ -111,7 +111,7 @@ func TestRecordGoroutineHighwaterMark(t *testing.T) {
 	// Reset this to 0
 	atomic.StoreUint64(&base.MaxGoroutinesSeen, 0)
 
-	stats := new(expvar.Map)
+	stats := new(expvar.Map).Init()
 
 	assert.True(t, recordGoroutineHighwaterMark(stats, 1000) == 1000)
 	assert.True(t, recordGoroutineHighwaterMark(stats, 500) == 1000)

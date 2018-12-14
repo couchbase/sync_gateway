@@ -178,13 +178,13 @@ func init() {
 	// All stats will be stored in expvars under the "syncgateway" key.
 	Stats = expvar.NewMap(StatsGroupKeySyncGateway)
 
-	GlobalStats = new(expvar.Map)
+	GlobalStats = new(expvar.Map).Init()
 	Stats.Set(Global, GlobalStats)
 
-	PerDbStats = new(expvar.Map)
+	PerDbStats = new(expvar.Map).Init()
 	Stats.Set(PerDb, PerDbStats)
 
-	PerReplicationStats = new(expvar.Map)
+	PerReplicationStats = new(expvar.Map).Init()
 	Stats.Set(PerReplication, PerReplicationStats)
 
 	// Add StatsResourceUtilization under GlobalStats
@@ -199,7 +199,7 @@ func StatsResourceUtilization() *expvar.Map {
 }
 
 func NewStatsResourceUtilization() *expvar.Map {
-	stats := new(expvar.Map)
+	stats := new(expvar.Map).Init()
 	stats.Set(StatKeyProcessCpuPercentUtilization, ExpvarFloatVal(0))
 	stats.Set(StatKeyProcessMemoryResident, ExpvarIntVal(0))
 	stats.Set(StatKeySystemMemoryTotal, ExpvarIntVal(0))
@@ -223,7 +223,7 @@ func NewStatsResourceUtilization() *expvar.Map {
 func RemovePerReplicationStats(replicationUuid string) {
 
 	// Clear out the stats for this replication since they will no longer be updated.
-	PerReplicationStats.Set(replicationUuid, new(expvar.Map))
+	PerReplicationStats.Set(replicationUuid, new(expvar.Map).Init())
 
 }
 
@@ -232,7 +232,7 @@ func RemovePerReplicationStats(replicationUuid string) {
 func RemovePerDbStats(dbName string) {
 
 	// Clear out the stats for this db since they will no longer be updated.
-	PerDbStats.Set(dbName, new(expvar.Map))
+	PerDbStats.Set(dbName, new(expvar.Map).Init())
 
 }
 

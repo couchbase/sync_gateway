@@ -7,6 +7,8 @@
 
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
 
+  <remote fetch="https://github.com/shirou/" name="shirou"/>
+
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
   <default remote="couchbase" revision="master"/>
@@ -129,6 +131,9 @@
   <project name="gosigar" path="godeps/src/github.com/elastic/gosigar" remote="couchbasedeps" revision="f498c67133bcded80f5966ee63acfe68cff4e6bf"/>
   <project name="wmi" path="godeps/src/github.com/StackExchange/wmi" remote="couchbasedeps" revision="b12b22c5341f0c26d88c4d66176330500e84db68"/>
   <project name="go-ole" path="godeps/src/github.com/go-ole/go-ole" remote="couchbasedeps" revision="ae2e2a20879aabdd3a51104ab6a4328af2773948"/>
+
+
+  <project name="gopsutil" path="godeps/src/github.com/shirou/gopsutil" remote="shirou" revision="cce2d16538b41615132a07ec08d5bdc91c1851e3"/>
 
 
 </manifest>

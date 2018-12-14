@@ -282,7 +282,7 @@ func taskForReplication(replication sgreplicate.SGReplication, params sgreplicat
 }
 
 func NewReplicationStats() (expvarMap *expvar.Map) {
-	result := new(expvar.Map)
+	result := new(expvar.Map).Init()
 	result.Set(StatKeySgrNumDocsPushed, ExpvarIntVal(0))
 	result.Set(StatKeySgrNumDocsFailedToPush, ExpvarIntVal(0))
 	result.Set(StatKeySgrNumAttachmentsTransferred, ExpvarIntVal(0))
