@@ -114,7 +114,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	goassert.Equals(t, revisionBody["value"], rev2a_body["value"])
 
 	// Retrieve the non-inline revision
-	db.FlushRevisionCache()
+	db.FlushRevisionCacheForTest()
 	rev2aGet, err := db.GetRev("doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
 	goassert.DeepEquals(t, rev2aGet, rev2a_body)
@@ -192,7 +192,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	goassert.Equals(t, len(newRevTree.BodyKeyMap), 1) // tombstone 3-c
 
 	// Retrieve the non-inline tombstone revision
-	db.FlushRevisionCache()
+	db.FlushRevisionCacheForTest()
 	rev3cGet, err := db.GetRev("doc1", "3-c", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-c")
 	goassert.DeepEquals(t, rev3cGet, rev3c_body)
@@ -280,7 +280,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	goassert.Equals(t, revisionBody["value"], rev2a_body["value"])
 
 	// Retrieve the non-inline revision
-	db.FlushRevisionCache()
+	db.FlushRevisionCacheForTest()
 	rev2aGet, err := db.GetRev("doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
 	goassert.DeepEquals(t, rev2aGet, rev2a_body)
@@ -300,7 +300,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	assert.NoError(t, db.PutExistingRev("doc1", rev3b_body, []string{"3-b", "2-b"}, false), "add 3-b (tombstone)")
 
 	// Retrieve tombstone
-	db.FlushRevisionCache()
+	db.FlushRevisionCacheForTest()
 	rev3bGet, err := db.GetRev("doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
 	goassert.DeepEquals(t, rev3bGet, rev3b_body)
@@ -335,7 +335,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	assert.NoError(t, db.PutExistingRev("doc1", activeRevBody, []string{"8-a", "7-a"}, false), "add 8-a")
 
 	// Verify that 3-b is still present at this point
-	db.FlushRevisionCache()
+	db.FlushRevisionCacheForTest()
 	rev3bGet, err = db.GetRev("doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Rev 3-b should still exist")
 
@@ -344,7 +344,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Verify that 3-b has been pruned
 	log.Printf("Attempt to retrieve 3-b, expect pruned")
-	db.FlushRevisionCache()
+	db.FlushRevisionCacheForTest()
 	rev3bGet, err = db.GetRev("doc1", "3-b", false, nil)
 	goassert.Equals(t, err.Error(), "404 missing")
 

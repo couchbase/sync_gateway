@@ -1583,7 +1583,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	}
 
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
-	testDB.FlushRevisionCache()
+	testDB.FlushRevisionCacheForTest()
 	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
 	testDB.Bucket.Delete("_sync:rev:doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00")
 

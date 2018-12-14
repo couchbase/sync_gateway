@@ -43,6 +43,14 @@ const (
 	RevisionsIds   = "ids"
 )
 
+type BodyCopyType int
+
+const (
+	BodyDeepCopy    BodyCopyType = iota // Performs a deep copy (json marshal/unmarshal)
+	BodyShallowCopy                     // Performs a shallow copy (copies top level properties, doesn't iterate into nested properties)
+	BodyNoCopy                          // Doesn't copy - callers must not mutate the response
+)
+
 func (b *Body) Unmarshal(data []byte) error {
 
 	if len(data) == 0 {
@@ -58,6 +66,20 @@ func (b *Body) Unmarshal(data []byte) error {
 	return nil
 }
 
+func (body Body) Copy(copyType BodyCopyType) Body {
+	switch copyType {
+	case BodyShallowCopy:
+		return body.ShallowCopy()
+	case BodyDeepCopy:
+		return body.DeepCopy()
+	case BodyNoCopy:
+		return body
+	default:
+		base.Infof(base.KeyCRUD, "Unexpected copy type specified in body.Copy - defaulting to shallow copy.  copyType: %d", copyType)
+		return body.ShallowCopy()
+	}
+}
+
 func (body Body) ShallowCopy() Body {
 	if body == nil {
 		return body
@@ -67,6 +89,12 @@ func (body Body) ShallowCopy() Body {
 		copied[key] = value
 	}
 	return copied
+}
+
+func (body Body) DeepCopy() Body {
+	var copiedBody Body
+	base.DeepCopyInefficient(&copiedBody, body)
+	return copiedBody
 }
 
 func (revisions Revisions) ShallowCopy() Revisions {

@@ -800,18 +800,26 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Error getting delta body: %s", err)
 		}
 
-		deltaSrcBody, err := bh.db.GetRev(docID, deltaSrcRevID, true, nil)
+		//  TODO: Doing a GetRevCopy here duplicates some rev cache retrieval effort, since deltaRevSrc is always
+		//        going to be the current rev (no conflicts), and PutExistingRev will need to retrieve the
+		//        current rev over again.  Should push this handling down PutExistingRev and use the version
+		//        returned via callback in WriteUpdate, but blocked by moving attachment metadata to a rev property first
+		//        (otherwise we don't have information needed to do downloadOrVerifyAttachments below prior to PutExistingRev)
+
+		// Note: Using GetRevCopy here, and not direct rev cache retrieval, because it's still necessary to apply access check
+		//       while retrieving deltaSrcRevID.  Couchbase Lite replication guarantees client has access to deltaSrcRevID,
+		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
+		//       revisions to malicious actors (in the scenario where that user has write but not read access).
+		deltaSrcBody, err := bh.db.GetRevCopy(docID, deltaSrcRevID, false, nil, db.BodyDeepCopy)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
 
-		// TODO: need to add deep-copy support to revcache so deltaSrcBody doesn't get mutated
-		var deltaSrcBodyCopy map[string]interface{}
-		if err := base.DeepCopyInefficient(&deltaSrcBodyCopy, deltaSrcBody); err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Error copying deltaSrcBody: %s", err)
-		}
+		// Strip out _id, _rev properties inserted by GetRevCopy
+		delete(deltaSrcBody, db.BodyId)
+		delete(deltaSrcBody, db.BodyRev)
 
-		deltaSrcMap := map[string]interface{}(deltaSrcBodyCopy)
+		deltaSrcMap := map[string]interface{}(deltaSrcBody)
 		err = base.Patch(&deltaSrcMap, delta)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
