@@ -181,13 +181,12 @@ func (rc *RevisionCache) purgeOldest_() {
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
 // will be called. This is synchronized so that the loader will only be called once even if
 // multiple goroutines try to load at the same time.
-func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc, copyType BodyCopyType) (DocumentRevision, bool, error) {
+func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc, copyType BodyCopyType) (docRev DocumentRevision, cacheHit bool, err error) {
 
 	value.lock.Lock()
 	defer value.lock.Unlock()
 
-	cacheHit := true
-
+	cacheHit = true
 	if value.body == nil && value.err == nil {
 		cacheHit = false
 		if loaderFunc != nil {
@@ -195,7 +194,7 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc, copyType Bo
 		}
 	}
 
-	docRev := DocumentRevision{
+	docRev = DocumentRevision{
 		RevID:       value.key.RevID,
 		Body:        value.body.Copy(copyType), // Never let the caller mutate the stored body
 		History:     value.history,
@@ -208,20 +207,18 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc, copyType Bo
 
 // Retrieves the body etc. out of a revCacheValue.  If they aren't already present, loads into the cache value using
 // the provided document.
-func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext, copyType BodyCopyType) (DocumentRevision, bool, error) {
+func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext, copyType BodyCopyType) (docRev DocumentRevision, cacheHit bool, err error) {
 	value.lock.Lock()
 	defer value.lock.Unlock()
 
-	cacheHit := true
-
+	cacheHit = true
 	if value.body == nil && value.err == nil {
 		cacheHit = false
 		value.body, value.history, value.channels, value.attachments, value.expiry, value.err = context.revCacheLoaderForDocument(doc, value.key.RevID)
-
 	}
 
 	// Copy stored body based on copyType, always copy attachments
-	docRev := DocumentRevision{
+	docRev = DocumentRevision{
 		RevID:       value.key.RevID,
 		Body:        value.body.Copy(copyType), // Never let the caller mutate the stored body
 		History:     value.history,
