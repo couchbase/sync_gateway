@@ -11,13 +11,14 @@ package db
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/couchbase/go-couchbase"
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -227,15 +228,38 @@ func (db *Database) Get(docid string) (Body, error) {
 	return db.GetRevWithHistory(docid, "", 0, nil, nil, false)
 }
 
-// Shortcut for GetRevWithHistory
+// Get Rev with all-or-none history based on specified 'history' flag
 func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince []string) (Body, error) {
 	maxHistory := 0
 	if history {
 		maxHistory = math.MaxInt32
 	}
-	return db.GetRevWithHistory(docid, revid, maxHistory, nil, attachmentsSince, false)
+	return db.getRev(docid, revid, maxHistory, nil, attachmentsSince, false, BodyShallowCopy)
 }
 
+// Retrieves rev with the specified body copy policy, to support efficient retrieval of deep/shallow/non-copied bodies.
+func (db *Database) GetRevCopy(docid, revid string, history bool, attachmentsSince []string, copyType BodyCopyType) (Body, error) {
+
+	// Requesting history and/or attachments is incompatible with BodyNoCopy, as getRev will always mutate the body when these
+	// are specified.
+	if copyType == BodyNoCopy && (history || len(attachmentsSince) > 0) {
+		return nil, fmt.Errorf("GetRevCopy called with incompatible properties for key:%s rev:%s", base.UD(docid), revid)
+	}
+
+	maxHistory := 0
+	if history {
+		maxHistory = math.MaxInt32
+	}
+	return db.getRev(docid, revid, maxHistory, nil, attachmentsSince, false, copyType)
+
+}
+
+// Retrieves rev with request history specified as collection of revids (historyFrom)
+func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
+	return db.getRev(docid, revid, maxHistory, historyFrom, attachmentsSince, showExp, BodyShallowCopy)
+}
+
+// Underlying revision retrieval used by GetRev, GetRevWithHistory, GetRevCopy.
 // Returns the body of a revision of a document. Uses the revision cache.
 // * revid may be "", meaning the current revision.
 // * maxHistory is >0 if the caller wants a revision history; it's the max length of the history.
@@ -244,14 +268,14 @@ func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince [
 // * attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //   revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //   that hasn't changed since one of those revisions will be returned as a stub.
-func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
+func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool, copyType BodyCopyType) (Body, error) {
 	var err error
 	var revision DocumentRevision
 	revIDGiven := (revid != "")
 	if revIDGiven {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, err = db.revisionCache.Get(docid, revid)
+		revision, err = db.revisionCache.GetWithCopy(docid, revid, copyType)
 	} else {
 		// No rev ID given, so load active revision
 		revision, err = db.revisionCache.GetActive(docid, db.DatabaseContext)

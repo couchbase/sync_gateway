@@ -1334,7 +1334,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
-	rt.GetDatabase().FlushRevisionCache()
+	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocId := "_sync:rev:foo:5:3-cde"
@@ -1473,7 +1473,7 @@ func TestMissingNoRev(t *testing.T) {
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
-	targetDb.FlushRevisionCache()
+	targetDb.FlushRevisionCacheForTest()
 
 	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
 	docs := bt.WaitForNumDocsViaChanges(4)
@@ -1535,12 +1535,11 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	}
 }
 
-// TestBlipDeltaSyncPush tests that a simple push replication uses deltas in EE,
-// and checks that full body replication still happens in CE.
+// TestBlipDeltaSyncPush tests that a simple push replication handles deltas in EE,
+// and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
-
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	rt := RestTester{DeltaSyncEnabled: base.IsEnterpriseEdition()}
 	defer rt.Close()
 
@@ -1575,6 +1574,13 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
+
+		// Validate that generation of a delta didn't mutate the revision body in the revision cache
+		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+		assert.NoError(t, cacheErr)
+		marshalledBody, _ := json.Marshal(docRev.Body)
+		assert.Equal(t, []byte(`{"_id":"doc1","_rev":"1-0335a345b6ffed05707ccc4cbc1b67f4","greetings":[{"hello":"world!"},{"hi":"alice"}]}`), marshalledBody)
+
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
 		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
@@ -1584,6 +1590,50 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
 	}
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev="+newRev, "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, `{"_id":"doc1","_rev":"2-abcxyz","greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, resp.Body.String())
+}
+
+// TestBlipNonDeltaSyncPush tests that a client that doesn't support deltas can push to a SG that supports deltas (either CE or EE)
+func TestBlipNonDeltaSyncPush(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	rt := RestTester{DeltaSyncEnabled: base.IsEnterpriseEdition()}
+	defer rt.Close()
+
+	client, err := NewBlipTesterClient(&rt)
+	assert.NoError(t, err)
+	defer client.Close()
+
+	client.ClientDeltas = false
+	client.StartPull()
+
+	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
+	// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e on client
+	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
+	assert.NoError(t, err)
+	assert.Equal(t, "2-abcxyz", newRev)
+
+	// Check EE is delta, and CE is full-body replication
+	msg, ok := client.pushReplication.WaitForMessage(2)
+	assert.True(t, ok)
+
+	// Check the request was NOT sent with a deltaSrc property
+	assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
+	// Check the request body was NOT the delta
+	msgBody, err := msg.Body()
+	assert.NoError(t, err)
+	assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev="+newRev, "")
 	assert.Equal(t, http.StatusOK, resp.Code)

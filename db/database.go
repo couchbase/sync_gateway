@@ -1119,7 +1119,7 @@ func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 }
 
 // For test usage
-func (context *DatabaseContext) FlushRevisionCache() {
+func (context *DatabaseContext) FlushRevisionCacheForTest() {
 
 	context.revisionCache = NewRevisionCache(
 		context.Options.RevisionCacheCapacity,
@@ -1127,6 +1127,11 @@ func (context *DatabaseContext) FlushRevisionCache() {
 		context.DbStats.StatsCache(),
 	)
 
+}
+
+// For test usage
+func (context *DatabaseContext) GetRevisionCacheForTest() *RevisionCache {
+	return context.revisionCache
 }
 
 func (context *DatabaseContext) AllowConflicts() bool {
