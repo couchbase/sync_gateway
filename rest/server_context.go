@@ -1000,6 +1000,10 @@ func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
+	if err := sc.statsContext.addNetworkInterfaceStatsForHostnamePort(*sc.config.Interface); err != nil {
+		base.Warnf(base.KeyAll, "Error getting network interface resource stats: %v", err)
+	}
+
 	if err := sc.statsContext.addGoSigarStats(); err != nil {
 		base.Warnf(base.KeyAll, "Error getting sigar based system resource stats: %v", err)
 	}

@@ -3,15 +3,15 @@ package rest
 import (
 	"expvar"
 	"fmt"
-	"github.com/couchbase/sync_gateway/base"
-	gopsutilnet "github.com/shirou/gopsutil/net"
-	"log"
 	"net"
+	"os"
 	"runtime"
 	"sync/atomic"
 	"time"
-	"os"
+
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/elastic/gosigar"
+	gopsutilnet "github.com/shirou/gopsutil/net"
 )
 
 // Group the stats related context that is associated w/ a ServerContext into a struct
@@ -60,7 +60,6 @@ func newCpuStatsSnapshot() (snapshot *cpuStatsSnapshot, err error) {
 	return snapshot, nil
 
 }
-
 
 // Calculate the percentage of CPU used by this process over the sampling time specified in statsLogFrequencySecs
 //
@@ -115,7 +114,6 @@ func (statsContext *statsContext) calculateProcessCpuPercentage() (cpuPercentUti
 
 }
 
-
 func (statsContext *statsContext) addProcessCpuPercentage() error {
 
 	statsResourceUtilization := base.StatsResourceUtilization()
@@ -157,7 +155,6 @@ func (statsContext *statsContext) addProcessMemoryPercentage() error {
 
 }
 
-
 func (statsContext *statsContext) addGoSigarStats() error {
 
 	if err := statsContext.addProcessCpuPercentage(); err != nil {
@@ -172,6 +169,21 @@ func (statsContext *statsContext) addGoSigarStats() error {
 
 }
 
+func (statsContext *statsContext) addNetworkInterfaceStatsForHostnamePort(hostPort string) error {
+
+	iocountersStats, err := networkInterfaceStatsForHostnamePort(hostPort)
+	if err != nil {
+		return err
+	}
+
+	statsResourceUtilization := base.StatsResourceUtilization()
+
+	statsResourceUtilization.Set(base.StatKeyNetworkInterfaceBytesSent, base.ExpvarUInt64Val(iocountersStats.BytesSent))
+	statsResourceUtilization.Set(base.StatKeyNetworkInterfaceBytesRecv, base.ExpvarUInt64Val(iocountersStats.BytesRecv))
+
+	return nil
+}
+
 func AddGoRuntimeStats() {
 
 	statsResourceUtilization := base.StatsResourceUtilization()
@@ -180,8 +192,6 @@ func AddGoRuntimeStats() {
 	statsResourceUtilization.Set(base.StatKeyNumGoroutines, base.ExpvarIntVal(runtime.NumGoroutine()))
 
 	recordGoroutineHighwaterMark(statsResourceUtilization, uint64(runtime.NumGoroutine()))
-
-	networkInterfaceStats()
 
 	// Read memstats (relatively expensive)
 	memstats := runtime.MemStats{}
@@ -213,7 +223,6 @@ func AddGoRuntimeStats() {
 
 }
 
-
 // Record Goroutines high watermark into expvars
 func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxGoroutinesSeen uint64) {
 
@@ -233,27 +242,6 @@ func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxG
 
 	return maxGoroutinesSeen
 
-}
-
-func networkInterfaceStats() (err error) {
-
-	hostPorts := []string{
-		"127.0.0.1:4984",
-		"192.168.1.77:4984",
-		":4984",
-		"0.0.0.0:4984",
-	}
-	for _, hostPort := range hostPorts {
-		iocountersStats, err := networkInterfaceStatsForHostnamePort(hostPort)
-		if err != nil {
-			return err
-		}
-		log.Print("iocountersStats: %+v", iocountersStats)
-	}
-
-	// 2018-12-14 14:21:05.557612 I | iocountersStats: %+v{"name":"en0","bytesSent":199532384,"bytesRecv":3414310767,"packetsSent":1498890,"packetsRecv":3108490,"errin":0,"errout":0,"dropin":0,"dropout":93,"fifoin":0,"fifoout":0}
-
-	return nil
 }
 
 func networkInterfaceStatsForHostnamePort(hostPort string) (iocountersStats gopsutilnet.IOCountersStat, err error) {
@@ -281,8 +269,6 @@ func networkInterfaceStatsForHostnamePort(hostPort string) (iocountersStats gops
 		}
 	}
 
-	log.Printf("hostPort: %v, found interface name: %v", hostPort, interfaceName)
-
 	// Only get interface stats on a "Per Nic (network interface card)" basis if we aren't
 	// listening on all interfaces, in which case we want the combined stats across all NICs.
 	perNic := !allInterfaces
@@ -306,7 +292,6 @@ func networkInterfaceStatsForHostnamePort(hostPort string) (iocountersStats gops
 
 	return iocountersStats, nil
 
-
 }
 
 func filterIOCountersByNic(iocountersStatsSet []gopsutilnet.IOCountersStat, interfaceName string) (filtered []gopsutilnet.IOCountersStat) {
@@ -322,7 +307,6 @@ func filterIOCountersByNic(iocountersStatsSet []gopsutilnet.IOCountersStat, inte
 	return filtered
 }
 
-
 func discoverInterfaceName(host string) (interfaceName string, err error) {
 
 	interfaces, err := net.Interfaces()
@@ -337,14 +321,11 @@ func discoverInterfaceName(host string) (interfaceName string, err error) {
 		}
 		for _, ifaceCIDRAddr := range ifaceAddresses {
 
-			log.Printf("ifaceCIDRAddr.String(): %s", ifaceCIDRAddr.String())
-
 			ipv4Addr, _, err := net.ParseCIDR(ifaceCIDRAddr.String())
 			if err != nil {
 				return "", err
 			}
 
-			log.Printf("ipv4Addr: %s", ipv4Addr.String())
 			if ipv4Addr.String() == host {
 				return iface.Name, nil
 			}

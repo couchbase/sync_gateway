@@ -50,6 +50,8 @@ const (
 	StatKeyProcessCpuPercentUtilization = "process_cpu_percent_utilization"
 	StatKeyProcessMemoryResident        = "process_memory_resident"
 	StatKeySystemMemoryTotal            = "system_memory_total"
+	StatKeyNetworkInterfaceBytesSent    = "net_bytes_sent"
+	StatKeyNetworkInterfaceBytesRecv    = "net_bytes_recv"
 	StatKeyNumGoroutines                = "num_goroutines"
 	StatKeyGoroutinesHighWatermark      = "goroutines_high_watermark"
 	StatKeyGoMemstatsSys                = "go_memstats_sys"
@@ -203,6 +205,8 @@ func NewStatsResourceUtilization() *expvar.Map {
 	stats.Set(StatKeyProcessCpuPercentUtilization, ExpvarFloatVal(0))
 	stats.Set(StatKeyProcessMemoryResident, ExpvarIntVal(0))
 	stats.Set(StatKeySystemMemoryTotal, ExpvarIntVal(0))
+	stats.Set(StatKeyNetworkInterfaceBytesSent, ExpvarIntVal(0))
+	stats.Set(StatKeyNetworkInterfaceBytesRecv, ExpvarIntVal(0))
 	stats.Set(StatKeyNumGoroutines, ExpvarIntVal(0))
 	stats.Set(StatKeyGoroutinesHighWatermark, ExpvarIntVal(0))
 	stats.Set(StatKeyGoMemstatsSys, ExpvarIntVal(0))
