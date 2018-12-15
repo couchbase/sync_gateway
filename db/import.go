@@ -12,7 +12,6 @@ import (
 	"github.com/robertkrimen/otto"
 )
 
-
 type ImportMode uint8
 
 const (
@@ -305,6 +304,11 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 // (https://github.com/couchbase/sync_gateway/issues/3740)
 func (db *Database) backupPreImportRevision(docid, revid string) error {
 
+	// If Delta Sync is enabled, this will already be handled by the backup handling used for delta generation
+	if db.DeltaSyncEnabled() {
+		return nil
+	}
+
 	previousRev, err := db.revisionCache.GetCached(docid, revid)
 	if err != nil {
 		return fmt.Errorf("Cache error: %v", err)
@@ -319,7 +323,7 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 		return fmt.Errorf("Marshal error: %v", marshalErr)
 	}
 
-	setOldRevErr := db.setOldRevisionJSON(docid, revid, bodyJson)
+	setOldRevErr := db.setOldRevisionJSON(docid, revid, bodyJson, db.Options.OldRevExpirySeconds)
 	if setOldRevErr != nil {
 		return fmt.Errorf("Persistence error: %v", setOldRevErr)
 	}

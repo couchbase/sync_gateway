@@ -189,10 +189,34 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 	return data, err
 }
 
-func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) error {
-	base.Debugf(base.KeyCRUD, "Saving old revision %q / %q (%d bytes)", base.UD(docid), revid, len(body))
+// Makes a backup of revision body for use by delta sync, and in-flight replications requesting an old revision.
+// Backup policy depends on whether delta sync and/or shared_bucket_access is enabled
+//   delta=false
+//      - old revision stored, with expiry OldRevExpirySeconds
+//   delta=true, shared_bucket_access=true
+//      - new revision stored (as duplicate), with expiry rev_max_age_seconds
+//   delta=true, shared_bucket_access=false
+//      - old revision stored, with expiry rev_max_age_seconds
+func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody Body, oldBody []byte) {
 
-	// Set old revisions to expire after Options.OldRevExpirySeconds.  Defaults to 5 minutes.
+	if !db.DeltaSyncEnabled() {
+		db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.OldRevExpirySeconds)
+		return
+	}
+
+	if db.UseXattrs() {
+		newBodyBytes, marshalErr := json.Marshal(newBody)
+		if marshalErr != nil {
+			base.Warnf(base.KeyAll, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, marshalErr)
+			return
+		}
+		db.setOldRevisionJSON(docId, newRevId, newBodyBytes, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
+	} else {
+		db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
+	}
+}
+
+func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte, expiry uint32) error {
 
 	// Setting the binary flag isn't sufficient to make N1QL ignore the doc - the binary flag is only used by the SDKs.
 	// To ensure it's not available via N1QL, need to prefix the raw bytes with non-JSON data.
@@ -200,7 +224,13 @@ func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte) 
 	body = append(body, byte(0))
 	copy(body[1:], body[0:])
 	body[0] = nonJSONPrefix
-	return db.Bucket.SetRaw(oldRevisionKey(docid, revid), db.DatabaseContext.Options.OldRevExpirySeconds, base.BinaryDocument(body))
+	err := db.Bucket.SetRaw(oldRevisionKey(docid, revid), expiry, base.BinaryDocument(body))
+	if err == nil {
+		base.Debugf(base.KeyCRUD, "Backed up revision body %q/%q (%d bytes)", base.UD(docid), revid, len(body))
+	} else {
+		base.Warnf(base.KeyAll, "setOldRevisionJSON failed: doc=%q rev=%q err=%v", base.UD(docid), revid, err)
+	}
+	return err
 }
 
 // Currently only used by unit tests - deletes an archived old revision from the database
