@@ -1000,7 +1000,12 @@ func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
-	if err := sc.statsContext.addNetworkInterfaceStatsForHostnamePort(*sc.config.Interface); err != nil {
+	listenInterface := DefaultInterface
+	if sc.config.Interface != nil {
+		listenInterface = *sc.config.Interface
+	}
+
+	if err := sc.statsContext.addNetworkInterfaceStatsForHostnamePort(listenInterface); err != nil {
 		base.Warnf(base.KeyAll, "Error getting network interface resource stats: %v", err)
 	}
 
