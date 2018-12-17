@@ -169,20 +169,33 @@ func (statsContext *statsContext) addGoSigarStats() error {
 
 }
 
-func (statsContext *statsContext) addNetworkInterfaceStatsForHostnamePort(hostPort string) error {
+func (statsContext *statsContext) addPublicNetworkInterfaceStatsForHostnamePort(hostPort string) error {
 
 	iocountersStats, err := networkInterfaceStatsForHostnamePort(hostPort)
 	if err != nil {
 		return err
 	}
 
-	statsResourceUtilization := base.StatsResourceUtilization()
-
-	statsResourceUtilization.Set(base.StatKeyNetworkInterfaceBytesSent, base.ExpvarUInt64Val(iocountersStats.BytesSent))
-	statsResourceUtilization.Set(base.StatKeyNetworkInterfaceBytesRecv, base.ExpvarUInt64Val(iocountersStats.BytesRecv))
+	base.StatsResourceUtilization().Set(base.StatKeyPubNetworkInterfaceBytesSent, base.ExpvarUInt64Val(iocountersStats.BytesSent))
+	base.StatsResourceUtilization().Set(base.StatKeyPubNetworkInterfaceBytesRecv, base.ExpvarUInt64Val(iocountersStats.BytesRecv))
 
 	return nil
 }
+
+func (statsContext *statsContext) addAdminNetworkInterfaceStatsForHostnamePort(hostPort string) error {
+
+	iocountersStats, err := networkInterfaceStatsForHostnamePort(hostPort)
+	if err != nil {
+		return err
+	}
+
+	base.StatsResourceUtilization().Set(base.StatKeyAdminNetworkInterfaceBytesSent, base.ExpvarUInt64Val(iocountersStats.BytesSent))
+	base.StatsResourceUtilization().Set(base.StatKeyAdminNetworkInterfaceBytesRecv, base.ExpvarUInt64Val(iocountersStats.BytesRecv))
+
+	return nil
+}
+
+
 
 func AddGoRuntimeStats() {
 
