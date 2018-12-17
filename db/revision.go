@@ -211,6 +211,9 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 			return
 		}
 		db.setOldRevisionJSON(docId, newRevId, newBodyBytes, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
+
+		// Refresh the expiry on the previous revision backup
+		db.refreshPreviousRevisionBackup(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
 	} else {
 		db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
 	}
@@ -229,6 +232,17 @@ func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte, 
 		base.Debugf(base.KeyCRUD, "Backed up revision body %q/%q (%d bytes)", base.UD(docid), revid, len(body))
 	} else {
 		base.Warnf(base.KeyAll, "setOldRevisionJSON failed: doc=%q rev=%q err=%v", base.UD(docid), revid, err)
+	}
+	return err
+}
+
+// Extends the expiry on a revision backup.  If this fails w/ key not found, will attempt to
+// recreate the revision backup when body is non-empty.
+func (db *Database) refreshPreviousRevisionBackup(docid string, revid string, body []byte, expiry uint32) error {
+
+	_, err := db.Bucket.Touch(oldRevisionKey(docid, revid), expiry)
+	if base.IsKeyNotFoundError(db.Bucket, err) && len(body) > 0 {
+		return db.setOldRevisionJSON(docid, revid, body, expiry)
 	}
 	return err
 }

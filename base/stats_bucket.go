@@ -105,6 +105,9 @@ func (b *StatsBucket) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64
 	b.docRead(1, len(v))
 	return v, cas, err
 }
+func (b *StatsBucket) Touch(k string, exp uint32) (cas uint64, err error) {
+	return b.bucket.Touch(k, exp)
+}
 func (b *StatsBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
 	results, err := b.bucket.GetBulkRaw(keys)
 	for _, value := range results {
