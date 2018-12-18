@@ -78,21 +78,17 @@ pipeline {
             }
         }
 
-        stage('Build') {
-            parallel {
-                stage('CE Build') {
-                    steps {
-                        withEnv(["SG_EDITION=CE", "PATH+=${GO}:${GOPATH}/bin"]) {
-                            sh './build.sh -v'
-                        }
-                    }
+        stage('CE Build') {
+            steps {
+                withEnv(["SG_EDITION=CE", "PATH+=${GO}:${GOPATH}/bin"]) {
+                    sh './build.sh -v'
                 }
-                stage('EE Build') {
-                    steps {
-                        withEnv(["SG_EDITION=EE", "PATH+=${GO}:${GOPATH}/bin"]) {
-                            sh './build.sh -v'
-                        }
-                    }
+            }
+        }
+        stage('EE Build') {
+            steps {
+                withEnv(["SG_EDITION=EE", "PATH+=${GO}:${GOPATH}/bin"]) {
+                    sh './build.sh -v'
                 }
             }
         }
