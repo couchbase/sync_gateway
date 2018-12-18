@@ -424,6 +424,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			oldestSkipped := db.changeCache.getOldestSkippedSequence()
 			if oldestSkipped > 0 {
 				lowSequence = oldestSkipped - 1
+				base.Infof(base.KeyChanges, "%d is the oldest skipped sequence, using stable sequence number of %d for this feed", oldestSkipped, lowSequence)
 			} else {
 				lowSequence = 0
 			}
