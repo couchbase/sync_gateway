@@ -136,7 +136,6 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyAttachmentPullCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAttachmentPullBytes, base.ExpvarIntVal(0))
 	case base.StatsGroupKeySecurity:
-		result.Set(base.StatKeyAccessQueriesPerSec, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyNumDocsRejected, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumAccessErrors, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAuthSuccessCount, base.ExpvarIntVal(0))

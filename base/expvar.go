@@ -130,7 +130,6 @@ const (
 	StatKeyAttachmentPullBytes              = "attachment_pull_bytes"
 
 	// StatsSecurity
-	StatKeyAccessQueriesPerSec = "access_queries_per_sec"
 	StatKeyNumDocsRejected     = "num_docs_rejected"
 	StatKeyNumAccessErrors     = "num_access_errors"
 	StatKeyAuthSuccessCount    = "auth_success_count"
