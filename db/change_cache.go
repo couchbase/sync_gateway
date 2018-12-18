@@ -824,7 +824,7 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	c.skippedSeqLock.RLock()
 	defer c.skippedSeqLock.RUnlock()
 	if len(c.skippedSeqs) > 0 {
-		base.Infof(base.KeyChanges, "get oldest, returning: %d", c.skippedSeqs[0].seq)
+		base.Debugf(base.KeyChanges, "Oldest skipped sequence (of %d total): %d", len(c.skippedSeqs), c.skippedSeqs[0].seq)
 		return c.skippedSeqs[0].seq
 	} else {
 		return uint64(0)
