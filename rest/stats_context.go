@@ -195,8 +195,6 @@ func (statsContext *statsContext) addAdminNetworkInterfaceStatsForHostnamePort(h
 	return nil
 }
 
-
-
 func AddGoRuntimeStats() {
 
 	statsResourceUtilization := base.StatsResourceUtilization()

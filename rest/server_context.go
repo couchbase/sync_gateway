@@ -996,13 +996,11 @@ func (sc *ServerContext) stopStatsLogger() {
 	}
 }
 
-
 func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
 	sc.logNetworkInterfaceStats()
-
 
 	if err := sc.statsContext.addGoSigarStats(); err != nil {
 		base.Warnf(base.KeyAll, "Error getting sigar based system resource stats: %v", err)
@@ -1052,7 +1050,6 @@ func (sc *ServerContext) logNetworkInterfaceStats() {
 	}
 
 }
-
 
 // Updates stats that are more efficient to calculate at stats collection time
 func (sc *ServerContext) updateCalculatedStats() {
