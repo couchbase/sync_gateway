@@ -872,7 +872,7 @@ func (bucket *CouchbaseBucketGoCB) Touch(k string, exp uint32) (cas uint64, err 
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("Touch for key %v", UD(k))
+	description := fmt.Sprintf("Touch for key %v", k)
 	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
 
 	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
