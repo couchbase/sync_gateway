@@ -30,6 +30,11 @@ func (b *LoggingBucket) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint
 	defer func() { Tracef(KeyBucket, "GetAndTouchRaw(%q) [%v]", UD(k), time.Since(start)) }()
 	return b.bucket.GetAndTouchRaw(k, exp)
 }
+func (b *LoggingBucket) Touch(k string, exp uint32) (cas uint64, err error) {
+	start := time.Now()
+	defer func() { Tracef(KeyBucket, "Touch(%q) [%v]", UD(k), time.Since(start)) }()
+	return b.bucket.Touch(k, exp)
+}
 func (b *LoggingBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
 	start := time.Now()
 	defer func() { Tracef(KeyBucket, "GetBulkRaw(%q) [%v]", UD(keys), time.Since(start)) }()

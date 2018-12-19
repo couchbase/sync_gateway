@@ -199,12 +199,12 @@ type DbConfig struct {
 	NumIndexReplicas          *uint                          `json:"num_index_replicas"`                     // Number of GSI index replicas used for core indexes
 	UseViews                  bool                           `json:"use_views"`                              // Force use of views instead of GSI
 	SendWWWAuthenticateHeader *bool                          `json:"send_www_authenticate_header,omitempty"` // If false, disables setting of 'WWW-Authenticate' header in 401 responses
-	BucketOpTimeoutMs         *uint32                        `json:"bucket_op_timeout_ms,omitempty"`         // // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
-	DeltaSync                 DeltaSyncConfig                `json:"delta_sync,omitempty"`
+	BucketOpTimeoutMs         *uint32                        `json:"bucket_op_timeout_ms,omitempty"`         // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+	DeltaSync                 *DeltaSyncConfig               `json:"delta_sync,omitempty"`                   // Config for delta sync
 }
 
 type DeltaSyncConfig struct {
-	Enable           *bool   `json:"enable,omitempty"`              // Whether delta sync is enabled (EE only)
+	Enable           *bool   `json:"enable,omitempty"`              // Whether delta sync is enabled (requires EE to enable)
 	RevMaxAgeSeconds *uint32 `json:"rev_max_age_seconds,omitempty"` // The number of seconds deltas for old revs are available for
 }
 
@@ -354,14 +354,6 @@ func (dbConfig *DbConfig) setup(name string) error {
 		}
 	}
 
-	// Set DeltaSync defaults
-	if dbConfig.DeltaSync.Enable == nil {
-		dbConfig.DeltaSync.Enable = &defaultDeltaSyncEnable
-	}
-	if dbConfig.DeltaSync.RevMaxAgeSeconds == nil || *dbConfig.DeltaSync.RevMaxAgeSeconds < 0 {
-		dbConfig.DeltaSync.RevMaxAgeSeconds = &defaultDeltaSyncRevMaxAge
-	}
-
 	return err
 }
 
@@ -403,8 +395,10 @@ func (dbConfig DbConfig) validate() error {
 	}
 
 	// Error if Delta Sync is explicitly enabled in CE
-	if *dbConfig.DeltaSync.Enable && !base.IsEnterpriseEdition() {
-		return fmt.Errorf("Delta sync not supported in CE - disable via config with delta_sync.enable: false")
+	if dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enable != nil {
+		if *dbConfig.DeltaSync.Enable && !base.IsEnterpriseEdition() {
+			return fmt.Errorf("Delta sync not supported in CE - disable via config with delta_sync.enable: false")
+		}
 	}
 
 	return nil

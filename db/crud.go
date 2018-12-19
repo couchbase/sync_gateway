@@ -528,31 +528,28 @@ func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
-func (db *Database) backupAncestorRevs(doc *document, revid string) {
+func (db *Database) backupAncestorRevs(doc *document, newRevId string, newBody Body) {
 	// Find an ancestor that still has JSON in the document:
 	var json []byte
+	ancestorRevId := newRevId
 	for {
-		if revid = doc.History.getParent(revid); revid == "" {
-			return // No ancestors with JSON found
-		} else if json = doc.getRevisionBodyJSON(revid, db.RevisionBodyLoader); json != nil {
+		if ancestorRevId = doc.History.getParent(ancestorRevId); ancestorRevId == "" {
+			// No ancestors with JSON found.  Check if we need to back up current rev for delta sync, then return
+			db.backupRevisionJSON(doc.ID, newRevId, "", newBody, nil)
+			return
+		} else if json = doc.getRevisionBodyJSON(ancestorRevId, db.RevisionBodyLoader); json != nil {
 			break
 		}
 	}
 
-	// Store the JSON as a separate doc in the bucket:
-	err := db.setOldRevisionJSON(doc.ID, revid, json)
-	if err != nil {
-		// This isn't fatal since we haven't lost any information; just warn about it.
-		base.Warnf(base.KeyAll, "backupAncestorRevs failed: doc=%q rev=%q err=%v", base.UD(doc.ID), revid, err)
-	} else {
-		base.Debugf(base.KeyCRUD, "Backed up obsolete rev %q/%q", base.UD(doc.ID), revid)
-	}
+	// Back up the revision JSON as a separate doc in the bucket:
+	db.backupRevisionJSON(doc.ID, newRevId, ancestorRevId, newBody, json)
 
 	// Nil out the ancestor rev's body in the document struct:
-	if revid == doc.CurrentRev {
+	if ancestorRevId == doc.CurrentRev {
 		doc.RemoveBody()
 	} else {
-		doc.removeRevisionBody(revid)
+		doc.removeRevisionBody(ancestorRevId)
 	}
 }
 
@@ -940,7 +937,7 @@ func (db *Database) updateAndReturnDoc(
 		}
 
 		// Move the body of the replaced revision out of the document so it can be compacted later.
-		db.backupAncestorRevs(doc, newRevID)
+		db.backupAncestorRevs(doc, newRevID, storedBody)
 
 		// Sequence processing
 		if db.writeSequences() {

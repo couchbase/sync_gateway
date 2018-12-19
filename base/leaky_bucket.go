@@ -57,6 +57,9 @@ func (b *LeakyBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
 func (b *LeakyBucket) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {
 	return b.bucket.GetAndTouchRaw(k, exp)
 }
+func (b *LeakyBucket) Touch(k string, exp uint32) (cas uint64, err error) {
+	return b.bucket.Touch(k, exp)
+}
 func (b *LeakyBucket) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	return b.bucket.Add(k, exp, v)
 }

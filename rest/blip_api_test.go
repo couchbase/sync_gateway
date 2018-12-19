@@ -1487,7 +1487,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	rt := RestTester{DeltaSyncEnabled: base.IsEnterpriseEdition()}
+	var rt RestTester
 	defer rt.Close()
 
 	client, err := NewBlipTesterClient(&rt)
@@ -1540,7 +1540,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 func TestBlipDeltaSyncPush(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	rt := RestTester{DeltaSyncEnabled: base.IsEnterpriseEdition()}
+	var rt RestTester
 	defer rt.Close()
 
 	client, err := NewBlipTesterClient(&rt)
@@ -1600,7 +1600,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 func TestBlipNonDeltaSyncPush(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
-	rt := RestTester{DeltaSyncEnabled: base.IsEnterpriseEdition()}
+	var rt RestTester
 	defer rt.Close()
 
 	client, err := NewBlipTesterClient(&rt)

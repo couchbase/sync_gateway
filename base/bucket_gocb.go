@@ -857,6 +857,39 @@ func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []by
 
 }
 
+func (bucket *CouchbaseBucketGoCB) Touch(k string, exp uint32) (cas uint64, err error) {
+
+	bucket.singleOps <- struct{}{}
+	defer func() {
+		<-bucket.singleOps
+	}()
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		casGoCB, err := bucket.Bucket.Touch(k, 0, exp)
+		shouldRetry = isRecoverableGoCBError(err)
+		return shouldRetry, err, uint64(casGoCB)
+
+	}
+
+	// Kick off retry loop
+	description := fmt.Sprintf("Touch for key %v", k)
+	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+
+	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
+	if result == nil {
+		result = uint64(0)
+	}
+
+	// Type assertion of result
+	cas, ok := result.(uint64)
+	if !ok {
+		return 0, RedactErrorf("Touch: Error doing type assertion of %v into a uint64", UD(result))
+	}
+
+	return cas, err
+
+}
+
 func (bucket *CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
 	defer func() {

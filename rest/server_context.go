@@ -568,6 +568,20 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		sc.TakeDbOnline(dbContext)
 	}
 
+	deltaSyncOptions := db.DeltaSyncOptions{
+		Enabled:          db.DefaultDeltaSyncEnable,
+		RevMaxAgeSeconds: db.DefaultDeltaSyncRevMaxAge,
+	}
+
+	if config.DeltaSync != nil {
+		if config.DeltaSync.Enable != nil {
+			deltaSyncOptions.Enabled = *config.DeltaSync.Enable
+		}
+		if config.DeltaSync.RevMaxAgeSeconds != nil {
+			deltaSyncOptions.RevMaxAgeSeconds = *config.DeltaSync.RevMaxAgeSeconds
+		}
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		IndexOptions:              channelIndexOptions,
@@ -586,6 +600,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		AllowConflicts:            config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		UseViews:                  useViews,
+		DeltaSyncOptions:          deltaSyncOptions,
 	}
 
 	// Create the DB Context
@@ -1013,7 +1028,6 @@ func (sc *ServerContext) logStats() error {
 
 }
 
-
 // Updates stats that are more efficient to calculate at stats collection time
 func (sc *ServerContext) updateCalculatedStats() {
 	sc.lock.RLock()
@@ -1023,7 +1037,6 @@ func (sc *ServerContext) updateCalculatedStats() {
 	}
 
 }
-
 
 // For test use
 func (sc *ServerContext) Database(name string) *db.DatabaseContext {

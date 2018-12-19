@@ -43,7 +43,6 @@ type RestTester struct {
 	EnableNoConflictsMode   bool   // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
 	NoFlush                 bool   // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
 	InitSyncSeq             uint64 // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	DeltaSyncEnabled        bool
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
@@ -106,13 +105,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 			// By default, does NOT use views when running against couchbase server, since should use GSI
 			rt.DatabaseConfig.UseViews = base.TestUseViews()
-		}
-
-		if rt.DeltaSyncEnabled {
-			if !base.IsEnterpriseEdition() {
-				panic("RestTester doesn't support DeltaSyncEnabled when running as non-enterprise")
-			}
-			rt.DatabaseConfig.DeltaSync.Enable = &rt.DeltaSyncEnabled
 		}
 
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.

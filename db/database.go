@@ -48,6 +48,13 @@ const (
 	KSyncKeyPrefix       = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
 	kSyncDataKey         = "_sync:syncdata" // Key used to store sync function
 	KSyncXattrName       = "_sync"          // Name of XATTR used to store sync metadata
+
+)
+
+// Default values for delta sync
+var (
+	DefaultDeltaSyncEnable    = base.IsEnterpriseEdition() // true by default in EE
+	DefaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24)       // 24 hours in seconds
 )
 
 // Basic description of a database. Shared between all Database objects on the same database.
@@ -92,12 +99,13 @@ type DatabaseContextOptions struct {
 	OIDCOptions               *auth.OIDCOptions
 	DBOnlineCallback          DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions             ImportOptions
-	EnableXattr               bool   // Use xattr for _sync
-	LocalDocExpirySecs        uint32 // The _local doc expiry time in seconds
-	SessionCookieName         string // Pass-through DbConfig.SessionCookieName
-	AllowConflicts            *bool  // False forbids creating conflicts
-	SendWWWAuthenticateHeader *bool  // False disables setting of 'WWW-Authenticate' header
-	UseViews                  bool   // Force use of views
+	EnableXattr               bool             // Use xattr for _sync
+	LocalDocExpirySecs        uint32           // The _local doc expiry time in seconds
+	SessionCookieName         string           // Pass-through DbConfig.SessionCookieName
+	AllowConflicts            *bool            // False forbids creating conflicts
+	SendWWWAuthenticateHeader *bool            // False disables setting of 'WWW-Authenticate' header
+	UseViews                  bool             // Force use of views
+	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
 }
 
 type OidcTestProviderOptions struct {
@@ -107,6 +115,11 @@ type OidcTestProviderOptions struct {
 
 type UserViewsOptions struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether pass-through view query is supported through public API
+}
+
+type DeltaSyncOptions struct {
+	Enabled          bool   // Whether delta sync is enabled (EE only)
+	RevMaxAgeSeconds uint32 // The number of seconds deltas for old revs are available for
 }
 
 type APIEndpoints struct {
@@ -1102,6 +1115,10 @@ func (context *DatabaseContext) GetUserViewsEnabled() bool {
 
 func (context *DatabaseContext) UseXattrs() bool {
 	return context.Options.EnableXattr
+}
+
+func (context *DatabaseContext) DeltaSyncEnabled() bool {
+	return context.Options.DeltaSyncOptions.Enabled
 }
 
 func (context *DatabaseContext) AllowExternalRevBodyStorage() bool {

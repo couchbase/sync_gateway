@@ -119,11 +119,7 @@ func (h *handler) handleBLIPSync() error {
 	defer ctx.close()
 
 	// determine if SG has delta sync enabled for the given database
-	if dbc := h.server.GetDatabaseConfig(ctx.dbc.Name); dbc != nil {
-		if sgDeltaEnable := dbc.DeltaSync.Enable; sgDeltaEnable != nil {
-			ctx.sgCanUseDeltas = *sgDeltaEnable
-		}
-	}
+	ctx.sgCanUseDeltas = ctx.dbc.DeltaSyncEnabled()
 
 	blipContext.DefaultHandler = ctx.notFound
 	for profile, handlerFn := range kHandlersByProfile {
