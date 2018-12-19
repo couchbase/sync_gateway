@@ -1,0 +1,75 @@
+[%hardbreaks]
+:toc: left
+:toclevels: 3
+
+Sync Gateway Mercury Build / Development Instructions
+
+== Mobile Service
+
+=== Use pre-built binary
+
+1. Download a recent Mad-Hatter build, for example http://latestbuilds.service.couchbase.com/builds/latestbuilds/couchbase-server/mad-hatter/1908/couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm[mad-hatter/1908/couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm]
+1. `rpm -i couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm`
+1. In the setup screen, you should see a new checkbox for the **Mobile** service.
+1. After going through the setup process, you should see a new a log file: `/opt/couchbase/var/lib/couchbase/logs/mobile.log`
+1. Additionally, if you run a `ps` command, you should see a new child process: `/opt/couchbase/bin/mobile-service --grpcTlsPort=18098 --restAdminPort=8097 --restAdminPortTLS=18097 --dataDir=/opt/couchbase/var/lib/couchbase/data/@mobile --uuid=69e8108a6611a8b192398a0bb32af36d --server=http://127.0.0.1:8091 --enterprise=true`
+
+==== Rebuild mobile-service + patch
+
+1. TODO: add instructions to rebuild the mobile-service binary in a standalone manner
+1. Copy binary to overwrite `/opt/couchbase/bin/mobile-service`
+1. Restart Couchbase Server
+
+=== Build Couchbase Server + Mobile-Service from Source
+
+==== Install build deps
+
+```
+$ yum install epel-release
+$ yum install -y git cmake3 gcc gcc-c++ openssl-devel compat-gcc-44-c++
+$ cp /usr/bin/c99 /usr/bin/gcc
+$ ln -s /bin/cmake3 /bin/cmake
+$ curl -s https://storage.googleapis.com/git-repo-downloads/repo > repo
+$ chmod +x repo
+```
+
+==== Get and build code
+
+From https://github.com/couchbase/tlm#how-to-build[couchbase/tlm#how-to-build]:
+
+```
+$ repo init -u git://github.com/couchbase/manifest -m couchbase-server/mad-hatter.xml
+$ repo sync
+$ make
+```
+
+This will include and build the https://github.com/couchbase/mobile-service[mobile-service] codebase as part of the build process.
+
+==== Verify
+
+After the build is complete, you should have a mobile-service binary.
+
+==== Run multi-node cluster via cluster-run
+
+=== Couchbase Server Toy Builds
+
+=== Remote debugger
+
+In https://issues.couchbase.com/browse/MB-31682[MB-31682] there was a request to add code which would enable the Delve debugger, which has been tested and is known to work.  Unfornately this change never made it in.  The details are in the ticket under the **Option to run under the delve debugger** section.  If that code was added while building from source, it is possible to use the Delve remote debugging feature to connect.
+
+=== Submitting Changes
+
+The https://github.com/couchbase/mobile-service[mobile-service] repo is Gerrit-locked, and so all changes must be submitted via Gerrit.
+
+== Sync Gateway
+
+== Continuous Integration
+
+=== Integration Tests
+
+=== PR builds
+
+== Reference Documentation
+
+1. https://docs.google.com/document/d/1Agc7EOdNcz18Cn_1kzrYv5Ofa1NL1CDwvcUoS1ohW04[Mobile Service Integration] (internal-only Design Doc)
+
