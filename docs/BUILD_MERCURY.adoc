@@ -22,36 +22,97 @@ Sync Gateway Mercury Build / Development Instructions
 
 === Build Couchbase Server + Mobile-Service from Source
 
-==== Install build deps
+Upstream instructions:
+
+- https://github.com/couchbase/tlm#how-to-build[couchbase/tlm#how-to-build]
+- https://hub.internal.couchbase.com/confluence/pages/viewpage.action?title=Developer-Hosted+Builds&spaceKey=CR[Developer-Hosted Builds] (internal wiki)
+
+
+==== MacOS
 
 ```
-$ yum install epel-release
-$ yum install -y git cmake3 gcc gcc-c++ openssl-devel compat-gcc-44-c++
-$ cp /usr/bin/c99 /usr/bin/gcc
-$ ln -s /bin/cmake3 /bin/cmake
-$ curl -s https://storage.googleapis.com/git-repo-downloads/repo > repo
-$ chmod +x repo
-```
-
-==== Get and build code
-
-From https://github.com/couchbase/tlm#how-to-build[couchbase/tlm#how-to-build]:
-
-```
+$ brew install cmake
 $ repo init -u git://github.com/couchbase/manifest -m couchbase-server/mad-hatter.xml
 $ repo sync
-$ make
+$ make -j 6
+```
+
+==== CentOS7
+
+Building directly on the machine should be possible, but appears difficult due to compiler version dependencies.  The Couchbase Build team recommends building in a Docker container.
+
+===== Install docker
+
+From this https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-centos-7[Digital Ocean tutorial]:
+
+```
+$ curl -fsSL https://get.docker.com/ | sh
+$ sudo systemctl start docker
+$ sudo systemctl enable docker
+$ sudo usermod -aG docker centos
+```
+
+===== Launch docker container
+
+```
+$ docker run -d -v ~/.ssh:/ssh --name="builder" couchbasebuild/server-centos7-build:20181125 sleep 1000000
+$ docker exec -u couchbase -it builder bash
+```
+
+Now, from inside the docker container:
+
+```
+$ cd ~
+$ git config --global user.email "someone@couchbase.com"
+$ git config --global user.name "someone"
+$ repo init -u git://github.com/couchbase/manifest -m couchbase-server/mad-hatter.xml
+$ repo sync
+$ make -j 6
 ```
 
 This will include and build the https://github.com/couchbase/mobile-service[mobile-service] codebase as part of the build process.
 
+This will build the **community** edition.  Building the **enterprise** edition is trickier due to the dependency on private repos.
+
 ==== Verify
 
-After the build is complete, you should have a mobile-service binary.
+After the build is complete, you should have a file `install/bin/mobile-service`.
 
 ==== Run multi-node cluster via cluster-run
 
+```
+$ cd ns_server
+$ ./cluster_run -n 2
+```
+
+You will now have nodes running on:
+
+* http://localhost:9000/
+* http://localhost:9001/
+
+
 === Couchbase Server Toy Builds
+
+==== Create Forks
+
+Fork the following repos to your personal github account:
+
+* https://github.com/couchbase/manifest
+* https://github.com/couchbase/mobile-service
+
+==== Update couchbase manifest fork
+
+On your fork of the `couchbase/manifest` repo, update the `master/couchbase-server/mad-hatter.xml` file to point to your mobile-service fork.  Rather than point to a particular commit hash, it's probably easier to point to your feature branch.
+
+==== Push changes to mobile-service fork
+
+Push your feature branch up to your fork.  Now anyone who builds the `mad-hatter.xml` from your `couchbase/manifest` repo fork will pick up the feature branch of the `mobile-service`.
+
+==== Create Toy Build on Jenkins
+
+On the http://server.jenkins.couchbase.com/view/Toys/job/toy-unix/build?delay=0sec[Server Jenkins] machine, kick off a toy build and point to your manifest fork.
+
+Toy builds will self-destruct after 1-2 weeks, unless you check the **Keep This Build Forever** checkbox.
 
 === Remote debugger
 
@@ -67,7 +128,13 @@ The https://github.com/couchbase/mobile-service[mobile-service] repo is Gerrit-l
 
 === Integration Tests
 
+1. Create a fresh Toy Build unless you plan on using a previous build that had the **Keep This Build Forever** checkbox checked.
+1. Kick off integration test on http://uberjenkins.sc.couchbase.com:8080/view/Build/job/sync-gateway-integration-mercury/[Uberjenkins sync-gateway-integration-mercury]
+    * Use the toy build artifact from previous step, which will be installed during job setup
+
 === PR builds
+
+TODO
 
 == Reference Documentation
 
