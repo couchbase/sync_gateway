@@ -65,7 +65,8 @@ func TestXattrImportOldDoc(t *testing.T) {
 	defer rt.Close()
 
 	bucket := rt.Bucket()
-	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true}`)
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
 
 	// 1. Test oldDoc behaviour during SDK insert
 	key := "TestImportDelete"
@@ -101,9 +102,14 @@ func TestXattrImportOldDoc(t *testing.T) {
 	var rawUpdateResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	assert.NoError(t, err, "Unable to unmarshal raw response")
-	assert.True(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
-	log.Printf("update channels: %+v", rawUpdateResponse.Sync.Channels)
-	assert.True(t, HasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
+
+	// If delta sync is enabled, old doc may be available based on the backup used for delta generation, if it hasn't already
+	// been converted to a delta
+	if !rt.GetDatabase().DeltaSyncEnabled() {
+		assert.True(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
+		log.Printf("update channels: %+v", rawUpdateResponse.Sync.Channels)
+		assert.True(t, HasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
+	}
 
 	// 3. Test oldDoc behaviour during SDK delete
 	err = bucket.Delete(key)
@@ -115,9 +121,12 @@ func TestXattrImportOldDoc(t *testing.T) {
 	err = json.Unmarshal(response.Body.Bytes(), &rawDeleteResponse)
 	log.Printf("Post-delete: %s", response.Body.Bytes())
 	assert.NoError(t, err, "Unable to unmarshal raw response")
-	assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
+	assert.True(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
+	log.Printf("update channels: %+v", rawDeleteResponse.Sync.Channels)
+	if !rt.GetDatabase().DeltaSyncEnabled() {
+		assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
+	}
 	assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
-
 }
 
 // Validate tombstone w/ xattrs
@@ -1325,6 +1334,10 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	}
 	defer rt.Close()
 
+	if rt.GetDatabase().DeltaSyncEnabled() {
+		t.Skipf("Skipping TestImportRevisionCopyUnavailable when delta sync enabled, delta revision backup handling invalidates test")
+	}
+
 	bucket := rt.Bucket()
 	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true}`)
 
@@ -1377,6 +1390,10 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
 	defer rt.Close()
+
+	if rt.GetDatabase().DeltaSyncEnabled() {
+		t.Skipf("Skipping TestImportRevisionCopyDisabled when delta sync enabled, delta revision backup handling invalidates test")
+	}
 
 	bucket := rt.Bucket()
 	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true}`)
