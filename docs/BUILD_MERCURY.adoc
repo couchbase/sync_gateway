@@ -124,6 +124,71 @@ The https://github.com/couchbase/mobile-service[mobile-service] repo is Gerrit-l
 
 == Sync Gateway
 
+=== Bootstrap
+
+When doing the bootstrap install, specify the SG Mercury branch:
+
+```
+$ ./bootstrap.sh -c feature/mercury
+```
+
+After the build you should have a `godeps/bin/cli` binary.
+
+=== Setup
+
+Export some env variables:
+
+```
+$ export CBSERVER="http://ec2-54-161-160-114.compute-1.amazonaws.com:8091"
+$ export CBUSER="Administrator"
+$ export CBPASS="password"
+```
+
+And rename the binary and put into the path:
+
+```
+$ cp godeps/bin/cli /usr/bin/sg
+```
+
+=== Add config to MetaKV
+
+The Sync Gateway node must be able to fetch it's configuration from MetaKV in order to startup.  Since there is no UI to do this yet, it must be done via the CLI.
+
+==== Listener Config
+
+```
+$ sg config metakv set /mobile/gateway/config/listener -c "$CBSERVER" -u "$CBUSER" -p "$CBPASS" --input-file-path godeps/src/github.com/couchbase/sync_gateway/examples/mercury/metakv-listener.json
+```
+
+==== General Config
+
+```
+$ sg config metakv set /mobile/gateway/config/general -c "$CBSERVER" -u "$CBUSER" -p "$CBPASS" --input-file-path godeps/src/github.com/couchbase/sync_gateway/examples/mercury/metakv-general.json
+```
+
+==== Database Config
+
+```
+$ sg config metakv set /mobile/gateway/config/databases/database-1 -c "$CBSERVER" -u "$CBUSER" -p "$CBPASS" --input-file-path godeps/src/github.com/couchbase/sync_gateway/examples/mercury/metakv-database-1.json
+```
+
+==== CBServer Setup
+
+Go to the Couchbase Server UI and create a bucket named `database-1`
+
+=== Run
+
+```
+$ sg serve -uuid sg1 -c "$CBSERVER" -u "$CBUSER" -p "$CBPASS"
+```
+
+At this point you should be able to access:
+
+* http://localhost:4984/
+
+* http://localhost:4985/database-1/
+
+
 == Continuous Integration
 
 === Integration Tests
@@ -132,9 +197,6 @@ The https://github.com/couchbase/mobile-service[mobile-service] repo is Gerrit-l
 1. Kick off integration test on http://uberjenkins.sc.couchbase.com:8080/view/Build/job/sync-gateway-integration-mercury/[Uberjenkins sync-gateway-integration-mercury]
     * Use the toy build artifact from previous step, which will be installed during job setup
 
-=== PR builds
-
-TODO
 
 == Reference Documentation
 
