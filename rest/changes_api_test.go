@@ -1746,6 +1746,157 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 	}
 }
 
+// Tests view backfills into empty cache and validates that results are prepended to cache
+func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
+
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
+	defer rt.Close()
+
+	// Create user:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	goassert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Write 30 docs to the bucket, 10 from channel PBS.  Expected sequence assignment:
+	//  1, 4, 7, ...   ABC
+	//  2, 5, 8, ...   PBS
+	//  3, 6, 9, ...   NBC
+	for i := 1; i <= 10; i++ {
+		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/abc%d", i), `{"channels":["ABC"]}`)
+		assertStatus(t, response, 201)
+		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/pbs%d", i), `{"channels":["PBS"]}`)
+		assertStatus(t, response, 201)
+		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/nbc%d", i), `{"channels":["NBC"]}`)
+		assertStatus(t, response, 201)
+	}
+
+	testDb := rt.ServerContext().Database("db")
+	testDb.WaitForSequence(30)
+
+	// Flush the channel cache
+	testDb.FlushChannelCache()
+
+	// Issue a since=n changes request, where n > 0 and is a non-PBS sequence.  Validate that there's a view-based backfill
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	queryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	log.Printf("After initial changes request, query count is :%d", queryCount)
+
+	// Issue a since=0 changes request.  Validate that there is not another a view-based backfill
+	changes.Results = nil
+	changesJSON := `{"since":0, "limit":50}`
+	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	goassert.Equals(t, len(changes.Results), 10)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	// Validate that there has been one more view query
+	secondQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	goassert.Equals(t, secondQueryCount, queryCount+1)
+
+	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
+	changes.Results = nil
+	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	goassert.Equals(t, len(changes.Results), 10)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	// Validate that there haven't been any more view queries
+	thirdQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	goassert.Equals(t, thirdQueryCount, secondQueryCount)
+
+}
+
+// Tests multiple view backfills and validates that results are prepended to cache
+func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
+
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
+	defer rt.Close()
+
+	// Create user:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	goassert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Write 30 docs to the bucket, 10 from channel PBS.  Expected sequence assignment:
+	//  1, 4, 7, ...   ABC
+	//  2, 5, 8, ...   PBS
+	//  3, 6, 9, ...   NBC
+	for i := 1; i <= 10; i++ {
+		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/abc%d", i), `{"channels":["ABC"]}`)
+		assertStatus(t, response, 201)
+		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/pbs%d", i), `{"channels":["PBS"]}`)
+		assertStatus(t, response, 201)
+		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/nbc%d", i), `{"channels":["NBC"]}`)
+		assertStatus(t, response, 201)
+	}
+
+	testDb := rt.ServerContext().Database("db")
+	testDb.WaitForSequence(30)
+
+	// Flush the channel cache
+	testDb.FlushChannelCache()
+
+	// Issue a since=n changes request, where n > 0 and is a non-PBS sequence.  Validate that there's a view-based backfill
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	changesJSON := `{"since":15, "limit":50}`
+	changes.Results = nil
+	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	goassert.Equals(t, len(changes.Results), 5)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+
+	queryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	log.Printf("After initial changes request, query count is :%d", queryCount)
+
+	// Issue a since=0 changes request.  Validate that there is not another a view-based backfill
+	changes.Results = nil
+	changesJSON = `{"since":0, "limit":50}`
+	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	goassert.Equals(t, len(changes.Results), 10)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	// Validate that there has been one more view query
+	secondQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	goassert.Equals(t, secondQueryCount, queryCount+1)
+
+	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
+	changes.Results = nil
+	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	goassert.Equals(t, len(changes.Results), 10)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	// Validate that there haven't been any more view queries
+	thirdQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	goassert.Equals(t, thirdQueryCount, secondQueryCount)
+
+}
+
 // Tests view backfill and validates that results are prepended to cache
 func TestChangesViewBackfill(t *testing.T) {
 
