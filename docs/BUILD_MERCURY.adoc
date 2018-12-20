@@ -6,79 +6,27 @@ Sync Gateway Mercury Build / Development Instructions
 
 == Mobile Service
 
-=== Use pre-built binary
+=== MacOS
 
-1. Download a recent Mad-Hatter build, for example http://latestbuilds.service.couchbase.com/builds/latestbuilds/couchbase-server/mad-hatter/1908/couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm[mad-hatter/1908/couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm]
-1. `rpm -i couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm`
-1. In the setup screen, you should see a new checkbox for the **Mobile** service.
-1. After going through the setup process, you should see a new a log file: `/opt/couchbase/var/lib/couchbase/logs/mobile.log`
-1. Additionally, if you run a `ps` command, you should see a new child process: `/opt/couchbase/bin/mobile-service --grpcTlsPort=18098 --restAdminPort=8097 --restAdminPortTLS=18097 --dataDir=/opt/couchbase/var/lib/couchbase/data/@mobile --uuid=69e8108a6611a8b192398a0bb32af36d --server=http://127.0.0.1:8091 --enterprise=true`
-
-==== Rebuild mobile-service + patch
-
-1. TODO: add instructions to rebuild the mobile-service binary in a standalone manner
-1. Copy binary to overwrite `/opt/couchbase/bin/mobile-service`
-1. Restart Couchbase Server
-
-=== Build Couchbase Server + Mobile-Service from Source
-
-Upstream instructions:
-
-- https://github.com/couchbase/tlm#how-to-build[couchbase/tlm#how-to-build]
-- https://hub.internal.couchbase.com/confluence/pages/viewpage.action?title=Developer-Hosted+Builds&spaceKey=CR[Developer-Hosted Builds] (internal wiki)
-
-
-==== MacOS
+==== Sync Code (one-time)
 
 ```
 $ brew install cmake
 $ repo init -u git://github.com/couchbase/manifest -m couchbase-server/mad-hatter.xml
 $ repo sync
+```
+
+==== Build
+
+```
 $ make -j 6
 ```
 
-==== CentOS7
+The first time will take a long time, depending on your machine specs.  Subsequent builds should be very fast however.
 
-Building directly on the machine should be possible, but appears difficult due to compiler version dependencies.  The Couchbase Build team recommends building in a Docker container.
+In order to submit code changes up to the https://github.com/couchbase/mobile-service[mobile-service], you must use Gerrit since the repo is Gerrit-locked.
 
-===== Install docker
-
-From this https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-centos-7[Digital Ocean tutorial]:
-
-```
-$ curl -fsSL https://get.docker.com/ | sh
-$ sudo systemctl start docker
-$ sudo systemctl enable docker
-$ sudo usermod -aG docker centos
-```
-
-===== Launch docker container
-
-```
-$ docker run -d -v ~/.ssh:/ssh --name="builder" couchbasebuild/server-centos7-build:20181125 sleep 1000000
-$ docker exec -u couchbase -it builder bash
-```
-
-Now, from inside the docker container:
-
-```
-$ cd ~
-$ git config --global user.email "someone@couchbase.com"
-$ git config --global user.name "someone"
-$ repo init -u git://github.com/couchbase/manifest -m couchbase-server/mad-hatter.xml
-$ repo sync
-$ make -j 6
-```
-
-This will include and build the https://github.com/couchbase/mobile-service[mobile-service] codebase as part of the build process.
-
-This will build the **community** edition.  Building the **enterprise** edition is trickier due to the dependency on private repos.
-
-==== Verify
-
-After the build is complete, you should have a file `install/bin/mobile-service`.
-
-==== Run multi-node cluster via cluster-run
+==== Run
 
 ```
 $ cd ns_server
@@ -90,8 +38,89 @@ You will now have nodes running on:
 * http://localhost:9000/
 * http://localhost:9001/
 
+Both nodes will have the mobile-service running and you are ready to connect Sync Gateway nodes.  Go to the <<Sync Gateway>> section for instructions.
 
-=== Couchbase Server Toy Builds
+=== CentOS7 + Docker
+
+Building directly on the CentOS7 machine should be possible in theory, but it appears difficult due to compiler version dependencies.  The Couchbase Build team recommends building in a Docker container.
+
+This takes a "hybrid" approach of installing Couchbase Server from an `.rpm` package, and then using the docker source build in order to rebuild the `mobile-service` binary and copy it up to the host machine to overwrite the existing `mobile-service` binary from the `.rpm` package.
+
+==== Install Couchbase Server pre-built binary
+
+1. Download a recent Mad-Hatter build, for example http://latestbuilds.service.couchbase.com/builds/latestbuilds/couchbase-server/mad-hatter/1908/couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm[mad-hatter/1908/couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm]
+1. `rpm -i couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm`
+1. In the setup screen, you should see a new checkbox for the **Mobile** service.
+1. After going through the setup process, you should see a new a log file: `/opt/couchbase/var/lib/couchbase/logs/mobile.log`
+1. Additionally, if you run a `ps` command, you should see a new child process: `/opt/couchbase/bin/mobile-service --grpcTlsPort=18098 --restAdminPort=8097 --restAdminPortTLS=18097 --dataDir=/opt/couchbase/var/lib/couchbase/data/@mobile --uuid=69e8108a6611a8b192398a0bb32af36d --server=http://127.0.0.1:8091 --enterprise=true`
+
+At this point, you will have a running Couchbase Server with the mobile service enabled.  You can skip to the Sync Gateway section to get a complete running system.  If you need to change the mobile service code and rebuild, you will need to do more steps.
+
+As far as running the mobile service under a remote debugger, in https://issues.couchbase.com/browse/MB-31682[MB-31682] there was a request to add code which would enable the Delve debugger, which has been tested and is known to work.  Unfornately this change never made it in.  The details are in the ticket under the **Option to run under the delve debugger** section.  If that code was added while building from source, it is possible to use the Delve remote debugging feature to connect.
+
+==== Rebuild Mobile-Service from Source
+
+In order to use the correct dependencies, the `mobile-service` needs to be built from within the Couchbase Server source tree.
+
+===== Install docker (one-time)
+
+From this https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-centos-7[Digital Ocean tutorial]:
+
+```
+$ curl -fsSL https://get.docker.com/ | sh
+$ sudo systemctl start docker
+$ sudo systemctl enable docker
+$ sudo usermod -aG docker centos
+```
+
+===== Launch docker container (one-time)
+
+The docker container has all of the build dependencies baked in.  Run a docker container in the background via:
+
+```
+$ docker run -d -v ~/.ssh:/ssh --name="builder" couchbasebuild/server-centos7-build:20181125 sleep 1000000
+```
+
+===== Enter docker container + sync code (one-time)
+
+Create a shell inside of the running docker container:
+
+```
+$ docker exec -u couchbase -it builder bash
+```
+
+Now, from inside the docker container:
+
+```
+$ cd ~
+$ git config --global user.email "someone@couchbase.com"
+$ git config --global user.name "someone"
+$ repo init -u git://github.com/couchbase/manifest -m couchbase-server/mad-hatter.xml
+$ repo sync
+```
+
+===== Enter docker container + build
+
+From inside the docker container (see previous step):
+
+```
+$ make -j 6
+```
+
+The first time will take a long time, depending on your machine specs.  Subsequent builds should be very fast however.
+
+This will include and build the https://github.com/couchbase/mobile-service[mobile-service] codebase as part of the build process.
+
+This will build the **community** edition.  Building the **enterprise** edition is trickier due to the dependency on private repos.
+
+===== Deploy
+
+From **outside** the docker container, deploy the mobile-service binary to the Couchbase Server running on the host:
+
+After the build is complete, you should have a file `/opt/couchbase/bin/mobile-service` (if not, check for `install/bin/mobile-service`).
+
+
+=== Jenkins Toy Build
 
 ==== Create Forks
 
@@ -114,13 +143,8 @@ On the http://server.jenkins.couchbase.com/view/Toys/job/toy-unix/build?delay=0s
 
 Toy builds will self-destruct after 1-2 weeks, unless you check the **Keep This Build Forever** checkbox.
 
-=== Remote debugger
 
-In https://issues.couchbase.com/browse/MB-31682[MB-31682] there was a request to add code which would enable the Delve debugger, which has been tested and is known to work.  Unfornately this change never made it in.  The details are in the ticket under the **Option to run under the delve debugger** section.  If that code was added while building from source, it is possible to use the Delve remote debugging feature to connect.
 
-=== Submitting Changes
-
-The https://github.com/couchbase/mobile-service[mobile-service] repo is Gerrit-locked, and so all changes must be submitted via Gerrit.
 
 == Sync Gateway
 
