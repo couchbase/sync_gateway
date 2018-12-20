@@ -31,6 +31,7 @@ type DocumentRevision struct {
 	Channels    base.Set
 	Expiry      *time.Time
 	Attachments AttachmentsMeta
+	Delta       *RevCacheDelta
 }
 
 // Callback function signature for loading something from the rev cache
@@ -44,8 +45,14 @@ type revCacheValue struct {
 	channels    base.Set        // Set of channels that have access
 	expiry      *time.Time      // Document expiry
 	attachments AttachmentsMeta // Document _attachments property
+	delta       *RevCacheDelta  // Available delta *from* this revision
 	err         error           // Error from loaderFunc if it failed
 	lock        sync.Mutex      // Synchronizes access to this struct
+}
+
+type RevCacheDelta struct {
+	ToRevID    string
+	DeltaBytes []byte
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -81,6 +88,15 @@ func (rc *RevisionCache) GetCached(docid, revid string) (DocumentRevision, error
 // Returns the body of the revision based on the specified body copy policy (deep/shallow/none)
 func (rc *RevisionCache) GetWithCopy(docid, revid string, copyType BodyCopyType) (DocumentRevision, error) {
 	return rc.getFromCache(docid, revid, copyType, rc.loaderFunc != nil)
+}
+
+// Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
+// fails silently
+func (rc *RevisionCache) UpdateDelta(docID, revID string, toRevID string, delta []byte) {
+	value := rc.getValue(docID, revID, false)
+	if value != nil {
+		value.updateDelta(toRevID, delta)
+	}
 }
 
 func (rc *RevisionCache) getFromCache(docid, revid string, copyType BodyCopyType, loadOnCacheMiss bool) (DocumentRevision, error) {
@@ -201,6 +217,7 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc, copyType Bo
 		Channels:    value.channels,
 		Expiry:      value.expiry,
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
+		Delta:       value.delta,
 	}
 	return docRev, cacheHit, value.err
 }
@@ -225,6 +242,7 @@ func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext, 
 		Channels:    value.channels,
 		Expiry:      value.expiry,
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
+		Delta:       value.delta,
 	}
 
 	return docRev, cacheHit, value.err
@@ -233,6 +251,7 @@ func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext, 
 // Stores a body etc. into a revCacheValue if there isn't one already.
 func (value *revCacheValue) store(docRev DocumentRevision) {
 	value.lock.Lock()
+	defer value.lock.Unlock()
 	if value.body == nil {
 		value.body = docRev.Body.ShallowCopy() // Don't store a body the caller might later mutate
 		value.body[BodyId] = value.key.DocID   // Rev cache includes id and rev in the body.  Ensure they are set in case callers aren't passing
@@ -243,5 +262,13 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.attachments = docRev.Attachments.ShallowCopy() // Don't store attachments the caller might later mutate
 		value.err = nil
 	}
-	value.lock.Unlock()
+}
+
+func (value *revCacheValue) updateDelta(toRevID string, deltaBytes []byte) {
+	value.lock.Lock()
+	defer value.lock.Unlock()
+	value.delta = &RevCacheDelta{
+		ToRevID:    toRevID,
+		DeltaBytes: deltaBytes,
+	}
 }
