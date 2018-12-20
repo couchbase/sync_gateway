@@ -89,8 +89,10 @@ const (
 	StatKeyDocReadsBytesBlip     = "doc_reads_bytes_blip"
 
 	// StatsDeltaSync
-	StatKeyNetBandwidthSavings = "net_bandwidth_savings"
-	StatKeyDeltaHitRatio       = "delta_hit_ratio"
+	StatKeyNetBandwidthSavings       = "net_bandwidth_savings"
+	StatKeyDeltasRequested           = "deltas_requested"
+	StatKeyDeltasSent                = "deltas_sent"
+	StatKeyDeltaPullReplicationCount = "delta_pull_replication_count"
 
 	// StatsSharedBucketImport
 	StatKeyImportBacklog    = "import_backlog"

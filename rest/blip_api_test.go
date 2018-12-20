@@ -1490,6 +1490,8 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
+	deltaSentCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent))
+
 	client, err := NewBlipTesterClient(&rt)
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1524,6 +1526,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
+		assert.Equal(t, deltaSentCount+1, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent)))
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
 		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
@@ -1532,6 +1535,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
+		assert.Equal(t, deltaSentCount, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent)))
 	}
 }
 
