@@ -1539,6 +1539,90 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	}
 }
 
+// TestBlipDeltaSyncPull tests that a simple pull replication uses deltas in EE,
+// Second pull validates use of rev cache for previously generated deltas.
+func TestBlipDeltaSyncPullRevCache(t *testing.T) {
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Skipping enterprise-only delta sync test.")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	var rt RestTester
+	defer rt.Close()
+
+	client, err := NewBlipTesterClient(&rt)
+	assert.NoError(t, err)
+	defer client.Close()
+
+	client.ClientDeltas = true
+	client.StartPull()
+
+	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
+	// Perform a one-shot pull as client 2 to pull down the first revision
+
+	client2, err := NewBlipTesterClient(&rt)
+	assert.NoError(t, err)
+	defer client2.Close()
+
+	client2.ClientDeltas = true
+	client2.StartOneshotPull()
+
+	msg, ok := client2.pullReplication.WaitForMessage(3)
+	assert.True(t, ok)
+
+	// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": "bob"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok = client.WaitForRev("doc1", "2-959f0e9ad32d84ff652fb91d8d0caa7e")
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(data))
+
+	msg, ok = client.pullReplication.WaitForMessage(5)
+	assert.True(t, ok)
+
+	// Check EE is delta
+	// Check the request was sent with the correct deltaSrc property
+	assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[revMessageDeltaSrc])
+	// Check the request body was the actual delta
+	msgBody, err := msg.Body()
+	assert.NoError(t, err)
+	assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
+
+	deltaCacheHits := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
+	deltaCacheMisses := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheMisses))
+
+	// Run another one shot pull to get the 2nd revision - validate it comes as delta, and uses cached version
+	client2.ClientDeltas = true
+	client2.StartOneshotPull()
+
+	msg2, ok := client2.pullReplication.WaitForMessage(6)
+	assert.True(t, ok)
+
+	// Check the request was sent with the correct deltaSrc property
+	assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg2.Properties[revMessageDeltaSrc])
+	// Check the request body was the actual delta
+	msgBody2, err := msg2.Body()
+	assert.NoError(t, err)
+	assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody2))
+
+	updatedDeltaCacheHits := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
+	updatedDeltaCacheMisses := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheMisses))
+
+	assert.Equal(t, deltaCacheHits+1, updatedDeltaCacheHits)
+	assert.Equal(t, deltaCacheMisses, updatedDeltaCacheMisses)
+
+}
+
 // TestBlipDeltaSyncPush tests that a simple push replication handles deltas in EE,
 // and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {

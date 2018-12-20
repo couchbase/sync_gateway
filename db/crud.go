@@ -12,6 +12,7 @@ package db
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -369,6 +370,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 
 	fromRevision, err := db.revisionCache.GetWithCopy(docID, fromRevID, BodyNoCopy)
 
+	log.Printf("rev cache returned delta: %+v", fromRevision.Delta)
 	// If neither body nor delta is available for fromRevId, the delta can't be generated
 	if fromRevision.Body == nil && fromRevision.Delta == nil {
 		return nil, err
@@ -378,6 +380,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 	if fromRevision.Delta != nil {
 		if fromRevision.Delta.ToRevID == toRevID {
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
+			db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
 			return fromRevision.Delta.DeltaBytes, nil
 		} else {
 			// TODO: Recurse and merge deltas when gen(revCacheDelta.toRevID) < gen(toRevId)
@@ -386,6 +389,8 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 
 	// Delta is unavailable, but the body is available.
 	if fromRevision.Body != nil {
+
+		db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		toBody, err := db.revisionCache.GetWithCopy(docID, toRevID, BodyDeepCopy)
 		if err != nil {
 			return nil, err

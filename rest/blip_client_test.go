@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	blip "github.com/couchbase/go-blip"
+	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
@@ -206,6 +206,10 @@ func NewBlipTesterClient(rt *RestTester) (client *BlipTesterClient, err error) {
 // StartPull will begin a continuous pull replication since 0 between the client and server
 func (btc *BlipTesterClient) StartPull() (err error) {
 	return btc.StartPullSince("true", "0")
+}
+
+func (btc *BlipTesterClient) StartOneshotPull() (err error) {
+	return btc.StartPullSince("false", "0")
 }
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
