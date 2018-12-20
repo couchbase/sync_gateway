@@ -1,6 +1,6 @@
 [%hardbreaks]
 :toc: left
-:toclevels: 3
+:toclevels: 4
 
 Sync Gateway Mercury Build / Development Instructions
 
@@ -8,7 +8,7 @@ Sync Gateway Mercury Build / Development Instructions
 
 === MacOS
 
-==== Sync Code (one-time)
+==== Repo Sync Code (one-time)
 
 ```
 $ brew install cmake
@@ -46,7 +46,7 @@ Building directly on the CentOS7 machine should be possible in theory, but it ap
 
 This takes a "hybrid" approach of installing Couchbase Server from an `.rpm` package, and then using the docker source build in order to rebuild the `mobile-service` binary and copy it up to the host machine to overwrite the existing `mobile-service` binary from the `.rpm` package.
 
-==== Install Couchbase Server pre-built binary
+==== Install Couchbase Server pre-built binary (one-time)
 
 1. Download a recent Mad-Hatter build, for example http://latestbuilds.service.couchbase.com/builds/latestbuilds/couchbase-server/mad-hatter/1908/couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm[mad-hatter/1908/couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm]
 1. `rpm -i couchbase-server-enterprise-6.5.0-1908-centos7.x86_64.rpm`
@@ -81,7 +81,7 @@ The docker container has all of the build dependencies baked in.  Run a docker c
 $ docker run -d -v ~/.ssh:/ssh --name="builder" couchbasebuild/server-centos7-build:20181125 sleep 1000000
 ```
 
-===== Enter docker container + sync code (one-time)
+===== Enter docker container + repo sync code (one-time)
 
 Create a shell inside of the running docker container:
 
@@ -122,14 +122,14 @@ After the build is complete, you should have a file `/opt/couchbase/bin/mobile-s
 
 === Jenkins Toy Build
 
-==== Create Forks
+==== Create Forks (one-time)
 
 Fork the following repos to your personal github account:
 
 * https://github.com/couchbase/manifest
 * https://github.com/couchbase/mobile-service
 
-==== Update couchbase manifest fork
+==== Update couchbase manifest fork (one-time)
 
 On your fork of the `couchbase/manifest` repo, update the `master/couchbase-server/mad-hatter.xml` file to point to your mobile-service fork.  Rather than point to a particular commit hash, it's probably easier to point to your feature branch.
 
@@ -142,8 +142,6 @@ Push your feature branch up to your fork.  Now anyone who builds the `mad-hatter
 On the http://server.jenkins.couchbase.com/view/Toys/job/toy-unix/build?delay=0sec[Server Jenkins] machine, kick off a toy build and point to your manifest fork.
 
 Toy builds will self-destruct after 1-2 weeks, unless you check the **Keep This Build Forever** checkbox.
-
-
 
 
 == Sync Gateway
