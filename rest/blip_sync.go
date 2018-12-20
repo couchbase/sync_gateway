@@ -602,6 +602,7 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 
 func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
 
+	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
 	bh.Logf(base.LevelTrace, base.KeySync, "DELTA: getting newBody docID: %s - rev: %v", base.UD(docID), revID)
 	newBody, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
@@ -650,6 +651,7 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 	bh.Logf(base.LevelDebug, base.KeySync, "DELTA: generated delta: %s", base.UD(delta))
 
 	bh.sendDelta(delta, deltaSrcRevID, sender, seq, docID, revID, knownRevs, maxHistory)
+	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasSent, 1)
 }
 
 func (bh *blipHandler) sendDelta(delta []byte, deltaSrcRevID string, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
@@ -967,7 +969,12 @@ func (ctx *blipSyncContext) isAttachmentAllowed(digest string) bool {
 
 // setUseDeltas will set useDeltas on the blipSyncContext as long as both sides of the connection have it enabled.
 func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
-	ctx.useDeltas = clientCanUseDeltas && ctx.sgCanUseDeltas
+
+	shouldUseDeltas := clientCanUseDeltas && ctx.sgCanUseDeltas
+	if !ctx.useDeltas && shouldUseDeltas {
+		ctx.dbc.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
+	}
+	ctx.useDeltas = shouldUseDeltas
 }
 
 // NOTE: This code is taken from db/attachments.go in the feature/deltas branch, as of commit
