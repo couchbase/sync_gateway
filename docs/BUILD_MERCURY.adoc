@@ -8,10 +8,15 @@ Sync Gateway Mercury Build / Development Instructions
 
 === MacOS
 
+==== Install build dependencies
+
+. `cmake` - `brew install cmake`
+. `repo` - should already be installed via `bootstrap.sh`
+. `clang` compiler (available via Xcode)
+
 ==== Repo Sync Code (one-time)
 
 ```
-$ brew install cmake
 $ repo init -u git://github.com/couchbase/manifest -m couchbase-server/mad-hatter.xml
 $ repo sync
 ```
