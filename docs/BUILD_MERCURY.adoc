@@ -1,6 +1,6 @@
 [%hardbreaks]
 :toc: left
-:toclevels: 4
+:toclevels: 3
 
 Sync Gateway Mercury Build / Development Instructions
 
