@@ -1000,6 +1000,8 @@ func (sc *ServerContext) logStats() error {
 
 	AddGoRuntimeStats()
 
+	sc.logNetworkInterfaceStats()
+
 	if err := sc.statsContext.addGoSigarStats(); err != nil {
 		base.Warnf(base.KeyAll, "Error getting sigar based system resource stats: %v", err)
 	}
@@ -1025,6 +1027,27 @@ func (sc *ServerContext) logStats() error {
 	base.RecordStats(string(marshalled))
 
 	return nil
+
+}
+
+
+func (sc *ServerContext) logNetworkInterfaceStats() {
+
+	publicListenInterface := DefaultInterface
+	if sc.config.Interface != nil {
+		publicListenInterface = *sc.config.Interface
+	}
+	if err := sc.statsContext.addPublicNetworkInterfaceStatsForHostnamePort(publicListenInterface); err != nil {
+		base.Warnf(base.KeyAll, "Error getting public network interface resource stats: %v", err)
+	}
+
+	adminListenInterface := DefaultAdminInterface
+	if sc.config.AdminInterface != nil {
+		adminListenInterface = *sc.config.AdminInterface
+	}
+	if err := sc.statsContext.addAdminNetworkInterfaceStatsForHostnamePort(adminListenInterface); err != nil {
+		base.Warnf(base.KeyAll, "Error getting admin network interface resource stats: %v", err)
+	}
 
 }
 

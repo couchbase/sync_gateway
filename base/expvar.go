@@ -47,21 +47,25 @@ const (
 const (
 
 	// StatsResourceUtilization
-	StatKeyProcessCpuPercentUtilization = "process_cpu_percent_utilization"
-	StatKeyProcessMemoryResident        = "process_memory_resident"
-	StatKeySystemMemoryTotal            = "system_memory_total"
-	StatKeyNumGoroutines                = "num_goroutines"
-	StatKeyGoroutinesHighWatermark      = "goroutines_high_watermark"
-	StatKeyGoMemstatsSys                = "go_memstats_sys"
-	StatKeyGoMemstatsHeapAlloc          = "go_memstats_heapalloc"
-	StatKeyGoMemstatsHeapIdle           = "go_memstats_heapidle"
-	StatKeyGoMemstatsHeapInUse          = "go_memstats_heapinuse"
-	StatKeyGoMemstatsHeapReleased       = "go_memstats_heapreleased"
-	StatKeyGoMemstatsStackInUse         = "go_memstats_stackinuse"
-	StatKeyGoMemstatsStackSys           = "go_memstats_stacksys"
-	StatKeyGoMemstatsPauseTotalNs       = "go_memstats_pausetotalns"
-	StatKeyErrorCount                   = "error_count"
-	StatKeyWarnCount                    = "warn_count"
+	StatKeyProcessCpuPercentUtilization   = "process_cpu_percent_utilization"
+	StatKeyProcessMemoryResident          = "process_memory_resident"
+	StatKeySystemMemoryTotal              = "system_memory_total"
+	StatKeyPubNetworkInterfaceBytesSent   = "pub_net_bytes_sent"
+	StatKeyPubNetworkInterfaceBytesRecv   = "pub_net_bytes_recv"
+	StatKeyAdminNetworkInterfaceBytesSent = "admin_net_bytes_sent"
+	StatKeyAdminNetworkInterfaceBytesRecv = "admin_net_bytes_recv"
+	StatKeyNumGoroutines                  = "num_goroutines"
+	StatKeyGoroutinesHighWatermark        = "goroutines_high_watermark"
+	StatKeyGoMemstatsSys                  = "go_memstats_sys"
+	StatKeyGoMemstatsHeapAlloc            = "go_memstats_heapalloc"
+	StatKeyGoMemstatsHeapIdle             = "go_memstats_heapidle"
+	StatKeyGoMemstatsHeapInUse            = "go_memstats_heapinuse"
+	StatKeyGoMemstatsHeapReleased         = "go_memstats_heapreleased"
+	StatKeyGoMemstatsStackInUse           = "go_memstats_stackinuse"
+	StatKeyGoMemstatsStackSys             = "go_memstats_stacksys"
+	StatKeyGoMemstatsPauseTotalNs         = "go_memstats_pausetotalns"
+	StatKeyErrorCount                     = "error_count"
+	StatKeyWarnCount                      = "warn_count"
 
 	// StatsCache
 	StatKeyRevisionCacheHits         = "rev_cache_hits"
@@ -128,7 +132,6 @@ const (
 	StatKeyAttachmentPullBytes              = "attachment_pull_bytes"
 
 	// StatsSecurity
-	StatKeyAccessQueriesPerSec = "access_queries_per_sec"
 	StatKeyNumDocsRejected     = "num_docs_rejected"
 	StatKeyNumAccessErrors     = "num_access_errors"
 	StatKeyAuthSuccessCount    = "auth_success_count"
@@ -180,13 +183,13 @@ func init() {
 	// All stats will be stored in expvars under the "syncgateway" key.
 	Stats = expvar.NewMap(StatsGroupKeySyncGateway)
 
-	GlobalStats = new(expvar.Map)
+	GlobalStats = new(expvar.Map).Init()
 	Stats.Set(Global, GlobalStats)
 
-	PerDbStats = new(expvar.Map)
+	PerDbStats = new(expvar.Map).Init()
 	Stats.Set(PerDb, PerDbStats)
 
-	PerReplicationStats = new(expvar.Map)
+	PerReplicationStats = new(expvar.Map).Init()
 	Stats.Set(PerReplication, PerReplicationStats)
 
 	// Add StatsResourceUtilization under GlobalStats
@@ -201,10 +204,14 @@ func StatsResourceUtilization() *expvar.Map {
 }
 
 func NewStatsResourceUtilization() *expvar.Map {
-	stats := new(expvar.Map)
+	stats := new(expvar.Map).Init()
 	stats.Set(StatKeyProcessCpuPercentUtilization, ExpvarFloatVal(0))
 	stats.Set(StatKeyProcessMemoryResident, ExpvarIntVal(0))
 	stats.Set(StatKeySystemMemoryTotal, ExpvarIntVal(0))
+	stats.Set(StatKeyPubNetworkInterfaceBytesSent, ExpvarIntVal(0))
+	stats.Set(StatKeyPubNetworkInterfaceBytesRecv, ExpvarIntVal(0))
+	stats.Set(StatKeyAdminNetworkInterfaceBytesSent, ExpvarIntVal(0))
+	stats.Set(StatKeyAdminNetworkInterfaceBytesRecv, ExpvarIntVal(0))
 	stats.Set(StatKeyNumGoroutines, ExpvarIntVal(0))
 	stats.Set(StatKeyGoroutinesHighWatermark, ExpvarIntVal(0))
 	stats.Set(StatKeyGoMemstatsSys, ExpvarIntVal(0))
@@ -225,7 +232,7 @@ func NewStatsResourceUtilization() *expvar.Map {
 func RemovePerReplicationStats(replicationUuid string) {
 
 	// Clear out the stats for this replication since they will no longer be updated.
-	PerReplicationStats.Set(replicationUuid, new(expvar.Map))
+	PerReplicationStats.Set(replicationUuid, new(expvar.Map).Init())
 
 }
 
@@ -234,7 +241,7 @@ func RemovePerReplicationStats(replicationUuid string) {
 func RemovePerDbStats(dbName string) {
 
 	// Clear out the stats for this db since they will no longer be updated.
-	PerDbStats.Set(dbName, new(expvar.Map))
+	PerDbStats.Set(dbName, new(expvar.Map).Init())
 
 }
 

@@ -18,7 +18,7 @@ type DatabaseStats struct {
 
 func NewDatabaseStats() *DatabaseStats {
 	dbStats := DatabaseStats{
-		storage: new(expvar.Map),
+		storage: new(expvar.Map).Init(),
 	}
 	return &dbStats
 }
@@ -76,7 +76,7 @@ func (d *DatabaseStats) StatsByKey(key string) (stats *expvar.Map) {
 
 func initEmptyStatsMap(key string) *expvar.Map {
 
-	result := new(expvar.Map)
+	result := new(expvar.Map).Init()
 
 	switch key {
 	case base.StatsGroupKeyCache:
@@ -109,6 +109,8 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyDeltaPullReplicationCount, base.ExpvarIntVal(0))
 	case base.StatsGroupKeySharedBucketImport:
 		result.Set(base.StatKeyImportBacklog, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyImportCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyImportErrorCount, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyCblReplicationPush:
 		result.Set(base.StatKeyDocPushCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyWriteProcessingTime, base.ExpvarIntVal(0))
@@ -136,7 +138,6 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyAttachmentPullCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAttachmentPullBytes, base.ExpvarIntVal(0))
 	case base.StatsGroupKeySecurity:
-		result.Set(base.StatKeyAccessQueriesPerSec, base.ExpvarFloatVal(0))
 		result.Set(base.StatKeyNumDocsRejected, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumAccessErrors, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAuthSuccessCount, base.ExpvarIntVal(0))

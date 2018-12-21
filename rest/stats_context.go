@@ -2,12 +2,16 @@ package rest
 
 import (
 	"expvar"
-	"github.com/couchbase/sync_gateway/base"
+	"fmt"
+	"net"
+	"os"
 	"runtime"
 	"sync/atomic"
 	"time"
-	"os"
+
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/elastic/gosigar"
+	gopsutilnet "github.com/shirou/gopsutil/net"
 )
 
 // Group the stats related context that is associated w/ a ServerContext into a struct
@@ -56,7 +60,6 @@ func newCpuStatsSnapshot() (snapshot *cpuStatsSnapshot, err error) {
 	return snapshot, nil
 
 }
-
 
 // Calculate the percentage of CPU used by this process over the sampling time specified in statsLogFrequencySecs
 //
@@ -111,7 +114,6 @@ func (statsContext *statsContext) calculateProcessCpuPercentage() (cpuPercentUti
 
 }
 
-
 func (statsContext *statsContext) addProcessCpuPercentage() error {
 
 	statsResourceUtilization := base.StatsResourceUtilization()
@@ -153,7 +155,6 @@ func (statsContext *statsContext) addProcessMemoryPercentage() error {
 
 }
 
-
 func (statsContext *statsContext) addGoSigarStats() error {
 
 	if err := statsContext.addProcessCpuPercentage(); err != nil {
@@ -166,6 +167,32 @@ func (statsContext *statsContext) addGoSigarStats() error {
 
 	return nil
 
+}
+
+func (statsContext *statsContext) addPublicNetworkInterfaceStatsForHostnamePort(hostPort string) error {
+
+	iocountersStats, err := networkInterfaceStatsForHostnamePort(hostPort)
+	if err != nil {
+		return err
+	}
+
+	base.StatsResourceUtilization().Set(base.StatKeyPubNetworkInterfaceBytesSent, base.ExpvarUInt64Val(iocountersStats.BytesSent))
+	base.StatsResourceUtilization().Set(base.StatKeyPubNetworkInterfaceBytesRecv, base.ExpvarUInt64Val(iocountersStats.BytesRecv))
+
+	return nil
+}
+
+func (statsContext *statsContext) addAdminNetworkInterfaceStatsForHostnamePort(hostPort string) error {
+
+	iocountersStats, err := networkInterfaceStatsForHostnamePort(hostPort)
+	if err != nil {
+		return err
+	}
+
+	base.StatsResourceUtilization().Set(base.StatKeyAdminNetworkInterfaceBytesSent, base.ExpvarUInt64Val(iocountersStats.BytesSent))
+	base.StatsResourceUtilization().Set(base.StatKeyAdminNetworkInterfaceBytesRecv, base.ExpvarUInt64Val(iocountersStats.BytesRecv))
+
+	return nil
 }
 
 func AddGoRuntimeStats() {
@@ -207,7 +234,6 @@ func AddGoRuntimeStats() {
 
 }
 
-
 // Record Goroutines high watermark into expvars
 func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxGoroutinesSeen uint64) {
 
@@ -226,5 +252,97 @@ func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxG
 	}
 
 	return maxGoroutinesSeen
+
+}
+
+func networkInterfaceStatsForHostnamePort(hostPort string) (iocountersStats gopsutilnet.IOCountersStat, err error) {
+
+	host, _, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return iocountersStats, err
+	}
+
+	allInterfaces := false
+	if host == "" || host == "0.0.0.0" {
+		allInterfaces = true
+	}
+
+	// "localhost" -> "127.0.0.1", since this code only works with IP addresses
+	if host == "localhost" {
+		host = "127.0.0.1"
+	}
+
+	interfaceName := ""
+	if !allInterfaces {
+		interfaceName, err = discoverInterfaceName(host)
+		if err != nil {
+			return iocountersStats, err
+		}
+	}
+
+	// Only get interface stats on a "Per Nic (network interface card)" basis if we aren't
+	// listening on all interfaces, in which case we want the combined stats across all NICs.
+	perNic := !allInterfaces
+
+	iocountersStatsSet, err := gopsutilnet.IOCounters(perNic)
+	if err != nil {
+		return iocountersStats, err
+	}
+
+	if !allInterfaces {
+		iocountersStatsSet = filterIOCountersByNic(iocountersStatsSet, interfaceName)
+	}
+
+	if len(iocountersStatsSet) == 0 {
+		return iocountersStats, fmt.Errorf("Unable to find any network interface stats: %v", err)
+	}
+
+	// At this point we should only have one set of stats, either the stats for the NIC we care
+	// about or the special "all" NIC which combines the stats
+	iocountersStats = iocountersStatsSet[0]
+
+	return iocountersStats, nil
+
+}
+
+func filterIOCountersByNic(iocountersStatsSet []gopsutilnet.IOCountersStat, interfaceName string) (filtered []gopsutilnet.IOCountersStat) {
+
+	filtered = []gopsutilnet.IOCountersStat{}
+	for _, iocountersStats := range iocountersStatsSet {
+		if iocountersStats.Name == interfaceName {
+			filtered = append(filtered, iocountersStats)
+			return filtered
+		}
+	}
+
+	return filtered
+}
+
+func discoverInterfaceName(host string) (interfaceName string, err error) {
+
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+
+	for _, iface := range interfaces {
+		ifaceAddresses, err := iface.Addrs()
+		if err != nil {
+			return "", err
+		}
+		for _, ifaceCIDRAddr := range ifaceAddresses {
+
+			ipAddr, _, err := net.ParseCIDR(ifaceCIDRAddr.String())
+			if err != nil {
+				return "", err
+			}
+
+			if ipAddr.String() == host {
+				return iface.Name, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("Unable to find interface for host: %v", host)
 
 }
