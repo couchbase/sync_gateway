@@ -1539,7 +1539,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	}
 }
 
-// TestBlipDeltaSyncPull tests that a simple pull replication uses deltas in EE,
+// TestBlipDeltaSyncPullRevCache tests that a simple pull replication uses deltas in EE,
 // Second pull validates use of rev cache for previously generated deltas.
 func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 

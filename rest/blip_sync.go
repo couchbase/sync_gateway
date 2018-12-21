@@ -617,7 +617,7 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 	var deltaSrcRevID string
 	newBodyRevisions, ok := newBody[db.BodyRevisions].(db.Revisions)
 	if !ok {
-		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: couldn't get newBody[_revisions] - sending NoRev... err: %v", err)
+		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: couldn't get newBody[_revisions] - falling back to sending full body.  err: %v", err)
 		// If we can't get ancestor revisions, fall back to sending full body
 		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 		return
@@ -632,13 +632,14 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 	}
 
 	delta, err := bh.db.GetDelta(docID, deltaSrcRevID, revID)
-	if err != nil || delta == nil {
-		if err != nil {
-			bh.Logf(base.LevelInfo, base.KeySync, "DELTA: error generating delta from %s to %s for key %s; falling back to full body replication.  err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		} else {
-			bh.Logf(base.LevelDebug, base.KeySync, "DELTA: unable to generate delta from %s to %s for key %s; falling back to full body replication.", deltaSrcRevID, revID, base.UD(docID))
-		}
-		// fall back to standard full-body replication if we can't diff
+	if err != nil {
+		bh.Logf(base.LevelInfo, base.KeySync, "DELTA: error generating delta from %s to %s for key %s; falling back to full body replication.  err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
+		return
+	}
+
+	if delta == nil {
+		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: unable to generate delta from %s to %s for key %s; falling back to full body replication.", deltaSrcRevID, revID, base.UD(docID))
 		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 		return
 	}

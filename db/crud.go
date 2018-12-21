@@ -12,7 +12,6 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -364,13 +363,12 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 	return revision.Body, nil
 }
 
-// GetDeltaOrRev attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
+// GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
 func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, err error) {
 
 	fromRevision, err := db.revisionCache.GetWithCopy(docID, fromRevID, BodyNoCopy)
 
-	log.Printf("rev cache returned delta: %+v", fromRevision.Delta)
 	// If neither body nor delta is available for fromRevId, the delta can't be generated
 	if fromRevision.Body == nil && fromRevision.Delta == nil {
 		return nil, err
