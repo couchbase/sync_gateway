@@ -332,12 +332,12 @@ func discoverInterfaceName(host string) (interfaceName string, err error) {
 		}
 		for _, ifaceCIDRAddr := range ifaceAddresses {
 
-			ipv4Addr, _, err := net.ParseCIDR(ifaceCIDRAddr.String())
+			ipAddr, _, err := net.ParseCIDR(ifaceCIDRAddr.String())
 			if err != nil {
 				return "", err
 			}
 
-			if ipv4Addr.String() == host {
+			if ipAddr.String() == host {
 				return iface.Name, nil
 			}
 		}
