@@ -8,15 +8,15 @@ import (
 func TestNetworkInterfaceStatsForHostnamePort(t *testing.T) {
 
 	_, err := networkInterfaceStatsForHostnamePort("127.0.0.1:4984")
-	assert.NoError(t, err, "Unexpected Erorr")
+	assert.NoError(t, err, "Unexpected Error")
 
 	_, err = networkInterfaceStatsForHostnamePort("localhost:4984")
-	assert.NoError(t, err, "Unexpected Erorr")
+	assert.NoError(t, err, "Unexpected Error")
 
 	_, err = networkInterfaceStatsForHostnamePort("0.0.0.0:4984")
-	assert.NoError(t, err, "Unexpected Erorr")
+	assert.NoError(t, err, "Unexpected Error")
 
 	_, err = networkInterfaceStatsForHostnamePort(":4984")
-	assert.NoError(t, err, "Unexpected Erorr")
+	assert.NoError(t, err, "Unexpected Error")
 
 }
