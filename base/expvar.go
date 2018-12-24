@@ -97,6 +97,8 @@ const (
 	StatKeyDeltasRequested           = "deltas_requested"
 	StatKeyDeltasSent                = "deltas_sent"
 	StatKeyDeltaPullReplicationCount = "delta_pull_replication_count"
+	StatKeyDeltaCacheHits            = "delta_cache_hit"
+	StatKeyDeltaCacheMisses          = "delta_cache_miss"
 
 	// StatsSharedBucketImport
 	StatKeyImportBacklog    = "import_backlog"

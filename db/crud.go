@@ -363,6 +363,50 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 	return revision.Body, nil
 }
 
+// GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
+// returns nil.
+func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, err error) {
+
+	fromRevision, err := db.revisionCache.GetWithCopy(docID, fromRevID, BodyNoCopy)
+
+	// If neither body nor delta is available for fromRevId, the delta can't be generated
+	if fromRevision.Body == nil && fromRevision.Delta == nil {
+		return nil, err
+	}
+
+	// If delta is found, check whether it is a delta for the toRevID we want
+	if fromRevision.Delta != nil {
+		if fromRevision.Delta.ToRevID == toRevID {
+			// Case 2a. 'some rev' is the rev we're interested in - return the delta
+			db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
+			return fromRevision.Delta.DeltaBytes, nil
+		} else {
+			// TODO: Recurse and merge deltas when gen(revCacheDelta.toRevID) < gen(toRevId)
+		}
+	}
+
+	// Delta is unavailable, but the body is available.
+	if fromRevision.Body != nil {
+
+		db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
+		toBody, err := db.revisionCache.GetWithCopy(docID, toRevID, BodyDeepCopy)
+		if err != nil {
+			return nil, err
+		}
+		// We didn't copy fromBody earlier (in case we could get by with just the delta), so need do it now
+		fromBodyCopy := fromRevision.Body.DeepCopy()
+		delta, err = base.Diff(fromBodyCopy, toBody.Body)
+		if err != nil {
+			return nil, err
+		}
+		// Write the newly calculated delta back into the cache before returning
+		db.revisionCache.UpdateDelta(docID, fromRevID, toRevID, delta)
+		return delta, nil
+	}
+
+	return nil, nil
+}
+
 // Returns the body of the active revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
 func (db *Database) GetDocAndActiveRev(docid string) (populatedDoc *document, body Body, err error) {

@@ -163,3 +163,46 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	_, idsOk := validRevisionsMap[RevisionsIds]
 	goassert.True(t, idsOk)
 }
+
+// Ensure subsequent updates to delta don't mutate previously retrieved deltas
+func TestRevisionImmutableDelta(t *testing.T) {
+	loader := func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
+		body = Body{
+			BodyId:  id.DocID,
+			BodyRev: id.RevID,
+		}
+		history = Revisions{RevisionsStart: 1}
+		channels = base.SetOf("*")
+		return
+	}
+	cache := NewRevisionCache(10, loader, nil)
+
+	firstDelta := []byte("delta")
+	secondDelta := []byte("modified delta")
+
+	// Trigger load into cache
+	_, err := cache.Get("doc1", "rev1")
+	assert.NoError(t, err, "Error adding to cache")
+	cache.UpdateDelta("doc1", "rev1", "rev2", firstDelta)
+
+	// Retrieve from cache
+	retrievedRev, err := cache.Get("doc1", "rev1")
+	assert.NoError(t, err, "Error retrieving from cache")
+	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
+	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
+
+	// Update delta again, validate data in retrievedRev isn't mutated
+	cache.UpdateDelta("doc1", "rev1", "rev3", secondDelta)
+	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
+	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
+
+	// Retrieve again, validate delta is correct
+	updatedRev, err := cache.Get("doc1", "rev1")
+	assert.NoError(t, err, "Error retrieving from cache")
+	assert.Equal(t, "rev3", updatedRev.Delta.ToRevID)
+	assert.Equal(t, secondDelta, updatedRev.Delta.DeltaBytes)
+
+	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
+	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
+
+}
