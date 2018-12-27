@@ -362,7 +362,7 @@ func (rm *revMessage) String() string {
 	buffer := bytes.NewBufferString("")
 
 	if id, foundId := rm.id(); foundId {
-		buffer.WriteString(fmt.Sprintf("Id:%v ", id))
+		buffer.WriteString(fmt.Sprintf("Id:%v ", base.UD(id).Redact()))
 	}
 
 	if rev, foundRev := rm.rev(); foundRev {
