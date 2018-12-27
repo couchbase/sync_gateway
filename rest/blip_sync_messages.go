@@ -373,6 +373,10 @@ func (rm *revMessage) String() string {
 		buffer.WriteString(fmt.Sprintf("Deleted:%v ", rm.deleted()))
 	}
 
+	if deltaSrc, isDelta := rm.deltaSrc(); isDelta {
+		buffer.WriteString(fmt.Sprintf("DeltaSrc:%v ", deltaSrc))
+	}
+
 	if sequence, foundSequence := rm.sequence(); foundSequence == true {
 		buffer.WriteString(fmt.Sprintf("Sequence:%v ", sequence))
 	}
