@@ -449,7 +449,7 @@ def make_curl_task(name, url, user="", password="", content_postprocessors=[],
     )
 
 
-def add_gzip_file_task(sourcefile_path, log_file_name, content_postprocessors=[]):
+def add_gzip_file_task(sourcefile_path, content_postprocessors=[]):
     """
     Adds the extracted contents of a file to the output zip
 
@@ -462,10 +462,14 @@ def add_gzip_file_task(sourcefile_path, log_file_name, content_postprocessors=[]
                 contents = content_postprocessor(contents)
             return contents
 
+    log_file = os.path.basename(sourcefile_path)
+    if log_file.endswith('.gz'):
+        log_file = log_file[:-3]
+
     task = PythonTask(
         description="Extracted contents of {0}".format(sourcefile_path),
         callable=python_add_file_task,
-        log_file=log_file_name,
+        log_file=log_file,
         log_exception=False,
     )
 
