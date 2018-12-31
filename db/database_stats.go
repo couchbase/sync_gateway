@@ -109,6 +109,7 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyDeltaPullReplicationCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDeltaCacheHits, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDeltaCacheMisses, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyDeltaPushDocCount, base.ExpvarIntVal(0))
 	case base.StatsGroupKeySharedBucketImport:
 		result.Set(base.StatKeyImportBacklog, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyImportCount, base.ExpvarIntVal(0))

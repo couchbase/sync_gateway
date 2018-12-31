@@ -819,6 +819,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
 		body = db.Body(deltaSrcMap)
 		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(body))
+		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 	}
 
 	if revMessage.deleted() {
