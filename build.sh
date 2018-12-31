@@ -47,7 +47,7 @@ doBuild () {
 
     ## Go Install Sync Gateway
     echo "    Building Sync Gateway"
-    go build -o sync_gateway${binarySuffix} ${buildTags} "${@:2}" github.com/couchbase/sync_gateway
+    go build -o sync_gateway${binarySuffix} ${buildTags} "${@:2}" github.com/couchbase/sync_gateway/cli
     mv "sync_gateway${binarySuffix}" "${GOPATH}/bin/sync_gateway${binarySuffix}"
     echo "      Success!"
     # Let user where to know where to find binaries
