@@ -362,7 +362,7 @@ func (rm *revMessage) String() string {
 	buffer := bytes.NewBufferString("")
 
 	if id, foundId := rm.id(); foundId {
-		buffer.WriteString(fmt.Sprintf("Id:%v ", id))
+		buffer.WriteString(fmt.Sprintf("Id:%v ", base.UD(id).Redact()))
 	}
 
 	if rev, foundRev := rm.rev(); foundRev {
@@ -371,6 +371,10 @@ func (rm *revMessage) String() string {
 
 	if rm.hasDeletedProperty() {
 		buffer.WriteString(fmt.Sprintf("Deleted:%v ", rm.deleted()))
+	}
+
+	if deltaSrc, isDelta := rm.deltaSrc(); isDelta {
+		buffer.WriteString(fmt.Sprintf("DeltaSrc:%v ", deltaSrc))
 	}
 
 	if sequence, foundSequence := rm.sequence(); foundSequence == true {
