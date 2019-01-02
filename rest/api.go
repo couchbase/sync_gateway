@@ -149,14 +149,12 @@ func (h *handler) handleResync() error {
 	}
 
 	if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
-
+		defer atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
 		docsChanged, err := h.db.UpdateAllDocChannels()
 		if err != nil {
 			return err
 		}
 		h.writeJSON(db.Body{"changes": docsChanged})
-
-		atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
 	}
 	return nil
 }
@@ -235,7 +233,7 @@ func (h *handler) handleCreateTarget() error {
 func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
 	h.writeJSONStatus(http.StatusCreated, db.Body{
-		"ok": true,
+		"ok":                  true,
 		"instance_start_time": h.instanceStartTime(),
 	})
 	return nil
