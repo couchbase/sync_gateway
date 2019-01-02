@@ -99,6 +99,7 @@ const (
 	StatKeyDeltaPullReplicationCount = "delta_pull_replication_count"
 	StatKeyDeltaCacheHits            = "delta_cache_hit"
 	StatKeyDeltaCacheMisses          = "delta_cache_miss"
+	StatKeyDeltaPushDocCount         = "delta_push_doc_count"
 
 	// StatsSharedBucketImport
 	StatKeyImportBacklog    = "import_backlog"
@@ -134,11 +135,11 @@ const (
 	StatKeyAttachmentPullBytes              = "attachment_pull_bytes"
 
 	// StatsSecurity
-	StatKeyNumDocsRejected     = "num_docs_rejected"
-	StatKeyNumAccessErrors     = "num_access_errors"
-	StatKeyAuthSuccessCount    = "auth_success_count"
-	StatKeyAuthFailedCount     = "auth_failed_count"
-	StatKeyTotalAuthTime       = "total_auth_time"
+	StatKeyNumDocsRejected  = "num_docs_rejected"
+	StatKeyNumAccessErrors  = "num_access_errors"
+	StatKeyAuthSuccessCount = "auth_success_count"
+	StatKeyAuthFailedCount  = "auth_failed_count"
+	StatKeyTotalAuthTime    = "total_auth_time"
 
 	// StatsGsiViews
 	StatKeyTotalQueriesPerSec      = "total_queries_per_sec"
