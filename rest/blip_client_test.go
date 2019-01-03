@@ -76,16 +76,16 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				// The first element of each revision list must be the parent revision of the change
 				if revs, haveDoc := btc.docs[docID]; haveDoc {
 					revList := make([]string, 0, len(revs))
+					highestGen := 0
 					for knownRevID := range revs {
 						if revID == knownRevID {
 							knownRevs[i] = nil // Send back null to signal we don't need this change
 							continue outer
 						}
 
-						// Insert the ancestor rev at the start of the revList
-						changeGen, _ := db.ParseRevID(revID)
-						knownGen, _ := db.ParseRevID(knownRevID)
-						if knownGen == changeGen-1 {
+						gen, _ := db.ParseRevID(knownRevID)
+						if gen > highestGen {
+							// Insert the highest ancestor rev generation at the start of the revList
 							revList = append([]string{knownRevID}, revList...)
 						} else {
 							// TODO: Limit known revs to 20 to copy CBL behaviour
