@@ -105,10 +105,10 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
-		Infof(KeyAll, "Error opening bucket: %v", err)
+		Infof(KeyAll, "Error opening bucket %s: %v", spec.BucketName, err)
 		return nil, pkgerrors.WithStack(err)
 	}
-	Infof(KeyAll, "Successfully opened bucket")
+	Infof(KeyAll, "Successfully opened bucket %s", spec.BucketName)
 
 	// Set the GoCB opTimeout which controls how long blocking GoCB ops remain blocked before
 	// returning an "operation timed out" error.  Defaults to 2.5 seconds.  (SG #3508)
@@ -154,6 +154,8 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	bucket.Bucket.SetViewTimeout(bucket.spec.GetViewQueryTimeout())
 	bucket.Bucket.SetN1qlTimeout(bucket.spec.GetViewQueryTimeout())
+
+	Infof(KeyAll, "Set query timeouts for bucket %s to cluster:%v, bucket:%v", spec.BucketName, cluster.N1qlTimeout(), bucket.N1qlTimeout())
 
 	return bucket, err
 
