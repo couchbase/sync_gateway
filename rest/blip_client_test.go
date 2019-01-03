@@ -18,8 +18,9 @@ type BlipTesterClient struct {
 
 	rt *RestTester
 
-	docs     map[string]map[string][]byte // Client's local store of documents - Map of docID to rev ID to bytes
-	docsLock sync.RWMutex                 // lock for docs map
+	docs              map[string]map[string][]byte // Client's local store of documents - Map of docID to rev ID to bytes
+	lastReplicatedRev map[string]string            // Latest known rev pulled or pushed
+	docsLock          sync.RWMutex                 // lock for docs map
 
 	pullReplication *BlipTesterReplicator // SG -> CBL replications
 	pushReplication *BlipTesterReplicator // CBL -> SG replications
@@ -150,6 +151,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		} else {
 			btc.docs[docID] = map[string][]byte{revID: body}
 		}
+		btc.updateLastReplicatedRev(docID, revID)
 		btc.docsLock.Unlock()
 
 		if !msg.NoReply() {
@@ -161,6 +163,21 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 		panic("unexpected msg to DefaultHandler")
+	}
+}
+
+func (btc *BlipTesterClient) updateLastReplicatedRev(docID, revID string) {
+
+	currentRevID, ok := btc.lastReplicatedRev[docID]
+	if !ok {
+		btc.lastReplicatedRev[docID] = revID
+		return
+	}
+
+	currentGen, _ := db.ParseRevID(currentRevID)
+	incomingGen, _ := db.ParseRevID(revID)
+	if incomingGen > currentGen {
+		btc.lastReplicatedRev[docID] = revID
 	}
 }
 
@@ -330,6 +347,7 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 	if err != nil {
 		return "", fmt.Errorf("error from revResponse: %v", err)
 	}
+	btc.updateLastReplicatedRev(docID, revID)
 
 	return newRevID, nil
 }
