@@ -1135,8 +1135,6 @@ func TestDBOfflinePostResync(t *testing.T) {
 }
 
 //Take DB offline and ensure only one _resync can be in progress
-// When running under the race flag, we can't guarantee which resync call gets executed first,
-// or even that they execute at the same time.  Disabling test
 func TestDBOfflineSingleResync(t *testing.T) {
 
 	if testing.Short() {
