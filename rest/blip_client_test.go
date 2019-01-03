@@ -71,6 +71,9 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			for i, changesReq := range changesReqs {
 				docID := changesReq[1].(string)
 				revID := changesReq[2].(string)
+
+				// Build up a list of revisions known to the client for each change
+				// The first element of each revision list must be the parent revision of the change
 				if revs, haveDoc := btc.docs[docID]; haveDoc {
 					revList := make([]string, 0, len(revs))
 					for knownRevID := range revs {
@@ -78,13 +81,23 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 							knownRevs[i] = nil // Send back null to signal we don't need this change
 							continue outer
 						}
-						// TODO: Limit known revs to 20 to copy CBL behaviour
-						revList = append(revList, knownRevID)
+
+						// Insert the ancestor rev at the start of the revList
+						changeGen, _ := db.ParseRevID(revID)
+						knownGen, _ := db.ParseRevID(knownRevID)
+						if knownGen == changeGen-1 {
+							revList = append([]string{knownRevID}, revList...)
+						} else {
+							// TODO: Limit known revs to 20 to copy CBL behaviour
+							revList = append(revList, knownRevID)
+						}
 					}
-					knownRevs[i] = revList // send back all revs we have for SG to determine the ancestor
+					// send back all revs we have for SG to determine the ancestor
+					knownRevs[i] = revList
 				} else {
 					knownRevs[i] = []interface{}{} // sending empty array means we've not seen the doc before, but still want it
 				}
+
 			}
 			btc.docsLock.RUnlock()
 		}
