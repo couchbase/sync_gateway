@@ -76,23 +76,26 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				// The first element of each revision list must be the parent revision of the change
 				if revs, haveDoc := btc.docs[docID]; haveDoc {
 					revList := make([]string, 0, len(revs))
-					highestGen := 0
+
+					// Insert the highest ancestor rev generation at the start of the revList
+					latest, ok := btc.lastReplicatedRev[docID]
+					if ok {
+						revList = append(revList, latest)
+					}
+
 					for knownRevID := range revs {
 						if revID == knownRevID {
 							knownRevs[i] = nil // Send back null to signal we don't need this change
 							continue outer
+						} else if latest == knownRevID {
+							// We inserted this rev as the first element above, so skip it here
+							continue
 						}
 
-						gen, _ := db.ParseRevID(knownRevID)
-						if gen > highestGen {
-							// Insert the highest ancestor rev generation at the start of the revList
-							revList = append([]string{knownRevID}, revList...)
-						} else {
-							// TODO: Limit known revs to 20 to copy CBL behaviour
-							revList = append(revList, knownRevID)
-						}
+						// TODO: Limit known revs to 20 to copy CBL behaviour
+						revList = append(revList, knownRevID)
 					}
-					// send back all revs we have for SG to determine the ancestor
+
 					knownRevs[i] = revList
 				} else {
 					knownRevs[i] = []interface{}{} // sending empty array means we've not seen the doc before, but still want it
@@ -216,6 +219,7 @@ func NewBlipTesterClient(rt *RestTester) (client *BlipTesterClient, err error) {
 	btc := BlipTesterClient{
 		rt:   rt,
 		docs: make(map[string]map[string][]byte),
+		lastReplicatedRev: make(map[string]string),
 	}
 
 	id, err := uuid.NewRandom()
@@ -267,6 +271,7 @@ func (btc *BlipTesterClient) StartPullSince(continuous, since string) (err error
 func (btc *BlipTesterClient) Close() {
 	btc.docsLock.Lock()
 	btc.docs = make(map[string]map[string][]byte, 0)
+	btc.lastReplicatedRev = make(map[string]string, 0)
 	btc.docsLock.Unlock()
 
 	btc.pullReplication.Close()
