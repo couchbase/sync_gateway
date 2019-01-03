@@ -146,6 +146,7 @@ func (spec BucketSpec) GetGoCBConnString() (string, error) {
 	asValues.Set("http_max_idle_conns_per_host", DefaultHttpMaxIdleConnsPerHost)
 	asValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
 	asValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
+	asValues.Set("n1ql_timeout", fmt.Sprintf("%d", spec.GetViewQueryTimeoutMs()))
 
 	if spec.Certpath != "" && spec.Keypath != "" {
 		asValues.Set("certpath", spec.Certpath)
@@ -161,19 +162,21 @@ func (spec BucketSpec) GetGoCBConnString() (string, error) {
 }
 
 func (b BucketSpec) GetViewQueryTimeout() time.Duration {
+	return time.Duration(b.GetViewQueryTimeoutMs()) * time.Millisecond
+}
 
+func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 	// If the user doesn't specify any timeout, default to 75s
 	if b.ViewQueryTimeoutSecs == nil {
-		return time.Second * 75
+		return 75 * 1000
 	}
 
 	// If the user specifies 0, then translate that to "No timeout"
 	if *b.ViewQueryTimeoutSecs == 0 {
-		return time.Hour * 24 * 7 * 365 * 10 // 10 years
+		return 1000 * 60 * 60 * 24 * 365 * 10 // 10 years in milliseconds
 	}
 
-	return time.Duration(*b.ViewQueryTimeoutSecs) * time.Second
-
+	return uint64(*b.ViewQueryTimeoutSecs * 1000)
 }
 
 // TLSConnect method is passed to cbdatasource, to be used when creating a TLS-enabled memcached connection.
