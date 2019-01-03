@@ -18,7 +18,6 @@ import (
 	msgrpc "github.com/couchbase/mobile-service/mobile_service_grpc"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbaselabs/gocbconnstr"
 	pkgerrors "github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
@@ -265,55 +264,23 @@ func (gw *SyncGateway) ConnectMobileSvc(strategy ChooseMobileSvcStrategy) error 
 
 }
 
+
 // Check the list of Couchbase Server hosts given in the bootstrap config, filter to
 // remove nodes that are detected to be inactive (GET /pools/default != 200), and choose one based
 // on the strategy parameter and return the host:port combination for the GRPC endpoint.
 func (gw *SyncGateway) ChooseActiveMobileSvcGrpcEndpoint(strategy ChooseMobileSvcStrategy) (mobileSvcHostPort string, err error) {
 
-	mobileServiceNodes, err := gw.ActiveMobileSvcGrpcEndpoints()
-	if err != nil {
-		return "", err
-	}
-
-	if len(mobileServiceNodes) == 0 {
-		return "", fmt.Errorf("Cannot find any active mobile service nodes to connect to")
-	}
-
-	switch strategy {
-	case ChooseMobileSvcFirst:
-		return mobileServiceNodes[0], nil
-	case ChooseMobileSvcRandom:
-		return mobileServiceNodes[base.RandIntRange(0, len(mobileServiceNodes))], nil
-	default:
-		return "", fmt.Errorf("Unknown strategy: %v", strategy)
-	}
+	return gw.BootstrapConfig.ChooseActiveMobileSvcGrpcEndpoint(strategy)
 
 }
+
 
 // Check the list of Couchbase Server hosts given in the bootstrap config, filter to
 // remove nodes that are detected to be inactive (GET /pools/default != 200), and return the
 // host:port combination for the GRPC endpoints of each of the nodes.
 func (gw *SyncGateway) ActiveMobileSvcGrpcEndpoints() (mobileSvcHostPorts []string, err error) {
 
-	// Get the raw connection spec from the bootstrap config
-	connSpec, err := gocbconnstr.Parse(gw.BootstrapConfig.GoCBConnstr)
-	if err != nil {
-		return []string{}, err
-	}
-
-	// Filter out cb server addresses that don't give 200 responses to /pools/default,
-	// which probably means they have been removed from the cluster.
-	connSpec = base.FilterAddressesInCluster(connSpec, gw.BootstrapConfig.CBUsername, gw.BootstrapConfig.CBPassword)
-
-	// Calculate the GRPC endpoint port based on the couchbase server port and the PortGrpcTlsOffset
-	mobileSvcHostPorts = []string{}
-	for _, address := range connSpec.Addresses {
-		grpcTargetPort := mobile_service.PortGrpcTlsOffset + address.Port
-		hostPort := fmt.Sprintf("%s:%d", address.Host, grpcTargetPort)
-		mobileSvcHostPorts = append(mobileSvcHostPorts, hostPort)
-	}
-
-	return mobileSvcHostPorts, nil
+	return gw.BootstrapConfig.ActiveMobileSvcGrpcEndpoints()
 
 }
 

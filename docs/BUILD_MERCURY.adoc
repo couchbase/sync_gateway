@@ -8,7 +8,7 @@ Sync Gateway Mercury Build / Development Instructions
 
 === MacOS
 
-==== Install build dependencies
+==== Install build dependencies (one-time)
 
 . `cmake` - `brew install cmake`
 . `repo` - should already be installed via `bootstrap.sh`
@@ -44,6 +44,19 @@ You will now have nodes running on:
 * http://localhost:9001/
 
 Both nodes will have the mobile-service running and you are ready to connect Sync Gateway nodes.  Go to the <<Sync Gateway>> section for instructions.
+
+
+===== Enable Mobile Service workaround
+
+The above instructions have a major caveat: there will be no Mobile service available during setup.  To workaround this issue, use the approach taken in the CentOS7 + Docker instructions, which use a pre-installed Couchbase Server binary and overwrite the custom-built `mobile-service` binary.  On OSX, use http://latestbuilds.service.couchbase.com/builds/latestbuilds/couchbase-server/mad-hatter/1908/couchbase-server-enterprise_6.5.0-1908-macos_x86_64.zip:[mad-hatter/1908/couchbase-server-enterprise_6.5.0-1908-macos_x86_64.zip]
+
+To redeploy custom built `mobile-service` binaries:
+
+```
+cp /path/to/couchbase/src/install/bin/mobile-service /Applications/Couchbase\ Server.app/Contents/Resources/couchbase-core/bin/mobile-service
+```
+
+note that the logs will be available in `/Users/<your username>/Library/Application Support/Couchbase/var/lib/couchbase/logs`
 
 === CentOS7 + Docker
 
