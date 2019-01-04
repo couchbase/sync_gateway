@@ -367,6 +367,10 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 // returns nil.
 func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, err error) {
 
+	if docID == "" || fromRevID == "" || toRevID == "" {
+		return nil, nil
+	}
+
 	fromRevision, err := db.revisionCache.GetWithCopy(docID, fromRevID, BodyNoCopy)
 
 	// If neither body nor delta is available for fromRevId, the delta can't be generated
