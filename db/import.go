@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -91,6 +92,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool
 func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *document, err error) {
 
 	base.Debugf(base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
+	importStartTime := time.Now()
 
 	if existingDoc == nil {
 		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
@@ -226,6 +228,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		docOut = alreadyImportedDoc
 	case nil:
 		db.DbStats.SharedBucketImport().Add(base.StatKeyImportCount, 1)
+		db.DbStats.SharedBucketImport().Add(base.StatKeyImportProcessingTime, time.Since(importStartTime).Nanoseconds())
 		base.Debugf(base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(docid), isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.
