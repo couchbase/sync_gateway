@@ -102,9 +102,9 @@ const (
 	StatKeyDeltaPushDocCount         = "delta_push_doc_count"
 
 	// StatsSharedBucketImport
-	StatKeyImportBacklog    = "import_backlog"
-	StatKeyImportCount      = "import_count"
-	StatKeyImportErrorCount = "import_error_count"
+	StatKeyImportCount          = "import_count"
+	StatKeyImportErrorCount     = "import_error_count"
+	StatKeyImportProcessingTime = "import_processing_time"
 
 	// StatsCBLReplicationPush
 	StatKeyDocPushCount        = "doc_push_count"
