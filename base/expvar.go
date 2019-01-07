@@ -93,7 +93,6 @@ const (
 	StatKeyDocReadsBytesBlip     = "doc_reads_bytes_blip"
 
 	// StatsDeltaSync
-	StatKeyNetBandwidthSavings       = "net_bandwidth_savings"
 	StatKeyDeltasRequested           = "deltas_requested"
 	StatKeyDeltasSent                = "deltas_sent"
 	StatKeyDeltaPullReplicationCount = "delta_pull_replication_count"
