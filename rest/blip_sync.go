@@ -467,12 +467,21 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 			seq := changeArray[i][0].(db.SequenceID)
 			docID := changeArray[i][1].(string)
 			revID := changeArray[i][2].(string)
+			deltaSrcRevID := ""
 			//deleted := changeArray[i][3].(bool)
 			knownRevs := knownRevsByDoc[docID]
 			if knownRevs == nil {
 				knownRevs = make(map[string]bool, len(knownRevsArray))
 				knownRevsByDoc[docID] = knownRevs
 			}
+
+			// The first element of the knownRevsArray returned from CBL is the parent revision to use as deltaSrc
+			if bh.useDeltas && len(knownRevsArray) > 0 {
+				if revID, ok := knownRevsArray[0].(string); ok {
+					deltaSrcRevID = revID
+				}
+			}
+
 			for _, rev := range knownRevsArray {
 				if revID, ok := rev.(string); ok {
 					knownRevs[revID] = true
@@ -482,11 +491,9 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 				}
 			}
 
-			if bh.useDeltas && len(knownRevs) > 0 {
-				bh.Logf(base.LevelTrace, base.KeySync, "Attempting to send rev as delta")
-				bh.sendRevAsDelta(sender, seq, docID, revID, knownRevs, maxHistory)
+			if deltaSrcRevID != "" {
+				 bh.sendRevAsDelta(sender, seq, docID, revID, deltaSrcRevID, knownRevs, maxHistory)
 			} else {
-				bh.Logf(base.LevelTrace, base.KeySync, "Not sending as delta because either useDeltas was false, or knownRevs was empty")
 				bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 			}
 
@@ -600,36 +607,9 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 
 //////// DOCUMENTS:
 
-func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, docID string, revID string, deltaSrcRevID string, knownRevs map[string]bool, maxHistory int) {
 
 	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
-	// TODO: determine whether we need to fetch the current rev in order to identify the 'from' rev for the delta,
-	//      or can skip straight to GetDelta with knownRevs[0]
-	newBody, err := bh.db.GetRev(docID, revID, true, nil)
-	if err != nil {
-		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: couldn't get newBody in order to find common ancestor - sending NoRev... err: %v", err)
-		// If we can't get the new doc, we won't be able to fall back either, so NoRev with error
-		bh.sendNoRev(err, sender, seq, docID, revID)
-		return
-	}
-
-	// Get the client's highest known rev ID to use as deltaSrc
-	var deltaSrcRevID string
-	newBodyRevisions, ok := newBody[db.BodyRevisions].(db.Revisions)
-	if !ok {
-		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: couldn't get newBody[_revisions] - falling back to sending full body.  err: %v", err)
-		// If we can't get ancestor revisions, fall back to sending full body
-		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
-		return
-	}
-
-	revsStart := strconv.Itoa(newBodyRevisions[db.RevisionsStart].(int) - 1) // previous rev start
-	for _, v := range newBodyRevisions[db.RevisionsIds].([]string) {
-		rev := revsStart + "-" + v
-		if knownRevs[rev] {
-			deltaSrcRevID = rev
-		}
-	}
 
 	delta, err := bh.db.GetDelta(docID, deltaSrcRevID, revID)
 	if err != nil {
