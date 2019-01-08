@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -194,6 +195,9 @@ func (h *handler) invoke(method handlerMethod) error {
 		if err != nil {
 			return err
 		}
+		h.db.Ctx = context.WithValue(context.Background(), base.SGLogContextKey,
+			base.LogContext{CorrelationID: h.formatSerialNumber()},
+		)
 	}
 
 	if base.EnableLogHTTPBodies {
@@ -264,8 +268,8 @@ func (h *handler) logDuration(realTime bool) {
 		logKey = base.KeyHTTP
 	}
 
-	base.Infof(logKey, "#%03d:     --> %d %s  (%.1f ms)",
-		h.serialNumber, h.status, h.statusMessage,
+	base.Infof(logKey, "%s:     --> %d %s  (%.1f ms)",
+		h.formatSerialNumber(), h.status, h.statusMessage,
 		float64(duration)/float64(time.Millisecond),
 	)
 }
@@ -865,4 +869,9 @@ func getRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64,
 	}
 
 	return value
+}
+
+// formatSerialNumber returns the formatted serial number
+func (h *handler) formatSerialNumber() string {
+	return fmt.Sprintf("#%03d", h.serialNumber)
 }

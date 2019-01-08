@@ -10,6 +10,7 @@
 package base
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -384,16 +385,61 @@ func init() {
 	initExternalLoggers()
 }
 
+// PanicfCtx logs the given formatted string and args to the error log level and given log key and then panics.
+func PanicfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
+	logTo(ctx, LevelError, logKey, format, args...)
+	FlushLogBuffers()
+	panic(fmt.Sprintf(format, args...))
+}
+
+// FatalfCtx logs the given formatted string and args to the error log level and given log key and then exits.
+func FatalfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
+	logTo(ctx, LevelError, logKey, format, args...)
+	FlushLogBuffers()
+	os.Exit(1)
+}
+
+// ErrorfCtx logs the given formatted string and args to the error log level and given log key.
+func ErrorfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
+	logTo(ctx, LevelError, logKey, format, args...)
+}
+
+// WarnfCtx logs the given formatted string and args to the warn log level and given log key.
+func WarnfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+	StatsResourceUtilization().Add(StatKeyWarnCount, 1)
+	logTo(ctx, LevelWarn, logKey, format, args...)
+}
+
+// InfofCtx logs the given formatted string and args to the info log level and given log key.
+func InfofCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+	logTo(ctx, LevelInfo, logKey, format, args...)
+}
+
+// DebugfCtx logs the given formatted string and args to the debug log level with an optional log key.
+func DebugfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+	logTo(ctx, LevelDebug, logKey, format, args...)
+}
+
+// TracefCtx logs the given formatted string and args to the trace log level with an optional log key.
+func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+	logTo(ctx, LevelTrace, logKey, format, args...)
+}
+
 // Panicf logs the given formatted string and args to the error log level and given log key and then panics.
 func Panicf(logKey LogKey, format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
-	logTo(LevelError, logKey, format, args...)
+	logTo(context.TODO(), LevelError, logKey, format, args...)
+	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
 }
 
 // Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
 func Fatalf(logKey LogKey, format string, args ...interface{}) {
-	logTo(LevelError, logKey, format, args...)
+	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
+	logTo(context.TODO(), LevelError, logKey, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
 }
@@ -401,28 +447,28 @@ func Fatalf(logKey LogKey, format string, args ...interface{}) {
 // Errorf logs the given formatted string and args to the error log level and given log key.
 func Errorf(logKey LogKey, format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
-	logTo(LevelError, logKey, format, args...)
+	logTo(context.TODO(), LevelError, logKey, format, args...)
 }
 
 // Warnf logs the given formatted string and args to the warn log level and given log key.
 func Warnf(logKey LogKey, format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyWarnCount, 1)
-	logTo(LevelWarn, logKey, format, args...)
+	logTo(context.TODO(), LevelWarn, logKey, format, args...)
 }
 
 // Infof logs the given formatted string and args to the info log level and given log key.
 func Infof(logKey LogKey, format string, args ...interface{}) {
-	logTo(LevelInfo, logKey, format, args...)
+	logTo(context.TODO(), LevelInfo, logKey, format, args...)
 }
 
 // Debugf logs the given formatted string and args to the debug log level with an optional log key.
 func Debugf(logKey LogKey, format string, args ...interface{}) {
-	logTo(LevelDebug, logKey, format, args...)
+	logTo(context.TODO(), LevelDebug, logKey, format, args...)
 }
 
 // Tracef logs the given formatted string and args to the trace log level with an optional log key.
 func Tracef(logKey LogKey, format string, args ...interface{}) {
-	logTo(LevelTrace, logKey, format, args...)
+	logTo(context.TODO(), LevelTrace, logKey, format, args...)
 }
 
 // RecordStats writes the given stats JSON content to a stats log file, if enabled.
@@ -433,8 +479,8 @@ func RecordStats(statsJson string) {
 	}
 }
 
-func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
-	// Defensive bounds-check for log level. All callers of this funcion should be within this range.
+func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+	// Defensive bounds-check for log level. All callers of this function should be within this range.
 	if logLevel <= LevelNone || logLevel >= levelCount {
 		return
 	}
@@ -451,7 +497,7 @@ func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 	}
 
 	// Prepend timestamp, level, log key.
-	format = addPrefixes(format, logLevel, logKey)
+	format = addPrefixes(format, ctx, logLevel, logKey)
 
 	// Warn and error logs also append caller name/line numbers.
 	if logLevel <= LevelWarn {
@@ -480,7 +526,7 @@ func logTo(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
 
 // LogSyncGatewayVersion will print the startup indicator and version number to all log outputs.
 func LogSyncGatewayVersion() {
-	format := addPrefixes("==== %s ====", LevelNone, KeyNone)
+	format := addPrefixes("==== %s ====", context.Background(), LevelNone, KeyNone)
 	msg := fmt.Sprintf(format, LongVersionString)
 
 	if consoleLogger.logger != nil {
@@ -501,7 +547,8 @@ func LogSyncGatewayVersion() {
 }
 
 // addPrefixes will modify the format string to add timestamps, log level, and other common prefixes.
-func addPrefixes(format string, logLevel LogLevel, logKey LogKey) string {
+// E.g: 2006-01-02T15:04:05.000Z07:00 [LVL] LogKey: format_str
+func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey LogKey) string {
 	timestampPrefix := time.Now().Format(ISO8601Format) + " "
 
 	var logLevelPrefix string
@@ -517,6 +564,12 @@ func addPrefixes(format string, logLevel LogLevel, logKey LogKey) string {
 			logKeyName += "+"
 		}
 		logKeyPrefix = logKeyName + ": "
+	}
+
+	if ctx != nil {
+		if logCtx, ok := ctx.Value(SGLogContextKey).(LogContext); ok {
+			format = logCtx.addContext(format)
+		}
 	}
 
 	return timestampPrefix + logLevelPrefix + logKeyPrefix + format

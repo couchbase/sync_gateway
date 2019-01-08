@@ -2,6 +2,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -37,6 +38,7 @@ const (
 // This connection remains open until the client closes it, and can receive any number of requests.
 type blipSyncContext struct {
 	blipContext         *blip.Context
+	db                  *db.Database
 	dbc                 *db.DatabaseContext
 	user                auth.User
 	effectiveUsername   string
@@ -104,13 +106,20 @@ func (h *handler) handleBLIPSync() error {
 
 	// Create a BLIP context:
 	blipContext := blip.NewContext(BlipCBMobileReplication)
-	blipContext.Logger = DefaultBlipLogger(blipContext.ID)
 	blipContext.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
 	blipContext.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
+
+	// Overwrite the logging context with the blip context ID
+	// Retaining other contextual information like db and username are not required for blip logging
+	h.db.Ctx = context.WithValue(h.db.Ctx, base.SGLogContextKey,
+		base.LogContext{CorrelationID: formatBlipContextID(blipContext.ID)},
+	)
+	blipContext.Logger = DefaultBlipLogger(h.db.Ctx)
 
 	// Create a BLIP-sync context and register handlers:
 	ctx := blipSyncContext{
 		blipContext:       blipContext,
+		db:                h.db,
 		dbc:               h.db.DatabaseContext,
 		user:              h.user,
 		effectiveUsername: h.currentEffectiveUserName(),
@@ -154,11 +163,9 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 	handlerFnWrapper := func(rq *blip.Message) {
 
 		startTime := time.Now()
-
-		db, _ := db.GetDatabase(ctx.dbc, ctx.user)
 		handler := blipHandler{
 			blipSyncContext: ctx,
-			db:              db,
+			db:              ctx.db,
 			serialNumber:    ctx.incrementSerialNumber(),
 		}
 
@@ -1008,17 +1015,19 @@ func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
 	bh.Logf(base.LevelInfo, base.KeySyncMsg, "#%d: Type:%s %s User:%s", bh.serialNumber, profile, endpoint, base.UD(bh.effectiveUsername))
 }
 
-func DefaultBlipLogger(contextID string) blip.LogFn {
+func DefaultBlipLogger(ctx context.Context) blip.LogFn {
 	return func(eventType blip.LogEventType, format string, params ...interface{}) {
-		formatWithContextID, paramsWithContextID := base.PrependContextID(contextID, format, params...)
-
 		switch eventType {
 		case blip.LogMessage:
-			base.Debugf(base.KeyWebSocketFrame, formatWithContextID, paramsWithContextID...)
+			base.DebugfCtx(ctx, base.KeyWebSocketFrame, format, params...)
 		case blip.LogFrame:
-			base.Debugf(base.KeyWebSocket, formatWithContextID, paramsWithContextID...)
+			base.DebugfCtx(ctx, base.KeyWebSocket, format, params...)
 		default:
-			base.Infof(base.KeyWebSocket, formatWithContextID, paramsWithContextID...)
+			base.InfofCtx(ctx, base.KeyWebSocket, format, params...)
 		}
 	}
+}
+
+func formatBlipContextID(contextID string) string {
+	return "[" + contextID + "]"
 }

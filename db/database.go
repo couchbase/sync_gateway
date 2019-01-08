@@ -10,6 +10,7 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -146,6 +147,7 @@ type ImportOptions struct {
 type Database struct {
 	*DatabaseContext
 	user auth.User
+	Ctx  context.Context
 }
 
 func ValidateDatabaseName(dbName string) error {
@@ -606,11 +608,11 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 
 // Makes a Database object given its name and bucket.
 func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
-	return &Database{context, user}, nil
+	return &Database{DatabaseContext: context, user: user}, nil
 }
 
 func CreateDatabase(context *DatabaseContext) (*Database, error) {
-	return &Database{context, nil}, nil
+	return &Database{DatabaseContext: context}, nil
 }
 
 func (db *Database) SameAs(otherdb *Database) bool {

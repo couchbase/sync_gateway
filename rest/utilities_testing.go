@@ -2,6 +2,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -721,7 +722,11 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 
 	// Make BLIP/Websocket connection
 	bt.blipContext = blip.NewContext(BlipCBMobileReplication)
-	bt.blipContext.Logger = DefaultBlipLogger(bt.blipContext.ID)
+	bt.blipContext.Logger = DefaultBlipLogger(
+		context.WithValue(context.Background(), base.SGLogContextKey,
+			base.LogContext{CorrelationID: formatBlipContextID(bt.blipContext.ID)},
+		),
+	)
 
 	bt.blipContext.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
 	bt.blipContext.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
