@@ -582,6 +582,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
+	base.Infof(base.KeyAll, "Delta sync enabled=%t for database %s", deltaSyncOptions.Enabled, dbName)
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		IndexOptions:              channelIndexOptions,
