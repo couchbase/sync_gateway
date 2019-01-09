@@ -10,6 +10,7 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,16 +23,17 @@ import (
 
 // Options for changes-feeds
 type ChangesOptions struct {
-	Since       SequenceID // sequence # to start _after_
-	Limit       int        // Max number of changes to return, if nonzero
-	Conflicts   bool       // Show all conflicting revision IDs, not just winning one?
-	IncludeDocs bool       // Include doc body of each change?
-	Wait        bool       // Wait for results, instead of immediately returning empty result?
-	Continuous  bool       // Run continuously until terminated?
-	Terminator  chan bool  // Caller can close this channel to terminate the feed
-	HeartbeatMs uint64     // How often to send a heartbeat to the client
-	TimeoutMs   uint64     // After this amount of time, close the longpoll connection
-	ActiveOnly  bool       // If true, only return information on non-deleted, non-removed revisions
+	Since       SequenceID      // sequence # to start _after_
+	Limit       int             // Max number of changes to return, if nonzero
+	Conflicts   bool            // Show all conflicting revision IDs, not just winning one?
+	IncludeDocs bool            // Include doc body of each change?
+	Wait        bool            // Wait for results, instead of immediately returning empty result?
+	Continuous  bool            // Run continuously until terminated?
+	Terminator  chan bool       // Caller can close this channel to terminate the feed
+	HeartbeatMs uint64          // How often to send a heartbeat to the client
+	TimeoutMs   uint64          // After this amount of time, close the longpoll connection
+	ActiveOnly  bool            // If true, only return information on non-deleted, non-removed revisions
+	Ctx         context.Context // Used for adding context to logs
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
@@ -732,7 +734,7 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 }
 
 func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntry {
-	options := ChangesOptions{Since: SequenceID{Seq: afterSeq}}
+	options := ChangesOptions{Since: SequenceID{Seq: afterSeq}, Ctx: db.Ctx}
 	_, log := db.changeCache.getChannelCache(channelName).getCachedChanges(options)
 	return log
 }

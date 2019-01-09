@@ -358,6 +358,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		Continuous: bh.continuous,
 		ActiveOnly: bh.activeOnly,
 		Terminator: bh.blipSyncContext.terminator,
+		Ctx:        bh.db.Ctx,
 	}
 
 	channelSet := bh.channels
