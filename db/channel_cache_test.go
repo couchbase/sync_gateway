@@ -225,7 +225,7 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended := cache.prependChanges(changesToPrepend, 5, true)
+	numPrepended := cache.prependChanges(changesToPrepend, 5, 14)
 	goassert.Equals(t, numPrepended, 3)
 
 	// Validate cache
@@ -247,7 +247,7 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 5, 14)
 	goassert.Equals(t, numPrepended, 2)
 
 	// Validate cache
@@ -282,7 +282,7 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	// Prepend empty set, validate validFrom update
-	cache.prependChanges(LogEntries{}, 5, true)
+	cache.prependChanges(LogEntries{}, 5, 14)
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
 	goassert.Equals(t, validFrom, uint64(5))
 	goassert.Equals(t, len(cachedChanges), 4)
@@ -304,7 +304,7 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 5, 14)
 	goassert.Equals(t, numPrepended, 1)
 
 	// Validate cache
@@ -338,7 +338,7 @@ func TestPrependChanges(t *testing.T) {
 		e(12, "doc4", "2-a"),
 		e(14, "doc1", "2-a"),
 	}
-	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 5, 14)
 	goassert.Equals(t, numPrepended, 0)
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
 	goassert.Equals(t, validFrom, uint64(5))
@@ -372,7 +372,7 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(changesToPrepend, 6, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 6, 14)
 	goassert.Equals(t, numPrepended, 0)
 
 	// Validate cache
@@ -541,7 +541,7 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
-	cache := newChannelCache(context, "Test1", 0)
+	cache := newChannelCache(context, "Test1", 99)
 	cache.options.ChannelCacheMaxLength = 15
 
 	// Add 9 entries to cache, 3 of each type
@@ -561,14 +561,13 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	assert.Equal(t, 3, removals)
 
 	// Attempt to prepend entries with later sequences already in cache.  Shouldn't modify stats (note that prepend expects one overlap)
-	prependDuplicatesSet := make(LogEntries, 6)
+	prependDuplicatesSet := make(LogEntries, 5)
 	prependDuplicatesSet[0] = (e(50, "active1", "1-a"))
 	prependDuplicatesSet[1] = (et(51, "active2", "1-a"))
 	prependDuplicatesSet[2] = (e(52, "removal1", "1-a"))
 	prependDuplicatesSet[3] = (et(53, "tombstone1", "1-a"))
 	prependDuplicatesSet[4] = (e(54, "tombstone3", "1-a"))
-	prependDuplicatesSet[5] = (e(100, "active1", "2-a"))
-	cache.prependChanges(prependDuplicatesSet, 50, false)
+	cache.prependChanges(prependDuplicatesSet, 50, 99)
 
 	active, tombstones, removals = getCacheUtilization(context)
 	assert.Equal(t, 3, active)
@@ -587,8 +586,8 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	prependSet[7] = (et(47, "new8", "1-a"))
 	prependSet[8] = (e(48, "new9", "1-a"))
 	prependSet[9] = (et(49, "new10", "1-a"))
-	prependSet[10] = (e(100, "active1", "2-a"))
-	cache.prependChanges(prependSet, 40, false)
+	prependSet[10] = (et(50, "active1", "1-a"))
+	cache.prependChanges(prependSet, 40, 50)
 	active, tombstones, removals = getCacheUtilization(context)
 	assert.Equal(t, 6, active)
 	assert.Equal(t, 6, tombstones)
