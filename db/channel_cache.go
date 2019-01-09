@@ -275,7 +275,7 @@ func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint6
 	//we don't know how many non active entries will be discarded from the entry set
 	//by the caller, so the additional entries may be needed to return up to the limit requested
 	if options.ActiveOnly {
-		options.Limit = 0
+		limit = 0
 	}
 
 	return c._getCachedChanges(sinceSeq, limit)
