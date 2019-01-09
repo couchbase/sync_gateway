@@ -16,7 +16,7 @@ func (lc *LogContext) addContext(format string) string {
 	}
 
 	if lc.CorrelationID != "" {
-		format = "cID=" + lc.CorrelationID + " " + format
+		format = "c:" + lc.CorrelationID + " " + format
 	}
 
 	return format

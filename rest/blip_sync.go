@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -39,8 +38,6 @@ const (
 type blipSyncContext struct {
 	blipContext         *blip.Context
 	db                  *db.Database
-	dbc                 *db.DatabaseContext
-	user                auth.User
 	effectiveUsername   string
 	batchSize           int
 	continuous          bool
@@ -120,15 +117,13 @@ func (h *handler) handleBLIPSync() error {
 	ctx := blipSyncContext{
 		blipContext:       blipContext,
 		db:                h.db,
-		dbc:               h.db.DatabaseContext,
-		user:              h.user,
 		effectiveUsername: h.currentEffectiveUserName(),
 		terminator:        make(chan bool),
 	}
 	defer ctx.close()
 
 	// determine if SG has delta sync enabled for the given database
-	ctx.sgCanUseDeltas = ctx.dbc.DeltaSyncEnabled()
+	ctx.sgCanUseDeltas = ctx.db.DatabaseContext.DeltaSyncEnabled()
 
 	blipContext.DefaultHandler = ctx.notFound
 	for profile, handlerFn := range kHandlersByProfile {
@@ -405,8 +400,8 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 	})
 
 	// On forceClose, send notify to trigger immediate exit from change waiter
-	if forceClose && bh.user != nil {
-		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.user.Name())
+	if forceClose && bh.db.User() != nil {
+		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.db.User().Name())
 	}
 
 }
@@ -972,7 +967,7 @@ func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 
 	shouldUseDeltas := clientCanUseDeltas && ctx.sgCanUseDeltas
 	if !ctx.useDeltas && shouldUseDeltas {
-		ctx.dbc.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
+		ctx.db.DatabaseContext.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
 	}
 	ctx.useDeltas = shouldUseDeltas
 }
