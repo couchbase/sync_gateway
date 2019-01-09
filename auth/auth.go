@@ -63,13 +63,6 @@ func docIDForUserEmail(email string) string {
 	return "_sync:useremail:" + email
 }
 
-func (auth *Authenticator) UnmarshalPrincipal(data []byte, defaultName string, defaultSeq uint64, isUser bool) (Principal, error) {
-	if isUser {
-		return auth.UnmarshalUser(data, defaultName, defaultSeq)
-	}
-	return auth.UnmarshalRole(data, defaultName, defaultSeq)
-}
-
 func (auth *Authenticator) GetPrincipal(name string, isUser bool) (Principal, error) {
 	if isUser {
 		return auth.GetUser(name)

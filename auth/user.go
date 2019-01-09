@@ -94,26 +94,6 @@ func (auth *Authenticator) NewUser(username string, password string, channels ba
 	return user, nil
 }
 
-func (auth *Authenticator) UnmarshalUser(data []byte, defaultName string, defaultSequence uint64) (User, error) {
-	user := &userImpl{auth: auth}
-	if err := json.Unmarshal(data, user); err != nil {
-		return nil, err
-	}
-	if user.Name_ == "" {
-		user.Name_ = defaultName
-	}
-	defaultVbSequence := ch.NewVbSimpleSequence(defaultSequence)
-	for channel, seq := range user.ExplicitChannels_ {
-		if seq.Sequence == 0 {
-			user.ExplicitChannels_[channel] = defaultVbSequence
-		}
-	}
-	if err := user.validate(); err != nil {
-		return nil, err
-	}
-	return user, nil
-}
-
 // Checks whether this userImpl object contains valid data; if not, returns an error.
 func (user *userImpl) validate() error {
 	if err := (&user.roleImpl).validate(); err != nil {
