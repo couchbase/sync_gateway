@@ -716,7 +716,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		newRev := createRevID(generation, matchRev, body)
 		body[BodyRev] = newRev
 		if err := doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
-			base.Infof(base.KeyCRUD, "Failed to add revision ID: %s, error: %v", newRev, err)
+			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
 			return nil, nil, nil, base.ErrRevTreeAddRevFailure
 		}
 

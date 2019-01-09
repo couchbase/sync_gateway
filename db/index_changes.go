@@ -30,7 +30,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
 		userVbNo = uint16(db.Bucket.VBHash(db.user.DocID()))
 	}
-	base.Debugf(base.KeyChanges, "Vector MultiChangesFeed(channels: %s, options: %+v) ... %s", base.UD(chans), options, base.UD(to))
+	base.DebugfCtx(db.Ctx, base.KeyChanges, "Vector MultiChangesFeed(channels: %s, options: %+v) ... %s", base.UD(chans), options, base.UD(to))
 
 	output := make(chan *ChangeEntry, 50)
 
@@ -41,7 +41,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 		var lastHashedValue string
 		hashedEntryCount := 0
 		defer func() {
-			base.Debugf(base.KeyChanges, "MultiChangesFeed done %s", base.UD(to))
+			base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed done %s", base.UD(to))
 			IndexExpvars.Add("vectorChanges_active", -1)
 			close(output)
 		}()
@@ -72,7 +72,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				if err := db.ReloadUser(); err != nil {
 					change := makeErrorEntry("User not found during reload - terminating changes feed")
 					output <- &change
-					base.Warnf(base.KeyAll, "Error reloading user during changes initialization %q: %v", base.UD(db.user.Name()), err)
+					base.WarnfCtx(db.Ctx, base.KeyAll, "Error reloading user during changes initialization %q: %v", base.UD(db.user.Name()), err)
 					return
 				}
 			}
@@ -93,7 +93,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			// Get the last polled stable sequence.  We don't return anything later than stable sequence in each iteration
 			stableClock, err := db.changeCache.GetStableClock(true)
 			if err != nil {
-				base.Warnf(base.KeyAll, "MultiChangesFeed got error reading stable sequence: %v", err)
+				base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading stable sequence: %v", err)
 				change := makeErrorEntry("Error reading stable sequence")
 				output <- &change
 				return
@@ -103,7 +103,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			if changeWaiter != nil {
 				changeWaiter.UpdateChannels(channelsSince)
 			}
-			base.Debugf(base.KeyChanges, "MultiChangesFeed: channels expand to %#v ... %s", base.UD(channelsSince.String()), base.UD(to))
+			base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed: channels expand to %#v ... %s", base.UD(channelsSince.String()), base.UD(to))
 
 			// postStableSeqsFound tracks whether we hit any sequences later than the stable sequence.  In this scenario the user
 			// may not get another wait notification, so we bypass wait loop processing.
@@ -112,7 +112,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			// Build the channel feeds.
 			feeds, postStableSeqsFound, err := db.initializeChannelFeeds(channelsSince, secondaryTriggers, options, addedChannels, userVbNo, cumulativeClock, stableClock)
 			if err != nil {
-				base.Warnf(base.KeyAll, "Error building channel feeds: %v", err)
+				base.WarnfCtx(db.Ctx, base.KeyAll, "Error building channel feeds: %v", err)
 				change := makeErrorEntry("Error building channel feeds")
 				output <- &change
 				return
@@ -188,7 +188,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 					if minEntry.Seq.TriggeredByClock.GetHashedValue() == "" {
 						clockHash, err := db.SequenceHasher.GetHash(cumulativeClock)
 						if err != nil {
-							base.Warnf(base.KeyAll, "Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
+							base.WarnfCtx(db.Ctx, base.KeyAll, "Error calculating hash for triggered by clock:%v", base.PrintClock(cumulativeClock))
 						} else {
 							minEntry.Seq.TriggeredByClock.SetHashedValue(clockHash)
 						}
@@ -196,7 +196,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 
 				// Send the entry, and repeat the loop:
-				base.Debugf(base.KeyChanges, "MultiChangesFeed sending %s %s", base.UD(minEntry), base.UD(to))
+				base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed sending %s %s", base.UD(minEntry), base.UD(to))
 				select {
 				case <-options.Terminator:
 					return
@@ -226,7 +226,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// If nothing found, and in wait mode: wait for the db to change, then run again.
 			// First notify the reader that we're waiting by sending a nil.
-			base.Debugf(base.KeyChanges, "MultiChangesFeed waiting... %s", base.UD(to))
+			base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed waiting... %s", base.UD(to))
 			output <- nil
 
 		waitForChanges:
@@ -265,7 +265,7 @@ func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOption
 			}
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
-				base.Debugf(base.KeyChanges, "User not found during reload - terminating changes feed with entry %+v", base.UD(change))
+				base.DebugfCtx(db.Ctx, base.KeyChanges, "User not found during reload - terminating changes feed with entry %+v", base.UD(change))
 				output <- &change
 				return
 			}

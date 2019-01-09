@@ -136,7 +136,7 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	ctx.blipContext.FatalErrorHandler = func(err error) {
-		ctx.Logf(base.LevelInfo, base.KeyHTTP, "#%03d:     --> BLIP+WebSocket connection error: %v", h.serialNumber, err)
+		ctx.Logf(base.LevelInfo, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", h.formatSerialNumber(), err)
 	}
 
 	// Create a BLIP WebSocket handler and have it handle the request:
@@ -146,7 +146,7 @@ func (h *handler) handleBLIPSync() error {
 		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol. User:%s.", blipContext.ID, ctx.effectiveUsername))
 		defer func() {
 			conn.Close() // in case it wasn't closed already
-			ctx.Logf(base.LevelDebug, base.KeyHTTP, "#%03d:    --> BLIP+WebSocket connection closed", h.serialNumber)
+			ctx.Logf(base.LevelInfo, base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
 		}()
 		defaultHandler(conn)
 	}
@@ -200,18 +200,17 @@ func (ctx *blipSyncContext) notFound(rq *blip.Message) {
 }
 
 func (ctx *blipSyncContext) Logf(logLevel base.LogLevel, logKey base.LogKey, format string, args ...interface{}) {
-	formatWithContextID, paramsWithContextID := base.PrependContextID(ctx.blipContext.ID, format, args...)
 	switch logLevel {
 	case base.LevelError:
-		base.Errorf(logKey, formatWithContextID, paramsWithContextID...)
+		base.ErrorfCtx(ctx.db.Ctx, logKey, format, args...)
 	case base.LevelWarn:
-		base.Warnf(logKey, formatWithContextID, paramsWithContextID...)
+		base.WarnfCtx(ctx.db.Ctx, logKey, format, args...)
 	case base.LevelInfo:
-		base.Infof(logKey, formatWithContextID, paramsWithContextID...)
+		base.InfofCtx(ctx.db.Ctx, logKey, format, args...)
 	case base.LevelDebug:
-		base.Debugf(logKey, formatWithContextID, paramsWithContextID...)
+		base.DebugfCtx(ctx.db.Ctx, logKey, format, args...)
 	case base.LevelTrace:
-		base.Tracef(logKey, formatWithContextID, paramsWithContextID...)
+		base.TracefCtx(ctx.db.Ctx, logKey, format, args...)
 	}
 }
 

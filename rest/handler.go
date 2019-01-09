@@ -227,7 +227,7 @@ func (h *handler) logRequestLine() {
 	}
 
 	queryValues := h.getQueryValues()
-	base.Infof(base.KeyHTTP, " #%03d: %s %s%s%s", h.serialNumber, h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.currentEffectiveUserNameAsUser())
+	base.Infof(base.KeyHTTP, " %s: %s %s%s%s", h.formatSerialNumber(), h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.currentEffectiveUserNameAsUser())
 }
 
 func (h *handler) logRequestBody() {
