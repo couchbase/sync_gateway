@@ -1458,7 +1458,7 @@ func TestChannelView(t *testing.T) {
 	// Query view (retry loop to wait for indexing)
 	for i := 0; i < 10; i++ {
 		var err error
-		entries, err = db.getChangesInChannelFromQuery("*", 0, ChangesOptions{})
+		entries, err = db.getChangesInChannelFromQuery("*", 0, 100, 0, false)
 
 		assert.NoError(t, err, "Couldn't create document")
 		if len(entries) >= 1 {

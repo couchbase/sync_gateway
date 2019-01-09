@@ -268,10 +268,20 @@ func (c *channelCache) pruneCacheAge() {
 func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c._getCachedChanges(options)
+	sinceSeq := options.Since.SafeSequence()
+	limit := options.Limit
+
+	//If the activeOnly option is set, then do not limit the number of entries returned
+	//we don't know how many non active entries will be discarded from the entry set
+	//by the caller, so the additional entries may be needed to return up to the limit requested
+	if options.ActiveOnly {
+		options.Limit = 0
+	}
+
+	return c._getCachedChanges(sinceSeq, limit)
 }
 
-func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
+func (c *channelCache) _getCachedChanges(sinceSeq uint64, limit int) (validFrom uint64, result []*LogEntry) {
 	// Find the first entry in the log to return:
 	log := c.logs
 	if len(log) == 0 {
@@ -279,7 +289,7 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint
 		return // Return nil if nothing is cached
 	}
 	var start int
-	for start = len(log) - 1; start >= 0 && log[start].Sequence > options.Since.SafeSequence(); start-- {
+	for start = len(log) - 1; start >= 0 && log[start].Sequence > sinceSeq; start-- {
 	}
 	start++
 
@@ -291,11 +301,8 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint
 
 	n := len(log) - start
 
-	//If the activeOnly option is set, then do not limit the number of entries returned
-	//we don't know how many non active entries will be discarded from the entry set
-	//by the caller, so the additional entries may be needed to return up to the limit requested
-	if options.Limit > 0 && n > options.Limit && !options.ActiveOnly {
-		n = options.Limit
+	if limit > 0 && n > limit {
+		n = limit
 	}
 
 	result = make([]*LogEntry, n)
@@ -346,8 +353,9 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
 	// overlap, which helps confirm that we've got everything.
 	c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheMisses, 1)
-	resultFromView, err := c.context.getChangesInChannelFromQuery(c.channelName, cacheValidFrom,
-		options)
+	endSeq := cacheValidFrom
+	// limit = options.Limit
+	resultFromView, err := c.context.getChangesInChannelFromQuery(c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
