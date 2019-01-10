@@ -17,10 +17,10 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"sync/atomic"
-	"github.com/couchbase/sync_gateway/base"
 )
 
 // Tests the ConfigServer feature.

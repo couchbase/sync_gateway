@@ -300,7 +300,6 @@ func (s *syncData) GetSyncCas() uint64 {
 	return base.HexCasToUint64(s.Cas)
 }
 
-
 // syncData.IsSGWrite - used during feed-based import
 func (s *syncData) IsSGWrite(cas uint64, rawBody []byte) (isSGWrite bool, crc32Match bool) {
 

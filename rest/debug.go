@@ -9,8 +9,8 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	_ "github.com/couchbase/gomemcached/debug"
-	"github.com/samuel/go-metrics/metrics"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/samuel/go-metrics/metrics"
 )
 
 const (
