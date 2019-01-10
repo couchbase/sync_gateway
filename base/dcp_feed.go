@@ -97,7 +97,7 @@ type DCPReceiver struct {
 	backfill               backfillStatus                 // Backfill state and stats
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, backfillType uint64) (Receiver, error) {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool) (Receiver, error) {
 
 	r := &DCPReceiver{
 		bucket:                 bucket,
@@ -107,13 +107,7 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 		meta:                   make([][]byte, maxVbNo),
 		vbuuids:                make(map[uint16]uint64, maxVbNo),
 		updatesSinceCheckpoint: make([]uint64, maxVbNo),
-	}
-
-	r.callback = callback
-	initErr := r.initFeed(backfillType)
-
-	if initErr != nil {
-		return nil, initErr
+		callback:               callback,
 	}
 
 	if LogDebugEnabled(KeyDCP) {
@@ -557,7 +551,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		persistCheckpoints = true
 	}
 
-	dcpReceiver, err := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, args.Backfill)
+	dcpReceiver, err := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints)
 	if err != nil {
 		return err
 	}
