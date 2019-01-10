@@ -276,17 +276,14 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 		var deletes []uint64
 		for _, skippedSeq := range c.skippedSeqs {
 			if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
-				// Attempt to retrieve the sequence from the view before we remove.  View call
-				// expects 'since' value, and returns results greater than the since value, so
-				// set 'since' to our target sequence - 1
-				sinceSequence := skippedSeq.seq - 1
+				// Attempt to retrieve the sequence from the view before we remove.
+				startSequence := skippedSeq.seq
 				endSequence := skippedSeq.seq
-				options := ChangesOptions{Since: SequenceID{Seq: sinceSequence}}
 				// Note: The view query is only going to hit for active revisions - sequences associated with inactive revisions
 				//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
 				//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
 				//       the doc won't be flagged as removed from that channel in the in-memory channel cache.
-				entries, err := c.context.getChangesInChannelFromQuery("*", endSequence, options)
+				entries, err := c.context.getChangesInChannelFromQuery("*", startSequence, endSequence, 0, false)
 				if err == nil && len(entries) > 0 {
 					// Found it - store to send to the caches.
 					found = append(found, entries[0])

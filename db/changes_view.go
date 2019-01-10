@@ -75,20 +75,17 @@ func nextChannelQueryEntry(results sgbucket.QueryResultIterator) (*LogEntry, boo
 
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
 func (dbc *DatabaseContext) getChangesInChannelFromQuery(
-	channelName string, endSeq uint64, options ChangesOptions) (LogEntries, error) {
+	channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
 	if dbc.Bucket == nil {
-		return nil, errors.New("No bucket available for channel view query")
+		return nil, errors.New("No bucket available for channel query")
 	}
 	start := time.Now()
-
-	startSeq := options.Since.SafeSequence() + 1
-
 	usingViews := dbc.Options.UseViews
 
 	entries := make(LogEntries, 0)
 	activeEntryCount := 0
 
-	base.Infof(base.KeyCache, "  Querying 'channels' view for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), startSeq, endSeq, options.Limit)
+	base.Infof(base.KeyCache, "  Querying 'channels' for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), startSeq, endSeq, limit)
 
 	// Loop for active-only and limit handling.
 	// The set of changes we get back from the query applies the limit, but includes both active and non-active entries.  When retrieving changes w/ activeOnly=true and a limit,
@@ -96,7 +93,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 	for {
 
 		// Query the view or index
-		queryResults, err := dbc.QueryChannels(channelName, startSeq, endSeq, options.Limit)
+		queryResults, err := dbc.QueryChannels(channelName, startSeq, endSeq, limit)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +118,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 
 			// If active-only, track the number of non-removal, non-deleted revisions we've seen in the view results
 			// for limit calculation below.
-			if options.ActiveOnly {
+			if activeOnly {
 				if entry.IsActive() {
 					activeEntryCount++
 				}
@@ -144,10 +141,11 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 			return nil, nil
 		}
 
-		// If active-only, loop until either retrieve (limit) entries, or reach endSeq
-		if options.ActiveOnly {
+		// If active-only, loop until either retrieve (limit) active entries, or reach endSeq.  Non-active entries are still
+		// included in the result set for potential cache prepend
+		if activeOnly {
 			// If we've reached limit, we're done
-			if activeEntryCount >= options.Limit || options.Limit == 0 {
+			if activeEntryCount >= limit || limit == 0 {
 				break
 			}
 			// If we've reached endSeq, we're done
@@ -157,7 +155,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 			// Otherwise update startkey and re-query
 
 			startSeq = highSeq + 1
-			base.Infof(base.KeyCache, "  Querying 'channels' for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), highSeq+1, endSeq, options.Limit)
+			base.Infof(base.KeyCache, "  Querying 'channels' for %q (start=#%d, end=#%d, limit=%d)", base.UD(channelName), highSeq+1, endSeq, limit)
 		} else {
 			// If not active-only, we only need one iteration of the loop - the limit applied to the view query is sufficient
 			break
@@ -170,13 +168,13 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 	}
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
 		base.Infof(base.KeyAll, "Channel query took %v to return %d rows.  Channel: %s StartSeq: %d EndSeq: %d Limit: %d",
-			elapsed, len(entries), base.UD(channelName), startSeq, endSeq, options.Limit)
+			elapsed, len(entries), base.UD(channelName), startSeq, endSeq, limit)
 	}
 	changeCacheExpvars.Add("view_queries", 1)
 	return entries, nil
 }
 
 // Public channel view call - for unit test support
-func (dbc *DatabaseContext) ChannelViewTest(channelName string, endSeq uint64, options ChangesOptions) (LogEntries, error) {
-	return dbc.getChangesInChannelFromQuery(channelName, endSeq, options)
+func (dbc *DatabaseContext) ChannelViewTest(channelName string, startSeq, endSeq uint64) (LogEntries, error) {
+	return dbc.getChangesInChannelFromQuery(channelName, startSeq, endSeq, 0, false)
 }
