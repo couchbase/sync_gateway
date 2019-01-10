@@ -750,8 +750,6 @@ func (c *changeCache) _addPendingLogs() base.Set {
 			heap.Pop(&c.pendingLogs)
 			changedChannels = changedChannels.Union(c._addToCache(change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
-			base.Infof(base.KeyCache, "Skipping sequence %d based on len(c.pendingLogs):%v, CachePendingSeqMaxNum: %v, time.Since(c.pendingLogs[0].TimeReceived): %v, c.options.CachePendingSeqMaxWait",
-				len(c.pendingLogs), c.options.CachePendingSeqMaxNum, time.Since(c.pendingLogs[0].TimeReceived), c.options.CachePendingSeqMaxWait)
 			c.context.DbStats.StatsCache().Add(base.StatKeyNumSkippedSeqs, 1)
 			c.PushSkipped(c.nextSequence)
 			c.nextSequence++

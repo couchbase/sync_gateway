@@ -436,7 +436,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 
 	if response.Type() == blip.ErrorType {
 		errorBody, _ := response.Body()
-		base.Warnf(base.KeyAll, "[%s] Unexpected error while handling changes response: %s", bh.blipContext.ID, errorBody)
+		base.Infof(base.KeyAll, "[%s] Client returned error in changesResponse: %s", bh.blipContext.ID, errorBody)
 		return
 	}
 
