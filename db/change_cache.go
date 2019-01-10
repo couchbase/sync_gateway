@@ -2,6 +2,7 @@ package db
 
 import (
 	"container/heap"
+	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
@@ -550,15 +551,17 @@ func (c *changeCache) Remove(docIDs []string, startTime time.Time) (count int) {
 	return count
 }
 
-func (c *changeCache) unmarshalPrincipal(docJSON []byte, isUser bool) (auth.Principal, error) {
+// Simplified principal limited to properties needed by caching
+type cachePrincipal struct {
+	Name     string `json:"name"`
+	Sequence uint64 `json:"sequence"`
+}
 
-	c.context.BucketLock.RLock()
-	defer c.context.BucketLock.RUnlock()
-	if c.context.Bucket != nil {
-		return c.context.Authenticator().UnmarshalPrincipal(docJSON, "", 0, isUser)
-	} else {
-		return nil, fmt.Errorf("Attempt to unmarshal principal using closed bucket")
-	}
+// Principals unmarshalled during caching don't need to instantiate a real principal - we're just using name and seq from the document
+func (c *changeCache) unmarshalCachePrincipal(docJSON []byte) (cachePrincipal, error) {
+	var principal cachePrincipal
+	err := json.Unmarshal(docJSON, &principal)
+	return principal, err
 }
 
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
@@ -589,12 +592,12 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	// Currently the cache isn't really doing much with user docs; mostly it needs to know about
 	// them because they have sequence numbers, so without them the sequence of sequences would
 	// have gaps in it, causing later sequences to get stuck in the queue.
-	princ, err := c.unmarshalPrincipal(docJSON, isUser)
-	if princ == nil {
+	princ, err := c.unmarshalCachePrincipal(docJSON)
+	if err != nil {
 		base.Warnf(base.KeyAll, "changeCache: Error unmarshaling doc %q: %v", base.UD(docID), err)
 		return
 	}
-	sequence := princ.Sequence()
+	sequence := princ.Sequence
 
 	if sequence <= c.getInitialSequence() {
 		return // Tap is sending us an old value from before I started up; ignore it
@@ -606,9 +609,9 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		TimeReceived: timeReceived,
 	}
 	if isUser {
-		change.DocID = "_user/" + princ.Name()
+		change.DocID = "_user/" + princ.Name
 	} else {
-		change.DocID = "_role/" + princ.Name()
+		change.DocID = "_role/" + princ.Name
 	}
 
 	base.Infof(base.KeyCache, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))

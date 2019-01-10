@@ -514,8 +514,8 @@ func (context *DatabaseContext) Close() {
 }
 
 func (context *DatabaseContext) IsClosed() bool {
-	context.BucketLock.Lock()
-	defer context.BucketLock.Unlock()
+	context.BucketLock.RLock()
+	defer context.BucketLock.RUnlock()
 	return context.Bucket == nil
 }
 

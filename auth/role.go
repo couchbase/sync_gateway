@@ -10,7 +10,6 @@
 package auth
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -53,28 +52,6 @@ func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error)
 	if err := auth.rebuildChannels(role); err != nil {
 		return nil, err
 	}
-	return role, nil
-}
-
-func (auth *Authenticator) UnmarshalRole(data []byte, defaultName string, defaultSeq uint64) (Role, error) {
-	role := &roleImpl{}
-	if err := json.Unmarshal(data, role); err != nil {
-		return nil, err
-	}
-	if role.Name_ == "" {
-		role.Name_ = defaultName
-	}
-
-	defaultVbSeq := ch.NewVbSimpleSequence(defaultSeq)
-	for channel, seq := range role.ExplicitChannels_ {
-		if seq.Sequence == 0 {
-			role.ExplicitChannels_[channel] = defaultVbSeq
-		}
-	}
-	if err := role.validate(); err != nil {
-		return nil, err
-	}
-
 	return role, nil
 }
 
