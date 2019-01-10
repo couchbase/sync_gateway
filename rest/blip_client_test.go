@@ -217,8 +217,8 @@ func newBlipTesterReplication(id string, btc *BlipTesterClient) (*BlipTesterRepl
 // NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
 func NewBlipTesterClient(rt *RestTester) (client *BlipTesterClient, err error) {
 	btc := BlipTesterClient{
-		rt:   rt,
-		docs: make(map[string]map[string][]byte),
+		rt:                rt,
+		docs:              make(map[string]map[string][]byte),
 		lastReplicatedRev: make(map[string]string),
 	}
 

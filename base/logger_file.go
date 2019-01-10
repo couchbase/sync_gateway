@@ -58,7 +58,7 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFile
 	logger := &FileLogger{
 		Enabled: *config.Enabled,
 		level:   level,
-		name: name,
+		name:    name,
 		output:  config.Output,
 		logger:  log.New(config.Output, "", 0),
 	}

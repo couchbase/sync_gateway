@@ -6,14 +6,14 @@ import "fmt"
 // fmt.Errorf), which has the ability to redact any sensitive user data by calling redact() on all if it's
 // stored args.
 type RedactableError struct {
-	fmt string
+	fmt  string
 	args []interface{}
 }
 
 // Create a new redactable error.  Same signature as fmt.Errorf() for easy drop-in replacement.
 func RedactErrorf(fmt string, args ...interface{}) *RedactableError {
 	return &RedactableError{
-		fmt: fmt,
+		fmt:  fmt,
 		args: args,
 	}
 }

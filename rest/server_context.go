@@ -1032,7 +1032,6 @@ func (sc *ServerContext) logStats() error {
 
 }
 
-
 func (sc *ServerContext) logNetworkInterfaceStats() {
 
 	publicListenInterface := DefaultInterface
