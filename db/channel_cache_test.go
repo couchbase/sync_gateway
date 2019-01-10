@@ -223,7 +223,7 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended := cache.prependChanges(changesToPrepend, 5, true)
+	numPrepended := cache.prependChanges(changesToPrepend, 5, 14)
 	assert.Equals(t, numPrepended, 3)
 
 	// Validate cache
@@ -245,7 +245,7 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 5, 14)
 	assert.Equals(t, numPrepended, 2)
 
 	// Validate cache
@@ -280,7 +280,7 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	// Prepend empty set, validate validFrom update
-	cache.prependChanges(LogEntries{}, 5, true)
+	cache.prependChanges(LogEntries{}, 5, 14)
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
 	assert.Equals(t, validFrom, uint64(5))
 	assert.Equals(t, len(cachedChanges), 4)
@@ -302,7 +302,7 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 5, 14)
 	assert.Equals(t, numPrepended, 1)
 
 	// Validate cache
@@ -336,8 +336,10 @@ func TestPrependChanges(t *testing.T) {
 		e(12, "doc4", "2-a"),
 		e(14, "doc1", "2-a"),
 	}
-	numPrepended = cache.prependChanges(changesToPrepend, 5, true)
+
+	numPrepended = cache.prependChanges(changesToPrepend, 5, 14)
 	assert.Equals(t, numPrepended, 0)
+
 	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
 	assert.Equals(t, validFrom, uint64(5))
 	assert.Equals(t, len(cachedChanges), 4)
@@ -370,7 +372,7 @@ func TestPrependChanges(t *testing.T) {
 		e(14, "doc1", "2-a"),
 	}
 
-	numPrepended = cache.prependChanges(changesToPrepend, 6, true)
+	numPrepended = cache.prependChanges(changesToPrepend, 6, 14)
 	assert.Equals(t, numPrepended, 0)
 
 	// Validate cache
@@ -425,6 +427,7 @@ func TestChannelCacheRemove(t *testing.T) {
 	// [DBG] Cache+: Skipping removal of doc "doc5" from cache "Test1" - received after purge
 	cache.Remove([]string{"doc5"}, time.Now().Add(-time.Second*5))
 	entries, err = cache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
+
 	assert.Equals(t, len(entries), 2)
 	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
 	assert.True(t, verifyChannelDocIDs(entries, []string{"doc3", "doc5"}))
