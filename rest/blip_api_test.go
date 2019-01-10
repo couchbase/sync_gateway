@@ -148,7 +148,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 // Wait until we get the expected updates
 func TestContinuousChangesSubscription(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg|base.KeyChanges|base.KeyCache)()
 
 	bt, err := NewBlipTester()
 	assert.NoError(t, err, "Error creating BlipTester")
@@ -160,6 +160,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
+	nonIntegerSequenceReceived := false
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
@@ -180,9 +181,14 @@ func TestContinuousChangesSubscription(t *testing.T) {
 				goassert.Equals(t, len(change), 3)
 
 				// Make sure sequence numbers are monotonically increasing
-				receivedSeq := change[0].(float64)
-				goassert.True(t, receivedSeq > lastReceivedSeq)
-				lastReceivedSeq = receivedSeq
+				receivedSeq, ok := change[0].(float64)
+				if ok {
+					goassert.True(t, receivedSeq > lastReceivedSeq)
+					lastReceivedSeq = receivedSeq
+				} else {
+					nonIntegerSequenceReceived = true
+					log.Printf("Unexpected non-integer sequence received: %v", change[0])
+				}
 
 				// Verify doc id and rev id have expected vals
 				docId := change[1].(string)
@@ -250,6 +256,8 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
 	goassert.True(t, numBatchesReceivedSnapshot >= 2)
 
+	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
+
 }
 
 // Make several updates
@@ -280,6 +288,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
+	nonIntegerSequenceReceived := false
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
@@ -300,9 +309,14 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 				goassert.Equals(t, len(change), 3)
 
 				// Make sure sequence numbers are monotonically increasing
-				receivedSeq := change[0].(float64)
-				goassert.True(t, receivedSeq > lastReceivedSeq)
-				lastReceivedSeq = receivedSeq
+				receivedSeq, ok := change[0].(float64)
+				if ok {
+					goassert.True(t, receivedSeq > lastReceivedSeq)
+					lastReceivedSeq = receivedSeq
+				} else {
+					nonIntegerSequenceReceived = true
+					log.Printf("Unexpected non-integer sequence received: %v", change[0])
+				}
 
 				// Verify doc id and rev id have expected vals
 				docId := change[1].(string)
@@ -402,6 +416,9 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	if expectedTimeoutErr == nil {
 		t.Errorf("Received additional changes after one-shot should have been closed.")
 	}
+
+	// Validate integer sequences
+	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 }
 
 // Test subChanges w/ docID filter
@@ -434,6 +451,8 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
+	nonIntegerSequenceReceived := false
+
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
@@ -454,9 +473,14 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 				goassert.Equals(t, len(change), 3)
 
 				// Make sure sequence numbers are monotonically increasing
-				receivedSeq := change[0].(float64)
-				goassert.True(t, receivedSeq > lastReceivedSeq)
-				lastReceivedSeq = receivedSeq
+				receivedSeq, ok := change[0].(float64)
+				if ok {
+					goassert.True(t, receivedSeq > lastReceivedSeq)
+					lastReceivedSeq = receivedSeq
+				} else {
+					nonIntegerSequenceReceived = true
+					log.Printf("Unexpected non-integer sequence received: %v", change[0])
+				}
 
 				// Verify doc id and rev id have expected vals
 				docId := change[1].(string)
@@ -554,6 +578,9 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 	// Validate that the 'caught up' message was sent
 	goassert.True(t, receivedCaughtUpChange)
+
+	// Validate integer sequences
+	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 }
 
 // Push proposed changes and ensure that the server accepts them

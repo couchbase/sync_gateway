@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -81,6 +82,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 				}
 			}()
 			for event := range listener.tapFeed.Events() {
+				event.TimeReceived = time.Now()
 				listener.ProcessFeedEvent(event)
 			}
 		}()
