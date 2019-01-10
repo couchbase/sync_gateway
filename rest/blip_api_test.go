@@ -160,6 +160,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
+	nonIntegerSequenceReceived := false
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
@@ -180,9 +181,14 @@ func TestContinuousChangesSubscription(t *testing.T) {
 				goassert.Equals(t, len(change), 3)
 
 				// Make sure sequence numbers are monotonically increasing
-				receivedSeq := change[0].(float64)
-				goassert.True(t, receivedSeq > lastReceivedSeq)
-				lastReceivedSeq = receivedSeq
+				receivedSeq, ok := change[0].(float64)
+				if ok {
+					goassert.True(t, receivedSeq > lastReceivedSeq)
+					lastReceivedSeq = receivedSeq
+				} else {
+					nonIntegerSequenceReceived = true
+					log.Printf("Unexpected non-integer sequence received: %v", change[0])
+				}
 
 				// Verify doc id and rev id have expected vals
 				docId := change[1].(string)
@@ -249,6 +255,8 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
 	numBatchesReceivedSnapshot := atomic.LoadInt32(&numbatchesReceived)
 	goassert.True(t, numBatchesReceivedSnapshot >= 2)
+
+	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 
 }
 
