@@ -106,9 +106,8 @@ func (h *handler) handleBLIPSync() error {
 	blipContext.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
 	blipContext.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
 
-	// Overwrite the logging context with the blip context ID
-	// Retaining other contextual information like db and username are not required for blip logging
-	h.db.Ctx = context.WithValue(h.db.Ctx, base.SGLogContextKey,
+	// Overwrite the existing logging context with the blip context ID
+	h.db.Ctx = context.WithValue(h.db.Ctx, base.LogContextKey{},
 		base.LogContext{CorrelationID: formatBlipContextID(blipContext.ID)},
 	)
 	blipContext.Logger = DefaultBlipLogger(h.db.Ctx)

@@ -195,7 +195,7 @@ func (h *handler) invoke(method handlerMethod) error {
 		if err != nil {
 			return err
 		}
-		h.db.Ctx = context.WithValue(context.Background(), base.SGLogContextKey,
+		h.db.Ctx = context.WithValue(context.Background(), base.LogContextKey{},
 			base.LogContext{CorrelationID: h.formatSerialNumber()},
 		)
 	}

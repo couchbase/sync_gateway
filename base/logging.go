@@ -567,7 +567,7 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 	}
 
 	if ctx != nil {
-		if logCtx, ok := ctx.Value(SGLogContextKey).(LogContext); ok {
+		if logCtx, ok := ctx.Value(LogContextKey{}).(LogContext); ok {
 			format = logCtx.addContext(format)
 		}
 	}

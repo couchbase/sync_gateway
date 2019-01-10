@@ -1,6 +1,7 @@
 package base
 
-const SGLogContextKey = "sg_log_context"
+// LogContextKey is used to key a LogContext value
+type LogContextKey struct {}
 
 // LogContext stores values which may be useful to include in logs
 type LogContext struct {

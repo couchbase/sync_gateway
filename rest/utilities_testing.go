@@ -723,7 +723,7 @@ func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
 	// Make BLIP/Websocket connection
 	bt.blipContext = blip.NewContext(BlipCBMobileReplication)
 	bt.blipContext.Logger = DefaultBlipLogger(
-		context.WithValue(context.Background(), base.SGLogContextKey,
+		context.WithValue(context.Background(), base.LogContextKey{},
 			base.LogContext{CorrelationID: formatBlipContextID(bt.blipContext.ID)},
 		),
 	)
