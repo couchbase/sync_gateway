@@ -148,7 +148,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 // Wait until we get the expected updates
 func TestContinuousChangesSubscription(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg|base.KeyChanges)()
 
 	bt, err := NewBlipTester()
 	assert.NoError(t, err, "Error creating BlipTester")
