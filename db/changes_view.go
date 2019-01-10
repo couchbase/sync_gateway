@@ -73,9 +73,6 @@ func nextChannelQueryEntry(results sgbucket.QueryResultIterator) (*LogEntry, boo
 
 }
 
-//	startSeq := options.Since.SafeSequence() + 1
-// limit = options.Limit
-
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
 func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 	channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {

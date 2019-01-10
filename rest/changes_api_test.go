@@ -1779,16 +1779,15 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	// Flush the channel cache
 	testDb.FlushChannelCache()
 
-	// Issue a since=n changes request, where n > 0 and is a non-PBS sequence.  Validate that there's a view-based backfill
 	var changes struct {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
 	}
 
+	// Initialize query count
 	queryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
-	log.Printf("After initial changes request, query count is :%d", queryCount)
 
-	// Issue a since=0 changes request.  Validate that there is not another a view-based backfill
+	// Issue a since=0 changes request.  Validate that there is a view-based backfill
 	changes.Results = nil
 	changesJSON := `{"since":0, "limit":50}`
 	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
@@ -1798,7 +1797,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 	}
-	// Validate that there has been one more view query
+	// Validate that there has been a view query
 	secondQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
 	goassert.Equals(t, secondQueryCount, queryCount+1)
 
@@ -1811,7 +1810,6 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 	}
-	// Validate that there haven't been any more view queries
 	thirdQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
 	goassert.Equals(t, thirdQueryCount, secondQueryCount)
 
@@ -1856,7 +1854,8 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 		Last_Seq interface{}
 	}
 
-	// Issue a since=0, limit 5 changes request.
+	// Issue a since=0, limit 5 changes request.  Results shouldn't be prepended to the cache, since they aren't
+	// contiguous with the cache's validFrom.
 	changes.Results = nil
 	changesJSON := `{"since":0, "limit":5}`
 	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))

@@ -354,7 +354,6 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	// overlap, which helps confirm that we've got everything.
 	c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheMisses, 1)
 	endSeq := cacheValidFrom
-	// limit = options.Limit
 	resultFromView, err := c.context.getChangesInChannelFromQuery(c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
