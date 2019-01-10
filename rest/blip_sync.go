@@ -434,9 +434,16 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 		}
 	}()
 
+	if response.Type() == blip.ErrorType {
+		errorBody, _ := response.Body()
+		base.Warnf(base.KeyAll, "[%s] Unexpected error while handling changes response: %s", bh.blipContext.ID, errorBody)
+		return
+	}
+
 	var answer []interface{}
 	if err := response.ReadJSONBody(&answer); err != nil {
-		bh.Logf(base.LevelInfo, base.KeySync, "Invalid response to 'changes' message: %s -- %s.  User:%s", response, err, base.UD(bh.effectiveUsername))
+		body, _ := response.Body()
+		bh.Logf(base.LevelInfo, base.KeySync, "Invalid response to 'changes' message: %s -- %s.  Body: %s, User:%s", response, err, body, base.UD(bh.effectiveUsername))
 		return
 	}
 	changesResponseReceived := time.Now()
@@ -492,7 +499,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 			}
 
 			if deltaSrcRevID != "" {
-				 bh.sendRevAsDelta(sender, seq, docID, revID, deltaSrcRevID, knownRevs, maxHistory)
+				bh.sendRevAsDelta(sender, seq, docID, revID, deltaSrcRevID, knownRevs, maxHistory)
 			} else {
 				bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 			}
