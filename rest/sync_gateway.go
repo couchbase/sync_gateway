@@ -118,6 +118,12 @@ func (gw *SyncGateway) Start() error {
 	if err := gw.LoadDbConfigAllDbs(); err != nil {
 		return err
 	}
+	
+	// WARNING: hackish prototype design below.  Much work needed to make this production quality.
+	// As discussed in debrief meeting on 1/4/19, the following changes should be made:
+	//   - A single module (call it grpcConnMgr) should be responsible for managing the lifecycle of the grpc connections, including reconnects during failures
+	//   - Before the ObserveMetaKVChangesRetry() and PushStatsStreamWithReconnect() goroutines were started, grpcConnMgr would be initialized and establish a connection
+	//   - If either of the above goroutines encountered a non-recoverable error, they would request the grpcConnMgr to reconnect to grpc, and once successful, they would then resume their work
 
 	// Kick off goroutine to observe stream of metakv changes.  To shut this goroutine down, call gw.Stop(),
 	// which will call gw.CancelMetaKVObserveChildren()
