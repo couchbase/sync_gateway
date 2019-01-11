@@ -138,7 +138,8 @@ type UnsupportedOptions struct {
 }
 
 type WarningThresholds struct {
-	XattrSize *uint32 `json:"xattr_size_bytes,omitempty"` // Number of bytes to be used as a threshold for xattr size limit warnings
+	XattrSize      *uint32 `json:"xattr_size_bytes,omitempty"` // Number of bytes to be used as a threshold for xattr size limit warnings
+	ChannelsPerDoc *uint32 `json:"channels_per_doc,omitempty"` // Number of channels per document to be used as a threshold for channel count warnings
 }
 
 // Options associated with the import of documents not written by Sync Gateway

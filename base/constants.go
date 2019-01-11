@@ -91,7 +91,8 @@ const (
 	// The limit in Couchbase Server for total xattr size limits
 	xattrBytesLimit = 1 * 1000 * 1000 // 1MB
 
-	DefaultWarnThresholdXattrSize = uint32(0.9 * xattrBytesLimit) // 90% of xattr usage
+	DefaultWarnThresholdXattrSize      = uint32(0.9 * xattrBytesLimit) // 90% of xattr usage
+	DefaultWarnThresholdChannelsPerDoc = 50
 )
 
 const (

@@ -596,6 +596,19 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
+	if config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
+		val := uint32(base.DefaultWarnThresholdChannelsPerDoc)
+		config.Unsupported.WarningThresholds.ChannelsPerDoc = &val
+	} else {
+		lowerLimit := 5
+		upperLimit := 1000
+		if *config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
+			return nil, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		} else if *config.Unsupported.WarningThresholds.ChannelsPerDoc > uint32(upperLimit) {
+			return nil, fmt.Errorf("channels_per_doc warning threshold cannot be higher than %d", upperLimit)
+		}
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		IndexOptions:              channelIndexOptions,
