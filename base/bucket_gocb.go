@@ -2211,13 +2211,30 @@ func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, cal
 
 func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
-	stats, seqErr := bucket.Stats("vbucket-seqno")
-	if seqErr != nil {
-		return
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		stats, err := bucket.Stats("vbucket-seqno")
+		shouldRetry = (err != nil && isRecoverableGoCBError(err))
+		return shouldRetry, err, stats
 	}
 
-	return GetStatsVbSeqno(stats, maxVbno, useAbsHighSeqNo)
+	// Kick off retry loop
+	err, result := RetryLoop("getStatsVbSeqno", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		return uuids, highSeqnos, err
+	}
 
+	// If the retry loop returned a nil result, return error
+	if result == nil {
+		return uuids, highSeqnos, errors.New("Nil response returned from bucket.Stats call")
+	}
+
+	// Type assertion of result
+	resultStats, ok := result.(gocb.ServerStats)
+	if !ok {
+		return uuids, highSeqnos, fmt.Errorf("GetStatsVbSeqno: Error doing type assertion of response (type:%T) to ServerStats", result)
+	}
+
+	return GetStatsVbSeqno(resultStats, maxVbno, useAbsHighSeqNo)
 }
 
 func (bucket *CouchbaseBucketGoCB) Dump() {
