@@ -66,8 +66,13 @@ func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 
 	wrappedBlipHandler := func(bh *blipHandler, bm *blip.Message) error {
 
-		// Reload the user on each blip request (otherwise runs into SG issue #2717)
-		newUser, err := bh.db.Authenticator().GetUser(bh.db.User().Name())
+		oldUser := bh.db.User()
+		if oldUser == nil {
+			return fmt.Errorf("nil user for blip handler")
+		}
+
+		// Create a new user-scoped database on each blip request (otherwise runs into SG issue #2717)
+		newUser, err := bh.db.Authenticator().GetUser(oldUser.Name())
 		if err != nil {
 			return err
 		}
