@@ -146,10 +146,7 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyAuthFailedCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyTotalAuthTime, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyGsiViews:
-		result.Set(base.StatKeyTotalQueriesPerSec, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyChannelQueriesPerSec, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyRoleAccessQueriesPerSec, base.ExpvarFloatVal(0))
-		result.Set(base.StatKeyQueryProcessingTime, base.ExpvarFloatVal(0))
+		// GsiView stat keys are dynamically generated based on query names - see query.go
 	}
 
 	return result

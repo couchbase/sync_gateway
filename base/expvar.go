@@ -68,17 +68,18 @@ const (
 	StatKeyWarnCount                      = "warn_count"
 
 	// StatsCache
-	StatKeyRevisionCacheHits         = "rev_cache_hits"
-	StatKeyRevisionCacheMisses       = "rev_cache_misses"
-	StatKeyChannelCacheHits          = "chan_cache_hits"
-	StatKeyChannelCacheMisses        = "chan_cache_misses"
-	StatKeyChannelCacheRevsActive    = "chan_cache_active_revs"
-	StatKeyChannelCacheRevsTombstone = "chan_cache_tombstone_revs"
-	StatKeyChannelCacheRevsRemoval   = "chan_cache_removal_revs"
-	StatKeyChannelCacheNumChannels   = "chan_cache_num_channels"
-	StatKeyChannelCacheMaxEntries    = "chan_cache_max_entries"
-	StatKeyNumSkippedSeqs            = "num_skipped_seqs"
-	StatKeyAbandonedSeqs             = "abandoned_seqs"
+	StatKeyRevisionCacheHits          = "rev_cache_hits"
+	StatKeyRevisionCacheMisses        = "rev_cache_misses"
+	StatKeyChannelCacheHits           = "chan_cache_hits"
+	StatKeyChannelCacheMisses         = "chan_cache_misses"
+	StatKeyChannelCacheRevsActive     = "chan_cache_active_revs"
+	StatKeyChannelCacheRevsTombstone  = "chan_cache_tombstone_revs"
+	StatKeyChannelCacheRevsRemoval    = "chan_cache_removal_revs"
+	StatKeyChannelCacheNumChannels    = "chan_cache_num_channels"
+	StatKeyChannelCacheMaxEntries     = "chan_cache_max_entries"
+	StatKeyChannelCachePendingQueries = "chan_cache_pending_queries"
+	StatKeyNumSkippedSeqs             = "num_skipped_seqs"
+	StatKeyAbandonedSeqs              = "abandoned_seqs"
 
 	// StatsDatabase
 	StatKeySequenceGets          = "sequence_gets"
@@ -141,10 +142,11 @@ const (
 	StatKeyTotalAuthTime    = "total_auth_time"
 
 	// StatsGsiViews
-	StatKeyTotalQueriesPerSec      = "total_queries_per_sec"
-	StatKeyChannelQueriesPerSec    = "channel_queries_per_sec"
-	StatKeyRoleAccessQueriesPerSec = "role_access_queries_per_sec"
-	StatKeyQueryProcessingTime     = "query_processing_time"
+	// Gsi and View stat names are dynamically generated based on the following patterns
+	StatKeyN1qlQueryCountExpvarFormat      = "%s_count"          // Query name
+	StatKeyN1qlQueryErrorCountExpvarFormat = "%s_error_count"    // QueryName
+	StatKeyViewQueryCountExpvarFormat      = "%s.%s_count"       // Design doc, view
+	StatKeyViewQueryErrorCountExpvarFormat = "%s.%s_error_count" // Design doc, view
 
 	// StatsReplication
 	StatKeySgrNumDocsPushed              = "sgr_num_docs_pushed"
