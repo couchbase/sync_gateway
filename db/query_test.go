@@ -29,8 +29,8 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	assert.NoError(t, err, "Put queryDoc3")
 
 	// Check expvar prior to test
-	queryCountExpvar := fmt.Sprintf(viewQueryCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
-	errorCountExpvar := fmt.Sprintf(viewQueryErrorCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
+	queryCountExpvar := fmt.Sprintf(base.StatKeyViewQueryCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
+	errorCountExpvar := fmt.Sprintf(base.StatKeyViewQueryErrorCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
 
 	channelQueryCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
@@ -71,8 +71,8 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	assert.NoError(t, err, "Put queryDoc3")
 
 	// Check expvar prior to test
-	queryCountExpvar := fmt.Sprintf(n1qlQueryCountExpvarFormat, QueryTypeChannels)
-	errorCountExpvar := fmt.Sprintf(n1qlQueryErrorCountExpvarFormat, QueryTypeChannels)
+	queryCountExpvar := fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, QueryTypeChannels)
+	errorCountExpvar := fmt.Sprintf(base.StatKeyN1qlQueryErrorCountExpvarFormat, QueryTypeChannels)
 
 	channelQueryCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))

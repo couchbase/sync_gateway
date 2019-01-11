@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -335,8 +336,11 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 
 	// Nope, we're going to have to backfill from the view.
 	//** First acquire the _view_ lock (not the regular lock!)
+	// Track pending queries via StatKeyChannelCachePendingQueries expvar
+	c.context.DbStats.StatsCache().Add(base.StatKeyChannelCachePendingQueries, 1)
 	c.viewLock.Lock()
 	defer c.viewLock.Unlock()
+	c.context.DbStats.StatsCache().Add(base.StatKeyChannelCachePendingQueries, -1)
 
 	// Another goroutine might have gotten the lock first and already queried the view and updated
 	// the cache, so repeat the above:
@@ -348,6 +352,15 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	if cacheValidFrom <= startSeq {
 		c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheHits, 1)
 		return resultFromCache, nil
+	}
+
+	// Check whether the changes process has been terminated while we waited for the view lock, to avoid the view
+	// overhead in that case (and prevent feedback loop on query backlog)
+	select {
+	case <-options.Terminator:
+		return nil, fmt.Errorf("Changes feed terminated while waiting for view lock")
+	default:
+		// continue
 	}
 
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one

@@ -713,7 +713,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 	return output, nil
 }
 
-// Synchronous convenience function that returns all changes as a simple array.
+// Synchronous convenience function that returns all changes as a simple array, FOR TEST USE ONLY
+// Returns error if initial feed creation fails, or if an error is returned with the changes entries
 func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
 	if options.Terminator == nil {
 		options.Terminator = make(chan bool)
@@ -724,6 +725,9 @@ func (db *Database) GetChanges(channels base.Set, options ChangesOptions) ([]*Ch
 	feed, err := db.MultiChangesFeed(channels, options)
 	if err == nil && feed != nil {
 		for entry := range feed {
+			if entry.Err != nil {
+				err = entry.Err
+			}
 			changes = append(changes, entry)
 		}
 	}

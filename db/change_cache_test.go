@@ -684,6 +684,134 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	close(options.Terminator)
 }
 
+// Tests channel cache backfill with slow query, validates that a request that is terminated while
+// waiting for the view lock doesn't trigger a view query.  Runs multiple goroutines, using a channel
+// and two waitgroups to ensure expected ordering of events, as follows
+//    1. Define a PostQueryCallback (via leaky bucket) that does two things:
+//        - closes a notification channel (queryBlocked) to indicate that the initial query is blocking
+//        - blocks via a WaitGroup (queryWg)
+//    2. Start a goroutine to issue a changes request
+//        - when view executes, will trigger callback handling above
+//    3. Start a second goroutine to issue another changes request.
+//        - will block waiting for viewLock, which increments StatKeyChannelCachePendingQueries stat
+//    4. Wait until StatKeyChannelCachePendingQueries is incremented
+//    5. Terminate second changes request
+//    6. Unblock the initial view query
+//       - releases the view lock, second changes request is unblocked
+//       - since it's been terminated, should return error before executing a second view query
+func TestChannelQueryCancellation(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip test with LeakyBucket dependency test when running in integration")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+
+	// Set up PostQueryCallback on bucket - will be invoked when changes triggers the cache backfill view query
+
+	// Use queryWg to pause the query
+	var queryWg sync.WaitGroup
+	queryWg.Add(1)
+
+	// Use queryBlocked to detect when the first called has reached queryWg.Wait
+	queryBlocked := make(chan struct{})
+
+	// Use changesWg to block until test goroutines are both complete
+	var changesWg sync.WaitGroup
+
+	postQueryCallback := func(ddoc, viewName string, params map[string]interface{}) {
+		close(queryBlocked) // Notifies that a query is blocked, trigger to initiate second changes request
+		queryWg.Wait()      // Waits until second changes request attempts to make a view query
+	}
+
+	// Use leaky bucket to inject callback in query invocation
+	queryCallbackConfig := base.LeakyBucketConfig{
+		PostQueryCallback: postQueryCallback,
+	}
+
+	db := setupTestLeakyDBWithCacheOptions(t, CacheOptions{}, queryCallbackConfig)
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	defer tearDownTestDB(t, db)
+
+	// Write a handful of docs/sequences to the bucket
+	_, err := db.Put("key1", Body{"channels": "ABC"})
+	assert.NoError(t, err, "Put failed with error: %v", err)
+	_, err = db.Put("key2", Body{"channels": "ABC"})
+	assert.NoError(t, err, "Put failed with error: %v", err)
+	_, err = db.Put("key3", Body{"channels": "ABC"})
+	assert.NoError(t, err, "Put failed with error: %v", err)
+	_, err = db.Put("key4", Body{"channels": "ABC"})
+	assert.NoError(t, err, "Put failed with error: %v", err)
+	db.changeCache.waitForSequence(4, base.DefaultWaitForSequenceTesting)
+
+	// Flush the cache, to ensure view query on subsequent changes requests
+	db.FlushChannelCache()
+
+	// Issue two one-shot since=0 changes request.  Both will attempt a view query.  The first will block based on queryWg,
+	// the second will block waiting for the view lock
+	initialQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	changesWg.Add(1)
+	go func() {
+		defer changesWg.Done()
+		var options ChangesOptions
+		options.Since = SequenceID{Seq: 0}
+		options.Continuous = false
+		options.Wait = false
+		options.Limit = 2 // Avoid prepending results in cache, as we don't want second changes to serve results from cache
+		_, err := db.GetChanges(base.SetOf("ABC"), options)
+		assert.NoError(t, err, "Expect no error for first changes request")
+	}()
+
+	// Wait for queryBlocked=true - ensures the first goroutine has acquired view lock
+	select {
+	case <-queryBlocked:
+		// continue
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "Changes goroutine failed to initiate view query in 10 seconds.")
+	}
+
+	initialPendingQueries := base.ExpvarVar2Int(db.DbStats.StatsCache().Get(base.StatKeyChannelCachePendingQueries))
+
+	// Start a second goroutine that should block waiting for the view lock
+	changesTerminator := make(chan bool)
+	changesWg.Add(1)
+	go func() {
+		defer changesWg.Done()
+		var options ChangesOptions
+		options.Since = SequenceID{Seq: 0}
+		options.Terminator = changesTerminator
+		options.Continuous = false
+		options.Limit = 2
+		options.Wait = false
+		_, err := db.GetChanges(base.SetOf("ABC"), options)
+		assert.Error(t, err, "Expected error for second changes")
+	}()
+
+	// wait for second goroutine to be queued for the view lock (based on expvar)
+	var pendingQueries int64
+	for i := 0; i < 1000; i++ {
+		pendingQueries = base.ExpvarVar2Int(db.DbStats.StatsCache().Get(base.StatKeyChannelCachePendingQueries))
+		if pendingQueries > initialPendingQueries {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.True(t, pendingQueries > initialPendingQueries, "Pending queries (%d) didn't exceed initialPendingQueries (%d) after 10s", pendingQueries, initialPendingQueries)
+
+	// Terminate the second changes request
+	close(changesTerminator)
+
+	// Unblock the first goroutine
+	queryWg.Done()
+
+	// Wait for both goroutines to complete and evaluate their asserts
+	changesWg.Wait()
+
+	// Validate only a single query was executed
+	finalQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	assert.Equal(t, initialQueryCount+1, finalQueryCount)
+}
+
 func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	// TODO: Disabled until https://github.com/couchbase/sync_gateway/issues/3056 is fixed.
 	t.Skip("WARNING: TEST DISABLED")

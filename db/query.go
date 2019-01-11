@@ -30,13 +30,6 @@ const (
 	QueryTypeAllDocs      = "allDocs"
 )
 
-const (
-	n1qlQueryCountExpvarFormat      = "%s_count"          // Query name
-	n1qlQueryErrorCountExpvarFormat = "%s_error_count"    // QueryName
-	viewQueryCountExpvarFormat      = "%s.%s_count"       // Design doc, view
-	viewQueryErrorCountExpvarFormat = "%s.%s_error_count" // Design doc, view
-)
-
 type SGQuery struct {
 	name      string // Query name - used for logging/stats
 	statement string // Query statement
@@ -201,10 +194,10 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 
 	results, err = gocbBucket.Query(statement, params, consistency, adhoc)
 	if err != nil {
-		context.DbStats.StatsGsiViews().Add(fmt.Sprintf(n1qlQueryErrorCountExpvarFormat, queryName), 1)
+		context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyN1qlQueryErrorCountExpvarFormat, queryName), 1)
 	}
 
-	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(n1qlQueryCountExpvarFormat, queryName), 1)
+	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, queryName), 1)
 
 	return results, err
 }
@@ -218,9 +211,9 @@ func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string,
 
 	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
 	if err != nil {
-		context.DbStats.StatsGsiViews().Add(fmt.Sprintf(viewQueryErrorCountExpvarFormat, ddoc, viewName), 1)
+		context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyViewQueryErrorCountExpvarFormat, ddoc, viewName), 1)
 	}
-	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(viewQueryCountExpvarFormat, ddoc, viewName), 1)
+	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyViewQueryCountExpvarFormat, ddoc, viewName), 1)
 
 	return results, err
 }
