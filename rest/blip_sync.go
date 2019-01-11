@@ -67,9 +67,13 @@ func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 	wrappedBlipHandler := func(bh *blipHandler, bm *blip.Message) error {
 
 		// Reload the user on each blip request (otherwise runs into SG issue #2717)
-		if err := bh.db.ReloadUser(); err != nil {
+		newUser, err := bh.db.Authenticator().GetUser(bh.db.User().Name())
+		if err != nil {
 			return err
 		}
+		newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
+		newDatabase.Ctx = bh.db.Ctx
+		bh.db = newDatabase
 
 		// Call down to underlying method and return it's value
 		return underlyingMethod(bh, bm)
