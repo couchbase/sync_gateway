@@ -92,6 +92,7 @@ const (
 	StatKeyNumDocReadsRest       = "num_doc_reads_rest"
 	StatKeyNumDocReadsBlip       = "num_doc_reads_blip"
 	StatKeyDocReadsBytesBlip     = "doc_reads_bytes_blip"
+	StatKeyWarnXattrSizeCount    = "warn_xattr_size_count"
 
 	// StatsDeltaSync
 	StatKeyDeltasRequested           = "deltas_requested"

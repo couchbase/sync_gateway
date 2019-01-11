@@ -1192,6 +1192,16 @@ func (db *Database) updateAndReturnDoc(
 			// Return the new raw document value for the bucket to store.
 			raw, rawXattr, err = docOut.MarshalWithXattr()
 			docBytes = len(raw)
+
+			// Warn when sync data is larger than a configured threshold
+			if xattrBytesThreshold := db.Options.UnsupportedOptions.WarningThresholds.XattrSize; xattrBytesThreshold != nil {
+				xattrBytes := len(rawXattr)
+				if uint32(xattrBytes) >= *xattrBytesThreshold {
+					db.DbStats.StatsDatabase().Add(base.StatKeyWarnXattrSizeCount, 1)
+					base.Warnf(base.KeyAll, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(docOut.ID), xattrBytes, *xattrBytesThreshold)
+				}
+			}
+
 			base.DebugfCtx(db.Ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", docOut.Sequence, base.UD(docOut.ID), docOut.CurrentRev)
 			return raw, rawXattr, deleteDoc, syncFuncExpiry, err
 		})

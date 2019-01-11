@@ -87,6 +87,11 @@ const (
 	// Set this to true to dump stacktraces (for pkgerrors wrapped errors only) whenever an error is returned to
 	// an API client.  Currently only works with REST API calls.
 	StacktraceOnAPIErrors = false
+
+	// The limit in Couchbase Server for total xattr size limits
+	xattrBytesLimit = 1 * 1000 * 1000 // 1MB
+
+	DefaultWarnThresholdXattrSize = uint32(0.9 * xattrBytesLimit) // 90% of xattr usage
 )
 
 const (

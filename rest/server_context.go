@@ -581,8 +581,20 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			deltaSyncOptions.RevMaxAgeSeconds = *config.DeltaSync.RevMaxAgeSeconds
 		}
 	}
-
 	base.Infof(base.KeyAll, "Delta sync enabled=%t for database %s", deltaSyncOptions.Enabled, dbName)
+
+	if config.Unsupported.WarningThresholds.XattrSize == nil {
+		val := uint32(base.DefaultWarnThresholdXattrSize)
+		config.Unsupported.WarningThresholds.XattrSize = &val
+	} else {
+		lowerLimit := 0.1 * 1000 * 1000 // 0.1 MB
+		upperLimit := 1 * 1000 * 1000   // 1 MB
+		if *config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
+			return nil, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit))
+		} else if *config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
+			return nil, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit))
+		}
+	}
 
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
