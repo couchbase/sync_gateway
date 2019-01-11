@@ -2219,10 +2219,13 @@ func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeq
 
 	// Kick off retry loop
 	err, result := RetryLoop("getStatsVbSeqno", worker, bucket.spec.RetrySleeper())
-
-	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
-	if result == nil {
+	if err != nil {
 		return uuids, highSeqnos, err
+	}
+
+	// If the retry loop returned a nil result, return error
+	if result == nil {
+		return uuids, highSeqnos, errors.New("Nil response returned from bucket.Stats call")
 	}
 
 	// Type assertion of result

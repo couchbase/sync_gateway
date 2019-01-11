@@ -97,7 +97,7 @@ type DCPReceiver struct {
 	backfill               backfillStatus                 // Backfill state and stats
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool) (Receiver, error) {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool) Receiver {
 
 	r := &DCPReceiver{
 		bucket:                 bucket,
@@ -113,10 +113,10 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 	if LogDebugEnabled(KeyDCP) {
 		Infof(KeyDCP, "Using DCP Logging Receiver.")
 		logRec := &DCPLoggingReceiver{rec: r}
-		return logRec, nil
+		return logRec
 	}
 
-	return r, nil
+	return r
 }
 
 func (r *DCPReceiver) SetBucketNotifyFn(notify sgbucket.BucketNotifyFn) {
@@ -551,11 +551,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		persistCheckpoints = true
 	}
 
-	dcpReceiver, err := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints)
-	if err != nil {
-		return err
-	}
-
+	dcpReceiver := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints)
 	dcpReceiver.SetBucketNotifyFn(args.Notify)
 
 	// Initialize the feed based on the backfill type
