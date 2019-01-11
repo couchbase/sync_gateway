@@ -977,19 +977,13 @@ func (db *Database) updateAndReturnDoc(
 			return
 		}
 
+		db.checkDocChannelsAndGrantsLimits(docid, channelSet, access, roles)
+
 		//Assign old revision body to variable in method scope
 		oldBodyJSON = oldBody
 
-		if channelCount := len(channelSet); channelCount > 0 {
+		if len(channelSet) > 0 {
 			doc.History[newRevID].Channels = channelSet
-
-			// Warn when channel count is larger than a configured threshold
-			if channelCountThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelsPerDoc; channelCountThreshold != nil {
-				if uint32(channelCount) >= *channelCountThreshold {
-					db.DbStats.StatsDatabase().Add(base.StatKeyWarnChannelsPerDocCount, 1)
-					base.Warnf(base.KeyAll, "Doc id: %v channel count: %d exceeds %d for channels per doc warning threshold", base.UD(docid), channelCount, *channelCountThreshold)
-				}
-			}
 		}
 
 		// Move the body of the replaced revision out of the document so it can be compacted later.
@@ -1296,6 +1290,26 @@ func (db *Database) updateAndReturnDoc(
 	// Mark affected users/roles as needing to recompute their channel access:
 	db.MarkPrincipalsChanged(docid, newRevID, changedPrincipals, changedRoleUsers)
 	return docOut, newRevID, nil
+}
+
+func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.Set, accessGrants channels.AccessMap, roleGrants channels.AccessMap) {
+	// Warn when channel count is larger than a configured threshold
+	if channelCountThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelsPerDoc; channelCountThreshold != nil {
+		channelCount := len(channels)
+		if uint32(channelCount) >= *channelCountThreshold {
+			db.DbStats.StatsDatabase().Add(base.StatKeyWarnChannelsPerDocCount, 1)
+			base.Warnf(base.KeyAll, "Doc id: %v channel count: %d exceeds %d for channels per doc warning threshold", base.UD(docID), channelCount, *channelCountThreshold)
+		}
+	}
+
+	// Warn when grants are larger than a configured threshold
+	if grantThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelsPerDoc; grantThreshold != nil {
+		grantCount := len(accessGrants) + len(roleGrants)
+		if uint32(grantCount) >= *grantThreshold {
+			db.DbStats.StatsDatabase().Add(base.StatKeyWarnGrantsPerDocCount, 1)
+			base.Warnf(base.KeyAll, "Doc id: %v access and role grants count: %d exceeds %d for grants per doc warning threshold", base.UD(docID), grantCount, *grantThreshold)
+		}
+	}
 }
 
 func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changedPrincipals, changedRoleUsers []string) {

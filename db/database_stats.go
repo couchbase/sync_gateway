@@ -105,6 +105,7 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyDocReadsBytesBlip, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyWarnXattrSizeCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyWarnChannelsPerDocCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyWarnGrantsPerDocCount, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyDeltaSync:
 		result.Set(base.StatKeyDeltasRequested, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDeltasSent, base.ExpvarIntVal(0))

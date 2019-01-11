@@ -94,6 +94,7 @@ const (
 	StatKeyDocReadsBytesBlip       = "doc_reads_bytes_blip"
 	StatKeyWarnXattrSizeCount      = "warn_xattr_size_count"
 	StatKeyWarnChannelsPerDocCount = "warn_channels_per_doc_count"
+	StatKeyWarnGrantsPerDocCount   = "warn_grants_per_doc_count"
 
 	// StatsDeltaSync
 	StatKeyDeltasRequested           = "deltas_requested"
