@@ -181,8 +181,9 @@ pipeline {
 
             // Publish the junit test reports
             // junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
-
-            // TODO: Might be better to clean the workspace to before a job runs instead
+        }
+        success {
+            // Cleanup workspace only on a successful run (to allow re-runnable stages)
             step([$class: 'WsCleanup'])
         }
     }
