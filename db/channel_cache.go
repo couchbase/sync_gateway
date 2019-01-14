@@ -322,10 +322,10 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	cacheValidFrom, resultFromCache := c.getCachedChanges(options)
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 || resultFromCache == nil {
-		base.Infof(base.KeyCache, "getCachedChanges(%q, %s) --> %d changes valid from #%d",
+		base.InfofCtx(options.Ctx, base.KeyCache, "getCachedChanges(%q, %s) --> %d changes valid from #%d",
 			base.UD(c.channelName), options.Since.String(), numFromCache, cacheValidFrom)
 	} else if resultFromCache == nil {
-		base.Infof(base.KeyCache, "getCachedChanges(%q, %s) --> nothing cached",
+		base.InfofCtx(options.Ctx, base.KeyCache, "getCachedChanges(%q, %s) --> nothing cached",
 			base.UD(c.channelName), options.Since.String())
 	}
 	startSeq := options.Since.SafeSequence() + 1
@@ -346,7 +346,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	// the cache, so repeat the above:
 	cacheValidFrom, resultFromCache = c.getCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
-		base.Infof(base.KeyCache, "2nd getCachedChanges(%q, %s) got %d more, valid from #%d!",
+		base.InfofCtx(options.Ctx, base.KeyCache, "2nd getCachedChanges(%q, %s) got %d more, valid from #%d!",
 			base.UD(c.channelName), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
@@ -396,7 +396,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 		}
 		result = append(result, resultFromCache[0:n]...)
 	}
-	base.Infof(base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelName), len(result))
+	base.InfofCtx(options.Ctx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelName), len(result))
 
 	return result, nil
 }

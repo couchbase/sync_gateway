@@ -490,7 +490,7 @@ func generateChanges(database *db.Database, inChannels base.Set, options db.Chan
 		if ok {
 			closeNotify = cn.CloseNotify()
 		} else {
-			base.Infof(base.KeyChanges, "continuous changes cannot get Close Notifier from ResponseWriter")
+			base.InfofCtx(database.Ctx, base.KeyChanges, "continuous changes cannot get Close Notifier from ResponseWriter")
 		}
 	}
 
@@ -562,7 +562,7 @@ loop:
 						break collect
 					}
 				}
-				base.Tracef(base.KeyChanges, "sending %d change(s)", len(entries))
+				base.TracefCtx(database.Ctx, base.KeyChanges, "sending %d change(s)", len(entries))
 				err = send(entries)
 
 				if err == nil && waiting {
@@ -586,16 +586,16 @@ loop:
 		case <-heartbeat:
 			err = send(nil)
 			if h != nil {
-				base.Debugf(base.KeyChanges, "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
+				base.DebugfCtx(database.Ctx, base.KeyChanges, "heartbeat written to _changes feed for request received %s", h.currentEffectiveUserNameAsUser())
 			}
 		case <-timeout:
 			forceClose = true
 			break loop
 		case <-closeNotify:
 			if h != nil {
-				base.Debugf(base.KeyChanges, "Client connection lost: %v", h.currentEffectiveUserNameAsUser())
+				base.DebugfCtx(database.Ctx, base.KeyChanges, "Client connection lost: %v", h.currentEffectiveUserNameAsUser())
 			} else {
-				base.Debugf(base.KeyChanges, "Client connection lost")
+				base.DebugfCtx(database.Ctx, base.KeyChanges, "Client connection lost")
 			}
 			forceClose = true
 			break loop
@@ -651,10 +651,10 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		h.logStatus(101, "Upgraded to WebSocket protocol")
 		defer func() {
 			if err := conn.Close(); err != nil {
-				base.Warnf(base.KeyAll, "WebSocket connection (#%03d) closed with error %v",
-					h.serialNumber, err)
+				base.WarnfCtx(h.db.Ctx, base.KeyAll, "WebSocket connection (%s) closed with error %v",
+					h.formatSerialNumber(), err)
 			}
-			base.Debugf(base.KeyHTTP, "#%03d:     --> WebSocket closed", h.serialNumber)
+			base.InfofCtx(h.db.Ctx, base.KeyHTTP, "%s:     --> WebSocket closed", h.formatSerialNumber())
 		}()
 
 		// Read changes-feed options from an initial incoming WebSocket message in JSON format:

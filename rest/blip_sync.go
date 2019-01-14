@@ -2,6 +2,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -37,8 +37,7 @@ const (
 // This connection remains open until the client closes it, and can receive any number of requests.
 type blipSyncContext struct {
 	blipContext         *blip.Context
-	dbc                 *db.DatabaseContext
-	user                auth.User
+	db                  *db.Database
 	effectiveUsername   string
 	batchSize           int
 	continuous          bool
@@ -67,10 +66,19 @@ func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 
 	wrappedBlipHandler := func(bh *blipHandler, bm *blip.Message) error {
 
-		// Reload the user on each blip request (otherwise runs into SG issue #2717)
-		if err := bh.db.ReloadUser(); err != nil {
+		oldUser := bh.db.User()
+		if oldUser == nil {
+			return fmt.Errorf("nil user for blip handler")
+		}
+
+		// Create a new user-scoped database on each blip request (otherwise runs into SG issue #2717)
+		newUser, err := bh.db.Authenticator().GetUser(oldUser.Name())
+		if err != nil {
 			return err
 		}
+		newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
+		newDatabase.Ctx = bh.db.Ctx
+		bh.db = newDatabase
 
 		// Call down to underlying method and return it's value
 		return underlyingMethod(bh, bm)
@@ -104,22 +112,26 @@ func (h *handler) handleBLIPSync() error {
 
 	// Create a BLIP context:
 	blipContext := blip.NewContext(BlipCBMobileReplication)
-	blipContext.Logger = DefaultBlipLogger(blipContext.ID)
 	blipContext.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
 	blipContext.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
+
+	// Overwrite the existing logging context with the blip context ID
+	h.db.Ctx = context.WithValue(h.db.Ctx, base.LogContextKey{},
+		base.LogContext{CorrelationID: formatBlipContextID(blipContext.ID)},
+	)
+	blipContext.Logger = DefaultBlipLogger(h.db.Ctx)
 
 	// Create a BLIP-sync context and register handlers:
 	ctx := blipSyncContext{
 		blipContext:       blipContext,
-		dbc:               h.db.DatabaseContext,
-		user:              h.user,
+		db:                h.db,
 		effectiveUsername: h.currentEffectiveUserName(),
 		terminator:        make(chan bool),
 	}
 	defer ctx.close()
 
 	// determine if SG has delta sync enabled for the given database
-	ctx.sgCanUseDeltas = ctx.dbc.DeltaSyncEnabled()
+	ctx.sgCanUseDeltas = ctx.db.DeltaSyncEnabled()
 
 	blipContext.DefaultHandler = ctx.notFound
 	for profile, handlerFn := range kHandlersByProfile {
@@ -127,7 +139,7 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	ctx.blipContext.FatalErrorHandler = func(err error) {
-		ctx.Logf(base.LevelInfo, base.KeyHTTP, "#%03d:     --> BLIP+WebSocket connection error: %v", h.serialNumber, err)
+		ctx.Logf(base.LevelInfo, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", h.formatSerialNumber(), err)
 	}
 
 	// Create a BLIP WebSocket handler and have it handle the request:
@@ -137,7 +149,7 @@ func (h *handler) handleBLIPSync() error {
 		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol. User:%s.", blipContext.ID, ctx.effectiveUsername))
 		defer func() {
 			conn.Close() // in case it wasn't closed already
-			ctx.Logf(base.LevelDebug, base.KeyHTTP, "#%03d:    --> BLIP+WebSocket connection closed", h.serialNumber)
+			ctx.Logf(base.LevelInfo, base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
 		}()
 		defaultHandler(conn)
 	}
@@ -154,11 +166,9 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 	handlerFnWrapper := func(rq *blip.Message) {
 
 		startTime := time.Now()
-
-		db, _ := db.GetDatabase(ctx.dbc, ctx.user)
 		handler := blipHandler{
 			blipSyncContext: ctx,
-			db:              db,
+			db:              ctx.db,
 			serialNumber:    ctx.incrementSerialNumber(),
 		}
 
@@ -193,18 +203,17 @@ func (ctx *blipSyncContext) notFound(rq *blip.Message) {
 }
 
 func (ctx *blipSyncContext) Logf(logLevel base.LogLevel, logKey base.LogKey, format string, args ...interface{}) {
-	formatWithContextID, paramsWithContextID := base.PrependContextID(ctx.blipContext.ID, format, args...)
 	switch logLevel {
 	case base.LevelError:
-		base.Errorf(logKey, formatWithContextID, paramsWithContextID...)
+		base.ErrorfCtx(ctx.db.Ctx, logKey, format, args...)
 	case base.LevelWarn:
-		base.Warnf(logKey, formatWithContextID, paramsWithContextID...)
+		base.WarnfCtx(ctx.db.Ctx, logKey, format, args...)
 	case base.LevelInfo:
-		base.Infof(logKey, formatWithContextID, paramsWithContextID...)
+		base.InfofCtx(ctx.db.Ctx, logKey, format, args...)
 	case base.LevelDebug:
-		base.Debugf(logKey, formatWithContextID, paramsWithContextID...)
+		base.DebugfCtx(ctx.db.Ctx, logKey, format, args...)
 	case base.LevelTrace:
-		base.Tracef(logKey, formatWithContextID, paramsWithContextID...)
+		base.TracefCtx(ctx.db.Ctx, logKey, format, args...)
 	}
 }
 
@@ -357,6 +366,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		Continuous: bh.continuous,
 		ActiveOnly: bh.activeOnly,
 		Terminator: bh.blipSyncContext.terminator,
+		Ctx:        bh.db.Ctx,
 	}
 
 	channelSet := bh.channels
@@ -399,8 +409,8 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 	})
 
 	// On forceClose, send notify to trigger immediate exit from change waiter
-	if forceClose && bh.user != nil {
-		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.user.Name())
+	if forceClose && bh.db.User() != nil {
+		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.db.User().Name())
 	}
 
 }
@@ -966,7 +976,7 @@ func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 
 	shouldUseDeltas := clientCanUseDeltas && ctx.sgCanUseDeltas
 	if !ctx.useDeltas && shouldUseDeltas {
-		ctx.dbc.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
+		ctx.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
 	}
 	ctx.useDeltas = shouldUseDeltas
 }
@@ -1008,17 +1018,19 @@ func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
 	bh.Logf(base.LevelInfo, base.KeySyncMsg, "#%d: Type:%s %s User:%s", bh.serialNumber, profile, endpoint, base.UD(bh.effectiveUsername))
 }
 
-func DefaultBlipLogger(contextID string) blip.LogFn {
+func DefaultBlipLogger(ctx context.Context) blip.LogFn {
 	return func(eventType blip.LogEventType, format string, params ...interface{}) {
-		formatWithContextID, paramsWithContextID := base.PrependContextID(contextID, format, params...)
-
 		switch eventType {
 		case blip.LogMessage:
-			base.Debugf(base.KeyWebSocketFrame, formatWithContextID, paramsWithContextID...)
+			base.DebugfCtx(ctx, base.KeyWebSocketFrame, format, params...)
 		case blip.LogFrame:
-			base.Debugf(base.KeyWebSocket, formatWithContextID, paramsWithContextID...)
+			base.DebugfCtx(ctx, base.KeyWebSocket, format, params...)
 		default:
-			base.Infof(base.KeyWebSocket, formatWithContextID, paramsWithContextID...)
+			base.InfofCtx(ctx, base.KeyWebSocket, format, params...)
 		}
 	}
+}
+
+func formatBlipContextID(contextID string) string {
+	return "[" + contextID + "]"
 }
