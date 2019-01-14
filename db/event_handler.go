@@ -57,8 +57,10 @@ func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, e
 	}
 
 	// Initialize transport and client
-	transport := &http.Transport{DisableKeepAlives: false}
-	wh.client = &http.Client{Transport: transport, Timeout: wh.timeout}
+	t := http.DefaultTransport.(*http.Transport)
+	transport := *t
+	transport.DisableKeepAlives = false
+	wh.client = &http.Client{Transport: &transport, Timeout: wh.timeout}
 
 	return wh, err
 }
