@@ -160,7 +160,7 @@ type sgCollectOptions struct {
 	OutputDirectory string `json:"output_dir,omitempty"`
 	Upload          bool   `json:"upload,omitempty"`
 	UploadHost      string `json:"upload_host,omitempty"`
-	UploadProxy     string `json:upload_proxy,omitempty`
+	UploadProxy     string `json:"upload_proxy,omitempty"`
 	Customer        string `json:"customer,omitempty"`
 	Ticket          string `json:"ticket,omitempty"`
 }
