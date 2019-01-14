@@ -1008,13 +1008,20 @@ class CurlKiller:
         self.p = None
 
 
-def do_upload_and_exit(path, url):
+def do_upload_and_exit(path, url, proxy):
 
     f = open(path, 'rb')
 
     # mmap the file to reduce the amount of memory required (see bit.ly/2aNENXC)
     filedata = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-    opener = urllib2.build_opener()
+
+    # Get proxies from environment/system
+    proxy_handler = urllib2.ProxyHandler(urllib.getproxies())
+    if proxy != "":
+        # unless a proxy is explicitly passed, then use that instead
+        proxy_handler = urllib2.ProxyHandler({'https': proxy, 'http': proxy})
+
+    opener = urllib2.build_opener(proxy_handler)
     request = urllib2.Request(url.encode('utf-8'), data=filedata)
     request.add_header(str('Content-Type'), str('application/zip'))
     request.get_method = lambda: str('PUT')
