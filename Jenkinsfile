@@ -11,6 +11,7 @@ pipeline {
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
         EE_BUILD_TAG = "cb_sg_enterprise"
+        GO_TEST_TIMEOUT = "20m"
     }
 
     stages {
@@ -97,8 +98,8 @@ pipeline {
             steps{
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                     // Build public and private coverprofiles (private containing accel code too)
-                    sh 'go test -timeout=20m -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ce_public.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
-                    sh 'go test -timeout=20m -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ce_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
+                    sh 'go test -timeout=${GO_TEST_TIMEOUT} -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ce_public.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
+                    sh 'go test -timeout=${GO_TEST_TIMEOUT} -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ce_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/...'
 
                     // Print total coverage stats
                     sh 'go tool cover -func=cover_ce_public.out | awk \'END{print "Total SG CE Coverage: " $3}\''
@@ -134,7 +135,7 @@ pipeline {
         stage('EE -cover') {
             steps {
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                    sh "go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ee_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/..."
+                    sh "go test -timeout=${GO_TEST_TIMEOUT} -tags=${EE_BUILD_TAG} -coverpkg=github.com/couchbase/sync_gateway/...,github.com/couchbaselabs/sync-gateway-accel/... -coverprofile=cover_ee_private.out github.com/couchbase/sync_gateway/... github.com/couchbaselabs/sync-gateway-accel/..."
                     sh 'go tool cover -func=cover_ee_private.out | awk \'END{print "Total SG EE+SGA Coverage: " $3}\''
 
                     sh 'mkdir -p reports'
