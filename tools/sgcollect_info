@@ -106,6 +106,8 @@ def create_option_parser():
                       help="path to Sync Gateway config.  By default will try to discover via expvars")
     parser.add_option("--sync-gateway-executable", dest="sync_gateway_executable",
                       help="path to Sync Gateway executable.  By default will try to discover via expvars")
+    parser.add_option("--upload-proxy", dest="upload_proxy", default="",
+                      help="specifies proxy for upload")
     return parser
 
 
@@ -736,7 +738,7 @@ def main():
 
     # If user asked to just upload, then upload and exit
     if options.just_upload_into is not None:
-        do_upload_and_exit(args[0], options.just_upload_into)
+        do_upload_and_exit(args[0], options.just_upload_into, options.upload_proxy)
 
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
     # The output of the tasks will go directly into couchbase.log
@@ -794,9 +796,9 @@ def main():
     # Upload the zip to the URL to S3 if required
     if upload_url:
         if options.redact_level != "none":
-            do_upload_and_exit(redact_zip_file, upload_url)
+            do_upload_and_exit(redact_zip_file, upload_url, options.upload_proxy)
         else:
-            do_upload_and_exit(zip_filename, upload_url)
+            do_upload_and_exit(zip_filename, upload_url, options.upload_proxy)
 
     if options.redact_level != "none":
         print("Zipfile built: {0}".format(redact_zip_file))
