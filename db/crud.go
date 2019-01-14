@@ -1200,7 +1200,7 @@ func (db *Database) updateAndReturnDoc(
 				xattrBytes := len(rawXattr)
 				if uint32(xattrBytes) >= *xattrBytesThreshold {
 					db.DbStats.StatsDatabase().Add(base.StatKeyWarnXattrSizeCount, 1)
-					base.Warnf(base.KeyAll, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(docOut.ID), xattrBytes, *xattrBytesThreshold)
+					base.WarnfCtx(db.Ctx, base.KeyAll, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(docOut.ID), xattrBytes, *xattrBytesThreshold)
 				}
 			}
 
@@ -1298,7 +1298,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 		channelCount := len(channels)
 		if uint32(channelCount) >= *channelCountThreshold {
 			db.DbStats.StatsDatabase().Add(base.StatKeyWarnChannelsPerDocCount, 1)
-			base.Warnf(base.KeyAll, "Doc id: %v channel count: %d exceeds %d for channels per doc warning threshold", base.UD(docID), channelCount, *channelCountThreshold)
+			base.WarnfCtx(db.Ctx, base.KeyAll, "Doc id: %v channel count: %d exceeds %d for channels per doc warning threshold", base.UD(docID), channelCount, *channelCountThreshold)
 		}
 	}
 
@@ -1307,7 +1307,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 		grantCount := len(accessGrants) + len(roleGrants)
 		if uint32(grantCount) >= *grantThreshold {
 			db.DbStats.StatsDatabase().Add(base.StatKeyWarnGrantsPerDocCount, 1)
-			base.Warnf(base.KeyAll, "Doc id: %v access and role grants count: %d exceeds %d for grants per doc warning threshold", base.UD(docID), grantCount, *grantThreshold)
+			base.WarnfCtx(db.Ctx, base.KeyAll, "Doc id: %v access and role grants count: %d exceeds %d for grants per doc warning threshold", base.UD(docID), grantCount, *grantThreshold)
 		}
 	}
 }
