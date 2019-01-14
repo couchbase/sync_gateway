@@ -142,6 +142,10 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 			expectedArgs: []string{"--upload-host", "example.org/custom-s3-bucket-url", "--customer", "alice"},
 		},
 		{
+			options:      &sgCollectOptions{Upload: true, Customer: "alice", UploadHost: "https://example.org/custom-s3-bucket-url", UploadProxy: "http://proxy.example.org:8080"},
+			expectedArgs: []string{"--upload-host", "https://example.org/custom-s3-bucket-url", "--upload-proxy", "http://proxy.example.org:8080", "--customer", "alice"},
+		},
+		{
 			// Upload false, so don't pass upload host through
 			options:      &sgCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
 			expectedArgs: []string{"--customer", "alice"},

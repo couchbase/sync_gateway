@@ -160,6 +160,7 @@ type sgCollectOptions struct {
 	OutputDirectory string `json:"output_dir,omitempty"`
 	Upload          bool   `json:"upload,omitempty"`
 	UploadHost      string `json:"upload_host,omitempty"`
+	UploadProxy     string `json:upload_proxy,omitempty`
 	Customer        string `json:"customer,omitempty"`
 	Ticket          string `json:"ticket,omitempty"`
 }
@@ -230,6 +231,10 @@ func (c *sgCollectOptions) Args() []string {
 
 	if c.Upload {
 		args = append(args, "--upload-host", c.UploadHost)
+	}
+
+	if c.UploadProxy != "" {
+		args = append(args, "--upload-proxy", c.UploadProxy)
 	}
 
 	if c.Customer != "" {
