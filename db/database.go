@@ -131,9 +131,16 @@ type APIEndpoints struct {
 }
 
 type UnsupportedOptions struct {
-	UserViews        UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
-	OidcTestProvider OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
-	APIEndpoints     APIEndpoints            `json:"api_endpoints,omitempty"`      // Config settings for API endpoints
+	UserViews         UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
+	OidcTestProvider  OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
+	APIEndpoints      APIEndpoints            `json:"api_endpoints,omitempty"`      // Config settings for API endpoints
+	WarningThresholds WarningThresholds       `json:"warning_thresholds,omitempty"`
+}
+
+type WarningThresholds struct {
+	XattrSize      *uint32 `json:"xattr_size_bytes,omitempty"`               // Number of bytes to be used as a threshold for xattr size limit warnings
+	ChannelsPerDoc *uint32 `json:"channels_per_doc,omitempty"`               // Number of channels per document to be used as a threshold for channel count warnings
+	GrantsPerDoc   *uint32 `json:"access_and_role_grants_per_doc,omitempty"` // Number of access and role grants per document to be used as a threshold for grant count warnings
 }
 
 // Options associated with the import of documents not written by Sync Gateway

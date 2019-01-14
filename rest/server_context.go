@@ -581,8 +581,38 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			deltaSyncOptions.RevMaxAgeSeconds = *config.DeltaSync.RevMaxAgeSeconds
 		}
 	}
-
 	base.Infof(base.KeyAll, "Delta sync enabled=%t for database %s", deltaSyncOptions.Enabled, dbName)
+
+	if config.Unsupported.WarningThresholds.XattrSize == nil {
+		val := uint32(base.DefaultWarnThresholdXattrSize)
+		config.Unsupported.WarningThresholds.XattrSize = &val
+	} else {
+		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
+		upperLimit := 1 * 1024 * 1024   // 1 MB
+		if *config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
+			return nil, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit))
+		} else if *config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
+			return nil, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit))
+		}
+	}
+
+	if config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
+		config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
+	} else {
+		lowerLimit := 5
+		if *config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
+			return nil, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		}
+	}
+
+	if config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
+		config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
+	} else {
+		lowerLimit := 5
+		if *config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
+			return nil, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		}
+	}
 
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,

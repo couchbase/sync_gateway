@@ -87,6 +87,9 @@ const (
 	// Set this to true to dump stacktraces (for pkgerrors wrapped errors only) whenever an error is returned to
 	// an API client.  Currently only works with REST API calls.
 	StacktraceOnAPIErrors = false
+
+	// The limit in Couchbase Server for total system xattr size
+	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
 )
 
 const (
@@ -103,6 +106,11 @@ var (
 		SyncFnErrorWrongUser,
 		SyncFnErrorMissingChannelAccess,
 	}
+
+	// Default warning thresholds
+	DefaultWarnThresholdXattrSize      = 0.9 * float64(couchbaseMaxSystemXattrSize)
+	DefaultWarnThresholdChannelsPerDoc = uint32(50)
+	DefaultWarnThresholdGrantsPerDoc   = uint32(50)
 )
 
 func UnitTestUrl() string {
