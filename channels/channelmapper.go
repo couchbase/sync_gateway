@@ -10,10 +10,12 @@
 package channels
 
 import (
-	_ "github.com/robertkrimen/otto/underscore"
+	"encoding/json"
+	"strconv"
 
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	_ "github.com/robertkrimen/otto/underscore"
 )
 
 /** Result of running a channel-mapper function. */
@@ -49,12 +51,54 @@ func NewDefaultChannelMapper() *ChannelMapper {
 }
 
 func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	result1, err := mapper.Call(body, sgbucket.JSONString(oldBodyJSON), userCtx)
+	numberFixBody := ConvertJSONNumbers(body)
+	result1, err := mapper.Call(numberFixBody, sgbucket.JSONString(oldBodyJSON), userCtx)
 	if err != nil {
 		return nil, err
 	}
 	output := result1.(*ChannelMapperOutput)
 	return output, nil
+}
+
+// Javscript max integer value (https://www.ecma-international.org/ecma-262/5.1/#sec-8.5)
+const JavascriptMaxSafeInt = int64(1<<53 - 1)
+const JavascriptMinSafeInt = -JavascriptMaxSafeInt
+
+// ConvertJSONNumbers converts json.Number values to javascript number objects for use in the sync
+// function.  Integers that would lose precision are left as json.Number, as are floats that can't be
+// converted to float64.
+func ConvertJSONNumbers(value interface{}) interface{} {
+	switch value := value.(type) {
+	case json.Number:
+		if asInt, err := value.Int64(); err == nil {
+			if asInt > JavascriptMaxSafeInt || asInt < JavascriptMinSafeInt {
+				// Integer will lose precision when used in javascript - leave as json.Number
+				return value
+			}
+			return asInt
+		} else {
+			numErr, _ := err.(*strconv.NumError)
+			if numErr.Err == strconv.ErrRange {
+				return value
+			}
+		}
+
+		if asFloat, err := value.Float64(); err == nil {
+			// Can't reliably detect loss of precision in float, due to number of variations in input float format
+			return asFloat
+		}
+		return value
+	case map[string]interface{}:
+		for k, v := range value {
+			value[k] = ConvertJSONNumbers(v)
+		}
+	case []interface{}:
+		for i, v := range value {
+			value[i] = ConvertJSONNumbers(v)
+		}
+	default:
+	}
+	return value
 }
 
 //////// UTILITY FUNCTIONS:
