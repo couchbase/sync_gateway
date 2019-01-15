@@ -91,6 +91,7 @@ const (
 	StatKeyDocWritesBytes          = "doc_writes_bytes"
 	StatKeyNumDocReadsRest         = "num_doc_reads_rest"
 	StatKeyNumDocReadsBlip         = "num_doc_reads_blip"
+	StatKeyDocWritesBytesBlip      = "doc_writes_bytes_blip"
 	StatKeyDocReadsBytesBlip       = "doc_reads_bytes_blip"
 	StatKeyWarnXattrSizeCount      = "warn_xattr_size_count"
 	StatKeyWarnChannelsPerDocCount = "warn_channels_per_doc_count"

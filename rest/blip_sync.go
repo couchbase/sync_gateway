@@ -727,7 +727,7 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 	outrq.SetJSONBody(body)
 
 	// Update read stats
-	if messageBody, err := outrq.Body(); err != nil {
+	if messageBody, err := outrq.Body(); err == nil {
 		bh.db.DbStats.StatsDatabase().Add(base.StatKeyDocReadsBytesBlip, int64(len(messageBody)))
 	}
 	bh.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
@@ -769,6 +769,10 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	var body db.Body
 	if err := rq.ReadJSONBody(&body); err != nil {
 		return err
+	}
+
+	if bodyBytes, err := rq.Body(); err == nil {
+		bh.db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesBytesBlip, int64(len(bodyBytes)))
 	}
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
