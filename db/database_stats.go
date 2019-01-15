@@ -102,6 +102,7 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyDocWritesBytes, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumDocReadsRest, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumDocReadsBlip, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyDocWritesBytesBlip, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDocReadsBytesBlip, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyWarnXattrSizeCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyWarnChannelsPerDocCount, base.ExpvarIntVal(0))
