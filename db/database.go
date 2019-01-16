@@ -54,8 +54,8 @@ const (
 
 // Default values for delta sync
 var (
-	DefaultDeltaSyncEnable    = base.IsEnterpriseEdition() // true by default in EE
-	DefaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24)       // 24 hours in seconds
+	DefaultDeltaSyncEnabled   = false
+	DefaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24) // 24 hours in seconds
 )
 
 // Basic description of a database. Shared between all Database objects on the same database.

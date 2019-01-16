@@ -39,10 +39,6 @@ var (
 
 	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 	defaultLogFilePath string
-
-	// Default values for delta sync
-	defaultDeltaSyncEnable    = base.IsEnterpriseEdition() // true by default in EE
-	defaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24)       // 24 hours in seconds
 )
 
 var config *ServerConfig
@@ -204,7 +200,7 @@ type DbConfig struct {
 }
 
 type DeltaSyncConfig struct {
-	Enable           *bool   `json:"enable,omitempty"`              // Whether delta sync is enabled (requires EE to enable)
+	Enabled          *bool   `json:"enabled,omitempty"`             // Whether delta sync is enabled (requires EE)
 	RevMaxAgeSeconds *uint32 `json:"rev_max_age_seconds,omitempty"` // The number of seconds deltas for old revs are available for
 }
 
@@ -395,9 +391,9 @@ func (dbConfig DbConfig) validate() error {
 	}
 
 	// Error if Delta Sync is explicitly enabled in CE
-	if dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enable != nil {
-		if *dbConfig.DeltaSync.Enable && !base.IsEnterpriseEdition() {
-			return fmt.Errorf("Delta sync not supported in CE - disable via config with delta_sync.enable: false")
+	if dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
+		if *dbConfig.DeltaSync.Enabled && !base.IsEnterpriseEdition() {
+			return fmt.Errorf("Delta sync is not supported in CE")
 		}
 	}
 

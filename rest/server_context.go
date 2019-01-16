@@ -569,12 +569,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	deltaSyncOptions := db.DeltaSyncOptions{
-		Enabled:          db.DefaultDeltaSyncEnable,
+		Enabled:          db.DefaultDeltaSyncEnabled,
 		RevMaxAgeSeconds: db.DefaultDeltaSyncRevMaxAge,
 	}
 
 	if config.DeltaSync != nil {
-		if enable := config.DeltaSync.Enable; enable != nil {
+		if enable := config.DeltaSync.Enabled; enable != nil {
 			deltaSyncOptions.Enabled = *enable
 		}
 

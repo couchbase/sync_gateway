@@ -1,0 +1,20 @@
+{
+  "logging": {
+    "console": {
+      "log_keys": ["*"]
+    }
+  },
+  "databases": {
+    "db": {
+      "server": "http://localhost:8091",
+      "bucket": "default",
+      "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
+      "allow_conflicts": false,
+      "revs_limit": 20,
+      "delta_sync": {
+        "enabled": true,
+        "rev_max_age_seconds": 86400
+      }
+    }
+  }
+}
