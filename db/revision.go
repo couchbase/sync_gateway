@@ -191,16 +191,16 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 
 // Makes a backup of revision body for use by delta sync, and in-flight replications requesting an old revision.
 // Backup policy depends on whether delta sync and/or shared_bucket_access is enabled
-//   delta=false
+//   delta=false || delta_rev_max_age_seconds=0
 //      - old revision stored, with expiry OldRevExpirySeconds
-//   delta=true, shared_bucket_access=true
+//   delta=true && shared_bucket_access=true
 //      - new revision stored (as duplicate), with expiry rev_max_age_seconds
-//   delta=true, shared_bucket_access=false
+//   delta=true && shared_bucket_access=false
 //      - old revision stored, with expiry rev_max_age_seconds
 // Ignores
 func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody Body, oldBody []byte) {
 
-	if !db.DeltaSyncEnabled() {
+	if !db.DeltaSyncEnabled() || db.Options.DeltaSyncOptions.RevMaxAgeSeconds == 0 {
 		_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.OldRevExpirySeconds)
 		return
 	}

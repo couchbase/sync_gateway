@@ -574,14 +574,20 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	if config.DeltaSync != nil {
-		if config.DeltaSync.Enable != nil {
-			deltaSyncOptions.Enabled = *config.DeltaSync.Enable
+		if enable := config.DeltaSync.Enable; enable != nil {
+			deltaSyncOptions.Enabled = *enable
 		}
-		if config.DeltaSync.RevMaxAgeSeconds != nil {
-			deltaSyncOptions.RevMaxAgeSeconds = *config.DeltaSync.RevMaxAgeSeconds
+
+		if revMaxAge := config.DeltaSync.RevMaxAgeSeconds; revMaxAge != nil {
+			if *revMaxAge == 0 {
+				// a setting of zero will fall back to the non-delta handling of revision body backups
+			} else if *revMaxAge < oldRevExpirySeconds {
+				return nil, fmt.Errorf("delta_sync.rev_max_age_seconds: %d must not be less than the configured old_rev_expiry_seconds: %d", *revMaxAge, oldRevExpirySeconds)
+			}
+			deltaSyncOptions.RevMaxAgeSeconds = *revMaxAge
 		}
 	}
-	base.Infof(base.KeyAll, "Delta sync enabled=%t for database %s", deltaSyncOptions.Enabled, dbName)
+	base.Infof(base.KeyAll, "delta_sync enable=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
 
 	if config.Unsupported.WarningThresholds.XattrSize == nil {
 		val := uint32(base.DefaultWarnThresholdXattrSize)
