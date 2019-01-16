@@ -264,60 +264,6 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 	assertStatus(t, response, 400)
 }
 
-// expand to multiple test cases, verifying number values in sync function
-func TestDocumentLargeNumbers(t *testing.T) {
-
-	tests := []struct {
-		name            string
-		body            string
-		expectedString  string
-		expectedChannel string
-	}{
-		{"largeInt", `{"number": 9223372036854775807}`, "9223372036854775807", "largeInt"},
-		{"precisionFloat", `{"number": 9223.372036854775807}`, "9223.372036854775807", "precisionFloat"},
-		{"largeInt2", `{"number": 9223372036854775808}`, "9223372036854775808", "largeInt2"},
-	}
-
-	// Use channels to ensure numbers are making it to sync function intact
-	// Note that the sync function is comparing doc.number to string for the large int cases, since javascript
-	// doesn't support 64-bit integers. (https://www.ecma-international.org/ecma-262/5.1/#sec-8.5)
-	syncFn := `function(doc) {` +
-		`if (doc.number == 9223.372036854775807) { channel("precisionFloat")} ` +
-		`if (doc.number == "9223372036854775807") { channel("largeInt")} ` +
-		`if (doc.number == "9223372036854775808") { channel("largeInt2")} ` +
-		`}`
-	rt := RestTester{SyncFn: syncFn}
-	defer rt.Close()
-
-	for _, test := range tests {
-		t.Run(test.name, func(ts *testing.T) {
-			//Create document
-			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", test.name), test.body)
-			assertStatus(t, response, 201)
-
-			// Get document, validate number value
-			getResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s", test.name), "")
-			assertStatus(t, getResponse, 200)
-
-			// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
-			responseString := string(getResponse.Body.Bytes())
-			if !strings.Contains(responseString, test.expectedString) {
-				t.Errorf("Response does not contain the expected number format.  Response: %s", responseString)
-			}
-
-			// Check channel assignment
-			getRawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", test.name), "")
-			var rawResponse RawResponse
-			json.Unmarshal(getRawResponse.Body.Bytes(), &rawResponse)
-			log.Printf("raw response: %s", getRawResponse.Body.Bytes())
-			goassert.Equals(t, len(rawResponse.Sync.Channels), 1)
-			assert.True(t, HasActiveChannel(rawResponse.Sync.Channels, test.expectedChannel), fmt.Sprintf("Expected channel %s was not found in document channels", test.expectedChannel))
-
-		})
-	}
-
-}
-
 func TestFunkyDocIDs(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
