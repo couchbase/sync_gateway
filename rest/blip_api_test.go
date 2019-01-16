@@ -1514,7 +1514,8 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	var rt RestTester
+	sgUseDeltas := base.IsEnterpriseEdition()
+	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	defer rt.Close()
 
 	deltaSentCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent))
@@ -1576,7 +1577,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
-	var rt RestTester
+	sgUseDeltas := base.IsEnterpriseEdition()
+	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	defer rt.Close()
 
 	client, err := NewBlipTesterClient(&rt)
@@ -1655,7 +1657,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 func TestBlipDeltaSyncPush(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	var rt RestTester
+	sgUseDeltas := base.IsEnterpriseEdition()
+	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	defer rt.Close()
 
 	client, err := NewBlipTesterClient(&rt)
@@ -1715,7 +1718,8 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 func TestBlipNonDeltaSyncPush(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
-	var rt RestTester
+	sgUseDeltas := base.IsEnterpriseEdition()
+	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	defer rt.Close()
 
 	client, err := NewBlipTesterClient(&rt)
