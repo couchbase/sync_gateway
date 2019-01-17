@@ -598,7 +598,7 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 		}
 	}
 	if changed != nil {
-		base.Infof(base.KeyCRUD, "\tDoc %q in channels %q", base.UD(doc.ID), base.UD(newChannels))
+		base.Infof(base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
 		changedChannels = channels.SetOf(changed...)
 	}
 	return

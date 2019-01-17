@@ -446,7 +446,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		// No sync metadata found - check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
 		migratedDoc, _ := c.context.checkForUpgrade(docID)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
-			base.Infof(base.KeyCache, "Found mobile xattr on document without _sync property - caching, assuming upgrade in progress.")
+			base.Infof(base.KeyCache, "Found mobile xattr on doc %q without _sync property - caching, assuming upgrade in progress.",  base.UD(docID))
 			syncData = &migratedDoc.syncData
 		} else {
 			base.Warnf(base.KeyAll, "changeCache: Doc %q does not have valid sync data.", base.UD(docID))
@@ -465,7 +465,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
-		base.Infof(base.KeyCache, "Received unused #%d for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
+		base.Infof(base.KeyCache, "Received unused #%d in _sync.unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 		change := &LogEntry{
 			Sequence:     seq,
 			TimeReceived: event.TimeReceived,
@@ -488,7 +488,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 
 		for _, seq := range syncData.RecentSequences {
 			if seq >= c.getNextSequence() && seq < currentSequence {
-				base.Infof(base.KeyCache, "Received deduplicated #%d for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
+				base.Infof(base.KeyCache, "Received deduplicated #%d in _sync.recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
 					TimeReceived: event.TimeReceived,
@@ -646,8 +646,8 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
-		base.Infof(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d)",
-			sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1)
+		base.Infof(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d) doc %q / %q",
+			sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1, base.UD(change.DocID), change.RevID)
 
 		// Update max pending high watermark stat
 		base.SetIfMax(c.context.DbStats.StatsCblReplicationPull(), base.StatKeyMaxPending, int64(numPending))
@@ -695,7 +695,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	func() {
 		if change.Skipped {
 			c.lateSeqLock.Lock()
-			base.Infof(base.KeyChanges, "Acquired late sequence lock for %d", change.Sequence)
+			base.Infof(base.KeyChanges, "Acquired late sequence lock in order to cache %d - doc %q / %q", change.Sequence, base.UD(change.DocID), change.RevID)
 			defer c.lateSeqLock.Unlock()
 		}
 

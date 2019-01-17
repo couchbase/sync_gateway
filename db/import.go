@@ -201,7 +201,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		generation, _ := ParseRevID(parentRev)
 		generation++
 		newRev = createRevID(generation, parentRev, body)
-		base.Infof(base.KeyImport, "Created new rev ID %v", newRev)
+		base.InfofCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(docid), newRev)
 		body[BodyRev] = newRev
 		doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 

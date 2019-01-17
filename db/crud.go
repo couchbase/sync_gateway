@@ -1282,7 +1282,7 @@ func (db *Database) updateAndReturnDoc(
 	}
 
 	// Now that the document has successfully been stored, we can make other db changes:
-	base.InfofCtx(db.Ctx, base.KeyCRUD, "Stored doc %q / %q", base.UD(docid), newRevID)
+	base.InfofCtx(db.Ctx, base.KeyCRUD, "Stored doc %q / %q as #%v", base.UD(docid), newRevID, doc.Sequence)
 
 	// Remove any obsolete non-winning revision bodies
 	doc.deleteRemovedRevisionBodies(db.Bucket)
@@ -1318,7 +1318,7 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	if len(changedPrincipals) > 0 {
-		base.InfofCtx(db.Ctx, base.KeyAccess, "Rev %q/%q invalidates channels of %s", base.UD(docid), newRevID, changedPrincipals)
+		base.InfofCtx(db.Ctx, base.KeyAccess, "Rev %q / %q invalidates channels of %s", base.UD(docid), newRevID, changedPrincipals)
 		for _, changedAccessPrincipalName := range changedPrincipals {
 			db.invalUserOrRoleChannels(changedAccessPrincipalName)
 			// Check whether the active user needs to be recalculated.  Skip check if reload has already been identified
@@ -1345,7 +1345,7 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 	}
 
 	if len(changedRoleUsers) > 0 {
-		base.InfofCtx(db.Ctx, base.KeyAccess, "Rev %q/%q invalidates roles of %s", base.UD(docid), newRevID, base.UD(changedRoleUsers))
+		base.InfofCtx(db.Ctx, base.KeyAccess, "Rev %q / %q invalidates roles of %s", base.UD(docid), newRevID, base.UD(changedRoleUsers))
 		for _, name := range changedRoleUsers {
 			db.invalUserRoles(name)
 			//If this is the current in memory db.user, reload to generate updated roles
@@ -1441,7 +1441,8 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 			expiry = output.Expiry
 			err = output.Rejection
 			if err != nil {
-				base.InfofCtx(db.Ctx, base.KeyAll, "Sync fn rejected: new=%+v  old=%s --> %s", base.UD(body), base.UD(oldJson), err)
+				base.InfofCtx(db.Ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
+				base.DebugfCtx(db.Ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev),  base.UD(body), base.UD(oldJson))
 				db.DbStats.StatsSecurity().Add(base.StatKeyNumDocsRejected, 1)
 				if isAccessError(err) {
 					db.DbStats.StatsSecurity().Add(base.StatKeyNumAccessErrors, 1)
