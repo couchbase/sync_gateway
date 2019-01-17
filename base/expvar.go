@@ -84,6 +84,7 @@ const (
 	// StatsDatabase
 	StatKeySequenceGets            = "sequence_gets"
 	StatKeySequenceReserves        = "sequence_reserves"
+	StatKeySequenceUnusedCount     = "sequence_unused_count"
 	StatKeyCrc32cMatchCount        = "crc32c_match_count"
 	StatKeyNumReplicationsActive   = "num_replications_active"
 	StatKeyNumReplicationsTotal    = "num_replications_total"

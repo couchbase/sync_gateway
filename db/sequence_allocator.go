@@ -129,6 +129,7 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
 	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
+	s.dbStats.StatsDatabase().Add(base.StatKeySequenceUnusedCount, 1)
 	base.Debugf(base.KeyCRUD, "Released unused sequence #%d", sequence)
 	return err
 }
