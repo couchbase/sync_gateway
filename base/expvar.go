@@ -82,9 +82,9 @@ const (
 	StatKeyAbandonedSeqs              = "abandoned_seqs"
 
 	// StatsDatabase
-	StatKeySequenceGets            = "sequence_gets"
-	StatKeySequenceReserves        = "sequence_reserves"
-	StatKeySequenceUnusedCount     = "sequence_unused_count"
+	StatKeySequenceGetCount        = "sequence_get_count"
+	StatKeySequenceReservedCount   = "sequence_reserved_count"
+	StatKeySequenceReleasedCount   = "sequence_released_count"
 	StatKeyCrc32cMatchCount        = "crc32c_match_count"
 	StatKeyNumReplicationsActive   = "num_replications_active"
 	StatKeyNumReplicationsTotal    = "num_replications_total"
