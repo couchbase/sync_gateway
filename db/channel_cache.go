@@ -146,7 +146,7 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 
 	if c.wouldBeImmediatelyPruned(change) {
 		base.Infof(base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
-			change.Sequence, change.DocID, change.RevID, base.UD(c.channelName))
+			change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channelName))
 		return
 	}
 
