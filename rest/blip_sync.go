@@ -66,19 +66,20 @@ func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 
 	wrappedBlipHandler := func(bh *blipHandler, bm *blip.Message) error {
 
-		oldUser := bh.db.User()
-		if oldUser == nil {
-			return fmt.Errorf("nil user for blip handler")
-		}
+		// Create a user-scoped database on each blip request (otherwise runs into SG issue #2717)
+		if oldUser := bh.db.User(); oldUser != nil {
+			newUser, err := bh.db.Authenticator().GetUser(oldUser.Name())
+			if err != nil {
+				return err
+			}
 
-		// Create a new user-scoped database on each blip request (otherwise runs into SG issue #2717)
-		newUser, err := bh.db.Authenticator().GetUser(oldUser.Name())
-		if err != nil {
-			return err
+			newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
+			if err != nil {
+				return err
+			}
+			newDatabase.Ctx = bh.db.Ctx
+			bh.db = newDatabase
 		}
-		newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
-		newDatabase.Ctx = bh.db.Ctx
-		bh.db = newDatabase
 
 		// Call down to underlying method and return it's value
 		return underlyingMethod(bh, bm)
