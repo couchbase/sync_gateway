@@ -47,7 +47,7 @@ func newSequenceAllocator(bucket base.Bucket, dbStats *DatabaseStats) (*sequence
 }
 
 func (s *sequenceAllocator) lastSequence() (uint64, error) {
-	s.dbStats.StatsDatabase().Add(base.StatKeySequenceGets, 1)
+	s.dbStats.StatsDatabase().Add(base.StatKeySequenceGetCount, 1)
 	last, err := s.incrWithRetry(SyncSeqKey, 0)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Error from Incr in lastSequence(): %v", err)
@@ -72,7 +72,7 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 		return nil // Already have some sequences left; don't be greedy and waste them
 		//OPT: Could remember multiple discontiguous ranges of free sequences
 	}
-	s.dbStats.StatsDatabase().Add(base.StatKeySequenceReserves, 1)
+	s.dbStats.StatsDatabase().Add(base.StatKeySequenceReservedCount, 1)
 
 	max, err := s.incrWithRetry(SyncSeqKey, numToReserve)
 	if err != nil {
@@ -129,6 +129,7 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
 	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
+	s.dbStats.StatsDatabase().Add(base.StatKeySequenceReleasedCount, 1)
 	base.Debugf(base.KeyCRUD, "Released unused sequence #%d", sequence)
 	return err
 }
