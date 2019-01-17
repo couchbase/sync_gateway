@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -67,24 +66,20 @@ func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 
 	wrappedBlipHandler := func(bh *blipHandler, bm *blip.Message) error {
 
-		var newUser auth.User
+		// Create a user-scoped database on each blip request (otherwise runs into SG issue #2717)
 		if oldUser := bh.db.User(); oldUser != nil {
-			var err error
-			newUser, err = bh.db.Authenticator().GetUser(oldUser.Name())
+			newUser, err := bh.db.Authenticator().GetUser(oldUser.Name())
 			if err != nil {
 				return err
 			}
-		}
 
-		// Create a user-scoped database on each blip request (otherwise runs into SG issue #2717)
-		// newUser will be nil for requests coming via the admin port
-		newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
-		if err != nil {
-			return err
+			newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
+			if err != nil {
+				return err
+			}
+			newDatabase.Ctx = bh.db.Ctx
+			bh.db = newDatabase
 		}
-
-		newDatabase.Ctx = bh.db.Ctx
-		bh.db = newDatabase
 
 		// Call down to underlying method and return it's value
 		return underlyingMethod(bh, bm)
