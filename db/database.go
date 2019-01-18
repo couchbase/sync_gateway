@@ -131,10 +131,11 @@ type APIEndpoints struct {
 }
 
 type UnsupportedOptions struct {
-	UserViews         UserViewsOptions        `json:"user_views,omitempty"`         // Config settings for user views
-	OidcTestProvider  OidcTestProviderOptions `json:"oidc_test_provider,omitempty"` // Config settings for OIDC Provider
-	APIEndpoints      APIEndpoints            `json:"api_endpoints,omitempty"`      // Config settings for API endpoints
-	WarningThresholds WarningThresholds       `json:"warning_thresholds,omitempty"`
+	UserViews                UserViewsOptions        `json:"user_views,omitempty"`                  // Config settings for user views
+	OidcTestProvider         OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`          // Config settings for OIDC Provider
+	APIEndpoints             APIEndpoints            `json:"api_endpoints,omitempty"`               // Config settings for API endpoints
+	WarningThresholds        WarningThresholds       `json:"warning_thresholds,omitempty"`          // Warning thresholds related to _sync size
+	DisableCleanSkippedQuery bool                    `json:"disable_clean_skipped_query,omitempty"` // Clean skipped sequence processing bypasses final check
 }
 
 type WarningThresholds struct {

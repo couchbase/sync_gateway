@@ -24,6 +24,8 @@ const (
 	DefaultSkippedSeqMaxWait      = 60 * time.Minute // Max time we'll wait for an entry in the missing before purging
 )
 
+var SkippedSeqCleanViewBatch = 50 // Max number of sequences checked per query during CleanSkippedSequence.  Var to support testing
+
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
 var EnableStarChannelLog = true
@@ -265,48 +267,64 @@ func (c *changeCache) CleanAgedItems() {
 // Cleanup function, invoked periodically.
 // Removes skipped entries from skippedSeqs that have been waiting longer
 // than MaxChannelLogMissingWaitTime from the queue.  Attempts view retrieval
-// prior to removal
+// prior to removal.  Only locks skipped sequence queue to build the initial set (GetSkippedSequencesOlderThanMaxWait)
+// and subsequent removal (RemoveSkipped).
 func (c *changeCache) CleanSkippedSequenceQueue() {
 
-	foundEntries, pendingDeletes := func() ([]*LogEntry, []uint64) {
-		c.skippedSeqLock.Lock()
-		defer c.skippedSeqLock.Unlock()
+	oldSkippedSequences := c.GetSkippedSequencesOlderThanMaxWait()
+	var foundEntries []*LogEntry
+	var pendingRemovals []uint64
 
-		var found []*LogEntry
-		var deletes []uint64
-		for _, skippedSeq := range c.skippedSeqs {
-			if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
-				// Attempt to retrieve the sequence from the view before we remove.
-				startSequence := skippedSeq.seq
-				endSequence := skippedSeq.seq
-				// Note: The view query is only going to hit for active revisions - sequences associated with inactive revisions
-				//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
-				//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
-				//       the doc won't be flagged as removed from that channel in the in-memory channel cache.
-				entries, err := c.context.getChangesInChannelFromQuery("*", startSequence, endSequence, 0, false)
-				if err == nil && len(entries) > 0 {
-					// Found it - store to send to the caches.
-					found = append(found, entries[0])
-				} else {
-					if err != nil {
-						base.Warnf(base.KeyAll, "Error retrieving changes from view during skipped sequence check: %v", err)
-					}
-					base.Warnf(base.KeyAll, "Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view.  If it's a valid sequence, it won't be replicated until Sync Gateway is restarted.", skippedSeq.seq)
-				}
-				// Remove from skipped queue
-				deletes = append(deletes, skippedSeq.seq)
-			} else {
-				// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
-				// still inside the time window
-				break
+	if len(oldSkippedSequences) == 0 {
+		return
+	}
+
+	base.Infof(base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.UD(c.context.Name))
+
+	if c.context.Options.UnsupportedOptions.DisableCleanSkippedQuery == true {
+		pendingRemovals = append(pendingRemovals, oldSkippedSequences...)
+		oldSkippedSequences = nil
+	}
+
+	for len(oldSkippedSequences) > 0 {
+		var skippedSeqBatch []uint64
+		if len(oldSkippedSequences) >= SkippedSeqCleanViewBatch {
+			skippedSeqBatch = oldSkippedSequences[0:SkippedSeqCleanViewBatch]
+			oldSkippedSequences = oldSkippedSequences[SkippedSeqCleanViewBatch:]
+		} else {
+			skippedSeqBatch = oldSkippedSequences[0:]
+			oldSkippedSequences = nil
+		}
+
+		base.Debugf(base.KeyCache, "Issuing skipped sequence clean query for %d sequences, %d remain pending (db:%s).", len(skippedSeqBatch), len(oldSkippedSequences), base.UD(c.context.Name))
+		// Note: The view query is only going to hit for active revisions - sequences associated with inactive revisions
+		//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
+		//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
+		//       the doc won't be flagged as removed from that channel in the in-memory channel cache.
+		entries, err := c.context.getChangesForSequences(skippedSeqBatch)
+		if err != nil {
+			base.Warnf(base.KeyAll, "Error retrieving sequences via view during skipped sequence clean - #%d sequences treated as not found: %v", len(skippedSeqBatch), err)
+			continue
+		}
+
+		// Process found entries.  Add to foundEntries for subsequent cache processing, foundMap for pendingRemoval calculation below.
+		foundMap := make(map[uint64]struct{}, len(entries))
+		for _, foundEntry := range entries {
+			foundMap[foundEntry.Sequence] = struct{}{}
+			foundEntries = append(foundEntries, foundEntry)
+		}
+
+		// Add queried sequences not in the resultset to pendingRemovals
+		for _, skippedSeq := range skippedSeqBatch {
+			if _, ok := foundMap[skippedSeq]; !ok {
+				base.Warnf(base.KeyAll, "Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view.  If it's a valid sequence, it won't be replicated until Sync Gateway is restarted.", skippedSeq)
+				pendingRemovals = append(pendingRemovals, skippedSeq)
 			}
 		}
-		return found, deletes
-	}()
+	}
 
+	// Issue processEntry for found entries.  Standard processEntry handling will remove these sequences from the skipped seq queue.
 	changedChannelsCombined := base.Set{}
-
-	// Add found entries
 	for _, entry := range foundEntries {
 		entry.Skipped = true
 		// Need to populate the actual channels for this entry - the entry returned from the * channel
@@ -328,16 +346,17 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 		c.notifyChange(changedChannelsCombined)
 	}
 
-	// Purge pending deletes
-	for _, sequence := range pendingDeletes {
+	// Purge sequences not found from the skipped sequence queue
+	for _, sequence := range pendingRemovals {
 		err := c.RemoveSkipped(sequence)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error purging skipped sequence %d from skipped sequence queue", sequence)
+			base.Warnf(base.KeyAll, "Error purging skipped sequence %d from skipped sequence queue: %v", sequence, err)
 		} else {
 			c.context.DbStats.StatsCache().Add(base.StatKeyAbandonedSeqs, 1)
 		}
 	}
 
+	base.Infof(base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.UD(c.context.Name))
 	return
 }
 
@@ -902,6 +921,22 @@ func (c *changeCache) PushSkipped(sequence uint64) {
 	c.skippedSeqLock.Lock()
 	defer c.skippedSeqLock.Unlock()
 	c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
+}
+
+func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint64) {
+	c.skippedSeqLock.RLock()
+	defer c.skippedSeqLock.RUnlock()
+	oldSequences = make([]uint64, 0)
+	for _, skippedSeq := range c.skippedSeqs {
+		if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
+			oldSequences = append(oldSequences, skippedSeq.seq)
+		} else {
+			// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
+			// still inside the time window
+			break
+		}
+	}
+	return oldSequences
 }
 
 // Remove does a simple binary search to find and remove.

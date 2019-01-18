@@ -174,6 +174,66 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 	return entries, nil
 }
 
+// Queries the 'channels' view to get changes from a channel for the specified sequence.  Used for skipped sequence check
+// before abandoning.
+func (dbc *DatabaseContext) getChangesForSequences(sequences []uint64) (LogEntries, error) {
+	if dbc.Bucket == nil {
+		return nil, errors.New("No bucket available for sequence query")
+	}
+	start := time.Now()
+	usingViews := dbc.Options.UseViews
+
+	entries := make(LogEntries, 0)
+
+	base.Infof(base.KeyCache, "Querying for sequences (#keys:%d)", len(sequences))
+
+	// Query the view or index
+	queryResults, err := dbc.QuerySequences(sequences)
+	if err != nil {
+		return nil, err
+	}
+	queryRowCount := 0
+
+	// Convert the output to LogEntries.  Channel query and view result rows have different structure, so need to unmarshal independently.
+	for {
+		var entry *LogEntry
+		var found bool
+		if usingViews {
+			entry, found = nextChannelViewEntry(queryResults)
+		} else {
+			entry, found = nextChannelQueryEntry(queryResults)
+		}
+
+		if !found {
+			break
+		}
+		queryRowCount++
+		entries = append(entries, entry)
+	}
+
+	// Close query results
+	closeErr := queryResults.Close()
+	if closeErr != nil {
+		return nil, closeErr
+	}
+
+	if queryRowCount == 0 {
+		base.Infof(base.KeyCache, "Got no rows from query for sequences")
+		return nil, nil
+	}
+
+	if len(entries) > 0 {
+		base.Infof(base.KeyCache, "Got rows from sequence query: #%d sequences found/#%d sequences queried",
+			len(entries), len(sequences))
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		base.Infof(base.KeyAll, "Sequences query took %v to return %d rows. #sequences queried: %d",
+			elapsed, len(entries), len(sequences))
+	}
+
+	return entries, nil
+}
+
 // Public channel view call - for unit test support
 func (dbc *DatabaseContext) ChannelViewTest(channelName string, startSeq, endSeq uint64) (LogEntries, error) {
 	return dbc.getChangesInChannelFromQuery(channelName, startSeq, endSeq, 0, false)

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
@@ -23,6 +23,7 @@ const (
 	QueryTypeRoleAccess   = "roleAccess"
 	QueryTypeChannels     = "channels"
 	QueryTypeChannelsStar = "channelsStar"
+	QueryTypeSequences    = "sequences"
 	QueryTypePrincipals   = "principals"
 	QueryTypeSessions     = "sessions"
 	QueryTypeTombstones   = "tombstones"
@@ -86,6 +87,20 @@ var QueryStarChannel = SGQuery{
 			"META(`%s`).id AS id "+
 			"FROM `%s`"+
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
+			"AND META().id NOT LIKE '%s'",
+		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
+	adhoc: false,
+}
+
+var QuerySequences = SGQuery{
+	name: QueryTypeSequences,
+	statement: fmt.Sprintf(
+		"SELECT $sync.sequence AS seq, "+
+			"$sync.rev AS rev, "+
+			"$sync.flags AS flags, "+
+			"META(`%s`).id AS id "+
+			"FROM `%s`"+
+			"WHERE $sync.sequence IN $inSequences "+
 			"AND META().id NOT LIKE '%s'",
 		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
 	adhoc: false,
@@ -178,6 +193,7 @@ const (
 	QueryParamEndSeq      = "endSeq"
 	QueryParamUserName    = "userName"
 	QueryParamOlderThan   = "olderThan"
+	QueryParamInSequences = "inSequences"
 )
 
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
@@ -289,6 +305,28 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 	return context.N1QLQueryWithStats(QueryChannels.name, channelQueryStatement, params, gocb.RequestPlus, QueryChannels.adhoc)
 }
 
+// Query to retrieve keys for the specified sequences.  View query uses star channel, N1QL query uses IndexAllDocs
+func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.QueryResultIterator, error) {
+
+	if len(sequences) == 0 {
+		return nil, errors.New("No sequences specified for QueryChannelsForSequences")
+	}
+
+	if context.Options.UseViews {
+		opts := changesViewForSequencesOptions(sequences)
+		base.Infof(base.KeyCRUD, "issuing view query")
+		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewChannels, opts)
+	}
+
+	// N1QL Query
+	// Standard channel index/query doesn't support the star channel.  For star channel queries, QueryStarChannel
+	// (which is backed by IndexAllDocs) is used.  The QueryStarChannel result schema is a subset of the
+	// QueryChannels result schema (removal handling isn't needed for the star channel).
+	sequenceQueryStatement := context.buildSequenceQuery(sequences)
+
+	return context.N1QLQueryWithStats(QuerySequences.name, sequenceQueryStatement, nil, gocb.RequestPlus, QueryChannels.adhoc)
+}
+
 // Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
 // query is covering.
 func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int) (statement string, params map[string]interface{}) {
@@ -317,6 +355,20 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 	params[QueryParamEndSeq] = endSeq
 
 	return channelQueryStatement, params
+}
+
+// Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) buildSequenceQuery(sequences []uint64) (statement string) {
+
+	sequenceQueryStatement := replaceSyncTokensQuery(QuerySequences.statement, context.UseXattrs())
+
+	// Convert []uint64 to N1QL array predicate format, e.g. [1,4,5], and replace token in QueryStarChannelWithSequences
+	sequenceArrayString := fmt.Sprint(sequences)
+	commaDelimitedSequences := strings.Replace(sequenceArrayString, " ", ",", -1)
+	sequenceQueryStatement = strings.Replace(sequenceQueryStatement, "$"+QueryParamInSequences, commaDelimitedSequences, -1)
+
+	return sequenceQueryStatement
 }
 
 func (context *DatabaseContext) QueryResync() (sgbucket.QueryResultIterator, error) {
@@ -443,6 +495,21 @@ func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) 
 	}
 	if limit > 0 {
 		optMap["limit"] = limit
+	}
+	return optMap
+}
+
+func changesViewForSequencesOptions(sequences []uint64) Body {
+
+	keys := make([]interface{}, len(sequences))
+	for i, sequence := range sequences {
+		key := []interface{}{channels.UserStarChannel, sequence}
+		keys[i] = key
+	}
+
+	optMap := Body{
+		"stale": false,
+		"keys":  keys,
 	}
 	return optMap
 }

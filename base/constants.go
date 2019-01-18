@@ -114,9 +114,7 @@ var (
 )
 
 func UnitTestUrl() string {
-	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
-	switch {
-	case strings.ToLower(backingStore) == strings.ToLower(TestEnvBackingStoreCouchbase):
+	if TestUseCouchbaseServer() {
 		testCouchbaseServerUrl := os.Getenv(TestEnvCouchbaseServerUrl)
 		if testCouchbaseServerUrl != "" {
 			// If user explicitly set a Test Couchbase Server URL, use that
@@ -124,7 +122,7 @@ func UnitTestUrl() string {
 		}
 		// Otherwise fallback to hardcoded default
 		return kTestCouchbaseServerURL
-	default:
+	} else {
 		return kTestWalrusURL
 	}
 }

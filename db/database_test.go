@@ -87,6 +87,22 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 	return db, tBucket
 }
 
+// Forces UseViews:true in the database context.  Useful for testing w/ views while running
+// tests against Couchbase Server
+func setupTestDBWithViewsEnabled(t testing.TB) (*Database, base.TestBucket) {
+
+	dbcOptions := DatabaseContextOptions{
+		UseViews: true,
+	}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	tBucket := testBucket()
+	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+	return db, tBucket
+}
+
 // Sets up a test bucket with _sync:seq initialized to a high value prior to database creation.  Used to test
 // issues with custom _sync:seq values without triggering skipped sequences between 0 and customSeq
 func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, base.TestBucket) {
@@ -169,7 +185,10 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 		dbcOptions.EnableXattr = true
 	}
 
-	dbcOptions.UseViews = base.TestUseViews()
+	// Force views if not testing against Couchbase Server
+	if !base.TestUseCouchbaseServer() {
+		dbcOptions.UseViews = true
+	}
 }
 
 func tearDownTestDB(t testing.TB, db *Database) {
