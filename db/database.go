@@ -414,7 +414,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		base.Infof(base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", float64(context.PurgeInterval)/24)
 
 		if context.Options.AutoCompact {
-			context.backgroundTask("Compact database", func() error { _, err := context.Compact(); return err}, time.Duration(context.PurgeInterval)*time.Hour)
+			if autoImport {
+				context.backgroundTask("Compact database", func() error { _, err := context.Compact(); return err}, time.Duration(context.PurgeInterval)*time.Hour)
+			} else {
+				base.Warnf(base.KeyAll, "Automatic compaction can only be enabled on nodes running an Import process")
+			}
 		}
 	}
 
