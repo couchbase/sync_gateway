@@ -382,6 +382,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	importOptions := db.ImportOptions{}
 	if config.ImportFilter != nil {
 		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter)
+		importOptions.ImportFilterID = config.ImportFilterID
 	}
 	importOptions.BackupOldRev = config.ImportBackupOldRev
 

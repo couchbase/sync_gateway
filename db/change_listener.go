@@ -41,7 +41,7 @@ func (listener *changeListener) Init(name string) {
 
 // Starts a changeListener on a given Bucket.
 
-func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, bucketStateNotify sgbucket.BucketNotifyFn) error {
+func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, feedId string, bucketStateNotify sgbucket.BucketNotifyFn) error {
 
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
@@ -50,6 +50,7 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfi
 		Backfill:   backfillMode,
 		Notify:     bucketStateNotify,
 		Terminator: listener.terminator,
+		FeedId:     feedId,
 	}
 
 	if trackDocs {

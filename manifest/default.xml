@@ -62,7 +62,7 @@
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="0da75df145308b9a4e6704d762ca9d9b77752efc"/>
 
-  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="54483acdf6d9df0bdc75e1dcd76b87ca17efc66e"/>
+  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="c4d1c3191aea587c416876ba9c2a52a62ca3fc7f"/>
 
   <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="couchbasedeps" revision="30f82fa23fd844bd5bb1e5f216db87fd77b5eb43"/>
 

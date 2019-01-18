@@ -268,7 +268,7 @@ func (body Body) FixJSONNumbers() {
 }
 
 func createRevID(generation int, parentRevID string, body Body) string {
-	// This should produce the same results as TouchDB.
+	// This should produce the same results as Couchbase Lite.
 	digester := md5.New()
 	digester.Write([]byte{byte(len(parentRevID))})
 	digester.Write([]byte(parentRevID))

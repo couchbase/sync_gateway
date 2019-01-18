@@ -95,9 +95,10 @@ type DCPReceiver struct {
 	notify                 sgbucket.BucketNotifyFn        // Function to callback when we lose our dcp feed
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
 	backfill               backfillStatus                 // Backfill state and stats
+	checkpointId           string                         // Optional ID used to build key for checkpoint persistence
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool) Receiver {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, checkpointId string) Receiver {
 
 	r := &DCPReceiver{
 		bucket:                 bucket,
@@ -108,6 +109,7 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 		vbuuids:                make(map[uint16]uint64, maxVbNo),
 		updatesSinceCheckpoint: make([]uint64, maxVbNo),
 		callback:               callback,
+		checkpointId:           checkpointId,
 	}
 
 	if LogDebugEnabled(KeyDCP) {
@@ -333,13 +335,21 @@ func makeVbucketMetadataForSequence(vbucketUUID uint64, sequence uint64) []byte 
 
 }
 
+func (r *DCPReceiver) getCheckpointKey(vbNo uint16) string {
+	if r.checkpointId == "" {
+		return fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo)
+	} else {
+		return fmt.Sprintf("%s%s:%d", DCPCheckpointPrefix, r.checkpointId, vbNo)
+	}
+}
+
 // TODO: Convert checkpoint persistence to an asynchronous batched process, since
 //       restarting w/ an older checkpoint:
 //         - Would only result in some repeated entry processing, which is already handled by the indexer
 //         - Is a relatively infrequent operation (occurs when vbuckets are initially assigned to an accel node)
 func (r *DCPReceiver) persistCheckpoint(vbNo uint16, value []byte) error {
 	Tracef(KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
-	return r.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo), 0, value)
+	return r.bucket.SetRaw(r.getCheckpointKey(vbNo), 0, value)
 }
 
 // loadCheckpoint retrieves previously persisted DCP metadata.  Need to unmarshal metadata to determine last sequence processed.
@@ -350,7 +360,7 @@ func (r *DCPReceiver) persistCheckpoint(vbNo uint16, value []byte) error {
 //   - The ongoing performance overhead of persisting last sequence outweighs the minor performance benefit of not reprocessing a few
 //    sequences in a checkpoint on startup
 func (r *DCPReceiver) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStartSeq uint64, snapshotEndSeq uint64, err error) {
-	rawValue, _, err := r.bucket.GetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo))
+	rawValue, _, err := r.bucket.GetRaw(r.getCheckpointKey(vbNo))
 	if err != nil {
 		// On a key not found error, metadata hasn't been persisted for this vbucket
 		if IsKeyNotFoundError(r.bucket, err) {
@@ -551,7 +561,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		persistCheckpoints = true
 	}
 
-	dcpReceiver := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints)
+	dcpReceiver := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, args.FeedId)
 	dcpReceiver.SetBucketNotifyFn(args.Notify)
 
 	// Initialize the feed based on the backfill type

@@ -146,8 +146,9 @@ type WarningThresholds struct {
 
 // Options associated with the import of documents not written by Sync Gateway
 type ImportOptions struct {
-	ImportFilter *ImportFilterFunction // Opt-in filter for document import
-	BackupOldRev bool                  // Create temporary backup of old revision body when available
+	ImportFilter   *ImportFilterFunction // Opt-in filter for document import
+	ImportFilterID string                // ID for import filter.  Used to associate DCP checkpoints with a given import filter.
+	BackupOldRev   bool                  // Create temporary backup of old revision body when available
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -274,15 +275,17 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
 	feedMode := uint64(sgbucket.FeedNoBackfill)
+	var feedID string
 	if context.UseXattrs() && context.autoImport {
 		feedMode = sgbucket.FeedResume
+		feedID = context.Options.ImportOptions.ImportFilterID
 	}
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
-		err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
+		err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, feedID, func(bucket string, err error) {
 
 			msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
 			base.Warnf(base.KeyAll, msgFormat, base.UD(bucket), err)
@@ -536,11 +539,13 @@ func (context *DatabaseContext) RestartListener() error {
 	time.Sleep(2 * time.Second)
 	context.mutationListener.Init(context.Bucket.GetName())
 	feedMode := uint64(sgbucket.FeedNoBackfill)
+	feedID := ""
 	if context.UseXattrs() && context.autoImport {
 		feedMode = sgbucket.FeedResume
+		feedID = context.Options.ImportOptions.ImportFilterID
 	}
 
-	if err := context.mutationListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil); err != nil {
+	if err := context.mutationListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, feedID, nil); err != nil {
 		return err
 	}
 	return nil
