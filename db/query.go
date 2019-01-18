@@ -292,7 +292,6 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 
 	if context.Options.UseViews {
 		opts := changesViewOptions(channelName, startSeq, endSeq, limit)
-		base.Infof(base.KeyCRUD, "issuing view query")
 		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewChannels, opts)
 	}
 
@@ -314,7 +313,6 @@ func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.Que
 
 	if context.Options.UseViews {
 		opts := changesViewForSequencesOptions(sequences)
-		base.Infof(base.KeyCRUD, "issuing view query")
 		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewChannels, opts)
 	}
 
@@ -483,12 +481,12 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time) (sgbucket.Q
 	return context.N1QLQueryWithStats(QueryTypeTombstones, tombstoneQueryStatement, params, gocb.NotBounded, QueryTombstones.adhoc)
 }
 
-func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) Body {
+func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) map[string]interface{} {
 	endKey := []interface{}{channelName, endSeq}
 	if endSeq == 0 {
 		endKey[1] = map[string]interface{}{} // infinity
 	}
-	optMap := Body{
+	optMap := map[string]interface{}{
 		"stale":    false,
 		"startkey": []interface{}{channelName, startSeq},
 		"endkey":   endKey,
@@ -499,7 +497,7 @@ func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) 
 	return optMap
 }
 
-func changesViewForSequencesOptions(sequences []uint64) Body {
+func changesViewForSequencesOptions(sequences []uint64) map[string]interface{} {
 
 	keys := make([]interface{}, len(sequences))
 	for i, sequence := range sequences {
@@ -507,7 +505,7 @@ func changesViewForSequencesOptions(sequences []uint64) Body {
 		keys[i] = key
 	}
 
-	optMap := Body{
+	optMap := map[string]interface{}{
 		"stale": false,
 		"keys":  keys,
 	}

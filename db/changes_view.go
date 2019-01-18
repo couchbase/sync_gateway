@@ -185,14 +185,11 @@ func (dbc *DatabaseContext) getChangesForSequences(sequences []uint64) (LogEntri
 
 	entries := make(LogEntries, 0)
 
-	base.Infof(base.KeyCache, "Querying for sequences (#keys:%d)", len(sequences))
-
 	// Query the view or index
 	queryResults, err := dbc.QuerySequences(sequences)
 	if err != nil {
 		return nil, err
 	}
-	queryRowCount := 0
 
 	// Convert the output to LogEntries.  Channel query and view result rows have different structure, so need to unmarshal independently.
 	for {
@@ -207,7 +204,6 @@ func (dbc *DatabaseContext) getChangesForSequences(sequences []uint64) (LogEntri
 		if !found {
 			break
 		}
-		queryRowCount++
 		entries = append(entries, entry)
 	}
 
@@ -217,15 +213,9 @@ func (dbc *DatabaseContext) getChangesForSequences(sequences []uint64) (LogEntri
 		return nil, closeErr
 	}
 
-	if queryRowCount == 0 {
-		base.Infof(base.KeyCache, "Got no rows from query for sequences")
-		return nil, nil
-	}
+	base.Infof(base.KeyCache, "Got rows from sequence query: #%d sequences found/#%d sequences queried",
+		len(entries), len(sequences))
 
-	if len(entries) > 0 {
-		base.Infof(base.KeyCache, "Got rows from sequence query: #%d sequences found/#%d sequences queried",
-			len(entries), len(sequences))
-	}
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
 		base.Infof(base.KeyAll, "Sequences query took %v to return %d rows. #sequences queried: %d",
 			elapsed, len(entries), len(sequences))

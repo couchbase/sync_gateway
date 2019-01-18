@@ -272,14 +272,14 @@ func (c *changeCache) CleanAgedItems() {
 func (c *changeCache) CleanSkippedSequenceQueue() {
 
 	oldSkippedSequences := c.GetSkippedSequencesOlderThanMaxWait()
-	var foundEntries []*LogEntry
-	var pendingRemovals []uint64
-
 	if len(oldSkippedSequences) == 0 {
 		return
 	}
 
 	base.Infof(base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.UD(c.context.Name))
+
+	var foundEntries []*LogEntry
+	var pendingRemovals []uint64
 
 	if c.context.Options.UnsupportedOptions.DisableCleanSkippedQuery == true {
 		pendingRemovals = append(pendingRemovals, oldSkippedSequences...)
@@ -296,7 +296,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 			oldSkippedSequences = nil
 		}
 
-		base.Debugf(base.KeyCache, "Issuing skipped sequence clean query for %d sequences, %d remain pending (db:%s).", len(skippedSeqBatch), len(oldSkippedSequences), base.UD(c.context.Name))
+		base.Infof(base.KeyCache, "Issuing skipped sequence clean query for %d sequences, %d remain pending (db:%s).", len(skippedSeqBatch), len(oldSkippedSequences), base.UD(c.context.Name))
 		// Note: The view query is only going to hit for active revisions - sequences associated with inactive revisions
 		//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
 		//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
@@ -347,14 +347,8 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 	}
 
 	// Purge sequences not found from the skipped sequence queue
-	for _, sequence := range pendingRemovals {
-		err := c.RemoveSkipped(sequence)
-		if err != nil {
-			base.Warnf(base.KeyAll, "Error purging skipped sequence %d from skipped sequence queue: %v", sequence, err)
-		} else {
-			c.context.DbStats.StatsCache().Add(base.StatKeyAbandonedSeqs, 1)
-		}
-	}
+	numRemoved := c.RemoveSkippedSequences(pendingRemovals)
+	c.context.DbStats.StatsCache().Add(base.StatKeyAbandonedSeqs, numRemoved)
 
 	base.Infof(base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.UD(c.context.Name))
 	return
@@ -907,6 +901,21 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 	c.skippedSeqLock.Lock()
 	defer c.skippedSeqLock.Unlock()
 	return c.skippedSeqs.Remove(x)
+}
+
+// Removes a set of sequences.  Logs warning on removal error, returns count of successfully removed.
+func (c *changeCache) RemoveSkippedSequences(sequences []uint64) (removedCount int64) {
+	c.skippedSeqLock.Lock()
+	defer c.skippedSeqLock.Unlock()
+	for _, seq := range sequences {
+		err := c.skippedSeqs.Remove(seq)
+		if err != nil {
+			base.Warnf(base.KeyAll, "Error purging skipped sequence %d from skipped sequence queue: %v", seq, err)
+		} else {
+			removedCount++
+		}
+	}
+	return removedCount
 }
 
 func (c *changeCache) WasSkipped(x uint64) bool {
