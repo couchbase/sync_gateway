@@ -587,7 +587,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			deltaSyncOptions.RevMaxAgeSeconds = *revMaxAge
 		}
 	}
-	base.Infof(base.KeyAll, "delta_sync enable=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
+	base.Infof(base.KeyAll, "delta_sync enabled=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
 
 	if config.Unsupported.WarningThresholds.XattrSize == nil {
 		val := uint32(base.DefaultWarnThresholdXattrSize)
