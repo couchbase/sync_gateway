@@ -205,11 +205,6 @@ func TestUseCouchbaseServer() bool {
 	return strings.ToLower(backingStore) == strings.ToLower(TestEnvBackingStoreCouchbase)
 }
 
-// Use views for walrus testing
-func TestUseViews() bool {
-	return !TestUseCouchbaseServer()
-}
-
 type TestAuthenticator struct {
 	Username   string
 	Password   string

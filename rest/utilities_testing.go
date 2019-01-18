@@ -103,9 +103,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig == nil {
 			// If no db config was passed in, create one
 			rt.DatabaseConfig = &DbConfig{}
+		}
 
-			// By default, does NOT use views when running against couchbase server, since should use GSI
-			rt.DatabaseConfig.UseViews = base.TestUseViews()
+		// Force views if running against walrus
+		if !base.TestUseCouchbaseServer() {
+			rt.DatabaseConfig.UseViews = true
 		}
 
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.

@@ -94,6 +94,171 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 
 }
 
+// Validate query and stats for sequence view query
+func TestQuerySequencesStatsView(t *testing.T) {
+
+	db, testBucket := setupTestDBWithViewsEnabled(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	// Add docs without channel assignment (will only be assigned to the star channel)
+	for i := 1; i <= 10; i++ {
+		//_, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"channels": []string{"ABC"}})
+		_, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"nochannels": true})
+		assert.NoError(t, err, "Put queryDoc")
+	}
+
+	// Check expvar prior to test
+	queryCountExpvar := fmt.Sprintf(base.StatKeyViewQueryCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
+	errorCountExpvar := fmt.Sprintf(base.StatKeyViewQueryErrorCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
+
+	channelQueryCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
+
+	// Issue channels query
+	results, queryErr := db.QuerySequences([]uint64{3, 4, 6, 8})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 4)
+	closeErr := results.Close()
+	assert.NoError(t, closeErr, "Close error")
+
+	// Issue query with single key
+	results, queryErr = db.QuerySequences([]uint64{2})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 1)
+	closeErr = results.Close()
+	assert.NoError(t, closeErr, "Close error")
+
+	// Issue query with key outside keyset range
+	results, queryErr = db.QuerySequences([]uint64{25})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 0)
+	closeErr = results.Close()
+	assert.NoError(t, closeErr, "Close error")
+
+	// Issue query with empty keys
+	results, queryErr = db.QuerySequences([]uint64{})
+	assert.Error(t, queryErr, "Expect empty sequence error")
+
+	channelQueryCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryErrorCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
+
+	goassert.Equals(t, channelQueryCountBefore+3, channelQueryCountAfter)
+	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
+
+	// Add some docs in different channels, to validate query handling when non-star channel docs are present
+	for i := 1; i <= 10; i++ {
+		_, err := db.Put(fmt.Sprintf("queryTestDocChanneled%d", i), Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
+		assert.NoError(t, err, "Put queryDoc")
+	}
+	// Issue channels query
+	results, queryErr = db.QuerySequences([]uint64{3, 4, 6, 8, 15})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 5)
+	closeErr = results.Close()
+	assert.NoError(t, closeErr, "Close error")
+
+	// Issue query with single key
+	results, queryErr = db.QuerySequences([]uint64{2})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 1)
+	closeErr = results.Close()
+	assert.NoError(t, closeErr, "Close error")
+
+	// Issue query with key outside sequence range.  Note that this isn't outside the entire view key range, as
+	// [*, 25] is sorted before ["ABC1", 11]
+	results, queryErr = db.QuerySequences([]uint64{25})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 0)
+	closeErr = results.Close()
+	assert.NoError(t, closeErr, "Close error")
+}
+
+// Validate query and stats for sequence view query
+func TestQuerySequencesStatsN1ql(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test is Couchbase Server only")
+	}
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	// Add docs without channel assignment (will only be assigned to the star channel)
+	for i := 1; i <= 10; i++ {
+		//_, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"channels": []string{"ABC"}})
+		_, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"nochannels": true})
+		assert.NoError(t, err, "Put queryDoc")
+	}
+
+	// Check expvar prior to test
+
+	queryCountExpvar := fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, QueryTypeSequences)
+	errorCountExpvar := fmt.Sprintf(base.StatKeyN1qlQueryErrorCountExpvarFormat, QueryTypeSequences)
+
+	channelQueryCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
+
+	// Issue channels query
+	results, queryErr := db.QuerySequences([]uint64{3, 4, 6, 8})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 4)
+	closeErr := results.Close()
+	assert.NoError(t, closeErr, "Close error")
+
+	// Issue query with single key
+	results, queryErr = db.QuerySequences([]uint64{2})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 1)
+	closeErr = results.Close()
+	assert.NoError(t, closeErr, "Close error")
+
+	// Issue query with key outside keyset range
+	results, queryErr = db.QuerySequences([]uint64{25})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 0)
+	closeErr = results.Close()
+	assert.NoError(t, closeErr, "Close error")
+
+	// Issue query with empty keys
+	results, queryErr = db.QuerySequences([]uint64{})
+	assert.Error(t, queryErr, "Expect empty sequence error")
+
+	channelQueryCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryErrorCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
+
+	goassert.Equals(t, channelQueryCountBefore+3, channelQueryCountAfter)
+	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
+
+	// Add some docs in different channels, to validate query handling when non-star channel docs are present
+	for i := 1; i <= 10; i++ {
+		_, err := db.Put(fmt.Sprintf("queryTestDocChanneled%d", i), Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
+		assert.NoError(t, err, "Put queryDoc")
+	}
+	// Issue channels query
+	results, queryErr = db.QuerySequences([]uint64{3, 4, 6, 8, 15})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 5)
+	closeErr = results.Close()
+	assert.NoError(t, closeErr, "Close error")
+
+	// Issue query with single key
+	results, queryErr = db.QuerySequences([]uint64{2})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 1)
+	closeErr = results.Close()
+	assert.NoError(t, closeErr, "Close error")
+
+	// Issue query with key outside sequence range.  Note that this isn't outside the entire view key range, as
+	// [*, 25] is sorted before ["ABC1", 11]
+	results, queryErr = db.QuerySequences([]uint64{25})
+	assert.NoError(t, queryErr, "Query error")
+	goassert.Equals(t, countQueryResults(results), 0)
+	closeErr = results.Close()
+	assert.NoError(t, closeErr, "Close error")
+}
+
 // Validate that channels queries (channels, starChannel) are covering
 func TestCoveringQueries(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
