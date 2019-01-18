@@ -414,7 +414,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		base.Infof(base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", float64(context.PurgeInterval)/24)
 
 		if context.Options.AutoCompact {
-			context.backgroundTask("Compact database", func() { context.Compact() }, time.Duration(context.PurgeInterval)*time.Hour)
+			context.backgroundTask("Compact database", func() error { _, err := context.Compact(); return err}, time.Duration(context.PurgeInterval)*time.Hour)
 		}
 	}
 
@@ -881,13 +881,15 @@ func VacuumAttachments(bucket base.Bucket) (int, error) {
 }
 
 // backgroundTask runs task at the specified time interval in its own goroutine until the changeCache is stopped.
-func (context *DatabaseContext) backgroundTask(name string, task func(), interval time.Duration) {
+func (context *DatabaseContext) backgroundTask(name string, task func() error, interval time.Duration) {
 	go func() {
 		for {
 			select {
 			case <-time.After(interval):
 				base.Debugf(base.KeyAll, "Database %s: Running background task: %s", context.Name, name)
-				task()
+				if err := task(); err != nil {
+					base.Warnf(base.KeyAll, "Database %s: Background task %s returned error: %v", name, err)
+				}
 			case <- context.terminator:
 				base.Debugf(base.KeyAll, "Database %s: Terminating background task: %s", context.Name, name)
 			}
