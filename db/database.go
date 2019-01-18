@@ -86,6 +86,7 @@ type DatabaseContext struct {
 	PurgeInterval      int                     // Metadata purge interval, in hours
 	serverUUID         string                  // UUID of the server, if available
 	DbStats            *DatabaseStats          // stats that correspond to this database context
+	terminator         chan bool               // Signal termination of background goroutines
 }
 
 type DatabaseContextOptions struct {
@@ -107,6 +108,7 @@ type DatabaseContextOptions struct {
 	SendWWWAuthenticateHeader *bool            // False disables setting of 'WWW-Authenticate' header
 	UseViews                  bool             // Force use of views
 	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
+	AutoCompact               bool             // Enable periodic running compaction to purge tombstones from Couchbase Server's indexes
 }
 
 type OidcTestProviderOptions struct {
@@ -224,6 +226,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		Options:    options,
 		DbStats:    dbStats,
 	}
+
+	context.terminator = make(chan bool)
 
 	context.revisionCache = NewRevisionCache(
 		options.RevisionCacheCapacity,
@@ -409,6 +413,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		}
 		base.Infof(base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", float64(context.PurgeInterval)/24)
 
+		if context.Options.AutoCompact {
+			context.backgroundTask("Compact database", func() { context.Compact() }, time.Duration(context.PurgeInterval)*time.Hour)
+		}
 	}
 
 	// Make sure there is no MaxTTL set on the bucket (SG #3314)
@@ -513,6 +520,7 @@ func (context *DatabaseContext) Close() {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
+	close(context.terminator)
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
 	context.Shadower.Stop()
@@ -810,38 +818,38 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // When compact is run, Sync Gateway initiates a normal delete operation for the document and xattr (a Sync Gateway purge).  This triggers
 // removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
-func (db *Database) Compact() (int, error) {
+func (context *DatabaseContext) Compact() (int, error) {
 
 	// Compact should be a no-op if not running w/ xattrs
-	if !db.UseXattrs() {
+	if !context.UseXattrs() {
 		return 0, nil
 	}
 
 	// Trigger view compaction for all tombstoned documents older than the purge interval
-	purgeIntervalDuration := time.Duration(-db.PurgeInterval) * time.Hour
+	purgeIntervalDuration := time.Duration(-context.PurgeInterval) * time.Hour
 	startTime := time.Now()
 	purgeOlderThan := startTime.Add(purgeIntervalDuration)
-	results, err := db.QueryTombstones(purgeOlderThan)
+	results, err := context.QueryTombstones(purgeOlderThan)
 	if err != nil {
 		return 0, err
 	}
 
-	base.Infof(base.KeyAll, "Compacting purged tombstones for %s ...", base.UD(db.Name))
+	base.Infof(base.KeyAll, "Database %s: Compacting purged tombstones...", context.Name)
 	purgeBody := Body{"_purged": true}
 	purgedDocs := make([]string, 0)
 
 	var tombstonesRow QueryIdRow
 	for results.Next(&tombstonesRow) {
-		base.Infof(base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
+		base.Infof(base.KeyCRUD, "Database %s:\tDeleting %q", context.Name, tombstonesRow.Id)
 		// First, attempt to purge.
-		purgeErr := db.Purge(tombstonesRow.Id)
+		purgeErr := context.Purge(tombstonesRow.Id)
 		if purgeErr == nil {
 			purgedDocs = append(purgedDocs, tombstonesRow.Id)
-		} else if base.IsKeyNotFoundError(db.Bucket, purgeErr) {
+		} else if base.IsKeyNotFoundError(context.Bucket, purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
-			_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
+			_, addErr := context.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 			if addErr != nil {
-				base.Warnf(base.KeyAll, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
+				base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (add) - tombstone will not be compacted.  %v", context.Name, base.UD(tombstonesRow.Id), addErr)
 				continue
 			}
 
@@ -849,19 +857,20 @@ func (db *Database) Compact() (int, error) {
 			// so mark it to be removed from cache, even if the subsequent delete fails
 			purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
-			if delErr := db.Bucket.Delete(tombstonesRow.Id); delErr != nil {
-				base.Errorf(base.KeyAll, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
+			if delErr := context.Bucket.Delete(tombstonesRow.Id); delErr != nil {
+				base.Errorf(base.KeyAll, "Database %s: Error compacting key %s (delete) - tombstone will not be compacted.  %v", context.Name, base.UD(tombstonesRow.Id), delErr)
 			}
 		} else {
-			base.Warnf(base.KeyAll, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
+			base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (purge) - tombstone will not be compacted.  %v", context.Name, base.UD(tombstonesRow.Id), purgeErr)
 		}
 	}
 
 	// Now purge them from all channel caches
 	count := len(purgedDocs)
 	if count > 0 {
-		db.changeCache.Remove(purgedDocs, startTime)
+		context.changeCache.Remove(purgedDocs, startTime)
 	}
+	base.Infof(base.KeyAll, "Database %s: Compacted %v tombstones", context.Name, count)
 
 	return count, nil
 }
@@ -869,6 +878,21 @@ func (db *Database) Compact() (int, error) {
 // Deletes all orphaned CouchDB attachments not used by any revisions.
 func VacuumAttachments(bucket base.Bucket) (int, error) {
 	return 0, base.HTTPErrorf(http.StatusNotImplemented, "Vacuum is temporarily out of order")
+}
+
+// backgroundTask runs task at the specified time interval in its own goroutine until the changeCache is stopped.
+func (context *DatabaseContext) backgroundTask(name string, task func(), interval time.Duration) {
+	go func() {
+		for {
+			select {
+			case <-time.After(interval):
+				base.Debugf(base.KeyAll, "Database %s: Running background task: %s", context.Name, name)
+				task()
+			case <- context.terminator:
+				base.Debugf(base.KeyAll, "Database %s: Terminating background task: %s", context.Name, name)
+			}
+		}
+	}()
 }
 
 //////// SYNC FUNCTION:

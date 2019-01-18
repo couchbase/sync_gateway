@@ -620,6 +620,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
+	autoCompact := config.AutoCompact
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		IndexOptions:              channelIndexOptions,
@@ -639,6 +641,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		UseViews:                  useViews,
 		DeltaSyncOptions:          deltaSyncOptions,
+		AutoCompact:               autoCompact,
 	}
 
 	// Create the DB Context
