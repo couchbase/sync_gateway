@@ -303,7 +303,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 		//       the doc won't be flagged as removed from that channel in the in-memory channel cache.
 		entries, err := c.context.getChangesForSequences(skippedSeqBatch)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error retrieving sequences via view during skipped sequence clean - #%d sequences treated as not found: %v", len(skippedSeqBatch), err)
+			base.Warnf(base.KeyAll, "Error retrieving sequences via query during skipped sequence clean - #%d sequences treated as not found: %v", len(skippedSeqBatch), err)
 			continue
 		}
 
@@ -317,7 +317,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 		// Add queried sequences not in the resultset to pendingRemovals
 		for _, skippedSeq := range skippedSeqBatch {
 			if _, ok := foundMap[skippedSeq]; !ok {
-				base.Warnf(base.KeyAll, "Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from the * channel view.  If it's a valid sequence, it won't be replicated until Sync Gateway is restarted.", skippedSeq)
+				base.Warnf(base.KeyAll, "Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from a * channel query.  If it's a valid sequence, it won't be replicated until Sync Gateway is restarted.", skippedSeq)
 				pendingRemovals = append(pendingRemovals, skippedSeq)
 			}
 		}

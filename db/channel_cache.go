@@ -552,7 +552,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 		}
 		c.logs = make(LogEntries, len(changes))
 		copy(c.logs, changes)
-		base.Infof(base.KeyCache, "  Initialized cache of %q with %d entries from view (#%d--#%d)",
+		base.Infof(base.KeyCache, "  Initialized cache of %q with %d entries from query (#%d--#%d)",
 			base.UD(c.channelName), len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
 
 		c.validFrom = changesValidFrom
