@@ -276,7 +276,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 		return
 	}
 
-	base.Infof(base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), c.context.Name)
+	base.Infof(base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.MD(c.context.Name))
 
 	var foundEntries []*LogEntry
 	var pendingRemovals []uint64
@@ -296,7 +296,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 			oldSkippedSequences = nil
 		}
 
-		base.Infof(base.KeyCache, "Issuing skipped sequence clean query for %d sequences, %d remain pending (db:%s).", len(skippedSeqBatch), len(oldSkippedSequences), c.context.Name)
+		base.Infof(base.KeyCache, "Issuing skipped sequence clean query for %d sequences, %d remain pending (db:%s).", len(skippedSeqBatch), len(oldSkippedSequences), base.MD(c.context.Name))
 		// Note: The view query is only going to hit for active revisions - sequences associated with inactive revisions
 		//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
 		//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
@@ -350,7 +350,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 	numRemoved := c.RemoveSkippedSequences(pendingRemovals)
 	c.context.DbStats.StatsCache().Add(base.StatKeyAbandonedSeqs, numRemoved)
 
-	base.Infof(base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), c.context.Name)
+	base.Infof(base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.context.Name))
 	return
 }
 
