@@ -159,6 +159,7 @@ type Database struct {
 	user auth.User
 	Ctx  context.Context
 }
+type BackgroundTaskFunc func() error
 
 func ValidateDatabaseName(dbName string) error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Naming_and_Addressing
@@ -838,13 +839,13 @@ func (context *DatabaseContext) Compact() (int, error) {
 		return 0, err
 	}
 
-	base.Infof(base.KeyAll, "Database %s: Compacting purged tombstones...", context.Name)
+	base.Infof(base.KeyAll, "Database %s: Compacting purged tombstones...", base.MD(context.Name))
 	purgeBody := Body{"_purged": true}
 	purgedDocs := make([]string, 0)
 
 	var tombstonesRow QueryIdRow
 	for results.Next(&tombstonesRow) {
-		base.Infof(base.KeyCRUD, "Database %s:\tDeleting %q", context.Name, tombstonesRow.Id)
+		base.Infof(base.KeyCRUD, "Database %s:\tDeleting %q", base.MD(context.Name), tombstonesRow.Id)
 		// First, attempt to purge.
 		purgeErr := context.Purge(tombstonesRow.Id)
 		if purgeErr == nil {
@@ -853,7 +854,7 @@ func (context *DatabaseContext) Compact() (int, error) {
 			// If key no longer exists, need to add and remove to trigger removal from view
 			_, addErr := context.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 			if addErr != nil {
-				base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (add) - tombstone will not be compacted.  %v", context.Name, base.UD(tombstonesRow.Id), addErr)
+				base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (add) - tombstone will not be compacted.  %v", base.MD(context.Name), base.UD(tombstonesRow.Id), addErr)
 				continue
 			}
 
@@ -862,7 +863,7 @@ func (context *DatabaseContext) Compact() (int, error) {
 			purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
 			if delErr := context.Bucket.Delete(tombstonesRow.Id); delErr != nil {
-				base.Errorf(base.KeyAll, "Database %s: Error compacting key %s (delete) - tombstone will not be compacted.  %v", context.Name, base.UD(tombstonesRow.Id), delErr)
+				base.Errorf(base.KeyAll, "Database %s: Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.MD(context.Name), base.UD(tombstonesRow.Id), delErr)
 			}
 		} else {
 			base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (purge) - tombstone will not be compacted.  %v", context.Name, base.UD(tombstonesRow.Id), purgeErr)
@@ -874,7 +875,7 @@ func (context *DatabaseContext) Compact() (int, error) {
 	if count > 0 {
 		context.changeCache.Remove(purgedDocs, startTime)
 	}
-	base.Infof(base.KeyAll, "Database %s: Compacted %v tombstones", context.Name, count)
+	base.Infof(base.KeyAll, "Database %s: Compacted %v tombstones", base.MD(context.Name), count)
 
 	return count, nil
 }
@@ -890,9 +891,9 @@ func (context *DatabaseContext) backgroundTask(name string, task func() error, i
 		for {
 			select {
 			case <-time.After(interval):
-				base.Debugf(base.KeyAll, "Database %s: Running background task: %s", context.Name, name)
+				base.Debugf(base.KeyAll, "Database %s: Running background task: %s", base.MD(context.Name), name)
 				if err := task(); err != nil {
-					base.Warnf(base.KeyAll, "Database %s: Background task %s returned error: %v", name, err)
+					base.Warnf(base.KeyAll, "Database %s: Background task %s returned error: %v", base.MD(context.Name), name, err)
 				}
 			case <- context.terminator:
 				base.Debugf(base.KeyAll, "Database %s: Terminating background task: %s", context.Name, name)
