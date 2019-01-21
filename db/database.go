@@ -879,6 +879,7 @@ func (context *DatabaseContext) Compact() (int, error) {
 	count := len(purgedDocs)
 	if count > 0 {
 		context.changeCache.Remove(purgedDocs, startTime)
+		context.DbStats.StatsDatabase().Add(base.StatKeyNumDocsCompacted, int64(count))
 	}
 	base.Infof(base.KeyAll, "Database %s: Compacted %v tombstones", base.MD(context.Name), count)
 
@@ -891,17 +892,18 @@ func VacuumAttachments(bucket base.Bucket) (int, error) {
 }
 
 // backgroundTask runs task at the specified time interval in its own goroutine until the changeCache is stopped.
-func (context *DatabaseContext) backgroundTask(name string, task func() error, interval time.Duration) {
+func (context *DatabaseContext) backgroundTask(name string, task BackgroundTaskFunc, interval time.Duration) {
+	base.Infof(base.KeyAll, "Database %s: Created background task: %q with interval %v", base.MD(context.Name), name, interval)
 	go func() {
 		for {
 			select {
 			case <-time.After(interval):
-				base.Debugf(base.KeyAll, "Database %s: Running background task: %s", base.MD(context.Name), name)
+				base.Debugf(base.KeyAll, "Database %s: Running background task: %q", base.MD(context.Name), name)
 				if err := task(); err != nil {
-					base.Warnf(base.KeyAll, "Database %s: Background task %s returned error: %v", base.MD(context.Name), name, err)
+					base.Warnf(base.KeyAll, "Database %s: Background task %q returned error: %v", base.MD(context.Name), name, err)
 				}
 			case <- context.terminator:
-				base.Debugf(base.KeyAll, "Database %s: Terminating background task: %s", context.Name, name)
+				base.Debugf(base.KeyAll, "Database %s: Terminating background task: %q", base.MD(context.Name), name)
 			}
 		}
 	}()
