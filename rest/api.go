@@ -24,6 +24,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"context"
 )
 
 // HTTP handler for the root ("/")
@@ -46,7 +47,7 @@ func (h *handler) handleAllDbs() error {
 }
 
 func (h *handler) handleCompact() error {
-	revsDeleted, err := h.db.Compact()
+	revsDeleted, err := h.db.Compact(context.TODO())
 	if err != nil {
 		return err
 	}

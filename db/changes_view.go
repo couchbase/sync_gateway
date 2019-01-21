@@ -7,6 +7,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"context"
 )
 
 // Unmarshaled JSON structure for "changes" view results
@@ -176,7 +177,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 
 // Queries the 'channels' view to get changes from a channel for the specified sequence.  Used for skipped sequence check
 // before abandoning.
-func (dbc *DatabaseContext) getChangesForSequences(sequences []uint64) (LogEntries, error) {
+func (dbc *DatabaseContext) getChangesForSequences(ctx context.Context, sequences []uint64) (LogEntries, error) {
 	if dbc.Bucket == nil {
 		return nil, errors.New("No bucket available for sequence query")
 	}
@@ -213,11 +214,11 @@ func (dbc *DatabaseContext) getChangesForSequences(sequences []uint64) (LogEntri
 		return nil, closeErr
 	}
 
-	base.Infof(base.KeyCache, "Got rows from sequence query: #%d sequences found/#%d sequences queried",
-		len(entries), len(sequences))
+	base.InfofCtx(ctx, base.KeyCache, "Got rows from sequence query: #%d sequences found/#%d sequences queried (Queried range: #%v ... #%v)",
+		len(entries), len(sequences), sequences[0], sequences[len(sequences)-1])
 
 	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
-		base.Infof(base.KeyAll, "Sequences query took %v to return %d rows. #sequences queried: %d",
+		base.InfofCtx(ctx, base.KeyAll, "Sequences query took %v to return %d rows. #sequences queried: %d",
 			elapsed, len(entries), len(sequences))
 	}
 

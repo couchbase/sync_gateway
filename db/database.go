@@ -25,6 +25,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"math/rand"
 )
 
 const (
@@ -161,7 +162,7 @@ type Database struct {
 	user auth.User
 	Ctx  context.Context
 }
-type BackgroundTaskFunc func() error
+type BackgroundTaskFunc func(ctx context.Context) error
 
 func ValidateDatabaseName(dbName string) error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Naming_and_Addressing
@@ -418,10 +419,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 		if dbc.Options.AutoCompact {
 			if autoImport {
-				dbc.backgroundTask("Compact database", func() error { _, err := dbc.Compact(); return err}, time.Duration(dbc.PurgeInterval)*time.Hour)
-				dbc.backgroundTask("Compact database",
-					func() error { _, err := dbc.Compact(); return err},
-					time.Duration(float64(dbc.PurgeInterval * 60) * dbc.Options.AutoCompactRatio) * time.Minute)
+				dbc.backgroundTask("CompactDatabase",
+					func(ctx context.Context) error { _, err := dbc.Compact(ctx); return err},
+					time.Duration(10) * time.Second)
 			} else {
 				base.Warnf(base.KeyAll, "Automatic compaction can only be enabled on nodes running an Import process")
 			}
@@ -828,7 +828,7 @@ func (dbc *DatabaseContext) DeleteUserSessions(userName string) error {
 // When compact is run, Sync Gateway initiates a normal delete operation for the document and xattr (a Sync Gateway purge).  This triggers
 // removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
-func (dbc *DatabaseContext) Compact() (int, error) {
+func (dbc *DatabaseContext) Compact(ctx context.Context) (int, error) {
 
 	// Compact should be a no-op if not running w/ xattrs
 	if !dbc.UseXattrs() {
@@ -844,13 +844,13 @@ func (dbc *DatabaseContext) Compact() (int, error) {
 		return 0, err
 	}
 
-	base.Infof(base.KeyAll, "Database %s: Compacting purged tombstones...", base.MD(dbc.Name))
+	base.InfofCtx(ctx, base.KeyAll, "Database %s: Compacting purged tombstones...", base.MD(dbc.Name))
 	purgeBody := Body{"_purged": true}
 	purgedDocs := make([]string, 0)
 
 	var tombstonesRow QueryIdRow
 	for results.Next(&tombstonesRow) {
-		base.Infof(base.KeyCRUD, "Database %s:\tDeleting %q", base.MD(dbc.Name), tombstonesRow.Id)
+		base.InfofCtx(ctx, base.KeyCRUD, "Database %s:\tDeleting %q", base.MD(dbc.Name), tombstonesRow.Id)
 		// First, attempt to purge.
 		purgeErr := dbc.Purge(tombstonesRow.Id)
 		if purgeErr == nil {
@@ -859,7 +859,7 @@ func (dbc *DatabaseContext) Compact() (int, error) {
 			// If key no longer exists, need to add and remove to trigger removal from view
 			_, addErr := dbc.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 			if addErr != nil {
-				base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (add) - tombstone will not be compacted.  %v", base.MD(dbc.Name), base.UD(tombstonesRow.Id), addErr)
+				base.WarnfCtx(ctx, base.KeyAll, "Database %s: Error compacting key %s (add) - tombstone will not be compacted.  %v", base.MD(dbc.Name), base.UD(tombstonesRow.Id), addErr)
 				continue
 			}
 
@@ -868,10 +868,10 @@ func (dbc *DatabaseContext) Compact() (int, error) {
 			purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
 			if delErr := dbc.Bucket.Delete(tombstonesRow.Id); delErr != nil {
-				base.Errorf(base.KeyAll, "Database %s: Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.MD(dbc.Name), base.UD(tombstonesRow.Id), delErr)
+				base.ErrorfCtx(ctx, base.KeyAll, "Database %s: Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.MD(dbc.Name), base.UD(tombstonesRow.Id), delErr)
 			}
 		} else {
-			base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (purge) - tombstone will not be compacted.  %v", dbc.Name, base.UD(tombstonesRow.Id), purgeErr)
+			base.WarnfCtx(ctx, base.KeyAll, "Database %s: Error compacting key %s (purge) - tombstone will not be compacted.  %v", dbc.Name, base.UD(tombstonesRow.Id), purgeErr)
 		}
 	}
 
@@ -881,7 +881,7 @@ func (dbc *DatabaseContext) Compact() (int, error) {
 		dbc.changeCache.Remove(purgedDocs, startTime)
 		dbc.DbStats.StatsDatabase().Add(base.StatKeyNumDocsCompacted, int64(count))
 	}
-	base.Infof(base.KeyAll, "Database %s: Compacted %v tombstones", base.MD(dbc.Name), count)
+	base.InfofCtx(ctx, base.KeyAll, "Database %s: Compacted %v tombstones", base.MD(dbc.Name), count)
 
 	return count, nil
 }
@@ -898,8 +898,11 @@ func (dbc *DatabaseContext) backgroundTask(name string, task BackgroundTaskFunc,
 		for {
 			select {
 			case <-time.After(interval):
-				base.Debugf(base.KeyAll, "Database %s: Running background task: %q", base.MD(dbc.Name), name)
-				if err := task(); err != nil {
+				ctx := context.WithValue(context.Background(), base.LogContextKey{},
+					base.LogContext{CorrelationID: fmt.Sprintf("%s-%x", name, rand.Int31n(65536))},
+				)
+				base.DebugfCtx(ctx, base.KeyAll, "Database %s: Running background task: %q", base.MD(dbc.Name), name)
+				if err := task(ctx); err != nil {
 					base.Warnf(base.KeyAll, "Database %s: Background task %q returned error: %v", base.MD(dbc.Name), name, err)
 				}
 			case <- dbc.terminator:
