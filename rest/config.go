@@ -198,6 +198,7 @@ type DbConfig struct {
 	BucketOpTimeoutMs         *uint32                        `json:"bucket_op_timeout_ms,omitempty"`         // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 	DeltaSync                 *DeltaSyncConfig               `json:"delta_sync,omitempty"`                   // Config for delta sync
 	AutoCompact               bool                           `json:"auto_compact,omitempty"`                 // Enable periodic running compaction to purge tombstones from Couchbase Server's indexes
+	AutoCompactRatio          *float64                       `json:"auto_compact_ratio,omitempty"`           // Ratio of the metadata purge interval at which compaction of indexes will run
 }
 
 type DeltaSyncConfig struct {

@@ -621,6 +621,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	autoCompact := config.AutoCompact
+	autoCompactRatio := db.DefaultCompactRatio
+	if config.AutoCompactRatio != nil && *config.AutoCompactRatio > float64(0) {
+		autoCompactRatio = *config.AutoCompactRatio
+	}
 
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
@@ -642,6 +646,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		UseViews:                  useViews,
 		DeltaSyncOptions:          deltaSyncOptions,
 		AutoCompact:               autoCompact,
+		AutoCompactRatio:          autoCompactRatio,
 	}
 
 	// Create the DB Context

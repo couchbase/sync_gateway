@@ -46,6 +46,7 @@ var RunStateString = []string{
 const (
 	DefaultRevsLimit     = 1000
 	DefaultPurgeInterval = 30               // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
+	DefaultCompactRatio  = 0.5              // Default ratio of the metadata purge interval at which compaction of indexes will run
 	KSyncKeyPrefix       = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
 	kSyncDataKey         = "_sync:syncdata" // Key used to store sync function
 	KSyncXattrName       = "_sync"          // Name of XATTR used to store sync metadata
@@ -109,6 +110,7 @@ type DatabaseContextOptions struct {
 	UseViews                  bool             // Force use of views
 	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
 	AutoCompact               bool             // Enable periodic running compaction to purge tombstones from Couchbase Server's indexes
+	AutoCompactRatio          float64          // Ratio of the metadata purge interval at which compaction of indexes will run
 }
 
 type OidcTestProviderOptions struct {
@@ -417,6 +419,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if context.Options.AutoCompact {
 			if autoImport {
 				context.backgroundTask("Compact database", func() error { _, err := context.Compact(); return err}, time.Duration(context.PurgeInterval)*time.Hour)
+				context.backgroundTask("Compact database",
+					func() error { _, err := context.Compact(); return err},
+					time.Duration(float64(context.PurgeInterval * 60) * context.Options.AutoCompactRatio) * time.Minute)
 			} else {
 				base.Warnf(base.KeyAll, "Automatic compaction can only be enabled on nodes running an Import process")
 			}
