@@ -41,43 +41,43 @@ func realDocID(docid string) string {
 }
 
 // Lowest-level method that reads a document from the bucket
-func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
+func (dbc *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
-	if db.UseXattrs() {
+	if dbc.UseXattrs() {
 		var rawBucketDoc *sgbucket.BucketDocument
-		doc, rawBucketDoc, err = db.GetDocWithXattr(key, unmarshalLevel)
+		doc, rawBucketDoc, err = dbc.GetDocWithXattr(key, unmarshalLevel)
 		if err != nil {
 			return nil, err
 		}
 
 		isSgWrite, crc32Match := doc.IsSGWrite(rawBucketDoc.Body)
 		if crc32Match {
-			db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+			dbc.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
 		}
 
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
-			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas)
+			doc, importErr = dbc.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas)
 			if importErr != nil {
 				return nil, importErr
 			}
 		}
-		if !doc.HasValidSyncData(db.writeSequences()) {
+		if !doc.HasValidSyncData(dbc.writeSequences()) {
 			return nil, base.HTTPErrorf(404, "Not imported")
 		}
 	} else {
 		doc = newDocument(docid)
-		_, err = db.Bucket.Get(key, doc)
+		_, err = dbc.Bucket.Get(key, doc)
 		if err != nil {
 			return nil, err
 		}
-		if !doc.HasValidSyncData(db.writeSequences()) {
+		if !doc.HasValidSyncData(dbc.writeSequences()) {
 			// Check whether doc has been upgraded to use xattrs
-			upgradeDoc, _ := db.checkForUpgrade(docid)
+			upgradeDoc, _ := dbc.checkForUpgrade(docid)
 			if upgradeDoc == nil {
 				return nil, base.HTTPErrorf(404, "Not imported")
 			}
@@ -88,10 +88,10 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 	return doc, nil
 }
 
-func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+func (dbc *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Cas, getErr = db.Bucket.GetWithXattr(key, KSyncXattrName, &rawBucketDoc.Body, &rawBucketDoc.Xattr)
+	rawBucketDoc.Cas, getErr = dbc.Bucket.GetWithXattr(key, KSyncXattrName, &rawBucketDoc.Body, &rawBucketDoc.Xattr)
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -105,7 +105,7 @@ func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUn
 }
 
 // This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency reasons.
-func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
+func (dbc *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 
 	emptySyncData := syncData{}
 	key := realDocID(docid)
@@ -113,11 +113,11 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 		return emptySyncData, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
-	if db.UseXattrs() {
+	if dbc.UseXattrs() {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
 		var rawDoc, rawXattr []byte
-		cas, getErr := db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
+		cas, getErr := dbc.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
@@ -130,14 +130,14 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 
 		isSgWrite, crc32Match := doc.IsSGWrite(rawDoc)
 		if crc32Match {
-			db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+			dbc.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
 		}
 
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
 
-			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
+			doc, importErr = dbc.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
 			if importErr != nil {
 				return emptySyncData, importErr
 			}
@@ -147,7 +147,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 
 	} else {
 		// Non-xattr.  Retrieve doc from bucket, unmarshal metadata only.
-		rawDocBytes, _, err := db.Bucket.GetRaw(key)
+		rawDocBytes, _, err := dbc.Bucket.GetRaw(key)
 		if err != nil {
 			return emptySyncData, err
 		}
@@ -166,9 +166,9 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
-func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, rawXattr []byte, cas uint64) (docOut *document, err error) {
+func (dbc *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, rawXattr []byte, cas uint64) (docOut *document, err error) {
 	isDelete := rawDoc == nil
-	importDb := Database{DatabaseContext: db, user: nil}
+	importDb := Database{DatabaseContext: dbc, user: nil}
 	var importErr error
 
 	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, isDelete, cas, nil, ImportOnDemand)
@@ -183,19 +183,19 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
-func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
+func (dbc *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
 	var doc *document
-	if doc, err = context.GetDocument(id.DocID, DocUnmarshalAll); doc == nil {
+	if doc, err = dbc.GetDocument(id.DocID, DocUnmarshalAll); doc == nil {
 		return body, history, channels, attachments, expiry, err
 	}
-	return context.revCacheLoaderForDocument(doc, id.RevID)
+	return dbc.revCacheLoaderForDocument(doc, id.RevID)
 
 }
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
-func (context *DatabaseContext) revCacheLoaderForDocument(doc *document, revid string) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
+func (dbc *DatabaseContext) revCacheLoaderForDocument(doc *document, revid string) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
 
-	if body, err = context.getRevision(doc, revid); err != nil {
+	if body, err = dbc.getRevision(doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
 		removalBody, removalHistory, removalChannels, isRemoval, isRemovalErr := doc.IsChannelRemoval(revid)
@@ -473,13 +473,13 @@ func (db *Database) authorizeDoc(doc *document, revid string) error {
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
 // This method adds the magic _id, _rev and _attachments properties.
-func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error) {
+func (dbc *DatabaseContext) getRevision(doc *document, revid string) (Body, error) {
 	var body Body
-	if body = doc.getRevisionBody(revid, db.RevisionBodyLoader); body == nil {
+	if body = doc.getRevisionBody(revid, dbc.RevisionBodyLoader); body == nil {
 		// No inline body, so look for separate doc:
 		if !doc.History.contains(revid) {
 			return nil, base.HTTPErrorf(404, "missing")
-		} else if data, err := db.getOldRevisionJSON(doc.ID, revid); data == nil {
+		} else if data, err := dbc.getOldRevisionJSON(doc.ID, revid); data == nil {
 			return nil, err
 		} else if err = body.Unmarshal(data); err != nil {
 			return nil, err
@@ -1394,12 +1394,12 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 }
 
 // Purges a document from the bucket (no tombstone)
-func (context *DatabaseContext) Purge(key string) error {
+func (dbc *DatabaseContext) Purge(key string) error {
 
-	if context.UseXattrs() {
-		return context.Bucket.DeleteWithXattr(key, KSyncXattrName)
+	if dbc.UseXattrs() {
+		return dbc.Bucket.DeleteWithXattr(key, KSyncXattrName)
 	} else {
-		return context.Bucket.Delete(key)
+		return dbc.Bucket.Delete(key)
 	}
 }
 
@@ -1512,25 +1512,25 @@ func isAccessError(err error) bool {
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
+func (dbc *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
 
-	if context.UseGlobalSequence() {
-		return context.ComputeSequenceChannelsForPrincipal(princ)
+	if dbc.UseGlobalSequence() {
+		return dbc.ComputeSequenceChannelsForPrincipal(princ)
 	} else {
-		return context.ComputeVbSequenceChannelsForPrincipal(princ)
+		return dbc.ComputeVbSequenceChannelsForPrincipal(princ)
 	}
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
+func (dbc *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
 
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
 		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
 	}
 
-	results, err := context.QueryAccess(key)
+	results, err := dbc.QueryAccess(key)
 	if err != nil {
 		base.Warnf(base.KeyAll, "QueryAccess returned error: %v", err)
 		return nil, err
@@ -1552,7 +1552,7 @@ func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.P
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
+func (dbc *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
 		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
@@ -1565,7 +1565,7 @@ func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewAccessVbSeq, opts, &vres); verr != nil {
+	if verr := dbc.Bucket.ViewCustom(DesignDocSyncGateway(), ViewAccessVbSeq, opts, &vres); verr != nil {
 		return nil, verr
 	}
 
@@ -1578,18 +1578,18 @@ func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.TimedSet, error) {
-	if context.UseGlobalSequence() {
-		return context.ComputeSequenceRolesForUser(user)
+func (dbc *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.TimedSet, error) {
+	if dbc.UseGlobalSequence() {
+		return dbc.ComputeSequenceRolesForUser(user)
 	} else {
-		return context.ComputeVbSequenceRolesForUser(user)
+		return dbc.ComputeVbSequenceRolesForUser(user)
 	}
 }
 
 // Recomputes the set of roles a User has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (channels.TimedSet, error) {
-	results, err := context.QueryRoleAccess(user.Name())
+func (dbc *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (channels.TimedSet, error) {
+	results, err := dbc.QueryRoleAccess(user.Name())
 	if err != nil {
 		return nil, err
 	}
@@ -1610,7 +1610,7 @@ func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (cha
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (channels.TimedSet, error) {
+func (dbc *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (channels.TimedSet, error) {
 	var vres struct {
 		Rows []struct {
 			Value channels.TimedSet
@@ -1618,7 +1618,7 @@ func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (c
 	}
 
 	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewRoleAccessVbSeq, opts, &vres); verr != nil {
+	if verr := dbc.Bucket.ViewCustom(DesignDocSyncGateway(), ViewRoleAccessVbSeq, opts, &vres); verr != nil {
 		return nil, verr
 	}
 
@@ -1630,12 +1630,12 @@ func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (c
 }
 
 // Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
-func (context *DatabaseContext) checkForUpgrade(key string) (*document, *sgbucket.BucketDocument) {
-	if context.UseXattrs() {
+func (dbc *DatabaseContext) checkForUpgrade(key string) (*document, *sgbucket.BucketDocument) {
+	if dbc.UseXattrs() {
 		return nil, nil
 	}
-	doc, rawDocument, err := context.GetDocWithXattr(key, DocUnmarshalNoHistory)
-	if err != nil || doc == nil || !doc.HasValidSyncData(context.writeSequences()) {
+	doc, rawDocument, err := dbc.GetDocWithXattr(key, DocUnmarshalNoHistory)
+	if err != nil || doc == nil || !doc.HasValidSyncData(dbc.writeSequences()) {
 		return nil, nil
 	}
 	return doc, rawDocument

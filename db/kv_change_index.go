@@ -300,9 +300,9 @@ type ChannelPollingStats struct {
 	ClockHash uint64 `json:"poll_clock_hash,omitempty"`
 }
 
-func (db *DatabaseContext) IndexStats() (indexStats *IndexStats, err error) {
+func (dbc *DatabaseContext) IndexStats() (indexStats *IndexStats, err error) {
 
-	kvIndex, ok := db.changeCache.(*kvChangeIndex)
+	kvIndex, ok := dbc.changeCache.(*kvChangeIndex)
 	if !ok {
 		return nil, errors.New("No channel index in use")
 	}
@@ -313,20 +313,20 @@ func (db *DatabaseContext) IndexStats() (indexStats *IndexStats, err error) {
 	return indexStats, err
 }
 
-func (db *DatabaseContext) IndexChannelStats(channelName string) (*ChannelStats, error) {
+func (dbc *DatabaseContext) IndexChannelStats(channelName string) (*ChannelStats, error) {
 
-	kvIndex, ok := db.changeCache.(*kvChangeIndex)
+	kvIndex, ok := dbc.changeCache.(*kvChangeIndex)
 	if !ok {
 		return nil, errors.New("No channel index in use")
 	}
 
-	return db.singleChannelStats(kvIndex, channelName)
+	return dbc.singleChannelStats(kvIndex, channelName)
 
 }
 
-func (db *DatabaseContext) IndexAllChannelStats() ([]*ChannelStats, error) {
+func (dbc *DatabaseContext) IndexAllChannelStats() ([]*ChannelStats, error) {
 
-	kvIndex, ok := db.changeCache.(*kvChangeIndex)
+	kvIndex, ok := dbc.changeCache.(*kvChangeIndex)
 	if !ok {
 		return nil, errors.New("No channel index in use")
 	}
@@ -337,7 +337,7 @@ func (db *DatabaseContext) IndexAllChannelStats() ([]*ChannelStats, error) {
 	results := make([]*ChannelStats, 0)
 
 	for channelName := range kvIndex.reader.channelIndexReaders {
-		channelStats, err := db.singleChannelStats(kvIndex, channelName)
+		channelStats, err := dbc.singleChannelStats(kvIndex, channelName)
 		if err == nil {
 			results = append(results, channelStats)
 		}
@@ -346,7 +346,7 @@ func (db *DatabaseContext) IndexAllChannelStats() ([]*ChannelStats, error) {
 
 }
 
-func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelName string) (*ChannelStats, error) {
+func (dbc *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelName string) (*ChannelStats, error) {
 
 	channelStats := &ChannelStats{
 		Name: channelName,
@@ -364,7 +364,7 @@ func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelNam
 	if err == nil {
 		channelStats.IndexStats = ChannelIndexStats{}
 		channelStats.IndexStats.Clock = base.PrintClock(indexClock)
-		channelStats.IndexStats.ClockHash = db.SequenceHasher.calculateHash(indexClock)
+		channelStats.IndexStats.ClockHash = dbc.SequenceHasher.calculateHash(indexClock)
 	}
 
 	// Retrieve polling stats from kvIndex
@@ -374,7 +374,7 @@ func (db *DatabaseContext) singleChannelStats(kvIndex *kvChangeIndex, channelNam
 		if lastPolledClock != nil {
 			channelStats.PollingStats = ChannelPollingStats{}
 			channelStats.PollingStats.Clock = base.PrintClock(lastPolledClock)
-			channelStats.PollingStats.ClockHash = db.SequenceHasher.calculateHash(lastPolledClock)
+			channelStats.PollingStats.ClockHash = dbc.SequenceHasher.calculateHash(lastPolledClock)
 		}
 	}
 	return channelStats, nil

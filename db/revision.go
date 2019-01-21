@@ -173,8 +173,8 @@ const nonJSONPrefix = byte(1)
 
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
-func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
-	data, _, err := db.Bucket.GetRaw(oldRevisionKey(docid, revid))
+func (dbc *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byte, error) {
+	data, _, err := dbc.Bucket.GetRaw(oldRevisionKey(docid, revid))
 	if base.IsDocNotFoundError(err) {
 		base.Debugf(base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revid)
 		err = base.HTTPErrorf(404, "missing")

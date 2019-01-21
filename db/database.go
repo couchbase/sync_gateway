@@ -220,7 +220,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	base.PerDbStats.Set(dbName, dbStats.ExpvarMap())
 
-	context := &DatabaseContext{
+	dbc := &DatabaseContext{
 		Name:       dbName,
 		Bucket:     bucket,
 		StartTime:  time.Now(),
@@ -230,31 +230,31 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		DbStats:    dbStats,
 	}
 
-	context.terminator = make(chan bool)
+	dbc.terminator = make(chan bool)
 
-	context.revisionCache = NewRevisionCache(
+	dbc.revisionCache = NewRevisionCache(
 		options.RevisionCacheCapacity,
-		context.revCacheLoader,
-		context.DbStats.StatsCache(),
+		dbc.revCacheLoader,
+		dbc.DbStats.StatsCache(),
 	)
 
-	context.EventMgr = NewEventManager()
+	dbc.EventMgr = NewEventManager()
 
 	var err error
-	context.sequences, err = newSequenceAllocator(bucket, dbStats)
+	dbc.sequences, err = newSequenceAllocator(bucket, dbStats)
 	if err != nil {
 		return nil, err
 	}
 
 	if options.IndexOptions == nil {
 		// In-memory channel cache
-		context.SequenceType = IntSequenceType
-		context.changeCache = &changeCache{}
+		dbc.SequenceType = IntSequenceType
+		dbc.changeCache = &changeCache{}
 	} else {
 		// KV channel index
-		context.SequenceType = ClockSequenceType
-		context.changeCache = &kvChangeIndex{}
-		context.SequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
+		dbc.SequenceType = ClockSequenceType
+		dbc.changeCache = &kvChangeIndex{}
+		dbc.SequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -262,26 +262,26 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
 	notifyChange := func(changedChannels base.Set) {
-		context.mutationListener.Notify(changedChannels)
+		dbc.mutationListener.Notify(changedChannels)
 	}
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
-	context.changeCache.Init(
-		context,
+	dbc.changeCache.Init(
+		dbc,
 		notifyChange,
 		options.CacheOptions,
 		options.IndexOptions,
 	)
 
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
-	context.SetOnChangeCallback(context.changeCache.DocChanged)
+	dbc.SetOnChangeCallback(dbc.changeCache.DocChanged)
 
 	// Initialize the tap Listener for notify handling
-	context.mutationListener.Init(bucket.GetName())
+	dbc.mutationListener.Init(bucket.GetName())
 
 	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
 	feedMode := uint64(sgbucket.FeedNoBackfill)
-	if context.UseXattrs() && context.autoImport {
+	if dbc.UseXattrs() && dbc.autoImport {
 		feedMode = sgbucket.FeedResume
 	}
 
@@ -289,18 +289,18 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
-		err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
+		err = dbc.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
 			msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
 			base.Warnf(base.KeyAll, msgFormat, base.UD(bucket), err)
-			errTakeDbOffline := context.TakeDbOffline(fmt.Sprintf(msgFormat, bucket, err))
+			errTakeDbOffline := dbc.TakeDbOffline(fmt.Sprintf(msgFormat, bucket, err))
 			if errTakeDbOffline == nil {
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
 				worker := func() (shouldRetry bool, err error, value interface{}) {
 					//If DB is going online via an admin request Bucket will be nil
-					if context.Bucket != nil {
-						err = context.Bucket.Refresh()
+					if dbc.Bucket != nil {
+						err = dbc.Bucket.Refresh()
 					} else {
 						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is not available", dbName)
 						return false, err, nil
@@ -313,11 +313,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 					5,  //InitialRetrySleepTimeMS
 				)
 
-				description := fmt.Sprintf("Attempt reconnect to lost Mutation (TAP/DCP) Feed for : %v", context.Name)
+				description := fmt.Sprintf("Attempt reconnect to lost Mutation (TAP/DCP) Feed for : %v", dbc.Name)
 				err, _ := base.RetryLoop(description, worker, sleeper)
 
 				if err == nil {
-					base.Infof(base.KeyCRUD, "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(context.Name))
+					base.Infof(base.KeyCRUD, "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(dbc.Name))
 
 					// The 10 second wait was introduced because the bucket was not fully initialised
 					// after the return of the retry loop.
@@ -325,13 +325,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 					<-timer.C
 
 					if options.DBOnlineCallback != nil {
-						options.DBOnlineCallback(context)
+						options.DBOnlineCallback(dbc)
 					}
 				}
 			}
 
 			// If errTakeDbOffline is non-nil, it can be safely ignored because:
-			// - The only known error state for context.TakeDbOffline is if the current db state wasn't online
+			// - The only known error state for dbc.TakeDbOffline is if the current db state wasn't online
 			// - That code would hit an error if the dropped tap feed triggered TakeDbOffline, but the db was already non-online
 			// - In that case (some other event, potentially an admin action, took the DB offline), and so there is no reason to do the auto-reconnect processing
 
@@ -341,12 +341,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 		// Check if there is an error starting the DCP feed
 		if err != nil {
-			context.changeCache = nil
+			dbc.changeCache = nil
 			return nil, err
 		}
 
 		// Unlock change cache
-		err := context.changeCache.Start()
+		err := dbc.changeCache.Start()
 		if err != nil {
 			return nil, err
 		}
@@ -355,7 +355,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
 	if options.OIDCOptions != nil {
-		context.OIDCProviders = make(auth.OIDCProviderMap)
+		dbc.OIDCProviders = make(auth.OIDCProviderMap)
 
 		for name, provider := range options.OIDCOptions.Providers {
 			if provider.Issuer == "" || provider.ClientID == nil {
@@ -371,7 +371,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				return nil, base.RedactErrorf("OpenID Connect provider names cannot contain underscore:%s", base.UD(name))
 			}
 			provider.Name = name
-			if _, ok := context.OIDCProviders[provider.Issuer]; ok {
+			if _, ok := dbc.OIDCProviders[provider.Issuer]; ok {
 				return nil, base.RedactErrorf("Multiple OIDC providers defined for issuer %v", base.UD(provider.Issuer))
 			}
 
@@ -391,37 +391,37 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				provider.CallbackURL = &updatedCallback
 			}
 
-			context.OIDCProviders[name] = provider
+			dbc.OIDCProviders[name] = provider
 		}
-		if len(context.OIDCProviders) == 0 {
+		if len(dbc.OIDCProviders) == 0 {
 			return nil, errors.New("OpenID Connect defined in config, but no valid OpenID Connect providers specified.")
 		}
 
 	}
 
 	// watchDocChanges is used for bucket shadowing
-	if !context.UseXattrs() {
-		go context.watchDocChanges()
+	if !dbc.UseXattrs() {
+		go dbc.watchDocChanges()
 	} else {
 		// Set the purge interval for tombstone compaction
-		context.PurgeInterval = DefaultPurgeInterval
+		dbc.PurgeInterval = DefaultPurgeInterval
 		gocbBucket, ok := base.AsGoCBBucket(bucket)
 		if ok {
 			serverPurgeInterval, err := gocbBucket.GetMetadataPurgeInterval()
 			if err != nil {
 				base.Warnf(base.KeyAll, "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
 			} else if serverPurgeInterval > 0 {
-				context.PurgeInterval = serverPurgeInterval
+				dbc.PurgeInterval = serverPurgeInterval
 			}
 		}
-		base.Infof(base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", float64(context.PurgeInterval)/24)
+		base.Infof(base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", float64(dbc.PurgeInterval)/24)
 
-		if context.Options.AutoCompact {
+		if dbc.Options.AutoCompact {
 			if autoImport {
-				context.backgroundTask("Compact database", func() error { _, err := context.Compact(); return err}, time.Duration(context.PurgeInterval)*time.Hour)
-				context.backgroundTask("Compact database",
-					func() error { _, err := context.Compact(); return err},
-					time.Duration(float64(context.PurgeInterval * 60) * context.Options.AutoCompactRatio) * time.Minute)
+				dbc.backgroundTask("Compact database", func() error { _, err := dbc.Compact(); return err}, time.Duration(dbc.PurgeInterval)*time.Hour)
+				dbc.backgroundTask("Compact database",
+					func() error { _, err := dbc.Compact(); return err},
+					time.Duration(float64(dbc.PurgeInterval * 60) * dbc.Options.AutoCompactRatio) * time.Minute)
 			} else {
 				base.Warnf(base.KeyAll, "Automatic compaction can only be enabled on nodes running an Import process")
 			}
@@ -441,21 +441,21 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		}
 	}
 
-	return context, nil
+	return dbc, nil
 }
 
-func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
+func (dbc *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
 
 	// If providerName isn't specified, check whether there's a default provider
 	if providerName == "" {
-		provider := context.OIDCProviders.GetDefaultProvider()
+		provider := dbc.OIDCProviders.GetDefaultProvider()
 		if provider == nil {
 			return nil, errors.New("No default provider available.")
 		}
 		return provider, nil
 	}
 
-	if provider, ok := context.OIDCProviders[providerName]; ok {
+	if provider, ok := dbc.OIDCProviders[providerName]; ok {
 		return provider, nil
 	} else {
 		return nil, base.RedactErrorf("No provider found for provider name %q", base.UD(providerName))
@@ -464,152 +464,152 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 
 // Create a zero'd out since value (eg, initial since value) based on the sequence type
 // of the database (int or vector clock)
-func (context *DatabaseContext) CreateZeroSinceValue() SequenceID {
+func (dbc *DatabaseContext) CreateZeroSinceValue() SequenceID {
 	since := SequenceID{}
-	since.SeqType = context.SequenceType
-	since.SequenceHasher = context.SequenceHasher
-	if context.SequenceType == ClockSequenceType {
+	since.SeqType = dbc.SequenceType
+	since.SequenceHasher = dbc.SequenceHasher
+	if dbc.SequenceType == ClockSequenceType {
 		since.Clock = base.NewSequenceClockImpl()
 	}
 	return since
 }
 
-func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
-	context.mutationListener.OnDocChanged = callback
+func (dbc *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
+	dbc.mutationListener.OnDocChanged = callback
 }
 
-func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err error) {
+func (dbc *DatabaseContext) GetStableClock() (clock base.SequenceClock, err error) {
 	staleOk := false
-	return context.changeCache.GetStableClock(staleOk)
+	return dbc.changeCache.GetStableClock(staleOk)
 }
 
-func (context *DatabaseContext) GetServerUUID() string {
+func (dbc *DatabaseContext) GetServerUUID() string {
 
-	context.BucketLock.RLock()
-	defer context.BucketLock.RUnlock()
+	dbc.BucketLock.RLock()
+	defer dbc.BucketLock.RUnlock()
 
 	// Lazy load the server UUID, if we can get it.
-	if context.serverUUID == "" {
-		b, ok := base.AsGoCBBucket(context.Bucket)
+	if dbc.serverUUID == "" {
+		b, ok := base.AsGoCBBucket(dbc.Bucket)
 		if !ok {
-			base.Warnf(base.KeyAll, "Database %v: Unable to get server UUID. Bucket was type: %T, not GoCBBucket.", base.MD(context.Name), context.Bucket)
+			base.Warnf(base.KeyAll, "Database %v: Unable to get server UUID. Bucket was type: %T, not GoCBBucket.", base.MD(dbc.Name), dbc.Bucket)
 			return ""
 		}
 
 		uuid, err := b.GetServerUUID()
 		if err != nil {
-			base.Warnf(base.KeyAll, "Database %v: Unable to get server UUID: %v", base.MD(context.Name), err)
+			base.Warnf(base.KeyAll, "Database %v: Unable to get server UUID: %v", base.MD(dbc.Name), err)
 			return ""
 		}
 
-		base.Debugf(base.KeyAll, "Database %v: Got server UUID %v", base.MD(context.Name), base.MD(uuid))
-		context.serverUUID = uuid
+		base.Debugf(base.KeyAll, "Database %v: Got server UUID %v", base.MD(dbc.Name), base.MD(uuid))
+		dbc.serverUUID = uuid
 	}
 
-	return context.serverUUID
+	return dbc.serverUUID
 }
 
 // Utility function to support cache testing from outside db package
-func (context *DatabaseContext) GetChangeIndex() ChangeIndex {
-	return context.changeCache
+func (dbc *DatabaseContext) GetChangeIndex() ChangeIndex {
+	return dbc.changeCache
 }
 
-func (context *DatabaseContext) writeSequences() bool {
-	return context.UseGlobalSequence()
+func (dbc *DatabaseContext) writeSequences() bool {
+	return dbc.UseGlobalSequence()
 }
 
-func (context *DatabaseContext) UseGlobalSequence() bool {
-	return context.SequenceType != ClockSequenceType
+func (dbc *DatabaseContext) UseGlobalSequence() bool {
+	return dbc.SequenceType != ClockSequenceType
 }
 
-func (context *DatabaseContext) TapListener() changeListener {
-	return context.mutationListener
+func (dbc *DatabaseContext) TapListener() changeListener {
+	return dbc.mutationListener
 }
 
-func (context *DatabaseContext) Close() {
-	context.BucketLock.Lock()
-	defer context.BucketLock.Unlock()
+func (dbc *DatabaseContext) Close() {
+	dbc.BucketLock.Lock()
+	defer dbc.BucketLock.Unlock()
 
-	close(context.terminator)
-	context.mutationListener.Stop()
-	context.changeCache.Stop()
-	context.Shadower.Stop()
-	context.Bucket.Close()
-	context.Bucket = nil
+	close(dbc.terminator)
+	dbc.mutationListener.Stop()
+	dbc.changeCache.Stop()
+	dbc.Shadower.Stop()
+	dbc.Bucket.Close()
+	dbc.Bucket = nil
 
-	base.RemovePerDbStats(context.Name)
+	base.RemovePerDbStats(dbc.Name)
 
 }
 
-func (context *DatabaseContext) IsClosed() bool {
-	context.BucketLock.RLock()
-	defer context.BucketLock.RUnlock()
-	return context.Bucket == nil
+func (dbc *DatabaseContext) IsClosed() bool {
+	dbc.BucketLock.RLock()
+	defer dbc.BucketLock.RUnlock()
+	return dbc.Bucket == nil
 }
 
 // For testing only!
-func (context *DatabaseContext) RestartListener() error {
-	context.mutationListener.Stop()
+func (dbc *DatabaseContext) RestartListener() error {
+	dbc.mutationListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	context.mutationListener.Init(context.Bucket.GetName())
+	dbc.mutationListener.Init(dbc.Bucket.GetName())
 	feedMode := uint64(sgbucket.FeedNoBackfill)
-	if context.UseXattrs() && context.autoImport {
+	if dbc.UseXattrs() && dbc.autoImport {
 		feedMode = sgbucket.FeedResume
 	}
 
-	if err := context.mutationListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil); err != nil {
+	if err := dbc.mutationListener.Start(dbc.Bucket, dbc.Options.TrackDocs, feedMode, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
 // Cache flush support.  Currently test-only - added for unit test access from rest package
-func (context *DatabaseContext) FlushChannelCache() error {
+func (dbc *DatabaseContext) FlushChannelCache() error {
 	base.Infof(base.KeyCache, "Flushing channel cache")
-	return context.changeCache.Clear()
+	return dbc.changeCache.Clear()
 }
 
 // Removes previous versions of Sync Gateway's design docs found on the server
-func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
-	return removeObsoleteDesignDocs(context.Bucket, previewOnly)
+func (dbc *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
+	return removeObsoleteDesignDocs(dbc.Bucket, previewOnly)
 }
 
 // Removes previous versions of Sync Gateway's design docs found on the server
-func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removedIndexes []string, err error) {
-	return removeObsoleteIndexes(context.Bucket, previewOnly, context.UseXattrs())
+func (dbc *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removedIndexes []string, err error) {
+	return removeObsoleteIndexes(dbc.Bucket, previewOnly, dbc.UseXattrs())
 }
 
 // Trigger terminate check handling for connected continuous replications.
 // TODO: The underlying code (NotifyCheckForTermination) doesn't actually leverage the specific username - should be refactored
 //    to remove
-func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
-	context.mutationListener.NotifyCheckForTermination(base.SetOf(auth.UserKeyPrefix + username))
+func (dbc *DatabaseContext) NotifyTerminatedChanges(username string) {
+	dbc.mutationListener.NotifyCheckForTermination(base.SetOf(auth.UserKeyPrefix + username))
 }
 
-func (dc *DatabaseContext) TakeDbOffline(reason string) error {
+func (dbc *DatabaseContext) TakeDbOffline(reason string) error {
 
-	dbState := atomic.LoadUint32(&dc.State)
+	dbState := atomic.LoadUint32(&dbc.State)
 
 	//If the DB is already trasitioning to: offline or is offline silently return
 	if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
 		return nil
 	}
 
-	if atomic.CompareAndSwapUint32(&dc.State, DBOnline, DBStopping) {
+	if atomic.CompareAndSwapUint32(&dbc.State, DBOnline, DBStopping) {
 
 		//notify all active _changes feeds to close
-		close(dc.ExitChanges)
+		close(dbc.ExitChanges)
 
 		//Block until all current calls have returned, including _changes feeds
-		dc.AccessLock.Lock()
-		defer dc.AccessLock.Unlock()
+		dbc.AccessLock.Lock()
+		defer dbc.AccessLock.Unlock()
 
 		//set DB state to Offline
-		atomic.StoreUint32(&dc.State, DBOffline)
+		atomic.StoreUint32(&dbc.State, DBOffline)
 
-		if dc.EventMgr.HasHandlerForEvent(DBStateChange) {
-			dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, *dc.Options.AdminInterface)
+		if dbc.EventMgr.HasHandlerForEvent(DBStateChange) {
+			dbc.EventMgr.RaiseDBStateChangeEvent(dbc.Name, "offline", reason, *dbc.Options.AdminInterface)
 		}
 
 		return nil
@@ -620,14 +620,14 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 	}
 }
 
-func (context *DatabaseContext) Authenticator() *auth.Authenticator {
-	context.BucketLock.RLock()
-	defer context.BucketLock.RUnlock()
+func (dbc *DatabaseContext) Authenticator() *auth.Authenticator {
+	dbc.BucketLock.RLock()
+	defer dbc.BucketLock.RUnlock()
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
-	authenticator := auth.NewAuthenticator(context.Bucket, context)
-	if context.Options.SessionCookieName != "" {
-		authenticator.SetSessionCookieName(context.Options.SessionCookieName)
+	authenticator := auth.NewAuthenticator(dbc.Bucket, dbc)
+	if dbc.Options.SessionCookieName != "" {
+		authenticator.SetSessionCookieName(dbc.Options.SessionCookieName)
 	}
 	return authenticator
 }
@@ -752,9 +752,9 @@ type principalsViewRow struct {
 }
 
 // Returns the IDs of all users and roles
-func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
+func (dbc *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
 
-	results, err := db.QueryPrincipals()
+	results, err := dbc.QueryPrincipals()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -765,7 +765,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 	roles = []string{}
 	lenUserKeyPrefix := len(auth.UserKeyPrefix)
 	for {
-		if db.Options.UseViews {
+		if dbc.Options.UseViews {
 			var viewRow principalsViewRow
 			found := results.Next(&viewRow)
 			if !found {
@@ -805,9 +805,9 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 //////// HOUSEKEEPING:
 
 // Deletes all session documents for a user
-func (db *DatabaseContext) DeleteUserSessions(userName string) error {
+func (dbc *DatabaseContext) DeleteUserSessions(userName string) error {
 
-	results, err := db.QuerySessions(userName)
+	results, err := dbc.QuerySessions(userName)
 	if err != nil {
 		return err
 	}
@@ -815,7 +815,7 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 	var sessionsRow QueryIdRow
 	for results.Next(&sessionsRow) {
 		base.Infof(base.KeyCRUD, "\tDeleting %q", sessionsRow.Id)
-		if err := db.Bucket.Delete(sessionsRow.Id); err != nil {
+		if err := dbc.Bucket.Delete(sessionsRow.Id); err != nil {
 			base.Warnf(base.KeyAll, "Error deleting %q: %v", sessionsRow.Id, err)
 		}
 	}
@@ -828,38 +828,38 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // When compact is run, Sync Gateway initiates a normal delete operation for the document and xattr (a Sync Gateway purge).  This triggers
 // removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
-func (context *DatabaseContext) Compact() (int, error) {
+func (dbc *DatabaseContext) Compact() (int, error) {
 
 	// Compact should be a no-op if not running w/ xattrs
-	if !context.UseXattrs() {
+	if !dbc.UseXattrs() {
 		return 0, nil
 	}
 
 	// Trigger view compaction for all tombstoned documents older than the purge interval
-	purgeIntervalDuration := time.Duration(-context.PurgeInterval) * time.Hour
+	purgeIntervalDuration := time.Duration(-dbc.PurgeInterval) * time.Hour
 	startTime := time.Now()
 	purgeOlderThan := startTime.Add(purgeIntervalDuration)
-	results, err := context.QueryTombstones(purgeOlderThan)
+	results, err := dbc.QueryTombstones(purgeOlderThan)
 	if err != nil {
 		return 0, err
 	}
 
-	base.Infof(base.KeyAll, "Database %s: Compacting purged tombstones...", base.MD(context.Name))
+	base.Infof(base.KeyAll, "Database %s: Compacting purged tombstones...", base.MD(dbc.Name))
 	purgeBody := Body{"_purged": true}
 	purgedDocs := make([]string, 0)
 
 	var tombstonesRow QueryIdRow
 	for results.Next(&tombstonesRow) {
-		base.Infof(base.KeyCRUD, "Database %s:\tDeleting %q", base.MD(context.Name), tombstonesRow.Id)
+		base.Infof(base.KeyCRUD, "Database %s:\tDeleting %q", base.MD(dbc.Name), tombstonesRow.Id)
 		// First, attempt to purge.
-		purgeErr := context.Purge(tombstonesRow.Id)
+		purgeErr := dbc.Purge(tombstonesRow.Id)
 		if purgeErr == nil {
 			purgedDocs = append(purgedDocs, tombstonesRow.Id)
-		} else if base.IsKeyNotFoundError(context.Bucket, purgeErr) {
+		} else if base.IsKeyNotFoundError(dbc.Bucket, purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
-			_, addErr := context.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
+			_, addErr := dbc.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 			if addErr != nil {
-				base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (add) - tombstone will not be compacted.  %v", base.MD(context.Name), base.UD(tombstonesRow.Id), addErr)
+				base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (add) - tombstone will not be compacted.  %v", base.MD(dbc.Name), base.UD(tombstonesRow.Id), addErr)
 				continue
 			}
 
@@ -867,21 +867,21 @@ func (context *DatabaseContext) Compact() (int, error) {
 			// so mark it to be removed from cache, even if the subsequent delete fails
 			purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
-			if delErr := context.Bucket.Delete(tombstonesRow.Id); delErr != nil {
-				base.Errorf(base.KeyAll, "Database %s: Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.MD(context.Name), base.UD(tombstonesRow.Id), delErr)
+			if delErr := dbc.Bucket.Delete(tombstonesRow.Id); delErr != nil {
+				base.Errorf(base.KeyAll, "Database %s: Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.MD(dbc.Name), base.UD(tombstonesRow.Id), delErr)
 			}
 		} else {
-			base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (purge) - tombstone will not be compacted.  %v", context.Name, base.UD(tombstonesRow.Id), purgeErr)
+			base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (purge) - tombstone will not be compacted.  %v", dbc.Name, base.UD(tombstonesRow.Id), purgeErr)
 		}
 	}
 
 	// Now purge them from all channel caches
 	count := len(purgedDocs)
 	if count > 0 {
-		context.changeCache.Remove(purgedDocs, startTime)
-		context.DbStats.StatsDatabase().Add(base.StatKeyNumDocsCompacted, int64(count))
+		dbc.changeCache.Remove(purgedDocs, startTime)
+		dbc.DbStats.StatsDatabase().Add(base.StatKeyNumDocsCompacted, int64(count))
 	}
-	base.Infof(base.KeyAll, "Database %s: Compacted %v tombstones", base.MD(context.Name), count)
+	base.Infof(base.KeyAll, "Database %s: Compacted %v tombstones", base.MD(dbc.Name), count)
 
 	return count, nil
 }
@@ -892,18 +892,18 @@ func VacuumAttachments(bucket base.Bucket) (int, error) {
 }
 
 // backgroundTask runs task at the specified time interval in its own goroutine until the changeCache is stopped.
-func (context *DatabaseContext) backgroundTask(name string, task BackgroundTaskFunc, interval time.Duration) {
-	base.Infof(base.KeyAll, "Database %s: Created background task: %q with interval %v", base.MD(context.Name), name, interval)
+func (dbc *DatabaseContext) backgroundTask(name string, task BackgroundTaskFunc, interval time.Duration) {
+	base.Infof(base.KeyAll, "Database %s: Created background task: %q with interval %v", base.MD(dbc.Name), name, interval)
 	go func() {
 		for {
 			select {
 			case <-time.After(interval):
-				base.Debugf(base.KeyAll, "Database %s: Running background task: %q", base.MD(context.Name), name)
+				base.Debugf(base.KeyAll, "Database %s: Running background task: %q", base.MD(dbc.Name), name)
 				if err := task(); err != nil {
-					base.Warnf(base.KeyAll, "Database %s: Background task %q returned error: %v", base.MD(context.Name), name, err)
+					base.Warnf(base.KeyAll, "Database %s: Background task %q returned error: %v", base.MD(dbc.Name), name, err)
 				}
-			case <- context.terminator:
-				base.Debugf(base.KeyAll, "Database %s: Terminating background task: %q", base.MD(context.Name), name)
+			case <- dbc.terminator:
+				base.Debugf(base.KeyAll, "Database %s: Terminating background task: %q", base.MD(dbc.Name), name)
 			}
 		}
 	}()
@@ -915,13 +915,13 @@ func (context *DatabaseContext) backgroundTask(name string, task BackgroundTaskF
 // Returns a boolean indicating whether the function is different from the saved one.
 // If multiple gateway instances try to update the function at the same time (to the same new
 // value) only one of them will get a changed=true result.
-func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err error) {
+func (dbc *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err error) {
 	if syncFun == "" {
-		context.ChannelMapper = nil
-	} else if context.ChannelMapper != nil {
-		_, err = context.ChannelMapper.SetFunction(syncFun)
+		dbc.ChannelMapper = nil
+	} else if dbc.ChannelMapper != nil {
+		_, err = dbc.ChannelMapper.SetFunction(syncFun)
 	} else {
-		context.ChannelMapper = channels.NewChannelMapper(syncFun)
+		dbc.ChannelMapper = channels.NewChannelMapper(syncFun)
 	}
 	if err != nil {
 		base.Warnf(base.KeyAll, "Error setting sync function: %s", err)
@@ -932,7 +932,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		Sync string
 	}
 
-	_, err = context.Bucket.Update(kSyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+	_, err = dbc.Bucket.Update(kSyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := json.Unmarshal(currentValue, &syncData)
@@ -1146,76 +1146,76 @@ func (db *Database) invalUserOrRoleChannels(name string) {
 }
 
 // Helper method for API unit test retrieval of index bucket
-func (context *DatabaseContext) GetIndexBucket() base.Bucket {
-	if kvChangeIndex, ok := context.changeCache.(*kvChangeIndex); ok {
+func (dbc *DatabaseContext) GetIndexBucket() base.Bucket {
+	if kvChangeIndex, ok := dbc.changeCache.(*kvChangeIndex); ok {
 		return kvChangeIndex.reader.indexReadBucket
 	} else {
 		return nil
 	}
 }
 
-func (context *DatabaseContext) GetUserViewsEnabled() bool {
-	if context.Options.UnsupportedOptions.UserViews.Enabled != nil {
-		return *context.Options.UnsupportedOptions.UserViews.Enabled
+func (dbc *DatabaseContext) GetUserViewsEnabled() bool {
+	if dbc.Options.UnsupportedOptions.UserViews.Enabled != nil {
+		return *dbc.Options.UnsupportedOptions.UserViews.Enabled
 	}
 	return false
 }
 
-func (context *DatabaseContext) UseXattrs() bool {
-	return context.Options.EnableXattr
+func (dbc *DatabaseContext) UseXattrs() bool {
+	return dbc.Options.EnableXattr
 }
 
-func (context *DatabaseContext) DeltaSyncEnabled() bool {
-	return context.Options.DeltaSyncOptions.Enabled
+func (dbc *DatabaseContext) DeltaSyncEnabled() bool {
+	return dbc.Options.DeltaSyncOptions.Enabled
 }
 
-func (context *DatabaseContext) AllowExternalRevBodyStorage() bool {
+func (dbc *DatabaseContext) AllowExternalRevBodyStorage() bool {
 
 	// Support unit testing w/out xattrs enabled
 	if base.TestExternalRevStorage {
 		return false
 	}
-	return !context.UseXattrs()
+	return !dbc.UseXattrs()
 }
 
-func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
+func (dbc *DatabaseContext) SetUserViewsEnabled(value bool) {
 
-	context.Options.UnsupportedOptions.UserViews.Enabled = &value
+	dbc.Options.UnsupportedOptions.UserViews.Enabled = &value
 }
 
 // For test usage
-func (context *DatabaseContext) FlushRevisionCacheForTest() {
+func (dbc *DatabaseContext) FlushRevisionCacheForTest() {
 
-	context.revisionCache = NewRevisionCache(
-		context.Options.RevisionCacheCapacity,
-		context.revCacheLoader,
-		context.DbStats.StatsCache(),
+	dbc.revisionCache = NewRevisionCache(
+		dbc.Options.RevisionCacheCapacity,
+		dbc.revCacheLoader,
+		dbc.DbStats.StatsCache(),
 	)
 
 }
 
 // For test usage
-func (context *DatabaseContext) GetRevisionCacheForTest() *RevisionCache {
-	return context.revisionCache
+func (dbc *DatabaseContext) GetRevisionCacheForTest() *RevisionCache {
+	return dbc.revisionCache
 }
 
-func (context *DatabaseContext) AllowConflicts() bool {
-	if context.Options.AllowConflicts != nil {
-		return *context.Options.AllowConflicts
+func (dbc *DatabaseContext) AllowConflicts() bool {
+	if dbc.Options.AllowConflicts != nil {
+		return *dbc.Options.AllowConflicts
 	}
 	return base.DefaultAllowConflicts
 }
 
-func (context *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
-	return context.Options.UnsupportedOptions.APIEndpoints.EnableCouchbaseBucketFlush
+func (dbc *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
+	return dbc.Options.UnsupportedOptions.APIEndpoints.EnableCouchbaseBucketFlush
 }
 
 //////// SEQUENCE ALLOCATION:
 
-func (context *DatabaseContext) LastSequence() (uint64, error) {
-	return context.sequences.lastSequence()
+func (dbc *DatabaseContext) LastSequence() (uint64, error) {
+	return dbc.sequences.lastSequence()
 }
 
-func (context *DatabaseContext) ReserveSequences(numToReserve uint64) error {
-	return context.sequences.reserveSequences(numToReserve)
+func (dbc *DatabaseContext) ReserveSequences(numToReserve uint64) error {
+	return dbc.sequences.reserveSequences(numToReserve)
 }

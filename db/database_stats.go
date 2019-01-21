@@ -159,11 +159,11 @@ func initEmptyStatsMap(key string) *expvar.Map {
 }
 
 // Update database-specific stats that are more efficiently calculated at stats collection time
-func (db *DatabaseContext) UpdateCalculatedStats() {
+func (dbc *DatabaseContext) UpdateCalculatedStats() {
 
 	// Max channel cache size
-	if cache, ok := db.changeCache.(*changeCache); ok {
-		db.DbStats.StatsCache().Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(cache.MaxCacheSize()))
+	if cache, ok := dbc.changeCache.(*changeCache); ok {
+		dbc.DbStats.StatsCache().Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(cache.MaxCacheSize()))
 	}
 
 }
