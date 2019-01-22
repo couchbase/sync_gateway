@@ -784,7 +784,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
-		bh.Logf(base.LevelDebug, base.KeySync, "docID: %s - Received rev message as delta", base.UD(docID))
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
 		}
@@ -980,14 +979,11 @@ func (ctx *blipSyncContext) setActiveSubChanges(changesActive bool) {
 func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	// Both sides want deltas
 	if ctx.sgCanUseDeltas && clientCanUseDeltas {
-		if ctx.useDeltas {
-			// deltas are already enabled
-			return
+		if !ctx.useDeltas {
+			ctx.Logf(base.LevelDebug, base.KeySync, "Enabling deltas for this replication")
+			ctx.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
+			ctx.useDeltas = true
 		}
-
-		ctx.Logf(base.LevelDebug, base.KeySync, "Enabling deltas for this replication")
-		ctx.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
-		ctx.useDeltas = true
 		return
 	}
 
