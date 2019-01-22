@@ -978,23 +978,24 @@ func (ctx *blipSyncContext) setActiveSubChanges(changesActive bool) {
 
 // setUseDeltas will set useDeltas on the blipSyncContext as long as both sides of the connection have it enabled.
 func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
-	// If either side don't want deltas, log and exit early
-	if !ctx.sgCanUseDeltas || !clientCanUseDeltas {
-		ctx.Logf(base.LevelInfo, base.KeySync, "Disabling deltas for this replication. SG: %t - Client: %t", ctx.sgCanUseDeltas, clientCanUseDeltas)
-		ctx.useDeltas = false
-		return
-	}
-
 	// Both sides want deltas
+	if ctx.sgCanUseDeltas && clientCanUseDeltas {
+		if ctx.useDeltas {
+			// deltas are already enabled
+			return
+		}
 
-	if ctx.useDeltas {
-		// deltas are already enabled
+		ctx.Logf(base.LevelDebug, base.KeySync, "Enabling deltas for this replication")
+		ctx.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
+		ctx.useDeltas = true
 		return
 	}
 
-	ctx.Logf(base.LevelInfo, base.KeySync, "Enabling deltas for this replication")
-	ctx.useDeltas = true
-	ctx.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
+	// Log when the client doesn't want deltas, but we do
+	if ctx.sgCanUseDeltas && !clientCanUseDeltas {
+		ctx.Logf(base.LevelInfo, base.KeySync, "Disabling deltas for this replication based on client setting.")
+	}
+	ctx.useDeltas = false
 }
 
 // NOTE: This code is taken from db/attachments.go in the feature/deltas branch, as of commit
