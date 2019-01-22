@@ -469,10 +469,9 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 
 	// Set useDeltas if the client has delta support and has it enabled
 	if clientDeltasStr, ok := response.Properties[changesResponseDeltas]; ok {
-		bh.Logf(base.LevelDebug, base.KeySync, "Value for 'deltas' property in 'changes' response: %v", clientDeltasStr)
 		bh.setUseDeltas(clientDeltasStr == "true")
 	} else {
-		bh.Logf(base.LevelDebug, base.KeySync, "No 'deltas' property found in 'changes' response.")
+		bh.Logf(base.LevelTrace, base.KeySync, "Client didn't specify 'deltas' property in 'changes' response. useDeltas: %v", bh.useDeltas)
 	}
 
 	// Maps docID --> a map containing true for revIDs known to the client
@@ -616,6 +615,7 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 	output.Write([]byte("]"))
 	response := rq.Response()
 	if bh.sgCanUseDeltas {
+		bh.Logf(base.LevelDebug, base.KeyAll, "Setting deltas=true property on proposeChanges response")
 		response.Properties[changesResponseDeltas] = "true"
 	}
 	response.SetCompressed(true)
@@ -655,6 +655,7 @@ func (bh *blipHandler) sendDelta(delta []byte, deltaSrcRevID string, sender *bli
 		return
 	}
 
+	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta based on %d known. DeltaSrc:%s  User:%s", base.UD(docID), revID, len(knownRevs), deltaSrcRevID, base.UD(bh.effectiveUsername))
 	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, knownRevs, maxHistory, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
 }
 
@@ -689,13 +690,12 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 
 // Pushes a revision body to the client
 func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, knownRevs, maxHistory, nil)
 }
 
 // Pushes a revision body to the client
 func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int, properties blip.Properties) {
-
-	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 
 	// Get the revision's history as a descending array of ancestor revIDs:
 	history := db.ParseRevisions(body)[1:]
@@ -765,7 +765,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	//addRevisionParams := newAddRevisionParams(rq)
 	revMessage := revMessage{Message: rq}
 
-	bh.logEndpointEntry(rq.Profile(), revMessage.String())
+	bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s %s User:%s", bh.serialNumber, rq.Profile(), revMessage.String(), base.UD(bh.effectiveUsername))
 
 	var body db.Body
 	if err := rq.ReadJSONBody(&body); err != nil {
@@ -978,12 +978,23 @@ func (ctx *blipSyncContext) setActiveSubChanges(changesActive bool) {
 
 // setUseDeltas will set useDeltas on the blipSyncContext as long as both sides of the connection have it enabled.
 func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
-
-	shouldUseDeltas := clientCanUseDeltas && ctx.sgCanUseDeltas
-	if !ctx.useDeltas && shouldUseDeltas {
-		ctx.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
+	// If either side don't want deltas, log and exit early
+	if !ctx.sgCanUseDeltas || !clientCanUseDeltas {
+		ctx.Logf(base.LevelInfo, base.KeySync, "Disabling deltas for this replication. SG: %t - Client: %t", ctx.sgCanUseDeltas, clientCanUseDeltas)
+		ctx.useDeltas = false
+		return
 	}
-	ctx.useDeltas = shouldUseDeltas
+
+	// Both sides want deltas
+
+	if ctx.useDeltas {
+		// deltas are already enabled
+		return
+	}
+
+	ctx.Logf(base.LevelInfo, base.KeySync, "Enabling deltas for this replication")
+	ctx.useDeltas = true
+	ctx.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
 }
 
 // NOTE: This code is taken from db/attachments.go in the feature/deltas branch, as of commit
