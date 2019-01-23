@@ -90,8 +90,10 @@ func TestConsoleShouldLog(t *testing.T) {
 		l := newConsoleLoggerOrPanic(&ConsoleLoggerConfig{
 			LogLevel: &test.loggerLevel,
 			LogKeys:  test.loggerKeys,
-			Output:   ioutil.Discard,
-		})
+			FileLoggerConfig: FileLoggerConfig{
+				Enabled: BoolPtr(true),
+				Output:  ioutil.Discard,
+			}})
 
 		t.Run(name, func(ts *testing.T) {
 			got := l.shouldLog(test.logToLevel, test.logToKey)

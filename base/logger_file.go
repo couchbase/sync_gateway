@@ -11,8 +11,7 @@ import (
 )
 
 var (
-	ErrInvalidLogFilePath   = errors.New("Invalid LogFilePath")
-	ErrInvalidLoggingMaxAge = errors.New("Invalid MaxAge")
+	ErrInvalidLogFilePath = errors.New("invalid log file path")
 
 	maxAgeLimit             = 9999 // days
 	defaultMaxSize          = 100  // 100 MB

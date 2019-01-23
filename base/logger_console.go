@@ -3,30 +3,33 @@ package base
 import (
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
+// ConsoleLogger is a file logger with a default output of stderr, and tunable log level/keys.
 type ConsoleLogger struct {
+	FileLogger
+
 	LogLevel     *LogLevel
 	LogKey       *LogKey
 	ColorEnabled bool
 
-	// collateBuffer is used to store log entries to batch up multiple logs.
-	collateBuffer chan string
-	logger        *log.Logger
+	// isStderr is true when the console logger is configured with no FileOutput
+	isStderr bool
 }
 
 type ConsoleLoggerConfig struct {
-	Enabled      *bool     `json:"enabled,omitempty"`       // Overall console output toggle
+	FileLoggerConfig
+
 	LogLevel     *LogLevel `json:"log_level,omitempty"`     // Log Level for the console output
 	LogKeys      []string  `json:"log_keys,omitempty"`      // Log Keys for the console output
 	ColorEnabled *bool     `json:"color_enabled,omitempty"` // Log with color for the console output
 
-	CollationBufferSize *int      `json:"collation_buffer_size,omitempty"` // The size of the log collation buffer.
-	Output              io.Writer `json:"-"`                               // Logger output. Defaults to os.Stderr. Can be overridden for testing purposes.
+	// FileOutput can be used to override the default stderr output, and write to the file specified instead.
+	FileOutput string `json:"file_output,omitempty"`
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
@@ -37,12 +40,16 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 	}
 
 	logKey, warnings := ToLogKey(config.LogKeys)
+	isStderr := config.FileOutput == ""
 
 	logger := &ConsoleLogger{
 		LogLevel:     config.LogLevel,
 		LogKey:       &logKey,
-		ColorEnabled: *config.ColorEnabled,
-		logger:       log.New(config.Output, "", 0),
+		ColorEnabled: *config.ColorEnabled && isStderr,
+		FileLogger: FileLogger{
+			logger: log.New(config.Output, "", 0),
+		},
+		isStderr: isStderr,
 	}
 
 	// Only create the collateBuffer channel and worker if required.
@@ -81,16 +88,41 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		return errors.New("nil LogConsoleConfig")
 	}
 
-	// Default to os.Stderr if alternative output is not set
-	if lcc.Output == nil {
-		lcc.Output = os.Stderr
+	if lcc.Rotation.MaxSize == nil {
+		// A value of zero disables the log file rotation in Lumberjack.
+		zero := 0
+		lcc.Rotation.MaxSize = &zero
+	} else if *lcc.Rotation.MaxSize < 0 {
+		return fmt.Errorf(belowMinValueFmt, "MaxSize", "console", *lcc.Rotation.MaxSize, 0)
 	}
 
-	// Default to true if 'enabled' is not explicitly set
-	if lcc.Enabled == nil {
-		lcc.Enabled = BoolPtr(true)
-	} else if !*lcc.Enabled {
-		// If 'enabled' is explicitly set to false, override the log level and log keys
+	if lcc.Rotation.MaxAge == nil {
+		// A value of zero disables the age-based log cleanup in Lumberjack.
+		zero := 0
+		lcc.Rotation.MaxAge = &zero
+	} else if *lcc.Rotation.MaxAge < 0 {
+		return fmt.Errorf(belowMinValueFmt, "MaxAge", "console", *lcc.Rotation.MaxAge, 0)
+	} else if *lcc.Rotation.MaxAge > maxAgeLimit {
+		return fmt.Errorf(aboveMaxValueFmt, "MaxAge", "console", *lcc.Rotation.MaxAge, maxAgeLimit)
+	}
+
+	// Default to os.Stderr if alternative output is not set
+	if lcc.Output == nil && lcc.FileOutput == "" {
+		lcc.Output = os.Stderr
+	} else if lcc.FileOutput != "" {
+		// Otherwise check permissions on the given output and create a Lumberjack logger
+		if err := validateLogFileOutput(lcc.FileOutput); err != nil {
+			return err
+		}
+		lcc.Output = newLumberjackOutput(
+			filepath.FromSlash(lcc.FileOutput),
+			*lcc.Rotation.MaxSize,
+			*lcc.Rotation.MaxAge,
+		)
+	}
+
+	// Default to false
+	if lcc.Enabled == nil || !*lcc.Enabled {
 		newLevel := LevelNone
 		lcc.LogLevel = &newLevel
 		lcc.LogKeys = []string{}
