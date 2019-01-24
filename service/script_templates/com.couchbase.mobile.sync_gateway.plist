@@ -17,9 +17,5 @@
         </array>
         <key>KeepAlive</key>
         <true/>
-        <key>StandardOutPath</key>
-        <string>${LOGS_TEMPLATE_VAR}/${SERVICE_NAME}_access.log</string> 
-        <key>StandardErrorPath</key>
-        <string>${LOGS_TEMPLATE_VAR}/${SERVICE_NAME}_error.log</string>
 </dict>
 </plist>

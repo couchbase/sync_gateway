@@ -17,8 +17,6 @@ CONFIG=${CONFIG_TEMPLATE_VAR}
 LOGS=${LOGS_TEMPLATE_VAR}
 
 name=${SERVICE_NAME}
-stdout_log=\${LOGS}/\${name}_access.log
-stderr_log=\${LOGS}/\${name}_error.log
 
 get_pid() {
     cat \"\$PIDFILE\"    
@@ -41,10 +39,10 @@ case \"\$1\" in
         else
             echo "Starting $name"
             cd \"\$RUNBASE\"
-            sudo -u \"\$RUNAS\" \$GATEWAY --defaultLogFilePath \"\$LOGS\" \$CONFIG >> \"\$stdout_log\" 2>> \"\$stderr_log\" &
+            sudo -u \"\$RUNAS\" \$GATEWAY --defaultLogFilePath \"\$LOGS\" \$CONFIG &
             echo \$! > \"\$PIDFILE\"
             if ! is_running; then
-                echo "Unable to start, see \$stdout_log and \$stderr_log"
+                echo "Unable to start"
                 exit 1
             fi
         fi
