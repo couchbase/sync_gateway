@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/natefinch/lumberjack"
 )
 
 // ConsoleLogger is a file logger with a default output of stderr, and tunable log level/keys.
@@ -114,11 +116,12 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		if err := validateLogFileOutput(lcc.FileOutput); err != nil {
 			return err
 		}
-		lcc.Output = newLumberjackOutput(
-			filepath.FromSlash(lcc.FileOutput),
-			*lcc.Rotation.MaxSize,
-			*lcc.Rotation.MaxAge,
-		)
+		lcc.Output = &lumberjack.Logger{
+			Filename: filepath.FromSlash(lcc.FileOutput),
+			MaxSize:  *lcc.Rotation.MaxSize,
+			MaxAge:   *lcc.Rotation.MaxAge,
+			Compress: false,
+		}
 	}
 
 	// Default to false
