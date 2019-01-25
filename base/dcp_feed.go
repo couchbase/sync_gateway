@@ -101,9 +101,24 @@ type DCPReceiver struct {
 	notify                 sgbucket.BucketNotifyFn        // Function to callback when we lose our dcp feed
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
 	backfill               backfillStatus                 // Backfill state and stats
+	vbEventChannels        []chan sgbucket.FeedEvent      // Per-vbucket channel of DCP events
+	vbDoneChannels         []chan struct{}                // Vb done channels - ensures only one event is processed at a time for vbucket, but vb events can be served by any worker
+	workerInputChan        chan sgbucket.FeedEvent        // Event channel for communication between vb goroutines and feed workers
+	terminator             chan bool                      // Terminator to stop async workers
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, backfillType uint64) (Receiver, error) {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, numWorkers uint16, terminator chan bool) Receiver {
+
+	if numWorkers < 1 {
+		Warnf(KeyAll, "DCP Receiver started with numWorkers < 1 - switching to default value (%d)", DefaultNumFeedWorkers)
+		numWorkers = DefaultNumFeedWorkers
+	}
+
+	// DCP processing is single-threaded per vbucket, so no value in having numWorkers exceed maxVbNo
+	if numWorkers > maxVbNo {
+		Warnf(KeyAll, "DCP Receiver started with numWorkers > maxVbNo - setting numWorkers to maxVbNo (%d)", maxVbNo)
+		numWorkers = maxVbNo
+	}
 
 	r := &DCPReceiver{
 		bucket:                 bucket,
@@ -114,22 +129,76 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 		vbuuids:                make(map[uint16]uint64, maxVbNo),
 		updatesSinceCheckpoint: make([]uint64, maxVbNo),
 		lastCheckpointTime:     make([]time.Time, maxVbNo),
+		callback:               callback,
+		terminator:             terminator,
+		workerInputChan:        make(chan sgbucket.FeedEvent),
+		vbEventChannels:        make([]chan sgbucket.FeedEvent, maxVbNo),
+		vbDoneChannels:         make([]chan struct{}, maxVbNo),
+	}
+	// TODO: DCPReceiver could be potentially be enhanced to support concurrent processing of DCP operations for a single vbucket by replacing
+	//  done channel with post-processing event reordering (similar to what's done to maintain ordering in sgaccel), but this may require refactoring of cache.processEntry
+	//  to ensure non-ordered vbucket events are properly sequence buffered/cached
+
+	// Initialize vb channels, start vbucket goroutines
+	for i := 0; i < int(maxVbNo); i++ {
+		r.vbEventChannels[i] = make(chan sgbucket.FeedEvent)
+		r.vbDoneChannels[i] = make(chan struct{})
+		go r.runVbucketWorker(r.vbEventChannels[i], r.vbDoneChannels[i], r.workerInputChan)
 	}
 
-	r.callback = callback
-	initErr := r.initFeed(backfillType)
-
-	if initErr != nil {
-		return nil, initErr
+	// Start feed workers
+	for i := uint16(0); i < numWorkers; i++ {
+		go r.runEventWorker()
 	}
 
 	if LogDebugEnabled(KeyDCP) {
 		Infof(KeyDCP, "Using DCP Logging Receiver.")
 		logRec := &DCPLoggingReceiver{rec: r}
-		return logRec, nil
+		return logRec
 	}
 
-	return r, nil
+	return r
+}
+
+// Vbucket worker routes events from the vbucket channels to the worker input channel, ensuring that only a single vbucket event is
+// processed at a time.
+func (r *DCPReceiver) runVbucketWorker(vbEventChannel <-chan sgbucket.FeedEvent, vbDoneChannel chan struct{}, workerEventChannel chan<- sgbucket.FeedEvent) {
+	for {
+		// Blocks until we can write to vbDoneChannel - ensures only a single in-flight event per vbucket
+		select {
+		case vbDoneChannel <- struct{}{}:
+			// vbucket is free - read from vbEventChannel and route to worker
+			select {
+			case event := <-vbEventChannel:
+				workerEventChannel <- event
+			case <-r.terminator:
+				return
+			}
+		case <-r.terminator:
+			return
+		}
+	}
+}
+
+// RunEventWorker is expected to be run in a goroutine, and is the main worker process to process DCP events
+func (r *DCPReceiver) runEventWorker() {
+	for {
+		select {
+		case event := <-r.workerInputChan:
+			switch event.Opcode {
+			case sgbucket.FeedOpMutation:
+				r.workerDataUpdate(event)
+			case sgbucket.FeedOpDeletion:
+				r.workerDataDelete(event)
+			case sgbucket.FeedOpSetMetaData:
+				r.workerSetMetaData(event)
+			}
+			// Read from vbucket 'done' channel to unblock next event for this vbucket
+			<-r.vbDoneChannels[event.VbNo]
+		case <-r.terminator:
+			return
+		}
+	}
 }
 
 func (r *DCPReceiver) SetBucketNotifyFn(notify sgbucket.BucketNotifyFn) {
@@ -168,30 +237,77 @@ func dcpKeyFilter(key []byte) bool {
 	return true
 }
 
+// DataUpdate, DataDelete, SetMetadata route incoming events to the appropriate vbucket channel for ordered processing by feed worker
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
 	dcpExpvars.Add("dataUpdate_count", 1)
 	if !dcpKeyFilter(key) {
 		return nil
 	}
-	r.updateSeq(vbucketId, seq, true)
-	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpMutation))
-	if shouldPersistCheckpoint {
-		r.incrementCheckpointCount(vbucketId)
-	}
+	r.vbEventChannels[vbucketId] <- makeFeedEvent(req, vbucketId, seq, sgbucket.FeedOpMutation)
 	return nil
 }
 
+// DataDelete pushes the event to the vbucket channel for ordered processing by feed worker
 func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
 	dcpExpvars.Add("dataDelete_count", 1)
 	if !dcpKeyFilter(key) {
 		return nil
 	}
-	r.updateSeq(vbucketId, seq, true)
-	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpDeletion))
+	r.vbEventChannels[vbucketId] <- makeFeedEvent(req, vbucketId, seq, sgbucket.FeedOpDeletion)
+	return nil
+}
+
+func (r *DCPReceiver) SetMetaData(vbucketId uint16, value []byte) error {
+
+	metadataFeedEvent := sgbucket.FeedEvent{
+		Opcode: sgbucket.FeedOpSetMetaData,
+		VbNo:   vbucketId,
+		Value:  value,
+	}
+	r.vbEventChannels[vbucketId] <- metadataFeedEvent
+	return nil
+}
+
+// _dataUpdate processes the mutation (invoked by feed worker)
+func (r *DCPReceiver) workerDataUpdate(event sgbucket.FeedEvent) error {
+	r.updateSeq(event.VbNo, event.VbSeq, true)
+	shouldPersistCheckpoint := r.callback(event)
 	if shouldPersistCheckpoint {
-		r.incrementCheckpointCount(vbucketId)
+		r.incrementCheckpointCount(event.VbNo)
+	}
+	return nil
+}
+
+func (r *DCPReceiver) workerDataDelete(event sgbucket.FeedEvent) error {
+	r.updateSeq(event.VbNo, event.VbSeq, true)
+	shouldPersistCheckpoint := r.callback(event)
+	if shouldPersistCheckpoint {
+		r.incrementCheckpointCount(event.VbNo)
+	}
+	return nil
+}
+
+func (r *DCPReceiver) workerSetMetaData(event sgbucket.FeedEvent) error {
+
+	r.m.Lock()
+	defer r.m.Unlock()
+
+	r.meta[event.VbNo] = event.Value
+	// Check persistMeta to avoids persistence if the only feed events we've seen are the DCP echo of DCP checkpoint docs
+	if r.persistCheckpoints && r.updatesSinceCheckpoint[event.VbNo] >= kCheckpointThreshold {
+		// Don't checkpoint more frequently than kCheckpointTimeThreshold
+		if time.Since(r.lastCheckpointTime[event.VbNo]) < kCheckpointTimeThreshold {
+			return nil
+		}
+
+		err := r.persistCheckpoint(event.VbNo, event.Value)
+		if err != nil {
+			Warnf(KeyAll, "Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
+		}
+		r.updatesSinceCheckpoint[event.VbNo] = 0
+		r.lastCheckpointTime[event.VbNo] = time.Now()
 	}
 	return nil
 }
@@ -202,7 +318,7 @@ func (r *DCPReceiver) incrementCheckpointCount(vbucketId uint16) {
 	r.updatesSinceCheckpoint[vbucketId]++
 }
 
-func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
+func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, vbSeq uint64, opcode sgbucket.FeedOpcode) sgbucket.FeedEvent {
 
 	// not currently doing rq.Extras handling (as in gocouchbase/upr_feed, makeUprEvent) as SG doesn't use
 	// expiry/flags information, and snapshot handling is done by cbdatasource and sent as
@@ -214,6 +330,8 @@ func makeFeedEvent(rq *gomemcached.MCRequest, vbucketId uint16, opcode sgbucket.
 		DataType:    rq.DataType,
 		Cas:         rq.Cas,
 		Expiry:      ExtractExpiryFromDCPMutation(rq),
+		VbNo:        vbucketId,
+		VbSeq:       vbSeq,
 		Synchronous: true,
 	}
 	return event
@@ -227,34 +345,6 @@ func (r *DCPReceiver) SnapshotStart(vbucketId uint16,
 	// zero if SG is terminated before completing processing of the initial snapshots.
 	if r.backfill.isActive() && r.backfill.isVbActive(vbucketId) {
 		r.backfill.snapshotStart(vbucketId, snapStart, snapEnd)
-	}
-	return nil
-}
-
-// SetMetaData and GetMetaData used internally by cbdatasource.  Expects send/recieve of opaque
-// []byte data.  cbdatasource is multithreaded so need to manage synchronization
-func (r *DCPReceiver) SetMetaData(vbucketId uint16, value []byte) error {
-
-	r.m.Lock()
-	defer r.m.Unlock()
-
-	dcpExpvars.Add("setMetadata_count", 1)
-	r.meta[vbucketId] = value
-
-	// Check persistMeta to avoids persistence if the only feed events we've seen are the DCP echo of DCP checkpoint docs
-	if r.persistCheckpoints && r.updatesSinceCheckpoint[vbucketId] >= kCheckpointThreshold {
-
-		// Don't checkpoint more frequently than kCheckpointTimeThreshold
-		if time.Since(r.lastCheckpointTime[vbucketId]) < kCheckpointTimeThreshold {
-			return nil
-		}
-
-		err := r.persistCheckpoint(vbucketId, value)
-		if err != nil {
-			Warnf(KeyAll, "Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
-		}
-		r.updatesSinceCheckpoint[vbucketId] = 0
-		r.lastCheckpointTime[vbucketId] = time.Now()
 	}
 	return nil
 }
@@ -589,11 +679,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		persistCheckpoints = true
 	}
 
-	dcpReceiver, err := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, args.Backfill)
-	if err != nil {
-		return err
-	}
-
+	dcpReceiver := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, args.NumWorkers, args.Terminator)
 	dcpReceiver.SetBucketNotifyFn(args.Notify)
 
 	// Initialize the feed based on the backfill type

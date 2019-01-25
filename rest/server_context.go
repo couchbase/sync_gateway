@@ -380,6 +380,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 	importOptions.BackupOldRev = config.ImportBackupOldRev
 
+	importOptions.NumFeedWorkers = base.DefaultNumFeedWorkers
+	if config.DCPFeedWorkers != nil && *config.DCPFeedWorkers > 0 {
+		importOptions.NumFeedWorkers = *config.DCPFeedWorkers
+	}
+
 	// Set cache properties, if present
 	cacheOptions := db.CacheOptions{}
 	if config.CacheConfig != nil {

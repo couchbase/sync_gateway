@@ -125,8 +125,9 @@ type UnsupportedOptions struct {
 
 // Options associated with the import of documents not written by Sync Gateway
 type ImportOptions struct {
-	ImportFilter *ImportFilterFunction // Opt-in filter for document import
-	BackupOldRev bool                  // Create temporary backup of old revision body when available
+	ImportFilter   *ImportFilterFunction // Opt-in filter for document import
+	BackupOldRev   bool                  // Create temporary backup of old revision body when available
+	NumFeedWorkers uint16                // Number of DCP feed workers
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -251,7 +252,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
-		err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
+		err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, options.ImportOptions.NumFeedWorkers, func(bucket string, err error) {
 
 			msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
 			base.Warnf(base.KeyAll, msgFormat, base.UD(bucket), err)
@@ -480,7 +481,7 @@ func (context *DatabaseContext) RestartListener() error {
 		feedMode = sgbucket.FeedResume
 	}
 
-	if err := context.mutationListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil); err != nil {
+	if err := context.mutationListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, context.Options.ImportOptions.NumFeedWorkers, nil); err != nil {
 		return err
 	}
 	return nil
