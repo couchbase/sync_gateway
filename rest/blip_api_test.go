@@ -1758,3 +1758,115 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.Equal(t, `{"_id":"doc1","_rev":"2-abcxyz","greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, resp.Body.String())
 }
+
+// TestBlipDeltaSyncWithAttachments tests pushing/pulling multiple revisions, adding/removing attachments
+// on a document, attempting to use delta sync in EE, and full body replication in CE.
+func TestBlipDeltaSyncWithAttachments(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	sgUseDeltas := base.IsEnterpriseEdition()
+	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	defer rt.Close()
+
+	client, err := NewBlipTesterClient(&rt)
+	assert.NoError(t, err)
+	defer client.Close()
+
+	client.ClientDeltas = true
+	client.StartPull()
+
+	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4 - no attachments
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
+	// create doc1 rev 2-abcxyz on client - no attachments
+	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
+	assert.NoError(t, err)
+	assert.Equal(t, "2-abcxyz", newRev)
+
+	// Check EE is delta, and CE is full-body replication
+	msg, ok := client.pushReplication.WaitForMessage(2)
+	assert.True(t, ok)
+
+	if base.IsEnterpriseEdition() {
+		// Check the request was sent with the correct deltaSrc property
+		assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[revMessageDeltaSrc])
+		// Check the request body was the actual delta
+		msgBody, err := msg.Body()
+		assert.NoError(t, err)
+		assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
+
+		// Validate that generation of a delta didn't mutate the revision body in the revision cache
+		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+		assert.NoError(t, cacheErr)
+		marshalledBody, _ := json.Marshal(docRev.Body)
+		assert.Equal(t, []byte(`{"_id":"doc1","_rev":"1-0335a345b6ffed05707ccc4cbc1b67f4","greetings":[{"hello":"world!"},{"hi":"alice"}]}`), marshalledBody)
+	} else {
+		// Check the request was NOT sent with a deltaSrc property
+		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
+		// Check the request body was NOT the delta
+		msgBody, err := msg.Body()
+		assert.NoError(t, err)
+		assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
+		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
+	}
+
+	// Ensure rev-2 is as expected
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev="+newRev, "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, `{"_id":"doc1","_rev":"2-abcxyz","greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, resp.Body.String())
+
+	// create doc1 rev 3-abcxyz on client - add single inline attachment
+	newRev, err = client.PushRev("doc1", newRev, []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"},{"aloha":"charlie"}],"_attachments":{"gopher":{"content_type":"image/png","data":"iVBORw0KGgoAAAANSUhEUgAAAF4AAACACAYAAACC5t4xAAAAAXNSR0IArs4c6QAAAAlwSFlzAAAuIwAALiMBeKU/dgAABCVpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IlhNUCBDb3JlIDUuNC4wIj4KICAgPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4KICAgICAgPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIKICAgICAgICAgICAgeG1sbnM6dGlmZj0iaHR0cDovL25zLmFkb2JlLmNvbS90aWZmLzEuMC8iCiAgICAgICAgICAgIHhtbG5zOmV4aWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20vZXhpZi8xLjAvIgogICAgICAgICAgICB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iCiAgICAgICAgICAgIHhtbG5zOnhtcD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLyI+CiAgICAgICAgIDx0aWZmOlJlc29sdXRpb25Vbml0PjI8L3RpZmY6UmVzb2x1dGlvblVuaXQ+CiAgICAgICAgIDx0aWZmOkNvbXByZXNzaW9uPjU8L3RpZmY6Q29tcHJlc3Npb24+CiAgICAgICAgIDx0aWZmOlhSZXNvbHV0aW9uPjMwMDwvdGlmZjpYUmVzb2x1dGlvbj4KICAgICAgICAgPHRpZmY6T3JpZW50YXRpb24+MTwvdGlmZjpPcmllbnRhdGlvbj4KICAgICAgICAgPHRpZmY6WVJlc29sdXRpb24+MzAwPC90aWZmOllSZXNvbHV0aW9uPgogICAgICAgICA8ZXhpZjpQaXhlbFhEaW1lbnNpb24+OTQ8L2V4aWY6UGl4ZWxYRGltZW5zaW9uPgogICAgICAgICA8ZXhpZjpDb2xvclNwYWNlPjE8L2V4aWY6Q29sb3JTcGFjZT4KICAgICAgICAgPGV4aWY6UGl4ZWxZRGltZW5zaW9uPjEyODwvZXhpZjpQaXhlbFlEaW1lbnNpb24+CiAgICAgICAgIDxkYzpzdWJqZWN0PgogICAgICAgICAgICA8cmRmOlNlcS8+CiAgICAgICAgIDwvZGM6c3ViamVjdD4KICAgICAgICAgPHhtcDpNb2RpZnlEYXRlPjIwMTY6MDc6MjAgMTE6MDc6Nzg8L3htcDpNb2RpZnlEYXRlPgogICAgICAgICA8eG1wOkNyZWF0b3JUb29sPlBpeGVsbWF0b3IgMy41PC94bXA6Q3JlYXRvclRvb2w+CiAgICAgIDwvcmRmOkRlc2NyaXB0aW9uPgogICA8L3JkZjpSREY+CjwveDp4bXBtZXRhPgreulTIAAAk80lEQVR4Ae1dB3xUxdY/KZveewUSAiH0hA5Kh0cTRCyACirSPkBRkQcCFkQ6PBR4WADpxQdSFURCkRo6ISEJaaSQ3vsm2eT7n7vZZDckezcBgsie/Cb37r1zZ+b+Z+bMOWfOzNWhvzcZoXjWCHYIDghOFWE6jk0QohGCEa4gZCPkVxwzccxASEfg81yEvxXp/E1Ko4dyuCI0R2glMTLxMXFwaGbq4OhmYu9gZ2LnaGHq4KBvYudAxrZ2ZGhhQTq6elReJqOyUhnJSkpIJi2ikoICKs7LoaKsLCrMTC8rykjLz09LzSxISUkoSE2KxPUgpH8bgY9xCE+NnibwTfHW3QByT0sPj47WTZs3tW3WwsKmeQuydG9MAJwMzS1Iz9CQdPT0SAd/5eXlCGWEfwh4urL0ONFBDP7NR47LkJaVoVKKqSQ/nwrS0ygn9j6lhQZRanBQdlpYUHBmZMQZxDqOcBWhCKHBqLLoDZRjC+QzzLJxk2GO7Tp0cO3czQxHsmzUmAwAsq7QisuoTFaK1lwmAC2A/IiF0+HKQNo6+npCHmUyGRVlplNqSDDFnPWn+Et/3UkNvrMP2exCiHjE7DR6vCGAN0RJBpvY2b/n3r1XX8+BQ0xdOnYhEwdHgKFLZSUAmYHmVtyAxHnr6kuE3iTNyqT4gPMUun9v9v3TJ3+RlUjXoCh3n2RxniTwBij4GzaeXh82Gz6qQ/OXRpGVhyc4gQ7JiouFFv0kX6wuaXOZ9AwMwZlklHgtgG5t3pATeeL3DUhjOQIP0jWRBBeNEUoRCmqKoO7akwK+r7mr+8LWY8b3aPnam2Tm6CTw2rJSLmMDEgDV1dNHy9ZHjyqjUgzCXAZu7XoSCenxdbCdMlxX9DiuAB60I44foSvfrbybER46EyX+s6LUNji+ZGxtM9SikUdLQ0tLy7JiqTQ34UFMduz9U7i3ByGyIq7ag6bAs9ThjeCFYInAYls0QihCIYKC+N5XLV8dM63T9Fn6Vk08qVQqFV6EBz1dDJIMBOmqZsv8nAFhEB4LIS99DMpSSDlJQYGUEniDSh7EkX5RAUnA0jA8UzHYDNnak02rduQK1mdmYytIRvIKwPPGRpSXmEAXlnwhDTu8f4Genl6WfTvfOS1GvObp/kIfMnNyQuXJK6koJ5uSb16joD3bM++fPsFsailnoe5dVBF4OCbL0eNtvJq959yhazvb5i0MDS0sqbggn7Iiw2VJt26EJwfe4EHpewRrC7dGm7vP/rxTs2Evy1sSty6ArScxoAIULj0ynDIRilKTqawQ9YXc9czMycTZlZA22aKiJIhbWiyVSy4Pl0f0ip6BgQB4yOH9VHz9EnV0c6ZeXbtQq1atyAHjiqGREclQwdng6xHhEfTXxYt0Ougulfi0p7ZvvEWGpqaCeMoZcU9huvLdCgo/dphG7TpMZs4uVFpYALZUIV3hvtCDkC+PV0G7t9LFlV8fLM7NHYdbteoP6oBvhUx+8Ht/eg/vEaPI2M6es5ADggOLbNLcHEq4eplOz5+VZOJgrzdg+Tp7m+Y+QsEEvmloRCnhYRSFQhs/uE9tXByprbc3NXJ3I0vI4mVl5ZSRmUERUdF0IzSMwnILyKRjN/Ie9BIZGBkL7AmZakz6eOb+5QsUu/0nGt2jC40fP46cXN1En89BJWzd/DNt9D9D3tNmkbNPK6Gn8oPCe6Cybm/5kZJv36A+X68kXbAp7qUPEXqaxMSE7h3aTyfnfLAXYuybiFNjN64N+I6O7fwO9l/2naudT2sqLSqsMSMhkyMHKOL3Q9Tzy6VkAuVGBtbCBStGi76x+XtyToimCa+9Sv0GDCAzS+ZEtVNcdBTt2LmL/nf1BjUZN5ncO3RC3pqJ1/oA59ae7WR59RytWrSQmvm0rD2jWu4E3rhOU+bOJ+cpH5NrOz8IAeh5FSQxNqHrP3xHmVER1PebVXLwmW0VY9yAVKZMEhNTCvh2OV1evXgKrv+gfE9xXhPwLlBizg3fuMvT3K2RAKQisvKRWxcPQCH7dlH/5WuhTVqBT5cIbCUzPpYCV35N0wcPoAmTJlV2WeXn1Z2HBQfRRwu+oJJ+w6jl0BGi4HNZbu3ZRh6hN2nD+vVkDHZRX4oMC6U3ZnxErb5cTuZQ4qrGHfB9VO6FZV9BQ86H7uGBxlhKHv0GkWVjD2GAVuTJrIcltwNjX45NvnOzPa6z2UKFeNBUIbTidQNWrO/t0Ka9MNjwTebTnKku+K8uKyEYmJJuXacbaAH9lqwR1HgGnXliNgak4MXzacPcWTTi1VcF/qeSgQY/7BwcaPi//kVH1/6H0oxMydbTSwkA1QSYp8eC3RmcOEhbN218JNA5ZRs7O3K3NKcd21CRff+lki9Xglu3nhS0czMFbttIsefOUNSfx6jRi32IzRmV7Ac9wcDUDOyq0BIK2h0ky0GFqgPfrvnQl7/1mzRDj9kLE4NZkJIs8DhmKfnJSYLEcGnlN9T147lk7dkMtY0BHPyNB62ri+bR+lkfUvdevYXn6/uPB8E+PbrT5qXfkEWn7mSArv6QFos8WUQMWvWNEM8RA9/joGbeLejCoV8pzdKOLDHwVwKKxFkyc+3SgyKPH6VijHHFeblC8MK4VNU7uBRy8MMO/S8Prf9g9XLpKl8AyG+0eGW0gWAPwQ3uMmxwOjr5bfCrJXR760/kP+dD2jtyAHkNGU5O7TtW8kF9DKRB+3bTuC5+1KN3H+Vk633u6OpKM0e/RsF7twsKTvWEuLWHo8W97NuGvFr4VL/9SL/fGzOaYk/8JjQ85YRY7GUW3O3T+UJj43upwYGCQMGNT0FcCabQX8ycXNnwV3WjIoIy8DoWLu497DCis0LBxMpE2MFfhIQr4guHRj16k88rb1AJi4RMyDAfkgHdvEyTp/J48vhoJNiVWUwk5aalChKGcsos0mVe+oveGjOm8nJOTg4dOXKE9u7dSzExMZXX63rStUcPMk1LokKIwcqAcjrMDZoPG0mNe/YTkrVt0QqsGEosWIyC+IxZMhoka7dqgTcwcXRwNoBcrdDiOMO0MFWTBRuzmMXIs5D/Zy0wHny2X9vWZG5ppcibLl26RD/++KMARKGikirvanZiaGxMPVv7UCKUIJaWFMS9MScpidx0y6kpRFSmwMBA6gHAhg8fTqNHj6ZOnTrRrl1s96o7mQAHLzsbYkFBF3mpEADm/DtMmSEMrN0Yj2riJYuhXEHSXLAM2ElVnscP1RRhdVWJgMRcOnZVudTytbHENazoFXyTB9/Mu4HUq3t3IW4Jesz06dPpxRdfpMmTJwtADIA4GRcXp5KWpj86+/lSVliIkI/iGbY2ZsXHUDNXFwEErtgJEyZQUBCb2uWUmpoq5B8aygp23cnTzZVgDlDJV5EKSy3Ofp3JCdZVbqjVoeOxkZVFPH9d8YzyURl4aW5S4gMpuhbXFhNrkN4vv0btxk8UXs7A3JzajH1XPpgqpcJmVoKZ1cPTQ7i6ZcsWWg+xjgdbBV24cIE++uijqt6kuKHBsUnjxiRD+pU9Ec9wiyvMSCdne56cIrp27ZoQhB9K//Ly8mj//v1KVzQ/tbGClo4BVEdHGaaq55kVO/l1oqiTx8GW2SZYRWwaCf11rwwN9Jeqq1VnKinmxsefSLh2uWog4y6Fv15fLqMuM/9NTfoMJOumXoJdpSoJ9CMArA8lwgwVw7Rjxw7l25Xnx44do9jY2Mrfmp5wurpoBGUypR6LtlGOnmVQwX4SEhJUkjOBBrls2TLy9fWlqKgolXua/uAxhBth9daseJ4nWRr37CPYgmRKih4rUNH+x+ne0QM7ETdAEV/5qAI8INx+a/MPKSX5eZXdS5BwkDnP4vCAUg41/2GSz/hwi+TCchdXpkGDBtHatWuFFlv9nnK82s4FuwjKUNER5dGQj6GVNSWnpQm/GzVqpPK4HeTx2bNnU69evcgV0lF9KCkljYxgPMNL1fg4Sy6wUgoNNR2mEW71DHrs+TN0+vNPr0DR+qTGB3GxGvD0IPF6wKxz3ywo55pmPsXHgrQUyoqOJJdOXWu0n7BSJYOlLhvjCA9EjcEalKlPnz40ZcoU4boTrHp1pfS0dCqDHM8zVAriXmbr1ZxuRUYLPa5Dhw7Us2dPxW1hPOncubMwsI8bN67yuuYn5XQXUpEVa6VKLLP68yzXO7b1I+AmaPlX1q6k36e9czT3QfwIxJW3iuoP4Xd14DnKdljYZp74eKo0LymRDCGlpATeguzqTkbWMEejVVcnBlvHxo4iIyKFWwyyMi1ZsoRatmxJffv2JTc3caOV8rN8fgcmBCM3rsyqvFmKsHRyoQQ9Qwq6fYsM0No2bdpE3SsGeO598fHxtHr1avLyYmt23SgSRrv7xTKydnV/SGJRTok1drduL1AI+Pm+14fcubRy0fvSrKyXESdJOV7186ompHonIP1eyEUMGt7oLm48K9Pohd5k7VGz6s69Qgp+m3f1IrH00qJFC7KysqIbN25QAWzizCr69etH3377LRnCTl5XWrFuPZn2H0bGLKoqVTy3tmL0ghjYjAYPHkw2Njb01ltv0cCBA2kMZPuFCxcKPL6u+XH8pcuWUnb7buQAc7WqRqqaGrNeI2trCtm/JxkNlMW68whVLUQ1euWvmlq84uapnLj7vS4s/XIUjPtJTr4dBSOY4qbyUQZtzhWj+9nwKEqDSYFp5syZdOvWLTp79izdvHmTdu/eTeYVg6/ys2LnN68E0F2pjByaeT8EAIt0TTG4nUlMowtnTgtJccWyGMsNgPl8fejc6VN0LCqemvcfXKuRsCrdcpJAR3L27ch2c427szrgOW0YYehPNpixP0t1JYEjCIRWaASLoMkLfWntunWKq+Ti4iLwXWYz9aFSAPvVqv9Q09ffFlo6i5BsmtAHv2dNUR/KFb90uxmf0idLllNsdFR9slF5JuROIH20eDm1+2A2xpSHFE6VuIofLIA4tvXlWZNOimtiRzHg+fn2ts19HPV4qkwNsd285Usj6UBYNPkfP64mpua35s+fR6kt2gu2cVbSpNlZdO/Ifjq3aD79Oev/6PS8T+jmpg0k0dMl16mf0JtTp1Mw+H19yf/4MXrrk9nk8eEcsoFvj6ZzxBzP1tuHJ0E0Bp5rSYzawH6jozCcqYusC17v99FnNOvrObTW0IBe6NNXXfRa70mhhc6bN4/OyPSp2+T3hZ7GgLOhDpPKDz0X8J8l1G3WfHL5cC69OXcBTRzYj8a/9y6ZYZpSE7ofEU7r/ruB/ohLIt8FS8kKA6ryJIhYGuXQL2AMI3PXRq0xOc6NuUzsmdoG18rn4Mk13m/i9M7wi6md1VTEZknCGFN6lr6daPPqlVSemkTt27cXZvMrExQ5uYgxYfq/51KUZ0vqNHGaIJ7eP/UHHf9gIiylNXtalMJ9D+MQeQ0cQj7v/R+duHCRftn0Ez0Iv0fcT43B91nR0kXPYHZZCJ0kLuY+nfb3p283fE9rDhylbL/u1GHyDDIyw5QkJJW6UbnA/mLOnpRk3Y/ajGeVHQBqTEq0xZvY2jc1VZmJqTGdyovsx2jp5Exdv1lD27ZvpCNvjafRgwZSv/79yA0eY6pakPyx1MREGNQu0v7fj1NgkYyaTZhBXi3byHUGQwndxqRD9em1ygyVTiKhunsOHEqdp3xAuVDizgRcoIO79pMkO4NMIWgYAXgZGkcBWmgB9A4910bk2HsYdW7TjvQhjvK0pag4opSf8ikb8OB6yKM5D7DsLKuWxIDXN7a1d2WLpLKdRG2KuMk8TyLRpy5TZ1JGXAz95P8HbfjsC3LU0yFXayuyNjcTKiA7L58SM7MoqbiUytyakOuIsfRCqzaCpsjORfkALwGqN+sRmlDpPbjk+Z8g5y7dyRTirM/g4aQz9GUqQY8ohlhbChWf7S4GPChjgIbLhlBWbuEM+qOSRWMP5iBNENgxVi2JAW8G5x1bnvbTdKBR5MYVxWZRS0wGdHhnkvDSeVDvk6EFx8FwxaIuT4+ZwrelHcQ+CaQVBqAMkgyr3g8uX6TS/RtpWm8v6vv+IJq3Zi+MbjWzTiP0ismj+9Ok1/vSzsM76MI5f2o6YRqZQOFjXs2yiSFsN0aEWSwhZ+SOSqgzRxGervkfO0FZYGwAedQcQ/WqGPDmRlbWZmxpqyvwimyYpyqmEc1h97BgNxGFmAblgwdt5Tg6MFOk37tHevu/p3UfDiVnFzsaWlpGHdp40r5jAXQnPJay4QYiQTwXB2vqiOvDevuRXytMPiPTRR+9Qsf8r9Oq5fPI/YMF8INxpnL0QFa86stGFO+i7sjvwDNOmPxorMkYIQo8TMHGlUCpy1mDewLI3GplaiKDFSQd2kNLXoWt28mWCgtZlSDq27UV9e/ehqRwpygukQkytpEBu+HpUWmpDNcALoiHxSEDOpGVhQnN/34lNf9ssXxwB/BPkhh4cAeYWCzcCtNFWXyNthrl8pnC2qbPpuGGIMEgBxu7S0EStUULLpJWSRdSjAOFRezsCk0RYOtBmWKwCwulVFIBuqKMHK9719Y0zFWHEi6cU5m5UsR57EdUrAEkIiNLK0dN0hZToIyhITYM6lxa6AGlRVLiqtYHK6mREEcP0olEoidUQG3aJVsUO7R0p8KYKGHSpMa0HuNFHtN4LDQwt2LHVvXaJiLU8naVJZJUn1mpvPMETgQ9wMaa4ot0KSMjm6xtLKkUrIl7ArdyBjkjK5ei41IpK6+IJGg2Hu725AqWhFqjEvByBUdhU3VwRAIZOveElPRk2YwABTLWhVBgYI5mL3ffruquNWAlBrwu20cajLi7sv9M1wH07bYjNPv9IXBQMqHM7FwKDo+nC7eiKTVPj3KKyikk9B6NGjWS9l+4TcblOTSwW3Pq6tuMTI1h/UQf/evcbfo1Ugo7T58a5xCexDuxtdTQzJzd2NizIEddHmLAq3v2idyDvzk1GTSUbkH2Hv/tSTLKz4S514HcPH2o58ip8BzoSKdP+dM2eHrNnjNHcHy9dTuQtsCLbNWujdSpZRPKB9+/KTWnRtPmkAHEyPpKZHV9QW6kElMztnuL+hCKAQ89Rp0IUteiaRaf7d+er7xBhQOG0LXPZtKJxSvJQWnmKhGargVME0zMfvx821H2iOH0wW4ZWQ0ZJ3hAeDdtKnh9NRToQmHAEmE55VlvbvFqSQz4YmU3DrUpPeab7BbIthVzsA5zM2i6SpSFKUYsxlC6QmQCbdRAX5ccWsLFGkY2rjx1ExgqDz+mHyz9QRhhTOWampp0xRi4lNePPhXiwQqzS6U4FoP9KJMU6r0xgFYmMzZDQFPmhsKL2VgzfhokMRakQCOxvMWAL4J4V/p0XoEw0BpRkaExxcfGqbwHz69Wtx1JeL4ASkz16yoPNsAPXpcLEp3fFAO+oLQon1dmNUCRH86CxUgzrFE6Xm1iJT0lBZURo/KADK28DFqvjsIcoXK3YX4wSuzkBFL1bqohe1Hgsd5JqskkSA1pP/IlmbSYmg8aRjv8z9Dta1epCBbGn9avoyP3oulqOpxT9+8T8mD3xC0//0xmTZs1kI5d+6tV+HeKAi82uBaW5OUXYpDC9H7DE1e4KRTBZjNm0zsLl5AFBts8Bxd6cdEqKsZkxrzV8Iv/335KLSwimU878n3j7cq1Sw1fWs4R45Jc4xbDVVRzLSzOz80TRDJ0+6fBcthNzhGTIrbL1gpu4SbwHuMBlNXznt+sprToKPKGW4cZVmTwTNTTKGNlJYPXsBIFemTgpcV5eTnsRsHrRp8Op+eJFSzzAf8WlkIqJJwK9cLOw1MYVBWm50oQntIJT8qDhH/qiiDG48tL8nMzhZfiFv9UCdVewyAvyOs1XH9aRdXRETAXw1XULIz1PfkZvMqNJQwtiSNQYdt6DMDn56aC3cDwJJqWeKm0MSoREEUTk8Bp7Ej0NOXjytL+7U8g1TwmHs+vmlrEwGtbfF2qXZQvi7Z4AXjsN/C45l3rUvpnMq58LHwswGcUAfiGmnd9JsFWKvRjG1yRZiZc556WCK/0Ss/AKVB6nMDnYHsU2Gu02GtS9RXAP7ICxXnlYb1+IfuNaEkcgceluXJOBVjxV8AualpSjwD7qlW0eFFbjSZSjbSksKCg0lCmPu/n+y64ccUCDlG/Gk2AL8Ecphz45xtWDd4eCpR8wfMjz0BxZjJor4Xc4kWFUw2K9o+Owi1eDrzo4KqOF3Fv4AkQY95fTJixf0o2+WelspjH62LqDwPsAODFvuiRCOzcH1X9HaoDzzXVz9BQ8nILD5cubk62LhamRkYB0elm7NQvOp9VPfXn7TdE7lIYfIf379xt2ui+3e5GxFPA7fDcMwEh5xNTM9cDjt8UkCgD3xVALxn7Uo/eo/7VhZo3cSYzE0PSh3PoK7M3wsWiRNxZRJHq83oE8Ow/aW5lTgN6tacBL7Rl33/zyNjkwet2/DH4p73+WwuKiqcDnjwF8MMG92y3a828d8ybN3WBr6EMDqDywPI77w+pJXEEWMnkdbe5WBBdyu7jFStYGrva05oF71Lntl7jp36+UZKTXziO+bhLN99mG3esnGHu1diJCgukgt+5QlPlo7AERjsRIo48YvDWuIVQeXixhIL4nDetGzuqN019c+BYXB/JwC+eM2mEo429lbDERVlyYawZ9Dw4+uthOY6WRBBAI+WV59JybM8OF0JFW9WHy/iF6/coNOQ+vdTXjxNZyWgWsQv0+etbydvDhd59tTdJsRKDFwsbGhnQ/ZhESsrMJ08s8KppzlOkKM/VbWbIEiyszgKrwWBKTT3dqAiNVtGY567aTQkpmdg1jyZyi//gs9V7/Hkh15hh3YUuYmxkSEVY+rL0h4M0bPKKO8nZRZkGqEktpxdpR2jxBvDGSMoryRs2aXnEjoN/oa2iF2Dpaa/evvTJhJfoSmDkLqTyJ7d4Xt3FP/pxl8jIyqNTl4Ppv7tOxF24HvY1ru9x6dTtChx1rHGuJREEeJM6UxvbwtBLyUPf/nT9Gxv/d3rS4J7t3dycbWnzvtNZeHwbJ6Fg3Ltnr9jVesfh8/2ycvLTIf78jns7ERIRLLA5ggV7SDWorzkyfhaJ56bhI89+5bwU5+uzV+5uQOiCcwcE3p9M2E9SAXwhVs59fD0oihWoquEYP0BmEjMzY65J+VcZhGvaf7UhIHe8Yl1TvnJCvj1WpeKkeIx5vDJVB53vmRmaWQD46lGVH9OeKxDggVRiZs6tlFt9raQJmpbYy8BQ69BUK4YP3eDdakGPDLyVsbW1QiJ6KBPtBVUE2FCGBWh8UUBf9W7VL01avK0RXKWf7E4AVQV65s8gc0vkHw545BZvyxtrNsgi3WcedbwA5Hasg+I3UbvkUrMWjxV2T2tVyLNWF8wZ9GAoA6ld+ScKvL5EYlvXjYKeNbAea3lZU8VkCEh1WWK1TMSBNzW14Q19tKymGnK1/QSPr5j+UzvvKgo8tk2x1seydC2rqQ3p6tfh4sHroHR11XoaiAIP9deSTZ1a0gwBNiSyq7a+iB1dDHg9bJpmxlunKCZGNMv+OY8lN8SrxVbtTcAnwTaypvyRES09XgTEgDfAskYjwR8Qo7WWNEOAd14tKy+vye5VmYAY8BLwd8OHvgpT+bj2pDoCbFvhTSywdbvaHZpEgcdn5vB9ZbFo1bN/jn+Dv/O6YCCvdtsTMUT14QuInRm0NjKNmxKwElaYyz82XOtjYsBjyxg9nvfWkoYIsPmc91kA5ap7RAx4/hSNFnZ1CFa/x8DzZ+qIeH61VhIDvgwjNHbfqfV57Y1qCPAivUJeJSmyo7YY8LIyWQnvAFwtee1PdQgUpKfyuqU0dXHEgC/B7tbY4loLvDoQle/x9uuFaWnsov1IwBfj06FFnJiWNEOAt2HPT01iXiPwm9qeEmvxRSUFefna9U+1wad6nT0xeMONgpSUeNwRRBvVGFW/xICXSnNys3gLRK1oUwVabWcMPH+eLy85IaK2OIrrYsBDNMpKEbZN0frVKDCr9cgfOMDHWfiDlHdqjVRxQxT4wozMWP5uqtahSQxK+XL6tJAgjnhbLLYo8LISaWRuQryw66lYYs/7ff5yT2pIELthC/6R6vAQBR4Ph2ZGhWtbvDoUcY85AnOGjLAQBl3tly05KU2AD8u4F5av3cuA4aqd2Js6LfQu5cTFnEUsUcVHE+DjMyJCo7CRBKpVK9vUBj0PrHEXzqJ9lp2oLY7ydU2AL8mKjAzIionGJK7Cq1s5Ce05N8hifG47/tL5aKBxTRNENAGeSooK/ky4ckmxTl+TdJ+rOOxHkxJ0m1LvBh7Fi6tVnBTAaAQ8Iv8Vc+5UOm+mr6WHEdABJ4g4ekCGrXd3P3y35iuaAp+UeOPKyYyIe/xlr5pTek6vsiNAHsTtKP8TlwHBVU1h0BR4aLA5W+8dPaBwT9M0/X98PPaTDDv8K+UmxG3Ay2psTdQYeCTqH3701xt5yYlamb6iOcltM6kUsm9nMC4dqLis0aEuwBdnx9xfdfeXHcIW4hql/g+PxFup39m9hcCCl+FVC+ryunUBntPdd2fXlouZUZGKDerrktc/Ki7vxJQeFkJ3tm1ihWlPXV+OV6fVhWRQpMIKM9Pe9Bo8XP951WaF+X941p2aOzMvJThwDAB8UBcQOW5dgedn4lDThqYOjj1dOnQWvl7AF58n4q8fX1m3koJ2b5uN9z5Yn3evD/Ccz8Wkm1c7OrZp72Xl6fVcrfjGKncKPfALnV/y+RZsfzUPWIjaZWqqmPoCLystKjqZEHCpv0vHLk7mru7PBfjc0sNP/FZ+ev4nhzDZ8T4ArbdGWV/guRLzpTnZx+Mun+9u36qdq3VjD+FbHjXV7jN/DbYYLNCguwf30dUvZ8nyMjIW4Z1uPMp7PQrwnG+ONCuzRcHNi91klvbk2LqN8P1tXnL4TyHBMIh9HC79dw25Xz1IPy+eqJuTWzg0MCyWbTKsrdaLHgV4L3tri51LZo15e9nMUXRl904KuBlGLh26kMTEWL5dYr2K9Pd5CIsyKAtf0jz31b9pqG4crf5sHDnaW/MuS/p5BUWDLt8K548Qnq9PiesL/EBsbPbr9pXT/EYN6oIvSxrSCGz5VBqGj9du2kFk70q2nk0Fz4RnUeTkpUf8hYg7B/ZR/LqFtHBIc5r+zkvCpnilFVteDXqxPSWnZ/fDjie8p2RgXcGvz8zGK8P7ddj246JJpg42FpUfNGfZ1ghbaQXeCaevNx2jECtvaj1uIjl6ewsi57Ow143wmWy8R9Kt63QdrGWQXTF9Pn0UOdjb4D1Vx1F9fIVNio+0D5+8IuN0QHA3AH+vLuDXtcX7DujR5uDu1R+Y21pbUDH2LlPm5rzbnJOjLY3q35E8StME9hMaGEImzq4EuV+u7QrugMpP1aW4jz8uWxd5VSMvrku8cZUur15cdGnFop3pYXcPNnF37DC4l6+hMfYZw8xSZea8QR6/q7mZCTV1dzD+5dhlc+z3c6gyggYndQFex97W4sedK2e0aeTuQBevhQlfizc35UJX5cQvYIhFJMaQd2Pvx9Phjdtigg7uu5d5L9QaO01LTBwc8EFxC94GVlj3r/JwVTJP7gwtmudH+SuUXIb8pESKOHaYLq9akhLw3fJtqcF3psGu/j0KcBY7pV66cjti6NA+vqZmeE/ef5OXJaXiQ+6zV+ykF/y8qRk20Lt4PcwtIiZpK57RaBKEX64urMZ55IBOd3/dMMvqQWI6TZj7A/24CKzEzqqyNWANAxLUoQ27T9DKjUf+ikvKWIE8/kLgD4e3QnjVrkXLEdjjrG2jF/voObRuRyb2DjA1YzknbywK9wheuPXYFjMDZObVvO5UqGi8bSm+kJkTHyu0bsyR5iZcDwjIS3iwD2U7gpCAUJ36Duvte2j3mg/NDFBh7LVuhB0JV2w8IuzPOX/WWPpg7vdla7cf98WDGvN6/eq5qPmN79oiRxiHlvxwiF4f0pXcXeyE7f34GQPsNIcdRGnmN9tKtx04+xUuLUdQZoxsOg3GTPxihPaB2zf1t3B172Pr7dPOzqe1g33rtmTt4YWKcCQDfCpaMcAJnYm7FIJ8ra1S90KCQtsBoIL9hIHGH7uVl/Mmm/iicWFWJmzlD2BBDCW05pL00LsxOL9alJ19Eg+fRYjkVNTQqaNnbk79ePG2rf/96n1dTrsYOxSOH9mLJi34iTLgnxoa9YB9aZLVpPHQLRRZY5L4NHW7uGL22I57frtEm5dOqdxN1BiDanRcChck8+TFO5OQIrcgTckBEX0QfA1MzduaOTl7mzo5u5k6Otma2Nqbco8wwrYtBubmMEebCBMxwkeuUHLuHTJ8gBFaNNzm8og/FMa+LQVpqcXwYczOT0lKyUtOjsYxBN2SvbvYtY79GutkwkV8pn9//O7QpUs/HYtV2+jZ2CJyIfaRPHctlM5cCZ5TWlrGpmGNqS7Ac6KDba3Nf/pi+ijXGROHUxm2w+WvxP9x7jZ9smRbaHDEg3cQJ4AjPiLx7kZ2CPYVwQZHKwTeA4Y3Z1D0VJ7x4V7FQDI745aXjpBaceTfapc94n5d6GNseP31lDH9TWTg96s3/5Z94vztuUiAZ5+eODVGy7+zb+3H5f7bFpRPfL1vCcTIn5Gr0xPP+e+RgR+K8SXCAgQetxqUXJDbYYTrCN0bNOd/SGb/D3hTRL92TvroAAAAAElFTkSuQmCC"}}}`))
+	assert.NoError(t, err)
+	assert.Equal(t, "3-abcxyz", newRev)
+
+	msg, ok = client.pushReplication.WaitForMessage(4)
+	assert.True(t, ok)
+
+	// Check the request was NOT sent with a deltaSrc property - as it has an attachment
+	assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
+	// Check the request body was NOT the delta
+	msgBody, err := msg.Body()
+	assert.NoError(t, err)
+	assert.NotEqual(t, `{"greetings":{"3-":[{"aloha":"charlie"}]}}`, string(msgBody))
+	assert.Equal(t, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"},{"aloha":"charlie"}]}`, string(msgBody))
+
+	// Ensure document is as expected
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev="+newRev, "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"_id":"doc1","_rev":"3-abcxyz","greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"},{"aloha":"charlie"}]}`, resp.Body.String())
+
+	// create doc1 rev 4-42246765e6b1f5daaebc61e19a8c54a8 on server - remove a property - keep attachment present
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev="+newRev, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok = client.WaitForRev("doc1", "4-42246765e6b1f5daaebc61e19a8c54a8")
+	assert.True(t, ok)
+	assert.Equal(t, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(data))
+
+	msg, ok = client.pullReplication.WaitForMessage(7)
+	assert.True(t, ok)
+
+	if base.IsEnterpriseEdition() {
+		// Check the request was sent with the correct deltaSrc property
+		assert.Equal(t, newRev, msg.Properties[revMessageDeltaSrc])
+		// Check the request body was the actual delta
+		msgBody, err := msg.Body()
+		assert.NoError(t, err)
+		assert.Equal(t, `{"greetings":{"3-":[]}}`, string(msgBody))
+	} else {
+		// Check the request was NOT sent with a deltaSrc property
+		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
+		// Check the request body was NOT the delta
+		msgBody, err := msg.Body()
+		assert.NoError(t, err)
+		assert.NotEqual(t, `{"greetings":{"3-":[]}}`, string(msgBody))
+		assert.Equal(t, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
+	}
+
+}
