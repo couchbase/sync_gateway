@@ -476,7 +476,7 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 	if err != nil {
 		return "", fmt.Errorf("error from revResponse: %v", err)
 	}
-	btc.updateLastReplicatedRev(docID, revID)
+	btc.updateLastReplicatedRev(docID, newRevID)
 
 	return newRevID, nil
 }
