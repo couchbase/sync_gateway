@@ -206,3 +206,34 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 }
+
+func BenchmarkRevisionCacheRead(b *testing.B) {
+
+	//Create test document
+	loader := func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
+		body = Body{
+			BodyId:  id.DocID,
+			BodyRev: id.RevID,
+		}
+		history = Revisions{RevisionsStart: 1}
+		channels = base.SetOf("*")
+		return
+	}
+	cache := NewRevisionCache(5000, loader, nil)
+
+	// trigger load into cache
+
+	_, err := cache.Get("doc1", "rev1")
+	assert.NoError(b, err, "Error initializing cache for BenchmarkRevisionCacheRead")
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		//GET the document until test run has completed
+		for pb.Next() {
+			docrev, err := cache.Get("doc1", "rev1")
+			if err != nil {
+				assert.Fail(b, "Unexpected error for docrev:%+v", docrev)
+			}
+		}
+	})
+}
