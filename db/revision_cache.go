@@ -2,10 +2,10 @@ package db
 
 import (
 	"container/list"
+	"errors"
+	"expvar"
 	"sync"
 	"time"
-
-	"expvar"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -47,7 +47,7 @@ type revCacheValue struct {
 	attachments AttachmentsMeta // Document _attachments property
 	delta       *RevCacheDelta  // Available delta *from* this revision
 	err         error           // Error from loaderFunc if it failed
-	lock        sync.Mutex      // Synchronizes access to this struct
+	lock        sync.RWMutex    // Synchronizes access to this struct
 }
 
 type RevCacheDelta struct {
@@ -199,18 +199,36 @@ func (rc *RevisionCache) purgeOldest_() {
 // multiple goroutines try to load at the same time.
 func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc, copyType BodyCopyType) (docRev DocumentRevision, cacheHit bool, err error) {
 
-	value.lock.Lock()
-	defer value.lock.Unlock()
+	// Attempt to read cached value
+	value.lock.RLock()
+	if value.body != nil || value.err != nil {
+		docRev, err = value._asDocumentRevision(copyType)
+		value.lock.RUnlock()
+		return docRev, true, err
+	}
+	value.lock.RUnlock()
 
-	cacheHit = true
-	if value.body == nil && value.err == nil {
+	// Cached value not found - attempt to load if loaderFunc provided
+	if loaderFunc == nil {
+		return DocumentRevision{}, false, errors.New("No loader function defined for revision cache")
+	}
+	value.lock.Lock()
+	// Check if the value was loaded while we waited for the lock - if so, return.
+	if value.body != nil || value.err != nil {
+		cacheHit = true
+	} else {
 		cacheHit = false
-		if loaderFunc != nil {
-			value.body, value.history, value.channels, value.attachments, value.expiry, value.err = loaderFunc(value.key)
-		}
+		value.body, value.history, value.channels, value.attachments, value.expiry, value.err = loaderFunc(value.key)
 	}
 
-	docRev = DocumentRevision{
+	docRev, err = value._asDocumentRevision(copyType)
+	value.lock.Unlock()
+	return docRev, cacheHit, err
+}
+
+// _asDocumentRevision copies the rev cache value into a DocumentRevision.  Requires callers hold at least the read lock on value.lock
+func (value *revCacheValue) _asDocumentRevision(copyType BodyCopyType) (DocumentRevision, error) {
+	return DocumentRevision{
 		RevID:       value.key.RevID,
 		Body:        value.body.Copy(copyType), // Never let the caller mutate the stored body
 		History:     value.history,
@@ -218,34 +236,33 @@ func (value *revCacheValue) load(loaderFunc RevisionCacheLoaderFunc, copyType Bo
 		Expiry:      value.expiry,
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Delta:       value.delta,
-	}
-	return docRev, cacheHit, value.err
+	}, value.err
 }
 
 // Retrieves the body etc. out of a revCacheValue.  If they aren't already present, loads into the cache value using
 // the provided document.
 func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext, copyType BodyCopyType) (docRev DocumentRevision, cacheHit bool, err error) {
-	value.lock.Lock()
-	defer value.lock.Unlock()
 
-	cacheHit = true
-	if value.body == nil && value.err == nil {
+	value.lock.RLock()
+	if value.body != nil || value.err != nil {
+		docRev, err = value._asDocumentRevision(copyType)
+		value.lock.RUnlock()
+		return docRev, true, err
+	}
+	value.lock.RUnlock()
+
+	value.lock.Lock()
+	// Check if the value was loaded while we waited for the lock - if so, return.
+	if value.body != nil || value.err != nil {
+		cacheHit = true
+	} else {
 		cacheHit = false
 		value.body, value.history, value.channels, value.attachments, value.expiry, value.err = context.revCacheLoaderForDocument(doc, value.key.RevID)
 	}
 
-	// Copy stored body based on copyType, always copy attachments
-	docRev = DocumentRevision{
-		RevID:       value.key.RevID,
-		Body:        value.body.Copy(copyType), // Never let the caller mutate the stored body
-		History:     value.history,
-		Channels:    value.channels,
-		Expiry:      value.expiry,
-		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
-		Delta:       value.delta,
-	}
-
-	return docRev, cacheHit, value.err
+	docRev, err = value._asDocumentRevision(copyType)
+	value.lock.Unlock()
+	return docRev, cacheHit, err
 }
 
 // Stores a body etc. into a revCacheValue if there isn't one already.
