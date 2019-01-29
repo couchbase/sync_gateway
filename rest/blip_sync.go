@@ -752,6 +752,12 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 		sender.Send(outrq.Message)
 	}
 
+	if response := outrq.Response(); response != nil {
+		if response.Type() == blip.ErrorType {
+			errorBody, _ := response.Body()
+			bh.Logf(base.LevelWarn, base.KeyAll, "Client returned error in rev response for doc %q / %q: %s", docID, revID, errorBody)
+		}
+	}
 }
 
 // Received a "rev" request, i.e. client is pushing a revision body
