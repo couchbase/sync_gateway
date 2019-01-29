@@ -97,7 +97,7 @@ var kHandlersByProfile = map[string]blipHandlerMethod{
 	messageChanges:        userBlipHandler((*blipHandler).handleChanges),
 	messageRev:            userBlipHandler((*blipHandler).handleRev),
 	messageGetAttachment:  userBlipHandler((*blipHandler).handleGetAttachment),
-	messageProposeChanges: (*blipHandler).handleProposedChanges,
+	messageProposeChanges: (*blipHandler).handleProposeChanges,
 }
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
@@ -572,7 +572,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 }
 
 // Handles a "proposeChanges" request, similar to "changes" but in no-conflicts mode
-func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
+func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	var changeList [][]interface{}
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		return err
