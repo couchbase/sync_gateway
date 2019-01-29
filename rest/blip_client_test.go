@@ -178,7 +178,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
 		btr.storeMessage(msg)
-		panic("unexpected msg to DefaultHandler")
+		base.Panicf(base.KeyAll, "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
 	}
 }
 
