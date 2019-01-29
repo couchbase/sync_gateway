@@ -164,6 +164,99 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	goassert.True(t, idsOk)
 }
 
+// Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via Put
+func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	rev1body := Body{
+		"value":         1234,
+		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+	}
+	rev1key := "doc1"
+	rev1id, err := db.Put(rev1key, rev1body)
+	assert.NoError(t, err, "Unexpected error calling db.Put")
+
+	// Get the raw document directly from the bucket, validate _attachments property isn't found
+	var bucketBody Body
+	_, err = testBucket.Bucket.Get(rev1key, &bucketBody)
+	assert.NoError(t, err, "Unexpected error calling bucket.Get")
+	_, ok := bucketBody[BodyAttachments]
+	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
+
+	// Get the raw document directly from the revcache, validate _attachments property isn't found
+	docRevision, err := db.revisionCache.GetCached(rev1key, rev1id)
+	assert.NoError(t, err, "Unexpected error calling db.revisionCache.Get")
+	_, ok = docRevision.Body[BodyAttachments]
+	assert.False(t, ok, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
+	_, ok = docRevision.Attachments["myatt"]
+	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
+
+	// db.getRev stamps _attachments back in from revcache Attachment metadata
+	body, err := db.GetRev(rev1key, rev1id, false, nil)
+	assert.NoError(t, err, "Unexpected error calling db.GetRev")
+	atts, ok := body[BodyAttachments]
+	assert.True(t, ok, "_attachments property was not stamped back in body during db.GetRev: %#v", body)
+
+	attsMap, ok := atts.(AttachmentsMeta)
+	_, ok = attsMap["myatt"]
+	assert.True(t, ok, "'myatt' not found in attachment map")
+}
+
+// Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via PutExistingRev
+func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	docKey := "doc1"
+	rev1body := Body{
+		"value": 1234,
+	}
+	rev1id, err := db.Put(docKey, rev1body)
+	assert.NoError(t, err, "Unexpected error calling db.Put")
+
+	rev2id := "2-xxx"
+	rev2body := Body{
+		"value":         1235,
+		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
+	}
+	err = db.PutExistingRev(docKey, rev2body, []string{rev2id, rev1id}, false)
+	assert.NoError(t, err, "Unexpected error calling db.PutExistingRev")
+
+	// Get the raw document directly from the bucket, validate _attachments property isn't found
+	var bucketBody Body
+	_, err = testBucket.Bucket.Get(docKey, &bucketBody)
+	assert.NoError(t, err, "Unexpected error calling bucket.Get")
+	_, ok := bucketBody[BodyAttachments]
+	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
+
+	// Get the raw document directly from the revcache, validate _attachments property isn't found
+	docRevision, err := db.revisionCache.Get(docKey, rev2id)
+	assert.NoError(t, err, "Unexpected error calling db.revisionCache.Get")
+	_, ok = docRevision.Body[BodyAttachments]
+	assert.False(t, ok, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
+	_, ok = docRevision.Attachments["myatt"]
+	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
+
+	// db.getRev stamps _attachments back in from revcache Attachment metadata
+	body, err := db.GetRev(docKey, rev2id, false, nil)
+	assert.NoError(t, err, "Unexpected error calling db.GetRev")
+	atts, ok := body[BodyAttachments]
+	assert.True(t, ok, "_attachments property was not stamped back in body during db.GetRev: %#v", body)
+
+	attsMap, ok := atts.(AttachmentsMeta)
+	_, ok = attsMap["myatt"]
+	assert.True(t, ok, "'myatt' not found in attachment map")
+}
+
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestRevisionImmutableDelta(t *testing.T) {
 	loader := func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {

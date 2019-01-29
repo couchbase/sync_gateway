@@ -817,6 +817,10 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 		if err != nil {
 			return nil, nil, nil, err
 		}
+		// move _attachment metadata to syncdata of doc
+		doc.syncData.Attachments = GetBodyAttachments(body)
+		delete(body, BodyAttachments)
+
 		body[BodyRev] = newRev
 		return body, newAttachments, nil, nil
 	})
@@ -855,7 +859,6 @@ func (db *Database) IsIllegalConflict(doc *document, parentRevID string, deleted
 	for _, leafRevId := range doc.History.GetLeaves() {
 		if leafRevId == parentRevID && doc.History[leafRevId].Deleted == false {
 			return false
-			break
 		}
 	}
 
@@ -1442,7 +1445,7 @@ func (db *Database) getChannelsAndAccess(doc *document, body Body, revID string)
 			err = output.Rejection
 			if err != nil {
 				base.InfofCtx(db.Ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
-				base.DebugfCtx(db.Ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev),  base.UD(body), base.UD(oldJson))
+				base.DebugfCtx(db.Ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
 				db.DbStats.StatsSecurity().Add(base.StatKeyNumDocsRejected, 1)
 				if isAccessError(err) {
 					db.DbStats.StatsSecurity().Add(base.StatKeyNumAccessErrors, 1)
