@@ -401,11 +401,8 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 		// We didn't copy fromBody earlier (in case we could get by with just the delta), so need do it now
 		fromBodyCopy := fromRevision.Body.DeepCopy()
 
-		// Stamp _attachments property into bodies *before* diffing, so the delta is applied over attachment metadata too
-		if fromRevision.Attachments != nil {
-			fromBodyCopy["_attachments"] = fromRevision.Attachments
-		}
-		if toBody.Attachments != nil {
+		// If attachments have changed between these revisions, stamp the newest attachment metadata in full
+		if toBody.Attachments != nil && !fromRevision.Attachments.Equal(toBody.Attachments) {
 			toBody.Body["_attachments"] = toBody.Attachments
 		}
 

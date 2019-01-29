@@ -811,3 +811,60 @@ func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 
 	return data, xdata, nil
 }
+
+// Equal returns true if both of the given attachment metadata maps are considered the same.
+func (a AttachmentsMeta) Equal(b AttachmentsMeta) bool {
+	if len(a) != len(b) {
+		return false
+	} else if a == nil && b != nil {
+		return false
+	} else if b == nil && a != nil {
+		return false
+	}
+
+	for aAttachmentName, aAttachment := range a {
+		// make sure attachment is in b
+		if _, ok := b[aAttachmentName]; !ok {
+			return false
+		}
+
+		aAttachmentMap, ok := aAttachment.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		bAttachment, ok := b[aAttachmentName]
+		if !ok {
+			return false
+		}
+		bAttachmentMap, ok := bAttachment.(map[string]interface{})
+		if !ok {
+			return false
+		}
+
+		// for each attachment property found in a, make sure there's one in b, and it matches
+		for key, aVal := range aAttachmentMap {
+			bVal, found := bAttachmentMap[key]
+			if !found {
+				return false
+			}
+			switch aValTyped := aVal.(type) {
+			case string:
+				if bValTyped, ok := bVal.(string); !ok || aValTyped != bValTyped {
+					return false
+				}
+			case int:
+				if bValTyped, ok := bVal.(int); !ok || aValTyped != bValTyped {
+					return false
+				}
+			case bool:
+				if bValTyped, ok := bVal.(bool); !ok || aValTyped != bValTyped {
+					return false
+				}
+			default:
+				panic(fmt.Sprintf("unknown attachment metadata property type: %T", aVal))
+			}
+		}
+	}
+
+	return true
+}

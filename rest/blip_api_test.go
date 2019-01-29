@@ -1858,15 +1858,55 @@ func TestBlipDeltaSyncWithAttachments(t *testing.T) {
 		// Check the request body was the actual delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
-		assert.Equal(t, `{"greetings":{"3-":[]}}`, string(msgBody))
+		// Delta is sent with the full _attachments property stamped into it
+		assert.NotEqual(t, `{"greetings":{"3-":[]}}`, string(msgBody))
+		assert.Equal(t, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"greetings":{"3-":[]}}`, string(msgBody))
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
 		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
 		// Check the request body was NOT the delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
+		// Make sure the full body, and full attachment metadata is sent
 		assert.NotEqual(t, `{"greetings":{"3-":[]}}`, string(msgBody))
+		assert.NotEqual(t, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"greetings":{"3-":[]}}`, string(msgBody))
 		assert.Equal(t, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
 	}
+
+	/* FIXME: Below is for removal of attachment - client doesn't support delete yet...
+
+	// create doc1 rev 5-7e35ae83a546837013ec313d905dd4ae on server - remove attachment
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=4-42246765e6b1f5daaebc61e19a8c54a8", `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok = client.WaitForRev("doc1", "5-7e35ae83a546837013ec313d905dd4ae")
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(data))
+
+	msg, ok = client.pullReplication.WaitForMessage(9)
+	assert.True(t, ok)
+
+	if base.IsEnterpriseEdition() {
+		// Check the request was sent with the correct deltaSrc property
+		assert.Equal(t, newRev, msg.Properties[revMessageDeltaSrc])
+		// Check the request body was the actual delta
+		msgBody, err := msg.Body()
+		assert.NoError(t, err)
+		// Delta is sent with the full _attachments property stamped into it
+		assert.NotEqual(t, `{"greetings":{"3-":[]}}`, string(msgBody))
+		assert.Equal(t, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"greetings":{"3-":[]}}`, string(msgBody))
+	} else {
+		// Check the request was NOT sent with a deltaSrc property
+		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
+		// Check the request body was NOT the delta
+		msgBody, err := msg.Body()
+		assert.NoError(t, err)
+		// Make sure the full body, and full attachment metadata is sent
+		assert.NotEqual(t, `{"greetings":{"3-":[]}}`, string(msgBody))
+		assert.NotEqual(t, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"greetings":{"3-":[]}}`, string(msgBody))
+		assert.Equal(t, `{"_attachments":{"gopher":{"content_type":"image/png","digest":"sha1-kjMyuTOF0wAPc2GqUflILISzaPM=","length":10623,"revpos":3,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(msgBody))
+	}
+
+	*/
 
 }
