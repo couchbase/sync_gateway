@@ -178,7 +178,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
 		btr.storeMessage(msg)
-		panic("unexpected msg to DefaultHandler")
+		base.Panicf(base.KeyAll, "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
 	}
 }
 
@@ -267,7 +267,7 @@ func (btc *BlipTesterClient) StartPullSince(continuous, since string) (err error
 	return nil
 }
 
-// Close will empty GetServerUUIDthe stored docs, close the underlying replications, and finally close the rest tester.
+// Close will empty the stored docs and close the underlying replications.
 func (btc *BlipTesterClient) Close() {
 	btc.docsLock.Lock()
 	btc.docs = make(map[string]map[string][]byte, 0)
@@ -287,6 +287,7 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
 }
 
 // PushRev creates a revision on the client, and immediately sends a changes request for it.
+// The rev ID is always: "N-abcxyz", where N is rev generation for predictability.
 func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revID string, err error) {
 	var parentDocBody []byte
 

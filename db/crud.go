@@ -386,6 +386,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 			return fromRevision.Delta.DeltaBytes, nil
 		} else {
 			// TODO: Recurse and merge deltas when gen(revCacheDelta.toRevID) < gen(toRevId)
+			// until then, fall through to generating delta for given rev pair
 		}
 	}
 

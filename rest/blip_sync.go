@@ -97,7 +97,7 @@ var kHandlersByProfile = map[string]blipHandlerMethod{
 	messageChanges:        userBlipHandler((*blipHandler).handleChanges),
 	messageRev:            userBlipHandler((*blipHandler).handleRev),
 	messageGetAttachment:  userBlipHandler((*blipHandler).handleGetAttachment),
-	messageProposeChanges: (*blipHandler).handleProposedChanges,
+	messageProposeChanges: (*blipHandler).handleProposeChanges,
 }
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
@@ -572,7 +572,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 }
 
 // Handles a "proposeChanges" request, similar to "changes" but in no-conflicts mode
-func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
+func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	var changeList [][]interface{}
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		return err
@@ -752,6 +752,12 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 		sender.Send(outrq.Message)
 	}
 
+	if response := outrq.Response(); response != nil {
+		if response.Type() == blip.ErrorType {
+			errorBody, _ := response.Body()
+			bh.Logf(base.LevelWarn, base.KeyAll, "Client returned error in rev response for doc %q / %q: %s", docID, revID, errorBody)
+		}
+	}
 }
 
 // Received a "rev" request, i.e. client is pushing a revision body

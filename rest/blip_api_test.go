@@ -1676,7 +1676,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
-	// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e on client
+	// create doc1 rev 2-abcxyz on client
 	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 	assert.NoError(t, err)
 	assert.Equal(t, "2-abcxyz", newRev)
@@ -1737,7 +1737,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
-	// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e on client
+	// create doc1 rev 2-abcxyz on client
 	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 	assert.NoError(t, err)
 	assert.Equal(t, "2-abcxyz", newRev)
