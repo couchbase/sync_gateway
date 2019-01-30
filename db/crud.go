@@ -402,6 +402,8 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 		fromBodyCopy := fromRevision.Body.DeepCopy()
 
 		// If attachments have changed between these revisions, we need to fall back to full body replication
+		// TODO: Change once this CBL issue is fixed: https://github.com/couchbase/couchbase-lite-core/issues/679
+		// The change depends on the implementation of the CBL fix, but will likely involve stamping `_attachments` into fromRevision.Body and/or toBody.Body before diffing
 		if toBody.Attachments != nil && !fromRevision.Attachments.Equal(toBody.Attachments) {
 			base.DebugfCtx(db.Ctx, base.KeySync, "doc %q / %q had changed attachment, backing out of delta replication", base.UD(docID), base.UD(toRevID))
 			return nil, nil
