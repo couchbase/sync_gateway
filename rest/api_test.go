@@ -18,6 +18,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -3774,6 +3775,29 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 		//PUT a new document until test run has completed
 		for pb.Next() {
 			qrt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateUUID()), threekdoc)
+		}
+	})
+}
+
+func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
+
+	defer base.SetUpTestLogging(base.LevelWarn, base.KeyAll)()
+	//Create test documents
+	var rt RestTester
+	keys := make([]string, 5000)
+	for i := 0; i < 5000; i++ {
+		key := fmt.Sprintf("doc%d", i)
+		keys[i] = key
+		rt.SendRequest("PUT", "/db/"+key, `{"prop":true}`)
+	}
+
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		//GET the document until test run has completed
+		for pb.Next() {
+			key := keys[rand.Intn(5000)]
+			rt.SendRequest("GET", "/db/"+key+"?rev=1-45ca73d819d5b1c9b8eea95290e79004", "")
 		}
 	})
 }
