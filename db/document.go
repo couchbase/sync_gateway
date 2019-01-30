@@ -823,15 +823,11 @@ func (a AttachmentsMeta) Equal(b AttachmentsMeta) bool {
 	}
 
 	for aAttachmentName, aAttachment := range a {
-		// make sure attachment is in b
-		if _, ok := b[aAttachmentName]; !ok {
-			return false
-		}
-
 		aAttachmentMap, ok := aAttachment.(map[string]interface{})
 		if !ok {
 			return false
 		}
+
 		bAttachment, ok := b[aAttachmentName]
 		if !ok {
 			return false
