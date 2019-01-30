@@ -364,7 +364,7 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 	case "continuous":
 		autoImport = true
 	default:
-		return false, fmt.Errorf("Unrecognized value for import_docs: %#v.  Must be set to 'continous', true or false, or be omitted entirely", dbConfig.AutoImport)
+		return false, fmt.Errorf("Unrecognized value for import_docs: %#v.  Must be set to 'continuous', true or false, or be omitted entirely", dbConfig.AutoImport)
 	}
 
 	return autoImport, nil
