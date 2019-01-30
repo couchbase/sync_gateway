@@ -822,61 +822,100 @@ func (a AttachmentsMeta) Equal(b AttachmentsMeta) bool {
 		return false
 	}
 
+	// Find attachments in B that aren't in A
+	for bAttachmentName := range b {
+		if _, seen := a[bAttachmentName]; !seen {
+			return false
+		}
+	}
+
+	// Make sure attachments in A match those in B
 	for aAttachmentName, aAttachment := range a {
 		aAttachmentMap, ok := aAttachment.(map[string]interface{})
 		if !ok {
 			return false
 		}
-
-		bAttachment, ok := b[aAttachmentName]
-		if !ok {
-			return false
-		}
-		bAttachmentMap, ok := bAttachment.(map[string]interface{})
+		bAttachmentMap, ok := b[aAttachmentName].(map[string]interface{})
 		if !ok {
 			return false
 		}
 
-		// for each attachment property found in a, make sure there's one in b, and it matches
-		for key, aVal := range aAttachmentMap {
-			bVal, found := bAttachmentMap[key]
-			if !found {
+		// Have to do really ugly type assertions/map checks because AttachmentsMeta is just a map[string]interface{}
+		// This would be a LOT cleaner if we used an AttachmentMap for DocAttachment structs in the revcache instead.
+		if aVal, ok := aAttachmentMap["content_type"]; !ok {
+			return false
+		} else if bVal, ok := bAttachmentMap["content_type"]; !ok {
+			return false
+		} else if aValString, ok := aVal.(string); !ok {
+			return false
+		} else if bValString, ok := bVal.(string); !ok {
+			return false
+		} else if aValString != bValString {
+			return false
+		}
+
+		if aVal, ok := aAttachmentMap["digest"]; !ok {
+			return false
+		} else if bVal, ok := bAttachmentMap["digest"]; !ok {
+			return false
+		} else if aValString, ok := aVal.(string); !ok {
+			return false
+		} else if bValString, ok := bVal.(string); !ok {
+			return false
+		} else if aValString != bValString {
+			return false
+		}
+
+		if aVal, ok := aAttachmentMap["length"]; !ok {
+			return false
+		} else if bVal, ok := bAttachmentMap["length"]; !ok {
+			return false
+		} else if aValInt, ok := aVal.(int); !ok {
+			if aValFloat, ok := aVal.(float64); ok {
+				aValInt = int(aValFloat)
+			} else {
 				return false
 			}
-			switch aValTyped := aVal.(type) {
-			case string:
-				if bValTyped, ok := bVal.(string); !ok || aValTyped != bValTyped {
-					return false
-				}
-			case int:
-				bValTyped, ok := bVal.(int)
-				if !ok {
-					// These values may be float64 when unmarshalled from JSON, but are really ints in this case
-					if bvalFloat, ok := bVal.(float64); ok {
-						bValTyped = int(bvalFloat)
-					}
-				}
-				if aValTyped != bValTyped {
-					return false
-				}
-			case float64:
-				bValTyped, ok := bVal.(int)
-				if !ok {
-					// These values may be float64 when unmarshalled from JSON, but are really ints in this case
-					if bvalFloat, ok := bVal.(float64); ok {
-						bValTyped = int(bvalFloat)
-					}
-				}
-				if int(aValTyped) != bValTyped {
-					return false
-				}
-			case bool:
-				if bValTyped, ok := bVal.(bool); !ok || aValTyped != bValTyped {
-					return false
-				}
-			default:
-				panic(fmt.Sprintf("unknown attachment metadata property type: %T", aVal))
+		} else if bValInt, ok := bVal.(int); !ok {
+			if bValFloat, ok := bVal.(float64); ok {
+				bValInt = int(bValFloat)
+			} else {
+				return false
 			}
+		} else if aValInt != bValInt {
+			return false
+		}
+
+		if aVal, ok := aAttachmentMap["revpos"]; !ok {
+			return false
+		} else if bVal, ok := bAttachmentMap["revpos"]; !ok {
+			return false
+		} else if aValInt, ok := aVal.(int); !ok {
+			if aValFloat, ok := aVal.(float64); ok {
+				aValInt = int(aValFloat)
+			} else {
+				return false
+			}
+		} else if bValInt, ok := bVal.(int); !ok {
+			if bValFloat, ok := bVal.(float64); ok {
+				bValInt = int(bValFloat)
+			} else {
+				return false
+			}
+		} else if aValInt != bValInt {
+			return false
+		}
+
+		if aVal, ok := aAttachmentMap["stub"]; !ok {
+			return false
+		} else if bVal, ok := bAttachmentMap["stub"]; !ok {
+			return false
+		} else if aValString, ok := aVal.(bool); !ok {
+			return false
+		} else if bValString, ok := bVal.(bool); !ok {
+			return false
+		} else if aValString != bValString {
+			return false
 		}
 	}
 
