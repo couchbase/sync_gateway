@@ -853,7 +853,25 @@ func (a AttachmentsMeta) Equal(b AttachmentsMeta) bool {
 					return false
 				}
 			case int:
-				if bValTyped, ok := bVal.(int); !ok || aValTyped != bValTyped {
+				bValTyped, ok := bVal.(int)
+				if !ok {
+					// These values may be float64 when unmarshalled from JSON, but are really ints in this case
+					if bvalFloat, ok := bVal.(float64); ok {
+						bValTyped = int(bvalFloat)
+					}
+				}
+				if aValTyped != bValTyped {
+					return false
+				}
+			case float64:
+				bValTyped, ok := bVal.(int)
+				if !ok {
+					// These values may be float64 when unmarshalled from JSON, but are really ints in this case
+					if bvalFloat, ok := bVal.(float64); ok {
+						bValTyped = int(bvalFloat)
+					}
+				}
+				if int(aValTyped) != bValTyped {
 					return false
 				}
 			case bool:
