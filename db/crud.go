@@ -400,6 +400,13 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 		}
 		// We didn't copy fromBody earlier (in case we could get by with just the delta), so need do it now
 		fromBodyCopy := fromRevision.Body.DeepCopy()
+
+		// If attachments have changed between these revisions, we need to fall back to full body replication
+		if toBody.Attachments != nil && !fromRevision.Attachments.Equal(toBody.Attachments) {
+			base.DebugfCtx(db.Ctx, base.KeySync, "doc %q / %q had changed attachment, backing out of delta replication", base.UD(docID), base.UD(toRevID))
+			return nil, nil
+		}
+
 		delta, err = base.Diff(fromBodyCopy, toBody.Body)
 		if err != nil {
 			return nil, err
