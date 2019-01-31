@@ -1508,13 +1508,13 @@ func TestResponseEncoding(t *testing.T) {
 	response = rt.SendRequestWithHeaders("GET", "/db/_local/loc1", "",
 		map[string]string{"Accept-Encoding": "foo, gzip, bar"})
 	assertStatus(t, response, 200)
-	goassert.DeepEquals(t, response.HeaderMap["Content-Encoding"], []string{"gzip"})
+	assert.Equal(t, "gzip", response.Header().Get("Content-Encoding"))
 	unzip, err := gzip.NewReader(response.Body)
 	goassert.Equals(t, err, nil)
 	unjson := json.NewDecoder(unzip)
 	var body db.Body
-	goassert.Equals(t, unjson.Decode(&body), nil)
-	goassert.Equals(t, body["long"], str)
+	assert.Equal(t, nil, unjson.Decode(&body))
+	assert.Equal(t, str, body["long"])
 }
 
 func TestLogin(t *testing.T) {

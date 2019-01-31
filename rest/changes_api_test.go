@@ -324,7 +324,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("bernard"))
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 	a.Save(bernard)
 
 	var wg sync.WaitGroup
@@ -353,10 +353,10 @@ func TestPostChangesUserTiming(t *testing.T) {
 		if len(changes.Results) != 3 {
 			log.Printf("len(changes.Results) != 3, dumping changes response for diagnosis")
 			log.Printf("changes: %+v", changes)
-			log.Printf("changesResponse status code: %v.  Headers: %+v", changesResponse.Code, changesResponse.HeaderMap)
+			log.Printf("changesResponse status code: %v.  Headers: %+v", changesResponse.Code, changesResponse.Header())
 			log.Printf("changesResponse raw body: %s", changesResponse.Body.String())
 		}
-		goassert.Equals(t, len(changes.Results), 3)
+		assert.Equal(t, 3, len(changes.Results))
 	}()
 
 	// Wait for changes feed to get into wait mode where it is blocked on the longpoll changes feed response
