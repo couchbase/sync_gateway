@@ -90,22 +90,8 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		return errors.New("nil LogConsoleConfig")
 	}
 
-	if lcc.Rotation.MaxSize == nil {
-		// A value of zero disables the log file rotation in Lumberjack.
-		zero := 0
-		lcc.Rotation.MaxSize = &zero
-	} else if *lcc.Rotation.MaxSize < 0 {
-		return fmt.Errorf(belowMinValueFmt, "MaxSize", "console", *lcc.Rotation.MaxSize, 0)
-	}
-
-	if lcc.Rotation.MaxAge == nil {
-		// A value of zero disables the age-based log cleanup in Lumberjack.
-		zero := 0
-		lcc.Rotation.MaxAge = &zero
-	} else if *lcc.Rotation.MaxAge < 0 {
-		return fmt.Errorf(belowMinValueFmt, "MaxAge", "console", *lcc.Rotation.MaxAge, 0)
-	} else if *lcc.Rotation.MaxAge > maxAgeLimit {
-		return fmt.Errorf(aboveMaxValueFmt, "MaxAge", "console", *lcc.Rotation.MaxAge, maxAgeLimit)
+	if err := lcc.initRotationConfig("console", 0, 0); err != nil {
+		return err
 	}
 
 	// Default to os.Stderr if alternative output is not set

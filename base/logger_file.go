@@ -119,23 +119,8 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 		lfc.Enabled = BoolPtr(level != LevelDebug)
 	}
 
-	if lfc.Rotation.MaxSize == nil {
-		lfc.Rotation.MaxSize = &defaultMaxSize
-	} else if *lfc.Rotation.MaxSize == 0 {
-		// A value of zero disables the log file rotation in Lumberjack.
-	} else if *lfc.Rotation.MaxSize < 0 {
-		return fmt.Errorf(belowMinValueFmt, "MaxSize", level, *lfc.Rotation.MaxSize, 0)
-	}
-
-	if lfc.Rotation.MaxAge == nil {
-		defaultMaxAge := minAge * defaultMaxAgeMultiplier
-		lfc.Rotation.MaxAge = &defaultMaxAge
-	} else if *lfc.Rotation.MaxAge == 0 {
-		// A value of zero disables the age-based log cleanup in Lumberjack.
-	} else if *lfc.Rotation.MaxAge < minAge {
-		return fmt.Errorf(belowMinValueFmt, "MaxAge", level, *lfc.Rotation.MaxAge, minAge)
-	} else if *lfc.Rotation.MaxAge > maxAgeLimit {
-		return fmt.Errorf(aboveMaxValueFmt, "MaxAge", level, *lfc.Rotation.MaxAge, maxAgeLimit)
+	if err := lfc.initRotationConfig(name, defaultMaxSize, minAge); err != nil {
+		return err
 	}
 
 	if lfc.Output == nil {
@@ -153,6 +138,29 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 			bufferSize = defaultFileLoggerCollateBufferSize
 		}
 		lfc.CollationBufferSize = &bufferSize
+	}
+
+	return nil
+}
+
+func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, minAge int) error {
+	if lfc.Rotation.MaxSize == nil {
+		lfc.Rotation.MaxSize = &defaultMaxSize
+	} else if *lfc.Rotation.MaxSize == 0 {
+		// A value of zero disables the log file rotation in Lumberjack.
+	} else if *lfc.Rotation.MaxSize < 0 {
+		return fmt.Errorf(belowMinValueFmt, "MaxSize", name, *lfc.Rotation.MaxSize, 0)
+	}
+
+	if lfc.Rotation.MaxAge == nil {
+		defaultMaxAge := minAge * defaultMaxAgeMultiplier
+		lfc.Rotation.MaxAge = &defaultMaxAge
+	} else if *lfc.Rotation.MaxAge == 0 {
+		// A value of zero disables the age-based log cleanup in Lumberjack.
+	} else if *lfc.Rotation.MaxAge < minAge {
+		return fmt.Errorf(belowMinValueFmt, "MaxAge", name, *lfc.Rotation.MaxAge, minAge)
+	} else if *lfc.Rotation.MaxAge > maxAgeLimit {
+		return fmt.Errorf(aboveMaxValueFmt, "MaxAge", name, *lfc.Rotation.MaxAge, maxAgeLimit)
 	}
 
 	return nil
