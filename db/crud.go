@@ -993,7 +993,12 @@ func (db *Database) updateAndReturnDoc(
 		//Need to check and add attachments here to ensure the attachment is within size constraints
 		attachmentErr := db.setAttachments(newAttachments)
 		if attachmentErr != nil{
-			err = errors.Wrap(attachmentErr, "Error adding attachment")
+
+			if attachmentErr.Error() == "document value was too large" {
+				err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
+			}else{
+				err = errors.Wrap(attachmentErr, "Error adding attachment")
+			}
 			return
 		}
 

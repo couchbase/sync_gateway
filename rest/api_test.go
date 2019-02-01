@@ -2762,15 +2762,15 @@ func TestAddingAttachment(t *testing.T){
 			name: "Regular attachment",
 			docName: "doc1",
 			byteSize: 20,
-			expectedPut:201,
-			expectedGet:200,
+			expectedPut:http.StatusCreated,
+			expectedGet:http.StatusOK,
 		},
 		{
 			name: "Too large attachment",
 			docName: "doc2",
 			byteSize: 22000000,
-			expectedPut:500,
-			expectedGet:404,
+			expectedPut:http.StatusRequestEntityTooLarge,
+			expectedGet:http.StatusNotFound,
 		},
 	}
 
