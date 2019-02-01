@@ -601,7 +601,7 @@ func (config *ServerConfig) setupAndValidateDatabases() error {
 
 // setupAndValidateLogging sets up and validates logging,
 // and returns a slice of defferred logs to execute later.
-func (config *ServerConfig) setupAndValidateLogging() (warnings []base.DeferredLogFn, err error) {
+func (config *ServerConfig) SetupAndValidateLogging() (warnings []base.DeferredLogFn, err error) {
 
 	if config.Logging == nil {
 		config.Logging = &base.LoggingConfig{}
@@ -1034,7 +1034,7 @@ func RegisterSignalHandler() {
 	}()
 }
 
-func panicHandler() (panicHandler func()) {
+func PanicHandler() (panicHandler func()) {
 	return func() {
 		// Recover from any panics to allow for graceful shutdown.
 		if r := recover(); r != nil {
@@ -1052,14 +1052,14 @@ func panicHandler() (panicHandler func()) {
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain(runMode SyncGatewayRunMode) {
 	RegisterSignalHandler()
-	defer panicHandler()()
+	defer PanicHandler()()
 
 	ParseCommandLine(runMode)
 
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
-	warnings, err := config.setupAndValidateLogging()
+	warnings, err := config.SetupAndValidateLogging()
 	if err != nil {
 		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
 	}
