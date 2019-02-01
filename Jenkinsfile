@@ -78,6 +78,14 @@ pipeline {
             }
         }
 
+        stage('Windows Service build') {
+            steps {
+                withEnv(["GOOS=windows", "PATH+=${GO}:${GOPATH}/bin"]) {
+                    sh 'go build -v github.com/couchbase/sync_gateway/service/sg-windows/sg-service'
+                    sh 'go build -v github.com/couchbase/sync_gateway/service/sg-windows/sg-accel-service'
+                }
+            }
+        }
         stage('CE Build') {
             steps {
                 withEnv(["SG_EDITION=CE", "PATH+=${GO}:${GOPATH}/bin"]) {
