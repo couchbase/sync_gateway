@@ -938,6 +938,7 @@ func (config *ServerConfig) NumIndexWriters() int {
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
 
+	log.Printf("Toy build test")
 	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKey().EnabledLogKeys())
 	base.Infof(base.KeyAll, "Console LogLevel: %v", base.ConsoleLogLevel())
 	base.Infof(base.KeyAll, "Log Redaction Level: %s", config.Logging.RedactionLevel)
