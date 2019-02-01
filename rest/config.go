@@ -932,6 +932,8 @@ func (config *ServerConfig) NumIndexWriters() int {
 }
 
 // Starts and runs the server given its configuration. (This function never returns.)
+//
+// Note: Changes in here probably need to be made in the corresponding sg-accel ServerMain!
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
 
@@ -1050,6 +1052,8 @@ func PanicHandler() (panicHandler func()) {
 
 // Main entry point for a simple server; you can have your main() function just call this.
 // It parses command-line flags, reads the optional configuration file, then starts the server.
+//
+// Note: Changes in here probably need to be made in the corresponding sg-accel ServerMain!
 func ServerMain(runMode SyncGatewayRunMode) {
 	RegisterSignalHandler()
 	defer PanicHandler()()
