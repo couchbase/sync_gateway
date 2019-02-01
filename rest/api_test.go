@@ -3203,16 +3203,6 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	var body db.Body
 
-	// Disable rev cache so that the _bulk_get request is forced to go back to the bucket to load the doc
-	// rather than loading it from the (stale) rev cache.  The rev cache will be stale since the test
-	// short-circuits Sync Gateway and directly updates the bucket.
-	// Reset at the end of the test, to avoid bleed into other tests
-	normalCapacity := db.KDefaultRevisionCacheCapacity
-	db.KDefaultRevisionCacheCapacity = 0
-	defer func() {
-		db.KDefaultRevisionCacheCapacity = normalCapacity
-	}()
-
 	docIdDoc1 := "doc"
 	attachmentName := "attach1"
 
@@ -3294,6 +3284,11 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// Put the doc back into couchbase
 	err = bucket.Set(docIdDoc1, 0, couchbaseDoc)
 	assert.NoError(t, err, "Error putting couchbaseDoc")
+
+	// Flush rev cache so that the _bulk_get request is forced to go back to the bucket to load the doc
+	// rather than loading it from the (stale) rev cache.  The rev cache will be stale since the test
+	// short-circuits Sync Gateway and directly updates the bucket.
+	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// Get latest rev id
 	response = rt.SendRequest("GET", resource, "")

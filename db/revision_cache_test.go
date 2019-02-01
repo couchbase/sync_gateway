@@ -64,14 +64,17 @@ func TestRevisionCache(t *testing.T) {
 		cache.Put(body[BodyId].(string), docRev)
 	}
 
-	for i := 0; i < 3; i++ {
-		docRev, _ := cache.Get(ids[i], "x")
-		goassert.True(t, docRev.Body == nil)
-	}
-	for i := 3; i < 13; i++ {
-		docRev, _ := cache.Get(ids[i], "x")
-		verify(docRev.Body, docRev.History, docRev.Channels, i)
-	}
+	// LRU-specific
+	/*
+		for i := 0; i < 3; i++ {
+			docRev, _ := cache.Get(ids[i], "x")
+			goassert.True(t, docRev.Body == nil)
+		}
+		for i := 3; i < 13; i++ {
+			docRev, _ := cache.Get(ids[i], "x")
+			verify(docRev.Body, docRev.History, docRev.Channels, i)
+		}
+	*/
 }
 
 func TestLoaderFunction(t *testing.T) {

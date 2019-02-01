@@ -652,6 +652,11 @@ func (db *Database) ReloadUser() error {
 //////// ALL DOCUMENTS:
 
 type IDAndRev struct {
+	DocID string
+	RevID string
+}
+
+type IDRevAndSequence struct {
 	DocID    string
 	RevID    string
 	Sequence uint64
@@ -664,7 +669,7 @@ type ForEachDocIDOptions struct {
 	Limit    uint64
 }
 
-type ForEachDocIDFunc func(id IDAndRev, channels []string) bool
+type ForEachDocIDFunc func(id IDRevAndSequence, channels []string) bool
 
 // Iterates over all documents in the database, calling the callback function on each
 func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
@@ -716,7 +721,7 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 			break
 		}
 
-		if callback(IDAndRev{docid, revid, seq}, channels) {
+		if callback(IDRevAndSequence{docid, revid, seq}, channels) {
 			count++
 		}
 		//We have to apply limit check after callback has been called

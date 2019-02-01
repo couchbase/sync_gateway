@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"errors"
 	"expvar"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -14,13 +15,22 @@ import (
 var KDefaultRevisionCacheCapacity uint32 = 5000
 
 // An LRU cache of document revision bodies, together with their channel access.
-type RevisionCache struct {
+type RevisionCacheLRU struct {
 	cache      map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
 	lruList    *list.List                 // List ordered by most recent access (Front is newest)
 	capacity   uint32                     // Max number of revisions to cache
 	loaderFunc RevisionCacheLoaderFunc    // Function which does actual loading of something from rev cache
 	lock       sync.Mutex                 // For thread-safety
 	statsCache *expvar.Map                // Per-db stats related to cache
+}
+
+type RevisionCache struct {
+	cache      map[IDAndRev]*revCacheValue // Fast lookup of cache entry by doc/rev ID
+	rrList     []IDAndRev                  // Slice of IDAndRev for random removal
+	capacity   uint32                      // Max number of revisions to cache
+	loaderFunc RevisionCacheLoaderFunc     // Function which does actual loading of something from rev cache
+	lock       sync.RWMutex                // For thread-safety
+	statsCache *expvar.Map                 // Per-db stats related to cache
 }
 
 // Revision information as returned by the rev cache
@@ -48,6 +58,7 @@ type revCacheValue struct {
 	delta       *RevCacheDelta  // Available delta *from* this revision
 	err         error           // Error from loaderFunc if it failed
 	lock        sync.RWMutex    // Synchronizes access to this struct
+	rrListIndex int             // Position in cache.rrList.  Used for targeted removal
 }
 
 type RevCacheDelta struct {
@@ -63,8 +74,7 @@ func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, stats
 	}
 
 	return &RevisionCache{
-		cache:      map[IDAndRev]*list.Element{},
-		lruList:    list.New(),
+		cache:      make(map[IDAndRev]*revCacheValue),
 		capacity:   capacity,
 		loaderFunc: loaderFunc,
 		statsCache: statsCache,
@@ -165,33 +175,58 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 		panic("RevisionCache: invalid empty doc/rev id")
 	}
 	key := IDAndRev{DocID: docid, RevID: revid}
-	rc.lock.Lock()
-	defer rc.lock.Unlock()
-	if elem := rc.cache[key]; elem != nil {
-		rc.lruList.MoveToFront(elem)
-		value = elem.Value.(*revCacheValue)
-	} else if create {
-		value = &revCacheValue{key: key}
-		rc.cache[key] = rc.lruList.PushFront(value)
-		for len(rc.cache) > int(rc.capacity) {
-			rc.purgeOldest_()
-		}
+
+	rc.lock.RLock()
+	value, ok := rc.cache[key]
+	rc.lock.RUnlock()
+
+	if ok {
+		return value
 	}
-	return
+
+	if create {
+		rc.lock.Lock()
+		// check if created while waiting for lock
+		value, ok = rc.cache[key]
+		if ok {
+			rc.lock.Unlock()
+			return value
+		}
+
+		// Add value to cache
+		value = &revCacheValue{key: key}
+
+		// update rrList, trigger random replacement if at capacity
+		var rrListIndex int
+		if len(rc.cache) >= int(rc.capacity) {
+			rrListIndex = rand.Intn(int(rc.capacity))
+			removeKey := rc.rrList[rrListIndex]
+			delete(rc.cache, removeKey)
+			rc.rrList[rrListIndex] = key
+		} else {
+			rc.rrList = append(rc.rrList, key)
+			rrListIndex = len(rc.rrList) - 1
+		}
+
+		value.rrListIndex = rrListIndex
+		rc.cache[key] = value
+		rc.lock.Unlock()
+
+	}
+	return value
 }
 
 func (rc *RevisionCache) removeValue(value *revCacheValue) {
 	rc.lock.Lock()
-	if element := rc.cache[value.key]; element != nil && element.Value == value {
-		rc.lruList.Remove(element)
+	if cacheValue, ok := rc.cache[value.key]; ok && cacheValue == value {
+		i := cacheValue.rrListIndex
+		if rc.rrList[i] == value.key {
+			// Simple slice remove (non-pointer values)
+			rc.rrList = append(rc.rrList[:i], rc.rrList[i+1:]...)
+		}
 		delete(rc.cache, value.key)
 	}
 	rc.lock.Unlock()
-}
-
-func (rc *RevisionCache) purgeOldest_() {
-	value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
-	delete(rc.cache, value.key)
 }
 
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
