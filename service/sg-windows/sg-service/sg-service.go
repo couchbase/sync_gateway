@@ -40,7 +40,7 @@ func (p *program) startup() error {
 		p.SyncGateway = exec.Command(p.ExePath, "--defaultLogFilePath", defaultLogFilePath)
 	}
 
-	err = p.SyncGateway.Start()
+	err := p.SyncGateway.Start()
 	if err != nil {
 		logger.Errorf("Failed to start Sync Gateway due to error %v", err)
 		return err
