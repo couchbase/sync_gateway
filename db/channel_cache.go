@@ -158,7 +158,6 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 		c._appendChange(&removalChange)
 	}
 	c._pruneCacheLength()
-	base.Infof(base.KeyCache, "    #%d ==> channel %q", change.Sequence, base.UD(c.channelName))
 }
 
 // If certain conditions are met, it's possible that this change will be added and then

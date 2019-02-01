@@ -731,6 +731,8 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 				channelCache.AddLateSequence(change)
 			}
 		}
+
+		base.Infof(base.KeyCache, "#%d ==> channels %v", change.Sequence, base.UD(addedTo))
 	}()
 
 	if !change.TimeReceived.IsZero() {
