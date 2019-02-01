@@ -29,7 +29,7 @@ func assertLogContains(t *testing.T, s string, f func()) {
 
 	// temporarily override logger for the function call
 	level := LevelDebug
-	consoleLogger = &ConsoleLogger{LogLevel: &level, logger: log.New(&b, "", 0)}
+	consoleLogger = &ConsoleLogger{LogLevel: &level, FileLogger: FileLogger{Enabled: true, logger: log.New(&b, "", 0)}}
 	defer func() { consoleLogger = originalLogger }()
 
 	f()

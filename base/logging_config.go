@@ -1,7 +1,9 @@
 package base
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/pkg/errors"
@@ -25,8 +27,8 @@ const (
 	loggerCollateFlushDelay = 1 * time.Second
 )
 
-// ErrUnsetLogFilePath is returned when no logFilePath, or --defaultLogFilePath fallback can be used.
-var ErrUnsetLogFilePath = errors.New("No logFilePath configured, and --defaultLogFilePath flag is not set. Log files required for product support are not being generated.")
+// ErrUnsetLogFilePath is returned when no log_file_path, or --defaultLogFilePath fallback can be used.
+var ErrUnsetLogFilePath = errors.New("No log_file_path configured, and --defaultLogFilePath flag is not set. Log files required for product support are not being generated.")
 
 type LoggingConfig struct {
 	LogFilePath    string              `json:"log_file_path,omitempty"`   // Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
@@ -54,7 +56,13 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 
 	// If there's nowhere to specified put log files, we'll log an error, but continue anyway.
 	if !hasLogFilePath(&c.LogFilePath, defaultLogFilePath) {
-		warnings = append(warnings, func() { Errorf(KeyAll, "%v", ErrUnsetLogFilePath) })
+		warnings = append(warnings, func() {
+			if !consoleLogger.isStderr {
+				// Explicitly log this error to stderr
+				fmt.Println(addPrefixes(ErrUnsetLogFilePath.Error(), nil, LevelError, KeyAll))
+			}
+			Errorf(KeyAll, "%v", ErrUnsetLogFilePath)
+		})
 		return warnings, nil
 	}
 
@@ -101,12 +109,13 @@ func validateLogFilePath(logFilePath *string, defaultLogFilePath string) error {
 		*logFilePath = defaultLogFilePath
 	}
 
+	// Make full directory structure if it doesn't already exist
 	err := os.MkdirAll(*logFilePath, 0700)
 	if err != nil {
 		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
 	}
 
-	// Ensure LogFilePath is a directory. Lumberjack will check permissions when it opens the logfile.
+	// Ensure LogFilePath is a directory. Lumberjack will check file permissions when it opens/creates the logfile.
 	if f, err := os.Stat(*logFilePath); err != nil {
 		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
 	} else if !f.IsDir() {
@@ -114,6 +123,31 @@ func validateLogFilePath(logFilePath *string, defaultLogFilePath string) error {
 	}
 
 	return nil
+}
+
+// validateLogFileOutput ensures the given file has permission to be written to.
+func validateLogFileOutput(logFileOutput string) error {
+	if logFileOutput == "" {
+		return fmt.Errorf("empty log file output")
+	}
+
+	// Validate containing directory
+	logFileOutputDirectory := filepath.Dir(logFileOutput)
+	err := validateLogFilePath(&logFileOutputDirectory, "")
+	if err != nil {
+		return err
+	}
+
+	// Validate given file is writeable
+	file, err := os.OpenFile(logFileOutput, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		if os.IsPermission(err) {
+			return errors.Wrap(err, "invalid file output")
+		}
+		return err
+	}
+
+	return file.Close()
 }
 
 // hasLogFilePath returns true if there's either a logFilePath set, or we can fall back to a defaultLogFilePath.

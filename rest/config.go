@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -1065,6 +1066,9 @@ func ServerMain(runMode SyncGatewayRunMode) {
 	// configuration and setup logging now
 	warnings, err := config.SetupAndValidateLogging()
 	if err != nil {
+		// If we didn't set up logging correctly, we *probably* can't log via normal means...
+		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
+		log.Printf("[ERR] Error setting up logging: %v", err)
 		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
 	}
 

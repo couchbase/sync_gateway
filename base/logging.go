@@ -381,7 +381,7 @@ func init() {
 	// initializing a logging config, and when running under a test scenario.
 	initialCollationBufferSize := 0
 
-	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{CollationBufferSize: &initialCollationBufferSize})
+	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
 	initExternalLoggers()
 }
 
@@ -529,6 +529,9 @@ func LogSyncGatewayVersion() {
 	format := addPrefixes("==== %s ====", context.Background(), LevelNone, KeyNone)
 	msg := fmt.Sprintf(format, LongVersionString)
 
+	if !consoleLogger.isStderr {
+		fmt.Println(msg)
+	}
 	if consoleLogger.logger != nil {
 		consoleLogger.logger.Print(color(msg, LevelNone))
 	}
