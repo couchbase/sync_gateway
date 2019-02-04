@@ -121,7 +121,7 @@ func (rc *RevisionCache) getFromCache(docid, revid string, copyType BodyCopyType
 func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (docRev DocumentRevision, err error) {
 
 	// Look up active rev for doc
-	bucketDoc, getErr := context.GetDocument(docid, DocUnmarshalSync)
+	bucketDoc, getErr := context.GetDocument(docid, DocUnmarshalAll)
 	if getErr != nil {
 		return DocumentRevision{}, getErr
 	}
