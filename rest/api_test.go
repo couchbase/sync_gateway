@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/couchbaselabs/walrus"
 	"io"
 	"io/ioutil"
 	"log"
@@ -2750,6 +2751,9 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 func TestAddingAttachment(t *testing.T){
 	var rt RestTester
 	defer rt.Close()
+	defer func() {walrus.MaxDocSize = 0}()
+
+	walrus.MaxDocSize = 20*1024*1024
 
 	testCases := []struct{
 		name string

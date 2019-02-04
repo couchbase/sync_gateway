@@ -12,14 +12,15 @@ package db
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"math"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -992,11 +993,11 @@ func (db *Database) updateAndReturnDoc(
 
 		//Need to check and add attachments here to ensure the attachment is within size constraints
 		attachmentErr := db.setAttachments(newAttachments)
-		if attachmentErr != nil{
+		if attachmentErr != nil {
 
 			if attachmentErr.Error() == "document value was too large" {
 				err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
-			}else{
+			} else {
 				err = errors.Wrap(attachmentErr, "Error adding attachment")
 			}
 			return
