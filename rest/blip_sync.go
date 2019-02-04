@@ -480,6 +480,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 	// `answer` is an array where each item is either an array of known rev IDs, or a non-array
 	// placeholder (probably 0). The item numbers match those of changeArray.
 	var revSendTimeLatency int64
+	var revSendCount int64
 	for i, knownRevsArray := range answer {
 		if knownRevsArray, ok := knownRevsArray.([]interface{}); ok {
 			seq := changeArray[i][0].(db.SequenceID)
@@ -515,12 +516,15 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 				bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 			}
 			revSendTimeLatency += time.Since(changesResponseReceived).Nanoseconds()
+			revSendCount++
 		}
 	}
 
-	bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendCount, 1)
-	bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendLatency, revSendTimeLatency)
-	bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevProcessingTime, time.Since(changesResponseReceived).Nanoseconds())
+	if revSendCount > 0 {
+		bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendCount, revSendCount)
+		bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendLatency, revSendTimeLatency)
+		bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevProcessingTime, time.Since(changesResponseReceived).Nanoseconds())
+	}
 }
 
 // Handles a "changes" request, i.e. a set of changes pushed by the client
