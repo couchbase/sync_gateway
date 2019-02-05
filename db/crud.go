@@ -585,13 +585,13 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 
 // Returns the body of the asked-for revision or the most recent available ancestor.
 // Does NOT fill in _id, _rev, etc.
-func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
+func (db *Database) getAvailableRev(doc *document, revid string) (Body, string, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
 		if body, _ := db.getRevision(doc, revid); body != nil {
-			return body, nil
+			return body, revid, nil
 		}
 	}
-	return nil, base.HTTPErrorf(404, "missing")
+	return nil, "", base.HTTPErrorf(404, "missing")
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
@@ -1098,7 +1098,7 @@ func (db *Database) updateAndReturnDoc(
 				// In some cases an older revision might become the current one. If so, get its
 				// channels & access, for purposes of updating the doc:
 				var curBody Body
-				if curBody, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
+				if curBody, _, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
 					base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
 						base.UD(docid), newRevID, doc.CurrentRev)
 					channelSet, access, roles, syncExpiry, oldBody, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)

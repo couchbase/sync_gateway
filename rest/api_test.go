@@ -3733,6 +3733,76 @@ func TestUnsupportedConfig(t *testing.T) {
 	sc.Close()
 }
 
+func TestConflictWithInvalidAttachment(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+
+	//Create Doc
+	docrevId := rt.createDoc(t, "doc1")
+
+	docRevDigest := strings.Split(docrevId, "-")[1]
+
+	//Setup Attachment
+	attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, 20))
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	//Set attachment
+	response := rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+docrevId, attachmentBody, reqHeaders)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docrevId2 := body["rev"].(string)
+
+	//Get Existing Doc & Update rev
+	response = rt.SendRequest("GET", "/db/doc1", "")
+	json.Unmarshal(response.Body.Bytes(), &body)
+	body["_rev"] = docrevId2
+	body["rev"] = docrevId2
+
+	//Update Doc
+	temp, err := json.Marshal(body)
+	assert.NoError(t, err)
+	str := string(temp)
+	response = rt.SendRequest("PUT", "/db/doc1", str)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docrevId3 := body["rev"].(string)
+
+	//Get Existing Doc & Update rev
+	response = rt.SendRequest("GET", "/db/doc1", "")
+	json.Unmarshal(response.Body.Bytes(), &body)
+	body["_rev"] = docrevId3
+	body["rev"] = docrevId3
+
+	//Update Doc
+	temp, err = json.Marshal(body)
+	assert.NoError(t, err)
+	str = string(temp)
+	response = rt.SendRequest("PUT", "/db/doc1", str)
+
+	//Get Existing Doc to Modify
+	response = rt.SendRequest("GET", "/db/doc1?revs=true", "")
+	json.Unmarshal(response.Body.Bytes(), &body)
+
+	//Modify Doc
+	parentRevList := [3]string{"foo3", "foo2", docRevDigest}
+	body["_rev"] = "3-foo3"
+	body["rev"] = "3-foo3"
+	body["_revisions"].(map[string]interface{})["ids"] = parentRevList
+	body["_revisions"].(map[string]interface{})["start"] = 3
+	delete(body["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{}), "digest")
+
+	//Prepare changed doc
+	temp, err = json.Marshal(body)
+	assert.NoError(t, err)
+	newBody := string(temp)
+
+	//Send changed / conflict doc
+	response = rt.SendRequest("PUT", "/db/doc1?new_edits=false", newBody)
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
 var prt RestTester
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {

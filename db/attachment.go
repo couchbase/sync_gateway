@@ -107,7 +107,11 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			}
 			// Try to look up the attachment in ancestor attachments
 			if parentAttachments == nil {
-				parentAttachments = db.retrieveAncestorAttachments(doc, parentRev, docHistory)
+				var err error
+				parentAttachments, err = db.retrieveAncestorAttachments(doc, parentRev, docHistory)
+				if err != nil {
+					return nil, base.HTTPErrorf(404, "Ancestor Not Found")
+				}
 			}
 
 			if parentAttachments != nil {
@@ -125,13 +129,18 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 // Attempts to retrieve ancestor attachments for a document.  First attempts to find and use a non-pruned ancestor.
 // If no non-pruned ancestor is available, checks whether the currently active doc has a common ancestor with the new revision.
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
-func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string, docHistory []string) map[string]interface{} {
+func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string, docHistory []string) (map[string]interface{}, error) {
 
 	var parentAttachments map[string]interface{}
 	// Attempt to find a non-pruned parent or ancestor
-	parent, _ := db.getAvailableRev(doc, parentRev)
+	parent, revid, _ := db.getAvailableRev(doc, parentRev)
 	if parent != nil {
-		parentAttachments = GetBodyAttachments(parent)
+
+		doc, err := db.revisionCache.Get(doc.ID, revid)
+		if err != nil {
+			return nil, err
+		}
+		parentAttachments = doc.Attachments
 	} else {
 		// No non-pruned ancestor is available
 		commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory)
@@ -149,7 +158,7 @@ func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string,
 			}
 		}
 	}
-	return parentAttachments
+	return parentAttachments, nil
 }
 
 // Goes through a revisions '_attachments' map, loads attachments (by their 'digest' properties)
