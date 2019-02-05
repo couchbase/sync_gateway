@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -1214,6 +1214,8 @@ func (db *Database) updateAndReturnDoc(
 		if err != nil {
 			if err == base.ErrDocumentMigrated {
 				base.DebugfCtx(db.Ctx, base.KeyCRUD, "Migrated document %q to use xattr.", base.UD(key))
+			} else if err == base.ErrImportIgnored {
+				//Do nothing
 			} else {
 				base.DebugfCtx(db.Ctx, base.KeyCRUD, "Did not update document %q w/ xattr: %v", base.UD(key), err)
 			}

@@ -65,6 +65,9 @@ func (h *handler) handleGetDoc() error {
 		// Single-revision GET:
 		value, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
+			if err == base.ErrImportIgnored {
+				return nil
+			}
 			return err
 		}
 		if value == nil {
