@@ -403,8 +403,10 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 
 		// If attachments have changed between these revisions, we'll stamp the metadata into the bodies before diffing
 		// so that the resulting delta also contains attachment metadata changes
-		if !fromRevision.Attachments.Equal(toBody.Attachments) {
+		if fromRevision.Attachments != nil {
 			fromBodyCopy[BodyAttachments] = fromRevision.Attachments
+		}
+		if toBody.Attachments != nil {
 			toBody.Body[BodyAttachments] = toBody.Attachments
 		}
 
