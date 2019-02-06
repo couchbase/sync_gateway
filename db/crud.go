@@ -404,10 +404,12 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 		// If attachments have changed between these revisions, we'll stamp the metadata into the bodies before diffing
 		// so that the resulting delta also contains attachment metadata changes
 		if fromRevision.Attachments != nil {
-			fromBodyCopy[BodyAttachments] = fromRevision.Attachments
+			// the delta library does not handle deltas in non builtin types,
+			// so we need the map[string]interface{} type conversion here
+			fromBodyCopy[BodyAttachments] = map[string]interface{}(fromRevision.Attachments)
 		}
 		if toBody.Attachments != nil {
-			toBody.Body[BodyAttachments] = toBody.Attachments
+			toBody.Body[BodyAttachments] = map[string]interface{}(toBody.Attachments)
 		}
 
 		delta, err = base.Diff(fromBodyCopy, toBody.Body)
