@@ -129,15 +129,18 @@ func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (docR
 		return DocumentRevision{}, nil
 	}
 
-	// Retrieve from or add to rev cache
-	value := rc.getValue(docid, bucketDoc.CurrentRev, true)
-	docRev, statEvent, err := value.loadForDoc(bucketDoc, context, BodyShallowCopy)
-	rc.statsRecorderFunc(statEvent)
+	return rc.GetWithCopy(docid, bucketDoc.CurrentRev, BodyShallowCopy)
+	/*
+		// Retrieve from or add to rev cache
+		value := rc.getValue(docid, bucketDoc.CurrentRev, true)
+		docRev, statEvent, err := value.loadForDoc(bucketDoc, context, BodyShallowCopy)
+		rc.statsRecorderFunc(statEvent)
 
-	if err != nil {
-		rc.removeValue(value) // don't keep failed loads in the cache
-	}
-	return docRev, err
+		if err != nil {
+			rc.removeValue(value) // don't keep failed loads in the cache
+		}
+		return docRev, err
+	*/
 }
 
 func (rc *RevisionCache) statsRecorderFunc(cacheHit bool) {
