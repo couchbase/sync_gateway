@@ -37,12 +37,8 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 		}
 	}
 
-	if val, exist := body[BodyPurged]; exist {
-		boolVal, ok := val.(bool)
-		if ok && boolVal {
-			err = base.ErrImportIgnored
-			return
-		}
+	if isPurged, ok := body[BodyPurged].(bool); ok && isPurged {
+		return nil, base.ErrImportCancelledPurged
 	}
 
 	// Get the doc expiry if it wasn't passed in
@@ -246,7 +242,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	case base.ErrImportCasFailure:
 		// Import was cancelled due to CAS failure.
 		return nil, err
-	case base.ErrImportIgnored:
+	case base.ErrImportCancelledPurged:
 		// Import ignored
 		return nil, err
 	default:

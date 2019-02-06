@@ -1214,8 +1214,6 @@ func (db *Database) updateAndReturnDoc(
 		if err != nil {
 			if err == base.ErrDocumentMigrated {
 				base.DebugfCtx(db.Ctx, base.KeyCRUD, "Migrated document %q to use xattr.", base.UD(key))
-			} else if err == base.ErrImportIgnored {
-				//Do nothing
 			} else {
 				base.DebugfCtx(db.Ctx, base.KeyCRUD, "Did not update document %q w/ xattr: %v", base.UD(key), err)
 			}
