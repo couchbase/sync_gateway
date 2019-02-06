@@ -140,6 +140,8 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyRequestChangesTime, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDcpCachingCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDcpCachingTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyDcpReceivedCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyDcpReceivedTime, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyRevSendCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyRevSendLatency, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyRevProcessingTime, base.ExpvarIntVal(0))

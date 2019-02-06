@@ -131,6 +131,8 @@ const (
 	StatKeyPullReplicationsCaughtUp         = "num_pull_repl_caught_up"
 	StatKeyRequestChangesCount              = "request_changes_count"
 	StatKeyRequestChangesTime               = "request_changes_time"
+	StatKeyDcpReceivedCount                 = "dcp_received_count"
+	StatKeyDcpReceivedTime                  = "dcp_received_time"
 	StatKeyDcpCachingCount                  = "dcp_caching_count"
 	StatKeyDcpCachingTime                   = "dcp_caching_time"
 	StatKeyRevSendCount                     = "rev_send_count"
