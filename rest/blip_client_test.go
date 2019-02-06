@@ -18,9 +18,10 @@ type BlipTesterClient struct {
 
 	rt *RestTester
 
-	docs              map[string]map[string][]byte // Client's local store of documents - Map of docID to rev ID to bytes
-	lastReplicatedRev map[string]string            // Latest known rev pulled or pushed
-	docsLock          sync.RWMutex                 // lock for docs map
+	docs                  map[string]map[string][]byte // Client's local store of documents - Map of docID to rev ID to bytes
+	lastReplicatedRev     map[string]string            // Latest known rev pulled or pushed
+	docsLock              sync.RWMutex                 // lock for docs map
+	lastReplicatedRevLock sync.RWMutex                 // lock for lastReplicatedRev map
 
 	pullReplication *BlipTesterReplicator // SG -> CBL replications
 	pushReplication *BlipTesterReplicator // CBL -> SG replications
@@ -78,7 +79,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					revList := make([]string, 0, len(revs))
 
 					// Insert the highest ancestor rev generation at the start of the revList
-					latest, ok := btc.lastReplicatedRev[docID]
+					latest, ok := btc.getLastReplicatedRev(docID)
 					if ok {
 						revList = append(revList, latest)
 					}
@@ -183,6 +184,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 }
 
 func (btc *BlipTesterClient) updateLastReplicatedRev(docID, revID string) {
+	btc.lastReplicatedRevLock.Lock()
+	defer btc.lastReplicatedRevLock.Unlock()
 
 	currentRevID, ok := btc.lastReplicatedRev[docID]
 	if !ok {
@@ -195,6 +198,14 @@ func (btc *BlipTesterClient) updateLastReplicatedRev(docID, revID string) {
 	if incomingGen > currentGen {
 		btc.lastReplicatedRev[docID] = revID
 	}
+}
+
+func (btc *BlipTesterClient) getLastReplicatedRev(docID string) (revID string, ok bool) {
+	btc.lastReplicatedRevLock.RLock()
+	defer btc.lastReplicatedRevLock.RUnlock()
+
+	revID, ok = btc.lastReplicatedRev[docID]
+	return revID, ok
 }
 
 func newBlipTesterReplication(id string, btc *BlipTesterClient) (*BlipTesterReplicator, error) {
@@ -366,7 +377,7 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 	if err != nil {
 		return "", fmt.Errorf("error from revResponse: %v", err)
 	}
-	btc.updateLastReplicatedRev(docID, revID)
+	btc.updateLastReplicatedRev(docID, newRevID)
 
 	return newRevID, nil
 }
