@@ -343,7 +343,6 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 }
 
-
 // Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.
@@ -439,8 +438,6 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 
 	// Record a histogram of the Tap feed's lag:
 	tapLag := time.Since(syncData.TimeSaved) - time.Since(entryTime)
-	lagMs := int(tapLag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-tap-%04dms", lagMs), 1)
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
@@ -693,15 +690,6 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		}
 	}()
 
-	// Record a histogram of the overall lag from the time the doc was saved:
-	lag := time.Since(change.TimeSaved)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%04dms", lagMs), 1)
-	// ...and from the time the doc was received from Tap:
-	lag = time.Since(change.TimeReceived)
-	lagMs = int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%04dms", lagMs), 1)
-
 	return base.SetFromArray(addedTo)
 }
 
@@ -804,7 +792,7 @@ func (c *changeCache) _setInitialSequence(initialSequence uint64) {
 	c.nextSequence = initialSequence + 1
 }
 
-// Concurrent-safe get value of nextSequence 
+// Concurrent-safe get value of nextSequence
 func (c *changeCache) getNextSequence() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
