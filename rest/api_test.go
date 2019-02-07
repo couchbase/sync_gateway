@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,6 +33,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
 )
@@ -2743,6 +2745,65 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	attach1 = attachments["attach1"].(map[string]interface{})
 	data = attach1["data"]
 	goassert.True(t, data == nil)
+
+}
+
+func TestAddingAttachment(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+	defer func() { walrus.MaxDocSize = 0 }()
+
+	walrus.MaxDocSize = 20 * 1024 * 1024
+
+	testCases := []struct {
+		name        string
+		docName     string
+		byteSize    int
+		expectedPut int
+		expectedGet int
+	}{
+		{
+			name:        "Regular attachment",
+			docName:     "doc1",
+			byteSize:    20,
+			expectedPut: http.StatusCreated,
+			expectedGet: http.StatusOK,
+		},
+		{
+			name:        "Too large attachment",
+			docName:     "doc2",
+			byteSize:    22000000,
+			expectedPut: http.StatusRequestEntityTooLarge,
+			expectedGet: http.StatusNotFound,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(tt *testing.T) {
+			docrevId := rt.createDoc(tt, testCase.docName)
+
+			attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, testCase.byteSize))
+			attachmentContentType := "content/type"
+			reqHeaders := map[string]string{
+				"Content-Type": attachmentContentType,
+			}
+
+			fmt.Println(len(attachmentBody))
+
+			//Set attachment
+			response := rt.SendRequestWithHeaders("PUT", "/db/"+testCase.docName+"/attach1?rev="+docrevId, attachmentBody, reqHeaders)
+			assertStatus(tt, response, testCase.expectedPut)
+
+			//Get attachment back
+			response = rt.SendRequestWithHeaders("GET", "/db/"+testCase.docName+"/attach1", "", reqHeaders)
+			assertStatus(tt, response, testCase.expectedGet)
+
+			//If able to retrieve document check it is same as original
+			if response.Code == 200 {
+				assert.Equal(tt, response.Body.String(), attachmentBody)
+			}
+		})
+	}
 
 }
 

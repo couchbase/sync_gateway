@@ -18,10 +18,11 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -992,7 +993,6 @@ func (db *Database) updateAndReturnDoc(
 		if err != nil {
 			return
 		}
-
 		db.checkDocChannelsAndGrantsLimits(docid, channelSet, access, roles)
 
 		//Assign old revision body to variable in method scope
@@ -1000,6 +1000,18 @@ func (db *Database) updateAndReturnDoc(
 
 		if len(channelSet) > 0 {
 			doc.History[newRevID].Channels = channelSet
+		}
+
+		//Need to check and add attachments here to ensure the attachment is within size constraints
+		attachmentErr := db.setAttachments(newAttachments)
+		if attachmentErr != nil {
+
+			if attachmentErr.Error() == "document value was too large" {
+				err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
+			} else {
+				err = errors.Wrap(attachmentErr, "Error adding attachment")
+			}
+			return
 		}
 
 		// Move the body of the replaced revision out of the document so it can be compacted later.
@@ -1136,9 +1148,6 @@ func (db *Database) updateAndReturnDoc(
 		} else {
 			doc.UpdateExpiry(expiry)
 		}
-
-		// Now that the document has been successfully validated, we can store any new attachments
-		db.setAttachments(newAttachments)
 
 		// Now that the document has been successfully validated, we can update externally stored revision bodies
 		revisionBodyError := doc.persistModifiedRevisionBodies(db.Bucket)
