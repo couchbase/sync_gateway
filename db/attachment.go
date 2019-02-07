@@ -508,14 +508,14 @@ func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof strin
 // Returns _attachments property from body, when found.  Checks for either map[string]interface{} (unmarshalled with body),
 // or AttachmentsMeta (written by body by SG)
 func GetBodyAttachments(body Body) AttachmentsMeta {
-	switch atts := body[BodyAttachments].(type) {
-	case AttachmentsMeta:
-		return atts
-	case map[string]interface{}:
-		return AttachmentsMeta(atts)
-	default:
-		return nil
+	a := body[BodyAttachments]
+	if am, ok := a.(AttachmentsMeta); ok {
+		return am
+	} else if m, ok := a.(map[string]interface{}); ok {
+		return AttachmentsMeta(m)
 	}
+
+	return nil
 }
 
 func hasInlineAttachments(body Body) bool {
