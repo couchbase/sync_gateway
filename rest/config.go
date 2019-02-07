@@ -951,7 +951,7 @@ func RunServer(config *ServerConfig) {
 	}
 
 	// Limit gomaxprocs for performance testing
-	runtime.GOMAXPROCS(8)
+	runtime.GOMAXPROCS(16)
 
 	SetMaxFileDescriptors(config.MaxFileDescriptors)
 
