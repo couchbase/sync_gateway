@@ -19,7 +19,7 @@ type RevisionCache struct {
 	lruList    *list.List                 // List ordered by most recent access (Front is newest)
 	capacity   uint32                     // Max number of revisions to cache
 	loaderFunc RevisionCacheLoaderFunc    // Function which does actual loading of something from rev cache
-	lock       sync.Mutex                 // For thread-safety
+	lock       base.SpinLock              // For thread-safety
 	statsCache *expvar.Map                // Per-db stats related to cache
 }
 
@@ -166,7 +166,6 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 	}
 	key := IDAndRev{DocID: docid, RevID: revid}
 	rc.lock.Lock()
-	defer rc.lock.Unlock()
 	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.MoveToFront(elem)
 		value = elem.Value.(*revCacheValue)
@@ -177,6 +176,7 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 			rc.purgeOldest_()
 		}
 	}
+	rc.lock.Unlock()
 	return
 }
 
