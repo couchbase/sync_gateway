@@ -950,6 +950,9 @@ func RunServer(config *ServerConfig) {
 		}
 	}
 
+	// Limit gomaxprocs for performance testing
+	runtime.GOMAXPROCS(8)
+
 	SetMaxFileDescriptors(config.MaxFileDescriptors)
 
 	// Set global bcrypt cost if configured
