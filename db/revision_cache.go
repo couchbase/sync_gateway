@@ -166,7 +166,6 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 	}
 	key := IDAndRev{DocID: docid, RevID: revid}
 	rc.lock.Lock()
-	defer rc.lock.Unlock()
 	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.MoveToFront(elem)
 		value = elem.Value.(*revCacheValue)
@@ -177,6 +176,7 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 			rc.purgeOldest_()
 		}
 	}
+	rc.lock.Unlock()
 	return
 }
 
