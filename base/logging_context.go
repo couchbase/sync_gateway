@@ -1,13 +1,13 @@
 package base
 
 // LogContextKey is used to key a LogContext value
-type LogContextKey struct {}
+type LogContextKey struct{}
 
 // LogContext stores values which may be useful to include in logs
 type LogContext struct {
 	// CorrelationID is a pre-formatted identifier used to correlate logs.
 	// E.g: Either blip context ID or HTTP Serial number.
-	CorrelationID           string
+	CorrelationID string
 }
 
 // addContext returns a string format with additional log context if present.
