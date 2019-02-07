@@ -949,6 +949,7 @@ func RunServer(config *ServerConfig) {
 			base.Infof(base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
 		}
 	}
+	runtime.GOMAXPROCS(8)
 
 	SetMaxFileDescriptors(config.MaxFileDescriptors)
 
