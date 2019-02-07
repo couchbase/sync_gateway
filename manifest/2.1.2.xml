@@ -22,14 +22,14 @@
 
     <!-- Build Scripts (required on CI servers) -->
     <project name="build" path="cbbuild" remote="couchbase" revision="51cdfb4ae316289e072ca631cc14eb27b671cc15">
-        <annotation name="VERSION" value="2.1.2" keep="true"/>
+        <annotation name="VERSION" value="2.1.2.1" keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
     </project>
 
 
     <!-- Sync Gateway -->
-    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.1.2"/>
+    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.1.2.1"/>
 
 
     <!-- Sync Gateway Accel-->
@@ -70,7 +70,7 @@
 
     <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="0da75df145308b9a4e6704d762ca9d9b77752efc"/>
 
-    <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="e774e379a0452bfff199a69e053dc565918d680c"/>
+    <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="release/2.1.2.1"/>
 
     <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="elazarl" revision="30f82fa23fd844bd5bb1e5f216db87fd77b5eb43"/>
 
