@@ -123,7 +123,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 					 "channels":"ABC,PBS"}`
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
 	changesResponse := it.Send(requestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))
-	err := json.Unmarshal(changesResponse.Body.Bytes(), &initialChanges)
+	json.Unmarshal(changesResponse.Body.Bytes(), &initialChanges)
 	lastSeq := initialChanges.Last_Seq.String()
 	assert.Equals(t, lastSeq, "1")
 
@@ -138,7 +138,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		}
 		sinceLastJSON := fmt.Sprintf(changesJSON, lastSeq)
 		changesResponse := it.Send(requestByUser("POST", "/db/_changes", sinceLastJSON, "bernard"))
-		err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+		json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.Equals(t, len(changes.Results), 1)
 	}()
 

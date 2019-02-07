@@ -1022,19 +1022,19 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	}
 	testCases := []testcase{
 		{
-			onDemandCallback: triggerOnDemandViaGet,
-			name:             "triggerOnDemandViaGet",
+			onDemandCallback:      triggerOnDemandViaGet,
+			name:                  "triggerOnDemandViaGet",
 			expectedRevGeneration: 1,
 		},
 		{
-			onDemandCallback: triggerOnDemandViaWrite,
-			name:             "triggerOnDemandViaWrite",
+			onDemandCallback:      triggerOnDemandViaWrite,
+			name:                  "triggerOnDemandViaWrite",
 			expectedRevGeneration: 1,
 		},
 	}
 
 	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 
 			rt = RestTester{
 				SyncFn:         `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1105,13 +1105,13 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 	}
 	testCases := []testcase{
 		{
-			onDemandCallback: triggerOnDemandViaGet,
-			name:             "triggerOnDemandViaGet",
+			onDemandCallback:      triggerOnDemandViaGet,
+			name:                  "triggerOnDemandViaGet",
 			expectedRevGeneration: 1,
 		},
 		{
-			onDemandCallback: triggerOnDemandViaWrite,
-			name:             "triggerOnDemandViaWrite",
+			onDemandCallback:      triggerOnDemandViaWrite,
+			name:                  "triggerOnDemandViaWrite",
 			expectedRevGeneration: 2,
 		},
 	}

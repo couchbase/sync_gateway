@@ -95,7 +95,7 @@ func BenchmarkReadOps_Get(b *testing.B) {
 				}
 				b.StopTimer()
 				if getResponse.Code != 200 {
-					log.Printf("Unexpected response: %s", getResponse)
+					log.Printf("Unexpected response: %v", getResponse)
 				}
 				b.StartTimer()
 			}
@@ -161,7 +161,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 				}
 				b.StopTimer()
 				if getResponse.Code != 200 {
-					log.Printf("Unexpected response: %s", getResponse)
+					log.Printf("Unexpected response: %v", getResponse)
 				}
 				b.StartTimer()
 			}
@@ -232,7 +232,7 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 				}
 				b.StopTimer()
 				if changesResponse.Code != 200 {
-					log.Printf("Unexpected response: %s", changesResponse.Code)
+					log.Printf("Unexpected response: %v", changesResponse.Code)
 				}
 				b.StartTimer()
 			}

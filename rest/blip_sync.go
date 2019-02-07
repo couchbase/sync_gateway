@@ -562,7 +562,7 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 	}
 
 	status, reason := base.ErrorAsHTTPStatus(err)
-	outrq.Properties["error"] = fmt.Sprintf("%s", status)
+	outrq.Properties["error"] = fmt.Sprintf("%d", status)
 
 	// Add a "reason" field that gives more detailed explanation on the cause of the error.
 	outrq.Properties["reason"] = fmt.Sprintf("%s", reason)
@@ -745,8 +745,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 }
 
 func (ctx *blipSyncContext) incrementSerialNumber() uint64 {
-	ctx.handlerSerialNumber = atomic.AddUint64(&ctx.handlerSerialNumber, 1)
-	return atomic.LoadUint64(&ctx.handlerSerialNumber)
+	return atomic.AddUint64(&ctx.handlerSerialNumber, 1)
 }
 
 func (ctx *blipSyncContext) addAllowedAttachments(atts map[string]interface{}) {
