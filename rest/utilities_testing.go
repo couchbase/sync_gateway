@@ -93,7 +93,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig = &DbConfig{}
 
 			// By default, does NOT use views when running against couchbase server, since should use GSI
-			rt.DatabaseConfig.UseViews = base.TestUseViews()
+			if !base.TestUseCouchbaseServer() {
+				rt.DatabaseConfig.UseViews = true
+			}
 
 			// numReplicas set to 0 for test buckets, since it should assume that there is only one node.
 			numReplicas := uint(0)
@@ -132,7 +134,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 						panic(fmt.Sprintf("Failed to drop bucket indexes: %v", err))
 					}
 
-					continue  // Go to the top of the for loop to retry
+					continue // Go to the top of the for loop to retry
 				}
 			}
 		}

@@ -906,16 +906,15 @@ func TestSkippedViewRetrieval(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	var logKeys = map[string]bool{
-		"Cache":  true,
-		"Cache+": true,
-	}
-
-	base.UpdateLogKeys(logKeys, true)
+	originalBatchSize := SkippedSeqCleanViewBatch
+	SkippedSeqCleanViewBatch = 4
+	defer func() {
+		SkippedSeqCleanViewBatch = originalBatchSize
+	}()
 
 	// Use leaky bucket to have the tap feed 'lose' document 3
 	leakyConfig := base.LeakyBucketConfig{
-		TapFeedMissingDocs: []string{"doc-3"},
+		TapFeedMissingDocs: []string{"doc-3", "doc-7", "doc-10", "doc-13", "doc-14"},
 	}
 	db := setupTestLeakyDBWithCacheOptions(t, shortWaitCache(), leakyConfig)
 	defer tearDownTestDB(t, db)
@@ -928,21 +927,43 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 1)
 	WriteDirect(db, []string{"ABC"}, 2)
 	WriteDirect(db, []string{"ABC"}, 3)
+	WriteDirect(db, []string{"ABC"}, 7)
+	WriteDirect(db, []string{"ABC"}, 10)
+	WriteDirect(db, []string{"ABC"}, 13)
+	WriteDirect(db, []string{"ABC"}, 14)
+	WriteDirect(db, []string{"ABC"}, 15)
 
+	//db.Options.UnsupportedOptions.DisableCleanSkippedQuery = true
 	changeCache, ok := db.changeCache.(*changeCache)
 	assertTrue(t, ok, "Testing skipped sequences without a change cache")
 
-	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
+	// Artificially add skipped sequences to queue, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
+	// Sequences '3', '7', '10', '13' and '14' exist, should be found.
 	changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
 	changeCache.skippedSeqs.Push(&SkippedSequence{5, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqs.Push(&SkippedSequence{6, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqs.Push(&SkippedSequence{7, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqs.Push(&SkippedSequence{10, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqs.Push(&SkippedSequence{11, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqs.Push(&SkippedSequence{12, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqs.Push(&SkippedSequence{13, time.Now().Add(time.Duration(time.Hour * -2))})
+	changeCache.skippedSeqs.Push(&SkippedSequence{14, time.Now().Add(time.Duration(time.Hour * -2))})
 	changeCache.CleanSkippedSequenceQueue()
 
-	// Validate that 3 is in the channel cache, 5 isn't
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 3}, base.DefaultWaitForSequenceTesting)
+	// Validate expected entries
+	db.changeCache.waitForSequenceID(SequenceID{Seq: 15}, base.DefaultWaitForSequenceTesting)
 	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
 	assertNoError(t, err, "Get Changes returned error")
-	assert.Equals(t, len(entries), 1)
-	assert.Equals(t, entries[0].DocID, "doc-3")
+	assert.Equals(t, len(entries), 6)
+	log.Printf("entries: %v", entries)
+	if len(entries) == 6 {
+		assert.Equals(t, entries[0].DocID, "doc-3")
+		assert.Equals(t, entries[1].DocID, "doc-7")
+		assert.Equals(t, entries[2].DocID, "doc-10")
+		assert.Equals(t, entries[3].DocID, "doc-13")
+		assert.Equals(t, entries[4].DocID, "doc-14")
+		assert.Equals(t, entries[5].DocID, "doc-15")
+	}
 
 }
 
