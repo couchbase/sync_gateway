@@ -87,10 +87,26 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 	return db, tBucket
 }
 
+// Forces UseViews:true in the database context.  Useful for testing w/ views while running
+// tests against Couchbase Server
+func setupTestDBWithViewsEnabled(t testing.TB) (*Database, base.TestBucket) {
+
+	dbcOptions := DatabaseContextOptions{
+		UseViews: true,
+	}
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	tBucket := testBucket()
+	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
+	assertNoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	assertNoError(t, err, "Couldn't create database 'db'")
+	return db, tBucket
+}
+
 func testBucket() base.TestBucket {
 
 	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
-	for i:= 0; i < 2; i++ {
+	for i := 0; i < 2; i++ {
 
 		testBucket := base.GetTestBucketOrPanic()
 		err := installViews(testBucket.Bucket)
@@ -115,8 +131,8 @@ func testBucket() base.TestBucket {
 					log.Fatalf("Unable to drop GSI indexes for test: %v", err)
 					// ^^ effectively panics
 				}
-				testBucket.Close()  // Close the bucket, it will get re-opened on next loop iteration
-				continue  // Goes to top of outer for loop to retry
+				testBucket.Close() // Close the bucket, it will get re-opened on next loop iteration
+				continue           // Goes to top of outer for loop to retry
 			}
 
 		}
@@ -126,7 +142,6 @@ func testBucket() base.TestBucket {
 	}
 
 	panic(fmt.Sprintf("Failed to create a testbucket after multiple attempts"))
-
 
 }
 
@@ -151,7 +166,10 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 		dbcOptions.EnableXattr = true
 	}
 
-	dbcOptions.UseViews = base.TestUseViews()
+	// Force views if not testing against Couchbase Server
+	if !base.TestUseCouchbaseServer() {
+		dbcOptions.UseViews = true
+	}
 }
 
 func tearDownTestDB(t testing.TB, db *Database) {
