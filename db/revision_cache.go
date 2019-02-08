@@ -34,6 +34,11 @@ type DocumentRevision struct {
 	Delta       *RevCacheDelta
 }
 
+type IDAndRev struct {
+	DocID string
+	RevID string
+}
+
 // Callback function signature for loading something from the rev cache
 type RevisionCacheLoaderFunc func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error)
 
