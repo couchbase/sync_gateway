@@ -25,7 +25,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
@@ -1358,6 +1358,39 @@ func (bucket *CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) er
 	// Delegate to internal method that can take a testing-related callback
 	return bucket.deleteWithXattrInternal(k, xattrKey, nil)
 
+}
+
+func (bucket *CouchbaseBucketGoCB) GetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		res, lookupErr := bucket.Bucket.LookupInEx(k, gocb.SubdocDocFlagAccessDeleted).
+			GetEx(xattrKey, gocb.SubdocFlagXattr).Execute()
+
+		switch lookupErr {
+		case nil:
+			res.Content(xattrKey, xv)
+			cas := uint64(res.Cas())
+			return false, nil, cas
+
+		default:
+			shouldRetry = isRecoverableGoCBError(lookupErr)
+			return shouldRetry, lookupErr, uint64(0)
+		}
+
+	}
+
+	err, result := RetryLoop("GetXattr", worker, bucket.spec.RetrySleeper())
+
+	if result == nil {
+		return 0, nil
+	}
+
+	cas, ok := result.(uint64)
+	if !ok {
+		return 0, errors.New("error")
+	}
+
+	return cas, err
 }
 
 // A function that will be called back after the first delete attempt but before second delete attempt

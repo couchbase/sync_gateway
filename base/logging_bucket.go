@@ -127,6 +127,11 @@ func (b *LoggingBucket) DeleteWithXattr(k string, xattr string) error {
 	defer func() { Tracef(KeyBucket, "DeleteWithXattr(%q, ...) [%v]", UD(k), time.Since(start)) }()
 	return b.bucket.DeleteWithXattr(k, xattr)
 }
+func (b *LoggingBucket) GetXattr(k string, xattr string, xv interface{}) (cas uint64, err error) {
+	start := time.Now()
+	defer func() { Tracef(KeyBucket, "GetXattr(%q, ...) [%v]", UD(k), time.Since(start)) }()
+	return b.bucket.GetXattr(k, xattr, xv)
+}
 func (b *LoggingBucket) GetDDoc(docname string, value interface{}) error {
 	start := time.Now()
 	defer func() { Tracef(KeyBucket, "GetDDoc(%q, ...) [%v]", UD(docname), time.Since(start)) }()

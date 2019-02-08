@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -1665,17 +1665,29 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return // Users can't upload design docs, so ignore them
 	}
-	doc, err := db.GetDocument(docid, DocUnmarshalSync)
-	if err != nil {
-		if !base.IsDocNotFoundError(err) {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
-			// If something goes wrong getting the doc, treat it as though it's nonexistent.
+
+	var history RevTree
+
+	if db.UseXattrs() {
+		var doc = sgbucket.BucketDocument{}
+		db.Bucket.GetXattr(docid, KSyncXattrName, &doc.Xattr)
+		doc1, _ := unmarshalDocumentWithXattr(docid, doc.Body, doc.Xattr, doc.Cas, DocUnmarshalSync)
+		history = doc1.History
+	} else {
+		doc, err := db.GetDocument(docid, DocUnmarshalSync)
+		if err != nil {
+			if !base.IsDocNotFoundError(err) {
+				base.WarnfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
+				// If something goes wrong getting the doc, treat it as though it's nonexistent.
+			}
+			missing = revids
+			return
 		}
-		missing = revids
-		return
+		history = doc.History
 	}
+
 	// Check each revid to see if it's in the doc's rev tree:
-	revtree := doc.History
+	revtree := history
 	revidsSet := base.SetFromArray(revids)
 	possibleSet := make(map[string]bool)
 	for _, revid := range revids {
