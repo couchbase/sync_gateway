@@ -3803,6 +3803,90 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
+func TestConflictingBranchAttachments(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+
+	//Create a document
+	docRevId := rt.createDoc(t, "doc1")
+	docRevDigest := strings.Split(docRevId, "-")[1]
+
+	//Create an attachment
+	attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, 20))
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	//Create diverging tree
+	reqBody := make(map[string]interface{})
+	reqBody["_rev"] = "2-two"
+	reqBody["_revisions"] = make(map[string]interface{})
+	reqBody["_revisions"].(map[string]interface{})["ids"] = [2]string{"two", docRevDigest}
+	reqBody["_revisions"].(map[string]interface{})["start"] = 2
+	temp, _ := json.Marshal(reqBody)
+	str := string(temp)
+	response := rt.SendRequest("PUT", "/db/doc1?new_edits=false", str)
+
+	reqBody = make(map[string]interface{})
+	reqBody["_rev"] = "2-twoa"
+	reqBody["_revisions"] = make(map[string]interface{})
+	reqBody["_revisions"].(map[string]interface{})["ids"] = [2]string{"twoa", docRevDigest}
+	reqBody["_revisions"].(map[string]interface{})["start"] = 2
+	temp, _ = json.Marshal(reqBody)
+	str = string(temp)
+	response = rt.SendRequest("PUT", "/db/doc1?new_edits=false", str)
+
+	//Put attachment on doc1 rev 2
+	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev=2-two", attachmentBody, reqHeaders)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docRevId2 := body["rev"].(string)
+
+	//Put attachment on doc1 conflicting rev 2a
+	attachmentBody = base64.StdEncoding.EncodeToString(make([]byte, 21))
+	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1a?rev=2-twoa", attachmentBody, reqHeaders)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docRevId2a := body["rev"].(string)
+
+	//Setup
+	reqHeaders = map[string]string{
+		"Accept": "application/json",
+	}
+
+	var body2 map[string]interface{}
+
+	//Get and do minor update on rev2
+	response = rt.SendRequestWithHeaders("GET", `/db/doc1?rev=`+docRevId2, "", reqHeaders)
+	json.Unmarshal(response.Body.Bytes(), &body2)
+	delete(body2, "_rev")
+	delete(body2, "_attachments")
+	temp, _ = json.Marshal(body2)
+	str = string(temp)
+	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId2, str)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docRevId3 := body["rev"].(string)
+
+	//Get and do minor update on rev2a
+	response = rt.SendRequestWithHeaders("GET", `/db/doc1?rev=`+docRevId2a, "", reqHeaders)
+	json.Unmarshal(response.Body.Bytes(), &body2)
+	delete(body2, "_rev")
+	temp, _ = json.Marshal(body2)
+	str = string(temp)
+	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId2a, str)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docRevId3a := body["rev"].(string)
+
+	//Check em
+
+	response = rt.SendRequest("GET", "/db/doc1?atts_since=[\""+docRevId+"\"]&rev="+docRevId3, str)
+	fmt.Println(response.Body)
+
+	response = rt.SendRequest("GET", "/db/doc1?rev="+docRevId3a, str)
+	fmt.Println(response.Body)
+
+}
+
 var prt RestTester
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
