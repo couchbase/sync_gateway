@@ -151,10 +151,8 @@ func (rc *RevisionCache) statsRecorderFunc(cacheHit bool) {
 
 	if cacheHit {
 		rc.cacheHits.Add(1)
-		//rc.statsCache.Add(base.StatKeyRevisionCacheHits, 1)
 	} else {
 		rc.cacheMisses.Add(1)
-		//rc.statsCache.Add(base.StatKeyRevisionCacheMisses, 1)
 	}
 }
 
