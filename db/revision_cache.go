@@ -5,6 +5,7 @@ import (
 	"errors"
 	"expvar"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -13,13 +14,15 @@ import (
 // Number of recently-accessed doc revisions to cache in RAM
 var KDefaultRevisionCacheCapacity uint32 = 5000
 
+const MaxLRUPromoteFrequency = 30 // Max LRU promotion frequency, in seconds
+
 // An LRU cache of document revision bodies, together with their channel access.
 type RevisionCache struct {
 	cache      map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
 	lruList    *list.List                 // List ordered by most recent access (Front is newest)
 	capacity   uint32                     // Max number of revisions to cache
 	loaderFunc RevisionCacheLoaderFunc    // Function which does actual loading of something from rev cache
-	lock       sync.Mutex                 // For thread-safety
+	lock       sync.RWMutex               // For thread-safety
 	statsCache *expvar.Map                // Per-db stats related to cache
 }
 
@@ -39,15 +42,16 @@ type RevisionCacheLoaderFunc func(id IDAndRev) (body Body, history Revisions, ch
 
 // The cache payload data. Stored as the Value of a list Element.
 type revCacheValue struct {
-	key         IDAndRev        // doc/rev IDs
-	body        Body            // Revision body (a pristine shallow copy)
-	history     Revisions       // Rev history encoded like a "_revisions" property
-	channels    base.Set        // Set of channels that have access
-	expiry      *time.Time      // Document expiry
-	attachments AttachmentsMeta // Document _attachments property
-	delta       *RevCacheDelta  // Available delta *from* this revision
-	err         error           // Error from loaderFunc if it failed
-	lock        sync.RWMutex    // Synchronizes access to this struct
+	key          IDAndRev        // doc/rev IDs
+	body         Body            // Revision body (a pristine shallow copy)
+	history      Revisions       // Rev history encoded like a "_revisions" property
+	channels     base.Set        // Set of channels that have access
+	expiry       *time.Time      // Document expiry
+	attachments  AttachmentsMeta // Document _attachments property
+	delta        *RevCacheDelta  // Available delta *from* this revision
+	err          error           // Error from loaderFunc if it failed
+	lock         sync.RWMutex    // Synchronizes access to this struct
+	lastPromoted int64           // Last LRU promotion, for windowed promotion, as time.Unix()
 }
 
 type RevCacheDelta struct {
@@ -168,18 +172,32 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 		panic("RevisionCache: invalid empty doc/rev id")
 	}
 	key := IDAndRev{DocID: docid, RevID: revid}
-	rc.lock.Lock()
-	if elem := rc.cache[key]; elem != nil {
-		rc.lruList.MoveToFront(elem)
+
+	rc.lock.RLock()
+	elem, ok := rc.cache[key]
+	rc.lock.RUnlock()
+
+	if ok {
+		// If present, check whether item should be promoted in the LRU list
 		value = elem.Value.(*revCacheValue)
+		nowUnix := time.Now().Unix()
+		lastPromotedUnix := atomic.LoadInt64(&value.lastPromoted)
+		if nowUnix-lastPromotedUnix > MaxLRUPromoteFrequency {
+			atomic.StoreInt64(&value.lastPromoted, nowUnix)
+			rc.lock.Lock()
+			rc.lruList.MoveToFront(elem)
+			rc.lock.Unlock()
+		}
 	} else if create {
 		value = &revCacheValue{key: key}
+		rc.lock.Lock()
 		rc.cache[key] = rc.lruList.PushFront(value)
 		for len(rc.cache) > int(rc.capacity) {
 			rc.purgeOldest_()
 		}
+		rc.lock.Unlock()
 	}
-	rc.lock.Unlock()
+
 	return
 }
 
