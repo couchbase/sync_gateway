@@ -3702,17 +3702,8 @@ func TestRestSettingPurged(t *testing.T) {
 	var rt RestTester
 	defer rt.Close()
 
-	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
-	assert.NoError(t, err)
-
 	response := rt.SendRequest("PUT", "/db/doc1", `{"_purged": true, "foo": "bar"}`)
-
-	numErrorsAfter, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
-	assert.NoError(t, err)
-
-	assert.NotEqual(t, numErrors, numErrorsAfter)
-
-	fmt.Println(response.Body)
+	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
 var prt RestTester
