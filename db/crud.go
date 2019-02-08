@@ -71,7 +71,6 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 			return nil, base.HTTPErrorf(404, "Not imported")
 		}
 	} else {
-		//doc = newDocument(docid)
 		rawDoc, _, getErr := db.Bucket.GetRaw(key)
 		if getErr != nil {
 			return nil, getErr
