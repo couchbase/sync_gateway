@@ -475,7 +475,6 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	// Measure feed latency from timeSaved or the time we started working the feed, whichever is later
 	var feedLatency time.Duration
 	if !syncData.TimeSaved.IsZero() {
-		c.context.DbStats.StatsCblReplicationPull().Add(base.StatKeyDcpReceivedCount, 1)
 		if syncData.TimeSaved.After(c.initTime) {
 			feedLatency = time.Since(syncData.TimeSaved)
 		} else {
@@ -484,9 +483,10 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		// Record latency when greater than zero
 		feedNano := feedLatency.Nanoseconds()
 		if feedNano > 0 {
-			c.context.DbStats.StatsCblReplicationPull().Add(base.StatKeyDcpReceivedTime, feedNano)
+			c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpReceivedTime, feedNano)
 		}
 	}
+	c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpReceivedCount, 1)
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
@@ -748,8 +748,8 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	}()
 
 	if !change.TimeReceived.IsZero() {
-		c.context.DbStats.StatsCblReplicationPull().Add(base.StatKeyDcpCachingCount, 1)
-		c.context.DbStats.StatsCblReplicationPull().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
+		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingCount, 1)
+		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
 	}
 
 	return base.SetFromArray(addedTo)
