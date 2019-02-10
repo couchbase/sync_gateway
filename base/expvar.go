@@ -97,6 +97,10 @@ const (
 	StatKeyWarnXattrSizeCount      = "warn_xattr_size_count"
 	StatKeyWarnChannelsPerDocCount = "warn_channels_per_doc_count"
 	StatKeyWarnGrantsPerDocCount   = "warn_grants_per_doc_count"
+	StatKeyDcpReceivedCount        = "dcp_received_count"
+	StatKeyDcpReceivedTime         = "dcp_received_time"
+	StatKeyDcpCachingCount         = "dcp_caching_count"
+	StatKeyDcpCachingTime          = "dcp_caching_time"
 
 	// StatsDeltaSync
 	StatKeyDeltasRequested           = "deltas_requested"
@@ -131,8 +135,6 @@ const (
 	StatKeyPullReplicationsCaughtUp         = "num_pull_repl_caught_up"
 	StatKeyRequestChangesCount              = "request_changes_count"
 	StatKeyRequestChangesTime               = "request_changes_time"
-	StatKeyDcpCachingCount                  = "dcp_caching_count"
-	StatKeyDcpCachingTime                   = "dcp_caching_time"
 	StatKeyRevSendCount                     = "rev_send_count"
 	StatKeyRevSendLatency                   = "rev_send_latency"
 	StatKeyRevProcessingTime                = "rev_processing_time"

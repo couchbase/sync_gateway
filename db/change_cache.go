@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"expvar"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -61,6 +60,7 @@ type changeCache struct {
 	lateSeqLock     sync.RWMutex             // Coordinates access to late sequence caches
 	options         CacheOptions             // Cache config
 	terminator      chan bool                // Signal termination of background goroutines
+	initTime        time.Time                // Cache init time - used for latency calculations
 }
 
 type LogEntry channels.LogEntry
@@ -103,6 +103,7 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 	c.channelCaches = make(map[string]*channelCache, 10)
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
+	c.initTime = time.Now()
 
 	// init cache options
 	c.options = CacheOptions{
@@ -228,6 +229,7 @@ func (c *changeCache) Clear() error {
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
 
+	c.initTime = time.Now()
 	return nil
 }
 
@@ -371,7 +373,6 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.
 func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
-	entryTime := time.Now()
 	docID := string(event.Key)
 	docJSON := event.Value
 	changedChannelsCombined := base.Set{}
@@ -468,13 +469,24 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	}
 
 	if syncData.Sequence <= c.getInitialSequence() {
-		return // Tap is sending us an old value from before I started up; ignore it
+		return // DCP is sending us an old value from before I started up; ignore it
 	}
 
-	// Record a histogram of the Tap feed's lag:
-	tapLag := time.Since(syncData.TimeSaved) - time.Since(entryTime)
-	lagMs := int(tapLag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-tap-%04dms", lagMs), 1)
+	// Measure feed latency from timeSaved or the time we started working the feed, whichever is later
+	var feedLatency time.Duration
+	if !syncData.TimeSaved.IsZero() {
+		if syncData.TimeSaved.After(c.initTime) {
+			feedLatency = time.Since(syncData.TimeSaved)
+		} else {
+			feedLatency = time.Since(c.initTime)
+		}
+		// Record latency when greater than zero
+		feedNano := feedLatency.Nanoseconds()
+		if feedNano > 0 {
+			c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpReceivedTime, feedNano)
+		}
+	}
+	c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpReceivedCount, 1)
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
@@ -531,7 +543,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
 	}
-	base.Infof(base.KeyCache, "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), base.UD(change.DocID), change.RevID)
+	base.Infof(base.KeyCache, "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLatency/time.Millisecond), base.UD(change.DocID), change.RevID)
 
 	changedChannels := c.processEntry(change)
 	changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
@@ -736,18 +748,9 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	}()
 
 	if !change.TimeReceived.IsZero() {
-		c.context.DbStats.StatsCblReplicationPull().Add(base.StatKeyDcpCachingCount, 1)
-		c.context.DbStats.StatsCblReplicationPull().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
+		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingCount, 1)
+		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
 	}
-
-	// Record a histogram of the overall lag from the time the doc was saved:
-	lag := time.Since(change.TimeSaved)
-	lagMs := int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-total-%04dms", lagMs), 1)
-	// ...and from the time the doc was received from Tap:
-	lag = time.Since(change.TimeReceived)
-	lagMs = int(lag/(100*time.Millisecond)) * 100
-	changeCacheExpvars.Add(fmt.Sprintf("lag-queue-%04dms", lagMs), 1)
 
 	return base.SetFromArray(addedTo)
 }
