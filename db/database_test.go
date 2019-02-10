@@ -571,7 +571,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 }
 
 type AllDocsEntry struct {
-	IDAndRev
+	IDRevAndSequence
 	Channels []string
 }
 
@@ -583,10 +583,10 @@ func (e AllDocsEntry) Equal(e2 AllDocsEntry) bool {
 var options ForEachDocIDOptions
 
 func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
-	err = db.ForEachDocID(func(doc IDAndRev, channels []string) bool {
+	err = db.ForEachDocID(func(doc IDRevAndSequence, channels []string) bool {
 		docs = append(docs, AllDocsEntry{
-			IDAndRev: doc,
-			Channels: channels,
+			IDRevAndSequence: doc,
+			Channels:         channels,
 		})
 		return true
 	}, options)
