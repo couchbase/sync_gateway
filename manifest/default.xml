@@ -29,7 +29,7 @@
 
   
   <!-- Sync Gateway -->
-  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="feature/2.1.2_MP1"/>
+  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="feature/2.1.2_MP1_efficientSkippedQueue"/>
 
   
   <!-- Sync Gateway Accel-->
