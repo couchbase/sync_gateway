@@ -105,21 +105,22 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			if revpos, ok := base.ToInt64(meta["revpos"]); !ok || revpos < 1 {
 				return nil, base.HTTPErrorf(400, "Missing/invalid revpos in stub attachment %q", name)
 			}
+			if meta["digest"] == nil {
+				return nil, base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
+			}
 			// Try to look up the attachment in ancestor attachments
 			if parentAttachments == nil {
-				var err error
-				parentAttachments, err = db.retrieveAncestorAttachments(doc, parentRev, docHistory)
-				if err != nil {
-					return nil, base.HTTPErrorf(404, "Ancestor Not Found")
-				}
+				parentAttachments = db.retrieveAncestorAttachments(doc, parentRev, docHistory)
 			}
 
 			if parentAttachments != nil {
 				if parentAttachment := parentAttachments[name]; parentAttachment != nil {
 					atts[name] = parentAttachment
+				} else {
+					return nil, base.HTTPErrorf(404, "Attachment Not Founda")
 				}
-			} else if meta["digest"] == nil {
-				return nil, base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
+			} else {
+				return nil, base.HTTPErrorf(404, "Attachment Not Found")
 			}
 		}
 	}
@@ -129,7 +130,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 // Attempts to retrieve ancestor attachments for a document.  First attempts to find and use a non-pruned ancestor.
 // If no non-pruned ancestor is available, checks whether the currently active doc has a common ancestor with the new revision.
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
-func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string, docHistory []string) (map[string]interface{}, error) {
+func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string, docHistory []string) map[string]interface{} {
 
 	var parentAttachments map[string]interface{}
 	// Attempt to find a non-pruned parent or ancestor
@@ -153,7 +154,7 @@ func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string,
 			}
 		}
 	}
-	return parentAttachments, nil
+	return parentAttachments
 }
 
 // Goes through a revisions '_attachments' map, loads attachments (by their 'digest' properties)

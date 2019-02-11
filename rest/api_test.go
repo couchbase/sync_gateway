@@ -3801,6 +3801,7 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	//Send changed / conflict doc
 	response = rt.SendRequest("PUT", "/db/doc1?new_edits=false", newBody)
 	assert.Equal(t, http.StatusBadRequest, response.Code)
+
 }
 
 func TestConflictingBranchAttachments(t *testing.T) {
@@ -3811,13 +3812,6 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	docRevId := rt.createDoc(t, "doc1")
 	docRevDigest := strings.Split(docRevId, "-")[1]
 
-	//Create an attachment
-	attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, 20))
-	attachmentContentType := "content/type"
-	reqHeaders := map[string]string{
-		"Content-Type": attachmentContentType,
-	}
-
 	//Create diverging tree
 	reqBody := make(map[string]interface{})
 	reqBody["_rev"] = "2-two"
@@ -3827,6 +3821,12 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	temp, _ := json.Marshal(reqBody)
 	str := string(temp)
 	response := rt.SendRequest("PUT", "/db/doc1?new_edits=false", str)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docRevId2 := body["rev"].(string)
+	assert.Equal(t, "2-two", docRevId2)
+
+	assertStatus(t, response, http.StatusCreated)
 
 	reqBody = make(map[string]interface{})
 	reqBody["_rev"] = "2-twoa"
@@ -3836,53 +3836,109 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	temp, _ = json.Marshal(reqBody)
 	str = string(temp)
 	response = rt.SendRequest("PUT", "/db/doc1?new_edits=false", str)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docRevId2a := body["rev"].(string)
+	assert.Equal(t, "2-twoa", docRevId2a)
+
+	assertStatus(t, response, http.StatusCreated)
+
+	//Create an attachment
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
 
 	//Put attachment on doc1 rev 2
+	attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, 20))
 	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev=2-two", attachmentBody, reqHeaders)
-	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
-	docRevId2 := body["rev"].(string)
+	docRevId3 := body["rev"].(string)
+
+	assertStatus(t, response, http.StatusCreated)
 
 	//Put attachment on doc1 conflicting rev 2a
 	attachmentBody = base64.StdEncoding.EncodeToString(make([]byte, 21))
 	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1a?rev=2-twoa", attachmentBody, reqHeaders)
 	json.Unmarshal(response.Body.Bytes(), &body)
-	docRevId2a := body["rev"].(string)
+	docRevId3a := body["rev"].(string)
+
+	assertStatus(t, response, http.StatusCreated)
 
 	//Setup
 	reqHeaders = map[string]string{
 		"Accept": "application/json",
 	}
 
-	var body2 map[string]interface{}
+	var bodyRes map[string]interface{}
 
 	//Get and do minor update on rev2
-	response = rt.SendRequestWithHeaders("GET", `/db/doc1?rev=`+docRevId2, "", reqHeaders)
-	json.Unmarshal(response.Body.Bytes(), &body2)
-	delete(body2, "_rev")
-	delete(body2, "_attachments")
-	temp, _ = json.Marshal(body2)
+	response = rt.SendRequestWithHeaders("GET", `/db/doc1?rev=`+docRevId3, "", reqHeaders)
+	json.Unmarshal(response.Body.Bytes(), &bodyRes)
+	delete(bodyRes, "_rev")
+	fmt.Println(bodyRes)
+	temp, _ = json.Marshal(bodyRes)
 	str = string(temp)
-	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId2, str)
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId3, str)
 	json.Unmarshal(response.Body.Bytes(), &body)
-	docRevId3 := body["rev"].(string)
+	docRevId4 := body["rev"].(string)
+	assertStatus(t, response, http.StatusCreated)
 
 	//Get and do minor update on rev2a
-	response = rt.SendRequestWithHeaders("GET", `/db/doc1?rev=`+docRevId2a, "", reqHeaders)
-	json.Unmarshal(response.Body.Bytes(), &body2)
-	delete(body2, "_rev")
-	temp, _ = json.Marshal(body2)
+	response = rt.SendRequestWithHeaders("GET", `/db/doc1?rev=`+docRevId3a, "", reqHeaders)
+	json.Unmarshal(response.Body.Bytes(), &bodyRes)
+	delete(bodyRes, "_rev")
+	temp, _ = json.Marshal(bodyRes)
 	str = string(temp)
-	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId2a, str)
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId3a, str)
 	json.Unmarshal(response.Body.Bytes(), &body)
-	docRevId3a := body["rev"].(string)
+	docRevId4a := body["rev"].(string)
+	assertStatus(t, response, http.StatusCreated)
 
 	//Check em
-
-	response = rt.SendRequest("GET", "/db/doc1?atts_since=[\""+docRevId+"\"]&rev="+docRevId3, str)
+	response = rt.SendRequest("GET", "/db/doc1?atts_since=[\""+docRevId+"\"]&rev="+docRevId4, str)
 	fmt.Println(response.Body)
 
-	response = rt.SendRequest("GET", "/db/doc1?rev="+docRevId3a, str)
+	response = rt.SendRequest("GET", "/db/doc1?rev="+docRevId4a, str)
+	fmt.Println(response.Body)
+
+}
+
+func TestNonExistentStubAttachment(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+
+	docRevId := rt.createDoc(t, "doc1")
+
+	reqBody := make(map[string]interface{})
+	reqBody["_attachments"] = make(map[string]interface{})
+	reqBody["_attachments"].(map[string]interface{})["attach1"] = make(map[string]interface{})
+	reqBody["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{})["revpos"] = 1
+	reqBody["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{})["stub"] = true
+	reqBody["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{})["digest"] = "sha1-gKmysvmOjxigWwc6aMtQEzOgDgI="
+
+	temp, _ := json.Marshal(reqBody)
+	str := string(temp)
+	response := rt.SendRequest("PUT", "/db/doc1?rev="+docRevId, str)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docRevId2 := body["rev"].(string)
+	fmt.Println(response.Body)
+
+	response = rt.SendRequest("GET", "/db/doc1?attachments=true", "")
+	fmt.Println(response.Body)
+
+	//Create an attachment
+	attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, 20))
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev"+docRevId2, attachmentBody, reqHeaders)
 	fmt.Println(response.Body)
 
 }
