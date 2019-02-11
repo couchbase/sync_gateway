@@ -37,6 +37,10 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 		}
 	}
 
+	if isPurged, ok := body[BodyPurged].(bool); ok && isPurged {
+		return nil, base.ErrImportCancelledPurged
+	}
+
 	// Get the doc expiry if it wasn't passed in
 	if expiry == nil {
 		gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
@@ -237,6 +241,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		return nil, err
 	case base.ErrImportCasFailure:
 		// Import was cancelled due to CAS failure.
+		return nil, err
+	case base.ErrImportCancelledPurged:
+		// Import ignored
 		return nil, err
 	default:
 		base.Infof(base.KeyImport, "Error importing doc %q: %v", base.UD(docid), err)
