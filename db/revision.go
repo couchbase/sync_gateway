@@ -29,6 +29,7 @@ const (
 	BodyId          = "_id"
 	BodyRevisions   = "_revisions"
 	BodyAttachments = "_attachments"
+	BodyPurged      = "_purged"
 )
 
 // A revisions property found within a Body.  Expected to be of the form:

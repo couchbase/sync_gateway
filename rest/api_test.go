@@ -3733,6 +3733,41 @@ func TestUnsupportedConfig(t *testing.T) {
 	sc.Close()
 }
 
+func TestImportingPurgedDocument(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
+	}
+
+	body := `{"_purged": true, "foo": "bar"}`
+	rt.Bucket().Add("key", 0, []byte(body))
+
+	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	assert.NoError(t, err)
+
+	response := rt.SendRequest("GET", "/db/key", "")
+	fmt.Println(response.Body)
+
+	numErrorsAfter, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	assert.NoError(t, err)
+
+	assert.Equal(t, numErrors, numErrorsAfter)
+}
+
+func TestRestSettingPurged(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+
+	response := rt.SendRequest("PUT", "/db/doc1", `{"_purged": true, "foo": "bar"}`)
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
 var prt RestTester
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
