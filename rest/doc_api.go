@@ -65,6 +65,10 @@ func (h *handler) handleGetDoc() error {
 		// Single-revision GET:
 		value, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
+			if err == base.ErrImportCancelledPurged {
+				base.Debugf(base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
+				return nil
+			}
 			return err
 		}
 		if value == nil {
