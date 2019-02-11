@@ -116,7 +116,7 @@ func (h *handler) handleAllDocs() error {
 
 	// Subroutine that creates a response row for a document:
 	totalRows := 0
-	createRow := func(doc db.IDAndRev, channels []string) *allDocsRow {
+	createRow := func(doc db.IDRevAndSequence, channels []string) *allDocsRow {
 		row := &allDocsRow{Key: doc.DocID}
 		value := allDocsRowValue{}
 
@@ -171,7 +171,7 @@ func (h *handler) handleAllDocs() error {
 	}
 
 	// Subroutine that writes a response entry for a document:
-	writeDoc := func(doc db.IDAndRev, channels []string) bool {
+	writeDoc := func(doc db.IDRevAndSequence, channels []string) bool {
 		row := createRow(doc, channels)
 		if row != nil {
 			if row.Status >= 300 {
@@ -200,7 +200,7 @@ func (h *handler) handleAllDocs() error {
 	if explicitDocIDs != nil {
 		count := uint64(0)
 		for _, docID := range explicitDocIDs {
-			writeDoc(db.IDAndRev{DocID: docID, RevID: "", Sequence: 0}, nil)
+			writeDoc(db.IDRevAndSequence{DocID: docID, RevID: "", Sequence: 0}, nil)
 			count++
 			if options.Limit > 0 && count == options.Limit {
 				break

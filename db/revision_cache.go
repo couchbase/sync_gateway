@@ -15,12 +15,13 @@ var KDefaultRevisionCacheCapacity uint32 = 5000
 
 // An LRU cache of document revision bodies, together with their channel access.
 type RevisionCache struct {
-	cache      map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
-	lruList    *list.List                 // List ordered by most recent access (Front is newest)
-	capacity   uint32                     // Max number of revisions to cache
-	loaderFunc RevisionCacheLoaderFunc    // Function which does actual loading of something from rev cache
-	lock       sync.Mutex                 // For thread-safety
-	statsCache *expvar.Map                // Per-db stats related to cache
+	cache       map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
+	lruList     *list.List                 // List ordered by most recent access (Front is newest)
+	capacity    uint32                     // Max number of revisions to cache
+	loaderFunc  RevisionCacheLoaderFunc    // Function which does actual loading of something from rev cache
+	lock        sync.Mutex                 // For thread-safety
+	cacheHits   *expvar.Int
+	cacheMisses *expvar.Int
 }
 
 // Revision information as returned by the rev cache
@@ -32,6 +33,11 @@ type DocumentRevision struct {
 	Expiry      *time.Time
 	Attachments AttachmentsMeta
 	Delta       *RevCacheDelta
+}
+
+type IDAndRev struct {
+	DocID string
+	RevID string
 }
 
 // Callback function signature for loading something from the rev cache
@@ -63,11 +69,12 @@ func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, stats
 	}
 
 	return &RevisionCache{
-		cache:      map[IDAndRev]*list.Element{},
-		lruList:    list.New(),
-		capacity:   capacity,
-		loaderFunc: loaderFunc,
-		statsCache: statsCache,
+		cache:       map[IDAndRev]*list.Element{},
+		lruList:     list.New(),
+		capacity:    capacity,
+		loaderFunc:  loaderFunc,
+		cacheHits:   statsCache.Get(base.StatKeyRevisionCacheHits).(*expvar.Int),
+		cacheMisses: statsCache.Get(base.StatKeyRevisionCacheMisses).(*expvar.Int),
 	}
 }
 
@@ -141,13 +148,11 @@ func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (docR
 }
 
 func (rc *RevisionCache) statsRecorderFunc(cacheHit bool) {
-	if rc.statsCache == nil {
-		return
-	}
+
 	if cacheHit {
-		rc.statsCache.Add(base.StatKeyRevisionCacheHits, 1)
+		rc.cacheHits.Add(1)
 	} else {
-		rc.statsCache.Add(base.StatKeyRevisionCacheMisses, 1)
+		rc.cacheMisses.Add(1)
 	}
 }
 
@@ -166,7 +171,6 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 	}
 	key := IDAndRev{DocID: docid, RevID: revid}
 	rc.lock.Lock()
-	defer rc.lock.Unlock()
 	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.MoveToFront(elem)
 		value = elem.Value.(*revCacheValue)
@@ -177,6 +181,7 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 			rc.purgeOldest_()
 		}
 	}
+	rc.lock.Unlock()
 	return
 }
 
