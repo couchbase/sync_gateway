@@ -29,7 +29,7 @@
 
 
     <!-- Sync Gateway -->
-    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.1.2"/>
+    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="35fe28e2c01c50335f26f7c757a8e5d127f61651"/>
 
 
     <!-- Sync Gateway Accel-->
