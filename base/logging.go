@@ -531,10 +531,10 @@ func LogSyncGatewayVersion() {
 
 	if !consoleLogger.isStderr {
 		fmt.Println(msg)
-	}
-	if consoleLogger.logger != nil {
+	} else if consoleLogger.logger != nil {
 		consoleLogger.logger.Print(color(msg, LevelNone))
 	}
+
 	if errorLogger.shouldLog(LevelNone) {
 		errorLogger.logger.Printf(msg)
 	}

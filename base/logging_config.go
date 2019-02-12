@@ -69,6 +69,10 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 	err = validateLogFilePath(&c.LogFilePath, defaultLogFilePath)
 	if err != nil {
 		return warnings, err
+	} else {
+		warnings = append(warnings, func() {
+			fmt.Println(addPrefixes(fmt.Sprintf("Logging files to: %v", c.LogFilePath), nil, LevelInfo, KeyAll))
+		})
 	}
 
 	errorLogger, err = NewFileLogger(c.Error, LevelError, LevelError.String(), c.LogFilePath, errorMinAge)

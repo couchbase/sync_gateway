@@ -62,6 +62,15 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 		go logCollationWorker(logger.collateBuffer, logger.logger, *config.CollationBufferSize)
 	}
 
+	consoleOutput := "stderr"
+	if config.FileOutput != "" {
+		consoleOutput = config.FileOutput
+	}
+
+	warnings = append(warnings, func() {
+		fmt.Println(addPrefixes(fmt.Sprintf("Logging console output to: %v", consoleOutput), nil, LevelInfo, KeyAll))
+	})
+
 	return logger, warnings, nil
 }
 
