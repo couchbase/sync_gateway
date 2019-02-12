@@ -77,10 +77,10 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 		ID:      "doc1",
 		Changes: []ChangeRev{{"rev": revid}}})
 	goassert.DeepEquals(t, changes[2], &ChangeEntry{ // Seq 2, from ABC and PBS
-		Seq:       SequenceID{Seq: 2},
-		ID:        "_user/naomi",
-		Changes:   []ChangeRev{},
-		pseudoDoc: true})
+		Seq:          SequenceID{Seq: 2},
+		ID:           "_user/naomi",
+		Changes:      []ChangeRev{},
+		principalDoc: true})
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 

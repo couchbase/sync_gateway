@@ -39,17 +39,17 @@ type ChangesOptions struct {
 // A changes entry; Database.GetChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq        SequenceID  `json:"seq"`
-	ID         string      `json:"id"`
-	Deleted    bool        `json:"deleted,omitempty"`
-	Removed    base.Set    `json:"removed,omitempty"`
-	Doc        Body        `json:"doc,omitempty"`
-	Changes    []ChangeRev `json:"changes"`
-	Err        error       `json:"err,omitempty"` // Used to notify feed consumer of errors
-	allRemoved bool        // Flag to track whether an entry is a removal in all channels visible to the user.
-	branched   bool
-	backfill   backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
-	pseudoDoc  bool         // Used to indicate _user docs e.t.c
+	Seq          SequenceID  `json:"seq"`
+	ID           string      `json:"id"`
+	Deleted      bool        `json:"deleted,omitempty"`
+	Removed      base.Set    `json:"removed,omitempty"`
+	Doc          Body        `json:"doc,omitempty"`
+	Changes      []ChangeRev `json:"changes"`
+	Err          error       `json:"err,omitempty"` // Used to notify feed consumer of errors
+	allRemoved   bool        // Flag to track whether an entry is a removal in all channels visible to the user.
+	branched     bool
+	backfill     backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
+	principalDoc bool         // Used to indicate _user/_role docs
 }
 
 const (
@@ -84,8 +84,8 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		return
 	}
 
-	// If this is pseudo doc, it will not be in the cache so ignore
-	if entry.pseudoDoc {
+	// If this is principal doc, we don't send body and/or conflicts
+	if entry.principalDoc {
 		return
 	}
 
@@ -119,7 +119,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		db.AddDocInstanceToChangeEntry(entry, doc, options)
 
 	} else if options.IncludeDocs {
-		// Retrieve document from rev cache
+		// Retrieve document via rev cache
 		revID := entry.Changes[0]["rev"]
 		err := db.AddDocToChangeEntryUsingRevCache(entry, revID)
 		if err != nil {
@@ -221,16 +221,18 @@ func (db *Database) changesFeed(channel string, options ChangesOptions, to strin
 
 func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) ChangeEntry {
 	change := ChangeEntry{
-		Seq:      seqID,
-		ID:       logEntry.DocID,
-		Deleted:  (logEntry.Flags & channels.Deleted) != 0,
-		Changes:  []ChangeRev{{"rev": logEntry.RevID}},
-		branched: (logEntry.Flags & channels.Branched) != 0,
+		Seq:          seqID,
+		ID:           logEntry.DocID,
+		Deleted:      (logEntry.Flags & channels.Deleted) != 0,
+		Changes:      []ChangeRev{{"rev": logEntry.RevID}},
+		branched:     (logEntry.Flags & channels.Branched) != 0,
+		principalDoc: logEntry.IsPrincipal,
 	}
 
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = channels.SetOf(channelName)
 	}
+
 	return change
 }
 
@@ -303,10 +305,10 @@ func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, 
 			name = base.GuestUsername
 		}
 		entry := ChangeEntry{
-			Seq:       userSeq,
-			ID:        "_user/" + name,
-			Changes:   []ChangeRev{},
-			pseudoDoc: true,
+			Seq:          userSeq,
+			ID:           "_user/" + name,
+			Changes:      []ChangeRev{},
+			principalDoc: true,
 		}
 		userFeed := make(chan *ChangeEntry, 1)
 		userFeed <- &entry

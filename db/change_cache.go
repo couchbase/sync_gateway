@@ -355,21 +355,11 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 
 //////// ADDING CHANGES:
 
-// Given a newly changed document (received from the tap feed), adds change entries to channels.
-// The JSON must be the raw document from the bucket, with the metadata and all.
-func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
-
-	if event.Synchronous {
-		c.DocChangedSynchronous(event)
-	} else {
-		go c.DocChangedSynchronous(event)
-	}
-}
-
-// Note that DocChangedSynchronous may be executed concurrently for multiple events (in the DCP case, DCP events
+// Note that DocChanged may be executed concurrently for multiple events (in the DCP case, DCP events
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.
-func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
+func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
+
 	docID := string(event.Key)
 	docJSON := event.Value
 	changedChannelsCombined := base.Set{}
@@ -626,6 +616,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	change := &LogEntry{
 		Sequence:     sequence,
 		TimeReceived: timeReceived,
+		IsPrincipal:  true,
 	}
 	if isUser {
 		change.DocID = "_user/" + princ.Name
@@ -704,10 +695,13 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
 	}
-	if change.DocID == "" {
-		return nil // this was a placeholder for an unused sequence
+
+	// If unused sequence or principal, we're done after updating sequence
+	if change.DocID == "" || change.IsPrincipal {
+		return nil
 	}
 	addedTo := make(base.Set)
+
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
 

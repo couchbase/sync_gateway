@@ -32,6 +32,7 @@ type LogEntry struct {
 	Type         LogEntryType // Log entry type
 	Value        []byte       // Snapshot metadata (when Type=LogEntryCheckpoint)
 	PrevSequence uint64       // Sequence of previous active revision
+	IsPrincipal  bool         // Whether the log-entry is a tracking entry for a principal doc
 }
 
 func (l LogEntry) String() string {
