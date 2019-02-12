@@ -42,7 +42,7 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 	}
 
 	logKey, warnings := ToLogKey(config.LogKeys)
-	isStderr := config.FileOutput == ""
+	isStderr := config.FileOutput == "" && *config.Enabled
 
 	logger := &ConsoleLogger{
 		LogLevel:     config.LogLevel,
@@ -112,6 +112,7 @@ func (lcc *ConsoleLoggerConfig) init() error {
 
 	// Default to false
 	if lcc.Enabled == nil || !*lcc.Enabled {
+		lcc.Enabled = BoolPtr(false)
 		newLevel := LevelNone
 		lcc.LogLevel = &newLevel
 		lcc.LogKeys = []string{}
