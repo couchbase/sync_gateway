@@ -1683,10 +1683,22 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	var history RevTree
 
 	if db.UseXattrs() {
-		var doc = sgbucket.BucketDocument{}
-		db.Bucket.GetXattr(docid, KSyncXattrName, &doc.Xattr)
-		doc1, _ := unmarshalDocumentWithXattr(docid, doc.Body, doc.Xattr, doc.Cas, DocUnmarshalSync)
-		history = doc1.History
+		var xattrValue []byte
+		cas, err := db.Bucket.GetXattr(docid, KSyncXattrName, &xattrValue)
+
+		if err != nil {
+			if !base.IsDocNotFoundError(err) {
+				base.WarnfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
+			}
+			missing = revids
+			return
+		}
+		doc, err := unmarshalDocumentWithXattr(docid, nil, xattrValue, cas, DocUnmarshalSync)
+		if err != nil {
+			base.ErrorfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) Doc Unmarshal Failed: %T %v", base.UD(docid), err,
+				err)
+		}
+		history = doc.History
 	} else {
 		doc, err := db.GetDocument(docid, DocUnmarshalSync)
 		if err != nil {

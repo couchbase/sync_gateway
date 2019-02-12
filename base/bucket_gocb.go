@@ -1370,24 +1370,38 @@ func (bucket *CouchbaseBucketGoCB) GetXattr(k string, xattrKey string, xv interf
 		case nil:
 			res.Content(xattrKey, xv)
 			cas := uint64(res.Cas())
+			return false, err, cas
+		case gocbcore.ErrSubDocBadMulti:
+			xattrErr := res.Content(xattrKey, xv)
+			Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrErr)
+			cas := uint64(res.Cas())
+			return false, gocb.ErrSubDocBadMulti, cas
+		case gocbcore.ErrKeyNotFound:
+			Debugf(KeyCRUD, "No document found for key=%s", UD(k))
+			return false, gocb.ErrKeyNotFound, 0
+		case gocbcore.ErrSubDocMultiPathFailureDeleted, gocb.ErrSubDocSuccessDeleted:
+			xattrContentErr := res.Content(xattrKey, xv)
+			if xattrContentErr != nil {
+				return false, gocbcore.ErrKeyNotFound, uint64(0)
+			}
+			cas := uint64(res.Cas())
 			return false, nil, cas
-
 		default:
 			shouldRetry = isRecoverableGoCBError(lookupErr)
 			return shouldRetry, lookupErr, uint64(0)
 		}
 
 	}
-
-	err, result := RetryLoop("GetXattr", worker, bucket.spec.RetrySleeper())
+	description := fmt.Sprintf("GetXattr %s", UD(k).Redact())
+	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
 
 	if result == nil {
-		return 0, nil
+		return 0, err
 	}
 
 	cas, ok := result.(uint64)
 	if !ok {
-		return 0, errors.New("error")
+		return 0, RedactErrorf("GetXattr: Error doing type assertio of %v (%T) into uint64, Key %v", UD(result), result, UD(k))
 	}
 
 	return cas, err

@@ -16,9 +16,10 @@ import (
 	"log"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	goassert "github.com/couchbaselabs/go.assert"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -1749,6 +1750,77 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	_, key4err = bucket.GetWithXattr(key4, xattrName, &key4DocResult, &key4XattrResult)
 	goassert.Equals(t, key4DocResult["type"], fmt.Sprintf("updated_%s", key4))
 	goassert.Equals(t, key4XattrResult["rev"], "2-1234")
+
+}
+
+func TestGetXattr(t *testing.T) {
+	SkipXattrTestsIfNotEnabled(t)
+
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
+	defer SetUpTestLogging(LevelDebug, KeyAll)()
+
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	if !ok {
+		log.Printf("Can't cast to bucket")
+		return
+	}
+
+	//Doc 1
+	key1 := "DocExistsXattrExists"
+	val1 := make(map[string]interface{})
+	val1["type"] = key1
+	xattrName1 := "sync"
+	xattrVal1 := make(map[string]interface{})
+	xattrVal1["seq"] = float64(1)
+	xattrVal1["rev"] = "1-foo"
+
+	//Doc 2 - Tombstone
+	key2 := "TombstonedDocXattrExists"
+	val2 := make(map[string]interface{})
+	val2["type"] = key2
+	xattrName2 := "sync"
+	xattrVal2 := make(map[string]interface{})
+	xattrVal2["seq"] = float64(1)
+	xattrVal2["rev"] = "1-foo"
+
+	var err error
+
+	//Create w/ XATTR
+	cas := uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key1, xattrName1, 0, cas, val1, xattrVal1)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+
+	var response map[string]interface{}
+
+	//Get Xattr From Existing Doc with Existing Xattr
+	_, err = testBucket.GetXattr(key1, xattrName1, &response)
+	assert.NoError(t, err)
+
+	assert.Equal(t, xattrVal1["seq"], response["seq"])
+	assert.Equal(t, xattrVal1["rev"], response["rev"])
+
+	//Get Xattr From Existing Doc With Non-Existent Xattr
+	_, err = testBucket.GetXattr(key1, "non-exist", &response)
+	assert.Error(t, err)
+
+	//Get Xattr From Non-Existent Doc With Non-Existent Xattr
+	_, err = testBucket.GetXattr("non-exist", "non-exist", &response)
+	assert.Error(t, err)
+
+	//Get Xattr From Tombstoned Doc With Existing Xattr
+	cas, err = bucket.WriteCasWithXattr(key2, xattrName2, 1, cas, val2, xattrVal2)
+	assert.NoError(t, err)
+	time.Sleep(2 * time.Second)
+	_, err = testBucket.GetXattr(key2, xattrName2, &response)
+	assert.NoError(t, err)
+
+	//Get Xattr From Tombstoned Doc With Non-Existent Xattr
+	_, err = testBucket.GetXattr(key2, "non-exist", &response)
+	assert.Error(t, err)
 
 }
 
