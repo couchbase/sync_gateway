@@ -105,9 +105,6 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			if revpos, ok := base.ToInt64(meta["revpos"]); !ok || revpos < 1 {
 				return nil, base.HTTPErrorf(400, "Missing/invalid revpos in stub attachment %q", name)
 			}
-			if meta["digest"] == nil {
-				return nil, base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
-			}
 			// Try to look up the attachment in ancestor attachments
 			if parentAttachments == nil {
 				parentAttachments = db.retrieveAncestorAttachments(doc, parentRev, docHistory)
@@ -116,11 +113,9 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 			if parentAttachments != nil {
 				if parentAttachment := parentAttachments[name]; parentAttachment != nil {
 					atts[name] = parentAttachment
-				} else {
-					return nil, base.HTTPErrorf(404, "Attachment Not Founda")
 				}
-			} else {
-				return nil, base.HTTPErrorf(404, "Attachment Not Found")
+			} else if meta["digest"] == nil {
+				return nil, base.HTTPErrorf(400, "Missing digest in stub attachment %q", name)
 			}
 		}
 	}

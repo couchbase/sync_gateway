@@ -3743,46 +3743,34 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	docRevDigest := strings.Split(docrevId, "-")[1]
 
 	//Setup Attachment
-	attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, 20))
 	attachmentContentType := "content/type"
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
 	}
 
 	//Set attachment
+	attachmentBody := "aGVsbG8gd29ybGQ=" //hello.txt
 	response := rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+docrevId, attachmentBody, reqHeaders)
+	assertStatus(t, response, http.StatusCreated)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	docrevId2 := body["rev"].(string)
 
-	//Get Existing Doc & Update rev
-	response = rt.SendRequest("GET", "/db/doc1", "")
-	json.Unmarshal(response.Body.Bytes(), &body)
-	body["_rev"] = docrevId2
-	body["rev"] = docrevId2
-
 	//Update Doc
-	temp, err := json.Marshal(body)
-	assert.NoError(t, err)
-	str := string(temp)
-	response = rt.SendRequest("PUT", "/db/doc1", str)
+	rev3Input := `{"_attachments":{"attach1":{"content-type": "content/type", "digest":"sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub": true}}, "_id": "doc1", "_rev": "` + docrevId2 + `", "prop":true}`
+	response = rt.SendRequest("PUT", "/db/doc1", rev3Input)
+	assertStatus(t, response, http.StatusCreated)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	docrevId3 := body["rev"].(string)
 
 	//Get Existing Doc & Update rev
-	response = rt.SendRequest("GET", "/db/doc1", "")
-	json.Unmarshal(response.Body.Bytes(), &body)
-	body["_rev"] = docrevId3
-	body["rev"] = docrevId3
-
-	//Update Doc
-	temp, err = json.Marshal(body)
-	assert.NoError(t, err)
-	str = string(temp)
-	response = rt.SendRequest("PUT", "/db/doc1", str)
+	rev4Input := `{"_attachments":{"attach1":{"content-type": "content/type", "digest":"sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub": true}}, "_id": "doc1", "_rev": "` + docrevId3 + `", "prop":true}`
+	response = rt.SendRequest("PUT", "/db/doc1", rev4Input)
+	assertStatus(t, response, http.StatusCreated)
 
 	//Get Existing Doc to Modify
 	response = rt.SendRequest("GET", "/db/doc1?revs=true", "")
+	assertStatus(t, response, http.StatusOK)
 	json.Unmarshal(response.Body.Bytes(), &body)
 
 	//Modify Doc
@@ -3794,14 +3782,13 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	delete(body["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{}), "digest")
 
 	//Prepare changed doc
-	temp, err = json.Marshal(body)
+	temp, err := json.Marshal(body)
 	assert.NoError(t, err)
 	newBody := string(temp)
 
 	//Send changed / conflict doc
 	response = rt.SendRequest("PUT", "/db/doc1?new_edits=false", newBody)
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-
+	assertStatus(t, response, http.StatusBadRequest)
 }
 
 func TestConflictingBranchAttachments(t *testing.T) {
@@ -3812,35 +3799,23 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	docRevId := rt.createDoc(t, "doc1")
 	docRevDigest := strings.Split(docRevId, "-")[1]
 
-	//Create diverging tree
-	reqBody := make(map[string]interface{})
-	reqBody["_rev"] = "2-two"
-	reqBody["_revisions"] = make(map[string]interface{})
-	reqBody["_revisions"].(map[string]interface{})["ids"] = [2]string{"two", docRevDigest}
-	reqBody["_revisions"].(map[string]interface{})["start"] = 2
-	temp, _ := json.Marshal(reqBody)
-	str := string(temp)
-	response := rt.SendRequest("PUT", "/db/doc1?new_edits=false", str)
+	////Create diverging tree
 	var body db.Body
+
+	reqBodyRev2 := `{"_rev": "2-two", "_revisions": {"ids": ["two", "` + docRevDigest + `"], "start": 2}}`
+	response := rt.SendRequest("PUT", "/db/doc1?new_edits=false", reqBodyRev2)
+	assertStatus(t, response, http.StatusCreated)
+
 	json.Unmarshal(response.Body.Bytes(), &body)
 	docRevId2 := body["rev"].(string)
 	assert.Equal(t, "2-two", docRevId2)
 
+	reqBodyRev2a := `{"_rev": "2-two", "_revisions": {"ids": ["twoa", "` + docRevDigest + `"], "start": 2}}`
+	response = rt.SendRequest("PUT", "/db/doc1?new_edits=false", reqBodyRev2a)
 	assertStatus(t, response, http.StatusCreated)
-
-	reqBody = make(map[string]interface{})
-	reqBody["_rev"] = "2-twoa"
-	reqBody["_revisions"] = make(map[string]interface{})
-	reqBody["_revisions"].(map[string]interface{})["ids"] = [2]string{"twoa", docRevDigest}
-	reqBody["_revisions"].(map[string]interface{})["start"] = 2
-	temp, _ = json.Marshal(reqBody)
-	str = string(temp)
-	response = rt.SendRequest("PUT", "/db/doc1?new_edits=false", str)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	docRevId2a := body["rev"].(string)
 	assert.Equal(t, "2-twoa", docRevId2a)
-
-	assertStatus(t, response, http.StatusCreated)
 
 	//Create an attachment
 	attachmentContentType := "content/type"
@@ -3849,97 +3824,44 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	}
 
 	//Put attachment on doc1 rev 2
-	attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, 20))
-	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev=2-two", attachmentBody, reqHeaders)
+	rev3Attachment := `aGVsbG8gd29ybGQ=` //hello.txt
+	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev=2-two", rev3Attachment, reqHeaders)
+	assertStatus(t, response, http.StatusCreated)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	docRevId3 := body["rev"].(string)
 
-	assertStatus(t, response, http.StatusCreated)
-
 	//Put attachment on doc1 conflicting rev 2a
-	attachmentBody = base64.StdEncoding.EncodeToString(make([]byte, 21))
-	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1a?rev=2-twoa", attachmentBody, reqHeaders)
+	rev3aAttachment := `Z29vZGJ5ZSBjcnVlbCB3b3JsZA==` //bye.txt
+	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1a?rev=2-twoa", rev3aAttachment, reqHeaders)
+	assertStatus(t, response, http.StatusCreated)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	docRevId3a := body["rev"].(string)
 
+	//Perform small update on doc3
+	rev4Body := `{"_id": "doc1", "_attachments": {"attach1": {"content_type": "content/type", "digest": "sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 3, "stub":true}}}`
+	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId3, rev4Body)
 	assertStatus(t, response, http.StatusCreated)
-
-	//Setup
-	reqHeaders = map[string]string{
-		"Accept": "application/json",
-	}
-
-	var bodyRes map[string]interface{}
-
-	//Get and do minor update on rev2
-	response = rt.SendRequestWithHeaders("GET", `/db/doc1?rev=`+docRevId3, "", reqHeaders)
-	json.Unmarshal(response.Body.Bytes(), &bodyRes)
-	delete(bodyRes, "_rev")
-	fmt.Println(bodyRes)
-	temp, _ = json.Marshal(bodyRes)
-	str = string(temp)
-	assertStatus(t, response, http.StatusOK)
-
-	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId3, str)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	docRevId4 := body["rev"].(string)
+
+	//Perform small update on doc3a
+	rev4aBody := `{"_id": "doc1", "_attachments": {"attach1a": {"content_type": "content/type", "digest": "sha1-rdfKyt3ssqPHnWBUxl/xauXXcUs=", "length": 28, "revpos": 3, "stub": true}}}`
+	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId3a, rev4aBody)
 	assertStatus(t, response, http.StatusCreated)
-
-	//Get and do minor update on rev2a
-	response = rt.SendRequestWithHeaders("GET", `/db/doc1?rev=`+docRevId3a, "", reqHeaders)
-	json.Unmarshal(response.Body.Bytes(), &bodyRes)
-	delete(bodyRes, "_rev")
-	temp, _ = json.Marshal(bodyRes)
-	str = string(temp)
-	assertStatus(t, response, http.StatusOK)
-
-	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId3a, str)
 	json.Unmarshal(response.Body.Bytes(), &body)
 	docRevId4a := body["rev"].(string)
-	assertStatus(t, response, http.StatusCreated)
 
-	//Check em
-	response = rt.SendRequest("GET", "/db/doc1?atts_since=[\""+docRevId+"\"]&rev="+docRevId4, str)
-	fmt.Println(response.Body)
+	//Ensure the two attachments are different
+	response1 := rt.SendRequest("GET", "/db/doc1?atts_since=[\""+docRevId+"\"]&rev="+docRevId4, "")
+	response2 := rt.SendRequest("GET", "/db/doc1?rev="+docRevId4a, "")
 
-	response = rt.SendRequest("GET", "/db/doc1?rev="+docRevId4a, str)
-	fmt.Println(response.Body)
+	var body1 db.Body
+	var body2 db.Body
 
-}
+	json.Unmarshal(response1.Body.Bytes(), &body1)
+	json.Unmarshal(response2.Body.Bytes(), &body2)
 
-func TestNonExistentStubAttachment(t *testing.T) {
-	var rt RestTester
-	defer rt.Close()
-
-	docRevId := rt.createDoc(t, "doc1")
-
-	reqBody := make(map[string]interface{})
-	reqBody["_attachments"] = make(map[string]interface{})
-	reqBody["_attachments"].(map[string]interface{})["attach1"] = make(map[string]interface{})
-	reqBody["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{})["revpos"] = 1
-	reqBody["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{})["stub"] = true
-	reqBody["_attachments"].(map[string]interface{})["attach1"].(map[string]interface{})["digest"] = "sha1-gKmysvmOjxigWwc6aMtQEzOgDgI="
-
-	temp, _ := json.Marshal(reqBody)
-	str := string(temp)
-	response := rt.SendRequest("PUT", "/db/doc1?rev="+docRevId, str)
-	var body db.Body
-	json.Unmarshal(response.Body.Bytes(), &body)
-	docRevId2 := body["rev"].(string)
-	fmt.Println(response.Body)
-
-	response = rt.SendRequest("GET", "/db/doc1?attachments=true", "")
-	fmt.Println(response.Body)
-
-	//Create an attachment
-	attachmentBody := base64.StdEncoding.EncodeToString(make([]byte, 20))
-	attachmentContentType := "content/type"
-	reqHeaders := map[string]string{
-		"Content-Type": attachmentContentType,
-	}
-
-	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev"+docRevId2, attachmentBody, reqHeaders)
-	fmt.Println(response.Body)
+	assert.NotEqual(t, body1["_attachments"], body2["_attachments"])
 
 }
 

@@ -508,21 +508,7 @@ func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error
 	body[BodyRev] = revid
 
 	if doc.CurrentRev == revid && doc.Attachments != nil {
-		attachments := make(map[string]interface{})
-		revGeneration, _ := base.ToInt64(genOfRevID(revid))
-		for name, attachment := range doc.Attachments {
-			attachmentMeta, ok := attachment.(map[string]interface{})
-			if ok {
-				attachmentRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
-				if ok && attachmentRevpos <= revGeneration {
-					attachments[name] = attachment
-				}
-			}
-		}
-
-		if len(attachments) > 0 {
-			body[BodyAttachments] = attachments
-		}
+		body[BodyAttachments] = doc.Attachments
 	}
 
 	return body, nil
