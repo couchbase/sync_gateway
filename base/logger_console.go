@@ -42,7 +42,7 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 	}
 
 	logKey, warnings := ToLogKey(config.LogKeys)
-	isStderr := config.FileOutput == ""
+	isStderr := config.FileOutput == "" && *config.Enabled
 
 	logger := &ConsoleLogger{
 		LogLevel:     config.LogLevel,
@@ -60,6 +60,17 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 
 		// Start up a single worker to consume messages from the buffer
 		go logCollationWorker(logger.collateBuffer, logger.logger, *config.CollationBufferSize)
+	}
+
+	if *config.Enabled {
+		consoleOutput := "stderr"
+		if config.FileOutput != "" {
+			consoleOutput = config.FileOutput
+		}
+
+		warnings = append(warnings, func() {
+			fmt.Println(addPrefixes(fmt.Sprintf("Logging console output to: %v", consoleOutput), nil, LevelInfo, KeyAll))
+		})
 	}
 
 	return logger, warnings, nil
@@ -112,6 +123,7 @@ func (lcc *ConsoleLoggerConfig) init() error {
 
 	// Default to false
 	if lcc.Enabled == nil || !*lcc.Enabled {
+		lcc.Enabled = BoolPtr(false)
 		newLevel := LevelNone
 		lcc.LogLevel = &newLevel
 		lcc.LogKeys = []string{}

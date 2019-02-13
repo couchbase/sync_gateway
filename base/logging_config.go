@@ -28,7 +28,7 @@ const (
 )
 
 // ErrUnsetLogFilePath is returned when no log_file_path, or --defaultLogFilePath fallback can be used.
-var ErrUnsetLogFilePath = errors.New("No log_file_path configured, and --defaultLogFilePath flag is not set. Log files required for product support are not being generated.")
+var ErrUnsetLogFilePath = errors.New("No log_file_path property specified in config, and --defaultLogFilePath command line flag was not set. Log files required for product support are not being generated.")
 
 type LoggingConfig struct {
 	LogFilePath    string              `json:"log_file_path,omitempty"`   // Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
@@ -69,6 +69,10 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 	err = validateLogFilePath(&c.LogFilePath, defaultLogFilePath)
 	if err != nil {
 		return warnings, err
+	} else {
+		warnings = append(warnings, func() {
+			fmt.Println(addPrefixes(fmt.Sprintf("Logging files to: %v", c.LogFilePath), nil, LevelInfo, KeyAll))
+		})
 	}
 
 	errorLogger, err = NewFileLogger(c.Error, LevelError, LevelError.String(), c.LogFilePath, errorMinAge)
