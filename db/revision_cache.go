@@ -19,7 +19,7 @@ type RevisionCache struct {
 	lruList     *list.List                 // List ordered by most recent access (Front is newest)
 	capacity    uint32                     // Max number of revisions to cache
 	loaderFunc  RevisionCacheLoaderFunc    // Function which does actual loading of something from rev cache
-	lock        sync.Mutex                 // For thread-safety
+	lockChan    chan struct{}              // For thread-safety
 	cacheHits   *expvar.Int
 	cacheMisses *expvar.Int
 }
@@ -75,6 +75,7 @@ func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, stats
 		loaderFunc:  loaderFunc,
 		cacheHits:   statsCache.Get(base.StatKeyRevisionCacheHits).(*expvar.Int),
 		cacheMisses: statsCache.Get(base.StatKeyRevisionCacheMisses).(*expvar.Int),
+		lockChan:    make(chan struct{}, 1),
 	}
 }
 
@@ -100,14 +101,21 @@ func (rc *RevisionCache) GetWithCopy(docid, revid string, copyType BodyCopyType)
 // Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
 // fails silently
 func (rc *RevisionCache) UpdateDelta(docID, revID string, toRevID string, delta []byte) {
-	value := rc.getValue(docID, revID, false)
+	value, cacheBusy := rc.getValue(docID, revID, false)
+	if cacheBusy {
+		return
+	}
 	if value != nil {
 		value.updateDelta(toRevID, delta)
 	}
 }
 
 func (rc *RevisionCache) getFromCache(docid, revid string, copyType BodyCopyType, loadOnCacheMiss bool) (DocumentRevision, error) {
-	value := rc.getValue(docid, revid, loadOnCacheMiss)
+	value, cacheBusy := rc.getValue(docid, revid, loadOnCacheMiss)
+	if cacheBusy && loadOnCacheMiss {
+		return rc.CacheBypassLoad(docid, revid)
+	}
+
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
@@ -117,6 +125,12 @@ func (rc *RevisionCache) getFromCache(docid, revid string, copyType BodyCopyType
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
+	return docRev, err
+}
+
+func (rc *RevisionCache) CacheBypassLoad(docID, revID string) (docRev DocumentRevision, err error) {
+	docRev.RevID = revID
+	docRev.Body, docRev.History, docRev.Channels, docRev.Attachments, docRev.Expiry, err = rc.loaderFunc(IDAndRev{docID, revID})
 	return docRev, err
 }
 
@@ -137,14 +151,17 @@ func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (docR
 	}
 
 	// Retrieve from or add to rev cache
-	value := rc.getValue(docid, bucketDoc.CurrentRev, true)
-	docRev, statEvent, err := value.loadForDoc(bucketDoc, context, BodyShallowCopy)
-	rc.statsRecorderFunc(statEvent)
-
-	if err != nil {
-		rc.removeValue(value) // don't keep failed loads in the cache
+	value, cacheBusy := rc.getValue(docid, bucketDoc.CurrentRev, true)
+	if cacheBusy {
+		return rc.CacheBypassLoad(docid, bucketDoc.CurrentRev)
+	} else {
+		docRev, statEvent, err := value.loadForDoc(bucketDoc, context, BodyShallowCopy)
+		rc.statsRecorderFunc(statEvent)
+		if err != nil {
+			rc.removeValue(value) // don't keep failed loads in the cache
+		}
+		return docRev, err
 	}
-	return docRev, err
 }
 
 func (rc *RevisionCache) statsRecorderFunc(cacheHit bool) {
@@ -161,16 +178,26 @@ func (rc *RevisionCache) Put(docid string, docRev DocumentRevision) {
 	if docRev.History == nil {
 		panic("Missing history for RevisionCache.Put")
 	}
-	value := rc.getValue(docid, docRev.RevID, true)
+	value, cacheBusy := rc.getValue(docid, docRev.RevID, true)
+	if cacheBusy {
+		return
+	}
 	value.store(docRev)
 }
 
-func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revCacheValue) {
+func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revCacheValue, cacheBusy bool) {
 	if docid == "" || revid == "" {
 		panic("RevisionCache: invalid empty doc/rev id")
 	}
 	key := IDAndRev{DocID: docid, RevID: revid}
-	rc.lock.Lock()
+
+	// Lock or skip cache
+	select {
+	case rc.lockChan <- struct{}{}:
+	case <-time.After(50 * time.Microsecond): // If more than 20k cache requests/second, bypass
+		return nil, true
+	}
+
 	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.MoveToFront(elem)
 		value = elem.Value.(*revCacheValue)
@@ -181,17 +208,18 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 			rc.purgeOldest_()
 		}
 	}
-	rc.lock.Unlock()
-	return
+	<-rc.lockChan
+	return value, false
 }
 
 func (rc *RevisionCache) removeValue(value *revCacheValue) {
-	rc.lock.Lock()
+
+	rc.lockChan <- struct{}{}
 	if element := rc.cache[value.key]; element != nil && element.Value == value {
 		rc.lruList.Remove(element)
 		delete(rc.cache, value.key)
 	}
-	rc.lock.Unlock()
+	<-rc.lockChan
 }
 
 func (rc *RevisionCache) purgeOldest_() {
