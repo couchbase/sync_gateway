@@ -194,7 +194,7 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 	// Lock or skip cache
 	select {
 	case rc.lockChan <- struct{}{}:
-	case <-time.After(50 * time.Microsecond): // If more than 20k cache requests/second, bypass
+	case <-time.After(20 * time.Microsecond): // If more than 20ms latency on lock, bypass
 		return nil, true
 	}
 
