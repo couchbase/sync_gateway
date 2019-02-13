@@ -507,7 +507,7 @@ func (db *DatabaseContext) getRevision(doc *document, revid string) (Body, error
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
 
-	if doc.Attachments != nil {
+	if doc.CurrentRev == revid && doc.Attachments != nil {
 		body[BodyAttachments] = doc.Attachments
 	}
 
@@ -584,7 +584,6 @@ func (db *Database) getRevFromDoc(doc *document, revid string, listRevisions boo
 }
 
 // Returns the body of the asked-for revision or the most recent available ancestor.
-// Does NOT fill in _id, _rev, etc.
 func (db *Database) getAvailableRev(doc *document, revid string) (Body, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
 		if body, _ := db.getRevision(doc, revid); body != nil {
