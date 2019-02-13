@@ -16,7 +16,6 @@ import (
 	"log"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -1780,10 +1779,19 @@ func TestGetXattr(t *testing.T) {
 	key2 := "TombstonedDocXattrExists"
 	val2 := make(map[string]interface{})
 	val2["type"] = key2
-	xattrName2 := "sync"
+	xattrName2 := "_sync"
 	xattrVal2 := make(map[string]interface{})
 	xattrVal2["seq"] = float64(1)
 	xattrVal2["rev"] = "1-foo"
+
+	//Doc 3 - To Delete
+	key3 := "DeletedDocXattrExists"
+	val3 := make(map[string]interface{})
+	val3["type"] = key3
+	xattrName3 := "sync"
+	xattrVal3 := make(map[string]interface{})
+	xattrVal3["seq"] = float64(1)
+	xattrVal3["rev"] = "1-foo"
 
 	var err error
 
@@ -1803,7 +1811,7 @@ func TestGetXattr(t *testing.T) {
 	assert.Equal(t, xattrVal1["seq"], response["seq"])
 	assert.Equal(t, xattrVal1["rev"], response["rev"])
 
-	//Get Xattr From Existing Doc With Non-Existent Xattr
+	//Get Xattr From Existing Doc With Non-Existent Xattr -> ErrSubDocBadMulti
 	_, err = testBucket.GetXattr(key1, "non-exist", &response)
 	assert.Error(t, err)
 
@@ -1812,9 +1820,8 @@ func TestGetXattr(t *testing.T) {
 	assert.Error(t, err)
 
 	//Get Xattr From Tombstoned Doc With Existing Xattr
-	cas, err = bucket.WriteCasWithXattr(key2, xattrName2, 1, cas, val2, xattrVal2)
-	assert.NoError(t, err)
-	time.Sleep(2 * time.Second)
+	cas, err = bucket.WriteCasWithXattr(key2, xattrName2, 0, cas, val2, xattrVal2)
+	bucket.Remove(key2, cas)
 	_, err = testBucket.GetXattr(key2, xattrName2, &response)
 	assert.NoError(t, err)
 
@@ -1822,6 +1829,11 @@ func TestGetXattr(t *testing.T) {
 	_, err = testBucket.GetXattr(key2, "non-exist", &response)
 	assert.Error(t, err)
 
+	////Get Xattr From Deleted Doc With Deleted Xattr -> SubDocMultiPathFailureDeleted
+	cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), val3, xattrVal3)
+	bucket.Remove(key3, cas)
+	_, err = testBucket.GetXattr(key3, xattrName3, &response)
+	assert.Error(t, err)
 }
 
 func TestApplyViewQueryOptions(t *testing.T) {
