@@ -45,7 +45,7 @@ func (sdSlice SystemDataSlice) Redact() string {
 	tmp := []byte{}
 	for _, item := range sdSlice {
 		tmp = append(tmp, []byte(item.Redact())...)
-		tmp = append(tmp, []byte(" ")...)
+		tmp = append(tmp, ' ')
 	}
 	return "[ " + string(tmp) + "]"
 }

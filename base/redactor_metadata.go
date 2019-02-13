@@ -47,7 +47,7 @@ func (udSlice MetadataSlice) Redact() string {
 	tmp := []byte{}
 	for _, item := range udSlice {
 		tmp = append(tmp, []byte(item.Redact())...)
-		tmp = append(tmp, []byte(" ")...)
+		tmp = append(tmp, ' ')
 	}
 	return "[ " + string(tmp) + "]"
 }
