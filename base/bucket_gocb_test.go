@@ -1814,10 +1814,12 @@ func TestGetXattr(t *testing.T) {
 	//Get Xattr From Existing Doc With Non-Existent Xattr -> ErrSubDocBadMulti
 	_, err = testBucket.GetXattr(key1, "non-exist", &response)
 	assert.Error(t, err)
+	assert.Equal(t, gocbcore.ErrSubDocBadMulti, err)
 
 	//Get Xattr From Non-Existent Doc With Non-Existent Xattr
 	_, err = testBucket.GetXattr("non-exist", "non-exist", &response)
 	assert.Error(t, err)
+	assert.Equal(t, gocbcore.ErrKeyNotFound, err)
 
 	//Get Xattr From Tombstoned Doc With Existing Xattr
 	cas, err = bucket.WriteCasWithXattr(key2, xattrName2, 0, cas, val2, xattrVal2)
@@ -1828,12 +1830,14 @@ func TestGetXattr(t *testing.T) {
 	//Get Xattr From Tombstoned Doc With Non-Existent Xattr
 	_, err = testBucket.GetXattr(key2, "non-exist", &response)
 	assert.Error(t, err)
+	assert.Equal(t, gocbcore.ErrKeyNotFound, err)
 
 	////Get Xattr From Deleted Doc With Deleted Xattr -> SubDocMultiPathFailureDeleted
 	cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), val3, xattrVal3)
 	bucket.Remove(key3, cas)
 	_, err = testBucket.GetXattr(key3, xattrName3, &response)
 	assert.Error(t, err)
+	assert.Equal(t, gocbcore.ErrKeyNotFound, err)
 }
 
 func TestApplyViewQueryOptions(t *testing.T) {
