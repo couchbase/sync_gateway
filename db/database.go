@@ -72,7 +72,7 @@ type DatabaseContext struct {
 	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
 	autoImport         bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
 	Shadower           *Shadower               // Tracks an external Couchbase bucket
-	revisionCache      *RevisionCache          // Cache of recently-accessed doc revisions
+	revisionCache      *ShardedRevisionCache   // Cache of recently-accessed doc revisions
 	changeCache        ChangeIndex             //
 	EventMgr           *EventManager           // Manages notification events
 	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
@@ -1157,7 +1157,7 @@ func (context *DatabaseContext) FlushRevisionCacheForTest() {
 }
 
 // For test usage
-func (context *DatabaseContext) GetRevisionCacheForTest() *RevisionCache {
+func (context *DatabaseContext) GetRevisionCacheForTest() *ShardedRevisionCache {
 	return context.revisionCache
 }
 

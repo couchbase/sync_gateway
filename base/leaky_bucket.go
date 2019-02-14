@@ -425,5 +425,5 @@ func dedupeTapEvents(tapEvents []sgbucket.FeedEvent) []sgbucket.FeedEvent {
 
 // VBHash finds the vbucket for the given key.
 func VBHash(key string, numVb int) uint32 {
-	return sgbucket.VBHash(key, uint16(numVb))
+	return sgbucket.VBHash(key, uint32(numVb))
 }

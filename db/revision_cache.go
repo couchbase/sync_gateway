@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"errors"
 	"expvar"
+	"github.com/couchbase/sg-bucket"
 	"sync"
 	"time"
 
@@ -12,6 +13,60 @@ import (
 
 // Number of recently-accessed doc revisions to cache in RAM
 var KDefaultRevisionCacheCapacity uint32 = 5000
+var KDefaultNumCacheShards uint32 = 8
+
+type ShardedRevisionCache struct {
+	caches    []*RevisionCache
+	numShards uint32
+}
+
+// Creates a revision cache with the given capacity and an optional loader function.
+func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *ShardedRevisionCache {
+
+	numShards := KDefaultNumCacheShards
+	if capacity == 0 {
+		capacity = KDefaultRevisionCacheCapacity
+	}
+
+	caches := make([]*RevisionCache, numShards)
+	perCacheCapacity := uint32(capacity/uint32(numShards)) + 1
+	for i := 0; i < int(numShards); i++ {
+		caches[i] = NewRevisionCacheShard(perCacheCapacity, loaderFunc, statsCache)
+	}
+
+	return &ShardedRevisionCache{
+		caches:    caches,
+		numShards: numShards,
+	}
+}
+
+func (sc *ShardedRevisionCache) getShard(docID string) uint32 {
+	return sgbucket.VBHash(docID, sc.numShards)
+}
+
+func (sc *ShardedRevisionCache) Get(docID, revID string) (DocumentRevision, error) {
+	return sc.caches[sc.getShard(docID)].Get(docID, revID)
+}
+
+func (sc *ShardedRevisionCache) GetCached(docID, revID string) (DocumentRevision, error) {
+	return sc.caches[sc.getShard(docID)].GetCached(docID, revID)
+}
+
+func (sc *ShardedRevisionCache) GetWithCopy(docID, revID string, copyType BodyCopyType) (DocumentRevision, error) {
+	return sc.caches[sc.getShard(docID)].GetWithCopy(docID, revID, copyType)
+}
+
+func (sc *ShardedRevisionCache) UpdateDelta(docID, revID string, toRevID string, delta []byte) {
+	sc.caches[sc.getShard(docID)].UpdateDelta(docID, revID, toRevID, delta)
+}
+
+func (sc *ShardedRevisionCache) GetActive(docID string, context *DatabaseContext) (docRev DocumentRevision, err error) {
+	return sc.caches[sc.getShard(docID)].GetActive(docID, context)
+}
+
+func (sc *ShardedRevisionCache) Put(docID string, docRev DocumentRevision) {
+	sc.caches[sc.getShard(docID)].Put(docID, docRev)
+}
 
 // An LRU cache of document revision bodies, together with their channel access.
 type RevisionCache struct {
@@ -62,7 +117,7 @@ type RevCacheDelta struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *RevisionCache {
+func NewRevisionCacheShard(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *RevisionCache {
 
 	if capacity == 0 {
 		capacity = KDefaultRevisionCacheCapacity
