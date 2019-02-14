@@ -1680,17 +1680,41 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return // Users can't upload design docs, so ignore them
 	}
-	doc, err := db.GetDocument(docid, DocUnmarshalSync)
-	if err != nil {
-		if !base.IsDocNotFoundError(err) {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
-			// If something goes wrong getting the doc, treat it as though it's nonexistent.
+
+	var history RevTree
+
+	if db.UseXattrs() {
+		var xattrValue []byte
+		cas, err := db.Bucket.GetXattr(docid, KSyncXattrName, &xattrValue)
+
+		if err != nil {
+			if !base.IsDocNotFoundError(err) {
+				base.WarnfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
+			}
+			missing = revids
+			return
 		}
-		missing = revids
-		return
+		doc, err := unmarshalDocumentWithXattr(docid, nil, xattrValue, cas, DocUnmarshalSync)
+		if err != nil {
+			base.ErrorfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) Doc Unmarshal Failed: %T %v", base.UD(docid), err,
+				err)
+		}
+		history = doc.History
+	} else {
+		doc, err := db.GetDocument(docid, DocUnmarshalSync)
+		if err != nil {
+			if !base.IsDocNotFoundError(err) {
+				base.WarnfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
+				// If something goes wrong getting the doc, treat it as though it's nonexistent.
+			}
+			missing = revids
+			return
+		}
+		history = doc.History
 	}
+
 	// Check each revid to see if it's in the doc's rev tree:
-	revtree := doc.History
+	revtree := history
 	revidsSet := base.SetFromArray(revids)
 	possibleSet := make(map[string]bool)
 	for _, revid := range revids {
