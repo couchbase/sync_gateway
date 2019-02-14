@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRedactHelper(t *testing.T) {
@@ -89,6 +90,20 @@ func TestRedactionLevelUnmarshalText(t *testing.T) {
 
 	err = level.UnmarshalText([]byte("asdf"))
 	goassert.Equals(t, err.Error(), "unrecognized redaction level: \"asdf\"")
+}
+
+func TestMixedTypeSliceRedaction(t *testing.T) {
+	RedactMetadata = true
+	RedactSystemData = true
+	RedactUserData = true
+	defer func() {
+		RedactMetadata = false
+		RedactSystemData = false
+		RedactUserData = false
+	}()
+
+	slice := RedactorSlice{MD("cluster name"), SD("server ip"), UD("username")}
+	assert.Equal(t, `[ `+metaDataPrefix+"cluster name"+metaDataSuffix+` `+systemDataPrefix+"server ip"+systemDataSuffix+" "+userDataPrefix+"username"+userDataSuffix+" ]", slice.Redact())
 }
 
 func BenchmarkRedactHelper(b *testing.B) {

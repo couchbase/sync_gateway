@@ -40,16 +40,28 @@ func TestUD(t *testing.T) {
 	// Even plain structs could be redactable.
 	ud = UD(struct{}{})
 	goassert.Equals(t, ud.Redact(), userDataPrefix+"{}"+userDataSuffix)
+
+	// String slice test.
+	ud = UD([]string{"hello", "world", "o/"})
+	goassert.Equals(t, ud.Redact(), "[ "+userDataPrefix+"hello"+userDataSuffix+" "+userDataPrefix+"world"+userDataSuffix+" "+userDataPrefix+"o/"+userDataSuffix+" ]")
 }
 
 func BenchmarkUserDataRedact(b *testing.B) {
 	username := UserData("alice")
+	usernameSlice := UD([]string{"adam", "ben", "jacques"})
 
 	// We'd expect a minor performance hit when redaction is enabled.
 	b.Run("Enabled", func(bn *testing.B) {
 		RedactUserData = true
 		for i := 0; i < bn.N; i++ {
 			username.Redact()
+		}
+	})
+
+	b.Run("EnabledSlice", func(bn *testing.B) {
+		RedactUserData = true
+		for i := 0; i < bn.N; i++ {
+			usernameSlice.Redact()
 		}
 	})
 
