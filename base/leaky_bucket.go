@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 // A wrapper around a Bucket to support forced errors.  For testing use only.
@@ -174,6 +174,10 @@ func (b *LeakyBucket) GetWithXattr(k string, xattr string, rv interface{}, xv in
 
 func (b *LeakyBucket) DeleteWithXattr(k string, xattr string) error {
 	return b.bucket.DeleteWithXattr(k, xattr)
+}
+
+func (b *LeakyBucket) GetXattr(k string, xattr string, xv interface{}) (cas uint64, err error) {
+	return b.bucket.GetXattr(k, xattr, xv)
 }
 
 func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
