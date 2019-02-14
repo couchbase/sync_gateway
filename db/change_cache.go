@@ -323,7 +323,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 		entry.Channels = doc.Channels
 
 		changedChannels := c.processEntry(entry)
-		changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
+		changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
 	}
 
 	// Since the calls to processEntry() above may unblock pending sequences, if there were any changed channels we need
@@ -457,7 +457,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 			TimeReceived: time.Now(),
 		}
 		changedChannels := c.processEntry(change)
-		changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
+		changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
 	}
 
 	// If the recent sequence history includes any sequences earlier than the current sequence, and
@@ -489,7 +489,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 				}
 
 				changedChannels := c.processEntry(change)
-				changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
+				changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
 			}
 		}
 	}
@@ -507,7 +507,7 @@ func (c *changeCache) DocChangedSynchronous(event sgbucket.FeedEvent) {
 	base.Infof(base.KeyCache, "Received #%d after %3dms (%q / %q)", change.Sequence, int(tapLag/time.Millisecond), base.UD(change.DocID), change.RevID)
 
 	changedChannels := c.processEntry(change)
-	changedChannelsCombined = changedChannelsCombined.Union(changedChannels)
+	changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
 
 	// Notify change listeners for all of the changed channels
 	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
@@ -624,7 +624,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// This is the expected next sequence so we can add it now:
 		changedChannels = c._addToCache(change)
 		// Also add any pending sequences that are now contiguous:
-		changedChannels = changedChannels.Union(c._addPendingLogs())
+		changedChannels = changedChannels.Update(c._addPendingLogs())
 	} else if sequence > c.nextSequence {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
@@ -714,7 +714,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		isNext := change.Sequence == c.nextSequence
 		if isNext {
 			heap.Pop(&c.pendingLogs)
-			changedChannels = changedChannels.Union(c._addToCache(change))
+			changedChannels = changedChannels.Update(c._addToCache(change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			changeCacheExpvars.Add("outOfOrder", 1)
 			c.PushSkipped(c.nextSequence)
