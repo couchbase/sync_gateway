@@ -25,7 +25,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
@@ -1358,6 +1358,53 @@ func (bucket *CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) er
 	// Delegate to internal method that can take a testing-related callback
 	return bucket.deleteWithXattrInternal(k, xattrKey, nil)
 
+}
+
+func (bucket *CouchbaseBucketGoCB) GetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		res, lookupErr := bucket.Bucket.LookupInEx(k, gocb.SubdocDocFlagAccessDeleted).
+			GetEx(xattrKey, gocb.SubdocFlagXattr).Execute()
+
+		switch lookupErr {
+		case nil:
+			res.Content(xattrKey, xv)
+			cas := uint64(res.Cas())
+			return false, err, cas
+		case gocbcore.ErrSubDocBadMulti:
+			xattrErr := res.Content(xattrKey, xv)
+			Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrErr)
+			cas := uint64(res.Cas())
+			return false, gocb.ErrSubDocBadMulti, cas
+		case gocbcore.ErrKeyNotFound:
+			Debugf(KeyCRUD, "No document found for key=%s", UD(k))
+			return false, gocb.ErrKeyNotFound, 0
+		case gocbcore.ErrSubDocMultiPathFailureDeleted, gocb.ErrSubDocSuccessDeleted:
+			xattrContentErr := res.Content(xattrKey, xv)
+			if xattrContentErr != nil {
+				return false, gocbcore.ErrKeyNotFound, uint64(0)
+			}
+			cas := uint64(res.Cas())
+			return false, nil, cas
+		default:
+			shouldRetry = isRecoverableGoCBError(lookupErr)
+			return shouldRetry, lookupErr, uint64(0)
+		}
+
+	}
+	description := fmt.Sprintf("GetXattr %s", UD(k).Redact())
+	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+
+	if result == nil {
+		return 0, err
+	}
+
+	cas, ok := result.(uint64)
+	if !ok {
+		return 0, RedactErrorf("GetXattr: Error doing type assertio of %v (%T) into uint64, Key %v", UD(result), result, UD(k))
+	}
+
+	return cas, err
 }
 
 // A function that will be called back after the first delete attempt but before second delete attempt
