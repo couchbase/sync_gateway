@@ -20,7 +20,6 @@ var RedactUserData = false
 //  - Usernames
 //  - Document xattrs
 type UserData string
-type UserDataSlice []UserData
 
 // Redact tags the string with UserData tags for post-processing.
 func (ud UserData) Redact() string {
@@ -28,27 +27,6 @@ func (ud UserData) Redact() string {
 		return string(ud)
 	}
 	return clog.Tag(clog.UserData, string(ud)).(string)
-}
-
-func uds(interfaceSlice interface{}) UserDataSlice {
-	valueOf := reflect.ValueOf(interfaceSlice)
-
-	length := valueOf.Len()
-	retVal := make([]UserData, 0, length)
-	for i := 0; i < length; i++ {
-		retVal = append(retVal, UD(valueOf.Index(i).Interface()).(UserData))
-	}
-
-	return retVal
-}
-
-func (udSlice UserDataSlice) Redact() string {
-	tmp := []byte{}
-	for _, item := range udSlice {
-		tmp = append(tmp, []byte(item.Redact())...)
-		tmp = append(tmp, ' ')
-	}
-	return "[ " + string(tmp) + "]"
 }
 
 // Compile-time interface check.
@@ -62,8 +40,9 @@ func UD(i interface{}) Redactor {
 	case fmt.Stringer:
 		return UserData(v.String())
 	default:
-		if reflect.ValueOf(i).Kind() == reflect.Slice {
-			return uds(i)
+		valueOf := reflect.ValueOf(i)
+		if valueOf.Kind() == reflect.Slice {
+			return buildSlice(valueOf, UD)
 		}
 		// Fall back to a slower but safe way of getting a string from any type.
 		return UserData(fmt.Sprintf("%+v", v))
