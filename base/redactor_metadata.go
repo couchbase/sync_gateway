@@ -2,6 +2,7 @@ package base
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/couchbase/clog"
 )
@@ -28,20 +29,23 @@ func (md Metadata) Redact() string {
 		return string(md)
 	}
 	return clog.Tag(clog.MetaData, string(md)).(string)
-
 }
 
 // Compile-time interface check.
 var _ Redactor = Metadata("")
 
 // MD returns a Metadata type for any given value.
-func MD(i interface{}) Metadata {
+func MD(i interface{}) Redactor {
 	switch v := i.(type) {
 	case string:
 		return Metadata(v)
 	case fmt.Stringer:
 		return Metadata(v.String())
 	default:
+		typeOf := reflect.ValueOf(i)
+		if typeOf.Kind() == reflect.Slice {
+			return buildRedactorSlice(typeOf, MD)
+		}
 		// Fall back to a slower but safe way of getting a string from any type.
 		return Metadata(fmt.Sprintf("%+v", v))
 	}
