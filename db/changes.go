@@ -847,77 +847,10 @@ func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []str
 	output := make(chan *ChangeEntry, len(explicitDocIds))
 	rowMap := make(map[uint64]*ChangeEntry)
 
-	// TODO: This doesn't need to be an inline function, and would be easier to unit test as a standalone function.
-	createChangeEntry := func(docid string) *ChangeEntry {
-		row := &ChangeEntry{ID: docid}
-
-		// Fetch the document body and other metadata that lives with it:
-		populatedDoc, body, err := db.GetDocAndActiveRev(docid)
-		if err != nil {
-			base.InfofCtx(db.Ctx, base.KeyChanges, "Unable to get changes for docID %v, caused by %v", base.UD(docid), err)
-			return nil
-		}
-
-		if populatedDoc.Sequence <= options.Since.Seq {
-			return nil
-		}
-
-		if body == nil {
-			return nil
-		}
-
-		changes := make([]ChangeRev, 1)
-		changes[0] = ChangeRev{"rev": body[BodyRev].(string)}
-		row.Changes = changes
-		row.Seq = SequenceID{Seq: populatedDoc.Sequence}
-		row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
-
-		var removedChannels []string
-
-		if deleted, _ := body[BodyDeleted].(bool); deleted {
-			row.Deleted = true
-		}
-
-		userCanSeeDocChannel := false
-
-		// If admin, or the user has the star channel, include it in the results
-		if db.user == nil || db.user.Channels().Contains(channels.UserStarChannel) {
-			userCanSeeDocChannel = true
-		} else if len(populatedDoc.Channels) > 0 {
-			// Iterate over the doc's channels, including in the results:
-			//   - the active revision is in a channel the user can see (removal==nil)
-			//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
-			for channel, removal := range populatedDoc.Channels {
-				if db.user.CanSeeChannel(channel) && (removal == nil || removal.Seq > options.Since.Seq) {
-					userCanSeeDocChannel = true
-					// If removal, update removed channels and deleted flag.
-					if removal != nil {
-						removedChannels = append(removedChannels, channel)
-						if removal.Deleted {
-							// TODO: Need validation that this properly handles resurrection scenario (https://github.com/couchbase/sync_gateway/issues/3327)
-							row.Deleted = true
-						}
-					}
-				}
-			}
-		}
-
-		if !userCanSeeDocChannel {
-			return nil
-		}
-
-		row.Removed = base.SetFromArray(removedChannels)
-		if options.IncludeDocs || options.Conflicts {
-			db.AddDocInstanceToChangeEntry(row, populatedDoc, options)
-		}
-
-		return row
-	}
-
 	// Sort results by sequence
 	var sequences base.SortedUint64Slice
 	for _, docID := range explicitDocIds {
-		row := createChangeEntry(docID)
+		row := createChangesEntry(docID, db, options)
 		if row != nil {
 			rowMap[row.Seq.Seq] = row
 			sequences = append(sequences, row.Seq.Seq)
@@ -939,4 +872,69 @@ func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []str
 	close(output)
 
 	return output, nil
+}
+
+func createChangesEntry(docid string, db *Database, options ChangesOptions) *ChangeEntry {
+	row := &ChangeEntry{ID: docid}
+
+	// Fetch the document body and other metadata that lives with it:
+	populatedDoc, body, err := db.GetDocAndActiveRev(docid)
+	if err != nil {
+		base.InfofCtx(db.Ctx, base.KeyChanges, "Unable to get changes for docID %v, caused by %v", base.UD(docid), err)
+		return nil
+	}
+
+	if populatedDoc.Sequence <= options.Since.Seq {
+		return nil
+	}
+
+	if body == nil {
+		return nil
+	}
+
+	changes := make([]ChangeRev, 1)
+	changes[0] = ChangeRev{"rev": body[BodyRev].(string)}
+	row.Changes = changes
+	row.Seq = SequenceID{Seq: populatedDoc.Sequence}
+	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
+
+	var removedChannels []string
+
+	if deleted, _ := body[BodyDeleted].(bool); deleted {
+		row.Deleted = true
+	}
+
+	userCanSeeDocChannel := false
+
+	// If admin, or the user has the star channel, include it in the results
+	if db.user == nil || db.user.Channels().Contains(channels.UserStarChannel) {
+		userCanSeeDocChannel = true
+	} else if len(populatedDoc.Channels) > 0 {
+		// Iterate over the doc's channels, including in the results:
+		//   - the active revision is in a channel the user can see (removal==nil)
+		//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
+		for channel, removal := range populatedDoc.Channels {
+			if db.user.CanSeeChannel(channel) && (removal == nil || removal.Seq > options.Since.Seq) {
+				userCanSeeDocChannel = true
+				// If removal, update removed channels and deleted flag.
+				if removal != nil {
+					removedChannels = append(removedChannels, channel)
+					if removal.Deleted {
+						row.Deleted = true
+					}
+				}
+			}
+		}
+	}
+
+	if !userCanSeeDocChannel {
+		return nil
+	}
+
+	row.Removed = base.SetFromArray(removedChannels)
+	if options.IncludeDocs || options.Conflicts {
+		db.AddDocInstanceToChangeEntry(row, populatedDoc, options)
+	}
+
+	return row
 }
