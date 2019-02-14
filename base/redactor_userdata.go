@@ -2,6 +2,7 @@ package base
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/couchbase/clog"
 )
@@ -32,13 +33,17 @@ func (ud UserData) Redact() string {
 var _ Redactor = UserData("")
 
 // UD returns a UserData type for any given value.
-func UD(i interface{}) UserData {
+func UD(i interface{}) Redactor {
 	switch v := i.(type) {
 	case string:
 		return UserData(v)
 	case fmt.Stringer:
 		return UserData(v.String())
 	default:
+		valueOf := reflect.ValueOf(i)
+		if valueOf.Kind() == reflect.Slice {
+			return buildRedactorSlice(valueOf, UD)
+		}
 		// Fall back to a slower but safe way of getting a string from any type.
 		return UserData(fmt.Sprintf("%+v", v))
 	}
