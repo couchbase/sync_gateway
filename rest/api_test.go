@@ -3768,6 +3768,46 @@ func TestRestSettingPurged(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
+func TestDocIDFilterResurrection(t *testing.T) {
+	var rt RestTester
+	defer rt.Close()
+
+	//Create User
+	a := rt.ServerContext().Database("db").Authenticator()
+	jacques, err := a.NewUser("jacques", "letmein", channels.SetOf("A", "B"))
+	assert.NoError(t, err)
+	a.Save(jacques)
+
+	//Create Doc
+	response := rt.SendRequest("PUT", "/db/doc1", `{"channels": ["A"]}`)
+	assert.Equal(t, http.StatusCreated, response.Code)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docRevID := body["rev"].(string)
+
+	//Delete Doc
+	response = rt.SendRequest("DELETE", "/db/doc1?rev="+docRevID, "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	docRevID2 := body["rev"].(string)
+
+	//Update / Revive Doc
+	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevID2, `{"channels": ["B"]}`)
+	assert.Equal(t, http.StatusCreated, response.Code)
+
+	rt.ServerContext().Database("db").WaitForPendingChanges()
+
+	//Changes call
+	request, _ := http.NewRequest("GET", "/db/_changes", nil)
+	request.SetBasicAuth("jacques", "letmein")
+	response = rt.Send(request)
+	assert.Equal(t, http.StatusOK, response.Code)
+
+	var changesResponse = make(map[string]interface{})
+	json.Unmarshal(response.Body.Bytes(), &changesResponse)
+	assert.NotContains(t, changesResponse["results"].([]interface{})[1], "deleted")
+}
+
 var prt RestTester
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
