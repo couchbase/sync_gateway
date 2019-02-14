@@ -41,7 +41,7 @@ func SD(i interface{}) Redactor {
 	default:
 		valueOf := reflect.ValueOf(i)
 		if valueOf.Kind() == reflect.Slice {
-			return buildSlice(valueOf, SD)
+			return buildRedactorSlice(valueOf, SD)
 		}
 		// Fall back to a slower but safe way of getting a string from any type.
 		return SystemData(fmt.Sprintf("%+v", v))

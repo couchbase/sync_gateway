@@ -42,7 +42,7 @@ func UD(i interface{}) Redactor {
 	default:
 		valueOf := reflect.ValueOf(i)
 		if valueOf.Kind() == reflect.Slice {
-			return buildSlice(valueOf, UD)
+			return buildRedactorSlice(valueOf, UD)
 		}
 		// Fall back to a slower but safe way of getting a string from any type.
 		return UserData(fmt.Sprintf("%+v", v))

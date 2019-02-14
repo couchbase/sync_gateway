@@ -44,7 +44,7 @@ func (redactorSlice RedactorSlice) Redact() string {
 	return "[ " + string(tmp) + "]"
 }
 
-func buildSlice(valueOf reflect.Value, function func(interface{}) Redactor) RedactorSlice {
+func buildRedactorSlice(valueOf reflect.Value, function func(interface{}) Redactor) RedactorSlice {
 	length := valueOf.Len()
 	retVal := make([]Redactor, 0, length)
 	for i := 0; i < length; i++ {

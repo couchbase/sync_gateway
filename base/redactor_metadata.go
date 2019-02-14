@@ -44,7 +44,7 @@ func MD(i interface{}) Redactor {
 	default:
 		typeOf := reflect.ValueOf(i)
 		if typeOf.Kind() == reflect.Slice {
-			return buildSlice(typeOf, MD)
+			return buildRedactorSlice(typeOf, MD)
 		}
 		// Fall back to a slower but safe way of getting a string from any type.
 		return Metadata(fmt.Sprintf("%+v", v))
