@@ -202,6 +202,9 @@ func (b *StatsBucket) GetWithXattr(k string, xattr string, rv interface{}, xv in
 func (b *StatsBucket) DeleteWithXattr(k string, xattr string) error {
 	return b.bucket.DeleteWithXattr(k, xattr)
 }
+func (b *StatsBucket) GetXattr(k string, xattr string, xv interface{}) (cas uint64, err error) {
+	return b.bucket.GetXattr(k, xattr, xv)
+}
 func (b *StatsBucket) GetDDoc(docname string, value interface{}) error {
 	return b.bucket.GetDDoc(docname, value)
 }
