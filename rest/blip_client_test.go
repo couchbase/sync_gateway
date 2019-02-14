@@ -139,20 +139,21 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		// If deltas are enabled, and we see a deltaSrc property, we'll need to patch it before storing
 		if btc.ClientDeltas && deltaSrc != "" {
 			// unmarshal body to extract deltaSrc
-			var delta map[string]interface{}
-			if err := json.Unmarshal(body, &delta); err != nil {
+			var delta db.Body
+			if err := delta.Unmarshal(body); err != nil {
 				panic(err)
 			}
 
-			var old map[string]interface{}
+			var old db.Body
 			btc.docsLock.RLock()
 			oldBytes := btc.docs[docID][deltaSrc]
 			btc.docsLock.RUnlock()
-			if err := json.Unmarshal(oldBytes, &old); err != nil {
+			if err := old.Unmarshal(oldBytes); err != nil {
 				panic(err)
 			}
 
-			if err := base.Patch(&old, body); err != nil {
+			var oldMap = map[string]interface{}(old)
+			if err := base.Patch(&oldMap, body); err != nil {
 				panic(err)
 			}
 
@@ -346,13 +347,13 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 
 	if btc.ClientDeltas && proposeChangesResponse.Properties[proposeChangesResponseDeltas] == "true" {
 		base.Debugf(base.KeySync, "TEST: sending deltas from test client")
-		var parentDocJSON, newDocJSON map[string]interface{}
-		err := json.Unmarshal(parentDocBody, &parentDocJSON)
+		var parentDocJSON, newDocJSON db.Body
+		err := parentDocJSON.Unmarshal(parentDocBody)
 		if err != nil {
 			return "", err
 		}
 
-		err = json.Unmarshal(body, &newDocJSON)
+		err = newDocJSON.Unmarshal(body)
 		if err != nil {
 			return "", err
 		}
