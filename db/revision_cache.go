@@ -22,6 +22,7 @@ type RevisionCache struct {
 	lockChan    chan struct{}              // For thread-safety
 	cacheHits   *expvar.Int
 	cacheMisses *expvar.Int
+	cacheBusy   *expvar.Int
 }
 
 // Revision information as returned by the rev cache
@@ -75,6 +76,7 @@ func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, stats
 		loaderFunc:  loaderFunc,
 		cacheHits:   statsCache.Get(base.StatKeyRevisionCacheHits).(*expvar.Int),
 		cacheMisses: statsCache.Get(base.StatKeyRevisionCacheMisses).(*expvar.Int),
+		cacheBusy:   statsCache.Get(base.StatKeyRevisionCacheBusy).(*expvar.Int),
 		lockChan:    make(chan struct{}, 1),
 	}
 }
@@ -131,6 +133,7 @@ func (rc *RevisionCache) getFromCache(docid, revid string, copyType BodyCopyType
 func (rc *RevisionCache) CacheBypassLoad(docID, revID string) (docRev DocumentRevision, err error) {
 	docRev.RevID = revID
 	docRev.Body, docRev.History, docRev.Channels, docRev.Attachments, docRev.Expiry, err = rc.loaderFunc(IDAndRev{docID, revID})
+	rc.cacheBusy.Add(1)
 	return docRev, err
 }
 
@@ -194,7 +197,7 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 	// Lock or skip cache
 	select {
 	case rc.lockChan <- struct{}{}:
-	case <-time.After(20 * time.Microsecond): // If more than 20ms latency on lock, bypass
+	case <-time.After(1 * time.Millisecond): // If more than 1ms latency on lock, bypass
 		return nil, true
 	}
 

@@ -84,6 +84,7 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyNumSkippedSeqs, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyRevisionCacheHits, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyRevisionCacheMisses, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyRevisionCacheBusy, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyChannelCacheHits, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyChannelCacheMisses, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyChannelCacheRevsActive, base.ExpvarIntVal(0))

@@ -2,6 +2,8 @@ package db
 
 import (
 	"fmt"
+	"log"
+	"runtime"
 	"testing"
 	"time"
 
@@ -312,12 +314,17 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 		channels = base.SetOf("*")
 		return
 	}
-	cache := NewRevisionCache(5000, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
+	statsMap := initEmptyStatsMap(base.StatsGroupKeyCache)
+	cache := NewRevisionCache(5000, loader, statsMap)
 
 	// trigger load into cache
 
 	_, err := cache.Get("doc1", "rev1")
 	assert.NoError(b, err, "Error initializing cache for BenchmarkRevisionCacheRead")
+
+	maxProcs := runtime.GOMAXPROCS(0)
+	runtime.GOMAXPROCS(48)
+	defer runtime.GOMAXPROCS(maxProcs)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -329,4 +336,6 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 			}
 		}
 	})
+
+	log.Printf("Stats Map: %s", statsMap.String())
 }
