@@ -76,7 +76,7 @@ func (set Set) Equals(other Set) bool {
 	return true
 }
 
-// Returns the union of two sets.
+// Returns the union of two sets as a new set.
 func (set Set) Union(other Set) Set {
 	if len(set) == 0 {
 		return other
@@ -88,6 +88,19 @@ func (set Set) Union(other Set) Set {
 		result[ch] = present{}
 	}
 	return result
+}
+
+// Updates the set based on the contents of another set
+func (set Set) Update(other Set) Set {
+	if len(set) == 0 {
+		return other
+	} else if len(other) == 0 {
+		return set
+	}
+	for ch := range other {
+		set[ch] = present{}
+	}
+	return set
 }
 
 // Returns a set with any instance of 'str' removed
