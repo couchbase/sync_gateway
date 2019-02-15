@@ -861,6 +861,12 @@ func TestConflicts(t *testing.T) {
 }
 
 func TestConflictRevLimit(t *testing.T) {
+
+	//Test Default Is the higher of the two
+	db, _ := setupTestDB(t)
+	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+
+	//Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
 		AllowConflicts: base.BooleanPointer(true),
 	}
@@ -868,11 +874,12 @@ func TestConflictRevLimit(t *testing.T) {
 	AddOptionsFromEnvironmentVariables(&dbOptions)
 	bucket := testBucket()
 	context, _ := NewDatabaseContext("db", bucket, false, dbOptions)
-	db, _ := CreateDatabase(context)
+	db, _ = CreateDatabase(context)
 	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
 
 	tearDownTestDB(t, db)
 
+	//Test AllowConflicts false
 	dbOptions = DatabaseContextOptions{
 		AllowConflicts: base.BooleanPointer(false),
 	}
@@ -882,6 +889,8 @@ func TestConflictRevLimit(t *testing.T) {
 	context, _ = NewDatabaseContext("db", bucket, false, dbOptions)
 	db, _ = CreateDatabase(context)
 	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
+
+	tearDownTestDB(t, db)
 
 }
 
