@@ -69,6 +69,19 @@ func TestUnion(t *testing.T) {
 	goassert.Equals(t, set1.Union(set2).String(), "{bar, baz, block, deny, foo}")
 }
 
+func TestUpdateSet(t *testing.T) {
+	var nilSet Set
+	empty := Set{}
+	set1 := SetOf("foo", "bar", "baz")
+	set2 := SetOf("bar", "block", "deny")
+	goassert.DeepEquals(t, set1.Update(empty), set1)
+	goassert.DeepEquals(t, empty.Update(set1), set1)
+	goassert.DeepEquals(t, set1.Update(nilSet), set1)
+	goassert.DeepEquals(t, nilSet.Update(set1), set1)
+	goassert.DeepEquals(t, nilSet.Update(nilSet), nilSet)
+	goassert.Equals(t, set1.Update(set2).String(), "{bar, baz, block, deny, foo}")
+}
+
 func TestSetMarshal(t *testing.T) {
 	var str struct {
 		Channels Set
@@ -86,6 +99,24 @@ func TestSetMarshal(t *testing.T) {
 	bytes, err = json.Marshal(str)
 	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":["a","b"]}`)
+}
+
+func BenchmarkSet_Union(b *testing.B) {
+	set1 := SetOf("2", "3", "5", "8", "13", "21", "34")
+	set2 := SetOf("2", "3", "5", "7", "11", "13", "17")
+
+	for i := 0; i < b.N; i++ {
+		set1 = set1.Union(set2)
+	}
+}
+
+func BenchmarkSet_Update(b *testing.B) {
+	set1 := SetOf("2", "3", "5", "8", "13", "21", "34")
+	set2 := SetOf("2", "3", "5", "7", "11", "13", "17")
+
+	for i := 0; i < b.N; i++ {
+		set1 = set1.Update(set2)
+	}
 }
 
 func TestSetUnmarshal(t *testing.T) {
