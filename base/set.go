@@ -103,6 +103,7 @@ func (set Set) Update(other Set) Set {
 	return set
 }
 
+// Adds a value to a set
 func (set Set) Add(value string) Set {
 	set[value] = present{}
 	return set
