@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -46,7 +47,7 @@ func TestRevisionCache(t *testing.T) {
 		goassert.DeepEquals(t, channels, base.Set(nil))
 	}
 
-	cache := NewRevisionCache(10, nil, initEmptyStatsMap(base.StatsGroupKeyCache))
+	cache := NewRevisionCacheShard(10, nil, initEmptyStatsMap(base.StatsGroupKeyCache))
 	for i := 0; i < 10; i++ {
 		body, history, channels := revForTest(i)
 		docRev := testDocRev(body[BodyRev].(string), body, history, channels, nil, nil)
@@ -315,15 +316,17 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 	cache := NewRevisionCache(5000, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
 
 	// trigger load into cache
-
-	_, err := cache.Get("doc1", "rev1")
-	assert.NoError(b, err, "Error initializing cache for BenchmarkRevisionCacheRead")
+	for i := 0; i < 5000; i++ {
+		_, err := cache.Get(fmt.Sprintf("doc%d", i), "rev1")
+		assert.NoError(b, err, "Error initializing cache for BenchmarkRevisionCacheRead")
+	}
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		//GET the document until test run has completed
 		for pb.Next() {
-			docrev, err := cache.Get("doc1", "rev1")
+			docId := fmt.Sprintf("doc%d", rand.Intn(5000))
+			docrev, err := cache.Get(docId, "rev1")
 			if err != nil {
 				assert.Fail(b, "Unexpected error for docrev:%+v", docrev)
 			}
