@@ -36,6 +36,7 @@ const (
 	KeyReplicate
 	KeyShadow
 	KeySync
+	KeySyncFuncLog
 	KeySyncMsg
 	KeyWebSocket
 	KeyWebSocketFrame
@@ -64,6 +65,7 @@ var (
 		KeyReplicate:      "Replicate",
 		KeyShadow:         "Shadow",
 		KeySync:           "Sync",
+		KeySyncFuncLog:    "SyncFuncLog",
 		KeySyncMsg:        "SyncMsg",
 		KeyWebSocket:      "WS",
 		KeyWebSocketFrame: "WSFrame",
