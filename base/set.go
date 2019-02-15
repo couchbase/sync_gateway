@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-// An immutable set of strings, represented as a map.
+// An set of strings, represented as a map.
 type Set map[string]present
 
 type present struct{}
@@ -100,6 +100,11 @@ func (set Set) Update(other Set) Set {
 	for ch := range other {
 		set[ch] = present{}
 	}
+	return set
+}
+
+func (set Set) Add(value string) Set {
+	set[value] = present{}
 	return set
 }
 

@@ -710,7 +710,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	if change.DocID == "" {
 		return nil // this was a placeholder for an unused sequence
 	}
-	addedTo := make([]string, 0, 4)
+	addedTo := make(base.Set)
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
 
@@ -728,7 +728,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 			if removal == nil || removal.Seq == change.Sequence {
 				channelCache := c._getChannelCache(channelName)
 				channelCache.addToCache(change, removal != nil)
-				addedTo = append(addedTo, channelName)
+				addedTo = addedTo.Add(channelName)
 				if change.Skipped {
 					channelCache.AddLateSequence(change)
 				}
@@ -738,7 +738,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		if EnableStarChannelLog {
 			channelCache := c._getChannelCache(channels.UserStarChannel)
 			channelCache.addToCache(change, false)
-			addedTo = append(addedTo, channels.UserStarChannel)
+			addedTo = addedTo.Add(channels.UserStarChannel)
 			if change.Skipped {
 				channelCache.AddLateSequence(change)
 			}
@@ -752,7 +752,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
 	}
 
-	return base.SetFromArray(addedTo)
+	return addedTo
 }
 
 // Add the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
@@ -829,13 +829,11 @@ func (c *changeCache) LastSequence() uint64 {
 }
 
 func (c *changeCache) _allChannels() base.Set {
-	array := make([]string, len(c.channelCaches))
-	i := 0
+	allChannelSet := make(base.Set)
 	for name := range c.channelCaches {
-		array[i] = name
-		i++
+		allChannelSet = allChannelSet.Add(name)
 	}
-	return base.SetFromArray(array)
+	return allChannelSet
 }
 
 func (c *changeCache) getOldestSkippedSequence() uint64 {
