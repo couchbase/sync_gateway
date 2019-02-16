@@ -83,7 +83,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 
 		if !doc.HasValidSyncData(db.writeSequences()) {
 			// Check whether doc has been upgraded to use xattrs
-			upgradeDoc, _ := db.checkForUpgrade(docid)
+			upgradeDoc, _ := db.checkForUpgrade(docid, DocUnmarshalAll)
 			if upgradeDoc == nil {
 				return nil, base.HTTPErrorf(404, "Not imported")
 			}
@@ -1191,8 +1191,8 @@ func (db *Database) updateAndReturnDoc(
 
 		// If we can't find sync metadata in the document body, check for upgrade.  If upgrade, retry write using WriteUpdateWithXattr
 		if err != nil && err.Error() == "409 Not imported" {
-			_, bucketDocument := db.checkForUpgrade(key)
-			if bucketDocument.Xattr != nil {
+			_, bucketDocument := db.checkForUpgrade(key, DocUnmarshalAll)
+			if bucketDocument != nil && bucketDocument.Xattr != nil {
 				existingDoc = bucketDocument
 				upgradeInProgress = true
 			}
@@ -1661,11 +1661,11 @@ func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (c
 }
 
 // Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
-func (context *DatabaseContext) checkForUpgrade(key string) (*document, *sgbucket.BucketDocument) {
+func (context *DatabaseContext) checkForUpgrade(key string, unmarshalLevel DocumentUnmarshalLevel) (*document, *sgbucket.BucketDocument) {
 	if context.UseXattrs() {
 		return nil, nil
 	}
-	doc, rawDocument, err := context.GetDocWithXattr(key, DocUnmarshalNoHistory)
+	doc, rawDocument, err := context.GetDocWithXattr(key, unmarshalLevel)
 	if err != nil || doc == nil || !doc.HasValidSyncData(context.writeSequences()) {
 		return nil, nil
 	}
