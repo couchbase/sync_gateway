@@ -664,7 +664,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			}
 
 			if dbcontext.RevsLimit < 100 {
-				base.Warnf(base.KeyAll, "Setting the revs_limit (%v) to less than 100 may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
+				base.Warnf(base.KeyAll, "Setting the revs_limit (%v) to less than 100, whilst having allow conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
 			}
 		} else {
 			if dbcontext.RevsLimit <= 0 {

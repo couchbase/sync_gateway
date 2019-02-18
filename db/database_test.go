@@ -866,6 +866,8 @@ func TestConflictRevLimit(t *testing.T) {
 	db, _ := setupTestDB(t)
 	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
 
+	tearDownTestDB(t, db)
+
 	//Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
 		AllowConflicts: base.BooleanPointer(true),
