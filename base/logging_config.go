@@ -31,19 +31,18 @@ const (
 var ErrUnsetLogFilePath = errors.New("No log_file_path configured, and --defaultLogFilePath flag is not set. Log files required for product support are not being generated.")
 
 type LoggingConfig struct {
-	LogFilePath    string              `json:"log_file_path,omitempty"`   // Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
-	RedactionLevel RedactionLevel      `json:"redaction_level,omitempty"` // Redaction level to apply to log output.
-	Console        ConsoleLoggerConfig `json:"console,omitempty"`         // Console output
-	Error          FileLoggerConfig    `json:"error,omitempty"`           // Error log file output
-	Warn           FileLoggerConfig    `json:"warn,omitempty"`            // Warn log file output
-	Info           FileLoggerConfig    `json:"info,omitempty"`            // Info log file output
-	Debug          FileLoggerConfig    `json:"debug,omitempty"`           // Debug log file output
-	Stats          FileLoggerConfig    `json:"stats,omitempty"`           // Stats log file output
-
-	DeprecatedDefaultLog *LogAppenderConfig `json:"default,omitempty"` // Deprecated "default" logging option.
+	LogFilePath          string              `json:"log_file_path,omitempty"`   // Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
+	RedactionLevel       RedactionLevel      `json:"redaction_level,omitempty"` // Redaction level to apply to log output.
+	Console              ConsoleLoggerConfig `json:"console,omitempty"`         // Console output
+	Error                FileLoggerConfig    `json:"error,omitempty"`           // Error log file output
+	Warn                 FileLoggerConfig    `json:"warn,omitempty"`            // Warn log file output
+	Info                 FileLoggerConfig    `json:"info,omitempty"`            // Info log file output
+	Debug                FileLoggerConfig    `json:"debug,omitempty"`           // Debug log file output
+	Stats                FileLoggerConfig    `json:"stats,omitempty"`           // Stats log file output
+	DeprecatedDefaultLog *LogAppenderConfig  `json:"default,omitempty"`         // Deprecated "default" logging option.
 }
 
-// Init will initialize loging, return any warnings that need to be logged at a later time.
+// Init will initialize logging, return any warnings that need to be logged at a later time.
 func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogFn, err error) {
 	if c == nil {
 		return warnings, errors.New("nil LoggingConfig")
