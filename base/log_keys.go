@@ -31,12 +31,12 @@ const (
 	KeyHTTP
 	KeyHTTPResp
 	KeyImport
+	KeyJavascriptLog
 	KeyMigrate
 	KeyQuery
 	KeyReplicate
 	KeyShadow
 	KeySync
-	KeySyncFuncLog
 	KeySyncMsg
 	KeyWebSocket
 	KeyWebSocketFrame
@@ -60,12 +60,12 @@ var (
 		KeyHTTP:           "HTTP",
 		KeyHTTPResp:       "HTTP+", // Infof printed as HTTP+
 		KeyImport:         "Import",
+		KeyJavascriptLog:  "JavascriptLog",
 		KeyMigrate:        "Migrate",
 		KeyQuery:          "Query",
 		KeyReplicate:      "Replicate",
 		KeyShadow:         "Shadow",
 		KeySync:           "Sync",
-		KeySyncFuncLog:    "SyncFuncLog",
 		KeySyncMsg:        "SyncMsg",
 		KeyWebSocket:      "WS",
 		KeyWebSocketFrame: "WSFrame",

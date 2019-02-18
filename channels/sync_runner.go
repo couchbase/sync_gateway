@@ -119,8 +119,8 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 	funcSource = wrappedFuncSource(funcSource)
 	runner := &SyncRunner{}
 	err := runner.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeySyncFuncLog, "Sync "+base.UD(s).Redact()) },
-		func(s string) { base.Infof(base.KeySyncFuncLog, "Sync "+base.UD(s).Redact()) })
+		func(s string) { base.Errorf(base.KeyJavascriptLog, "Sync "+base.UD(s).Redact()) },
+		func(s string) { base.Infof(base.KeyJavascriptLog, "Sync "+base.UD(s).Redact()) })
 	if err != nil {
 		return nil, err
 	}

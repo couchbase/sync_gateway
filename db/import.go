@@ -353,8 +353,8 @@ type jsImportFilterRunner struct {
 func newImportFilterRunner(funcSource string) (sgbucket.JSServerTask, error) {
 	importFilterRunner := &jsEventTask{}
 	err := importFilterRunner.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeySyncFuncLog, "Import "+base.UD(s).Redact()) },
-		func(s string) { base.Infof(base.KeySyncFuncLog, "Import "+base.UD(s).Redact()) })
+		func(s string) { base.Errorf(base.KeyJavascriptLog, "Import "+base.UD(s).Redact()) },
+		func(s string) { base.Infof(base.KeyJavascriptLog, "Import "+base.UD(s).Redact()) })
 	if err != nil {
 		return nil, err
 	}

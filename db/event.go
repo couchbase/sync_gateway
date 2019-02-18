@@ -89,8 +89,8 @@ type jsEventTask struct {
 func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
 	eventTask := &jsEventTask{}
 	err := eventTask.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeySyncFuncLog, "Webhook "+base.UD(s).Redact()) },
-		func(s string) { base.Infof(base.KeySyncFuncLog, "Webhook "+base.UD(s).Redact()) })
+		func(s string) { base.Errorf(base.KeyJavascriptLog, "Webhook "+base.UD(s).Redact()) },
+		func(s string) { base.Infof(base.KeyJavascriptLog, "Webhook "+base.UD(s).Redact()) })
 	if err != nil {
 		return nil, err
 	}
