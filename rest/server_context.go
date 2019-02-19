@@ -663,8 +663,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", dbcontext.RevsLimit)
 			}
 
-			if dbcontext.RevsLimit < 100 {
-				base.Warnf(base.KeyAll, "Setting the revs_limit (%v) to less than 100, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit)
+			if dbcontext.RevsLimit < db.DefaultRevsLimitConflicts {
+				base.Warnf(base.KeyAll, "Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
 			}
 		} else {
 			if dbcontext.RevsLimit <= 0 {
