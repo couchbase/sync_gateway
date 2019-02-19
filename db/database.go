@@ -44,11 +44,12 @@ var RunStateString = []string{
 }
 
 const (
-	DefaultRevsLimit     = 1000
-	DefaultPurgeInterval = 30               // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
-	KSyncKeyPrefix       = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
-	kSyncDataKey         = "_sync:syncdata" // Key used to store sync function
-	KSyncXattrName       = "_sync"          // Name of XATTR used to store sync metadata
+	DefaultRevsLimitNoConflicts = 50
+	DefaultRevsLimitConflicts   = 100
+	DefaultPurgeInterval        = 30               // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
+	KSyncKeyPrefix              = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
+	kSyncDataKey                = "_sync:syncdata" // Key used to store sync function
+	KSyncXattrName              = "_sync"          // Name of XATTR used to store sync metadata
 
 )
 
@@ -219,10 +220,15 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		Name:       dbName,
 		Bucket:     bucket,
 		StartTime:  time.Now(),
-		RevsLimit:  DefaultRevsLimit,
 		autoImport: autoImport,
 		Options:    options,
 		DbStats:    dbStats,
+	}
+
+	if context.AllowConflicts() {
+		context.RevsLimit = DefaultRevsLimitConflicts
+	} else {
+		context.RevsLimit = DefaultRevsLimitNoConflicts
 	}
 
 	context.revisionCache = NewRevisionCache(
