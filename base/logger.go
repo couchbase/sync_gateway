@@ -1,7 +1,6 @@
 package base
 
 import (
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -39,44 +38,33 @@ func logCollationWorker(collateBuffer chan string, logger *log.Logger, bufferSiz
 	}
 }
 
-func runLogDeletion(logDirectory string, logLevel string, maxSize int) {
+//runLogDeletion will delete rotated logs for the supplied logLevel. It will only perform these deletions when the
+//cumulative size of the logs are above the supplied sizeLimitMB.
+//logDirectory is the supplied directory where the logs are stored.
+func runLogDeletion(logDirectory string, logLevel string, sizeLimitMB int) {
 
-	maxSize = maxSize * 1048576 //Convert MB input to bytes
-
-	logDirectory = logDirectory + "/"
-
-	logDiff := 0 - maxSize
-
+	sizeLimitMB = sizeLimitMB * 1024 * 1024 //Convert MB input to bytes
 	files, err := ioutil.ReadDir(logDirectory)
+
 	if err != nil {
-		fmt.Println(err.Error())
+		Errorf(KeyAll, "Error reading log directory: %v", err)
 	}
 
-	for _, f := range files {
-		var extension = filepath.Ext(logDirectory + f.Name())
-		if extension == ".gz" && strings.Contains(f.Name(), logLevel) {
-			logDiff += int(f.Size())
-		}
-	}
-
-	var modTime time.Time
-	var oldestFile string
-	var fileSize int
-	for logDiff > 0 {
-		files, _ = ioutil.ReadDir(logDirectory)
-		for _, f := range files {
-			var extension = filepath.Ext(logDirectory + f.Name())
-			if strings.Contains(f.Name(), logLevel) && extension == ".gz" {
-				if modTime.Before(f.ModTime()) || modTime.IsZero() {
-					modTime = f.ModTime()
-					oldestFile = f.Name()
-					fileSize = int(f.Size())
+	totalSize := 0
+	indexDeletePoint := -1
+	for i := len(files) - 1; i >= 0; i-- {
+		file := files[i]
+		if strings.Contains(file.Name(), logLevel) && strings.HasSuffix(file.Name(), ".gz") {
+			totalSize += int(file.Size())
+			if totalSize > sizeLimitMB {
+				indexDeletePoint = i
+			}
+			if i <= indexDeletePoint {
+				err = os.Remove(filepath.Join(logDirectory, file.Name()))
+				if err != nil {
+					Errorf(KeyAll, "Error deleting stale log file: %v", err)
 				}
 			}
 		}
-		logDiff = logDiff - fileSize
-		os.Remove(logDirectory + oldestFile)
-		modTime = time.Time{}
 	}
-
 }
