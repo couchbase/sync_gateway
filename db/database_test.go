@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -858,6 +858,42 @@ func TestConflicts(t *testing.T) {
 		ID:       "doc",
 		Changes:  []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
 		branched: true})
+}
+
+func TestConflictRevLimit(t *testing.T) {
+
+	//Test Default Is the higher of the two
+	db, _ := setupTestDB(t)
+	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+
+	tearDownTestDB(t, db)
+
+	//Test AllowConflicts
+	dbOptions := DatabaseContextOptions{
+		AllowConflicts: base.BooleanPointer(true),
+	}
+
+	AddOptionsFromEnvironmentVariables(&dbOptions)
+	bucket := testBucket()
+	context, _ := NewDatabaseContext("db", bucket, false, dbOptions)
+	db, _ = CreateDatabase(context)
+	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+
+	tearDownTestDB(t, db)
+
+	//Test AllowConflicts false
+	dbOptions = DatabaseContextOptions{
+		AllowConflicts: base.BooleanPointer(false),
+	}
+
+	AddOptionsFromEnvironmentVariables(&dbOptions)
+	bucket = testBucket()
+	context, _ = NewDatabaseContext("db", bucket, false, dbOptions)
+	db, _ = CreateDatabase(context)
+	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
+
+	tearDownTestDB(t, db)
+
 }
 
 func TestNoConflictsMode(t *testing.T) {
