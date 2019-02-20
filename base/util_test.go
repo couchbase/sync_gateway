@@ -10,7 +10,9 @@
 package base
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -43,33 +45,50 @@ func TestConvertJSONString(t *testing.T) {
 }
 
 func TestConvertBackQuotedStrings(t *testing.T) {
-	input := `{"foo": "bar"}`
-	output := ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), input)
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{
+			input:    `{"foo": "bar"}`,
+			expected: `{"foo": "bar"}`,
+		},
+		{
+			input:    "{\"foo\": `bar`}",
+			expected: `{"foo": "bar"}`,
+		},
+		{
+			input:    "{\"foo\": `bar\nbaz\nboo`}",
+			expected: `{"foo": "bar\nbaz\nboo"}`,
+		},
+		{
+			input:    "{\"foo\": `bar\n\"baz\n\tboo`}",
+			expected: `{"foo": "bar\n\"baz\n\tboo"}`,
+		},
+		{
+			input:    "{\"foo\": `bar\n`, \"baz\": `howdy`}",
+			expected: `{"foo": "bar\n", "baz": "howdy"}`,
+		},
+		{
+			input:    "{\"foo\": `bar\r\n`, \"baz\": `\r\nhowdy`}",
+			expected: `{"foo": "bar\n", "baz": "\nhowdy"}`,
+		},
+		{
+			input:    "{\"foo\": `bar\\baz`, \"something\": `else\\is\\here`}",
+			expected: `{"foo": "bar\\baz", "something": "else\\is\\here"}`,
+		},
+	}
 
-	input = "{\"foo\": `bar`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar"}`)
+	for _, test := range tests {
+		t.Run(test.input, func(tt *testing.T) {
+			output, err := ConvertBackQuotedStrings(bytes.NewBufferString(test.input))
+			assert.NoError(t, err)
 
-	input = "{\"foo\": `bar\nbaz\nboo`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar\nbaz\nboo"}`)
-
-	input = "{\"foo\": `bar\n\"baz\n\tboo`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar\n\"baz\n\tboo"}`)
-
-	input = "{\"foo\": `bar\n`, \"baz\": `howdy`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar\n", "baz": "howdy"}`)
-
-	input = "{\"foo\": `bar\r\n`, \"baz\": `\r\nhowdy`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar\n", "baz": "\nhowdy"}`)
-
-	input = "{\"foo\": `bar\\baz`, \"something\": `else\\is\\here`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar\\baz", "something": "else\\is\\here"}`)
+			outputBytes, err := ioutil.ReadAll(output)
+			assert.NoError(t, err)
+			assert.Equal(t, test.expected, string(outputBytes))
+		})
+	}
 }
 
 func TestCouchbaseUrlWithAuth(t *testing.T) {

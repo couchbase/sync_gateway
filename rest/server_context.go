@@ -985,7 +985,7 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	var config DbConfig
 
 	defer resp.Body.Close()
-	body, err := base.ConvertBackQuotedStringsIOReader(resp.Body)
+	body, err := base.ConvertBackQuotedStrings(resp.Body)
 	if err != nil {
 		return nil, err
 	}
