@@ -976,19 +976,19 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 		urlStr += "/"
 	}
 	urlStr += url.QueryEscape(dbName)
-	res, err := sc.HTTPClient.Get(urlStr)
+	resp, err := sc.HTTPClient.Get(urlStr)
 	if err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			"Error contacting config server: %v", err)
-	} else if res.StatusCode >= 300 {
-		return nil, base.HTTPErrorf(res.StatusCode, res.Status)
+	} else if resp.StatusCode >= 300 {
+		return nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 
 	var config DbConfig
 
 	var bodyBytes []byte
-	defer res.Body.Close()
-	if bodyBytes, err = ioutil.ReadAll(res.Body); err != nil {
+	defer resp.Body.Close()
+	if bodyBytes, err = ioutil.ReadAll(resp.Body); err != nil {
 		return nil, err
 	}
 
