@@ -31,6 +31,7 @@ const (
 	KeyHTTP
 	KeyHTTPResp
 	KeyImport
+	KeyJavascript
 	KeyMigrate
 	KeyQuery
 	KeyReplicate
@@ -59,6 +60,7 @@ var (
 		KeyHTTP:           "HTTP",
 		KeyHTTPResp:       "HTTP+", // Infof printed as HTTP+
 		KeyImport:         "Import",
+		KeyJavascript:     "Javascript",
 		KeyMigrate:        "Migrate",
 		KeyQuery:          "Query",
 		KeyReplicate:      "Replicate",

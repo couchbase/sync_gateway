@@ -88,7 +88,9 @@ type jsEventTask struct {
 // Compiles a JavaScript event function to a jsEventTask object.
 func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
 	eventTask := &jsEventTask{}
-	err := eventTask.Init(funcSource)
+	err := eventTask.InitWithLogging(funcSource,
+		func(s string) { base.Errorf(base.KeyJavascript, "Webhook %s", base.UD(s)) },
+		func(s string) { base.Infof(base.KeyJavascript, "Webhook %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
 	}
