@@ -3822,6 +3822,28 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	assert.NotContains(t, changesResponse["results"].([]interface{})[1], "deleted")
 }
 
+func TestSyncFunctionErrorLogging(t *testing.T) {
+	rt := RestTester{SyncFn: `
+		function(doc) {
+			console.error("Error");
+			console.log("Log");
+			channel(doc.channel);
+		}`}
+
+	defer rt.Close()
+
+	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	assert.NoError(t, err)
+
+	response := rt.SendRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
+	assert.Equal(t, http.StatusCreated, response.Code)
+
+	numErrorsAfter, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	assert.NoError(t, err)
+
+	assert.Equal(t, numErrors+1, numErrorsAfter)
+}
+
 func TestConflictWithInvalidAttachment(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
