@@ -18,6 +18,8 @@ var (
 	defaultMaxSize                         = 100  // 100 MB
 	defaultMaxAgeMultiplier                = 2    // e.g. 90 minimum == 180 default maxAge
 	defaultCumulativeMaxSizeBeforeDeletion = 300  // 300 MB
+	minRotatedLogsSizeLimit                = 10   // 10 MB
+	rotatedLogsLowWatermarkMultiplier      = 0.8  // eg. 100 minRotatedLogsSizeLimit == 80 low watermark
 
 	belowMinValueFmt = "%s for %v was set to %d which is below the minimum of %d"
 	aboveMaxValueFmt = "%s for %v was set to %d which is above the maximum of %d"
@@ -43,10 +45,10 @@ type FileLoggerConfig struct {
 }
 
 type logRotationConfig struct {
-	MaxSize              *int `json:"max_size,omitempty"`                 // The maximum size in MB of the log file before it gets rotated.
-	MaxAge               *int `json:"max_age,omitempty"`                  // The maximum number of days to retain old log files.
-	LocalTime            bool `json:"localtime,omitempty"`                // If true, it uses the computer's local time to format the backup timestamp.
-	RotatedLogsSizeLimit int  `json:"rotated_logs_size_limit, omitempty"` // Max Size of log files before deletion
+	MaxSize              *int `json:"max_size,omitempty"`                // The maximum size in MB of the log file before it gets rotated.
+	MaxAge               *int `json:"max_age,omitempty"`                 // The maximum number of days to retain old log files.
+	LocalTime            bool `json:"localtime,omitempty"`               // If true, it uses the computer's local time to format the backup timestamp.
+	RotatedLogsSizeLimit *int `json:"rotated_logs_size_limit,omitempty"` // Max Size of log files before deletion
 }
 
 // NewFileLogger returns a new FileLogger from a config.
@@ -143,16 +145,15 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 		lfc.CollationBufferSize = &bufferSize
 	}
 
-	if lfc.Rotation.RotatedLogsSizeLimit == 0 {
-		lfc.Rotation.RotatedLogsSizeLimit = defaultCumulativeMaxSizeBeforeDeletion
-	}
-
 	ticker := time.NewTicker(time.Hour)
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
-				runLogDeletion(logFilePath, level.String(), lfc.Rotation.RotatedLogsSizeLimit)
+				err := runLogDeletion(logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
+				if err != nil {
+					Errorf(KeyAll, "%s", err)
+				}
 			}
 		}
 	}()
@@ -178,6 +179,12 @@ func (lfc *FileLoggerConfig) initRotationConfig(name string, defaultMaxSize, min
 		return fmt.Errorf(belowMinValueFmt, "MaxAge", name, *lfc.Rotation.MaxAge, minAge)
 	} else if *lfc.Rotation.MaxAge > maxAgeLimit {
 		return fmt.Errorf(aboveMaxValueFmt, "MaxAge", name, *lfc.Rotation.MaxAge, maxAgeLimit)
+	}
+
+	if lfc.Rotation.RotatedLogsSizeLimit == nil {
+		lfc.Rotation.RotatedLogsSizeLimit = &defaultCumulativeMaxSizeBeforeDeletion
+	} else if *lfc.Rotation.RotatedLogsSizeLimit < minRotatedLogsSizeLimit {
+		return fmt.Errorf(belowMinValueFmt, "RotatedLogsSizeLimit", name, *lfc.Rotation.RotatedLogsSizeLimit, minRotatedLogsSizeLimit)
 	}
 
 	return nil
