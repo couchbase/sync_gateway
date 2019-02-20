@@ -352,7 +352,9 @@ type jsImportFilterRunner struct {
 // Compiles a JavaScript event function to a jsImportFilterRunner object.
 func newImportFilterRunner(funcSource string) (sgbucket.JSServerTask, error) {
 	importFilterRunner := &jsEventTask{}
-	err := importFilterRunner.Init(funcSource)
+	err := importFilterRunner.InitWithLogging(funcSource,
+		func(s string) { base.Errorf(base.KeyJavascript, "Import %s", base.UD(s)) },
+		func(s string) { base.Infof(base.KeyJavascript, "Import %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
 	}

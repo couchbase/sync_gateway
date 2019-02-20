@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -500,6 +502,44 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	goassert.Equals(t, response.Code, 201)
 	assertDocProperty(t, response, "id", "TestImportFilterInvalid")
 	assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")
+}
+
+func TestImportFilterLogging(t *testing.T) {
+	SkipImportTestsIfNotEnabled(t)
+
+	importFilter := `function (doc) { console.error("Error"); return doc.type == "mobile"; }`
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &DbConfig{
+			ImportFilter: &importFilter,
+		},
+	}
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	//Add document to bucket
+	key := "ValidImport"
+	body := make(map[string]interface{})
+	body["type"] = "mobile"
+	body["channels"] = "A"
+	_, err := bucket.Add(key, 0, body)
+	assert.NoError(t, err)
+
+	//Get number of errors before
+	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	assert.NoError(t, err)
+
+	//Attempt to get doc will trigger import
+	response := rt.SendAdminRequest("GET", "/db/"+key, "")
+	assert.Equal(t, http.StatusOK, response.Code)
+
+	//Get number of errors after
+	numErrorsAfter, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	assert.NoError(t, err)
+
+	//Make sure an error was logged
+	assert.Equal(t, numErrors+1, numErrorsAfter)
+
 }
 
 // Test scenario where another actor updates a different xattr on a document.  Sync Gateway
