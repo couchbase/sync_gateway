@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"io/ioutil"
 	"math"
 	"net"
 	"net/http"
@@ -1009,28 +1010,34 @@ func SplitHostPort(hostport string) (string, string, error) {
 	return host, port, nil
 }
 
-var kBackquoteStringRegexp *regexp.Regexp
+var kBackquoteStringRegexp = regexp.MustCompile("`((?s).*?)[^\\\\]`")
 
-// Preprocesses a string containing `...`-delimited strings. Converts the backquotes into double-quotes,
-// and escapes any literal backslashes, newlines or double-quotes within them with backslashes.
-func ConvertBackQuotedStrings(data []byte) []byte {
-	if kBackquoteStringRegexp == nil {
-		kBackquoteStringRegexp = regexp.MustCompile("`((?s).*?)[^\\\\]`")
+// ConvertBackQuotedStringsIOReader is a wrapper around ConvertBackQuotedStrings for use with an io.Reader
+func ConvertBackQuotedStringsIOReader(r io.Reader) (io.Reader, error) {
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
 	}
-	// Find backquote-delimited strings and replace them:
-	return kBackquoteStringRegexp.ReplaceAllFunc(data, func(bytes []byte) []byte {
-		str := string(bytes)
-		// Remove \r  and Escape literal backslashes, newlines and double-quotes:
-		str = strings.Replace(str, `\`, `\\`, -1)
-		str = strings.Replace(str, "\r", "", -1)
-		str = strings.Replace(str, "\n", `\n`, -1)
-		str = strings.Replace(str, "\t", `\t`, -1)
-		str = strings.Replace(str, `"`, `\"`, -1)
-		bytes = []byte(str)
+
+	return bytes.NewBuffer(ConvertBackQuotedStrings(b)), nil
+}
+
+// ConvertBackQuotedStrings sanitises a string containing `...`-delimited strings.
+// - Converts the backquotes into double-quotes
+// - Escapes literal backslashes, newlines or double-quotes with backslashes.
+func ConvertBackQuotedStrings(data []byte) []byte {
+	return kBackquoteStringRegexp.ReplaceAllFunc(data, func(b []byte) []byte {
+
+		b = bytes.Replace(b, []byte(`\`), []byte(`\\`), -1)
+		b = bytes.Replace(b, []byte("\r"), []byte(""), -1)
+		b = bytes.Replace(b, []byte("\n"), []byte(`\n`), -1)
+		b = bytes.Replace(b, []byte("\t"), []byte(`\t`), -1)
+		b = bytes.Replace(b, []byte(`"`), []byte(`\"`), -1)
+
 		// Replace the backquotes with double-quotes
-		bytes[0] = '"'
-		bytes[len(bytes)-1] = '"'
-		return bytes
+		b[0] = '"'
+		b[len(b)-1] = '"'
+		return b
 	})
 }
 

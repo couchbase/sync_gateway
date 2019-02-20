@@ -42,7 +42,7 @@ func TestConvertJSONString(t *testing.T) {
 	goassert.Equals(t, ConvertJSONString("blah"), "blah")
 }
 
-func TestBackQuotedStrings(t *testing.T) {
+func TestConvertBackQuotedStrings(t *testing.T) {
 	input := `{"foo": "bar"}`
 	output := ConvertBackQuotedStrings([]byte(input))
 	goassert.Equals(t, string(output), input)
