@@ -3861,6 +3861,29 @@ func TestConflictingBranchAttachments(t *testing.T) {
 
 }
 
+func TestNumAccessErrors(t *testing.T) {
+	rt := RestTester{
+		SyncFn: `function(doc, oldDoc){if (doc.channels.indexOf("foo") > -1){requireRole("foobar")}}`,
+	}
+
+	a := rt.ServerContext().Database("db").Authenticator()
+
+	//Create a test user
+	user, err := a.NewUser("user", "letmein", channels.SetOf("A"))
+	assert.NoError(t, err)
+	a.Save(user)
+
+	response := rt.Send(requestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user"))
+	assertStatus(t, response, 403)
+
+	responseBody := make(map[string]interface{})
+	response = rt.SendAdminRequest("GET", "/_expvar", "")
+
+	json.Unmarshal(response.Body.Bytes(), &responseBody)
+	numAccessErrors := responseBody["syncgateway"].(map[string]interface{})["per_db"].(map[string]interface{})["db"].(map[string]interface{})["security"].(map[string]interface{})["num_access_errors"]
+	assert.Equal(t, float64(1), numAccessErrors)
+}
+
 var prt RestTester
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {

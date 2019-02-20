@@ -101,10 +101,10 @@ const (
 
 var (
 	SyncFnAccessErrors = []string{
-		SyncFnErrorMissingRole,
-		SyncFnErrorAdminRequired,
-		SyncFnErrorWrongUser,
-		SyncFnErrorMissingChannelAccess,
+		"403 " + SyncFnErrorMissingRole,
+		"403 " + SyncFnErrorAdminRequired,
+		"403 " + SyncFnErrorWrongUser,
+		"403 " + SyncFnErrorMissingChannelAccess,
 	}
 
 	// Default warning thresholds
