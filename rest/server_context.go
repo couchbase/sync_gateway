@@ -10,11 +10,9 @@
 package rest
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -986,14 +984,15 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 
 	var config DbConfig
 
-	var bodyBytes []byte
 	defer resp.Body.Close()
-	if bodyBytes, err = ioutil.ReadAll(resp.Body); err != nil {
+	body, err := base.ConvertBackQuotedStringsIOReader(resp.Body)
+	if err != nil {
 		return nil, err
 	}
 
-	j := json.NewDecoder(bytes.NewReader(base.ConvertBackQuotedStrings(bodyBytes)))
-	if err = j.Decode(&config); err != nil {
+	d := json.NewDecoder(body)
+	d.DisallowUnknownFields()
+	if err = d.Decode(&config); err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			"Bad response from config server: %v", err)
 	}
