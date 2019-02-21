@@ -194,8 +194,8 @@ const (
 	QueryParamUserName    = "userName"
 	QueryParamOlderThan   = "olderThan"
 	QueryParamInSequences = "inSequences"
-	QueryParamStartKey    = "startKey"
-	QueryParamEndKey      = "endKey"
+	QueryParamStartKey    = "startkey"
+	QueryParamEndKey      = "endkey"
 
 	// Variables in the select clause can't be parameterized, require additional handling
 	QuerySelectUserName = "$$selectUserName"
@@ -376,7 +376,7 @@ func (context *DatabaseContext) QueryResync() (sgbucket.QueryResultIterator, err
 
 	if context.Options.UseViews {
 		opts := Body{"stale": false, "reduce": false}
-		opts["startkey"] = []interface{}{true}
+		opts[QueryParamStartKey] = []interface{}{true}
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewImport, opts)
 	}
 
@@ -405,8 +405,8 @@ func (context *DatabaseContext) QuerySessions(userName string) (sgbucket.QueryRe
 	// View Query
 	if context.Options.UseViews {
 		opts := Body{"stale": false}
-		opts["startkey"] = userName
-		opts["endkey"] = userName
+		opts[QueryParamStartKey] = userName
+		opts[QueryParamEndKey] = userName
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewSessions, opts)
 	}
 
@@ -453,12 +453,12 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 	allDocsQueryStatement := replaceSyncTokensQuery(QueryAllDocs.statement, context.UseXattrs())
 	params := make(map[string]interface{}, 0)
 	if startKey != "" {
-		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id >= $startKey",
+		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id >= $startkey",
 			allDocsQueryStatement, bucketName)
 		params[QueryParamStartKey] = startKey
 	}
 	if endKey != "" {
-		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id <= $endKey",
+		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id <= $endkey",
 			allDocsQueryStatement, bucketName)
 		params[QueryParamEndKey] = startKey
 	}
@@ -474,8 +474,8 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time) (sgbucket.Q
 	// View Query
 	if context.Options.UseViews {
 		opts := Body{"stale": "ok"}
-		opts["startkey"] = 1
-		opts["endkey"] = olderThan.Unix()
+		opts[QueryParamStartKey] = 1
+		opts[QueryParamEndKey] = olderThan.Unix()
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewTombstones, opts)
 	}
 
@@ -493,9 +493,9 @@ func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) 
 		endKey[1] = map[string]interface{}{} // infinity
 	}
 	optMap := map[string]interface{}{
-		"stale":    false,
-		"startkey": []interface{}{channelName, startSeq},
-		"endkey":   endKey,
+		"stale":            false,
+		QueryParamStartKey: []interface{}{channelName, startSeq},
+		QueryParamEndKey:   endKey,
 	}
 	if limit > 0 {
 		optMap["limit"] = limit
