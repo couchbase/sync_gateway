@@ -50,9 +50,9 @@ type SGQuery struct {
 var QueryAccess = SGQuery{
 	name: QueryTypeAccess,
 	statement: fmt.Sprintf(
-		"SELECT $sync.access.`$userName` as `value` "+
+		"SELECT $sync.access.`$$selectUserName` as `value` "+
 			"FROM `%s` "+
-			"WHERE any op in object_pairs($sync.access) satisfies op.name = '$userName' end;",
+			"WHERE any op in object_pairs($sync.access) satisfies op.name = $userName end;",
 		base.BucketQueryToken),
 	adhoc: true,
 }
@@ -60,9 +60,9 @@ var QueryAccess = SGQuery{
 var QueryRoleAccess = SGQuery{
 	name: QueryTypeRoleAccess,
 	statement: fmt.Sprintf(
-		"SELECT $sync.role_access.`$userName` as `value` "+
+		"SELECT $sync.role_access.`$$selectUserName` as `value` "+
 			"FROM `%s` "+
-			"WHERE any op in object_pairs($sync.role_access) satisfies op.name = '$userName' end;",
+			"WHERE any op in object_pairs($sync.role_access) satisfies op.name = $userName end;",
 		base.BucketQueryToken),
 	adhoc: true,
 }
@@ -204,6 +204,11 @@ const (
 	QueryParamUserName    = "userName"
 	QueryParamOlderThan   = "olderThan"
 	QueryParamInSequences = "inSequences"
+	QueryParamStartKey    = "startkey"
+	QueryParamEndKey      = "endkey"
+
+	// Variables in the select clause can't be parameterized, require additional handling
+	QuerySelectUserName = "$$selectUserName"
 )
 
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
@@ -256,14 +261,19 @@ func (context *DatabaseContext) QueryAccess(username string) (sgbucket.QueryResu
 		return &EmptyResultIterator{}, nil
 	}
 	accessQueryStatement := context.buildAccessQuery(username)
-	// Can't use prepared query because username is in select clause
-	return context.N1QLQueryWithStats(QueryAccess.name, accessQueryStatement, nil, gocb.RequestPlus, QueryAccess.adhoc)
+	params := make(map[string]interface{}, 0)
+	params[QueryParamUserName] = username
+
+	return context.N1QLQueryWithStats(QueryAccess.name, accessQueryStatement, params, gocb.RequestPlus, QueryAccess.adhoc)
 }
 
 // Builds the query statement for an access N1QL query.
 func (context *DatabaseContext) buildAccessQuery(username string) string {
 	statement := replaceSyncTokensQuery(QueryAccess.statement, context.UseXattrs())
-	statement = strings.Replace(statement, "$"+QueryParamUserName, username, -1)
+
+	// SG usernames don't allow back tick, but guard username in select clause for additional safety
+	username = strings.Replace(username, "`", "``", -1)
+	statement = strings.Replace(statement, QuerySelectUserName, username, -1)
 	return statement
 }
 
@@ -283,14 +293,18 @@ func (context *DatabaseContext) QueryRoleAccess(username string) (sgbucket.Query
 	}
 
 	accessQueryStatement := context.buildRoleAccessQuery(username)
-	// Can't use prepared query because username is in select clause
-	return context.N1QLQueryWithStats(QueryTypeRoleAccess, accessQueryStatement, nil, gocb.RequestPlus, true)
+	params := make(map[string]interface{}, 0)
+	params[QueryParamUserName] = username
+	return context.N1QLQueryWithStats(QueryTypeRoleAccess, accessQueryStatement, params, gocb.RequestPlus, QueryRoleAccess.adhoc)
 }
 
 // Builds the query statement for a roleAccess N1QL query.
 func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
 	statement := replaceSyncTokensQuery(QueryRoleAccess.statement, context.UseXattrs())
-	statement = strings.Replace(statement, "$"+QueryParamUserName, username, -1)
+
+	// SG usernames don't allow back tick, but guard username in select clause for additional safety
+	username = strings.Replace(username, "`", "``", -1)
+	statement = strings.Replace(statement, QuerySelectUserName, username, -1)
 	return statement
 }
 
@@ -328,9 +342,12 @@ func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.Que
 	// Standard channel index/query doesn't support the star channel.  For star channel queries, QueryStarChannel
 	// (which is backed by IndexAllDocs) is used.  The QueryStarChannel result schema is a subset of the
 	// QueryChannels result schema (removal handling isn't needed for the star channel).
-	sequenceQueryStatement := context.buildSequenceQuery(sequences)
+	sequenceQueryStatement := replaceSyncTokensQuery(QuerySequences.statement, context.UseXattrs())
 
-	return context.N1QLQueryWithStats(QuerySequences.name, sequenceQueryStatement, nil, gocb.RequestPlus, QueryChannels.adhoc)
+	params := make(map[string]interface{})
+	params[QueryParamInSequences] = sequences
+
+	return context.N1QLQueryWithStats(QuerySequences.name, sequenceQueryStatement, params, gocb.RequestPlus, QueryChannels.adhoc)
 }
 
 // Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
@@ -363,25 +380,11 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 	return channelQueryStatement, params
 }
 
-// Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
-// query is covering.
-func (context *DatabaseContext) buildSequenceQuery(sequences []uint64) (statement string) {
-
-	sequenceQueryStatement := replaceSyncTokensQuery(QuerySequences.statement, context.UseXattrs())
-
-	// Convert []uint64 to N1QL array predicate format, e.g. [1,4,5], and replace token in QueryStarChannelWithSequences
-	sequenceArrayString := fmt.Sprint(sequences)
-	commaDelimitedSequences := strings.Replace(sequenceArrayString, " ", ",", -1)
-	sequenceQueryStatement = strings.Replace(sequenceQueryStatement, "$"+QueryParamInSequences, commaDelimitedSequences, -1)
-
-	return sequenceQueryStatement
-}
-
 func (context *DatabaseContext) QueryResync() (sgbucket.QueryResultIterator, error) {
 
 	if context.Options.UseViews {
 		opts := Body{"stale": false, "reduce": false}
-		opts["startkey"] = []interface{}{true}
+		opts[QueryParamStartKey] = []interface{}{true}
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewImport, opts)
 	}
 
@@ -410,8 +413,8 @@ func (context *DatabaseContext) QuerySessions(userName string) (sgbucket.QueryRe
 	// View Query
 	if context.Options.UseViews {
 		opts := Body{"stale": false}
-		opts["startkey"] = userName
-		opts["endkey"] = userName
+		opts[QueryParamStartKey] = userName
+		opts[QueryParamEndKey] = userName
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewSessions, opts)
 	}
 
@@ -444,10 +447,10 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 	if context.Options.UseViews {
 		opts := Body{"stale": false, "reduce": false}
 		if startKey != "" {
-			opts["startkey"] = startKey
+			opts[QueryParamStartKey] = startKey
 		}
 		if endKey != "" {
-			opts["endkey"] = endKey
+			opts[QueryParamEndKey] = endKey
 		}
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 	}
@@ -456,19 +459,22 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 
 	// N1QL Query
 	allDocsQueryStatement := replaceSyncTokensQuery(QueryAllDocs.statement, context.UseXattrs())
+	params := make(map[string]interface{}, 0)
 	if startKey != "" {
-		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id >= '%s'",
-			allDocsQueryStatement, bucketName, startKey)
+		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id >= $startkey",
+			allDocsQueryStatement, bucketName)
+		params[QueryParamStartKey] = startKey
 	}
 	if endKey != "" {
-		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id <= '%s'",
-			allDocsQueryStatement, bucketName, endKey)
+		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id <= $endkey",
+			allDocsQueryStatement, bucketName)
+		params[QueryParamEndKey] = startKey
 	}
 
 	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(`%s`).id",
 		allDocsQueryStatement, bucketName)
 
-	return context.N1QLQueryWithStats(QueryTypeAllDocs, allDocsQueryStatement, nil, gocb.RequestPlus, QueryAllDocs.adhoc)
+	return context.N1QLQueryWithStats(QueryTypeAllDocs, allDocsQueryStatement, params, gocb.RequestPlus, QueryAllDocs.adhoc)
 }
 
 func (context *DatabaseContext) QueryTombstones(olderThan time.Time) (sgbucket.QueryResultIterator, error) {
@@ -476,8 +482,8 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time) (sgbucket.Q
 	// View Query
 	if context.Options.UseViews {
 		opts := Body{"stale": "ok"}
-		opts["startkey"] = 1
-		opts["endkey"] = olderThan.Unix()
+		opts[QueryParamStartKey] = 1
+		opts[QueryParamEndKey] = olderThan.Unix()
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewTombstones, opts)
 	}
 
@@ -495,9 +501,9 @@ func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) 
 		endKey[1] = map[string]interface{}{} // infinity
 	}
 	optMap := map[string]interface{}{
-		"stale":    false,
-		"startkey": []interface{}{channelName, startSeq},
-		"endkey":   endKey,
+		"stale":            false,
+		QueryParamStartKey: []interface{}{channelName, startSeq},
+		QueryParamEndKey:   endKey,
 	}
 	if limit > 0 {
 		optMap["limit"] = limit
