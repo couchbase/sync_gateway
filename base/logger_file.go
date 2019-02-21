@@ -3,8 +3,11 @@ package base
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/natefinch/lumberjack"
@@ -17,9 +20,11 @@ var (
 	maxAgeLimit                            = 9999 // days
 	defaultMaxSize                         = 100  // 100 MB
 	defaultMaxAgeMultiplier                = 2    // e.g. 90 minimum == 180 default maxAge
-	defaultCumulativeMaxSizeBeforeDeletion = 300  // 300 MB
+	defaultCumulativeMaxSizeBeforeDeletion = 1024 // 1 GB
 	minRotatedLogsSizeLimit                = 10   // 10 MB
 	rotatedLogsLowWatermarkMultiplier      = 0.8  // eg. 100 minRotatedLogsSizeLimit == 80 low watermark
+
+	logFilePrefix = "sg_"
 
 	belowMinValueFmt = "%s for %v was set to %d which is below the minimum of %d"
 	aboveMaxValueFmt = "%s for %v was set to %d which is above the maximum of %d"
@@ -130,7 +135,7 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 
 	if lfc.Output == nil {
 		lfc.Output = newLumberjackOutput(
-			filepath.Join(filepath.FromSlash(logFilePath), "sg_"+name+".log"),
+			filepath.Join(filepath.FromSlash(logFilePath), logFilePrefix+name+".log"),
 			*lfc.Rotation.MaxSize,
 			*lfc.Rotation.MaxAge,
 		)
@@ -197,4 +202,52 @@ func newLumberjackOutput(filename string, maxSize, maxAge int) *lumberjack.Logge
 		MaxAge:   maxAge,
 		Compress: true,
 	}
+}
+
+// runLogDeletion will delete rotated logs for the supplied logLevel. It will only perform these deletions when the
+// cumulative size of the logs are above the supplied sizeLimitMB.
+// logDirectory is the supplied directory where the logs are stored.
+func runLogDeletion(logDirectory string, logLevel string, sizeLimitMBLowWatermark int, sizeLimitMBHighWatermark int) (err error) {
+
+	sizeLimitMBLowWatermark = sizeLimitMBLowWatermark * 1024 * 1024   //Convert MB input to bytes
+	sizeLimitMBHighWatermark = sizeLimitMBHighWatermark * 1024 * 1024 //Convert MB input to bytes
+
+	files, err := ioutil.ReadDir(logDirectory)
+
+	if err != nil {
+		return errors.New(fmt.Sprintf("Error reading log directory: %v", err))
+	}
+
+	// Traverse backwards through sorted log filenames. When low watermark is reached we record the point at which this
+	// was passed. Once we also pass the high watermark we loop through from the low watermark and remove.
+	totalSize := 0
+	indexDeletePoint := -1
+	willDelete := false
+	for i := len(files) - 1; i >= 0; i-- {
+		file := files[i]
+		if strings.HasPrefix(file.Name(), logFilePrefix+logLevel) && strings.HasSuffix(file.Name(), ".log.gz") {
+			totalSize += int(file.Size())
+			if totalSize > sizeLimitMBLowWatermark && indexDeletePoint == -1 {
+				indexDeletePoint = i
+			}
+			if totalSize > sizeLimitMBHighWatermark {
+				willDelete = true
+				break
+			}
+		}
+	}
+
+	if willDelete {
+		for j := indexDeletePoint; j >= 0; j-- {
+			file := files[j]
+			if strings.HasPrefix(file.Name(), logFilePrefix+logLevel) && strings.HasSuffix(file.Name(), ".log.gz") {
+				err = os.Remove(filepath.Join(logDirectory, file.Name()))
+				if err != nil {
+					return errors.New(fmt.Sprintf("Error deleting stale log file: %v", err))
+				}
+			}
+		}
+	}
+
+	return nil
 }
