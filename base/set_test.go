@@ -74,12 +74,12 @@ func TestUpdateSet(t *testing.T) {
 	empty := Set{}
 	set1 := SetOf("foo", "bar", "baz")
 	set2 := SetOf("bar", "block", "deny")
-	goassert.DeepEquals(t, set1.Update(empty), set1)
-	goassert.DeepEquals(t, empty.Update(set1), set1)
-	goassert.DeepEquals(t, set1.Update(nilSet), set1)
-	goassert.DeepEquals(t, nilSet.Update(set1), set1)
-	goassert.DeepEquals(t, nilSet.Update(nilSet), nilSet)
-	goassert.Equals(t, set1.Update(set2).String(), "{bar, baz, block, deny, foo}")
+	assert.DeepEquals(t, set1.Update(empty), set1)
+	assert.DeepEquals(t, empty.Update(set1), set1)
+	assert.DeepEquals(t, set1.Update(nilSet), set1)
+	assert.DeepEquals(t, nilSet.Update(set1), set1)
+	assert.DeepEquals(t, nilSet.Update(nilSet), nilSet)
+	assert.Equals(t, set1.Update(set2).String(), "{bar, baz, block, deny, foo}")
 }
 
 func TestSetMarshal(t *testing.T) {
