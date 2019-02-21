@@ -46,51 +46,50 @@ func testBucketContext() *DatabaseContext {
 	return context
 }
 
-func TestSkippedSequenceQueue(t *testing.T) {
+func TestSkippedSequenceList(t *testing.T) {
 
-	var skipQueue SkippedSequenceQueue
+	skipList := NewSkippedSequenceList()
 	//Push values
-	skipQueue.Push(&SkippedSequence{4, time.Now()})
-	skipQueue.Push(&SkippedSequence{7, time.Now()})
-	skipQueue.Push(&SkippedSequence{8, time.Now()})
-	skipQueue.Push(&SkippedSequence{12, time.Now()})
-	skipQueue.Push(&SkippedSequence{18, time.Now()})
-	goassert.True(t, verifySkippedSequences(skipQueue, []uint64{4, 7, 8, 12, 18}))
+	skipList.Push(&SkippedSequence{4, time.Now()})
+	skipList.Push(&SkippedSequence{7, time.Now()})
+	skipList.Push(&SkippedSequence{8, time.Now()})
+	skipList.Push(&SkippedSequence{12, time.Now()})
+	skipList.Push(&SkippedSequence{18, time.Now()})
+	goassert.True(t, verifySkippedSequences(skipList, []uint64{4, 7, 8, 12, 18}))
 
 	// Retrieval of low value
-	lowValue := skipQueue[0].seq
-	goassert.Equals(t, lowValue, uint64(4))
+	goassert.Equals(t, skipList.getOldest(), uint64(4))
 
 	// Removal of first value
-	err := skipQueue.Remove(4)
+	err := skipList.Remove(4)
 	goassert.True(t, err == nil)
-	goassert.True(t, verifySkippedSequences(skipQueue, []uint64{7, 8, 12, 18}))
+	goassert.True(t, verifySkippedSequences(skipList, []uint64{7, 8, 12, 18}))
 
 	// Removal of middle values
-	err = skipQueue.Remove(8)
+	err = skipList.Remove(8)
 	goassert.True(t, err == nil)
-	goassert.True(t, verifySkippedSequences(skipQueue, []uint64{7, 12, 18}))
+	goassert.True(t, verifySkippedSequences(skipList, []uint64{7, 12, 18}))
 
-	err = skipQueue.Remove(12)
+	err = skipList.Remove(12)
 	goassert.True(t, err == nil)
-	goassert.True(t, verifySkippedSequences(skipQueue, []uint64{7, 18}))
+	goassert.True(t, verifySkippedSequences(skipList, []uint64{7, 18}))
 
 	// Removal of last value
-	err = skipQueue.Remove(18)
+	err = skipList.Remove(18)
 	goassert.True(t, err == nil)
-	goassert.True(t, verifySkippedSequences(skipQueue, []uint64{7}))
+	goassert.True(t, verifySkippedSequences(skipList, []uint64{7}))
 
 	// Removal of non-existent returns error
-	err = skipQueue.Remove(25)
+	err = skipList.Remove(25)
 	goassert.True(t, err != nil)
-	goassert.True(t, verifySkippedSequences(skipQueue, []uint64{7}))
+	goassert.True(t, verifySkippedSequences(skipList, []uint64{7}))
 
 	// Add an out-of-sequence entry (make sure bad sequencing doesn't throw us into an infinite loop)
-	err = skipQueue.Push(&SkippedSequence{6, time.Now()})
+	err = skipList.Push(&SkippedSequence{6, time.Now()})
 	goassert.True(t, err != nil)
-	skipQueue.Push(&SkippedSequence{9, time.Now()})
+	skipList.Push(&SkippedSequence{9, time.Now()})
 	goassert.True(t, err != nil)
-	goassert.True(t, verifySkippedSequences(skipQueue, []uint64{7, 9}))
+	goassert.True(t, verifySkippedSequences(skipList, []uint64{7, 9}))
 }
 
 func TestLateSequenceHandling(t *testing.T) {
@@ -1104,9 +1103,7 @@ func TestStopChangeCache(t *testing.T) {
 	assert.True(t, ok, "Testing skipped sequences without a change cache")
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	changeCache.skippedSeqLock.Lock()
 	changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
-	changeCache.skippedSeqLock.Unlock()
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
 	tearDownTestDB(t, db)
@@ -1172,18 +1169,27 @@ func shortWaitCache() CacheOptions {
 		CacheSkippedSeqMaxWait: 2 * time.Minute}
 }
 
-func verifySkippedSequences(queue SkippedSequenceQueue, sequences []uint64) bool {
-	if len(queue) != len(sequences) {
-		log.Printf("verifySkippedSequences: queue size (%v) not equals to sequences size (%v)",
-			len(queue), len(sequences))
+func verifySkippedSequences(list *SkippedSequenceList, sequences []uint64) bool {
+	if len(list.skippedMap) != len(sequences) {
+		log.Printf("verifySkippedSequences: skippedMap size (%v) not equals to sequences size (%v)",
+			len(list.skippedMap), len(sequences))
 		return false
 	}
-	for index, seq := range sequences {
-		if queue[index].seq != seq {
+
+	i := -1
+	for e := list.skippedList.Front(); e != nil; e = e.Next() {
+		i++
+		skippedSeq := e.Value.(*SkippedSequence)
+		if skippedSeq.seq != sequences[i] {
 			log.Printf("verifySkippedSequences: sequence mismatch at index %v, queue=%v, sequences=%v",
-				index, queue[index].seq, seq)
+				i, skippedSeq.seq, sequences[i])
 			return false
 		}
+	}
+	if i != len(sequences)-1 {
+		log.Printf("verifySkippedSequences: skippedList size (%d) not equals to sequences size (%d)",
+			i+1, len(sequences))
+		return false
 	}
 	return true
 }

@@ -106,15 +106,7 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime ti
 		}
 
 		if c.getNextSequence() >= sequence+1 {
-			foundInMissing := false
-			c.skippedSeqLock.RLock()
-			for _, skippedSeq := range c.skippedSeqs {
-				if skippedSeq.seq == sequence {
-					foundInMissing = true
-					break
-				}
-			}
-			c.skippedSeqLock.RUnlock()
+			foundInMissing := c.skippedSeqs.Contains(sequence)
 			if !foundInMissing {
 				base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
 				return

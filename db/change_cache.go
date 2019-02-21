@@ -2,10 +2,10 @@ package db
 
 import (
 	"container/heap"
+	"container/list"
 	"encoding/json"
 	"errors"
 	"expvar"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,8 +54,7 @@ type changeCache struct {
 	channelCaches   map[string]*channelCache // A cache of changes for each channel
 	notifyChange    func(base.Set)           // Client callback that notifies of channel changes
 	stopped         bool                     // Set by the Stop method
-	skippedSeqs     SkippedSequenceQueue     // Skipped sequences still pending on the TAP feed
-	skippedSeqLock  sync.RWMutex             // Coordinates access to skippedSeqs queue
+	skippedSeqs     *SkippedSequenceList     // Skipped sequences still pending on the TAP feed
 	lock            sync.RWMutex             // Coordinates access to struct fields
 	lateSeqLock     sync.RWMutex             // Coordinates access to late sequence caches
 	options         CacheOptions             // Cache config
@@ -73,9 +72,6 @@ type LogEntries []*LogEntry
 
 // A priority-queue of LogEntries, kept ordered by increasing sequence #.
 type LogPriorityQueue []*LogEntry
-
-// An ordered queue that supports the Remove operation
-type SkippedSequenceQueue []*SkippedSequence
 
 type SkippedSequence struct {
 	seq       uint64
@@ -104,6 +100,7 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
 	c.initTime = time.Now()
+	c.skippedSeqs = NewSkippedSequenceList()
 
 	// init cache options
 	c.options = CacheOptions{
@@ -837,14 +834,11 @@ func (c *changeCache) _allChannels() base.Set {
 }
 
 func (c *changeCache) getOldestSkippedSequence() uint64 {
-	c.skippedSeqLock.RLock()
-	defer c.skippedSeqLock.RUnlock()
-	if len(c.skippedSeqs) > 0 {
-		base.Debugf(base.KeyChanges, "Oldest skipped sequence (of %d total): %d", len(c.skippedSeqs), c.skippedSeqs[0].seq)
-		return c.skippedSeqs[0].seq
-	} else {
-		return uint64(0)
+	oldestSkippedSeq := c.skippedSeqs.getOldest()
+	if oldestSkippedSeq > 0 {
+		base.Debugf(base.KeyChanges, "Get oldest skipped, returning: %d", oldestSkippedSeq)
 	}
+	return oldestSkippedSeq
 }
 
 func (c *changeCache) MaxCacheSize() int {
@@ -901,46 +895,129 @@ func (h *LogPriorityQueue) Pop() interface{} {
 //////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	c.skippedSeqLock.Lock()
-	defer c.skippedSeqLock.Unlock()
 	return c.skippedSeqs.Remove(x)
 }
 
 // Removes a set of sequences.  Logs warning on removal error, returns count of successfully removed.
 func (c *changeCache) RemoveSkippedSequences(sequences []uint64) (removedCount int64) {
-	c.skippedSeqLock.Lock()
-	defer c.skippedSeqLock.Unlock()
+	return c.skippedSeqs.RemoveSequences(sequences)
+}
+
+func (c *changeCache) WasSkipped(x uint64) bool {
+	return c.skippedSeqs.Contains(x)
+}
+
+func (c *changeCache) PushSkipped(sequence uint64) {
+	c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
+}
+
+func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint64) {
+	return c.skippedSeqs.getOlderThan(c.options.CacheSkippedSeqMaxWait)
+}
+
+// SkippedSequenceList stores the set of skipped sequences as an ordered list of *SkippedSequence with an associated map
+// for sequence-based lookup.
+type SkippedSequenceList struct {
+	skippedList *list.List               // Ordered list of skipped sequences
+	skippedMap  map[uint64]*list.Element // Map from sequence to list elements
+	lock        sync.RWMutex             // Coordinates access to skippedSequenceList
+}
+
+func NewSkippedSequenceList() *SkippedSequenceList {
+	return &SkippedSequenceList{
+		skippedMap:  map[uint64]*list.Element{},
+		skippedList: list.New(),
+	}
+}
+
+// getOldest returns the sequence of the first element in the skippedSequenceList
+func (l *SkippedSequenceList) getOldest() (oldestSkippedSeq uint64) {
+
+	l.lock.RLock()
+	if firstElement := l.skippedList.Front(); firstElement != nil {
+		value := firstElement.Value.(*SkippedSequence)
+		oldestSkippedSeq = value.seq
+	}
+	l.lock.RUnlock()
+	return oldestSkippedSeq
+}
+
+// Removes a single entry from the list.
+func (l *SkippedSequenceList) Remove(x uint64) error {
+	l.lock.Lock()
+	err := l._remove(x)
+	l.lock.Unlock()
+	return err
+}
+
+func (l *SkippedSequenceList) RemoveSequences(sequences []uint64) (removedCount int64) {
+	l.lock.Lock()
 	for _, seq := range sequences {
-		err := c.skippedSeqs.Remove(seq)
+		err := l._remove(seq)
 		if err != nil {
 			base.Warnf(base.KeyAll, "Error purging skipped sequence %d from skipped sequence queue: %v", seq, err)
 		} else {
 			removedCount++
 		}
 	}
+	l.lock.Unlock()
 	return removedCount
 }
 
-func (c *changeCache) WasSkipped(x uint64) bool {
-	c.skippedSeqLock.RLock()
-	defer c.skippedSeqLock.RUnlock()
-
-	return c.skippedSeqs.Contains(x)
+// Removes an entry from the list.  Expects callers to hold l.lock.Lock
+func (l *SkippedSequenceList) _remove(x uint64) error {
+	if listElement, ok := l.skippedMap[x]; ok {
+		l.skippedList.Remove(listElement)
+		delete(l.skippedMap, x)
+		return nil
+	} else {
+		return errors.New("Value not found")
+	}
 }
 
-func (c *changeCache) PushSkipped(sequence uint64) {
-
-	c.skippedSeqLock.Lock()
-	defer c.skippedSeqLock.Unlock()
-	c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
+// Contains does a simple search to detect presence
+func (l *SkippedSequenceList) Contains(x uint64) bool {
+	l.lock.RLock()
+	_, ok := l.skippedMap[x]
+	l.lock.RUnlock()
+	return ok
 }
 
-func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint64) {
-	c.skippedSeqLock.RLock()
-	defer c.skippedSeqLock.RUnlock()
-	oldSequences = make([]uint64, 0)
-	for _, skippedSeq := range c.skippedSeqs {
-		if time.Since(skippedSeq.timeAdded) > c.options.CacheSkippedSeqMaxWait {
+// Push sequence to the end of SkippedSequenceList.  Validates sequence ordering in list.
+func (l *SkippedSequenceList) Push(x *SkippedSequence) (err error) {
+
+	l.lock.Lock()
+	validPush := false
+	lastElement := l.skippedList.Back()
+	if lastElement == nil {
+		validPush = true
+	} else {
+		lastSkipped, _ := lastElement.Value.(*SkippedSequence)
+		if lastSkipped.seq < x.seq {
+			validPush = true
+		}
+	}
+
+	if validPush {
+		newListElement := l.skippedList.PushBack(x)
+		l.skippedMap[x.seq] = newListElement
+	} else {
+		err = errors.New("Can't push sequence lower than existing maximum")
+	}
+
+	l.lock.Unlock()
+	return err
+
+}
+
+// getOldest returns a slice of sequences older than the specified duration of the first element in the skippedSequenceList
+func (l *SkippedSequenceList) getOlderThan(skippedExpiry time.Duration) []uint64 {
+
+	l.lock.RLock()
+	oldSequences := make([]uint64, 0)
+	for e := l.skippedList.Front(); e != nil; e = e.Next() {
+		skippedSeq := e.Value.(*SkippedSequence)
+		if time.Since(skippedSeq.timeAdded) > skippedExpiry {
 			oldSequences = append(oldSequences, skippedSeq.seq)
 		} else {
 			// skippedSeqs are ordered by arrival time, so can stop iterating once we find one
@@ -948,51 +1025,6 @@ func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint
 			break
 		}
 	}
+	l.lock.RUnlock()
 	return oldSequences
-}
-
-// Remove does a simple binary search to find and remove.
-func (h *SkippedSequenceQueue) Remove(x uint64) error {
-
-	i := SearchSequenceQueue(*h, x)
-	if i < len(*h) && (*h)[i].seq == x {
-		// GC-friendly removal of skipped sequence entries from the queue.
-		// (https://github.com/golang/go/wiki/SliceTricks)
-		copy((*h)[i:], (*h)[i+1:])
-		(*h)[len(*h)-1] = nil
-		*h = (*h)[:len(*h)-1]
-		return nil
-	} else {
-		return errors.New("Value not found")
-	}
-
-}
-
-// Contains does a simple search to detect presence
-func (h SkippedSequenceQueue) Contains(x uint64) bool {
-
-	i := SearchSequenceQueue(h, x)
-	if i < len(h) && h[i].seq == x {
-		return true
-	} else {
-		return false
-	}
-
-}
-
-// We always know that incoming missed sequence numbers will be larger than any previously
-// added, so we don't need to do any sorting - just append to the slice
-func (h *SkippedSequenceQueue) Push(x *SkippedSequence) error {
-	// ensure valid sequence
-	if len(*h) > 0 && x.seq <= (*h)[len(*h)-1].seq {
-		return errors.New("Can't push sequence lower than existing maximum")
-	}
-	*h = append(*h, x)
-	return nil
-
-}
-
-// Skipped Sequence version of sort.SearchInts - based on http://golang.org/src/sort/search.go?s=2959:2994#L73
-func SearchSequenceQueue(a SkippedSequenceQueue, x uint64) int {
-	return sort.Search(len(a), func(i int) bool { return a[i].seq >= x })
 }
