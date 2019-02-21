@@ -10,10 +10,12 @@
 package rest
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -515,7 +517,7 @@ func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 
 // LoadServerConfig loads a ServerConfig from either a JSON file or from a URL
 func LoadServerConfig(runMode SyncGatewayRunMode, path string) (config *ServerConfig, err error) {
-	var data io.ReadCloser
+	var dataReadCloser io.ReadCloser
 
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		resp, err := http.Get(path)
@@ -524,29 +526,21 @@ func LoadServerConfig(runMode SyncGatewayRunMode, path string) (config *ServerCo
 		} else if resp.StatusCode >= 300 {
 			return nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
 		}
-		data = resp.Body
+		dataReadCloser = resp.Body
 	} else {
-		data, err = os.Open(path)
+		dataReadCloser, err = os.Open(path)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	defer data.Close()
-	return readServerConfig(runMode, data)
+	defer dataReadCloser.Close()
+	return readServerConfig(runMode, dataReadCloser)
 }
 
 // readServerConfig returns a validated ServerConfig from an io.Reader
 func readServerConfig(runMode SyncGatewayRunMode, r io.Reader) (config *ServerConfig, err error) {
-
-	r, err = base.ConvertBackQuotedStrings(r)
-	if err != nil {
-		return nil, err
-	}
-
-	d := json.NewDecoder(r)
-	d.DisallowUnknownFields()
-	if err := d.Decode(&config); err != nil {
+	if err := decodeAndSanitiseConfig(r, config); err != nil {
 		return nil, err
 	}
 
@@ -558,6 +552,20 @@ func readServerConfig(runMode SyncGatewayRunMode, r io.Reader) (config *ServerCo
 	}
 
 	return config, nil
+}
+
+// decodeAndSanitiseConfig will sanitise a ServerConfig or dbConfig from an io.Reader and unmarshal it into the given config parameter.
+func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	b = base.ConvertBackQuotedStrings(b)
+
+	d := json.NewDecoder(bytes.NewBuffer(b))
+	d.DisallowUnknownFields()
+	return d.Decode(config)
 }
 
 func (config *ServerConfig) setupAndValidateDatabases() error {

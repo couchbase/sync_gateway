@@ -10,9 +10,7 @@
 package base
 
 import (
-	"bytes"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -81,12 +79,8 @@ func TestConvertBackQuotedStrings(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.input, func(tt *testing.T) {
-			output, err := ConvertBackQuotedStrings(bytes.NewBufferString(test.input))
-			assert.NoError(t, err)
-
-			outputBytes, err := ioutil.ReadAll(output)
-			assert.NoError(t, err)
-			assert.Equal(t, test.expected, string(outputBytes))
+			output := ConvertBackQuotedStrings([]byte(test.input))
+			assert.Equal(t, test.expected, string(output))
 		})
 	}
 }

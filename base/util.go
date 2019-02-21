@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"math"
 	"net"
 	"net/http"
@@ -1012,20 +1011,10 @@ func SplitHostPort(hostport string) (string, string, error) {
 
 var backquoteStringRegexp = regexp.MustCompile("`((?s).*?)[^\\\\]`")
 
-// ConvertBackQuotedStrings is a wrapper around convertBackQuotedStringsBytes for use with an io.Reader
-func ConvertBackQuotedStrings(r io.Reader) (io.Reader, error) {
-	b, err := ioutil.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-
-	return bytes.NewBuffer(convertBackQuotedStringsBytes(b)), nil
-}
-
-// convertBackQuotedStringsBytes sanitises a string containing `...`-delimited strings.
+// ConvertBackQuotedStrings sanitises a string containing `...`-delimited strings.
 // - Converts the backquotes into double-quotes
 // - Escapes literal backslashes, newlines or double-quotes with backslashes.
-func convertBackQuotedStringsBytes(data []byte) []byte {
+func ConvertBackQuotedStrings(data []byte) []byte {
 	return backquoteStringRegexp.ReplaceAllFunc(data, func(b []byte) []byte {
 
 		b = bytes.Replace(b, []byte(`\`), []byte(`\\`), -1)

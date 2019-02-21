@@ -983,16 +983,9 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	}
 
 	var config DbConfig
-
 	defer resp.Body.Close()
-	body, err := base.ConvertBackQuotedStrings(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 
-	d := json.NewDecoder(body)
-	d.DisallowUnknownFields()
-	if err = d.Decode(&config); err != nil {
+	if err := decodeAndSanitiseConfig(resp.Body, &config); err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			"Bad response from config server: %v", err)
 	}
