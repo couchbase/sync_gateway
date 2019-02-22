@@ -709,7 +709,8 @@ func TestParseRevisions(t *testing.T) {
 	}
 	for _, c := range cases {
 		var body Body
-		assert.NoError(t, json.Unmarshal([]byte(c.json), &body), "base JSON in test case")
+		unmarshalErr := body.Unmarshal([]byte(c.json))
+		assert.NoError(t, unmarshalErr, "base JSON in test case")
 		ids := ParseRevisions(body)
 		goassert.DeepEquals(t, ids, c.ids)
 	}

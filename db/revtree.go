@@ -717,8 +717,8 @@ func (tree RevTree) getHistory(revid string) ([]string, error) {
 // Parses a CouchDB _rev or _revisions property into a list of revision IDs
 func ParseRevisions(body Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
-	//revisions, ok := body[BodyRevisions].(Revisions)
-	revisionsMap, ok := body[BodyRevisions].(map[string]interface{})
+
+	revisionsProperty, ok := body[BodyRevisions]
 	if !ok {
 		revid, ok := body[BodyRev].(string)
 		if !ok {
@@ -731,7 +731,18 @@ func ParseRevisions(body Body) []string {
 		oneRev = append(oneRev, revid)
 		return oneRev
 	}
-	revisions := Revisions(revisionsMap)
+
+	// Revisions may be stored in a Body as Revisions or map[string]interface{}, depending on the source of the Body
+	var revisions Revisions
+	switch revs := revisionsProperty.(type) {
+	case Revisions:
+		revisions = revs
+	case map[string]interface{}:
+		revisions = Revisions(revs)
+	default:
+		return nil
+	}
+
 	start, ids := splitRevisionList(revisions)
 	if ids == nil {
 		return nil
