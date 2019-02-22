@@ -6,7 +6,7 @@
     "db": {
       "server": "walrus:data",
       "bucket": "default",
-      "users": {"GUEST": {"disabled": false,"admina_channels": ["*"]}},
+      "users": {"GUEST": {"disabled": false,"admin_channels": ["*"]}},
       "allow_conflicts": false,
       "revs_limit": 20
     }
