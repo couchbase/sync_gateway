@@ -3811,6 +3811,9 @@ func TestDocIDFilterResurrection(t *testing.T) {
 }
 
 func TestSyncFunctionErrorLogging(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyJavascript)()
+
 	rt := RestTester{SyncFn: `
 		function(doc) {
 			console.error("Error");
@@ -3819,6 +3822,9 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 		}`}
 
 	defer rt.Close()
+
+	// Wait for the DB to be ready before attempting to get initial error count
+	assert.NoError(t, rt.WaitForDBOnline())
 
 	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
 	assert.NoError(t, err)
