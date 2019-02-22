@@ -515,7 +515,6 @@ func TestImportFilterLogging(t *testing.T) {
 		},
 	}
 	defer rt.Close()
-	bucket := rt.Bucket()
 
 	//Add document to bucket
 	key := "ValidImport"
