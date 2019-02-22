@@ -540,7 +540,7 @@ func LoadServerConfig(runMode SyncGatewayRunMode, path string) (config *ServerCo
 
 // readServerConfig returns a validated ServerConfig from an io.Reader
 func readServerConfig(runMode SyncGatewayRunMode, r io.Reader) (config *ServerConfig, err error) {
-	if err := decodeAndSanitiseConfig(r, config); err != nil {
+	if err := decodeAndSanitiseConfig(r, &config); err != nil {
 		return nil, err
 	}
 
