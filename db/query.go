@@ -468,7 +468,7 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 	if endKey != "" {
 		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id <= $endkey",
 			allDocsQueryStatement, bucketName)
-		params[QueryParamEndKey] = startKey
+		params[QueryParamEndKey] = endKey
 	}
 
 	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(`%s`).id",
