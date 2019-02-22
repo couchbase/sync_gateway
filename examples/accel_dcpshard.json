@@ -6,7 +6,6 @@
         "log_keys": ["*"]
       }
     },
-    "verbose":"true",
     "cluster_config":{
         "server":"http://localhost:8091",
         "bucket":"default",
@@ -15,12 +14,7 @@
     "databases":{
         "db":{
             "feed_type":"DCPSHARD",
-            "feed_params":{
-                "max_partitions_per_pindex":512,
-                "num_replicas":0
-            },
             "server":"http://localhost:8091",
-            "revs_limit":100,
             "users":{
                 "GUEST":{
                     "disabled":false,
