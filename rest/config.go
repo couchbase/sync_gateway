@@ -10,9 +10,11 @@
 package rest
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -513,65 +515,32 @@ func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
 }
 
-// Reads a ServerConfig from raw data
-func ReadServerConfigFromData(runMode SyncGatewayRunMode, data []byte) (*ServerConfig, error) {
+// LoadServerConfig loads a ServerConfig from either a JSON file or from a URL
+func LoadServerConfig(runMode SyncGatewayRunMode, path string) (config *ServerConfig, err error) {
+	var dataReadCloser io.ReadCloser
 
-	data = base.ConvertBackQuotedStrings(data)
-	var config *ServerConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, err
-	}
-
-	config.RunMode = runMode
-
-	// Validation:
-	if err := config.setupAndValidateDatabases(); err != nil {
-		return nil, err
-	}
-
-	return config, nil
-}
-
-// Reads a ServerConfig from a URL.
-func ReadServerConfigFromUrl(runMode SyncGatewayRunMode, url string) (*ServerConfig, error) {
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	responseBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	return ReadServerConfigFromData(runMode, responseBody)
-
-}
-
-// Reads a ServerConfig from either a JSON file or from a URL.
-func ReadServerConfig(runMode SyncGatewayRunMode, path string) (*ServerConfig, error) {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		return ReadServerConfigFromUrl(runMode, path)
+		resp, err := http.Get(path)
+		if err != nil {
+			return nil, err
+		} else if resp.StatusCode >= 300 {
+			return nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
+		}
+		dataReadCloser = resp.Body
 	} else {
-		return ReadServerConfigFromFile(runMode, path)
+		dataReadCloser, err = os.Open(path)
+		if err != nil {
+			return nil, err
+		}
 	}
+
+	defer dataReadCloser.Close()
+	return readServerConfig(runMode, dataReadCloser)
 }
 
-// Reads a ServerConfig from a JSON file.
-func ReadServerConfigFromFile(runMode SyncGatewayRunMode, path string) (*ServerConfig, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	data, err := ioutil.ReadAll(file)
-	if err != nil {
-		return nil, err
-	}
-	data = base.ConvertBackQuotedStrings(data)
-	var config *ServerConfig
-	if err := json.Unmarshal(data, &config); err != nil {
+// readServerConfig returns a validated ServerConfig from an io.Reader
+func readServerConfig(runMode SyncGatewayRunMode, r io.Reader) (config *ServerConfig, err error) {
+	if err := decodeAndSanitiseConfig(r, &config); err != nil {
 		return nil, err
 	}
 
@@ -583,7 +552,20 @@ func ReadServerConfigFromFile(runMode SyncGatewayRunMode, path string) (*ServerC
 	}
 
 	return config, nil
+}
 
+// decodeAndSanitiseConfig will sanitise a ServerConfig or dbConfig from an io.Reader and unmarshal it into the given config parameter.
+func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	b = base.ConvertBackQuotedStrings(b)
+
+	d := json.NewDecoder(bytes.NewBuffer(b))
+	d.DisallowUnknownFields()
+	return d.Decode(config)
 }
 
 func (config *ServerConfig) setupAndValidateDatabases() error {
@@ -760,7 +742,7 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 		// Read the configuration file(s), if any:
 		for i := 0; i < flag.NArg(); i++ {
 			filename := flag.Arg(i)
-			c, err := ReadServerConfig(runMode, filename)
+			c, err := LoadServerConfig(runMode, filename)
 			if err != nil {
 				base.Fatalf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
 			}
