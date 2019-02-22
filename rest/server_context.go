@@ -10,11 +10,9 @@
 package rest
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -976,24 +974,18 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 		urlStr += "/"
 	}
 	urlStr += url.QueryEscape(dbName)
-	res, err := sc.HTTPClient.Get(urlStr)
+	resp, err := sc.HTTPClient.Get(urlStr)
 	if err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			"Error contacting config server: %v", err)
-	} else if res.StatusCode >= 300 {
-		return nil, base.HTTPErrorf(res.StatusCode, res.Status)
+	} else if resp.StatusCode >= 300 {
+		return nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 
 	var config DbConfig
+	defer resp.Body.Close()
 
-	var bodyBytes []byte
-	defer res.Body.Close()
-	if bodyBytes, err = ioutil.ReadAll(res.Body); err != nil {
-		return nil, err
-	}
-
-	j := json.NewDecoder(bytes.NewReader(base.ConvertBackQuotedStrings(bodyBytes)))
-	if err = j.Decode(&config); err != nil {
+	if err := decodeAndSanitiseConfig(resp.Body, &config); err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			"Bad response from config server: %v", err)
 	}
