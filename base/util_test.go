@@ -42,34 +42,47 @@ func TestConvertJSONString(t *testing.T) {
 	goassert.Equals(t, ConvertJSONString("blah"), "blah")
 }
 
-func TestBackQuotedStrings(t *testing.T) {
-	input := `{"foo": "bar"}`
-	output := ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), input)
+func TestConvertBackQuotedStrings(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{
+			input:    `{"foo": "bar"}`,
+			expected: `{"foo": "bar"}`,
+		},
+		{
+			input:    "{\"foo\": `bar`}",
+			expected: `{"foo": "bar"}`,
+		},
+		{
+			input:    "{\"foo\": `bar\nbaz\nboo`}",
+			expected: `{"foo": "bar\nbaz\nboo"}`,
+		},
+		{
+			input:    "{\"foo\": `bar\n\"baz\n\tboo`}",
+			expected: `{"foo": "bar\n\"baz\n\tboo"}`,
+		},
+		{
+			input:    "{\"foo\": `bar\n`, \"baz\": `howdy`}",
+			expected: `{"foo": "bar\n", "baz": "howdy"}`,
+		},
+		{
+			input:    "{\"foo\": `bar\r\n`, \"baz\": `\r\nhowdy`}",
+			expected: `{"foo": "bar\n", "baz": "\nhowdy"}`,
+		},
+		{
+			input:    "{\"foo\": `bar\\baz`, \"something\": `else\\is\\here`}",
+			expected: `{"foo": "bar\\baz", "something": "else\\is\\here"}`,
+		},
+	}
 
-	input = "{\"foo\": `bar`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar"}`)
-
-	input = "{\"foo\": `bar\nbaz\nboo`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar\nbaz\nboo"}`)
-
-	input = "{\"foo\": `bar\n\"baz\n\tboo`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar\n\"baz\n\tboo"}`)
-
-	input = "{\"foo\": `bar\n`, \"baz\": `howdy`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar\n", "baz": "howdy"}`)
-
-	input = "{\"foo\": `bar\r\n`, \"baz\": `\r\nhowdy`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar\n", "baz": "\nhowdy"}`)
-
-	input = "{\"foo\": `bar\\baz`, \"something\": `else\\is\\here`}"
-	output = ConvertBackQuotedStrings([]byte(input))
-	goassert.Equals(t, string(output), `{"foo": "bar\\baz", "something": "else\\is\\here"}`)
+	for _, test := range tests {
+		t.Run(test.input, func(tt *testing.T) {
+			output := ConvertBackQuotedStrings([]byte(test.input))
+			assert.Equal(t, test.expected, string(output))
+		})
+	}
 }
 
 func TestCouchbaseUrlWithAuth(t *testing.T) {
