@@ -28,7 +28,7 @@ const (
 
 var (
 	logLevelNames      = []string{"none", "error", "warn", "info", "debug", "trace"}
-	logLevelNamesPrint = []string{"NON", "ERR", "WRN", "INF", "DBG", "TRC"}
+	logLevelNamesPrint = []string{"---", "ERR", "WRN", "INF", "DBG", "TRC"}
 )
 
 // Set will override the log level with the given log level.

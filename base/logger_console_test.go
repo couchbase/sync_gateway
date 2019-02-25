@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestConsoleShouldLog(t *testing.T) {
@@ -98,6 +99,69 @@ func TestConsoleShouldLog(t *testing.T) {
 		t.Run(name, func(ts *testing.T) {
 			got := l.shouldLog(test.logToLevel, test.logToKey)
 			goassert.Equals(ts, got, test.expected)
+		})
+	}
+}
+
+func TestConsoleLogDefaults(t *testing.T) {
+	logLevelPtr := func(level LogLevel) *LogLevel { return &level }
+	logKeyPtr := func(key LogKey) *LogKey { return &key }
+
+	tests := []struct {
+		name     string
+		config   ConsoleLoggerConfig
+		expected ConsoleLogger
+	}{
+		{
+			name:   "empty",
+			config: ConsoleLoggerConfig{},
+			expected: ConsoleLogger{
+				FileLogger: FileLogger{Enabled: false},
+				LogLevel:   logLevelPtr(LevelNone),
+				LogKey:     logKeyPtr(KeyHTTP),
+				isStderr:   false,
+			},
+		},
+		{
+			name:   "key",
+			config: ConsoleLoggerConfig{LogKeys: []string{"CRUD"}},
+			expected: ConsoleLogger{
+				FileLogger: FileLogger{Enabled: true},
+				LogLevel:   logLevelPtr(LevelInfo),
+				LogKey:     logKeyPtr(KeyHTTP | KeyCRUD),
+				isStderr:   true,
+			},
+		},
+		{
+			name:   "level",
+			config: ConsoleLoggerConfig{LogLevel: logLevelPtr(LevelWarn)},
+			expected: ConsoleLogger{
+				FileLogger: FileLogger{Enabled: true},
+				LogLevel:   logLevelPtr(LevelWarn),
+				LogKey:     logKeyPtr(KeyHTTP),
+				isStderr:   true,
+			},
+		},
+		{
+			name:   "level and key",
+			config: ConsoleLoggerConfig{LogLevel: logLevelPtr(LevelWarn), LogKeys: []string{"CRUD"}},
+			expected: ConsoleLogger{
+				FileLogger: FileLogger{Enabled: true},
+				LogLevel:   logLevelPtr(LevelWarn),
+				LogKey:     logKeyPtr(KeyHTTP | KeyCRUD),
+				isStderr:   true,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(tt *testing.T) {
+			logger, _, err := NewConsoleLogger(&test.config)
+			assert.NoError(tt, err)
+			assert.Equal(tt, test.expected.Enabled, logger.Enabled)
+			assert.Equal(tt, *test.expected.LogLevel, *logger.LogLevel)
+			assert.Equal(tt, *test.expected.LogKey, *logger.LogKey)
+			assert.Equal(tt, test.expected.isStderr, logger.isStderr)
 		})
 	}
 }

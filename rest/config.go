@@ -976,10 +976,10 @@ func RunServer(config *ServerConfig) {
 
 	go sc.PostStartup()
 
-	base.Infof(base.KeyAll, "Starting admin server on %s", base.UD(*config.AdminInterface))
+	base.Consolef(base.LevelNone, base.KeyAll, "Starting admin server on %s", *config.AdminInterface)
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
 
-	base.Infof(base.KeyAll, "Starting server on %s ...", base.UD(*config.Interface))
+	base.Consolef(base.LevelNone, base.KeyAll, "Starting server on %s ...", *config.Interface)
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 

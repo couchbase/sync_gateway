@@ -526,15 +526,11 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 
 // LogSyncGatewayVersion will print the startup indicator and version number to all log outputs.
 func LogSyncGatewayVersion() {
-	format := addPrefixes("==== %s ====", context.Background(), LevelNone, KeyNone)
-	msg := fmt.Sprintf(format, LongVersionString)
+	msg := fmt.Sprintf("==== %s ====", LongVersionString)
 
-	if !consoleLogger.isStderr {
-		fmt.Println(msg)
-	} else if consoleLogger.logger != nil {
-		consoleLogger.logger.Print(color(msg, LevelNone))
-	}
+	Consolef(LevelNone, KeyNone, msg)
 
+	msg = addPrefixes(msg, context.Background(), LevelNone, KeyNone)
 	if errorLogger.shouldLog(LevelNone) {
 		errorLogger.logger.Printf(msg)
 	}
@@ -549,15 +545,23 @@ func LogSyncGatewayVersion() {
 	}
 }
 
+// Consolef logs the given formatted string and args to console and stderr.
+func Consolef(level LogLevel, key LogKey, format string, args ...interface{}) {
+	format = addPrefixes(format, context.Background(), level, key)
+
+	// Log to the console if enabled, and set to something other than stderr.
+	if consoleLogger.Enabled && !consoleLogger.isStderr {
+		consoleLogger.logger.Printf(format, args...)
+	}
+
+	// Log to stderr
+	fmt.Printf(format+"\n", args...)
+}
+
 // addPrefixes will modify the format string to add timestamps, log level, and other common prefixes.
 // E.g: 2006-01-02T15:04:05.000Z07:00 [LVL] LogKey: format_str
 func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey LogKey) string {
 	timestampPrefix := time.Now().Format(ISO8601Format) + " "
-
-	var logLevelPrefix string
-	if logLevel > LevelNone {
-		logLevelPrefix = "[" + logLevel.StringShort() + "] "
-	}
 
 	var logKeyPrefix string
 	if logKey > KeyNone && logKey != KeyAll {
@@ -575,7 +579,7 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 		}
 	}
 
-	return timestampPrefix + logLevelPrefix + logKeyPrefix + format
+	return timestampPrefix + "[" + logLevel.StringShort() + "] " + logKeyPrefix + format
 }
 
 // color wraps the given string with color based on logLevel

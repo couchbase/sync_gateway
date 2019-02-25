@@ -49,7 +49,8 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 		LogKey:       &logKey,
 		ColorEnabled: *config.ColorEnabled && isStderr,
 		FileLogger: FileLogger{
-			logger: log.New(config.Output, "", 0),
+			Enabled: *config.Enabled,
+			logger:  log.New(config.Output, "", 0),
 		},
 		isStderr: isStderr,
 	}
@@ -69,7 +70,11 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 		}
 
 		warnings = append(warnings, func() {
-			fmt.Println(addPrefixes(fmt.Sprintf("Logging console output to: %v", consoleOutput), nil, LevelInfo, KeyAll))
+			Consolef(LevelNone, KeyNone, "Logging: Console to %v", consoleOutput)
+		})
+	} else {
+		warnings = append(warnings, func() {
+			Consolef(LevelNone, KeyNone, "Logging: Console disabled")
 		})
 	}
 
