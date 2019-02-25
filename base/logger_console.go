@@ -70,11 +70,11 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 		}
 
 		warnings = append(warnings, func() {
-			Consolef(LevelNone, KeyNone, "Logging: Console to %v", consoleOutput)
+			Consolef(LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
 		})
 	} else {
 		warnings = append(warnings, func() {
-			Consolef(LevelNone, KeyNone, "Logging: Console disabled")
+			Consolef(LevelInfo, KeyNone, "Logging: Console disabled")
 		})
 	}
 

@@ -524,12 +524,26 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	}
 }
 
-// LogSyncGatewayVersion will print the startup indicator and version number to all log outputs.
+// Consolef logs the given formatted string and args to the given log level and log key,
+// as well as making sure the message is *always* logged to stdout.
+func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+	logTo(context.Background(), logLevel, logKey, format, args...)
+
+	// If the above logTo didn't already log to stderr, do it directly here
+	if !consoleLogger.isStderr || !consoleLogger.shouldLog(logLevel, logKey) {
+		format = addPrefixes(format, context.Background(), logLevel, logKey)
+		fmt.Printf(format+"\n", args...)
+	}
+}
+
+// LogSyncGatewayVersion will print the startup indicator and version number to ALL log outputs.
 func LogSyncGatewayVersion() {
 	msg := fmt.Sprintf("==== %s ====", LongVersionString)
 
+	// Log the startup indicator to the stderr.
 	Consolef(LevelNone, KeyNone, msg)
 
+	// Log the startup indicator to ALL log files too.
 	msg = addPrefixes(msg, context.Background(), LevelNone, KeyNone)
 	if errorLogger.shouldLog(LevelNone) {
 		errorLogger.logger.Printf(msg)
@@ -545,23 +559,15 @@ func LogSyncGatewayVersion() {
 	}
 }
 
-// Consolef logs the given formatted string and args to console and stderr.
-func Consolef(level LogLevel, key LogKey, format string, args ...interface{}) {
-	format = addPrefixes(format, context.Background(), level, key)
-
-	// Log to the console if enabled, and set to something other than stderr.
-	if consoleLogger.Enabled && !consoleLogger.isStderr {
-		consoleLogger.logger.Printf(format, args...)
-	}
-
-	// Log to stderr
-	fmt.Printf(format+"\n", args...)
-}
-
 // addPrefixes will modify the format string to add timestamps, log level, and other common prefixes.
 // E.g: 2006-01-02T15:04:05.000Z07:00 [LVL] LogKey: format_str
 func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey LogKey) string {
 	timestampPrefix := time.Now().Format(ISO8601Format) + " "
+
+	var logLevelPrefix string
+	if logLevel > LevelNone {
+		logLevelPrefix = "[" + logLevel.StringShort() + "] "
+	}
 
 	var logKeyPrefix string
 	if logKey > KeyNone && logKey != KeyAll {
@@ -579,7 +585,7 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 		}
 	}
 
-	return timestampPrefix + "[" + logLevel.StringShort() + "] " + logKeyPrefix + format
+	return timestampPrefix + logLevelPrefix + logKeyPrefix + format
 }
 
 // color wraps the given string with color based on logLevel

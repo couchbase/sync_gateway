@@ -57,7 +57,7 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 	// If there's nowhere to specified put log files, we'll log an error, but continue anyway.
 	if !hasLogFilePath(&c.LogFilePath, defaultLogFilePath) {
 		warnings = append(warnings, func() {
-			Consolef(LevelNone, KeyNone, "Logging: Files disabled")
+			Consolef(LevelInfo, KeyNone, "Logging: Files disabled")
 			// Explicitly log this error to console
 			Consolef(LevelError, KeyNone, ErrUnsetLogFilePath.Error())
 		})
@@ -69,7 +69,7 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 		return warnings, err
 	} else {
 		warnings = append(warnings, func() {
-			Consolef(LevelNone, KeyNone, "Logging: Files to %v", c.LogFilePath)
+			Consolef(LevelInfo, KeyNone, "Logging: Files to %v", c.LogFilePath)
 		})
 	}
 
