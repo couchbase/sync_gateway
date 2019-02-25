@@ -522,15 +522,15 @@ func TestImportFilterLogging(t *testing.T) {
 		},
 	}
 	defer rt.Close()
-	bucket := rt.Bucket()
 
 	//Add document to bucket
 	key := "ValidImport"
 	body := make(map[string]interface{})
 	body["type"] = "mobile"
 	body["channels"] = "A"
-	_, err := bucket.Add(key, 0, body)
+	ok, err := rt.Bucket().Add(key, 0, body)
 	assert.NoError(t, err)
+	assert.True(t, ok)
 
 	//Get number of errors before
 	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
