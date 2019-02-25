@@ -121,9 +121,17 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		}
 	}
 
-	// Default to false
-	if lcc.Enabled == nil || !*lcc.Enabled {
-		lcc.Enabled = BoolPtr(false)
+	// Default to disabled only when a log key or log level has not been specified
+	if lcc.Enabled == nil {
+		if lcc.LogLevel != nil || len(lcc.LogKeys) > 0 {
+			lcc.Enabled = BoolPtr(true)
+		} else {
+			lcc.Enabled = BoolPtr(false)
+		}
+	}
+
+	// Turn off console logging if disabled
+	if !*lcc.Enabled {
 		newLevel := LevelNone
 		lcc.LogLevel = &newLevel
 		lcc.LogKeys = []string{}
