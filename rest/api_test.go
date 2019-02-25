@@ -3730,9 +3730,6 @@ func TestUnsupportedConfig(t *testing.T) {
 }
 
 func TestImportingPurgedDocument(t *testing.T) {
-	var rt RestTester
-	defer rt.Close()
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
@@ -3741,8 +3738,13 @@ func TestImportingPurgedDocument(t *testing.T) {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
 
+	var rt RestTester
+	defer rt.Close()
+
 	body := `{"_purged": true, "foo": "bar"}`
-	rt.Bucket().Add("key", 0, []byte(body))
+	ok, err := rt.Bucket().Add("key", 0, []byte(body))
+	assert.NoError(t, err)
+	assert.True(t, ok)
 
 	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
 	assert.NoError(t, err)
@@ -3805,6 +3807,9 @@ func TestDocIDFilterResurrection(t *testing.T) {
 }
 
 func TestSyncFunctionErrorLogging(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyJavascript)()
+
 	rt := RestTester{SyncFn: `
 		function(doc) {
 			console.error("Error");
@@ -3813,6 +3818,9 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 		}`}
 
 	defer rt.Close()
+
+	// Wait for the DB to be ready before attempting to get initial error count
+	assert.NoError(t, rt.WaitForDBOnline())
 
 	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
 	assert.NoError(t, err)
