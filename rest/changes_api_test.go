@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -2905,6 +2906,132 @@ func TestChangesLargeSequences(t *testing.T) {
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	goassert.Equals(t, len(changes.Results), 0)
 
+}
+
+func TestIncludeDocsWithPrincipals(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	var rt RestTester
+	defer rt.Close()
+
+	// Put users
+	response := rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser", `{"name":"includeDocsUser","password":"letmein", "admin_channels":["*"]}`)
+	assertStatus(t, response, 201)
+
+	response = rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser2", `{"name":"includeDocsUser2","password":"letmein", "admin_channels":["*"]}`)
+	assertStatus(t, response, 201)
+
+	// Put several documents
+	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/doc3", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	testDb := rt.ServerContext().Database("db")
+
+	testDb.WaitForSequence(5)
+
+	errorCountStart := base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String()
+	warnCountStart := base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String()
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	// Get as admin
+	changes.Results = nil
+	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?include_docs=true", "")
+	err := json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+	log.Printf("admin response: %s", changesResponse.Body.Bytes())
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	// Expect three docs, no user docs
+	assert.Equal(t, 3, len(changes.Results))
+
+	// Get as user
+	changes.Results = nil
+	userChangesResponse := rt.Send(requestByUser("GET", "/db/_changes?include_docs=true", "", "includeDocsUser"))
+	err = json.Unmarshal(userChangesResponse.Body.Bytes(), &changes)
+	log.Printf("userChangesResponse: %s", userChangesResponse.Body.Bytes())
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	// Expect three docs and the authenticated user's user doc
+	assert.Equal(t, 4, len(changes.Results))
+
+	errorCountEnd := base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String()
+	warnCountEnd := base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String()
+
+	assert.Equal(t, errorCountStart, errorCountEnd, "Unexpected error count in TestIncludeDocsWithPrincipals")
+	assert.Equal(t, warnCountStart, warnCountEnd, "Unexpected warning count in TestIncludeDocsWithPrincipals")
+
+}
+
+// Validate that an admin channel grant wakes up a waiting changes request
+func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+
+	var rt RestTester
+	defer rt.Close()
+
+	// Create user with access to channel ABC:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("ABC"))
+	goassert.True(t, err == nil)
+	a.Save(bernard)
+
+	// Put several documents in channel PBS
+	response := rt.SendAdminRequest("PUT", "/db/pbs-1", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/pbs-2", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/pbs-3", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/pbs-4", `{"channels":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	caughtUpCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+
+	// Issue longpoll changes request
+	var longpollWg sync.WaitGroup
+	longpollWg.Add(1)
+	go func() {
+		defer longpollWg.Done()
+		longpollChangesJSON := `{"since":0, "feed":"longpoll"}`
+		longPollResponse := rt.Send(requestByUser("POST", "/db/_changes", longpollChangesJSON, "bernard"))
+		log.Printf("longpoll changes response looks like: %s", longPollResponse.Body.Bytes())
+		json.Unmarshal(longPollResponse.Body.Bytes(), &changes)
+		// Expect to get 4 docs plus user doc
+		goassert.Equals(t, len(changes.Results), 5)
+	}()
+
+	waitForCaughtUp(rt.GetDatabase(), caughtUpCount+1)
+
+	// Update the user doc to grant access to PBS
+	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"admin_channels":["ABC", "PBS"]}`)
+	assertStatus(t, response, 200)
+
+	// Wait for longpoll to return
+	longpollWg.Wait()
+
+}
+
+func waitForCaughtUp(dbc *db.DatabaseContext, targetCount int64) error {
+	for i := 0; i < 100; i++ {
+		caughtUpCount := base.ExpvarVar2Int(dbc.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+		if caughtUpCount >= targetCount {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return errors.New("WaitForCaughtUp didn't catch up")
 }
 
 //////// HELPERS:
