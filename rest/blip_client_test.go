@@ -153,17 +153,20 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				panic(err)
 			}
 
+			var old db.Body
 			btc.docsLock.RLock()
 			oldBytes := btc.docs[docID][deltaSrc]
 			btc.docsLock.RUnlock()
-			if err := bodyJSON.Unmarshal(oldBytes); err != nil {
+			if err := old.Unmarshal(oldBytes); err != nil {
 				panic(err)
 			}
 
-			var oldMap = map[string]interface{}(bodyJSON)
+			var oldMap = map[string]interface{}(old)
 			if err := base.Patch(&oldMap, body); err != nil {
 				panic(err)
 			}
+
+			bodyJSON = oldMap
 		}
 
 		// Fetch any missing attachments (if required) during this rev processing
@@ -230,11 +233,13 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				}
 			}
 
+		}
+
+		if bodyJSON != nil {
 			body, err = json.Marshal(bodyJSON)
 			if err != nil {
 				panic(err)
 			}
-
 		}
 
 		btc.docsLock.Lock()
