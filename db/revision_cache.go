@@ -112,9 +112,9 @@ type revCacheValue struct {
 }
 
 type RevCacheDelta struct {
-	ToRevID       string
-	DeltaBytes    []byte
-	ToAttachments AttachmentsMeta
+	ToRevID           string
+	DeltaBytes        []byte
+	AttachmentDigests []string
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -345,9 +345,13 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 func (value *revCacheValue) updateDelta(toRevID string, deltaBytes []byte, attachments AttachmentsMeta) {
 	value.lock.Lock()
 	defer value.lock.Unlock()
+
+	// Flatten the AttachmentsMeta into a list of digests
+	digests := AttachmentDigests(attachments)
+
 	value.delta = &RevCacheDelta{
-		ToRevID:       toRevID,
-		DeltaBytes:    deltaBytes,
-		ToAttachments: attachments,
+		ToRevID:           toRevID,
+		DeltaBytes:        deltaBytes,
+		AttachmentDigests: digests,
 	}
 }

@@ -635,7 +635,7 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 
 	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
 
-	delta, attachments, err := bh.db.GetDelta(docID, deltaSrcRevID, revID)
+	delta, attDigests, err := bh.db.GetDelta(docID, deltaSrcRevID, revID)
 	if err != nil {
 		bh.Logf(base.LevelInfo, base.KeySync, "DELTA: error generating delta from %s to %s for key %s; falling back to full body replication.  err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
@@ -649,11 +649,11 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 	}
 
 	bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(delta)))
-	bh.sendDelta(delta, deltaSrcRevID, sender, seq, docID, revID, knownRevs, maxHistory, attachments)
+	bh.sendDelta(delta, deltaSrcRevID, sender, seq, docID, revID, knownRevs, maxHistory, attDigests)
 	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasSent, 1)
 }
 
-func (bh *blipHandler) sendDelta(delta []byte, deltaSrcRevID string, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int, attachments db.AttachmentsMeta) {
+func (bh *blipHandler) sendDelta(delta []byte, deltaSrcRevID string, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int, attDigests []string) {
 
 	var body db.Body
 	if err := body.Unmarshal(delta); err != nil {
@@ -663,7 +663,7 @@ func (bh *blipHandler) sendDelta(delta []byte, deltaSrcRevID string, sender *bli
 	}
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta based on %d known. DeltaSrc:%s  User:%s", base.UD(docID), revID, len(knownRevs), deltaSrcRevID, base.UD(bh.effectiveUsername))
-	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, knownRevs, maxHistory, attachments, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
+	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, knownRevs, maxHistory, attDigests, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
 }
 
 func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
@@ -699,12 +699,12 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 	// extract attachments from body for sendRevisionWithProperties
-	attachments := db.GetBodyAttachments(body)
-	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, knownRevs, maxHistory, attachments, nil)
+	attDigests := db.AttachmentDigests(db.GetBodyAttachments(body))
+	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, knownRevs, maxHistory, attDigests, nil)
 }
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int, attachments db.AttachmentsMeta, properties blip.Properties) {
+func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int, attDigests []string, properties blip.Properties) {
 
 	// Get the revision's history as a descending array of ancestor revIDs:
 	history := db.ParseRevisions(body)[1:]
@@ -742,9 +742,9 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 	}
 	bh.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
 
-	if attachments != nil {
+	if len(attDigests) > 0 {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
-		bh.addAllowedAttachments(attachments)
+		bh.addAllowedAttachments(attDigests)
 		sender.Send(outrq.Message)
 		go func() {
 			defer func() {
@@ -753,7 +753,7 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 					bh.close()
 				}
 			}()
-			defer bh.removeAllowedAttachments(attachments)
+			defer bh.removeAllowedAttachments(attDigests)
 			outrq.Response() // blocks till reply is received
 		}()
 	} else {
@@ -945,29 +945,25 @@ func (ctx *blipSyncContext) incrementSerialNumber() uint64 {
 	return atomic.AddUint64(&ctx.handlerSerialNumber, 1)
 }
 
-func (ctx *blipSyncContext) addAllowedAttachments(atts map[string]interface{}) {
+func (ctx *blipSyncContext) addAllowedAttachments(attDigests []string) {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 	if ctx.allowedAttachments == nil {
 		ctx.allowedAttachments = make(map[string]int, 100)
 	}
-	for _, meta := range atts {
-		if digest, ok := meta.(map[string]interface{})["digest"].(string); ok {
-			ctx.allowedAttachments[digest] = ctx.allowedAttachments[digest] + 1
-		}
+	for _, digest := range attDigests {
+		ctx.allowedAttachments[digest] = ctx.allowedAttachments[digest] + 1
 	}
 }
 
-func (ctx *blipSyncContext) removeAllowedAttachments(atts map[string]interface{}) {
+func (ctx *blipSyncContext) removeAllowedAttachments(attDigests []string) {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
-	for _, meta := range atts {
-		if digest, ok := meta.(map[string]interface{})["digest"].(string); ok {
-			if n := ctx.allowedAttachments[digest]; n > 1 {
-				ctx.allowedAttachments[digest] = n - 1
-			} else {
-				delete(ctx.allowedAttachments, digest)
-			}
+	for _, digest := range attDigests {
+		if n := ctx.allowedAttachments[digest]; n > 1 {
+			ctx.allowedAttachments[digest] = n - 1
+		} else {
+			delete(ctx.allowedAttachments, digest)
 		}
 	}
 }

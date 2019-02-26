@@ -518,6 +518,21 @@ func GetBodyAttachments(body Body) AttachmentsMeta {
 	}
 }
 
+// AttachmentDigests returns a list of attachment digests contained in the given AttachmentsMeta
+func AttachmentDigests(attachments AttachmentsMeta) []string {
+	var digests = make([]string, 0, len(attachments))
+	for _, att := range attachments {
+		if attMap, ok := att.(map[string]interface{}); ok {
+			if digest, ok := attMap["digest"]; ok {
+				if digestString, ok := digest.(string); ok {
+					digests = append(digests, digestString)
+				}
+			}
+		}
+	}
+	return digests
+}
+
 func hasInlineAttachments(body Body) bool {
 	for _, value := range GetBodyAttachments(body) {
 		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {

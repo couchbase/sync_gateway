@@ -371,7 +371,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
-func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, attachments AttachmentsMeta, err error) {
+func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, attachmentDigests []string, err error) {
 
 	if docID == "" || fromRevID == "" || toRevID == "" {
 		return nil, nil, nil
@@ -389,7 +389,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, at
 		if fromRevision.Delta.ToRevID == toRevID {
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
 			db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
-			return fromRevision.Delta.DeltaBytes, fromRevision.Delta.ToAttachments, nil
+			return fromRevision.Delta.DeltaBytes, fromRevision.Delta.AttachmentDigests, nil
 		} else {
 			// TODO: Recurse and merge deltas when gen(revCacheDelta.toRevID) < gen(toRevId)
 			// until then, fall through to generating delta for given rev pair
@@ -424,7 +424,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, at
 		}
 		// Write the newly calculated delta back into the cache before returning
 		db.revisionCache.UpdateDelta(docID, fromRevID, toRevID, delta, toBody.Attachments)
-		return delta, toBody.Attachments, nil
+		return delta, AttachmentDigests(toBody.Attachments), nil
 	}
 
 	return nil, nil, nil
