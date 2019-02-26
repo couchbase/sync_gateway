@@ -371,17 +371,17 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
-func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, err error) {
+func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, attachmentDigests []string, err error) {
 
 	if docID == "" || fromRevID == "" || toRevID == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	fromRevision, err := db.revisionCache.GetWithCopy(docID, fromRevID, BodyNoCopy)
 
 	// If neither body nor delta is available for fromRevId, the delta can't be generated
 	if fromRevision.Body == nil && fromRevision.Delta == nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// If delta is found, check whether it is a delta for the toRevID we want
@@ -389,7 +389,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 		if fromRevision.Delta.ToRevID == toRevID {
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
 			db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
-			return fromRevision.Delta.DeltaBytes, nil
+			return fromRevision.Delta.DeltaBytes, fromRevision.Delta.AttachmentDigests, nil
 		} else {
 			// TODO: Recurse and merge deltas when gen(revCacheDelta.toRevID) < gen(toRevId)
 			// until then, fall through to generating delta for given rev pair
@@ -402,7 +402,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 		db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		toBody, err := db.revisionCache.GetWithCopy(docID, toRevID, BodyDeepCopy)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		// We didn't copy fromBody earlier (in case we could get by with just the delta), so need do it now
 		fromBodyCopy := fromRevision.Body.DeepCopy()
@@ -420,14 +420,14 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta []byte, er
 
 		delta, err = base.Diff(fromBodyCopy, toBody.Body)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		// Write the newly calculated delta back into the cache before returning
-		db.revisionCache.UpdateDelta(docID, fromRevID, toRevID, delta)
-		return delta, nil
+		db.revisionCache.UpdateDelta(docID, fromRevID, toRevID, delta, toBody.Attachments)
+		return delta, AttachmentDigests(toBody.Attachments), nil
 	}
 
-	return nil, nil
+	return nil, nil, nil
 }
 
 // Returns the body of the active revision of a document, as well as the document's current channels

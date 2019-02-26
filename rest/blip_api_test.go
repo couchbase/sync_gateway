@@ -1525,7 +1525,8 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	defer client.Close()
 
 	client.ClientDeltas = true
-	client.StartPull()
+	err = client.StartPull()
+	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -1567,9 +1568,8 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	}
 }
 
-// TestBlipDeltaSyncPull tests that a simple pull replication uses deltas in EE,
-// and checks that full body replication still happens in CE.
-func TestBlipNonDeltaSyncPull(t *testing.T) {
+// TestBlipPullRevMessageHistory tests that a simple pull replication contains history in the rev message.
+func TestBlipPullRevMessageHistory(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
@@ -1580,8 +1580,8 @@ func TestBlipNonDeltaSyncPull(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	client.ClientDeltas = true
-	client.StartPull()
+	err = client.StartPull()
+	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -1623,7 +1623,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	defer client.Close()
 
 	client.ClientDeltas = true
-	client.StartPull()
+	err = client.StartPull()
+	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -1640,7 +1641,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	defer client2.Close()
 
 	client2.ClientDeltas = true
-	client2.StartOneshotPull()
+	err = client2.StartOneshotPull()
+	assert.NoError(t, err)
 
 	msg, ok := client2.pullReplication.WaitForMessage(3)
 	assert.True(t, ok)
@@ -1669,7 +1671,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	// Run another one shot pull to get the 2nd revision - validate it comes as delta, and uses cached version
 	client2.ClientDeltas = true
-	client2.StartOneshotPull()
+	err = client2.StartOneshotPull()
+	assert.NoError(t, err)
 
 	msg2, ok := client2.pullReplication.WaitForMessage(6)
 	assert.True(t, ok)
@@ -1703,7 +1706,8 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	defer client.Close()
 
 	client.ClientDeltas = true
-	client.StartPull()
+	err = client.StartPull()
+	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -1764,7 +1768,8 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	defer client.Close()
 
 	client.ClientDeltas = false
-	client.StartPull()
+	err = client.StartPull()
+	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -1794,4 +1799,69 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev="+newRev, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.Equal(t, `{"_id":"doc1","_rev":"2-abcxyz","greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, resp.Body.String())
+}
+
+// TestBlipDeltaSyncNewAttachmentPull tests that adding a new attachment in SG and replicated via delta sync adds the attachment
+// to the temporary "allowedAttachments" map.
+func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	sgUseDeltas := base.IsEnterpriseEdition()
+	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	defer rt.Close()
+
+	client, err := NewBlipTesterClient(&rt)
+	assert.NoError(t, err)
+	defer client.Close()
+
+	client.ClientDeltas = true
+	err = client.StartPull()
+	assert.NoError(t, err)
+
+	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
+	// create doc1 rev 2-04f16608671387d26f9f3ecd2c68d9a2 on SG with the first attachment
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok = client.WaitForRev("doc1", "2-04f16608671387d26f9f3ecd2c68d9a2")
+	assert.True(t, ok)
+	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
+	// message #3 is the getAttachment message that is sent in-between rev processing
+	msg, ok := client.pullReplication.WaitForMessage(3)
+	assert.True(t, ok)
+	assert.NotEqual(t, blip.ErrorType, msg.Type(), "Expected non-error blip message type")
+
+	// Check EE is delta, and CE is full-body replication
+	msg, ok = client.pullReplication.WaitForMessage(5)
+	assert.True(t, ok)
+
+	if base.IsEnterpriseEdition() {
+		// Check the request was sent with the correct deltaSrc property
+		assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[revMessageDeltaSrc])
+		// Check the request body was the actual delta
+		msgBody, err := msg.Body()
+		assert.NoError(t, err)
+		assert.Equal(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}]}`, string(msgBody))
+	} else {
+		// Check the request was NOT sent with a deltaSrc property
+		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
+		// Check the request body was NOT the delta
+		msgBody, err := msg.Body()
+		assert.NoError(t, err)
+		assert.NotEqual(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}]}`, string(msgBody))
+		assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(msgBody))
+	}
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-04f16608671387d26f9f3ecd2c68d9a2", "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-04f16608671387d26f9f3ecd2c68d9a2","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
 }
