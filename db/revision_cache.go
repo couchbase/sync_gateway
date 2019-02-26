@@ -4,10 +4,10 @@ import (
 	"container/list"
 	"errors"
 	"expvar"
-	"github.com/couchbase/sg-bucket"
 	"sync"
 	"time"
 
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -56,8 +56,8 @@ func (sc *ShardedRevisionCache) GetWithCopy(docID, revID string, copyType BodyCo
 	return sc.caches[sc.getShard(docID)].GetWithCopy(docID, revID, copyType)
 }
 
-func (sc *ShardedRevisionCache) UpdateDelta(docID, revID string, toRevID string, delta []byte) {
-	sc.caches[sc.getShard(docID)].UpdateDelta(docID, revID, toRevID, delta)
+func (sc *ShardedRevisionCache) UpdateDelta(docID, revID string, toRevID string, delta []byte, attachments AttachmentsMeta) {
+	sc.caches[sc.getShard(docID)].UpdateDelta(docID, revID, toRevID, delta, attachments)
 }
 
 func (sc *ShardedRevisionCache) GetActive(docID string, context *DatabaseContext) (docRev DocumentRevision, err error) {
@@ -112,8 +112,9 @@ type revCacheValue struct {
 }
 
 type RevCacheDelta struct {
-	ToRevID    string
-	DeltaBytes []byte
+	ToRevID       string
+	DeltaBytes    []byte
+	ToAttachments AttachmentsMeta
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -154,10 +155,10 @@ func (rc *RevisionCache) GetWithCopy(docid, revid string, copyType BodyCopyType)
 
 // Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
 // fails silently
-func (rc *RevisionCache) UpdateDelta(docID, revID string, toRevID string, delta []byte) {
+func (rc *RevisionCache) UpdateDelta(docID, revID string, toRevID string, delta []byte, attachments AttachmentsMeta) {
 	value := rc.getValue(docID, revID, false)
 	if value != nil {
-		value.updateDelta(toRevID, delta)
+		value.updateDelta(toRevID, delta, attachments)
 	}
 }
 
@@ -341,11 +342,12 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 	}
 }
 
-func (value *revCacheValue) updateDelta(toRevID string, deltaBytes []byte) {
+func (value *revCacheValue) updateDelta(toRevID string, deltaBytes []byte, attachments AttachmentsMeta) {
 	value.lock.Lock()
 	defer value.lock.Unlock()
 	value.delta = &RevCacheDelta{
-		ToRevID:    toRevID,
-		DeltaBytes: deltaBytes,
+		ToRevID:       toRevID,
+		DeltaBytes:    deltaBytes,
+		ToAttachments: attachments,
 	}
 }
