@@ -938,9 +938,9 @@ func (config *ServerConfig) NumIndexWriters() int {
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
 
-	base.Infof(base.KeyAll, "Console LogKeys: %v", base.ConsoleLogKey().EnabledLogKeys())
-	base.Infof(base.KeyAll, "Console LogLevel: %v", base.ConsoleLogLevel())
-	base.Infof(base.KeyAll, "Log Redaction Level: %s", config.Logging.RedactionLevel)
+	base.Infof(base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
+	base.Infof(base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
+	base.Infof(base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
 
 	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
 		cpus := runtime.NumCPU()
@@ -976,10 +976,10 @@ func RunServer(config *ServerConfig) {
 
 	go sc.PostStartup()
 
-	base.Infof(base.KeyAll, "Starting admin server on %s", base.UD(*config.AdminInterface))
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", *config.AdminInterface)
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
 
-	base.Infof(base.KeyAll, "Starting server on %s ...", base.UD(*config.Interface))
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", *config.Interface)
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 
@@ -1073,7 +1073,7 @@ func ServerMain(runMode SyncGatewayRunMode) {
 	}
 
 	// This is the earliest opportunity to log a startup indicator
-	// that will be persisted in log files.
+	// that will be persisted in all log files.
 	base.LogSyncGatewayVersion()
 
 	// Execute any deferred warnings from setup.

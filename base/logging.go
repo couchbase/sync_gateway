@@ -524,17 +524,27 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	}
 }
 
-// LogSyncGatewayVersion will print the startup indicator and version number to all log outputs.
-func LogSyncGatewayVersion() {
-	format := addPrefixes("==== %s ====", context.Background(), LevelNone, KeyNone)
-	msg := fmt.Sprintf(format, LongVersionString)
+// Consolef logs the given formatted string and args to the given log level and log key,
+// as well as making sure the message is *always* logged to stdout.
+func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+	logTo(context.Background(), logLevel, logKey, format, args...)
 
-	if !consoleLogger.isStderr {
-		fmt.Println(msg)
-	} else if consoleLogger.logger != nil {
-		consoleLogger.logger.Print(color(msg, LevelNone))
+	// If the above logTo didn't already log to stderr, do it directly here
+	if !consoleLogger.isStderr || !consoleLogger.shouldLog(logLevel, logKey) {
+		format = addPrefixes(format, context.Background(), logLevel, logKey)
+		fmt.Printf(format+"\n", args...)
 	}
+}
 
+// LogSyncGatewayVersion will print the startup indicator and version number to ALL log outputs.
+func LogSyncGatewayVersion() {
+	msg := fmt.Sprintf("==== %s ====", LongVersionString)
+
+	// Log the startup indicator to the stderr.
+	Consolef(LevelNone, KeyNone, msg)
+
+	// Log the startup indicator to ALL log files too.
+	msg = addPrefixes(msg, context.Background(), LevelNone, KeyNone)
 	if errorLogger.shouldLog(LevelNone) {
 		errorLogger.logger.Printf(msg)
 	}

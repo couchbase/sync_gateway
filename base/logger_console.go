@@ -49,7 +49,8 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 		LogKey:       &logKey,
 		ColorEnabled: *config.ColorEnabled && isStderr,
 		FileLogger: FileLogger{
-			logger: log.New(config.Output, "", 0),
+			Enabled: *config.Enabled,
+			logger:  log.New(config.Output, "", 0),
 		},
 		isStderr: isStderr,
 	}
@@ -69,7 +70,11 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 		}
 
 		warnings = append(warnings, func() {
-			fmt.Println(addPrefixes(fmt.Sprintf("Logging console output to: %v", consoleOutput), nil, LevelInfo, KeyAll))
+			Consolef(LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
+		})
+	} else {
+		warnings = append(warnings, func() {
+			Consolef(LevelInfo, KeyNone, "Logging: Console disabled")
 		})
 	}
 
@@ -121,9 +126,17 @@ func (lcc *ConsoleLoggerConfig) init() error {
 		}
 	}
 
-	// Default to false
-	if lcc.Enabled == nil || !*lcc.Enabled {
-		lcc.Enabled = BoolPtr(false)
+	// Default to disabled only when a log key or log level has not been specified
+	if lcc.Enabled == nil {
+		if lcc.LogLevel != nil || len(lcc.LogKeys) > 0 {
+			lcc.Enabled = BoolPtr(true)
+		} else {
+			lcc.Enabled = BoolPtr(false)
+		}
+	}
+
+	// Turn off console logging if disabled
+	if !*lcc.Enabled {
 		newLevel := LevelNone
 		lcc.LogLevel = &newLevel
 		lcc.LogKeys = []string{}
