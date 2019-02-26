@@ -1567,6 +1567,43 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	}
 }
 
+// TestBlipDeltaSyncPull tests that a simple pull replication uses deltas in EE,
+// and checks that full body replication still happens in CE.
+func TestBlipNonDeltaSyncPull(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	var rt = RestTester{DatabaseConfig: &DbConfig{}}
+	defer rt.Close()
+
+	client, err := NewBlipTesterClient(&rt)
+	assert.NoError(t, err)
+	defer client.Close()
+
+	client.ClientDeltas = true
+	client.StartPull()
+
+	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
+	// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok = client.WaitForRev("doc1", "2-26359894b20d89c97638e71c40482f28")
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
+
+	msg, ok := client.pullReplication.WaitForMessage(5)
+	assert.True(t, ok)
+	assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[revMessageHistory])
+}
+
 // TestBlipDeltaSyncPullRevCache tests that a simple pull replication uses deltas in EE,
 // Second pull validates use of rev cache for previously generated deltas.
 func TestBlipDeltaSyncPullRevCache(t *testing.T) {
