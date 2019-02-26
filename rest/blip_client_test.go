@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -207,13 +208,20 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					}
 
 					resp := outrq.Response()
+					btc.pullReplication.storeMessage(resp)
 					respBody, err := resp.Body()
 					if err != nil {
 						panic(err)
 					}
 
 					if resp.Type() == blip.ErrorType {
-						panic(fmt.Sprintf("Client returned error in getAttachment response: %s", respBody))
+						// forward error from getAttachment response into rev response
+						if !msg.NoReply() {
+							response := msg.Response()
+							errorCode, _ := strconv.Atoi(resp.Properties["Error-Code"])
+							response.SetError(resp.Properties["Error-Code"], errorCode, string(respBody))
+							return
+						}
 					}
 
 					btc.attachmentsLock.Lock()
