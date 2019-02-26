@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -19,8 +21,10 @@ type BlipTesterClient struct {
 	rt *RestTester
 
 	docs                  map[string]map[string][]byte // Client's local store of documents - Map of docID to rev ID to bytes
+	attachments           map[string][]byte            // Client's local store of attachments - Map of digest to bytes
 	lastReplicatedRev     map[string]string            // Latest known rev pulled or pushed
 	docsLock              sync.RWMutex                 // lock for docs map
+	attachmentsLock       sync.RWMutex                 // lock for attachments map
 	lastReplicatedRevLock sync.RWMutex                 // lock for lastReplicatedRev map
 
 	pullReplication *BlipTesterReplicator // SG -> CBL replications
@@ -136,6 +140,10 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			panic(err)
 		}
 
+		// bodyJSON is unmarshalled into when required (e.g. Delta patching, or attachment processing)
+		// Before being marshalled back into bytes for storage in the test client
+		var bodyJSON db.Body
+
 		// If deltas are enabled, and we see a deltaSrc property, we'll need to patch it before storing
 		if btc.ClientDeltas && deltaSrc != "" {
 			// unmarshal body to extract deltaSrc
@@ -144,23 +152,81 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				panic(err)
 			}
 
-			var old db.Body
 			btc.docsLock.RLock()
 			oldBytes := btc.docs[docID][deltaSrc]
 			btc.docsLock.RUnlock()
-			if err := old.Unmarshal(oldBytes); err != nil {
+			if err := bodyJSON.Unmarshal(oldBytes); err != nil {
 				panic(err)
 			}
 
-			var oldMap = map[string]interface{}(old)
+			var oldMap = map[string]interface{}(bodyJSON)
 			if err := base.Patch(&oldMap, body); err != nil {
 				panic(err)
 			}
+		}
 
-			body, err = json.Marshal(old)
+		// Fetch any missing attachments (if required) during this rev processing
+		if bytes.Contains(body, []byte(db.BodyAttachments)) {
+
+			// We'll need to unmarshal the body in order to do attachment processing
+			if bodyJSON == nil {
+				if err := bodyJSON.Unmarshal(body); err != nil {
+					panic(err)
+				}
+			}
+
+			if atts, ok := bodyJSON[db.BodyAttachments]; ok {
+				attsMap, ok := atts.(map[string]interface{})
+				if !ok {
+					panic("atts in doc wasn't map[string]interface{}")
+				}
+
+				var missingDigests []string
+				btc.attachmentsLock.RLock()
+				for _, attachment := range attsMap {
+					attMap, ok := attachment.(map[string]interface{})
+					if !ok {
+						panic("att in doc wasn't map[string]interface{}")
+					}
+					digest := attMap["digest"].(string)
+
+					if _, found := btc.attachments[digest]; !found {
+						missingDigests = append(missingDigests, digest)
+					}
+				}
+				btc.attachmentsLock.RUnlock()
+
+				for _, digest := range missingDigests {
+					outrq := blip.NewRequest()
+					outrq.SetProfile(messageGetAttachment)
+					outrq.Properties[getAttachmentDigest] = digest
+
+					err := btc.pullReplication.sendMsg(outrq)
+					if err != nil {
+						panic(err)
+					}
+
+					resp := outrq.Response()
+					respBody, err := resp.Body()
+					if err != nil {
+						panic(err)
+					}
+
+					if resp.Type() == blip.ErrorType {
+						panic(fmt.Sprintf("Client returned error in getAttachment response: %s", respBody))
+					}
+
+					btc.attachmentsLock.Lock()
+					btc.attachments[digest] = respBody
+					btc.attachmentsLock.Unlock()
+				}
+			}
+
+			body, err = json.Marshal(bodyJSON)
 			if err != nil {
 				panic(err)
 			}
+
 		}
 
 		btc.docsLock.Lock()
@@ -178,10 +244,58 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 	}
 
+	btr.bt.blipContext.HandlerForProfile[messageGetAttachment] = func(msg *blip.Message) {
+		btr.storeMessage(msg)
+
+		digest, ok := msg.Properties[getAttachmentDigest]
+		if !ok {
+			base.Panicf(base.KeyAll, "couldn't find digest in getAttachment message properties")
+		}
+
+		attachment, err := btc.getAttachment(digest)
+		if err != nil {
+			base.Panicf(base.KeyAll, "couldn't find attachment for digest: %v", digest)
+		}
+
+		response := msg.Response()
+		response.SetBody(attachment)
+	}
+
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 		base.Panicf(base.KeyAll, "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
 	}
+}
+
+// saveAttachment takes a content-type, and base64 encoded data and stores the attachment on the client
+func (btc *BlipTesterClient) saveAttachment(contentType, base64data string) (dataLength int, digest string, err error) {
+	btc.attachmentsLock.Lock()
+	defer btc.attachmentsLock.Unlock()
+
+	data, err := base64.StdEncoding.DecodeString(base64data)
+	if err != nil {
+		return 0, "", err
+	}
+
+	digest = db.Sha1DigestKey(data)
+	if _, found := btc.attachments[digest]; found {
+		return 0, "", fmt.Errorf("attachment with digest already exists")
+	}
+
+	btc.attachments[digest] = data
+	return len(data), digest, nil
+}
+
+func (btc *BlipTesterClient) getAttachment(digest string) (attachment []byte, err error) {
+	btc.attachmentsLock.RLock()
+	defer btc.attachmentsLock.RUnlock()
+
+	attachment, found := btc.attachments[digest]
+	if !found {
+		return nil, fmt.Errorf("attachment not found")
+	}
+
+	return attachment, nil
 }
 
 func (btc *BlipTesterClient) updateLastReplicatedRev(docID, revID string) {
@@ -231,6 +345,7 @@ func NewBlipTesterClient(rt *RestTester) (client *BlipTesterClient, err error) {
 	btc := BlipTesterClient{
 		rt:                rt,
 		docs:              make(map[string]map[string][]byte),
+		attachments:       make(map[string][]byte),
 		lastReplicatedRev: make(map[string]string),
 	}
 
@@ -283,8 +398,15 @@ func (btc *BlipTesterClient) StartPullSince(continuous, since string) (err error
 func (btc *BlipTesterClient) Close() {
 	btc.docsLock.Lock()
 	btc.docs = make(map[string]map[string][]byte, 0)
-	btc.lastReplicatedRev = make(map[string]string, 0)
 	btc.docsLock.Unlock()
+
+	btc.lastReplicatedRevLock.Lock()
+	btc.lastReplicatedRev = make(map[string]string, 0)
+	btc.lastReplicatedRevLock.Unlock()
+
+	btc.attachmentsLock.Lock()
+	btc.attachments = make(map[string][]byte, 0)
+	btc.attachmentsLock.Unlock()
 
 	btc.pullReplication.Close()
 	btc.pushReplication.Close()
@@ -301,10 +423,60 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
 // PushRev creates a revision on the client, and immediately sends a changes request for it.
 // The rev ID is always: "N-abcxyz", where N is rev generation for predictability.
 func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revID string, err error) {
-	var parentDocBody []byte
 
 	// generate fake rev for gen+1
 	parentRevGen, _ := db.ParseRevID(parentRev)
+
+	// Inline attachment processing
+	if bytes.Contains(body, []byte(db.BodyAttachments)) {
+		var newDocJSON map[string]interface{}
+		if err = json.Unmarshal(body, &newDocJSON); err != nil {
+			return "", err
+		}
+		if attachments, ok := newDocJSON[db.BodyAttachments]; ok {
+			if attachmentMap, ok := attachments.(map[string]interface{}); ok {
+				for attachmentName, inlineAttachment := range attachmentMap {
+					inlineAttachmentMap := inlineAttachment.(map[string]interface{})
+					attachmentData, ok := inlineAttachmentMap["data"]
+					if !ok {
+						return "", fmt.Errorf("couldn't find data property for inline attachment")
+					}
+					attachmentContentType, ok := inlineAttachmentMap["content_type"]
+					if !ok {
+						return "", fmt.Errorf("couldn't find content_type property for inline attachment")
+					}
+
+					data, ok := attachmentData.(string)
+					if !ok {
+						return "", fmt.Errorf("inline attachment data was not a string")
+					}
+					contentType, ok := attachmentContentType.(string)
+					if !ok {
+						return "", fmt.Errorf("inline attachment content_type was not a string")
+					}
+
+					length, digest, err := btc.saveAttachment(contentType, data)
+					if err != nil {
+						return "", err
+					}
+
+					attachmentMap[attachmentName] = map[string]interface{}{
+						"content_type": contentType,
+						"digest":       digest,
+						"length":       length,
+						"revpos":       parentRevGen + 1,
+						"stub":         true,
+					}
+					newDocJSON[db.BodyAttachments] = attachmentMap
+				}
+			}
+			if body, err = json.Marshal(newDocJSON); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	var parentDocBody []byte
 	newRevID := fmt.Sprintf("%d-%s", parentRevGen+1, "abcxyz")
 	btc.docsLock.Lock()
 	if parentRev != "" {
