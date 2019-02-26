@@ -1525,7 +1525,8 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	defer client.Close()
 
 	client.ClientDeltas = true
-	client.StartPull()
+	err = client.StartPull()
+	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -1567,9 +1568,8 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	}
 }
 
-// TestBlipDeltaSyncPull tests that a simple pull replication uses deltas in EE,
-// and checks that full body replication still happens in CE.
-func TestBlipNonDeltaSyncPull(t *testing.T) {
+// TestBlipPullRevMessageHistory tests that a simple pull replication contains history in the rev message.
+func TestBlipPullRevMessageHistory(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
@@ -1580,8 +1580,8 @@ func TestBlipNonDeltaSyncPull(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	client.ClientDeltas = true
-	client.StartPull()
+	err = client.StartPull()
+	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -1623,7 +1623,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	defer client.Close()
 
 	client.ClientDeltas = true
-	client.StartPull()
+	err = client.StartPull()
+	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -1640,7 +1641,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	defer client2.Close()
 
 	client2.ClientDeltas = true
-	client2.StartOneshotPull()
+	err = client2.StartOneshotPull()
+	assert.NoError(t, err)
 
 	msg, ok := client2.pullReplication.WaitForMessage(3)
 	assert.True(t, ok)
@@ -1669,7 +1671,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	// Run another one shot pull to get the 2nd revision - validate it comes as delta, and uses cached version
 	client2.ClientDeltas = true
-	client2.StartOneshotPull()
+	err = client2.StartOneshotPull()
+	assert.NoError(t, err)
 
 	msg2, ok := client2.pullReplication.WaitForMessage(6)
 	assert.True(t, ok)
@@ -1703,7 +1706,8 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	defer client.Close()
 
 	client.ClientDeltas = true
-	client.StartPull()
+	err = client.StartPull()
+	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -1764,7 +1768,8 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	defer client.Close()
 
 	client.ClientDeltas = false
-	client.StartPull()
+	err = client.StartPull()
+	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
