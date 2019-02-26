@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"github.com/couchbase/sync_gateway/channels"
 	"testing"
 
 	"github.com/couchbase/sg-bucket"
@@ -302,6 +303,172 @@ func TestCoveringQueries(t *testing.T) {
 	covered = isCovered(plan)
 	//assert.True(t, !covered, "RoleAccess query isn't covered by index")
 
+}
+
+func TestAllDocsQuery(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test is Couchbase Server only")
+	}
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	// Add docs with channel assignment
+	for i := 1; i <= 10; i++ {
+		_, err := db.Put(fmt.Sprintf("allDocsTest%d", i), Body{"channels": []string{"ABC"}})
+		assertNoError(t, err, "Put allDocsTest doc")
+	}
+
+	// Standard query
+	startKey := "a"
+	endKey := ""
+	results, queryErr := db.QueryAllDocs(startKey, endKey)
+	assertNoError(t, queryErr, "Query error")
+	var row map[string]interface{}
+	rowCount := 0
+	for results.Next(&row) {
+		rowCount++
+	}
+	assert.Equals(t, 10, rowCount)
+
+	// Attempt to invalidate standard query
+	startKey = "a' AND 1=0\x00"
+	endKey = ""
+	results, queryErr = db.QueryAllDocs(startKey, endKey)
+	assertNoError(t, queryErr, "Query error")
+	rowCount = 0
+	for results.Next(&row) {
+		rowCount++
+	}
+	assert.Equals(t, 10, rowCount)
+
+	// Attempt to invalidate statement to add row to resultset
+	startKey = `a' UNION ALL SELECT TOSTRING(BASE64_DECODE("SW52YWxpZERhdGE=")) as id;` + "\x00"
+	endKey = ""
+	results, queryErr = db.QueryAllDocs(startKey, endKey)
+	assertNoError(t, queryErr, "Query error")
+	rowCount = 0
+	for results.Next(&row) {
+		assert.NotEquals(t, row["id"], "InvalidData")
+		rowCount++
+	}
+	assert.Equals(t, 10, rowCount)
+
+	// Attempt to create syntax error
+	startKey = `a'1`
+	endKey = ""
+	results, queryErr = db.QueryAllDocs(startKey, endKey)
+	assertNoError(t, queryErr, "Query error")
+	rowCount = 0
+	for results.Next(&row) {
+		rowCount++
+	}
+	assert.Equals(t, 10, rowCount)
+
+}
+
+func TestAccessQuery(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test is Couchbase Server only")
+	}
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	access(doc.accessUser, doc.accessChannel)
+}`)
+	// Add docs with access grants assignment
+	for i := 1; i <= 5; i++ {
+		_, err := db.Put(fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
+		assertNoError(t, err, "Put accessTest doc")
+	}
+
+	// Standard query
+	username := "user1"
+	results, queryErr := db.QueryAccess(username)
+	assertNoError(t, queryErr, "Query error")
+	var row map[string]interface{}
+	rowCount := 0
+	for results.Next(&row) {
+		rowCount++
+	}
+	assert.Equals(t, 5, rowCount)
+
+	// Attempt to introduce syntax error.  Should return zero rows for user `user1'`, and not return error
+	username = "user1'"
+	results, queryErr = db.QueryAccess(username)
+	assertNoError(t, queryErr, "Query error")
+	rowCount = 0
+	for results.Next(&row) {
+		rowCount++
+	}
+	assert.Equals(t, 0, rowCount)
+
+	// Attempt to introduce syntax error.  Should return zero rows for user `user1`AND`, and not return error.
+	// Validates select clause protection
+	username = "user1`AND"
+	results, queryErr = db.QueryAccess(username)
+	assertNoError(t, queryErr, "Query error")
+	rowCount = 0
+	for results.Next(&row) {
+		rowCount++
+	}
+	assert.Equals(t, 0, rowCount)
+}
+
+func TestRoleAccessQuery(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test is Couchbase Server only")
+	}
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	role(doc.accessUser, "role:" + doc.accessChannel)
+}`)
+	// Add docs with access grants assignment
+	for i := 1; i <= 5; i++ {
+		_, err := db.Put(fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
+		assertNoError(t, err, "Put accessTest doc")
+	}
+
+	// Standard query
+	username := "user1"
+	results, queryErr := db.QueryRoleAccess(username)
+	assertNoError(t, queryErr, "Query error")
+	var row map[string]interface{}
+	rowCount := 0
+	for results.Next(&row) {
+		rowCount++
+	}
+	assert.Equals(t, 5, rowCount)
+
+	// Attempt to introduce syntax error.  Should return zero rows for user `user1'`, and not return error
+	username = "user1'"
+	results, queryErr = db.QueryRoleAccess(username)
+	assertNoError(t, queryErr, "Query error")
+	rowCount = 0
+	for results.Next(&row) {
+		rowCount++
+	}
+	assert.Equals(t, 0, rowCount)
+
+	// Attempt to introduce syntax error.  Should return zero rows for user `user1`AND`, and not return error
+	// Validates select clause protection
+	username = "user1`AND"
+	results, queryErr = db.QueryRoleAccess(username)
+	assertNoError(t, queryErr, "Query error")
+	rowCount = 0
+	for results.Next(&row) {
+		rowCount++
+	}
+	assert.Equals(t, 0, rowCount)
 }
 
 // Parse the plan looking for use of the fetch operation (appears as the key/value pair "#operator":"Fetch")
