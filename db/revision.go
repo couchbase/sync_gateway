@@ -122,6 +122,41 @@ func (revisions Revisions) findAncestor(ancestors []string) (revId string) {
 	return ""
 }
 
+// Returns revisions as a slice of revids.
+func (revisions Revisions) parseRevisions() []string {
+	start, ids := splitRevisionList(revisions)
+	if ids == nil {
+		return nil
+	}
+	result := make([]string, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, fmt.Sprintf("%d-%s", start, id))
+		start--
+	}
+	return result
+}
+
+// Returns revisions as a slice of ancestor revids, from the parent to the target ancestor.
+func (revisions Revisions) parseAncestorRevisions(toAncestorRevID string) []string {
+	start, ids := splitRevisionList(revisions)
+	if ids == nil || len(ids) < 2 {
+		return nil
+	}
+	result := make([]string, 0)
+
+	// Start at the parent, end at toAncestorRevID
+	start = start - 1
+	for i := 1; i < len(ids); i++ {
+		revID := fmt.Sprintf("%d-%s", start, ids[i])
+		result = append(result, revID)
+		if revID == toAncestorRevID {
+			break
+		}
+		start--
+	}
+	return result
+}
+
 func (attachments AttachmentsMeta) ShallowCopy() AttachmentsMeta {
 	if attachments == nil {
 		return attachments
