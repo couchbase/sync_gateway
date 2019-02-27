@@ -1573,12 +1573,14 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	var rt = RestTester{DatabaseConfig: &DbConfig{}}
+	sgUseDeltas := base.IsEnterpriseEdition()
+	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	defer rt.Close()
 
 	client, err := NewBlipTesterClient(&rt)
 	assert.NoError(t, err)
 	defer client.Close()
+	client.ClientDeltas = true
 
 	err = client.StartPull()
 	assert.NoError(t, err)
