@@ -40,6 +40,7 @@ type blipSyncContext struct {
 	db                  *db.Database
 	effectiveUsername   string
 	batchSize           int
+	gotSubChanges       bool
 	continuous          bool
 	activeOnly          bool
 	channels            base.Set
@@ -193,6 +194,13 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 }
 
 func (ctx *blipSyncContext) close() {
+	if ctx.gotSubChanges {
+		stat := base.StatKeyPullReplicationsActiveOneShot
+		if ctx.continuous {
+			stat = base.StatKeyPullReplicationsActiveContinuous
+		}
+		ctx.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(stat, -1)
+	}
 	close(ctx.terminator)
 }
 
@@ -280,6 +288,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	bh.lock.Lock()
 	defer bh.lock.Unlock()
 
+	bh.gotSubChanges = true
+
 	subChangesParams, err := newSubChangesParams(
 		rq,
 		bh.blipSyncContext,
@@ -324,15 +334,13 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Start asynchronous changes goroutine
 	go func() {
-		// Pull replication stats by type
+		// Pull replication stats by type - Active stats decremented in Close()
 		if bh.continuous {
 			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, 1)
 			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalContinuous, 1)
-			defer bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, -1)
 		} else {
 			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, 1)
 			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalOneShot, 1)
-			defer bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, -1)
 		}
 
 		defer func() {
