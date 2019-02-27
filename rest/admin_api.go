@@ -340,6 +340,35 @@ func (h *handler) handleGetLogging() error {
 	return nil
 }
 
+func (h *handler) handleGetStatus() error {
+	status := db.Body{
+		"databases":    make(map[string]db.Body),
+		"active_tasks": h.server.replicator.ActiveTasks(),
+		"version":      base.LongVersionString,
+		"vendor":       db.Body{"name": base.ProductName, "version": base.VersionNumber},
+	}
+	for _, database := range h.server.databases_ {
+		lastSeq := uint64(0)
+		runState := db.RunStateString[atomic.LoadUint32(&database.State)]
+
+		// Don't bother trying to lookup LastSequence() if offline
+		if runState != db.RunStateString[db.DBOffline] {
+			lastSeq, _ = database.LastSequence()
+		}
+		dbStatus := db.Body{
+			"seq":             lastSeq,
+			"state":           runState,
+		}
+		if uuid := database.GetServerUUID(); uuid != "" {
+			dbStatus["server_uuid"] = uuid
+		}
+		status["databases"].(map[string]db.Body)[database.Name] = dbStatus
+	}
+
+	h.writeJSON(status)
+	return nil
+}
+
 func (h *handler) handleSetLogging() error {
 	body, err := h.readBody()
 	if err != nil {
