@@ -242,6 +242,11 @@ func (h *handler) handleChanges() error {
 
 	}
 
+	// Default to feed type normal
+	if feed == "" {
+		feed = "normal"
+	}
+
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
 	userChannels := ch.SetOf(ch.AllChannelWildcard)
@@ -259,7 +264,7 @@ func (h *handler) handleChanges() error {
 				return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
 			}
 		} else if filter == "_doc_ids" {
-			if feed != "normal" && feed != "" {
+			if feed != "normal" {
 				return base.HTTPErrorf(http.StatusBadRequest, "Filter '_doc_ids' is only valid for feed=normal replications")
 			}
 			if docIdsArray == nil {
@@ -295,7 +300,7 @@ func (h *handler) handleChanges() error {
 	forceClose := false
 
 	switch feed {
-	case "normal", "":
+	case "normal":
 		if filter == "_doc_ids" {
 			err, forceClose = h.sendSimpleChanges(userChannels, options, docIdsArray)
 		} else {
