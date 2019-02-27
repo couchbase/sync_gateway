@@ -635,35 +635,35 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 
 	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
 
-	delta, attDigests, err := bh.db.GetDelta(docID, deltaSrcRevID, revID)
+	revDelta, err := bh.db.GetDelta(docID, deltaSrcRevID, revID)
 	if err != nil {
 		bh.Logf(base.LevelInfo, base.KeySync, "DELTA: error generating delta from %s to %s for key %s; falling back to full body replication.  err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 		return
 	}
 
-	if delta == nil {
+	if revDelta == nil {
 		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: unable to generate delta from %s to %s for key %s; falling back to full body replication.", deltaSrcRevID, revID, base.UD(docID))
 		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 		return
 	}
 
-	bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(delta)))
-	bh.sendDelta(delta, deltaSrcRevID, sender, seq, docID, revID, knownRevs, maxHistory, attDigests)
+	bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
+	bh.sendDelta(deltaSrcRevID, sender, seq, docID, revDelta)
 	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasSent, 1)
 }
 
-func (bh *blipHandler) sendDelta(delta []byte, deltaSrcRevID string, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int, attDigests []string) {
+func (bh *blipHandler) sendDelta(deltaSrcRevID string, sender *blip.Sender, seq db.SequenceID, docID string, revDelta *db.RevisionDelta) {
 
 	var body db.Body
-	if err := body.Unmarshal(delta); err != nil {
+	if err := body.Unmarshal(revDelta.DeltaBytes); err != nil {
 		bh.Logf(base.LevelError, base.KeySync, "DELTA: couldn't unmarshal delta... err: %v", err)
-		bh.sendNoRev(err, sender, seq, docID, revID)
+		bh.sendNoRev(err, sender, seq, docID, revDelta.ToRevID)
 		return
 	}
 
-	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta based on %d known. DeltaSrc:%s  User:%s", base.UD(docID), revID, len(knownRevs), deltaSrcRevID, base.UD(bh.effectiveUsername))
-	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, knownRevs, maxHistory, attDigests, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
+	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s  User:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID, base.UD(bh.effectiveUsername))
+	bh.sendRevisionWithProperties(body, sender, seq, docID, revDelta.ToRevID, revDelta.RevisionHistory, revDelta.AttachmentDigests, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
 }
 
 func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
@@ -698,13 +698,6 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 // Pushes a revision body to the client
 func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
-	// extract attachments from body for sendRevisionWithProperties
-	attDigests := db.AttachmentDigests(db.GetBodyAttachments(body))
-	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, knownRevs, maxHistory, attDigests, nil)
-}
-
-// Pushes a revision body to the client
-func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int, attDigests []string, properties blip.Properties) {
 
 	// Get the revision's history as a descending array of ancestor revIDs:
 	history := db.ParseRevisions(body)[1:]
@@ -718,6 +711,14 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 		}
 	}
 
+	// extract attachments from body for sendRevisionWithProperties
+	attDigests := db.AttachmentDigests(db.GetBodyAttachments(body))
+	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, history, attDigests, nil)
+}
+
+// Pushes a revision body to the client
+func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, revisionHistory []string, attDigests []string, properties blip.Properties) {
+
 	outrq := NewRevMessage()
 	outrq.setId(docID)
 	outrq.setRev(revID)
@@ -725,7 +726,7 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 		outrq.setDeleted(del)
 	}
 	outrq.setSequence(seq)
-	outrq.setHistory(history)
+	outrq.setHistory(revisionHistory)
 
 	// add additional properties passed through
 	outrq.setProperties(properties)

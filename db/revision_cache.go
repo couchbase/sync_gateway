@@ -56,8 +56,8 @@ func (sc *ShardedRevisionCache) GetWithCopy(docID, revID string, copyType BodyCo
 	return sc.caches[sc.getShard(docID)].GetWithCopy(docID, revID, copyType)
 }
 
-func (sc *ShardedRevisionCache) UpdateDelta(docID, revID string, toRevID string, delta []byte, attachments AttachmentsMeta) {
-	sc.caches[sc.getShard(docID)].UpdateDelta(docID, revID, toRevID, delta, attachments)
+func (sc *ShardedRevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
+	sc.caches[sc.getShard(docID)].UpdateDelta(docID, revID, toDelta)
 }
 
 func (sc *ShardedRevisionCache) GetActive(docID string, context *DatabaseContext) (docRev DocumentRevision, err error) {
@@ -87,7 +87,7 @@ type DocumentRevision struct {
 	Channels    base.Set
 	Expiry      *time.Time
 	Attachments AttachmentsMeta
-	Delta       *RevCacheDelta
+	Delta       *RevisionDelta
 }
 
 type IDAndRev struct {
@@ -106,15 +106,27 @@ type revCacheValue struct {
 	channels    base.Set        // Set of channels that have access
 	expiry      *time.Time      // Document expiry
 	attachments AttachmentsMeta // Document _attachments property
-	delta       *RevCacheDelta  // Available delta *from* this revision
+	delta       *RevisionDelta  // Available delta *from* this revision
 	err         error           // Error from loaderFunc if it failed
 	lock        sync.RWMutex    // Synchronizes access to this struct
 }
 
-type RevCacheDelta struct {
-	ToRevID           string
-	DeltaBytes        []byte
-	AttachmentDigests []string
+type RevisionDelta struct {
+	ToRevID           string   // Target revID for the delta
+	DeltaBytes        []byte   // The actual delta
+	AttachmentDigests []string // Digests for all attachments present on ToRevID
+	RevisionHistory   []string // Revision history from parent of ToRevID to source revID, in descending order
+}
+
+func NewRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision) *RevisionDelta {
+
+	return &RevisionDelta{
+		ToRevID:           toRevision.RevID,
+		DeltaBytes:        deltaBytes,
+		AttachmentDigests: AttachmentDigests(toRevision.Attachments), // Flatten the AttachmentsMeta into a list of digests
+		RevisionHistory:   toRevision.History.parseAncestorRevisions(fromRevID),
+	}
+
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -155,10 +167,10 @@ func (rc *RevisionCache) GetWithCopy(docid, revid string, copyType BodyCopyType)
 
 // Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
 // fails silently
-func (rc *RevisionCache) UpdateDelta(docID, revID string, toRevID string, delta []byte, attachments AttachmentsMeta) {
+func (rc *RevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
 	value := rc.getValue(docID, revID, false)
 	if value != nil {
-		value.updateDelta(toRevID, delta, attachments)
+		value.updateDelta(toDelta)
 	}
 }
 
@@ -329,7 +341,6 @@ func (value *revCacheValue) loadForDoc(doc *document, context *DatabaseContext, 
 // Stores a body etc. into a revCacheValue if there isn't one already.
 func (value *revCacheValue) store(docRev DocumentRevision) {
 	value.lock.Lock()
-	defer value.lock.Unlock()
 	if value.body == nil {
 		value.body = docRev.Body.ShallowCopy() // Don't store a body the caller might later mutate
 		value.body[BodyId] = value.key.DocID   // Rev cache includes id and rev in the body.  Ensure they are set in case callers aren't passing
@@ -340,18 +351,11 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.attachments = docRev.Attachments.ShallowCopy() // Don't store attachments the caller might later mutate
 		value.err = nil
 	}
+	value.lock.Unlock()
 }
 
-func (value *revCacheValue) updateDelta(toRevID string, deltaBytes []byte, attachments AttachmentsMeta) {
+func (value *revCacheValue) updateDelta(toDelta *RevisionDelta) {
 	value.lock.Lock()
-	defer value.lock.Unlock()
-
-	// Flatten the AttachmentsMeta into a list of digests
-	digests := AttachmentDigests(attachments)
-
-	value.delta = &RevCacheDelta{
-		ToRevID:           toRevID,
-		DeltaBytes:        deltaBytes,
-		AttachmentDigests: digests,
-	}
+	value.delta = toDelta
+	value.lock.Unlock()
 }

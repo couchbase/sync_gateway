@@ -743,16 +743,7 @@ func ParseRevisions(body Body) []string {
 		return nil
 	}
 
-	start, ids := splitRevisionList(revisions)
-	if ids == nil {
-		return nil
-	}
-	result := make([]string, 0, len(ids))
-	for _, id := range ids {
-		result = append(result, fmt.Sprintf("%d-%s", start, id))
-		start--
-	}
-	return result
+	return revisions.parseRevisions()
 }
 
 // Splits out the "start" and "ids" properties from encoded revision list

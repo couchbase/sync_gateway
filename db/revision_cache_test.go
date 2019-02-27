@@ -277,7 +277,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	// Trigger load into cache
 	_, err := cache.Get("doc1", "rev1")
 	assert.NoError(t, err, "Error adding to cache")
-	cache.UpdateDelta("doc1", "rev1", "rev2", firstDelta, nil)
+	cache.UpdateDelta("doc1", "rev1", &RevisionDelta{ToRevID: "rev2", DeltaBytes: firstDelta})
 
 	// Retrieve from cache
 	retrievedRev, err := cache.Get("doc1", "rev1")
@@ -286,7 +286,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 	// Update delta again, validate data in retrievedRev isn't mutated
-	cache.UpdateDelta("doc1", "rev1", "rev3", secondDelta, nil)
+	cache.UpdateDelta("doc1", "rev1", &RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
 	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 

@@ -70,3 +70,17 @@ func TestBodyUnmarshal(t *testing.T) {
 		})
 	}
 }
+
+func TestParseRevisionsToAncestor(t *testing.T) {
+	revisions := Revisions{RevisionsStart: 5, RevisionsIds: []string{"five", "four", "three", "two", "one"}}
+
+	assert.Equal(t, []string{"4-four", "3-three"}, revisions.parseAncestorRevisions("3-three"))
+	assert.Equal(t, []string{"4-four"}, revisions.parseAncestorRevisions("4-four"))
+	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revisions.parseAncestorRevisions("1-one"))
+	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revisions.parseAncestorRevisions("5-five"))
+	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revisions.parseAncestorRevisions("0-zero"))
+	assert.Equal(t, []string{"4-four", "3-three", "2-two", "1-one"}, revisions.parseAncestorRevisions("3-threeve"))
+
+	shortRevisions := Revisions{RevisionsStart: 3, RevisionsIds: []string{"three"}}
+	assert.Equal(t, []string(nil), shortRevisions.parseAncestorRevisions("2-two"))
+}
