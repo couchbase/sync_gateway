@@ -72,20 +72,24 @@ func (r *Replicator) SnapshotStats() {
 	defer r.lock.RUnlock()
 
 	for repID, replication := range r.replications {
-
-		stats := replication.GetStats()
-		statsExpvars, ok := PerReplicationStats.Get(repID).(*expvar.Map)
-		if !ok {
-			Warnf(KeyReplicate, "Error getting stats for replication %v.  Stats for this replication will not be updated.", repID)
-		}
-		statsExpvars.Set(StatKeySgrNumDocsPushed, ExpvarInt64Val(int64(stats.GetDocsWritten())))
-		statsExpvars.Set(StatKeySgrNumDocsFailedToPush, ExpvarInt64Val(int64(stats.GetDocWriteFailures())))
-		statsExpvars.Set(StatKeySgrNumAttachmentsTransferred, ExpvarInt64Val(int64(stats.GetNumAttachmentsTransferred())))
-		statsExpvars.Set(StatKeySgrAttachmentBytesTransferred, ExpvarInt64Val(int64(stats.GetAttachmentBytesTransferred())))
-		statsExpvars.Set(StatKeySgrDocsCheckedSent, ExpvarInt64Val(int64(stats.GetDocsCheckedSent())))
-
+		r.writeStats(repID, replication)
 	}
 
+}
+
+func (r *Replicator) writeStats(repID string, replication sgreplicate.SGReplication) {
+
+	stats := replication.GetStats()
+	statsExpvars, ok := PerReplicationStats.Get(repID).(*expvar.Map)
+	if !ok {
+		Warnf(KeyReplicate, "Error getting stats for replication %v.  Stats for this replication will not be updated.", repID)
+		return
+	}
+	statsExpvars.Set(StatKeySgrNumDocsPushed, ExpvarInt64Val(int64(stats.GetDocsWritten())))
+	statsExpvars.Set(StatKeySgrNumDocsFailedToPush, ExpvarInt64Val(int64(stats.GetDocWriteFailures())))
+	statsExpvars.Set(StatKeySgrNumAttachmentsTransferred, ExpvarInt64Val(int64(stats.GetNumAttachmentsTransferred())))
+	statsExpvars.Set(StatKeySgrAttachmentBytesTransferred, ExpvarInt64Val(int64(stats.GetAttachmentBytesTransferred())))
+	statsExpvars.Set(StatKeySgrDocsCheckedSent, ExpvarInt64Val(int64(stats.GetDocsCheckedSent())))
 }
 
 // StopReplications stops all active replications.
@@ -167,6 +171,11 @@ func (r *Replicator) runOneShotReplication(parameters sgreplicate.ReplicationPar
 	}
 
 	_, err := replication.WaitUntilDone()
+
+	// Write stats at the end of a one-shot replication, to ensure the final state is recorded before the replication is
+	// removed from the replication set.
+	r.writeStats(parameters.ReplicationId, replication)
+
 	r.removeReplication(parameters.ReplicationId)
 	return replication, err
 }
