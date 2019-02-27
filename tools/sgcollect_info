@@ -354,36 +354,6 @@ def get_db_list(sg_url):
     # return list of dbs
     return data
 
-
-# Get the "status" for the server overall that's available
-# at the server root URL, as well as the status of each database
-def make_status_tasks(sg_url, should_redact):
-
-    tasks = []
-
-    # Get server config
-    task = make_curl_task(name="Collect server status",
-                          user="",
-                          password="",
-                          url=sg_url,
-                          log_file="server_status.log")
-    tasks.append(task)
-
-    # Get list of dbs from _all_dbs
-    # For each db, get db config
-    dbs = get_db_list(sg_url)
-    for db in dbs:
-        db_status_url = "{0}/{1}".format(sg_url, db)
-        task = make_curl_task(name="Collect db status for db: {0}".format(db),
-                              user="",
-                              password="",
-                              url=db_status_url,
-                              log_file="db_{0}_status.log".format(db))
-        tasks.append(task)
-
-    return tasks
-
-
 # Startup config
 #   Commandline args (covered in expvars, IIRC)
 #   json file.
@@ -429,26 +399,13 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact):
 
     # Get server config
     server_config_url = "{0}/_config".format(sg_url)
-    config_task = make_curl_task(name="Collect server config",
+    config_task = make_curl_task(name="Running server config",
                                  user="",
                                  password="",
                                  url=server_config_url,
-                                 log_file="running_server_config.log",
+                                 log_file="sync_gateway.log",
                                  content_postprocessors=server_config_postprocessors)
     collect_config_tasks.append(config_task)
-
-    # Get list of dbs from _all_dbs
-    # For each db, get db config
-    dbs = get_db_list(sg_url)
-    for db in dbs:
-        db_config_url = "{0}/{1}/_config".format(sg_url, db)
-        config_task = make_curl_task(name="Collect db config for db: {0}".format(db),
-                                     user="",
-                                     password="",
-                                     url=db_config_url,
-                                     log_file="running_db_{0}_config.log".format(db),
-                                     content_postprocessors=db_config_postprocessors)
-        collect_config_tasks.append(config_task)
 
     return collect_config_tasks
 
@@ -543,8 +500,12 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
     # Add a task to collect Sync Gateway config
     config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact)
 
-    # Curl the / endpoint and /db endpoints and save output
-    status_tasks = make_status_tasks(sg_url, should_redact)
+    # Curl the /_status
+    status_tasks = make_curl_task(name="Collect server status",
+                                  user="",
+                                  password="",
+                                  url="{0}/_status".format(sg_url),
+                                  log_file="sync_gateway.log")
 
     # Compbine all tasks into flattened list
     sg_tasks = flatten(
