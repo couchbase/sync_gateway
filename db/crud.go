@@ -83,7 +83,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 
 		if !doc.HasValidSyncData(db.writeSequences()) {
 			// Check whether doc has been upgraded to use xattrs
-			upgradeDoc, _ := db.checkForUpgrade(docid, DocUnmarshalAll)
+			upgradeDoc, _ := db.checkForUpgrade(docid, unmarshalLevel)
 			if upgradeDoc == nil {
 				return nil, base.HTTPErrorf(404, "Not imported")
 			}
