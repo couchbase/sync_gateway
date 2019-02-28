@@ -443,9 +443,9 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		}
 	}
 
-	if !syncData.HasValidSyncData(c.context.writeSequences()) {
+	if !c.context.UseXattrs() && !syncData.HasValidSyncData(c.context.writeSequences()) {
 		// No sync metadata found - check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
-		migratedDoc, _ := c.context.checkForUpgrade(docID)
+		migratedDoc, _ := c.context.checkForUpgrade(docID, DocUnmarshalNoHistory)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
 			base.Infof(base.KeyCache, "Found mobile xattr on doc %q without _sync property - caching, assuming upgrade in progress.", base.UD(docID))
 			syncData = &migratedDoc.syncData
