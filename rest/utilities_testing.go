@@ -23,7 +23,9 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/websocket"
+	"reflect"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -1471,6 +1473,13 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 
 type TestLogger struct {
 	T *testing.T
+}
+
+func assertBodySatisfiesModel(t *testing.T, got db.Body, model db.Body) {
+	for k, v := range model {
+		gotType := reflect.ValueOf(got[k]).Kind()
+		assert.Equal(t, gotType, v, "Expected type %q for field %q, got: %q", v, k, gotType)
+	}
 }
 
 func (l TestLogger) Logf(logLevel base.LogLevel, logKey base.LogKey, format string, args ...interface{}) {

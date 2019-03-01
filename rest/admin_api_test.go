@@ -28,6 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"reflect"
 )
 
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
@@ -563,6 +564,35 @@ func TestLoggingCombined(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_logging", "")
 	json.Unmarshal(response.Body.Bytes(), &logKeys)
 	goassert.DeepEquals(t, logKeys, map[string]bool{"Changes": true, "Cache": true, "HTTP": true})
+}
+
+func TestGetStatus(t *testing.T) {
+	var rt RestTester
+	rt.NoFlush = true
+	defer rt.Close()
+
+	response := rt.SendRequest("GET", "/_status", "")
+	assertStatus(t, response, 404)
+
+	response = rt.SendAdminRequest("GET", "/_status", "")
+	assertStatus(t, response, 200)
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+
+	model := map[string]interface{}{
+		"databases":    reflect.Map,
+		"active_tasks": reflect.Slice,
+		"version":      reflect.String,
+		"vendor":       reflect.Map,
+	}
+
+	assertBodySatisfiesModel(t, body, model)
+
+	goassert.Equals(t, body["version"], base.LongVersionString)
+
+	response = rt.SendAdminRequest("OPTIONS", "/_status", "")
+	assertStatus(t, response, 204)
+	goassert.Equals(t, response.Header().Get("Allow"), "GET")
 }
 
 // Test user delete while that user has an active changes feed (see issue 809)

@@ -37,6 +37,7 @@ import (
 	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
+	"reflect"
 )
 
 func init() {
@@ -77,14 +78,21 @@ func TestDBRoot(t *testing.T) {
 	assertStatus(t, response, 200)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
+
+	model := map[string]interface{}{
+		"db_name":              reflect.String,
+		"state":                reflect.String,
+		"update_seq":           reflect.Float64,
+		"committed_update_seq": reflect.Float64,
+		"purge_seq":            reflect.Float64,
+		"disk_format_version":  reflect.Float64,
+		"compact_running":      reflect.Bool,
+	}
+
+	assertBodySatisfiesModel(t, body, model)
+
 	goassert.Equals(t, body["db_name"], "db")
 	goassert.Equals(t, body["state"], "Online")
-	goassert.Equals(t, body["db_name"] != nil,true)
-	goassert.Equals(t, body["update_seq"] != nil,true)
-	goassert.Equals(t, body["committed_update_seq"] != nil,true)
-	goassert.Equals(t, body["compact_running"] != nil,true)
-	goassert.Equals(t, body["purge_seq"] != nil,true)
-	goassert.Equals(t, body["disk_format_version"] != nil,true)
 
 	response = rt.SendRequest("HEAD", "/db/", "")
 	assertStatus(t, response, 200)
