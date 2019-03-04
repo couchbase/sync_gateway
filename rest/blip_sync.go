@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/pkg/errors"
 	"golang.org/x/net/websocket"
 )
 
@@ -32,6 +33,8 @@ const (
 	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
 	BlipCBMobileReplication = "CBMobile_2"
 )
+
+var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
 // Represents one BLIP connection (socket) opened by a client.
 // This connection remains open until the client closes it, and can receive any number of requests.
@@ -51,6 +54,7 @@ type blipSyncContext struct {
 	activeSubChanges    uint32    // Flag for whether there is a subChanges subscription currently active.  Atomic access
 	useDeltas           bool      // Whether deltas can be used for this connection - This should be set via setUseDeltas()
 	sgCanUseDeltas      bool      // Whether deltas can be used by Sync Gateway for this connection
+	activeGoroutines    int32     // activeGoroutines should be atomically updated to keep track of context goroutines
 }
 
 type blipHandler struct {
@@ -202,6 +206,12 @@ func (ctx *blipSyncContext) close() {
 		ctx.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(stat, -1)
 	}
 	close(ctx.terminator)
+
+	waitDuration := time.Millisecond * 100
+	time.Sleep(waitDuration)
+	if count := atomic.LoadInt32(&ctx.activeGoroutines); count > 0 {
+		ctx.db.DbStats.StatsDatabase().Add(base.StatKeyNumLeakedBLIPGoroutines, int64(count))
+	}
 }
 
 // Handler for unknown requests
@@ -334,6 +344,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Start asynchronous changes goroutine
 	go func() {
+		_ = atomic.AddInt32(&bh.activeGoroutines, 1)
+		defer func() {
+			_ = atomic.AddInt32(&bh.activeGoroutines, -1)
+		}()
+
 		// Pull replication stats by type - Active stats decremented in Close()
 		if bh.continuous {
 			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, 1)
@@ -431,11 +446,25 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	if len(changeArray) > 0 {
 		// Spawn a goroutine to await the client's response:
 		sendTime := time.Now()
-		sender.Send(outrq)
-		go bh.handleChangesResponse(sender, outrq.Response(), changeArray, sendTime)
+		if !sender.Send(outrq) {
+			bh.Logf(base.LevelDebug, base.KeySync, "Couldn't send changes message to client - closed connection: %s", outrq)
+			return
+		}
+
+		go func(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time) {
+			_ = atomic.AddInt32(&bh.activeGoroutines, 1)
+			defer func() {
+				_ = atomic.AddInt32(&bh.activeGoroutines, -1)
+			}()
+
+			bh.handleChangesResponse(sender, response, changeArray, requestSent)
+		}(sender, outrq.Response(), changeArray, sendTime)
 	} else {
 		outrq.SetNoReply(true)
-		sender.Send(outrq)
+		if !sender.Send(outrq) {
+			bh.Logf(base.LevelDebug, base.KeySync, "Couldn't send changes message to client - closed connection: %s", outrq)
+			return
+		}
 	}
 	if len(changeArray) > 0 {
 		sequence := changeArray[0][0].(db.SequenceID)
@@ -518,11 +547,21 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 				}
 			}
 
+			var err error
 			if deltaSrcRevID != "" {
-				bh.sendRevAsDelta(sender, seq, docID, revID, deltaSrcRevID, knownRevs, maxHistory)
+				err = bh.sendRevAsDelta(sender, seq, docID, revID, deltaSrcRevID, knownRevs, maxHistory)
 			} else {
-				bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
+				err = bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 			}
+
+			if err != nil {
+				bh.Logf(base.LevelDebug, base.KeyAll, "Error sending revision: %v", err)
+				// If it's an error for use of a closed sender, we don't want to process any more revs
+				if err == ErrClosedBLIPSender {
+					break
+				}
+			}
+
 			revSendTimeLatency += time.Since(changesResponseReceived).Nanoseconds()
 			revSendCount++
 		}
@@ -639,52 +678,53 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 //////// DOCUMENTS:
 
-func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, docID string, revID string, deltaSrcRevID string, knownRevs map[string]bool, maxHistory int) {
+func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, docID string, revID string, deltaSrcRevID string, knownRevs map[string]bool, maxHistory int) error {
 
 	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
 
 	revDelta, err := bh.db.GetDelta(docID, deltaSrcRevID, revID)
 	if err != nil {
 		bh.Logf(base.LevelInfo, base.KeySync, "DELTA: error generating delta from %s to %s for key %s; falling back to full body replication.  err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
-		return
+		return bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 	}
 
 	if revDelta == nil {
 		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: unable to generate delta from %s to %s for key %s; falling back to full body replication.", deltaSrcRevID, revID, base.UD(docID))
-		bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
-		return
+		return bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
 	}
 
 	bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
-	bh.sendDelta(deltaSrcRevID, sender, seq, docID, revDelta)
+	if err := bh.sendDelta(deltaSrcRevID, sender, seq, docID, revDelta); err != nil {
+		return err
+	}
+
 	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasSent, 1)
+	return nil
 }
 
-func (bh *blipHandler) sendDelta(deltaSrcRevID string, sender *blip.Sender, seq db.SequenceID, docID string, revDelta *db.RevisionDelta) {
+func (bh *blipHandler) sendDelta(deltaSrcRevID string, sender *blip.Sender, seq db.SequenceID, docID string, revDelta *db.RevisionDelta) error {
 
 	var body db.Body
 	if err := body.Unmarshal(revDelta.DeltaBytes); err != nil {
 		bh.Logf(base.LevelError, base.KeySync, "DELTA: couldn't unmarshal delta... err: %v", err)
-		bh.sendNoRev(err, sender, seq, docID, revDelta.ToRevID)
-		return
+		return bh.sendNoRev(err, sender, seq, docID, revDelta.ToRevID)
 	}
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s  User:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID, base.UD(bh.effectiveUsername))
-	bh.sendRevisionWithProperties(body, sender, seq, docID, revDelta.ToRevID, revDelta.RevisionHistory, revDelta.AttachmentDigests, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
+	return bh.sendRevisionWithProperties(body, sender, seq, docID, revDelta.ToRevID, revDelta.RevisionHistory, revDelta.AttachmentDigests, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
 }
 
-func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) (err error) {
 
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
-		bh.sendNoRev(err, sender, seq, docID, revID)
+		return bh.sendNoRev(err, sender, seq, docID, revID)
 	} else {
-		bh.sendRevision(body, sender, seq, docID, revID, knownRevs, maxHistory)
+		return bh.sendRevision(body, sender, seq, docID, revID, knownRevs, maxHistory)
 	}
 }
 
-func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.SequenceID, docID string, revID string) {
+func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.SequenceID, docID string, revID string) error {
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s due to unavailable revision: %v.  User:%s", base.UD(docID), revID, err, base.UD(bh.effectiveUsername))
 
@@ -699,12 +739,15 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 	noRevRq.setReason(reason)
 
 	noRevRq.SetNoReply(true)
-	sender.Send(noRevRq.Message)
+	if !sender.Send(noRevRq.Message) {
+		return ErrClosedBLIPSender
+	}
 
+	return nil
 }
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) error {
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 
 	// Get the revision's history as a descending array of ancestor revIDs:
@@ -721,11 +764,11 @@ func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.Se
 
 	// extract attachments from body for sendRevisionWithProperties
 	attDigests := db.AttachmentDigests(db.GetBodyAttachments(body))
-	bh.sendRevisionWithProperties(body, sender, seq, docID, revID, history, attDigests, nil)
+	return bh.sendRevisionWithProperties(body, sender, seq, docID, revID, history, attDigests, nil)
 }
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, revisionHistory []string, attDigests []string, properties blip.Properties) {
+func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, revisionHistory []string, attDigests []string, properties blip.Properties) error {
 
 	outrq := NewRevMessage()
 	outrq.setId(docID)
@@ -733,7 +776,11 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 	if del, _ := body[db.BodyDeleted].(bool); del {
 		outrq.setDeleted(del)
 	}
-	outrq.setSequence(seq)
+
+	if err := outrq.setSequence(seq); err != nil {
+		// FIXME: err was previously left unhandled as unable to determine scenarios for which this would be hit
+		fmt.Printf("error during rev push from setSequence: %v\n", err)
+	}
 	outrq.setHistory(revisionHistory)
 
 	// add additional properties passed through
@@ -743,7 +790,10 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 	delete(body, db.BodyRev)
 	delete(body, db.BodyDeleted)
 
-	outrq.SetJSONBody(body)
+	if err := outrq.SetJSONBody(body); err != nil {
+		// FIXME: err was previously left unhandled as unable to determine scenarios for which this would be hit
+		bh.Logf(base.LevelDebug, base.KeySync, "error during rev push from SetJSONBody body: %v\n", err)
+	}
 
 	// Update read stats
 	if messageBody, err := outrq.Body(); err == nil {
@@ -754,8 +804,15 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 	if len(attDigests) > 0 {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bh.addAllowedAttachments(attDigests)
-		sender.Send(outrq.Message)
+		if !sender.Send(outrq.Message) {
+			return ErrClosedBLIPSender
+		}
+
 		go func() {
+			_ = atomic.AddInt32(&bh.activeGoroutines, 1)
+			defer func() {
+				_ = atomic.AddInt32(&bh.activeGoroutines, -1)
+			}()
 			defer func() {
 				if panicked := recover(); panicked != nil {
 					base.Warnf(base.KeyAll, "[%s] PANIC handling 'sendRevision' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
@@ -767,7 +824,9 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 		}()
 	} else {
 		outrq.SetNoReply(true)
-		sender.Send(outrq.Message)
+		if !sender.Send(outrq.Message) {
+			return ErrClosedBLIPSender
+		}
 	}
 
 	if response := outrq.Response(); response != nil {
@@ -776,6 +835,8 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 			bh.Logf(base.LevelWarn, base.KeyAll, "Client returned error in rev response for doc %q / %q: %s", docID, revID, errorBody)
 		}
 	}
+
+	return nil
 }
 
 // Received a "rev" request, i.e. client is pushing a revision body
@@ -928,7 +989,9 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{blipProfile: messageProveAttachment, proveAttachmentDigest: digest}
 				outrq.SetBody(nonce)
-				sender.Send(outrq)
+				if !sender.Send(outrq) {
+					return nil, fmt.Errorf("couldn't send blip message")
+				}
 				if body, err := outrq.Response().Body(); err != nil {
 					return nil, err
 				} else if string(body) != proof {
@@ -944,7 +1007,9 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				if isCompressible(name, meta) {
 					outrq.Properties[blipCompress] = "true"
 				}
-				sender.Send(outrq)
+				if !sender.Send(outrq) {
+					return nil, fmt.Errorf("couldn't send blip message")
+				}
 				return outrq.Response().Body()
 			}
 		})

@@ -101,6 +101,7 @@ const (
 	StatKeyDcpReceivedTime         = "dcp_received_time"
 	StatKeyDcpCachingCount         = "dcp_caching_count"
 	StatKeyDcpCachingTime          = "dcp_caching_time"
+	StatKeyNumLeakedBLIPGoroutines = "num_leaked_blip_goroutines"
 
 	// StatsDeltaSync
 	StatKeyDeltasRequested           = "deltas_requested"

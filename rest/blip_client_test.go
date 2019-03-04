@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/go-blip"
@@ -30,6 +31,16 @@ type BlipTesterClient struct {
 
 	pullReplication *BlipTesterReplicator // SG -> CBL replications
 	pushReplication *BlipTesterReplicator // CBL -> SG replications
+
+	ForcedErrors BlipTesterClientForcedErrors
+}
+
+type BlipTesterClientForcedErrors struct {
+	PullReplication, PushReplication BlipTesterReplicatorForcedErrors
+}
+
+type BlipTesterReplicatorForcedErrors struct {
+	CloseConnectionAtRev blip.MessageNumber // Forces the replicator to close the connection during processing of this rev message
 }
 
 // BlipTesterReplicator is a BlipTester which stores a map of messages keyed by Serial Number
@@ -39,12 +50,22 @@ type BlipTesterReplicator struct {
 
 	messagesLock sync.RWMutex                         // lock for messages map
 	messages     map[blip.MessageNumber]*blip.Message // Map of blip messages keyed by message number
+
+	state *uint32 // atomically set to determine replicator status between replicatorState* constants
+
+	forcedErrors BlipTesterReplicatorForcedErrors
 }
+
+const (
+	replicatorStateInitial = iota
+	replicatorStateClosed
+)
 
 func (btr *BlipTesterReplicator) Close() {
 	btr.messagesLock.Lock()
 	btr.messages = make(map[blip.MessageNumber]*blip.Message, 0)
 	btr.messagesLock.Unlock()
+	atomic.StoreUint32(btr.state, replicatorStateClosed)
 }
 
 func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
@@ -131,6 +152,13 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 	btr.bt.blipContext.HandlerForProfile[messageRev] = func(msg *blip.Message) {
 		btc.pullReplication.storeMessage(msg)
+
+		if btr.forcedErrors.CloseConnectionAtRev != 0 && msg.SerialNumber() == btr.forcedErrors.CloseConnectionAtRev {
+			base.Warnf(base.KeyAll, "Test: Forcing CloseConnectionAtRev error for msg %s", msg)
+			btr.bt.sender.Close()
+			atomic.StoreUint32(btr.state, replicatorStateClosed)
+			return
+		}
 
 		docID := msg.Properties[revMessageId]
 		revID := msg.Properties[revMessageRev]
@@ -336,16 +364,19 @@ func (btc *BlipTesterClient) getLastReplicatedRev(docID string) (revID string, o
 	return revID, ok
 }
 
-func newBlipTesterReplication(id string, btc *BlipTesterClient) (*BlipTesterReplicator, error) {
+func newBlipTesterReplication(id string, btc *BlipTesterClient, forcedErrors BlipTesterReplicatorForcedErrors) (*BlipTesterReplicator, error) {
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{restTester: btc.rt})
 	if err != nil {
 		return nil, err
 	}
 
+	state := uint32(replicatorStateInitial)
 	r := &BlipTesterReplicator{
-		id:       id,
-		bt:       bt,
-		messages: make(map[blip.MessageNumber]*blip.Message),
+		id:           id,
+		bt:           bt,
+		messages:     make(map[blip.MessageNumber]*blip.Message),
+		forcedErrors: forcedErrors,
+		state:        &state,
 	}
 
 	r.initHandlers(btc)
@@ -354,7 +385,7 @@ func newBlipTesterReplication(id string, btc *BlipTesterClient) (*BlipTesterRepl
 }
 
 // NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
-func NewBlipTesterClient(rt *RestTester) (client *BlipTesterClient, err error) {
+func NewBlipTesterClient(rt *RestTester, forcedErrors *BlipTesterClientForcedErrors) (client *BlipTesterClient, err error) {
 	btc := BlipTesterClient{
 		rt:                rt,
 		docs:              make(map[string]map[string][]byte),
@@ -362,15 +393,19 @@ func NewBlipTesterClient(rt *RestTester) (client *BlipTesterClient, err error) {
 		lastReplicatedRev: make(map[string]string),
 	}
 
+	if forcedErrors != nil {
+		btc.ForcedErrors = *forcedErrors
+	}
+
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return nil, err
 	}
 
-	if btc.pushReplication, err = newBlipTesterReplication("push"+id.String(), &btc); err != nil {
+	if btc.pushReplication, err = newBlipTesterReplication("push"+id.String(), &btc, btc.ForcedErrors.PushReplication); err != nil {
 		return nil, err
 	}
-	if btc.pullReplication, err = newBlipTesterReplication("pull"+id.String(), &btc); err != nil {
+	if btc.pullReplication, err = newBlipTesterReplication("pull"+id.String(), &btc, btc.ForcedErrors.PullReplication); err != nil {
 		return nil, err
 	}
 
@@ -583,6 +618,12 @@ func (btc *BlipTesterClient) GetRev(docID, revID string) (data []byte, found boo
 
 // WaitForRev blocks until the given doc ID and rev ID have been stored by the client, and returns the data when found.
 func (btc *BlipTesterClient) WaitForRev(docID, revID string) (data []byte, found bool) {
+	// Quick return for found rev
+	if data, found := btc.GetRev(docID, revID); found {
+		return data, found
+	}
+
+	// Otherwise poll
 	ticker := time.NewTicker(time.Millisecond * 50)
 	for {
 		select {
@@ -608,6 +649,13 @@ func (btr *BlipTesterReplicator) GetMessage(serialNumber blip.MessageNumber) (ms
 
 // WaitForMessage blocks until the given message serial number has been stored by the replicator, and returns the message when found.
 func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber) (msg *blip.Message, found bool) {
+	// Quick return for found message
+	if msg, ok := btr.GetMessage(serialNumber); ok {
+		fmt.Println("WaitForMessage found message instantly")
+		return msg, ok
+	}
+
+	// Otherwise poll
 	ticker := time.NewTicker(time.Millisecond * 50)
 	for {
 		select {
