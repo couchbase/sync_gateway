@@ -12,7 +12,6 @@ package base
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -25,8 +24,8 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbase/gomemcached/client"
-	"github.com/couchbase/sg-bucket"
+	memcached "github.com/couchbase/gomemcached/client"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
@@ -341,31 +340,6 @@ func IsMinimumServerVersion(bucket Bucket, minMajor uint64, minMinor uint64) (bo
 // Since Couchbase Eventing was introduced in Couchbase Server 5.5, the Crc32c macro expansion only needs to be done on 5.5 or later.
 func IsCrc32cMacroExpansionSupported(bucket Bucket) (bool, error) {
 	return IsMinimumServerVersion(bucket, 5, 5)
-}
-
-func ParseCouchbaseServerVersion(versionString string) (major uint64, minor uint64, micro string, err error) {
-
-	if versionString == "" {
-		return 0, 0, "", errors.New("version not defined in GetStats map")
-	}
-
-	arr := strings.SplitN(versionString, ".", 4)
-
-	major, err = strconv.ParseUint(arr[0], 10, 8)
-
-	if err != nil {
-		return 0, 0, "", errors.New("Unable to parse version major component ")
-	}
-	minor, err = strconv.ParseUint(arr[1], 10, 8)
-
-	if err != nil {
-		return 0, 0, "", errors.New("Unable to parse version minor component ")
-	}
-
-	micro = arr[2]
-
-	return
-
 }
 
 func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
