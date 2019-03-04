@@ -3,6 +3,7 @@ package rest
 import (
 	"encoding/base64"
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -1528,7 +1530,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 
 	deltaSentCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent))
 
-	client, err := NewBlipTesterClient(&rt)
+	client, err := NewBlipTesterClient(&rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -1585,7 +1587,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	defer rt.Close()
 
-	client, err := NewBlipTesterClient(&rt)
+	client, err := NewBlipTesterClient(&rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 	client.ClientDeltas = true
@@ -1628,8 +1630,8 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	defer rt.Close()
 
-	client, err := NewBlipTesterClient(&rt)
-	assert.NoError(t, err)
+	client, err := NewBlipTesterClient(&rt, nil)
+	require.NoError(t, err)
 	defer client.Close()
 
 	client.ClientDeltas = true
@@ -1646,13 +1648,13 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	// Perform a one-shot pull as client 2 to pull down the first revision
 
-	client2, err := NewBlipTesterClient(&rt)
-	assert.NoError(t, err)
+	client2, err := NewBlipTesterClient(&rt, nil)
+	require.NoError(t, err)
 	defer client2.Close()
 
 	client2.ClientDeltas = true
 	err = client2.StartOneshotPull()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	msg, ok := client2.pullReplication.WaitForMessage(3)
 	assert.True(t, ok)
@@ -1682,7 +1684,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	// Run another one shot pull to get the 2nd revision - validate it comes as delta, and uses cached version
 	client2.ClientDeltas = true
 	err = client2.StartOneshotPull()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	msg2, ok := client2.pullReplication.WaitForMessage(6)
 	assert.True(t, ok)
@@ -1711,7 +1713,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	defer rt.Close()
 
-	client, err := NewBlipTesterClient(&rt)
+	client, err := NewBlipTesterClient(&rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -1773,7 +1775,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	defer rt.Close()
 
-	client, err := NewBlipTesterClient(&rt)
+	client, err := NewBlipTesterClient(&rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -1821,7 +1823,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	defer rt.Close()
 
-	client, err := NewBlipTesterClient(&rt)
+	client, err := NewBlipTesterClient(&rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -1874,4 +1876,54 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-04f16608671387d26f9f3ecd2c68d9a2", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-04f16608671387d26f9f3ecd2c68d9a2","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
+}
+
+// TestBlipDisconnectBetweenRevReqResp reproduces a goroutine leak seen when disconnecting during a pull replication in-between a rev request being sent, and a rev response being received.
+func TestBlipDisconnectBetweenRevReqResp(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	var rt = RestTester{}
+	defer rt.Close()
+
+	client, err := NewBlipTesterClient(&rt, &BlipTesterClientForcedErrors{
+		PullReplication: BlipTesterReplicatorForcedErrors{
+			// Rev message number for doc5
+			CloseConnectionAtRev: blip.MessageNumber(8),
+		},
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	// Create 10 docs with attachments
+	for i := 0; i < 10; i++ {
+		resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/doc%d", i), `{"test":true, "_attachments": {"hello.txt": {"data": ""}}}`)
+		assert.Equal(t, http.StatusCreated, resp.Code)
+	}
+
+	err = rt.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	err = client.StartPull()
+	assert.NoError(t, err)
+
+	_, found := client.pullReplication.WaitForMessage(8)
+	assert.True(t, found)
+	assert.True(t, atomic.LoadUint32(client.pullReplication.state) == replicatorStateClosed)
+
+	// Give the stats below a chance to be incremented
+	time.Sleep(time.Second * 1)
+
+	// Inspect go-blip's expvars to determine we have not leaked any async_readers
+	var goBlipStats struct {
+		GoroutinesAsyncRead int `json:"goroutines_async_read"`
+	}
+	err = json.Unmarshal([]byte(expvar.Get("goblip").String()), &goBlipStats)
+	assert.NoError(t, err, "error parsing goblip expvar stats")
+	assert.Equal(t, 0, goBlipStats.GoroutinesAsyncRead, "leaked asyncRead goroutines in go-blip")
+
+	// Check our goroutine ref counting stat
+	numLeakedBLIPGoroutines := rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumLeakedBLIPGoroutines)
+	assert.Nil(t, numLeakedBLIPGoroutines, "expected num_leaked_blip_goroutines to be uninitialised")
+
 }
