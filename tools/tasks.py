@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- python -*-
+import StringIO
 import os
 import sys
 import tempfile
@@ -48,12 +49,16 @@ class LogRedactor:
     def redact_file(self, name, ifile):
         ofile = os.path.join(self.target_dir, name)
         _, filename = os.path.split(name)
-        if any(s in filename for s in self.blacklist):
+        if any(s in filename for s in self.blacklist) or (".gz" in filename):
             print('WARNING: Not redacting blacklisted file {0}'.format(filename))
             return ifile
         self._process_file(ifile, ofile, self.regular_log)
         return ofile
 
+    def redact_string(self, istring):
+        ostring = self.couchbase_log.do("RedactLevel")
+        ostring += self.regular_log.do(istring)
+        return ostring
 
 class CouchbaseLogProcessor:
     def __init__(self, salt):
@@ -449,7 +454,7 @@ def make_curl_task(name, url, user="", password="", content_postprocessors=[],
     )
 
 
-def add_gzip_file_task(sourcefile_path, content_postprocessors=[]):
+def add_gzip_file_task(sourcefile_path, salt, content_postprocessors=[]):
     """
     Adds the extracted contents of a file to the output zip
 
@@ -460,11 +465,15 @@ def add_gzip_file_task(sourcefile_path, content_postprocessors=[]):
             contents = infile.read()
             for content_postprocessor in content_postprocessors:
                 contents = content_postprocessor(contents)
-            return contents
+            redactor = LogRedactor(salt, tempfile.mkdtemp())
+            contents = redactor.redact_string(contents)
+
+        out = StringIO.StringIO()
+        with gzip.GzipFile(fileobj=out, mode="w") as f:
+            f.write(contents)
+        return out.getvalue()
 
     log_file = os.path.basename(sourcefile_path)
-    if log_file.endswith('.gz'):
-        log_file = log_file[:-3]
 
     task = PythonTask(
         description="Extracted contents of {0}".format(sourcefile_path),
@@ -472,6 +481,8 @@ def add_gzip_file_task(sourcefile_path, content_postprocessors=[]):
         log_file=log_file,
         log_exception=False,
     )
+
+    task.no_header = True
 
     return task
 
