@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -18,7 +19,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/pkg/errors"
 	"golang.org/x/net/websocket"
 )
 
@@ -400,11 +400,14 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 
 	caughtUp := false
 	pendingChanges := make([][]interface{}, 0, bh.batchSize)
-	sendPendingChangesAt := func(minChanges int) {
+	sendPendingChangesAt := func(minChanges int) error {
 		if len(pendingChanges) >= minChanges {
-			bh.sendBatchOfChanges(sender, pendingChanges)
+			if err := bh.sendBatchOfChanges(sender, pendingChanges); err != nil {
+				return err
+			}
 			pendingChanges = make([][]interface{}, 0, bh.batchSize)
 		}
+		return nil
 	}
 
 	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
@@ -418,15 +421,22 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 						changeRow = changeRow[0:3]
 					}
 					pendingChanges = append(pendingChanges, changeRow)
-					sendPendingChangesAt(bh.batchSize)
+					if err := sendPendingChangesAt(bh.batchSize); err != nil {
+						return err
+					}
 				}
 			}
 		}
 		if caughtUp || len(changes) == 0 {
-			sendPendingChangesAt(1)
+			if err := sendPendingChangesAt(1); err != nil {
+				return err
+			}
 			if !caughtUp {
 				caughtUp = true
-				bh.sendBatchOfChanges(sender, nil) // Signal to client that it's caught up
+				// Signal to client that it's caught up
+				if err := bh.sendBatchOfChanges(sender, nil); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -439,16 +449,17 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 
 }
 
-func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}) {
+func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}) error {
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
-	outrq.SetJSONBody(changeArray)
+	if err := outrq.SetJSONBody(changeArray); err != nil {
+		return err
+	}
 	if len(changeArray) > 0 {
 		// Spawn a goroutine to await the client's response:
 		sendTime := time.Now()
 		if !sender.Send(outrq) {
-			bh.Logf(base.LevelDebug, base.KeySync, "Couldn't send changes message to client - closed connection: %s", outrq)
-			return
+			return ErrClosedBLIPSender
 		}
 
 		go func(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time) {
@@ -462,16 +473,18 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	} else {
 		outrq.SetNoReply(true)
 		if !sender.Send(outrq) {
-			bh.Logf(base.LevelDebug, base.KeySync, "Couldn't send changes message to client - closed connection: %s", outrq)
-			return
+			return ErrClosedBLIPSender
 		}
 	}
+
 	if len(changeArray) > 0 {
 		sequence := changeArray[0][0].(db.SequenceID)
 		bh.Logf(base.LevelInfo, base.KeySync, "Sent %d changes to client, from seq %s.  User:%s", len(changeArray), sequence.String(), base.UD(bh.effectiveUsername))
 	} else {
 		bh.Logf(base.LevelInfo, base.KeySync, "Sent all changes to client. User:%s", base.UD(bh.effectiveUsername))
 	}
+
+	return nil
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
@@ -714,7 +727,7 @@ func (bh *blipHandler) sendDelta(deltaSrcRevID string, sender *blip.Sender, seq 
 	return bh.sendRevisionWithProperties(body, sender, seq, docID, revDelta.ToRevID, revDelta.RevisionHistory, revDelta.AttachmentDigests, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
 }
 
-func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) (err error) {
+func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) error {
 
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
@@ -739,6 +752,7 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 	noRevRq.setReason(reason)
 
 	noRevRq.SetNoReply(true)
+
 	if !sender.Send(noRevRq.Message) {
 		return ErrClosedBLIPSender
 	}
@@ -748,6 +762,7 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 
 // Pushes a revision body to the client
 func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) error {
+
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 
 	// Get the revision's history as a descending array of ancestor revIDs:
@@ -990,7 +1005,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				outrq.Properties = map[string]string{blipProfile: messageProveAttachment, proveAttachmentDigest: digest}
 				outrq.SetBody(nonce)
 				if !sender.Send(outrq) {
-					return nil, fmt.Errorf("couldn't send blip message")
+					return nil, ErrClosedBLIPSender
 				}
 				if body, err := outrq.Response().Body(); err != nil {
 					return nil, err
@@ -1008,7 +1023,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 					outrq.Properties[blipCompress] = "true"
 				}
 				if !sender.Send(outrq) {
-					return nil, fmt.Errorf("couldn't send blip message")
+					return nil, ErrClosedBLIPSender
 				}
 				return outrq.Response().Body()
 			}
