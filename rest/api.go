@@ -348,6 +348,11 @@ func (h *handler) handlePprofThreadcreate() error {
 	return nil
 }
 
+func (h *handler) handlePprofMutex() error {
+	httpprof.Handler("mutex").ServeHTTP(h.response, h.rq)
+	return nil
+}
+
 type stats struct {
 	MemStats runtime.MemStats
 }
