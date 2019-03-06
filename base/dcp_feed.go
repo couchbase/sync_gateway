@@ -10,6 +10,7 @@
 package base
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"expvar"
@@ -20,9 +21,9 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
-	uuid "github.com/satori/go.uuid"
+	"github.com/satori/go.uuid"
 )
 
 var dcpExpvars *expvar.Map
@@ -151,9 +152,23 @@ func (r *DCPReceiver) OnError(err error) {
 	dcpExpvars.Add("onError_count", 1)
 }
 
+func dcpKeyFilter(key []byte) bool {
+	if bytes.HasPrefix(key, []byte("_sync")) {
+		if bytes.HasPrefix(key, []byte("_sync:user:")) || bytes.HasPrefix(key, []byte("_sync:role:")) {
+			return true
+		} else {
+			return false
+		}
+	}
+	return true
+}
+
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
 	dcpExpvars.Add("dataUpdate_count", 1)
+	if !dcpKeyFilter(key) {
+		return nil
+	}
 	r.updateSeq(vbucketId, seq, true)
 	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpMutation))
 	if shouldPersistCheckpoint {
@@ -165,6 +180,9 @@ func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
 	dcpExpvars.Add("dataDelete_count", 1)
+	if !dcpKeyFilter(key) {
+		return nil
+	}
 	r.updateSeq(vbucketId, seq, true)
 	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpDeletion))
 	if shouldPersistCheckpoint {
