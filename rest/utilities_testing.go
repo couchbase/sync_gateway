@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -32,7 +32,7 @@ import (
 
 var gBucketCounter = 0
 
-type RestTester struct {
+type RestTesterConfig struct {
 	RestTesterBucket        base.Bucket
 	RestTesterServerContext *ServerContext
 	noAdminParty            bool      // Unless this is true, Admin Party is in full effect
@@ -46,7 +46,26 @@ type RestTester struct {
 	InitSyncSeq             uint64 // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
 }
 
+type RestTester struct {
+	*RestTesterConfig
+	Testing testing.TB
+}
+
+func NewRestTester(Tester testing.TB, RestConfig *RestTesterConfig) *RestTester {
+	var rt RestTester
+	rt.Testing = Tester
+	if RestConfig != nil {
+		rt.RestTesterConfig = RestConfig
+	} else {
+		rt.RestTesterConfig = &RestTesterConfig{}
+	}
+	return &rt
+}
 func (rt *RestTester) Bucket() base.Bucket {
+
+	if rt.Testing == nil {
+		panic("RestTester not properly initialized please use NewRestTester function")
+	}
 
 	if rt.RestTesterBucket != nil {
 		return rt.RestTesterBucket
@@ -63,13 +82,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 				log.Printf("Initializing %s to %d", db.SyncSeqKey, rt.InitSyncSeq)
 				_, incrErr := tempBucket.Incr(db.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 				if incrErr != nil {
-					panic(fmt.Sprintf("Error initializing %s in test bucket: %v", db.SyncSeqKey, incrErr))
+					rt.Testing.Error(fmt.Sprintf("Error initializing %s in test bucket: %v", db.SyncSeqKey, incrErr))
+					return nil
 				}
 			}
 			tempBucket.Close()
 		} else {
 			if rt.InitSyncSeq > 0 {
-				panic("RestTester doesn't support NoFlush and InitSyncSeq in same test")
+				rt.Testing.Error("RestTester doesn't support NoFlush and InitSyncSeq in same test")
+				return nil
 			}
 		}
 
@@ -130,7 +151,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 		if err != nil {
-			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
+			rt.Testing.Error(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
+			return nil
 		}
 		rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
@@ -142,7 +164,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 					base.Infof(base.KeyAll, "WaitForIndexEmpty returned an error: %v.  Dropping indexes and retrying", err)
 					// if WaitForIndexEmpty returns error, drop the indexes and retry
 					if err := base.DropAllBucketIndexes(asGoCbBucket); err != nil {
-						panic(fmt.Sprintf("Failed to drop bucket indexes: %v", err))
+						rt.Testing.Error(fmt.Sprintf("Failed to drop bucket indexes: %v", err))
+						return nil
 					}
 
 					continue // Go to the top of the for loop to retry
@@ -157,8 +180,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		return rt.RestTesterBucket
 	}
 
-	panic(fmt.Sprintf("Failed to create a RestTesterBucket after multiple attempts"))
-
+	rt.Testing.Error(fmt.Sprintf("Failed to create a RestTesterBucket after multiple attempts"))
+	return nil
 }
 
 func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
@@ -184,7 +207,7 @@ func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
 	})
 
 	if err != nil {
-		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
+		rt.Testing.Error(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 	}
 	rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
@@ -265,6 +288,9 @@ func (rt *RestTester) DisableGuestUser() {
 }
 
 func (rt *RestTester) Close() {
+	if rt.Testing == nil {
+		panic("RestTester not properly initialized please use NewRestTester function")
+	}
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close()
 	}
@@ -648,24 +674,26 @@ func (bt BlipTester) Close() {
 }
 
 // Create a BlipTester using the default spec
-func NewBlipTester() (*BlipTester, error) {
-	defaultSpec := BlipTesterSpec{}
-	return NewBlipTesterFromSpec(defaultSpec)
+func NewBlipTester(tester testing.TB) (*BlipTester, error) {
+	var rt = NewRestTester(tester, nil)
+	defaultSpec := BlipTesterSpec{restTester: rt}
+	return NewBlipTesterFromSpec(tester, defaultSpec)
 }
 
 // Create a BlipTester using the given spec
-func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
+func NewBlipTesterFromSpec(tester testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
 
 	bt := &BlipTester{}
 
 	if spec.restTester != nil {
 		bt.restTester = spec.restTester
 	} else {
-		rt := RestTester{
+		rtConfig := RestTesterConfig{
 			EnableNoConflictsMode: spec.noConflictsMode,
 			noAdminParty:          spec.noAdminParty,
 		}
-		bt.restTester = &rt
+		var rt = NewRestTester(tester, &rtConfig)
+		bt.restTester = rt
 	}
 
 	// Since blip requests all go over the public handler, wrap the public handler with the httptest server

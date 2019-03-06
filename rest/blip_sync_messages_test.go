@@ -62,7 +62,7 @@ func TestAddRevision(t *testing.T) {
 // Reproduces SG #3283
 func TestSubChangesSince(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	testDb := rt.GetDatabase()
