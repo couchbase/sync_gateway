@@ -317,7 +317,7 @@ class TaskRunner(object):
             fp.flush()
 
         elif self.verbosity >= 2:
-            log('Skipping "%s" (%s): not for platform %s' % (task.description, command_to_print, sys.platform))
+            log('Skipping "%s" (%s): not for platform %s' % (task.description, task.command_to_print, sys.platform))
 
     def redact_and_zip(self, filename, log_type, salt, node, blacklist=[]):
         files = []
