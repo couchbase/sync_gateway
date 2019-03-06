@@ -25,12 +25,9 @@ import traceback
 
 
 class LogRedactor:
-    def __init__(self, salt, tmpdir, blacklist=[]):
+    def __init__(self, salt, tmpdir):
         self.target_dir = os.path.join(tmpdir, "redacted")
         os.makedirs(self.target_dir)
-
-        self.blacklist = blacklist
-        print('Redaction blacklist: {0}'.format(blacklist))
 
         self.couchbase_log = CouchbaseLogProcessor(salt)
         self.regular_log = RegularLogProcessor(salt)
@@ -49,8 +46,8 @@ class LogRedactor:
     def redact_file(self, name, ifile):
         ofile = os.path.join(self.target_dir, name)
         _, filename = os.path.split(name)
-        if any(s in filename for s in self.blacklist) or (".gz" in filename):
-            print('WARNING: Not redacting blacklisted file {0}'.format(filename))
+        if ".gz" in filename:
+            print('WARNING: Not redacting binary file file {0}'.format(filename))
             return ifile
         self._process_file(ifile, ofile, self.regular_log)
         return ofile
@@ -324,9 +321,9 @@ class TaskRunner(object):
         elif self.verbosity >= 2:
             log('Skipping "%s" (%s): not for platform %s' % (task.description, task.command_to_print, sys.platform))
 
-    def redact_and_zip(self, filename, log_type, salt, node, blacklist=[]):
+    def redact_and_zip(self, filename, log_type, salt, node):
         files = []
-        redactor = LogRedactor(salt, self.tmpdir, blacklist)
+        redactor = LogRedactor(salt, self.tmpdir)
 
         for name, fp in self.files.iteritems():
             files.append(redactor.redact_file(name, fp.name))

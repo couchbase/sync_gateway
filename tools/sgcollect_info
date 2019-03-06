@@ -707,13 +707,8 @@ def main():
 
     # Build redacted zip file
     if options.redact_level != "none":
-        # We don't want to attempt to redact binary/pprof files, as this could result in corruption
-        blacklist = [
-            'pprof_profile.pb.gz', 'pprof_heap.pb.gz', 'pprof_goroutine.pb.gz',
-            'pprof_block.pb.gz', 'pprof_mutex.pb.gz',
-        ]
         log("Redacting log files to level: %s" % options.redact_level)
-        runner.redact_and_zip(redact_zip_file, 'sgcollect_info', options.salt_value, platform.node(), blacklist)
+        runner.redact_and_zip(redact_zip_file, 'sgcollect_info', options.salt_value, platform.node())
 
     # Build the actual zip file
     runner.zip(zip_filename, 'sgcollect_info', platform.node())
