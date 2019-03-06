@@ -32,7 +32,6 @@ from tasks import setup_stdin_watcher
 import password_remover
 
 import ssl
-import copy
 try:
     # Don't validate HTTPS by default.
     _create_unverified_https_context = ssl._create_unverified_context
@@ -140,7 +139,7 @@ def make_http_client_pprof_tasks(sg_url):
                                     user="",
                                     password="",
                                     url=sg_pprof_url,
-                                    log_file="{0}.profile".format(profile_type))
+                                    log_file="pprof_{0}.pb.gz".format(profile_type))
         clean_task.no_header = True
         pprof_tasks.append(clean_task)
 
@@ -710,11 +709,8 @@ def main():
     if options.redact_level != "none":
         # We don't want to attempt to redact binary/pprof files, as this could result in corruption
         blacklist = [
-            'profile.text',           'goroutine.text',           'heap.text',
-            'profile.raw',            'goroutine.raw',            'heap.raw',
-            'profile.dot',            'goroutine.dot',            'heap.dot',
-            'profile.pdf',            'goroutine.pdf',            'heap.pdf',
-            'pprof_http_profile.log', 'pprof_http_goroutine.log', 'pprof_http_heap.log'
+            'pprof_profile.pb.gz', 'pprof_heap.pb.gz', 'pprof_goroutine.pb.gz',
+            'pprof_block.pb.gz', 'pprof_mutex.pb.gz',
         ]
         log("Redacting log files to level: %s" % options.redact_level)
         runner.redact_and_zip(redact_zip_file, 'sgcollect_info', options.salt_value, platform.node(), blacklist)
