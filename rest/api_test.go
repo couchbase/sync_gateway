@@ -3888,7 +3888,7 @@ func TestNumAccessErrors(t *testing.T) {
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	var prt RestTester
-	prt.Close()
+	defer prt.Close()
 
 	//Create test document
 	prt.SendRequest("PUT", "/db/doc", `{"prop":true}`)
