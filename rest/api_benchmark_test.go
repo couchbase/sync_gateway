@@ -60,6 +60,7 @@ func BenchmarkReadOps_Get(b *testing.B) {
 	defer base.DisableTestLogging()()
 
 	var rt RestTester
+	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
 	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
@@ -110,6 +111,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 	defer base.DisableTestLogging()()
 
 	var rt RestTester
+	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
 	// Get database handle
@@ -176,6 +178,7 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 	defer base.DisableTestLogging()()
 
 	var rt RestTester
+	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
 	// Create user
@@ -248,6 +251,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 	defer base.DisableTestLogging()()
 
 	var rt RestTester
+	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
 	// Create target doc for revs_diff:

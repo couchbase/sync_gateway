@@ -695,6 +695,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	rt := RestTester{
 		noAdminParty: true,
 	}
+	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -745,6 +746,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	rt := RestTester{
 		noAdminParty: true,
 	}
+	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -804,6 +806,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	rt := RestTester{
 		noAdminParty: true,
 	}
+	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -871,6 +874,7 @@ func TestReloadUser(t *testing.T) {
 		SyncFn:       syncFn,
 		noAdminParty: true,
 	}
+	defer rt.Close()
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -914,6 +918,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 		SyncFn:       `function(doc) {channel(doc.channels); access(doc.accessUser, doc.accessChannel);}`,
 		noAdminParty: true,
 	}
+	defer rt.Close()
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -1171,6 +1176,7 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 		SyncFn:       syncFn,
 		noAdminParty: true,
 	}
+	defer rt.Close()
 	bt, err := NewBlipTesterFromSpec(BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -1319,6 +1325,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	rt := RestTester{
 		noAdminParty: true,
 	}
+	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -1475,6 +1482,7 @@ func TestMissingNoRev(t *testing.T) {
 	btSpec := BlipTesterSpec{
 		restTester: &rt,
 	}
+	defer rt.Close()
 	bt, err := NewBlipTesterFromSpec(btSpec)
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()

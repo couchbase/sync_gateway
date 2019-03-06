@@ -1257,6 +1257,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 
 	var rt RestTester
+	defer rt.Close()
 
 	mobileBody := make(map[string]interface{})
 	mobileBody["type"] = "mobile"
@@ -1344,6 +1345,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 
 	var rt RestTester
+	defer rt.Close()
 
 	triggerOnDemandViaGet := func(key string) {
 		// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
