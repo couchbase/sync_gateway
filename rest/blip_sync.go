@@ -794,7 +794,7 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 
 	if err := outrq.setSequence(seq); err != nil {
 		// FIXME: err was previously left unhandled as unable to determine scenarios for which this would be hit
-		fmt.Printf("error during rev push from setSequence: %v\n", err)
+		bh.Logf(base.LevelDebug, base.KeySync, "error during rev push from setSequence: %v\n", err)
 	}
 	outrq.setHistory(revisionHistory)
 

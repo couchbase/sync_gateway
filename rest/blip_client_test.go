@@ -651,7 +651,6 @@ func (btr *BlipTesterReplicator) GetMessage(serialNumber blip.MessageNumber) (ms
 func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber) (msg *blip.Message, found bool) {
 	// Quick return for found message
 	if msg, ok := btr.GetMessage(serialNumber); ok {
-		fmt.Println("WaitForMessage found message instantly")
 		return msg, ok
 	}
 
