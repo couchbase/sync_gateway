@@ -106,7 +106,7 @@ func newChannelCache(context *DatabaseContext, channelName string, validFrom uin
 		ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
 		ChannelCacheAge:       DefaultChannelCacheAge,
 	}
-	cache.logs = make(LogEntries, 0, cache.options.ChannelCacheMaxLength)
+	cache.logs = make(LogEntries, 0)
 
 	return cache
 }
