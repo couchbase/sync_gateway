@@ -159,7 +159,7 @@ func (r *DCPReceiver) OnError(err error) {
 
 func dcpKeyFilter(key []byte) bool {
 	if bytes.HasPrefix(key, []byte("_sync")) {
-		if bytes.HasPrefix(key, []byte("_sync:user:")) || bytes.HasPrefix(key, []byte("_sync:role:")) {
+		if bytes.HasPrefix(key, []byte("_sync:user:")) || bytes.HasPrefix(key, []byte("_sync:role:")) || bytes.HasPrefix(key, []byte("_sync:unused")) {
 			return true
 		} else {
 			return false
