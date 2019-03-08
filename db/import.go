@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strconv"
 
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/robertkrimen/otto"
@@ -165,7 +165,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
 		// Cancel import
-		if doc.IsSGWrite(nil) {
+		if doc.IsSGWrite(existingDoc.Body) {
 			base.Debugf(base.KeyImport, "During import, existing doc (%s) identified as SG write.  Canceling import.", base.UD(docid))
 			alreadyImportedDoc = doc
 			return nil, nil, updatedExpiry, base.ErrAlreadyImported
@@ -190,7 +190,13 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		parentRev := doc.CurrentRev
 		generation, _ := ParseRevID(parentRev)
 		generation++
-		newRev = createRevID(generation, parentRev, body)
+
+		var newRev string
+		if existingDoc.Body != nil {
+			newRev = createRevIDForImport(generation, parentRev, existingDoc.Body)
+		} else {
+			newRev = createRevID(generation, parentRev, body)
+		}
 		base.Infof(base.KeyImport, "Created new rev ID %v", newRev)
 		body["_rev"] = newRev
 		doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})

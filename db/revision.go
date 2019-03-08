@@ -150,6 +150,15 @@ func createRevID(generation int, parentRevID string, body Body) string {
 	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil))
 }
 
+// CreateRevIDForImport assumes docs being imported are already canonically encoded, and have special properties removed
+func createRevIDForImport(generation int, parentRevID string, body []byte) string {
+	digester := md5.New()
+	digester.Write([]byte{byte(len(parentRevID))})
+	digester.Write([]byte(parentRevID))
+	digester.Write(body)
+	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil))
+}
+
 // Returns the generation number (numeric prefix) of a revision ID.
 func genOfRevID(revid string) int {
 	if revid == "" {
