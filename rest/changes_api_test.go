@@ -33,19 +33,17 @@ type indexTester struct {
 	_indexBucket base.Bucket
 }
 
-func initRestTester(sequenceType db.SequenceType, syncFn string, testing testing.TB) indexTester {
+func initRestTester(sequenceType db.SequenceType, syncFn string) indexTester {
 	if sequenceType == db.ClockSequenceType {
-		return initIndexTester(true, syncFn, testing)
+		return initIndexTester(true, syncFn)
 	} else {
-		return initIndexTester(false, syncFn, testing)
+		return initIndexTester(false, syncFn)
 	}
 }
 
-func initIndexTester(useBucketIndex bool, syncFn string, tester testing.TB) indexTester {
+func initIndexTester(useBucketIndex bool, syncFn string) indexTester {
 
-	var rt = NewRestTester(tester, nil)
-
-	it := indexTester{RestTester: *rt}
+	it := indexTester{}
 	it.SyncFn = syncFn
 
 	it.RestTesterServerContext = NewServerContext(&ServerConfig{
@@ -129,7 +127,7 @@ func TestReproduce2383(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -206,8 +204,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	// base.LogKeys["Changes"] = true
 	// base.LogKeys["Cache"] = true
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -276,7 +273,7 @@ func TestPostChangesInteger(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 
 	postChanges(t, it)
@@ -322,7 +319,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel)}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel)}`)
 	defer it.Close()
 
 	// Create user:
@@ -381,14 +378,14 @@ func TestPostChangesSinceInteger(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 
 	postChangesSince(t, it)
 }
 
 func TestPostChangesWithQueryString(t *testing.T) {
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 
 	// Put several documents
@@ -483,7 +480,7 @@ func TestPostChangesChannelFilterInteger(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 
 	postChangesChannelFilter(t, it)
@@ -550,7 +547,7 @@ func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	postChangesAdminChannelGrant(t, it)
 }
@@ -655,8 +652,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 		},
 		NumIndexReplicas: &numIndexReplicas,
 	}
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	defer rt.Close()
 
 	testDb := rt.ServerContext().Database("db")
@@ -744,8 +740,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 		},
 		NumIndexReplicas: &numIndexReplicas,
 	}
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	defer rt.Close()
 
 	testDb := rt.ServerContext().Database("db")
@@ -876,8 +871,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 		},
 		NumIndexReplicas: &numIndexReplicas,
 	}
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	defer rt.Close()
 
 	testDb := rt.ServerContext().Database("db")
@@ -1005,8 +999,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 		},
 		NumIndexReplicas: &numIndexReplicas,
 	}
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	defer rt.Close()
 
 	testDb := rt.ServerContext().Database("db")
@@ -1121,10 +1114,9 @@ func TestUnusedSequences(t *testing.T) {
 
 func _testConcurrentDelete(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
-	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	// Create doc
@@ -1160,10 +1152,9 @@ func _testConcurrentDelete(t *testing.T) {
 
 func _testConcurrentPutAsDelete(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
-	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	// Create doc
@@ -1198,10 +1189,9 @@ func _testConcurrentPutAsDelete(t *testing.T) {
 
 func _testConcurrentUpdate(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
-	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	// Create doc
@@ -1236,10 +1226,9 @@ func _testConcurrentUpdate(t *testing.T) {
 
 func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
-	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	// Create doc
@@ -1277,7 +1266,7 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 func TestChangesActiveOnlyInteger(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 	changesActiveOnly(t, it)
 }
@@ -1290,8 +1279,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
 
 	// Create user1
@@ -1487,8 +1475,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	testDB := rt.GetDatabase()
 	testDB.RevsLimit = 3
 	defer rt.Close()
@@ -1499,49 +1486,49 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 	//Create docs for each scenario
 	// Active
-	_, err := updateTestDoc(*rt, "doc_active", "", `{"type": "active", "channels":["alpha"]}`)
+	_, err := updateTestDoc(rt, "doc_active", "", `{"type": "active", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// Multi-revision
 	var revid string
-	revid, err = updateTestDoc(*rt, "doc_multi_rev", "", `{"type": "active", "channels":["alpha"], "v":1}`)
+	revid, err = updateTestDoc(rt, "doc_multi_rev", "", `{"type": "active", "channels":["alpha"], "v":1}`)
 	assert.NoError(t, err, "Error updating doc")
-	_, err = updateTestDoc(*rt, "doc_multi_rev", revid, `{"type": "active", "channels":["alpha"], "v":2}`)
+	_, err = updateTestDoc(rt, "doc_multi_rev", revid, `{"type": "active", "channels":["alpha"], "v":2}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// Tombstoned
-	revid, err = updateTestDoc(*rt, "doc_tombstone", "", `{"type": "tombstone", "channels":["alpha"]}`)
+	revid, err = updateTestDoc(rt, "doc_tombstone", "", `{"type": "tombstone", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/doc_tombstone?rev=%s", revid), "")
 	assertStatus(t, response, 200)
 
 	// Removed
-	revid, err = updateTestDoc(*rt, "doc_removed", "", `{"type": "removed", "channels":["alpha"]}`)
+	revid, err = updateTestDoc(rt, "doc_removed", "", `{"type": "removed", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
-	_, err = updateTestDoc(*rt, "doc_removed", revid, `{"type": "removed"}`)
+	_, err = updateTestDoc(rt, "doc_removed", revid, `{"type": "removed"}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// No access (no channels)
-	_, err = updateTestDoc(*rt, "doc_no_channels", "", `{"type": "no_channels", "channels":["gamma"]}`)
+	_, err = updateTestDoc(rt, "doc_no_channels", "", `{"type": "no_channels", "channels":["gamma"]}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// No access (other channels)
-	_, err = updateTestDoc(*rt, "doc_no_access", "", `{"type": "no_access", "channels":["gamma"]}`)
+	_, err = updateTestDoc(rt, "doc_no_access", "", `{"type": "no_access", "channels":["gamma"]}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// Removal, pruned from rev tree
 	var prunedRevId string
-	prunedRevId, err = updateTestDoc(*rt, "doc_pruned", "", `{"type": "pruned", "channels":["alpha"]}`)
+	prunedRevId, err = updateTestDoc(rt, "doc_pruned", "", `{"type": "pruned", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
 	// Generate more revs than revs_limit (3)
 	revid = prunedRevId
 	for i := 0; i < 5; i++ {
-		revid, err = updateTestDoc(*rt, "doc_pruned", revid, `{"type": "pruned", "channels":["gamma"]}`)
+		revid, err = updateTestDoc(rt, "doc_pruned", revid, `{"type": "pruned", "channels":["gamma"]}`)
 		assert.NoError(t, err, "Error updating doc")
 	}
 
 	// Doc w/ attachment
-	revid, err = updateTestDoc(*rt, "doc_attachment", "", `{"type": "attachments", "channels":["alpha"]}`)
+	revid, err = updateTestDoc(rt, "doc_attachment", "", `{"type": "attachments", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "text/plain"
@@ -1552,20 +1539,20 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	// Doc w/ large numbers
-	_, err = updateTestDoc(*rt, "doc_large_numbers", "", `{"type": "large_numbers", "channels":["alpha"], "largeint":1234567890, "largefloat":1234567890.1234}`)
+	_, err = updateTestDoc(rt, "doc_large_numbers", "", `{"type": "large_numbers", "channels":["alpha"], "largeint":1234567890, "largefloat":1234567890.1234}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// Conflict
-	revid, err = updateTestDoc(*rt, "doc_conflict", "", `{"type": "conflict", "channels":["alpha"]}`)
-	_, err = updateTestDoc(*rt, "doc_conflict", revid, `{"type": "conflict", "channels":["alpha"]}`)
+	revid, err = updateTestDoc(rt, "doc_conflict", "", `{"type": "conflict", "channels":["alpha"]}`)
+	_, err = updateTestDoc(rt, "doc_conflict", revid, `{"type": "conflict", "channels":["alpha"]}`)
 	newEdits_conflict := `{"type": "conflict", "channels":["alpha"],
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "19a316235cdd9d695d73765dc527d903"]}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc_conflict?new_edits=false", newEdits_conflict)
 	assertStatus(t, response, 201)
 
 	// Resolved conflict
-	revid, err = updateTestDoc(*rt, "doc_resolved_conflict", "", `{"type": "resolved_conflict", "channels":["alpha"]}`)
-	_, err = updateTestDoc(*rt, "doc_resolved_conflict", revid, `{"type": "resolved_conflict", "channels":["alpha"]}`)
+	revid, err = updateTestDoc(rt, "doc_resolved_conflict", "", `{"type": "resolved_conflict", "channels":["alpha"]}`)
+	_, err = updateTestDoc(rt, "doc_resolved_conflict", revid, `{"type": "resolved_conflict", "channels":["alpha"]}`)
 	newEdits_conflict = `{"type": "resolved_conflict", "channels":["alpha"]},
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "4e123c0497a1a6975540977ec127c06c"]}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc_resolved_conflict?new_edits=false", newEdits_conflict)
@@ -1765,8 +1752,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer rt.Close()
 
 	// Create user:
@@ -1835,8 +1821,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer rt.Close()
 
 	// Create user:
@@ -1932,8 +1917,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer rt.Close()
 
 	// Create user:
@@ -2013,8 +1997,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer rt.Close()
 
 	// Create user:
@@ -2095,8 +2078,7 @@ func TestChangesViewBackfill(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer rt.Close()
 
 	// Create user:
@@ -2164,8 +2146,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer rt.Close()
 
 	// Create user:
@@ -2242,8 +2223,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer rt.Close()
 
 	// Create user:
@@ -2342,7 +2322,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 
 	// Create user:
@@ -2499,7 +2479,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 
 	// Create user:
@@ -2692,8 +2672,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 		},
 	}
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	defer rt.Close()
 
 	///it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
@@ -2850,10 +2829,9 @@ func TestChangesIncludeConflicts(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`}
-	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	// Create conflicted document documents
@@ -2891,11 +2869,10 @@ func TestChangesLargeSequences(t *testing.T) {
 	}
 
 	initialSeq := uint64(9223372036854775807)
-	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`,
 		InitSyncSeq: initialSeq}
-	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	// Create document
@@ -2935,7 +2912,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	// Put users
@@ -2996,7 +2973,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	// Create user with access to channel ABC:

@@ -29,7 +29,7 @@ func TestDesignDocs(t *testing.T) {
 		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
 	}
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/db/_design/foo", "")
@@ -59,7 +59,7 @@ func TestDesignDocs(t *testing.T) {
 
 func TestViewQuery(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
@@ -99,7 +99,7 @@ func TestViewQuery(t *testing.T) {
 //Tests #1109, wh ere design doc contains multiple views
 func TestViewQueryMultipleViews(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := RestTester{}
 	defer rt.Close()
 
 	//Define three views
@@ -129,7 +129,7 @@ func TestViewQueryMultipleViews(t *testing.T) {
 
 func TestViewQueryUserAccess(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
@@ -182,7 +182,7 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 	// Currently fails against walrus bucket as '_sync' property will exist in doc object if it is emmitted in the map function
 	t.Skip("WARNING: TEST DISABLED")
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	//Define three views
@@ -218,8 +218,7 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 
 func TestUserViewQuery(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -286,8 +285,7 @@ func TestUserViewQuery(t *testing.T) {
 // This includes a fix for #857
 func TestAdminReduceViewQuery(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -332,8 +330,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 
 func TestAdminReduceSumQuery(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -364,8 +361,7 @@ func TestAdminReduceSumQuery(t *testing.T) {
 
 func TestAdminGroupReduceSumQuery(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -401,8 +397,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 		t.Skip("Walrus does not support the 'keys' view parameter")
 	}
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view
@@ -439,8 +434,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 		t.Skip("Walrus does not support the 'keys' view parameter")
 	}
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view
@@ -476,8 +470,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 		t.Skip("Walrus does not support the 'keys' view parameter")
 	}
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view
@@ -510,8 +503,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -542,8 +534,7 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 
 func TestPostInstallCleanup(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel)}`}
 	defer rt.Close()
 
 	bucket := rt.Bucket()

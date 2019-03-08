@@ -85,8 +85,7 @@ func TestDocumentNumbers(t *testing.T) {
      		channel(typeof doc.array[0])
   		}
 	}`
-	rtConfig := RestTesterConfig{SyncFn: syncFn}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: syncFn}
 	defer rt.Close()
 
 	for _, test := range tests {
