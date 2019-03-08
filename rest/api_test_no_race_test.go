@@ -36,7 +36,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`)
 	defer it.Close()
 
 	// Create user:
@@ -90,7 +90,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`)
 	defer it.Close()
 
 	// Create user:

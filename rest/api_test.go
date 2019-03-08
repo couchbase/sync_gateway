@@ -48,7 +48,7 @@ func init() {
 //////// AND NOW THE TESTS:
 
 func TestRoot(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	rt.NoFlush = true
 	defer rt.Close()
 
@@ -82,7 +82,7 @@ func (rt *RestTester) createDoc(t *testing.T, docid string) string {
 }
 
 func TestDocLifecycle(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	revid := rt.createDoc(t, "doc")
@@ -94,7 +94,7 @@ func TestDocLifecycle(t *testing.T) {
 
 //Validate that Etag header value is surrounded with double quotes, see issue #808
 func TestDocEtag(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"prop":true}`)
@@ -164,7 +164,7 @@ func TestDocEtag(t *testing.T) {
 
 // Add and retrieve an attachment, including a subrange
 func TestDocAttachment(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"prop":true}`)
@@ -204,7 +204,7 @@ func TestDocAttachment(t *testing.T) {
 
 // Add an attachment to a document that has been removed from the users channels
 func TestDocAttachmentOnRemovedRev(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -242,7 +242,7 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 }
 
 func TestDocumentUpdateWithNullBody(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -268,7 +268,7 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 }
 
 func TestFunkyDocIDs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	rt.createDoc(t, "AC%2FDC")
@@ -309,7 +309,7 @@ func TestFunkyDocIDs(t *testing.T) {
 }
 
 func TestFunkyDocAndAttachmentIDs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	attachmentBody := "this is the body of attachment"
@@ -414,7 +414,7 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 }
 
 func TestCORSOrigin(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	rt.NoFlush = true
 	defer rt.Close()
 
@@ -459,7 +459,7 @@ func TestCORSOrigin(t *testing.T) {
 }
 
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -482,7 +482,7 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
 // #issue 991
 func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -498,7 +498,7 @@ func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
 }
 
 func TestNoCORSOriginOnSessionPost(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -513,7 +513,7 @@ func TestNoCORSOriginOnSessionPost(t *testing.T) {
 }
 
 func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -529,7 +529,7 @@ func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
 }
 
 func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -549,7 +549,7 @@ func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
 }
 
 func TestNoCORSOriginOnSessionDelete(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -565,7 +565,7 @@ func TestNoCORSOriginOnSessionDelete(t *testing.T) {
 }
 
 func TestManualAttachment(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	doc1revId := rt.createDoc(t, "doc1")
@@ -691,7 +691,7 @@ func TestManualAttachment(t *testing.T) {
 
 // PUT attachment on non-existant docid should create empty doc
 func TestManualAttachmentNewDoc(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	// attach to new document using bogus rev (should fail)
@@ -736,7 +736,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 }
 
 func TestBulkDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}, {"_id": "_local/bulk3", "n": 3}]}`
@@ -771,7 +771,7 @@ func TestBulkDocs(t *testing.T) {
 }
 
 func TestBulkDocsIDGeneration(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	input := `{"docs": [{"n": 1}, {"_id": 123, "n": 2}]}`
@@ -791,8 +791,7 @@ func TestBulkDocsIDGeneration(t *testing.T) {
 func TestBulkDocsUnusedSequences(t *testing.T) {
 
 	//We want a sync function that will reject some docs
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt.Close()
 
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
@@ -839,8 +838,7 @@ func TestBulkDocsUnusedSequences(t *testing.T) {
 func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
-	rtConfig1 := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
-	rt1 := NewRestTester(t, &rtConfig1)
+	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt1.Close()
 
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2, "type": "invalid"}, {"_id": "bulk3", "n": 3}]}`
@@ -860,8 +858,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(3))
 
-	rtConfig2 := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
-	rt2 := NewRestTesterWithBucket(t, &rtConfig2, rt1.RestTesterBucket)
+	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
@@ -926,8 +923,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
-	rtConfig1 := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
-	rt1 := NewRestTester(t, &rtConfig1)
+	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt1.Close()
 
 	//add new docs, doc2 will be rejected by sync function
@@ -951,8 +947,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(3))
 
-	rtConfig2 := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
-	rt2 := NewRestTesterWithBucket(t, &rtConfig2, rt1.RestTesterBucket)
+	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
@@ -1024,8 +1019,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 
 	//We want a sync function that will reject some docs, create two to simulate two SG instances
-	rtConfig1 := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
-	rt1 := NewRestTester(t, &rtConfig1)
+	rt1 := RestTester{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt1.Close()
 
 	//add new docs, doc2 will be rejected by sync function
@@ -1049,8 +1043,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(3))
 
-	rtConfig2 := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
-	rt2 := NewRestTesterWithBucket(t, &rtConfig2, rt1.RestTesterBucket)
+	rt2 := RestTester{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
 	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
@@ -1130,7 +1123,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 }
 
 func TestBulkDocsEmptyDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	input := `{}`
@@ -1139,7 +1132,7 @@ func TestBulkDocsEmptyDocs(t *testing.T) {
 }
 
 func TestBulkDocsMalformedDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	input := `{"docs":["A","B"]}`
@@ -1154,7 +1147,7 @@ func TestBulkDocsMalformedDocs(t *testing.T) {
 }
 
 func TestBulkGetEmptyDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	input := `{}`
@@ -1166,8 +1159,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccess)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -1199,7 +1191,7 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess)()
 
-	rtConfig := RestTesterConfig{SyncFn: `
+	rt := RestTester{SyncFn: `
 		function(doc) {
 			if(doc.type == "roleaccess") {
 				channel(doc.channel);
@@ -1208,7 +1200,6 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 				requireAccess(doc.mustHaveAccess)
 			}
 		}`}
-	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	// Create a role with no channels assigned to it
@@ -1249,7 +1240,7 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 }
 
 func TestBulkDocsNoEdits(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	input := `{"new_edits":false, "docs": [
@@ -1285,7 +1276,7 @@ type RevDiffResponse map[string][]string
 type RevsDiffResponse map[string]RevDiffResponse
 
 func TestRevsDiff(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	// Create some docs:
@@ -1316,7 +1307,7 @@ func TestRevsDiff(t *testing.T) {
 }
 
 func TestOpenRevs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	// Create some docs:
@@ -1342,7 +1333,7 @@ func TestOpenRevs(t *testing.T) {
 // Covers feature implemented in issue #2992
 func TestBulkGetPerDocRevsLimit(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	// Map of doc IDs to latest rev IDs
@@ -1459,7 +1450,7 @@ readerLoop:
 }
 
 func TestLocalDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/db/_local/loc1", "")
@@ -1512,7 +1503,7 @@ func TestResponseEncoding(t *testing.T) {
 	}
 	docJSON := fmt.Sprintf(`{"long": %q}`, str)
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	response := rt.SendRequest("PUT", "/db/_local/loc1", docJSON)
@@ -1530,7 +1521,7 @@ func TestResponseEncoding(t *testing.T) {
 }
 
 func TestLogin(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
@@ -1560,7 +1551,7 @@ func TestLogin(t *testing.T) {
 
 func TestCustomCookieName(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	// In order to test auth, you must disable admin party, which is set by default (should this really be set by default!?)
@@ -1669,7 +1660,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 // Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
 	//restTester := initRestTester(db.IntSequenceType, `function(doc) {channel(doc.channels);}`)
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 	type allDocsRow struct {
 		ID    string `json:"id"`
@@ -1889,7 +1880,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 // Test _all_docs API call when using vector sequences (accel), under different security scenarios
 func TestVbSeqAllDocsAccessControl(t *testing.T) {
 
-	rt := initRestTester(db.ClockSequenceType, `function(doc) {channel(doc.channels);}`, t)
+	rt := initRestTester(db.ClockSequenceType, `function(doc) {channel(doc.channels);}`)
 	defer rt.Close()
 
 	type allDocsRow struct {
@@ -2114,8 +2105,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD|base.KeyAccel)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -2279,7 +2269,7 @@ func TestAccessOnTombstone(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD|base.KeyAccel)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
+	rt := RestTester{SyncFn: `function(doc,oldDoc) {
 			 if (doc.owner) {
 			 	access(doc.owner, doc.channel);
 			 }
@@ -2288,7 +2278,6 @@ func TestAccessOnTombstone(t *testing.T) {
 			 }
 			 channel(doc.channel)
 		 }`}
-	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -2354,8 +2343,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -2444,8 +2432,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -2490,8 +2477,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -2639,8 +2625,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 		Rows      []allDocsRow `json:"rows"`
 	}
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channels)}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -2714,7 +2699,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 //Test for regression of issue #447
 func TestAttachmentsNoCrossTalk(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	doc1revId := rt.createDoc(t, "doc1")
@@ -2765,7 +2750,7 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 }
 
 func TestAddingAttachment(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 	defer func() { walrus.MaxDocSize = 0 }()
 
@@ -2825,7 +2810,7 @@ func TestAddingAttachment(t *testing.T) {
 
 func TestOldDocHandling(t *testing.T) {
 
-	rtConfig := RestTesterConfig{SyncFn: `
+	rt := RestTester{SyncFn: `
 		function(doc,oldDoc){
 			log("doc id:"+doc._id);
 			if(oldDoc){
@@ -2838,7 +2823,6 @@ func TestOldDocHandling(t *testing.T) {
 				}
 			}
 		}`}
-	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -2888,7 +2872,7 @@ func TestStarAccess(t *testing.T) {
 	}
 
 	// Create some docs:
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
@@ -3081,7 +3065,7 @@ func TestStarAccess(t *testing.T) {
 
 // Test for issue #562
 func TestCreateTarget(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	//Attempt to create existing target DB on public API
@@ -3095,7 +3079,7 @@ func TestCreateTarget(t *testing.T) {
 // Test for issue 758 - basic auth with stale session cookie
 func TestBasicAuthWithSessionCookie(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	// Create two users
@@ -3210,7 +3194,7 @@ func TestEventConfigValidationInvalid(t *testing.T) {
 // NOTE: to repro, you must run with -race flag
 func TestBulkGetRevPruning(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	var body db.Body
@@ -3276,7 +3260,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 		t.Skip("This test only works with XATTRS disabled")
 	}
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	var body db.Body
@@ -3468,7 +3452,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 // TestDocExpiry validates the value of the expiry as set in the document.  It doesn't validate actual expiration (not supported
 // in walrus).
 func TestDocExpiry(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	var body db.Body
@@ -3551,8 +3535,7 @@ func TestDocExpiry(t *testing.T) {
 
 // Validate that sync function based expiry writes the _exp property to SG metadata in addition to setting CBS expiry
 func TestDocSyncFunctionExpiry(t *testing.T) {
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {expiry(doc.expiry)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {expiry(doc.expiry)}`}
 	defer rt.Close()
 
 	var body db.Body
@@ -3641,8 +3624,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq db.SequenceID
 	}
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel);}`}
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -3748,7 +3730,7 @@ func TestUnsupportedConfig(t *testing.T) {
 }
 
 func TestConflictWithInvalidAttachment(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	//Create Doc
@@ -3806,7 +3788,7 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 }
 
 func TestConflictingBranchAttachments(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	defer rt.Close()
 
 	//Create a document
@@ -3880,11 +3862,9 @@ func TestConflictingBranchAttachments(t *testing.T) {
 }
 
 func TestNumAccessErrors(t *testing.T) {
-	rtConfig := RestTesterConfig{
+	rt := RestTester{
 		SyncFn: `function(doc, oldDoc){if (doc.channels.indexOf("foo") > -1){requireRole("foobar")}}`,
 	}
-
-	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -3942,8 +3922,7 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 
 func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 
-	qrtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-	qrt := NewRestTester(b, &qrtConfig)
+	qrt := RestTester{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	defer qrt.Close()
 
 	b.ResetTimer()
@@ -3960,7 +3939,7 @@ func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 
 	defer base.SetUpTestLogging(base.LevelWarn, base.KeyAll)()
 	//Create test documents
-	rt := NewRestTester(b, nil)
+	var rt RestTester
 	defer rt.Close()
 	keys := make([]string, 5000)
 	for i := 0; i < 5000; i++ {

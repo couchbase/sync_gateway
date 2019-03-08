@@ -17,11 +17,10 @@ import (
 	"net/http"
 	"testing"
 
-	"sync/atomic"
-
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"sync/atomic"
 )
 
 // Tests the ConfigServer feature.
@@ -34,7 +33,7 @@ func TestConfigServer(t *testing.T) {
 			"server": "walrus:/fake"
 		}`))
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	rt.NoFlush = true
 	defer rt.Close()
 
@@ -86,7 +85,7 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 	mockClient := NewMockClient()
 	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil, responseBody))
 
-	rt := NewRestTester(t, nil)
+	var rt RestTester
 	rt.NoFlush = true
 	defer rt.Close()
 
