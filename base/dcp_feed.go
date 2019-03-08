@@ -102,7 +102,7 @@ type DCPReceiver struct {
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
 	backfill               backfillStatus                 // Backfill state and stats
 	vbEventChannels        []chan sgbucket.FeedEvent      // Per-vbucket channel of DCP events
-	vbDoneChannels         []chan struct{}                // Vb done channels - ensures only one event is processed at a time for vbucket, but vb events can be served by any worker
+	vbBusyChannels         []chan struct{}                // Vb done channels - ensures only one event is processed at a time for vbucket, but vb events can be served by any worker
 	workerInputChan        chan sgbucket.FeedEvent        // Event channel for communication between vb goroutines and feed workers
 	terminator             chan bool                      // Terminator to stop async workers
 }
@@ -133,7 +133,7 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 		terminator:             terminator,
 		workerInputChan:        make(chan sgbucket.FeedEvent),
 		vbEventChannels:        make([]chan sgbucket.FeedEvent, maxVbNo),
-		vbDoneChannels:         make([]chan struct{}, maxVbNo),
+		vbBusyChannels:         make([]chan struct{}, maxVbNo),
 	}
 	// TODO: DCPReceiver could be potentially be enhanced to support concurrent processing of DCP operations for a single vbucket by replacing
 	//  done channel with post-processing event reordering (similar to what's done to maintain ordering in sgaccel), but this may require refactoring of cache.processEntry
@@ -142,8 +142,8 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 	// Initialize vb channels, start vbucket goroutines
 	for i := 0; i < int(maxVbNo); i++ {
 		r.vbEventChannels[i] = make(chan sgbucket.FeedEvent)
-		r.vbDoneChannels[i] = make(chan struct{})
-		go r.runVbucketWorker(r.vbEventChannels[i], r.vbDoneChannels[i], r.workerInputChan)
+		r.vbBusyChannels[i] = make(chan struct{}, 1)
+		go r.runVbucketWorker(r.vbEventChannels[i], r.vbBusyChannels[i], r.workerInputChan)
 	}
 
 	// Start feed workers
@@ -194,7 +194,7 @@ func (r *DCPReceiver) runEventWorker() {
 				r.workerSetMetaData(event)
 			}
 			// Read from vbucket 'done' channel to unblock next event for this vbucket
-			<-r.vbDoneChannels[event.VbNo]
+			<-r.vbBusyChannels[event.VbNo]
 		case <-r.terminator:
 			return
 		}

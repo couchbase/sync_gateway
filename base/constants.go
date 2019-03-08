@@ -85,7 +85,7 @@ const (
 	DefaultHttpIdleConnTimeoutMilliseconds = "90000"
 
 	// Default number of DCP feed workers
-	DefaultNumFeedWorkers = 8
+	DefaultNumFeedWorkers = 16
 )
 
 func UnitTestUrl() string {
