@@ -204,7 +204,7 @@ def extract_element_from_logging_config(element, config):
             return
 
 
-def make_collect_logs_tasks(zip_dir, sg_url):
+def make_collect_logs_tasks(zip_dir, sg_url, salt):
 
     sg_log_files = {
         "sg_error.log": "sg_error.log",
@@ -329,7 +329,7 @@ def make_collect_logs_tasks(zip_dir, sg_url):
                 # As long as a task that monitors this log file path has not already been added, add a new task
                 if log_file_item_path not in sg_log_file_paths:
                     print('Capturing compressed rotated log file {0}'.format(log_file_item_path))
-                    task = add_gzip_file_task(sourcefile_path=log_file_item_path)
+                    task = add_gzip_file_task(sourcefile_path=log_file_item_path, salt=salt)
                     sg_tasks.append(task)
 
                 # Track which log file paths have been added so far
@@ -513,7 +513,7 @@ def make_download_expvars_task(sg_url):
     )
 
 
-def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path, should_redact):
+def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path, should_redact, salt):
 
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(sg_url)
@@ -526,7 +526,7 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
         sg_binary_path = sync_gateway_executable_path
 
     # Collect logs
-    collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url)
+    collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url, salt)
 
     py_expvar_task = make_download_expvars_task(sg_url)
 
@@ -687,7 +687,7 @@ def main():
     sg_binary_path = discover_sg_binary_path(options, sg_url)
 
     # Run SG specific tasks
-    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable, should_redact):
+    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable, should_redact, options.salt_value):
         runner.run(task)
 
     if sg_binary_path is not None and sg_binary_path != "" and os.path.exists(sg_binary_path):
@@ -707,13 +707,8 @@ def main():
 
     # Build redacted zip file
     if options.redact_level != "none":
-        # We don't want to attempt to redact binary/pprof files, as this could result in corruption
-        blacklist = [
-            'pprof_profile.pb.gz', 'pprof_heap.pb.gz', 'pprof_goroutine.pb.gz',
-            'pprof_block.pb.gz', 'pprof_mutex.pb.gz',
-        ]
         log("Redacting log files to level: %s" % options.redact_level)
-        runner.redact_and_zip(redact_zip_file, 'sgcollect_info', options.salt_value, platform.node(), blacklist)
+        runner.redact_and_zip(redact_zip_file, 'sgcollect_info', options.salt_value, platform.node())
 
     # Build the actual zip file
     runner.zip(zip_filename, 'sgcollect_info', platform.node())
