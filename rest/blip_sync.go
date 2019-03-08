@@ -751,10 +751,13 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 	}
 	bh.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
 
+	var timeSent time.Time
+
 	if len(attDigests) > 0 {
+		timeSent = time.Now()
+		sender.Send(outrq.Message)
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bh.addAllowedAttachments(attDigests)
-		sender.Send(outrq.Message)
 		go func() {
 			defer func() {
 				if panicked := recover(); panicked != nil {
@@ -766,11 +769,13 @@ func (bh *blipHandler) sendRevisionWithProperties(body db.Body, sender *blip.Sen
 			outrq.Response() // blocks till reply is received
 		}()
 	} else {
-		outrq.SetNoReply(true)
+		timeSent = time.Now()
 		sender.Send(outrq.Message)
 	}
 
 	if response := outrq.Response(); response != nil {
+		bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevRespCount, 1)
+		bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevRespTime, time.Since(timeSent).Nanoseconds())
 		if response.Type() == blip.ErrorType {
 			errorBody, _ := response.Body()
 			bh.Logf(base.LevelWarn, base.KeyAll, "Client returned error in rev response for doc %q / %q: %s", docID, revID, errorBody)

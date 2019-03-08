@@ -138,6 +138,8 @@ const (
 	StatKeyRevSendCount                     = "rev_send_count"
 	StatKeyRevSendLatency                   = "rev_send_latency"
 	StatKeyRevProcessingTime                = "rev_processing_time"
+	StatKeyRevRespCount                     = "rev_resp_count" // Number of non-nil responses we received to a rev request
+	StatKeyRevRespTime                      = "rev_resp_time"  // Total time in nanoseconds it took for rev requests to receive a non-nil response
 	StatKeyMaxPending                       = "max_pending"
 	StatKeyAttachmentPullCount              = "attachment_pull_count"
 	StatKeyAttachmentPullBytes              = "attachment_pull_bytes"
