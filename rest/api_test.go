@@ -860,8 +860,8 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(3))
 
-	rtConfig2 := RestTesterConfig{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
-	rt2 := NewRestTester(t, &rtConfig2)
+	rtConfig2 := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	rt2 := NewRestTesterWithBucket(t, &rtConfig2, rt1.RestTesterBucket)
 	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
@@ -951,8 +951,8 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(3))
 
-	rtConfig2 := RestTesterConfig{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
-	rt2 := NewRestTester(t, &rtConfig2)
+	rtConfig2 := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	rt2 := NewRestTesterWithBucket(t, &rtConfig2, rt1.RestTesterBucket)
 	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{
@@ -1049,8 +1049,8 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	assert.NoError(t, err, "LastSequence error")
 	goassert.Equals(t, lastSequence, uint64(3))
 
-	rtConfig2 := RestTesterConfig{RestTesterBucket: rt1.RestTesterBucket, SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
-	rt2 := NewRestTester(t, &rtConfig2)
+	rtConfig2 := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "invalid") {throw("Rejecting invalid doc")}}`}
+	rt2 := NewRestTesterWithBucket(t, &rtConfig2, rt1.RestTesterBucket)
 	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&ServerConfig{

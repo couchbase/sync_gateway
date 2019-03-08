@@ -33,34 +33,48 @@ import (
 var gBucketCounter = 0
 
 type RestTesterConfig struct {
-	RestTesterBucket        base.Bucket
-	RestTesterServerContext *ServerContext
-	noAdminParty            bool      // Unless this is true, Admin Party is in full effect
-	distributedIndex        bool      // Test with walrus-based index bucket
-	SyncFn                  string    // put the sync() function source in here (optional)
-	DatabaseConfig          *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
-	AdminHandler            http.Handler
-	PublicHandler           http.Handler
-	EnableNoConflictsMode   bool   // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
-	NoFlush                 bool   // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
-	InitSyncSeq             uint64 // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	noAdminParty          bool      // Unless this is true, Admin Party is in full effect
+	SyncFn                string    // put the sync() function source in here (optional)
+	DatabaseConfig        *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	NoFlush               bool      // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
+	InitSyncSeq           uint64    // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	EnableNoConflictsMode bool      // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	distributedIndex      bool      // Test with walrus-based index bucket
 }
 
 type RestTester struct {
 	*RestTesterConfig
-	Testing testing.TB
+	Testing                 testing.TB
+	RestTesterBucket        base.Bucket
+	RestTesterServerContext *ServerContext
+	AdminHandler            http.Handler
+	PublicHandler           http.Handler
 }
 
-func NewRestTester(Tester testing.TB, RestConfig *RestTesterConfig) *RestTester {
+func NewRestTester(tester testing.TB, restConfig *RestTesterConfig) *RestTester {
 	var rt RestTester
-	rt.Testing = Tester
-	if RestConfig != nil {
-		rt.RestTesterConfig = RestConfig
+	if tester == nil {
+		panic("tester parameter cannot be nil")
+	}
+	rt.Testing = tester
+	if restConfig != nil {
+		rt.RestTesterConfig = restConfig
 	} else {
 		rt.RestTesterConfig = &RestTesterConfig{}
 	}
 	return &rt
 }
+
+func NewRestTesterWithBucket(tester testing.TB, restConfig *RestTesterConfig, bucket base.Bucket) *RestTester {
+	rt := NewRestTester(tester, restConfig)
+	if bucket == nil {
+		panic("nil bucket supplied. Use NewRestTester if you aren't supplying a bucket")
+	}
+	rt.RestTesterBucket = bucket
+
+	return rt
+}
+
 func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.Testing == nil {
@@ -82,14 +96,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 				log.Printf("Initializing %s to %d", db.SyncSeqKey, rt.InitSyncSeq)
 				_, incrErr := tempBucket.Incr(db.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 				if incrErr != nil {
-					rt.Testing.Error(fmt.Sprintf("Error initializing %s in test bucket: %v", db.SyncSeqKey, incrErr))
+					rt.Testing.Fatalf("Error initializing %s in test bucket: %v", db.SyncSeqKey, incrErr)
 					return nil
 				}
 			}
 			tempBucket.Close()
 		} else {
 			if rt.InitSyncSeq > 0 {
-				rt.Testing.Error("RestTester doesn't support NoFlush and InitSyncSeq in same test")
+				rt.Testing.Fatal("RestTester doesn't support NoFlush and InitSyncSeq in same test")
 				return nil
 			}
 		}
@@ -151,7 +165,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 		if err != nil {
-			rt.Testing.Error(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
+			rt.Testing.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 			return nil
 		}
 		rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
@@ -164,7 +178,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 					base.Infof(base.KeyAll, "WaitForIndexEmpty returned an error: %v.  Dropping indexes and retrying", err)
 					// if WaitForIndexEmpty returns error, drop the indexes and retry
 					if err := base.DropAllBucketIndexes(asGoCbBucket); err != nil {
-						rt.Testing.Error(fmt.Sprintf("Failed to drop bucket indexes: %v", err))
+						rt.Testing.Fatalf("Failed to drop bucket indexes: %v", err)
 						return nil
 					}
 
@@ -180,7 +194,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		return rt.RestTesterBucket
 	}
 
-	rt.Testing.Error(fmt.Sprintf("Failed to create a RestTesterBucket after multiple attempts"))
+	rt.Testing.Fatalf("Failed to create a RestTesterBucket after multiple attempts")
 	return nil
 }
 
@@ -207,7 +221,7 @@ func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
 	})
 
 	if err != nil {
-		rt.Testing.Error(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
+		rt.Testing.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 	}
 	rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
@@ -675,8 +689,7 @@ func (bt BlipTester) Close() {
 
 // Create a BlipTester using the default spec
 func NewBlipTester(tester testing.TB) (*BlipTester, error) {
-	var rt = NewRestTester(tester, nil)
-	defaultSpec := BlipTesterSpec{restTester: rt}
+	defaultSpec := BlipTesterSpec{}
 	return NewBlipTesterFromSpec(tester, defaultSpec)
 }
 
