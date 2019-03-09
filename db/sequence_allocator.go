@@ -24,11 +24,6 @@ const (
 	UnusedSequenceRangeKeyPrefix = "_sync:unusedSeqs:" // Prefix for range of unused sequence marker documents
 	UnusedSequenceTTL            = 10 * 60             // 10 minute expiry for unused sequence docs
 
-	// Sequence batching control
-	// Target maximum frequency of incr operations.  Requests at higher than this frequency trigger an increase
-	// in batch size
-	maxSequenceIncrFrequency = 1000 * time.Millisecond
-
 	// Maximum time to wait after a reserve before releasing sequences
 	releaseSequenceWait = 1500 * time.Millisecond
 
@@ -41,6 +36,11 @@ const (
 	// Default batch size
 	defaultBatchSize = 1
 )
+
+// Sequence batching control
+// Target maximum frequency of incr operations.  Requests at higher than this frequency trigger an increase
+// in batch size.  Defined as var to simplify test usage
+var MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
 type sequenceAllocator struct {
 	bucket                  base.Bucket    // Bucket whose counter to use
@@ -110,8 +110,12 @@ func (s *sequenceAllocator) releaseUnusedSequences() {
 }
 
 func (s *sequenceAllocator) lastSequence() (uint64, error) {
-	if s.last > 0 {
-		return s.last, nil
+	s.mutex.Lock()
+	lastSeq := s.last
+	s.mutex.Unlock()
+
+	if lastSeq > 0 {
+		return lastSeq, nil
 	}
 	s.dbStats.StatsDatabase().Add(base.StatKeySequenceGetCount, 1)
 	last, err := s.incrWithRetry("_sync:seq", 0)
@@ -138,7 +142,7 @@ func (s *sequenceAllocator) nextSequence() (sequence uint64, err error) {
 func (s *sequenceAllocator) _reserveSequenceRange() error {
 
 	// If time since last reserve is smaller than max frequency, increase batch size
-	if time.Since(s.lastSequenceReserveTime) < maxSequenceIncrFrequency {
+	if time.Since(s.lastSequenceReserveTime) < MaxSequenceIncrFrequency {
 		s.sequenceBatchSize = uint64(s.sequenceBatchSize * sequenceBatchMultiplier)
 		if s.sequenceBatchSize > maxBatchSize {
 			s.sequenceBatchSize = maxBatchSize

@@ -85,6 +85,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		return rt.RestTesterBucket
 	}
 
+	// Limit sequence batching for test usage, as it makes sequence-based tests non-deterministic
+	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
+
 	// Put this in a loop in case certain operations fail, like waiting for GSI indexes to be empty.
 	// Limit number of attempts to 2.
 	for i := 0; i < 2; i++ {
