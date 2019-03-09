@@ -753,7 +753,7 @@ func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64) (err
 	return
 }
 
-// Wait until the change-cache has caught up with the latest writes to the database.
+// TEST ONLY.  Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForPendingChanges() (err error) {
 	lastSequence, err := context.LastSequence()
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", lastSequence)

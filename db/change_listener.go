@@ -106,7 +106,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 				listener.OnDocChanged(event)
 			}
 			listener.Notify(base.SetOf(key))
-		} else if strings.HasPrefix(key, UnusedSequenceKeyPrefix) { // SG unused sequence marker docs
+		} else if strings.HasPrefix(key, UnusedSequenceKeyPrefix) || strings.HasPrefix(key, UnusedSequenceRangeKeyPrefix) { // SG unused sequence marker docs
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}

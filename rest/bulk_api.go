@@ -491,8 +491,6 @@ func (h *handler) handleBulkDocs() error {
 		}
 	}
 
-	h.db.ReserveSequences(uint64(len(docs)))
-
 	result := make([]db.Body, 0, len(docs))
 	for _, item := range docs {
 		doc := item.(map[string]interface{})

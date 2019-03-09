@@ -19,24 +19,92 @@ import (
 )
 
 const (
-	kMaxIncrRetries         = 3                  // Max retries for incr operations
-	UnusedSequenceKeyPrefix = "_sync:unusedSeq:" // Prefix for unused sequence documents
-	UnusedSequenceTTL       = 10 * 60            // 10 minute expiry for unused sequence docs
+	kMaxIncrRetries              = 3                   // Max retries for incr operations
+	UnusedSequenceKeyPrefix      = "_sync:unusedSeq:"  // Prefix for single unused sequence marker documents
+	UnusedSequenceRangeKeyPrefix = "_sync:unusedSeqs:" // Prefix for range of unused sequence marker documents
+	UnusedSequenceTTL            = 10 * 60             // 10 minute expiry for unused sequence docs
+
+	// Sequence batching control
+	// Target maximum frequency of incr operations.  Requests at higher than this frequency trigger an increase
+	// in batch size
+	maxSequenceIncrFrequency = 1000 * time.Millisecond
+
+	// Maximum time to wait after a reserve before releasing sequences
+	releaseSequenceWait = 1500 * time.Millisecond
+
+	// Maximum batch size
+	maxBatchSize = 100000
+
+	// Factor by which to grow the sequence batch size
+	sequenceBatchMultiplier = 2
+
+	// Default batch size
+	defaultBatchSize = 1
 )
 
 type sequenceAllocator struct {
-	bucket base.Bucket // Bucket whose counter to use
-	mutex  sync.Mutex  // Makes this object thread-safe
-	last   uint64      // Last sequence # assigned
-	max    uint64      // Max sequence # reserved
+	bucket                  base.Bucket   // Bucket whose counter to use
+	mutex                   sync.Mutex    // Makes this object thread-safe
+	last                    uint64        // Last sequence # assigned
+	max                     uint64        // Max sequence # reserved
+	terminator              chan struct{} // Terminator for releaseUnusedSequences goroutine
+	reserveNotify           chan struct{} // Channel for reserve notifications
+	sequenceBatchSize       uint64        // Current sequence allocation batch size
+	lastSequenceReserveTime time.Time     // Time of most recent sequence reserve
 }
 
 func newSequenceAllocator(bucket base.Bucket) (*sequenceAllocator, error) {
 	s := &sequenceAllocator{bucket: bucket}
-	return s, s.reserveSequences(0) // just reads latest sequence from bucket
+	s.terminator = make(chan struct{})
+	s.sequenceBatchSize = defaultBatchSize
+	s.reserveNotify = make(chan struct{}, 1)
+	go s.releaseSequenceMonitor()
+	_, err := s.lastSequence() // just reads latest sequence from bucket
+	return s, err
+}
+
+func (s *sequenceAllocator) Stop() {
+	close(s.terminator)
+}
+
+// Release sequence monitor releases allocated sequences that aren't used within 'releaseSequenceTimeout'.
+func (s *sequenceAllocator) releaseSequenceMonitor() {
+	for {
+		select {
+		case <-s.reserveNotify:
+			select {
+			case <-s.reserveNotify:
+			case <-time.After(releaseSequenceWait):
+				s.releaseUnusedSequences()
+			}
+		case <-s.terminator:
+			return
+		}
+	}
+}
+
+func (s *sequenceAllocator) releaseUnusedSequences() {
+	s.mutex.Lock()
+	if s.last > s.max {
+		s.releaseSequenceRange(s.last, s.max)
+	}
+	// Reduce batch size for next incr by the unused amount
+	unusedAmount := s.max - s.last
+
+	if unusedAmount >= s.sequenceBatchSize {
+		s.sequenceBatchSize = defaultBatchSize
+	} else {
+		s.sequenceBatchSize = s.sequenceBatchSize - unusedAmount
+	}
+
+	s.last = s.max
+	s.mutex.Unlock()
 }
 
 func (s *sequenceAllocator) lastSequence() (uint64, error) {
+	if s.last > 0 {
+		return s.last, nil
+	}
 	dbExpvars.Add("sequence_gets", 1)
 	last, err := s.incrWithRetry("_sync:seq", 0)
 	if err != nil {
@@ -45,38 +113,40 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 	return last, err
 }
 
-func (s *sequenceAllocator) nextSequence() (uint64, error) {
+func (s *sequenceAllocator) nextSequence() (sequence uint64, err error) {
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
 	if s.last >= s.max {
-		if err := s._reserveSequences(1); err != nil {
+		if err := s._reserveSequenceRange(); err != nil {
+			s.mutex.Unlock()
 			return 0, err
 		}
 	}
 	s.last++
-	return s.last, nil
+	sequence = s.last
+	s.mutex.Unlock()
+	return sequence, nil
 }
 
-func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
-	if s.last < s.max {
-		return nil // Already have some sequences left; don't be greedy and waste them
-		//OPT: Could remember multiple discontiguous ranges of free sequences
+func (s *sequenceAllocator) _reserveSequenceRange() error {
+
+	// If time since last reserve is smaller than max frequency, increase batch size
+	if time.Since(s.lastSequenceReserveTime) < maxSequenceIncrFrequency {
+		s.sequenceBatchSize = uint64(s.sequenceBatchSize * sequenceBatchMultiplier)
+		if s.sequenceBatchSize > maxBatchSize {
+			s.sequenceBatchSize = maxBatchSize
+		}
+		base.Debugf(base.KeyChanges, "Increased sequence batch to %d", s.sequenceBatchSize)
 	}
-	dbExpvars.Add("sequence_reserves", 1)
-	max, err := s.incrWithRetry("_sync:seq", numToReserve)
+	max, err := s.incrWithRetry("_sync:seq", s.sequenceBatchSize)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
+		base.Warnf(base.KeyAll, "Error from Incr in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
 		return err
 	}
 	s.max = max
-	s.last = max - numToReserve
+	s.last = max - s.sequenceBatchSize
+	s.lastSequenceReserveTime = time.Now()
+	s.reserveNotify <- struct{}{}
 	return nil
-}
-
-func (s *sequenceAllocator) reserveSequences(numToReserve uint64) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s._reserveSequences(numToReserve)
 }
 
 func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint64, error) {
@@ -119,5 +189,15 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 	binary.LittleEndian.PutUint64(body, sequence)
 	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
 	base.Debugf(base.KeyCRUD, "Released unused sequence #%d", sequence)
+	return err
+}
+
+func (s *sequenceAllocator) releaseSequenceRange(fromSequence, toSequence uint64) error {
+	key := fmt.Sprintf("%s%d:%d", UnusedSequenceRangeKeyPrefix, fromSequence, toSequence)
+	body := make([]byte, 16)
+	binary.LittleEndian.PutUint64(body[:8], fromSequence)
+	binary.LittleEndian.PutUint64(body[8:16], toSequence)
+	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
+	base.Debugf(base.KeyCRUD, "Released unused sequences #%d-#%d", fromSequence, toSequence)
 	return err
 }
