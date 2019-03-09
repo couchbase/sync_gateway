@@ -522,6 +522,7 @@ func (context *DatabaseContext) Close() {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
+	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
 	context.Shadower.Stop()
@@ -1203,8 +1204,4 @@ func (context *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
 
 func (context *DatabaseContext) LastSequence() (uint64, error) {
 	return context.sequences.lastSequence()
-}
-
-func (context *DatabaseContext) ReserveSequences(numToReserve uint64) error {
-	return context.sequences.reserveSequences(numToReserve)
 }

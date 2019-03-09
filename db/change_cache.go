@@ -381,6 +381,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		c.processUnusedSequence(docID, event.TimeReceived)
 		return
 	}
+	if strings.HasPrefix(docID, UnusedSequenceRangeKeyPrefix) {
+		c.processUnusedSequenceRange(docID)
+		return
+	}
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
 	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
@@ -583,6 +587,11 @@ func (c *changeCache) processUnusedSequence(docID string, timeReceived time.Time
 		base.Warnf(base.KeyAll, "Unable to identify sequence number for unused sequence notification with key: %s, error: %v", base.UD(docID), err)
 		return
 	}
+	c.releaseUnusedSequence(sequence)
+
+}
+
+func (c *changeCache) releaseUnusedSequence(sequence uint64) {
 	change := &LogEntry{
 		Sequence:     sequence,
 		TimeReceived: timeReceived,
@@ -595,7 +604,31 @@ func (c *changeCache) processUnusedSequence(docID string, timeReceived time.Time
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(changedChannels)
 	}
+}
 
+// Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
+func (c *changeCache) processUnusedSequenceRange(docID string) {
+	// _sync:unusedSequences:fromSeq:toSeq
+	sequences := strings.Split(docID, ":")
+	if len(sequences) != 4 {
+		return
+	}
+
+	fromSequence, err := strconv.ParseUint(sequences[2], 10, 64)
+	if err != nil {
+		base.Warnf(base.KeyAll, "Unable to identify from sequence number for unused sequences notification with key: %s, error:", base.UD(docID), err)
+		return
+	}
+	toSequence, err := strconv.ParseUint(sequences[3], 10, 64)
+	if err != nil {
+		base.Warnf(base.KeyAll, "Unable to identify to sequence number for unused sequence notification with key: %s, error:", base.UD(docID), err)
+		return
+	}
+
+	// TODO: There should be a more efficient way to do this
+	for seq := fromSequence; seq <= toSequence; seq++ {
+		c.releaseUnusedSequence(seq)
+	}
 }
 
 func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser bool, timeReceived time.Time) {

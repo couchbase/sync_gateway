@@ -1415,8 +1415,8 @@ func TestIncrRetrySuccess(t *testing.T) {
 	leakyBucket := testLeakyBucket(leakyBucketConfig)
 	defer leakyBucket.Close()
 	seqAllocator, _ := newSequenceAllocator(leakyBucket, NewDatabaseStats())
-	err := seqAllocator.reserveSequences(1)
-	goassert.True(t, err == nil)
+	_, err := seqAllocator.nextSequence()
+	assert.True(t, err == nil)
 
 }
 
@@ -1427,7 +1427,7 @@ func TestIncrRetryUnsuccessful(t *testing.T) {
 	leakyBucket := testLeakyBucket(leakyBucketConfig)
 	defer leakyBucket.Close()
 	seqAllocator, _ := newSequenceAllocator(leakyBucket, NewDatabaseStats())
-	err := seqAllocator.reserveSequences(1)
+	_, err := seqAllocator.nextSequence()
 	log.Printf("Got error: %v", err)
 	goassert.True(t, err != nil)
 
