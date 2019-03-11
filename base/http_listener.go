@@ -10,11 +10,11 @@ import (
 
 // This is like a combination of http.ListenAndServe and http.ListenAndServeTLS, which also
 // uses ThrottledListen to limit the number of open HTTP connections.
-func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *string, handler http.Handler, readTimeout *int, writeTimeout *int, http2Enabled bool) error {
+func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *string, handler http.Handler, readTimeout *int, writeTimeout *int, http2Enabled bool, tlsVersion uint16) error {
 	var config *tls.Config
 	if certFile != nil {
 		config = &tls.Config{}
-		config.MinVersion = tls.VersionTLS10 // Disable SSLv3 due to POODLE vulnerability
+		config.MinVersion = tlsVersion
 		protocolsEnabled := []string{"http/1.1"}
 		if http2Enabled {
 			protocolsEnabled = []string{"h2", "http/1.1"}

@@ -107,3 +107,42 @@ func TestLoadServerConfigExamples(t *testing.T) {
 	})
 	assert.NoError(t, err)
 }
+
+// Test TLS Version
+func TestTLSVersionSetting(t *testing.T){
+	tests := []struct {
+		name   string
+		config string
+		expectedTLS uint16
+	}{
+		{
+			name:   `Set TLS 1.0`,
+			config: `{"tlsversion": "tlsv1", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			expectedTLS: 769,
+		},
+		{
+			name:   `Set TLS 1.1`,
+			config: `{"tlsversion": "tlsv1.1", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			expectedTLS: 770,
+		},
+		{
+			name:   `Set TLS 1.2`,
+			config: `{"tlsversion": "tlsv1.2", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			expectedTLS: 771,
+		},
+		{
+			name:   `No TLS set, should default to 1.2`,
+			config: `{"SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			expectedTLS: 771,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(tt *testing.T) {
+			buf := bytes.NewBufferString(test.config)
+			config, _ := readServerConfig(SyncGatewayRunModeNormal, buf)
+			assert.Equal(t, test.expectedTLS, config.TLSVersion.GetTLSLibConst())
+		})
+	}
+
+}
