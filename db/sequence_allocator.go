@@ -146,6 +146,7 @@ func (s *sequenceAllocator) _reserveSequenceRange() error {
 		base.Warnf(base.KeyAll, "Error from Incr in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
 		return err
 	}
+	dbExpvars.Add("sequence_reserves", 1)
 	s.max = max
 	s.last = max - s.sequenceBatchSize
 	s.lastSequenceReserveTime = time.Now()
