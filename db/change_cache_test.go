@@ -1050,7 +1050,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	changeCache.skippedSeqs.Push(&SkippedSequence{12, time.Now().Add(time.Duration(time.Hour * -2))})
 	changeCache.skippedSeqs.Push(&SkippedSequence{13, time.Now().Add(time.Duration(time.Hour * -2))})
 	changeCache.skippedSeqs.Push(&SkippedSequence{14, time.Now().Add(time.Duration(time.Hour * -2))})
-	changeCache.CleanSkippedSequenceQueue()
+	changeCache.CleanSkippedSequenceQueue(db.Ctx)
 
 	// Validate expected entries
 	db.changeCache.waitForSequenceID(SequenceID{Seq: 15}, base.DefaultWaitForSequenceTesting)
