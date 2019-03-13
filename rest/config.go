@@ -72,7 +72,7 @@ const (
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	TLSVersion                 *TLSVersion              `json:"tlsversion,omitempty"`                        // Set TLS Version
+	TLSVersion                 *TLSVersion              `json:"tlsversion,omitempty"`              // Set TLS Version
 	Interface                  *string                  `json:",omitempty"`                        // Interface to bind REST API to, default ":4984"
 	SSLCert                    *string                  `json:",omitempty"`                        // Path to SSL cert file, or nil
 	SSLKey                     *string                  `json:",omitempty"`                        // Path to SSL private key file, or nil
@@ -301,32 +301,32 @@ const (
 
 var tlsVersionNames = []string{"tlsv1", "tlsv1.1", "tlsv1.2"}
 
-func(l *TLSVersion) Set(newVersion TLSVersion){
+func (l *TLSVersion) Set(newVersion TLSVersion) {
 	atomic.StoreUint32((*uint32)(l), uint32(newVersion))
 }
 
-func(v TLSVersion) String() string{
-	if v >= tlsvCount{
+func (v TLSVersion) String() string {
+	if v >= tlsvCount {
 		return fmt.Sprintf("TLSVersion(%d)", v)
 	}
 	return tlsVersionNames[v]
 }
 
-func(v *TLSVersion) MarshalText() (text []byte, err error){
-	if v == nil || *v >= tlsvCount{
+func (v *TLSVersion) MarshalText() (text []byte, err error) {
+	if v == nil || *v >= tlsvCount {
 		v.Set(TLSv1dot2)
 		return nil, fmt.Errorf("unrecognized tls version: %v (valid range: %d-%d)", v, 0, tlsvCount-1)
 	}
 	return []byte(v.String()), nil
 }
 
-func(v *TLSVersion) UnmarshalText(text []byte) error {
+func (v *TLSVersion) UnmarshalText(text []byte) error {
 	if v == nil {
 		v.Set(TLSv1dot2)
 		return errors.New("nil tls version, defaulting to v1.2")
 	}
-	for i, name := range tlsVersionNames{
-		if name == string(text){
+	for i, name := range tlsVersionNames {
+		if name == string(text) {
 			v.Set(TLSVersion(i))
 			return nil
 		}
@@ -334,7 +334,7 @@ func(v *TLSVersion) UnmarshalText(text []byte) error {
 	return fmt.Errorf("unrecognized tls version: %v (valid options: %v", string(text), tlsVersionNames)
 }
 
-func(v *TLSVersion) GetTLSLibConst() uint16{
+func (v *TLSVersion) GetTLSLibConst() uint16 {
 	if v != nil {
 		switch *v {
 		case TLSv1:
