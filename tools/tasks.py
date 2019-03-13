@@ -46,7 +46,7 @@ class LogRedactor:
     def redact_file(self, name, ifile):
         ofile = os.path.join(self.target_dir, name)
         _, filename = os.path.split(name)
-        if ".gz" in filename:
+        if ".gz" in filename or "expvars.json" in filename:
             print('WARNING: Not redacting binary file file {0}'.format(filename))
             return ifile
         self._process_file(ifile, ofile, self.regular_log)

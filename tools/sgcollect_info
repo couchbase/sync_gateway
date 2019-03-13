@@ -506,11 +506,15 @@ def get_absolute_path(relative_path):
 
 def make_download_expvars_task(sg_url):
 
-    return make_curl_task(
+    task = make_curl_task(
         name="download_sg_expvars",
         url=expvar_url(sg_url),
-        log_file="expvars_json.log"
+        log_file="expvars.json"
     )
+
+    task.no_header = True
+
+    return task
 
 
 def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path, should_redact, salt):
