@@ -46,9 +46,6 @@ class LogRedactor:
     def redact_file(self, name, ifile):
         ofile = os.path.join(self.target_dir, name)
         _, filename = os.path.split(name)
-        if ".gz" in filename or "expvars.json" in filename:
-            print('WARNING: Not redacting binary file file {0}'.format(filename))
-            return ifile
         self._process_file(ifile, ofile, self.regular_log)
         return ofile
 
@@ -326,7 +323,10 @@ class TaskRunner(object):
         redactor = LogRedactor(salt, self.tmpdir)
 
         for name, fp in self.files.iteritems():
-            files.append(redactor.redact_file(name, fp.name))
+            if not (".gz" in name or "expvars.json" in name):
+                files.append(redactor.redact_file(name, fp.name))
+            else:
+                files.append(fp.name)
 
         prefix = "%s_%s_%s" % (log_type, node, self.start_time)
         self._zip_helper(prefix, filename, files)
