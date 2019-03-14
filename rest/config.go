@@ -25,7 +25,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync/atomic"
 	"syscall"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -72,7 +71,7 @@ const (
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	TLSVersion                 *TLSVersion              `json:"tlsversion,omitempty"`              // Set TLS Version
+	TLSMinVersion              *TLSVersion              `json:"tls_minimum_version,omitempty"`     // Set TLS Version
 	Interface                  *string                  `json:",omitempty"`                        // Interface to bind REST API to, default ":4984"
 	SSLCert                    *string                  `json:",omitempty"`                        // Path to SSL cert file, or nil
 	SSLKey                     *string                  `json:",omitempty"`                        // Path to SSL private key file, or nil
@@ -291,63 +290,55 @@ type Http2Config struct {
 //TODO: Add support for TLS 1.3 when we run Go 1.13
 type TLSVersion uint32
 
-const (
-	TLSv1 TLSVersion = iota
-	TLSv1dot1
-	TLSv1dot2
-
-	tlsvCount
-)
-
-var tlsVersionNames = []string{"tlsv1", "tlsv1.1", "tlsv1.2"}
-
-func (l *TLSVersion) Set(newVersion TLSVersion) {
-	atomic.StoreUint32((*uint32)(l), uint32(newVersion))
-}
-
-func (v TLSVersion) String() string {
-	if v >= tlsvCount {
-		return fmt.Sprintf("TLSVersion(%d)", v)
-	}
-	return tlsVersionNames[v]
+var tlsVersionNames = []struct {
+	versionName  string
+	versionConst uint32
+}{
+	{
+		versionName:  "tlsv1",
+		versionConst: tls.VersionTLS10,
+	},
+	{
+		versionName:  "tlsv1.1",
+		versionConst: tls.VersionTLS11,
+	},
+	{
+		versionName:  "tlsv1.2",
+		versionConst: tls.VersionTLS12,
+	},
 }
 
 func (v *TLSVersion) MarshalText() (text []byte, err error) {
-	if v == nil || *v >= tlsvCount {
-		v.Set(TLSv1dot2)
-		return nil, fmt.Errorf("unrecognized tls version: %v (valid range: %d-%d)", v, 0, tlsvCount-1)
+	for _, versions := range tlsVersionNames {
+		if versions.versionConst == uint32(*v) {
+			return []byte(versions.versionName), nil
+		}
 	}
-	return []byte(v.String()), nil
+	return nil, errors.New("unrecognized tls version")
 }
 
 func (v *TLSVersion) UnmarshalText(text []byte) error {
 	if v == nil {
-		v.Set(TLSv1dot2)
-		return errors.New("nil tls version, defaulting to v1.2")
+		*v = tls.VersionTLS10
+		base.Infof(base.KeyAll, "no minimum tls version defined, defaulting to v1.0")
+		return nil
 	}
-	for i, name := range tlsVersionNames {
-		if name == string(text) {
-			v.Set(TLSVersion(i))
+	for _, versions := range tlsVersionNames {
+		if bytes.Equal(text, []byte(versions.versionName)) {
+			*v = TLSVersion(versions.versionConst)
 			return nil
 		}
 	}
-	return fmt.Errorf("unrecognized tls version: %v (valid options: %v", string(text), tlsVersionNames)
+	return fmt.Errorf("unrecognized tls version")
 }
 
-func (v *TLSVersion) GetTLSLibConst() uint16 {
+func (v *TLSVersion) getTLSVersion() *TLSVersion {
 	if v != nil {
-		switch *v {
-		case TLSv1:
-			return tls.VersionTLS10
-		case TLSv1dot1:
-			return tls.VersionTLS11
-		case TLSv1dot2:
-			return tls.VersionTLS12
-		}
+		return v
+	} else {
+		tlsVersion := TLSVersion(tls.VersionTLS10)
+		return &tlsVersion
 	}
-
-	//If for whatever reason it doesn't match any of the above fallback to default
-	return tls.VersionTLS12
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -936,7 +927,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		http2Enabled = *config.Unsupported.Http2Config.Enabled
 	}
 
-	tlsVersion := config.TLSVersion.GetTLSLibConst()
+	tlsVersion := uint16(*config.TLSMinVersion.getTLSVersion())
 
 	err := base.ListenAndServeHTTP(
 		addr,

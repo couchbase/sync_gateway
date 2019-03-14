@@ -2,6 +2,7 @@ package rest
 
 import (
 	"bytes"
+	"crypto/tls"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,23 +118,23 @@ func TestTLSVersionSetting(t *testing.T) {
 	}{
 		{
 			name:        `Set TLS 1.0`,
-			config:      `{"tlsversion": "tlsv1", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
-			expectedTLS: 769,
+			config:      `{"tls_minimum_version": "tlsv1", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			expectedTLS: tls.VersionTLS10,
 		},
 		{
 			name:        `Set TLS 1.1`,
-			config:      `{"tlsversion": "tlsv1.1", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
-			expectedTLS: 770,
+			config:      `{"tls_minimum_version": "tlsv1.1", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			expectedTLS: tls.VersionTLS11,
 		},
 		{
 			name:        `Set TLS 1.2`,
-			config:      `{"tlsversion": "tlsv1.2", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
-			expectedTLS: 771,
+			config:      `{"tls_minimum_version": "tlsv1.2", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			expectedTLS: tls.VersionTLS12,
 		},
 		{
-			name:        `No TLS set, should default to 1.2`,
+			name:        `No TLS set, should default to 1.0`,
 			config:      `{"SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
-			expectedTLS: 771,
+			expectedTLS: tls.VersionTLS10,
 		},
 	}
 
@@ -141,7 +142,7 @@ func TestTLSVersionSetting(t *testing.T) {
 		t.Run(test.name, func(tt *testing.T) {
 			buf := bytes.NewBufferString(test.config)
 			config, _ := readServerConfig(SyncGatewayRunModeNormal, buf)
-			assert.Equal(t, test.expectedTLS, config.TLSVersion.GetTLSLibConst())
+			assert.Equal(t, TLSVersion(test.expectedTLS), *config.TLSMinVersion.getTLSVersion())
 		})
 	}
 
