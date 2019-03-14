@@ -152,9 +152,9 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		base.LogContext{CorrelationID: base.FormatChangeCacheContextID(c.context.Name)})
 
 	// background tasks that perform housekeeping duties on the cache
-	c.backgroundTask(ctx,"InsertPendingEntries", c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2)
-	c.backgroundTask(ctx,"CleanSkippedSequenceQueue", c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2)
-	c.backgroundTask(ctx,"CleanAgedItems", c.CleanAgedItems, c.options.ChannelCacheAge)
+	c.backgroundTask(ctx, "InsertPendingEntries", c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2)
+	c.backgroundTask(ctx, "CleanSkippedSequenceQueue", c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2)
+	c.backgroundTask(ctx, "CleanAgedItems", c.CleanAgedItems, c.options.ChannelCacheAge)
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
 	c.lock.Lock()

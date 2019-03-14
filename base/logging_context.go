@@ -29,6 +29,6 @@ func FormatBlipContextID(contextID string) string {
 	return "[" + contextID + "]"
 }
 
-func FormatChangeCacheContextID(contextName string) string{
+func FormatChangeCacheContextID(contextName string) string {
 	return fmt.Sprintf("%s-ChangeCache", contextName)
 }
