@@ -1,5 +1,7 @@
 package base
 
+import "fmt"
+
 // LogContextKey is used to key a LogContext value
 type LogContextKey struct{}
 
@@ -21,4 +23,12 @@ func (lc *LogContext) addContext(format string) string {
 	}
 
 	return format
+}
+
+func FormatBlipContextID(contextID string) string {
+	return "[" + contextID + "]"
+}
+
+func FormatChangeCacheContextID(contextName string) string{
+	return fmt.Sprintf("%s-ChangeCache", contextName)
 }
