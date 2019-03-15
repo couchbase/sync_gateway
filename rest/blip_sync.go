@@ -190,13 +190,10 @@ func (ctx *blipSyncContext) Logf(logLevel base.LogLevel, logKey base.LogKey, for
 	switch logLevel {
 	case base.LevelError:
 		base.Errorf(logKey, formatWithContextID, paramsWithContextID...)
-		fallthrough
 	case base.LevelWarn:
 		base.Warnf(logKey, formatWithContextID, paramsWithContextID...)
-		fallthrough
 	case base.LevelInfo:
 		base.Infof(logKey, formatWithContextID, paramsWithContextID...)
-		fallthrough
 	case base.LevelDebug:
 		base.Debugf(logKey, formatWithContextID, paramsWithContextID...)
 	}
