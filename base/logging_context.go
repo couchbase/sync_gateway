@@ -2,6 +2,7 @@ package base
 
 import (
 	"math/rand"
+	"strconv"
 )
 
 // LogContextKey is used to key a LogContext value
@@ -32,5 +33,5 @@ func FormatBlipContextID(contextID string) string {
 }
 
 func FormatChangeCacheContextID(contextName string) string {
-	return contextName + "ChangeCache" + string(rand.Int31n(65536))
+	return contextName + "-ChangeCache-" + strconv.Itoa(rand.Intn(65536))
 }
