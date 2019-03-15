@@ -1,6 +1,8 @@
 package base
 
-import "fmt"
+import (
+	"math/rand"
+)
 
 // LogContextKey is used to key a LogContext value
 type LogContextKey struct{}
@@ -30,5 +32,5 @@ func FormatBlipContextID(contextID string) string {
 }
 
 func FormatChangeCacheContextID(contextName string) string {
-	return fmt.Sprintf("%s-ChangeCache", contextName)
+	return contextName + "ChangeCache" + string(rand.Int31n(65536))
 }
