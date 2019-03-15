@@ -199,11 +199,11 @@ func AddGoRuntimeStats() {
 	statsResourceUtilization := base.StatsResourceUtilization()
 
 	// Num goroutines
-	numGoroutune := runtime.NumGoroutine()
+	numGoroutine := runtime.NumGoroutine()
 
-	statsResourceUtilization.Set(base.StatKeyNumGoroutines, base.ExpvarIntVal(numGoroutune))
+	statsResourceUtilization.Set(base.StatKeyNumGoroutines, base.ExpvarIntVal(numGoroutine))
 
-	statsResourceUtilization.Set(base.StatKeyGoroutinesHighWatermark, base.ExpvarUInt64Val(goroutineHighwaterMark(uint64(numGoroutune))))
+	statsResourceUtilization.Set(base.StatKeyGoroutinesHighWatermark, base.ExpvarUInt64Val(goroutineHighwaterMark(uint64(numGoroutine))))
 
 	// Read memstats (relatively expensive)
 	memstats := runtime.MemStats{}

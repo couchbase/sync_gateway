@@ -110,9 +110,9 @@ func TestRecordGoroutineHighwaterMark(t *testing.T) {
 	// Reset this to 0
 	atomic.StoreUint64(&base.MaxGoroutinesSeen, 0)
 
-	assert.Equal(t, 1000, goroutineHighwaterMark(1000))
-	assert.Equal(t, 1000, goroutineHighwaterMark(500))
-	assert.Equal(t, 1500, goroutineHighwaterMark(1500))
+	assert.Equal(t, uint64(1000), goroutineHighwaterMark(1000))
+	assert.Equal(t, uint64(1000), goroutineHighwaterMark(500))
+	assert.Equal(t, uint64(1500), goroutineHighwaterMark(1500))
 
 }
 
