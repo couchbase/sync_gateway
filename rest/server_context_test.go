@@ -11,16 +11,15 @@ package rest
 
 import (
 	"bytes"
-	"expvar"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
-	"sync/atomic"
 )
 
 // Tests the ConfigServer feature.
@@ -111,11 +110,9 @@ func TestRecordGoroutineHighwaterMark(t *testing.T) {
 	// Reset this to 0
 	atomic.StoreUint64(&base.MaxGoroutinesSeen, 0)
 
-	stats := new(expvar.Map).Init()
-
-	assert.True(t, recordGoroutineHighwaterMark(stats, 1000) == 1000)
-	assert.True(t, recordGoroutineHighwaterMark(stats, 500) == 1000)
-	assert.True(t, recordGoroutineHighwaterMark(stats, 1500) == 1500)
+	assert.Equal(t, 1000, goroutineHighwaterMark(1000))
+	assert.Equal(t, 1000, goroutineHighwaterMark(500))
+	assert.Equal(t, 1500, goroutineHighwaterMark(1500))
 
 }
 
