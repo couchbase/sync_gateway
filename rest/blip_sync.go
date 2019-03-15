@@ -836,6 +836,11 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		delete(deltaSrcBody, db.BodyId)
 		delete(deltaSrcBody, db.BodyRev)
 
+		// Convert attachments of type AttachmentsMeta into a plain type we can patch
+		if atts, ok := deltaSrcBody[db.BodyAttachments].(db.AttachmentsMeta); ok {
+			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(atts)
+		}
+
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
 		err = base.Patch(&deltaSrcMap, delta)
 		if err != nil {
