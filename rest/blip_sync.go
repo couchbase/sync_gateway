@@ -3,6 +3,7 @@ package rest
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -32,6 +33,8 @@ const (
 	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
 	BlipCBMobileReplication = "CBMobile_2"
 )
+
+var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
 // Represents one BLIP connection (socket) opened by a client.
 // This connection remains open until the client closes it, and can receive any number of requests.
@@ -386,24 +389,31 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 
 }
 
-func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}) {
+func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}) error {
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
 	outrq.SetJSONBody(changeArray)
 	if len(changeArray) > 0 {
+		if !sender.Send(outrq) {
+			return ErrClosedBLIPSender
+		}
 		// Spawn a goroutine to await the client's response:
-		sender.Send(outrq)
 		go bh.handleChangesResponse(sender, outrq.Response(), changeArray)
 	} else {
 		outrq.SetNoReply(true)
-		sender.Send(outrq)
+		if !sender.Send(outrq) {
+			return ErrClosedBLIPSender
+		}
 	}
+
 	if len(changeArray) > 0 {
 		sequence := changeArray[0][0].(db.SequenceID)
 		bh.Logf(base.LevelInfo, base.KeySync, "Sent %d changes to client, from seq %s.  User:%s", len(changeArray), sequence.String(), base.UD(bh.effectiveUsername))
 	} else {
 		bh.Logf(base.LevelInfo, base.KeySync, "Sent all changes to client. User:%s", base.UD(bh.effectiveUsername))
 	}
+
+	return nil
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
@@ -548,7 +558,7 @@ func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, do
 	}
 }
 
-func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.SequenceID, docID string, revID string) {
+func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.SequenceID, docID string, revID string) error {
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s due to error: %v.  User:%s", base.UD(docID), revID, err, base.UD(bh.effectiveUsername))
 
@@ -568,12 +578,15 @@ func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.Sequence
 	outrq.Properties["reason"] = fmt.Sprintf("%s", reason)
 
 	outrq.SetNoReply(true)
-	sender.Send(outrq)
+	if !sender.Send(outrq) {
+		return ErrClosedBLIPSender
+	}
 
+	return nil
 }
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) error {
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known.  User:%s", base.UD(docID), revID, len(knownRevs), base.UD(bh.effectiveUsername))
 
@@ -610,7 +623,9 @@ func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.Se
 	if atts := db.BodyAttachments(body); atts != nil {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bh.addAllowedAttachments(atts)
-		sender.Send(outrq)
+		if !sender.Send(outrq) {
+			return ErrClosedBLIPSender
+		}
 		go func() {
 			defer func() {
 				if panicked := recover(); panicked != nil {
@@ -623,7 +638,9 @@ func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.Se
 		}()
 	} else {
 		outrq.SetNoReply(true)
-		sender.Send(outrq)
+		if !sender.Send(outrq) {
+			return ErrClosedBLIPSender
+		}
 	}
 }
 
@@ -722,7 +739,9 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{"Profile": "proveAttachment", "digest": digest}
 				outrq.SetBody(nonce)
-				sender.Send(outrq)
+				if !sender.Send(outrq) {
+					return nil, ErrClosedBLIPSender
+				}
 				if body, err := outrq.Response().Body(); err != nil {
 					return nil, err
 				} else if string(body) != proof {
@@ -738,7 +757,10 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				if isCompressible(name, meta) {
 					outrq.Properties["compress"] = "true"
 				}
-				sender.Send(outrq)
+				if !sender.Send(outrq) {
+					return nil, ErrClosedBLIPSender
+				}
+
 				return outrq.Response().Body()
 			}
 		})
