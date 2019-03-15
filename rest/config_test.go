@@ -113,36 +113,34 @@ func TestLoadServerConfigExamples(t *testing.T) {
 func TestTLSVersionSetting(t *testing.T) {
 	tests := []struct {
 		name        string
-		config      string
+		tlsString   string
 		expectedTLS uint16
 	}{
 		{
 			name:        `Set TLS 1.0`,
-			config:      `{"tls_minimum_version": "tlsv1", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			tlsString:   `tlsv1`,
 			expectedTLS: tls.VersionTLS10,
 		},
 		{
 			name:        `Set TLS 1.1`,
-			config:      `{"tls_minimum_version": "tlsv1.1", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			tlsString:   `tlsv1.1`,
 			expectedTLS: tls.VersionTLS11,
 		},
 		{
 			name:        `Set TLS 1.2`,
-			config:      `{"tls_minimum_version": "tlsv1.2", "SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			tlsString:   `tlsv1.2`,
 			expectedTLS: tls.VersionTLS12,
 		},
 		{
 			name:        `No TLS set, should default to 1.0`,
-			config:      `{"SSLCert": "examples/ssl/cert.pem", "SSLKey": "examples/ssl/privkey.pem"}`,
+			tlsString:   ``,
 			expectedTLS: tls.VersionTLS10,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
-			buf := bytes.NewBufferString(test.config)
-			config, _ := readServerConfig(SyncGatewayRunModeNormal, buf)
-			assert.Equal(t, test.expectedTLS, *GetTLSVersionFromString(config.TLSMinVersion))
+			assert.Equal(t, test.expectedTLS, GetTLSVersionFromString(&test.tlsString))
 		})
 	}
 

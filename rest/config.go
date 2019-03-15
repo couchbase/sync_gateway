@@ -36,11 +36,11 @@ import (
 )
 
 var (
-	DefaultInterface         = ":4984"
-	DefaultAdminInterface    = "127.0.0.1:4985" // Only accessible on localhost!
-	DefaultServer            = "walrus:"
-	DefaultPool              = "default"
-	DefaultMinimumTLSVersion = "tlsv1"
+	DefaultInterface              = ":4984"
+	DefaultAdminInterface         = "127.0.0.1:4985" // Only accessible on localhost!
+	DefaultServer                 = "walrus:"
+	DefaultPool                   = "default"
+	DefaultMinimumTLSVersionConst = tls.VersionTLS10
 
 	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 	defaultLogFilePath string
@@ -307,16 +307,15 @@ var tlsVersionNames = []struct {
 	},
 }
 
-func GetTLSVersionFromString(stringV *string) *uint16 {
+func GetTLSVersionFromString(stringV *string) uint16 {
 	if stringV != nil {
 		for _, versions := range tlsVersionNames {
 			if versions.versionName == *stringV {
-				return &versions.versionConst
+				return versions.versionConst
 			}
 		}
 	}
-	temp := uint16(tls.VersionTLS10)
-	return &temp
+	return uint16(DefaultMinimumTLSVersionConst)
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -766,7 +765,6 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	skipRunModeValidation := flag.Bool("skipRunModeValidation", false, "Skip config validation for runmode (accel vs normal sg)")
 	certpath := flag.String("certpath", "", "Client certificate path")
 	cacertpath := flag.String("cacertpath", "", "Root CA certificate path")
-	tlsMinimumVersion := flag.String("tlsMinimumVersion", DefaultMinimumTLSVersion, "Minimum TLS Version to enforce")
 	keypath := flag.String("keypath", "", "Client certificate key path")
 
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
@@ -834,10 +832,6 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 
 		if defaultLogFilePathFlag != nil {
 			defaultLogFilePath = *defaultLogFilePathFlag
-		}
-
-		if tlsMinimumVersion != nil {
-			config.TLSMinVersion = tlsMinimumVersion
 		}
 
 		// Log HTTP Responses if verbose is enabled.
@@ -910,7 +904,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		http2Enabled = *config.Unsupported.Http2Config.Enabled
 	}
 
-	tlsVersion := *GetTLSVersionFromString(config.TLSMinVersion)
+	tlsVersion := GetTLSVersionFromString(config.TLSMinVersion)
 
 	err := base.ListenAndServeHTTP(
 		addr,
