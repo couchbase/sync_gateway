@@ -350,11 +350,14 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 
 	caughtUp := false
 	pendingChanges := make([][]interface{}, 0, bh.batchSize)
-	sendPendingChangesAt := func(minChanges int) {
+	sendPendingChangesAt := func(minChanges int) error {
 		if len(pendingChanges) >= minChanges {
-			bh.sendBatchOfChanges(sender, pendingChanges)
+			if err := bh.sendBatchOfChanges(sender, pendingChanges); err != nil {
+				return err
+			}
 			pendingChanges = make([][]interface{}, 0, bh.batchSize)
 		}
+		return nil
 	}
 
 	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
@@ -368,15 +371,22 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 						changeRow = changeRow[0:3]
 					}
 					pendingChanges = append(pendingChanges, changeRow)
-					sendPendingChangesAt(bh.batchSize)
+					if err := sendPendingChangesAt(bh.batchSize); err != nil {
+						return err
+					}
 				}
 			}
 		}
 		if caughtUp || len(changes) == 0 {
-			sendPendingChangesAt(1)
+			if err := sendPendingChangesAt(1); err != nil {
+
+			}
 			if !caughtUp {
 				caughtUp = true
-				bh.sendBatchOfChanges(sender, nil) // Signal to client that it's caught up
+				// Signal to client that it's caught up
+				if err := bh.sendBatchOfChanges(sender, nil); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -648,6 +658,8 @@ func (bh *blipHandler) sendRevision(body db.Body, sender *blip.Sender, seq db.Se
 			return ErrClosedBLIPSender
 		}
 	}
+
+	return nil
 }
 
 // Received a "rev" request, i.e. client is pushing a revision body
