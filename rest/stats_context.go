@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"expvar"
 	"fmt"
 	"net"
 	"os"
@@ -200,9 +199,11 @@ func AddGoRuntimeStats() {
 	statsResourceUtilization := base.StatsResourceUtilization()
 
 	// Num goroutines
-	statsResourceUtilization.Set(base.StatKeyNumGoroutines, base.ExpvarIntVal(runtime.NumGoroutine()))
+	numGoroutine := runtime.NumGoroutine()
 
-	recordGoroutineHighwaterMark(statsResourceUtilization, uint64(runtime.NumGoroutine()))
+	statsResourceUtilization.Set(base.StatKeyNumGoroutines, base.ExpvarIntVal(numGoroutine))
+
+	statsResourceUtilization.Set(base.StatKeyGoroutinesHighWatermark, base.ExpvarUInt64Val(goroutineHighwaterMark(uint64(numGoroutine))))
 
 	// Read memstats (relatively expensive)
 	memstats := runtime.MemStats{}
@@ -235,7 +236,7 @@ func AddGoRuntimeStats() {
 }
 
 // Record Goroutines high watermark into expvars
-func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxGoroutinesSeen uint64) {
+func goroutineHighwaterMark(numGoroutines uint64) (maxGoroutinesSeen uint64) {
 
 	maxGoroutinesSeen = atomic.LoadUint64(&base.MaxGoroutinesSeen)
 
@@ -243,10 +244,6 @@ func recordGoroutineHighwaterMark(stats *expvar.Map, numGoroutines uint64) (maxG
 
 		// Clobber existing values rather than attempt a CAS loop. This stat can be considered a "best effort".
 		atomic.StoreUint64(&base.MaxGoroutinesSeen, numGoroutines)
-
-		if stats != nil {
-			stats.Set(base.StatKeyGoroutinesHighWatermark, base.ExpvarUInt64Val(maxGoroutinesSeen))
-		}
 
 		return numGoroutines
 	}
