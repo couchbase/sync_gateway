@@ -199,14 +199,20 @@ func (h *handler) handleGetDB() error {
 		lastSeq, _ = h.db.LastSequence()
 	}
 
+	compactRunning := false
+
+	if atomic.LoadUint32(&h.db.CompactState) == db.DBCompactRunning {
+		compactRunning = true
+	}
+
 	response := db.Body{
 		"db_name":              h.db.Name,
 		"update_seq":           lastSeq,
 		"committed_update_seq": lastSeq,
 		"instance_start_time":  h.instanceStartTime(),
-		"compact_running":      false, // TODO: Implement this
-		"purge_seq":            0,     // TODO: Should track this value
-		"disk_format_version":  0,     // Probably meaningless, but add for compatibility
+		"compact_running":      compactRunning,
+		"purge_seq":            0, // TODO: Should track this value
+		"disk_format_version":  0, // Probably meaningless, but add for compatibility
 		"state":                runState,
 	}
 

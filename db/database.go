@@ -44,6 +44,11 @@ var RunStateString = []string{
 }
 
 const (
+	DBCompactNotRunning uint32 = iota
+	DBCompactRunning
+)
+
+const (
 	DefaultRevsLimitNoConflicts = 50
 	DefaultRevsLimitConflicts   = 100
 	DefaultPurgeInterval        = 30               // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
@@ -87,6 +92,7 @@ type DatabaseContext struct {
 	PurgeInterval      int                     // Metadata purge interval, in hours
 	serverUUID         string                  // UUID of the server, if available
 	DbStats            *DatabaseStats          // stats that correspond to this database context
+	CompactState       uint32                  //Status of database compaction
 }
 
 type DatabaseContextOptions struct {
@@ -817,6 +823,12 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
 func (db *Database) Compact() (int, error) {
+
+	if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
+		return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")
+	}
+
+	defer atomic.CompareAndSwapUint32(&db.CompactState, DBCompactRunning, DBCompactNotRunning)
 
 	// Compact should be a no-op if not running w/ xattrs
 	if !db.UseXattrs() {
