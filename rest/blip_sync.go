@@ -417,7 +417,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}) {
+func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warnf(base.KeyAll, "[%s] PANIC handling 'changes' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
@@ -427,7 +427,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 	var answer []interface{}
 	if err := response.ReadJSONBody(&answer); err != nil {
 		bh.Logf(base.LevelInfo, base.KeySync, "Invalid response to 'changes' message: %s -- %s.  User:%s", response, err, base.UD(bh.effectiveUsername))
-		return
+		return errors.New("Invalid response to 'changes' message.")
 	}
 
 	maxHistory := 0
@@ -456,12 +456,16 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 					knownRevs[revID] = true
 				} else {
 					bh.Logf(base.LevelInfo, base.KeySync, "Invalid response to 'changes' message.  User:%s", base.UD(bh.effectiveUsername))
-					return
+					return errors.New("Invalid response to 'changes' message.")
 				}
 			}
-			bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
+			if err := bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory); err != nil {
+				return err
+			}
 		}
 	}
+
+	return nil
 }
 
 // Handles a "changes" request, i.e. a set of changes pushed by the client
@@ -548,14 +552,16 @@ func (bh *blipHandler) handleProposedChanges(rq *blip.Message) error {
 
 //////// DOCUMENTS:
 
-func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) {
+func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) error {
 
 	body, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
-		bh.sendNoRev(err, sender, seq, docID, revID)
+		err = bh.sendNoRev(err, sender, seq, docID, revID)
 	} else {
-		bh.sendRevision(body, sender, seq, docID, revID, knownRevs, maxHistory)
+		err = bh.sendRevision(body, sender, seq, docID, revID, knownRevs, maxHistory)
 	}
+
+	return err
 }
 
 func (bh *blipHandler) sendNoRev(err error, sender *blip.Sender, seq db.SequenceID, docID string, revID string) error {
