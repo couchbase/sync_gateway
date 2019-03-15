@@ -149,14 +149,20 @@ func (r *DCPReceiver) OnError(err error) {
 // Returns true for documents that should be processed, false for those that do not need processing.
 //  TODO: The hardcoded strings here should be changed to constants (CBG-274)
 func dcpKeyFilter(key []byte) bool {
-	if bytes.HasPrefix(key, []byte("_sync")) {
-		if bytes.HasPrefix(key, []byte("_sync:unused")) || bytes.HasPrefix(key, []byte("_sync:user:")) || bytes.HasPrefix(key, []byte("_sync:role:")) {
-			return true
-		} else {
-			return false
-		}
+
+	// If it's not a _sync doc, process
+	if !bytes.HasPrefix(key, []byte("_sync")) {
+		return true
 	}
-	return true
+
+	// User, role and unused sequence markers should be processed
+	if bytes.HasPrefix(key, []byte("_sync:unused")) ||
+		bytes.HasPrefix(key, []byte("_sync:user:")) ||
+		bytes.HasPrefix(key, []byte("_sync:role:")) {
+		return true
+	}
+
+	return false
 }
 
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
