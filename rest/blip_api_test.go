@@ -1875,3 +1875,60 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-04f16608671387d26f9f3ecd2c68d9a2","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
 }
+
+// TestBlipDeltaSyncAddAttachmentPush tests that adding a second attachment in CBL and replicated via delta sync
+func TestBlipDeltaSyncAddAttachmentPush(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	sgUseDeltas := base.IsEnterpriseEdition()
+	var rt = RestTester{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	defer rt.Close()
+
+	client, err := NewBlipTesterClient(&rt)
+	assert.NoError(t, err)
+	defer client.Close()
+
+	client.ClientDeltas = true
+	err = client.StartPull()
+	assert.NoError(t, err)
+
+	// create doc1 rev 1-c66070e414bc6b2f9a117fc940fd15c4 on SG with first attachment
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok := client.WaitForRev("doc1", "1-c66070e414bc6b2f9a117fc940fd15c4")
+	assert.True(t, ok)
+	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
+	// Create doc1 rev2 on client which adds a new attachment
+	_, err = client.PushRev("doc1", "1-c66070e414bc6b2f9a117fc940fd15c4", []byte(`{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}, "bye.txt": {"data": "Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`))
+	assert.NoError(t, err)
+
+	// Check EE is delta, and CE is full-body replication
+	msg, ok := client.pushReplication.WaitForMessage(2)
+	assert.True(t, ok)
+
+	msgResp := msg.Response()
+
+	if base.IsEnterpriseEdition() {
+		// Check the request was sent with the correct deltaSrc property
+		assert.Equal(t, "1-c66070e414bc6b2f9a117fc940fd15c4", msgResp.Properties[revMessageDeltaSrc])
+		// Check the request body was the actual delta
+		respBody, err := msgResp.Body()
+		assert.NoError(t, err)
+		assert.Equal(t, `{"_attachments":{"bye.txt":{"content_type":"text/plain","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":2,"stub":true}}}`, string(respBody))
+	} else {
+		// Check the request was NOT sent with a deltaSrc property
+		assert.Equal(t, "", msgResp.Properties[revMessageDeltaSrc])
+		// Check the request body was NOT the delta
+		respBody, err := msgResp.Body()
+		assert.NoError(t, err)
+		assert.NotEqual(t, `{"_attachments":{"bye.txt":{"content_type":"text/plain","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":2,"stub":true}}}`, string(respBody))
+		assert.Equal(t, `{"_attachments":{"bye.txt":{"content_type":"text/plain","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":2,"stub":true},"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_id":"doc1","_rev":"2-abcxyz","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(respBody))
+	}
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-abcxyz", "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, `{"_attachments":{"bye.txt":{"content_type":"text/plain","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":2,"stub":true},"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_id":"doc1","_rev":"2-abcxyz","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
+}

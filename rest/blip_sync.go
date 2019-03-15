@@ -932,7 +932,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				if body, err := outrq.Response().Body(); err != nil {
 					return nil, err
 				} else if string(body) != proof {
-					bh.Logf(base.LevelDebug, base.KeySync, "Error: Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q.  User:%s", digest, base.MD(nonce), base.MD(proof), base.MD(body), base.UD(bh.effectiveUsername))
+					bh.Logf(base.LevelDebug, base.KeySync, "Error: Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q.  User:%s", digest, base.MD(nonce), base.MD(proof), base.MD(string(body)), base.UD(bh.effectiveUsername))
 					return nil, base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
 				}
 				return nil, nil

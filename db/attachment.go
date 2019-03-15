@@ -504,6 +504,15 @@ func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof strin
 	return
 }
 
+func GenerateProofOfAttachmentForNonce(attachmentData []byte, nonce []byte) (proof string) {
+	digester := sha1.New()
+	digester.Write([]byte{byte(len(nonce))})
+	digester.Write(nonce)
+	digester.Write(attachmentData)
+	proof = "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
+	return
+}
+
 //////// HELPERS:
 // Returns _attachments property from body, when found.  Checks for either map[string]interface{} (unmarshalled with body),
 // or AttachmentsMeta (written by body by SG)

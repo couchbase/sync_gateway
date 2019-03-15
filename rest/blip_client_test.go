@@ -49,7 +49,7 @@ func (btr *BlipTesterReplicator) Close() {
 
 func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	btr.bt.blipContext.HandlerForProfile[messageChanges] = func(msg *blip.Message) {
-		btr.storeMessage(msg)
+		btc.pullReplication.storeMessage(msg)
 
 		// Exit early when there's nothing to do
 		if msg.NoReply() {
@@ -258,7 +258,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	}
 
 	btr.bt.blipContext.HandlerForProfile[messageGetAttachment] = func(msg *blip.Message) {
-		btr.storeMessage(msg)
+		btc.pullReplication.storeMessage(msg)
 
 		digest, ok := msg.Properties[getAttachmentDigest]
 		if !ok {
@@ -274,8 +274,31 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		response.SetBody(attachment)
 	}
 
+	btr.bt.blipContext.HandlerForProfile[messageProveAttachment] = func(msg *blip.Message) {
+		btc.pullReplication.storeMessage(msg)
+
+		digest, ok := msg.Properties[getAttachmentDigest]
+		if !ok {
+			base.Panicf(base.KeyAll, "couldn't find digest in getAttachment message properties")
+		}
+
+		nonce, err := msg.Body()
+		if err != nil {
+			base.Panicf(base.KeyAll, "error reading body: %v", err)
+		}
+
+		attachment, err := btc.getAttachment(digest)
+		if err != nil {
+			base.Panicf(base.KeyAll, "couldn't find attachment for digest: %v", digest)
+		}
+
+		proof := db.GenerateProofOfAttachmentForNonce(attachment, nonce)
+		response := msg.Response()
+		response.SetBody([]byte(proof))
+	}
+
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
-		btr.storeMessage(msg)
+		btc.pullReplication.storeMessage(msg)
 		base.Panicf(base.KeyAll, "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
 	}
 }
@@ -450,13 +473,29 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 			if attachmentMap, ok := attachments.(map[string]interface{}); ok {
 				for attachmentName, inlineAttachment := range attachmentMap {
 					inlineAttachmentMap := inlineAttachment.(map[string]interface{})
+
+					// Check if the attachment is a stub, and we have an attachment of that digest
+					if stub, ok := inlineAttachmentMap["stub"]; ok {
+						if isStub, ok := stub.(bool); ok && isStub {
+							if digest, ok := inlineAttachmentMap["digest"]; ok {
+								if digestStr, ok := digest.(string); ok {
+									if _, err := btc.getAttachment(digestStr); err == nil {
+										attachmentMap[attachmentName] = inlineAttachmentMap
+										continue
+									}
+								}
+							}
+						}
+					}
+
 					attachmentData, ok := inlineAttachmentMap["data"]
 					if !ok {
 						return "", fmt.Errorf("couldn't find data property for inline attachment")
 					}
 					attachmentContentType, ok := inlineAttachmentMap["content_type"]
 					if !ok {
-						return "", fmt.Errorf("couldn't find content_type property for inline attachment")
+						// default to 'text/plain'
+						attachmentContentType = "text/plain"
 					}
 
 					data, ok := attachmentData.(string)
@@ -622,5 +661,9 @@ func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber)
 func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messagesLock.Lock()
 	defer btr.messagesLock.Unlock()
-	btr.messages[msg.SerialNumber()] = msg
+	serial := msg.SerialNumber()
+	if _, exists := btr.messages[serial]; exists {
+		base.Panicf(base.KeyAll, "blip message with serial number %d already exists!", serial)
+	}
+	btr.messages[serial] = msg
 }
