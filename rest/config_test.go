@@ -142,7 +142,7 @@ func TestTLSVersionSetting(t *testing.T) {
 		t.Run(test.name, func(tt *testing.T) {
 			buf := bytes.NewBufferString(test.config)
 			config, _ := readServerConfig(SyncGatewayRunModeNormal, buf)
-			assert.Equal(t, TLSVersion(test.expectedTLS), *config.TLSMinVersion.getTLSVersion())
+			assert.Equal(t, test.expectedTLS, *GetTLSVersionFromString(config.TLSMinVersion))
 		})
 	}
 

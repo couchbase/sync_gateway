@@ -30,17 +30,17 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/pkg/errors"
 
 	// Register profiling handlers (see Go docs)
 	_ "net/http/pprof"
 )
 
 var (
-	DefaultInterface      = ":4984"
-	DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
-	DefaultServer         = "walrus:"
-	DefaultPool           = "default"
+	DefaultInterface         = ":4984"
+	DefaultAdminInterface    = "127.0.0.1:4985" // Only accessible on localhost!
+	DefaultServer            = "walrus:"
+	DefaultPool              = "default"
+	DefaultMinimumTLSVersion = "tlsv1"
 
 	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 	defaultLogFilePath string
@@ -71,7 +71,7 @@ const (
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	TLSMinVersion              *TLSVersion              `json:"tls_minimum_version,omitempty"`     // Set TLS Version
+	TLSMinVersion              *string                  `json:"tls_minimum_version,omitempty"`     // Set TLS Version
 	Interface                  *string                  `json:",omitempty"`                        // Interface to bind REST API to, default ":4984"
 	SSLCert                    *string                  `json:",omitempty"`                        // Path to SSL cert file, or nil
 	SSLKey                     *string                  `json:",omitempty"`                        // Path to SSL private key file, or nil
@@ -287,12 +287,11 @@ type Http2Config struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether HTTP2 support is enabled
 }
 
-//TODO: Add support for TLS 1.3 when we run Go 1.13
-type TLSVersion uint32
+//TODO: Add support for TLS 1.3 when we switch to Go 1.13
 
 var tlsVersionNames = []struct {
 	versionName  string
-	versionConst uint32
+	versionConst uint16
 }{
 	{
 		versionName:  "tlsv1",
@@ -308,37 +307,16 @@ var tlsVersionNames = []struct {
 	},
 }
 
-func (v *TLSVersion) MarshalText() (text []byte, err error) {
-	for _, versions := range tlsVersionNames {
-		if versions.versionConst == uint32(*v) {
-			return []byte(versions.versionName), nil
+func GetTLSVersionFromString(stringV *string) *uint16 {
+	if stringV != nil {
+		for _, versions := range tlsVersionNames {
+			if versions.versionName == *stringV {
+				return &versions.versionConst
+			}
 		}
 	}
-	return nil, errors.New("unrecognized tls version")
-}
-
-func (v *TLSVersion) UnmarshalText(text []byte) error {
-	if v == nil {
-		*v = tls.VersionTLS10
-		base.Infof(base.KeyAll, "no minimum tls version defined, defaulting to v1.0")
-		return nil
-	}
-	for _, versions := range tlsVersionNames {
-		if bytes.Equal(text, []byte(versions.versionName)) {
-			*v = TLSVersion(versions.versionConst)
-			return nil
-		}
-	}
-	return fmt.Errorf("unrecognized tls version")
-}
-
-func (v *TLSVersion) getTLSVersion() *TLSVersion {
-	if v != nil {
-		return v
-	} else {
-		tlsVersion := TLSVersion(tls.VersionTLS10)
-		return &tlsVersion
-	}
+	temp := uint16(tls.VersionTLS10)
+	return &temp
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -788,6 +766,7 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 	skipRunModeValidation := flag.Bool("skipRunModeValidation", false, "Skip config validation for runmode (accel vs normal sg)")
 	certpath := flag.String("certpath", "", "Client certificate path")
 	cacertpath := flag.String("cacertpath", "", "Root CA certificate path")
+	tlsMinimumVersion := flag.String("tlsMinimumVersion", DefaultMinimumTLSVersion, "Minimum TLS Version to enforce")
 	keypath := flag.String("keypath", "", "Client certificate key path")
 
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
@@ -855,6 +834,10 @@ func ParseCommandLine(runMode SyncGatewayRunMode) {
 
 		if defaultLogFilePathFlag != nil {
 			defaultLogFilePath = *defaultLogFilePathFlag
+		}
+
+		if tlsMinimumVersion != nil {
+			config.TLSMinVersion = tlsMinimumVersion
 		}
 
 		// Log HTTP Responses if verbose is enabled.
@@ -927,7 +910,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		http2Enabled = *config.Unsupported.Http2Config.Enabled
 	}
 
-	tlsVersion := uint16(*config.TLSMinVersion.getTLSVersion())
+	tlsVersion := *GetTLSVersionFromString(config.TLSMinVersion)
 
 	err := base.ListenAndServeHTTP(
 		addr,
