@@ -10,6 +10,7 @@
 package base
 
 import (
+	"bytes"
 	"encoding/json"
 	"expvar"
 	"fmt"
@@ -143,8 +144,32 @@ func (r *DCPReceiver) OnError(err error) {
 	// r.notify(bucketName, err)
 }
 
+// Only a subset of Sync Gateway's internal documents need to be included during DCP processing: user, role, and
+// unused sequence documents.  Any other documents with the leading '_sync' prefix can be ignored.
+// Returns true for documents that should be processed, false for those that do not need processing.
+//  TODO: The hardcoded strings here should be changed to constants (CBG-274)
+func dcpKeyFilter(key []byte) bool {
+
+	// If it's not a _sync doc, process
+	if !bytes.HasPrefix(key, []byte("_sync")) {
+		return true
+	}
+
+	// User, role and unused sequence markers should be processed
+	if bytes.HasPrefix(key, []byte("_sync:unused")) ||
+		bytes.HasPrefix(key, []byte("_sync:user:")) ||
+		bytes.HasPrefix(key, []byte("_sync:role:")) {
+		return true
+	}
+
+	return false
+}
+
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
+	if !dcpKeyFilter(key) {
+		return nil
+	}
 	r.updateSeq(vbucketId, seq, true)
 	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpMutation))
 	if shouldPersistCheckpoint {
@@ -155,6 +180,9 @@ func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 
 func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
+	if !dcpKeyFilter(key) {
+		return nil
+	}
 	r.updateSeq(vbucketId, seq, true)
 	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpDeletion))
 	if shouldPersistCheckpoint {

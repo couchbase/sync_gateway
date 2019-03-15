@@ -3,7 +3,7 @@ package base
 import (
 	"testing"
 
-	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 // func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname string) (username, password, bucketname string) {
@@ -19,9 +19,9 @@ func TestTransformBucketCredentials(t *testing.T) {
 		inputPassword,
 		inputBucketName,
 	)
-	goassert.Equals(t, username, inputUsername)
-	goassert.Equals(t, password, inputPassword)
-	goassert.Equals(t, bucketname, inputBucketName)
+	assert.Equal(t, username, inputUsername)
+	assert.Equal(t, password, inputPassword)
+	assert.Equal(t, bucketname, inputBucketName)
 
 	inputUsername2 := ""
 	inputPassword2 := "bar"
@@ -33,8 +33,21 @@ func TestTransformBucketCredentials(t *testing.T) {
 		inputBucketName2,
 	)
 
-	goassert.Equals(t, username2, inputBucketName2)
-	goassert.Equals(t, password2, inputPassword2)
-	goassert.Equals(t, bucketname2, inputBucketName2)
+	assert.Equal(t, username2, inputBucketName2)
+	assert.Equal(t, password2, inputPassword2)
+	assert.Equal(t, bucketname2, inputBucketName2)
 
+}
+
+func TestDCPKeyFilter(t *testing.T) {
+
+	assert.True(t, dcpKeyFilter([]byte("doc123")))
+	assert.True(t, dcpKeyFilter([]byte("_sync:user:user1")))
+	assert.True(t, dcpKeyFilter([]byte("_sync:role:role2")))
+	assert.True(t, dcpKeyFilter([]byte("_sync:unusedSeq:1234")))
+
+	assert.False(t, dcpKeyFilter([]byte("_sync:seq")))
+	assert.False(t, dcpKeyFilter([]byte("_sync:unusualSeq")))
+	assert.False(t, dcpKeyFilter([]byte("_sync:syncdata")))
+	assert.False(t, dcpKeyFilter([]byte("_sync:dcp_ck:12")))
 }
