@@ -148,13 +148,10 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 
 	heap.Init(&c.pendingLogs)
 
-	ctx := context.WithValue(context.Background(), base.LogContextKey{},
-		base.LogContext{CorrelationID: base.FormatChangeCacheContextID(c.context.Name)})
-
 	// background tasks that perform housekeeping duties on the cache
-	c.backgroundTask(ctx, "InsertPendingEntries", c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2)
-	c.backgroundTask(ctx, "CleanSkippedSequenceQueue", c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2)
-	c.backgroundTask(ctx, "CleanAgedItems", c.CleanAgedItems, c.options.ChannelCacheAge)
+	c.backgroundTask("InsertPendingEntries", c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2)
+	c.backgroundTask("CleanSkippedSequenceQueue", c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2)
+	c.backgroundTask("CleanAgedItems", c.CleanAgedItems, c.options.ChannelCacheAge)
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
 	c.lock.Lock()
@@ -163,11 +160,13 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 }
 
 // backgroundTask runs task at the specified time interval in its own goroutine until the changeCache is stopped.
-func (c *changeCache) backgroundTask(ctx context.Context, name string, task func(ctx context.Context), interval time.Duration) {
+func (c *changeCache) backgroundTask(name string, task func(ctx context.Context), interval time.Duration) {
 	go func() {
 		for {
 			select {
 			case <-time.After(interval):
+				ctx := context.WithValue(context.Background(), base.LogContextKey{},
+					base.LogContext{CorrelationID: base.FormatChangeCacheContextID(c.context.Name)})
 				task(ctx)
 			case <-c.terminator:
 				base.Debugf(base.KeyCache, "Database %s: Terminating background task: %s", base.UD(c.context.Name), name)
