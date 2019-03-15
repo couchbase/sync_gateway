@@ -91,13 +91,22 @@ func (l *ConsoleLogger) logf(format string, args ...interface{}) {
 
 // shouldLog returns true if the given logLevel and logKey should get logged.
 func (l *ConsoleLogger) shouldLog(logLevel LogLevel, logKey LogKey) bool {
-	return l != nil &&
-		l.logger != nil &&
-		l.LogLevel.Enabled(logLevel) &&
-		// if logging at KEY_ALL, allow it unless KEY_NONE is set
-		((logKey == KeyAll && !l.LogKey.Enabled(KeyNone)) ||
-			// Otherwise check the given log key is enabled
-			l.LogKey.Enabled(logKey))
+	if l == nil || l.logger == nil {
+		return false
+	}
+
+	// Log level disabled
+	if !l.LogLevel.Enabled(logLevel) {
+		return false
+	}
+
+	// Log key All should always log at this point, unless KeyNone is set
+	if logKey == KeyAll && !l.LogKey.Enabled(KeyNone) {
+		return true
+	}
+
+	// Finally, check the specific log key is enabled
+	return l.LogKey.Enabled(logKey)
 }
 
 // init validates and sets any defaults for the given ConsoleLoggerConfig

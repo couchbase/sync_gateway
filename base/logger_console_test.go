@@ -9,81 +9,81 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestConsoleShouldLog(t *testing.T) {
-	tests := []struct {
-		loggerLevel LogLevel
-		logToLevel  LogLevel
-		loggerKeys  []string
-		logToKey    LogKey
-		expected    bool
-	}{
-		{
-			// Log with matching log level and key
-			loggerLevel: LevelInfo,
-			logToLevel:  LevelInfo,
-			loggerKeys:  []string{"HTTP"},
-			logToKey:    KeyHTTP,
-			expected:    true,
-		},
-		{
-			// Log with higher log level and matching key
-			loggerLevel: LevelInfo,
-			logToLevel:  LevelWarn,
-			loggerKeys:  []string{"HTTP"},
-			logToKey:    KeyHTTP,
-			expected:    true,
-		},
-		{
-			// Log with lower log level and matching key
-			loggerLevel: LevelWarn,
-			logToLevel:  LevelInfo,
-			loggerKeys:  []string{"HTTP"},
-			logToKey:    KeyHTTP,
-			expected:    false,
-		},
-		{
-			// Logger disabled (LevelNone)
-			loggerLevel: LevelNone,
-			logToLevel:  LevelError,
-			loggerKeys:  []string{"HTTP"},
-			logToKey:    KeyHTTP,
-			expected:    false,
-		},
-		{
-			// Logger disabled (No keys)
-			loggerLevel: LevelInfo,
-			logToLevel:  LevelInfo,
-			loggerKeys:  []string{},
-			logToKey:    KeyDCP,
-			expected:    false,
-		},
-		{
-			// Log with matching log level and unmatched key
-			loggerLevel: LevelInfo,
-			logToLevel:  LevelInfo,
-			loggerKeys:  []string{"HTTP"},
-			logToKey:    KeyDCP,
-			expected:    false,
-		},
-		{
-			// Log with matching log level and wildcard key
-			loggerLevel: LevelInfo,
-			logToLevel:  LevelInfo,
-			loggerKeys:  []string{"*"},
-			logToKey:    KeyDCP,
-			expected:    true,
-		},
-		{
-			// Log with lower log level and wildcard key
-			loggerLevel: LevelWarn,
-			logToLevel:  LevelInfo,
-			loggerKeys:  []string{"*"},
-			logToKey:    KeyDCP,
-			expected:    false,
-		},
-	}
+var consoleShouldLogTests = []struct {
+	loggerLevel LogLevel
+	logToLevel  LogLevel
+	loggerKeys  []string
+	logToKey    LogKey
+	expected    bool
+}{
+	{
+		// Log with matching log level and key
+		loggerLevel: LevelInfo,
+		logToLevel:  LevelInfo,
+		loggerKeys:  []string{"HTTP"},
+		logToKey:    KeyHTTP,
+		expected:    true,
+	},
+	{
+		// Log with higher log level and matching key
+		loggerLevel: LevelInfo,
+		logToLevel:  LevelWarn,
+		loggerKeys:  []string{"HTTP"},
+		logToKey:    KeyHTTP,
+		expected:    true,
+	},
+	{
+		// Log with lower log level and matching key
+		loggerLevel: LevelWarn,
+		logToLevel:  LevelInfo,
+		loggerKeys:  []string{"HTTP"},
+		logToKey:    KeyHTTP,
+		expected:    false,
+	},
+	{
+		// Logger disabled (LevelNone)
+		loggerLevel: LevelNone,
+		logToLevel:  LevelError,
+		loggerKeys:  []string{"HTTP"},
+		logToKey:    KeyHTTP,
+		expected:    false,
+	},
+	{
+		// Logger disabled (No keys)
+		loggerLevel: LevelInfo,
+		logToLevel:  LevelInfo,
+		loggerKeys:  []string{},
+		logToKey:    KeyDCP,
+		expected:    false,
+	},
+	{
+		// Log with matching log level and unmatched key
+		loggerLevel: LevelInfo,
+		logToLevel:  LevelInfo,
+		loggerKeys:  []string{"HTTP"},
+		logToKey:    KeyDCP,
+		expected:    false,
+	},
+	{
+		// Log with matching log level and wildcard key
+		loggerLevel: LevelInfo,
+		logToLevel:  LevelInfo,
+		loggerKeys:  []string{"*"},
+		logToKey:    KeyDCP,
+		expected:    true,
+	},
+	{
+		// Log with lower log level and wildcard key
+		loggerLevel: LevelWarn,
+		logToLevel:  LevelInfo,
+		loggerKeys:  []string{"*"},
+		logToKey:    KeyDCP,
+		expected:    false,
+	},
+}
 
-	for _, test := range tests {
+func TestConsoleShouldLog(t *testing.T) {
+	for _, test := range consoleShouldLogTests {
 		name := fmt.Sprintf("logger{%s,%s}.shouldLog(%s,%s)",
 			test.loggerLevel.StringShort(), test.loggerKeys,
 			test.logToLevel.StringShort(), test.logToKey)
@@ -99,6 +99,28 @@ func TestConsoleShouldLog(t *testing.T) {
 		t.Run(name, func(ts *testing.T) {
 			got := l.shouldLog(test.logToLevel, test.logToKey)
 			goassert.Equals(ts, got, test.expected)
+		})
+	}
+}
+
+func BenchmarkConsoleShouldLog(b *testing.B) {
+	for _, test := range consoleShouldLogTests {
+		name := fmt.Sprintf("logger{%s,%s}.shouldLog(%s,%s)",
+			test.loggerLevel.StringShort(), test.loggerKeys,
+			test.logToLevel.StringShort(), test.logToKey)
+
+		l := newConsoleLoggerOrPanic(&ConsoleLoggerConfig{
+			LogLevel: &test.loggerLevel,
+			LogKeys:  test.loggerKeys,
+			FileLoggerConfig: FileLoggerConfig{
+				Enabled: BoolPtr(true),
+				Output:  ioutil.Discard,
+			}})
+
+		b.Run(name, func(bb *testing.B) {
+			for i := 0; i < bb.N; i++ {
+				l.shouldLog(test.logToLevel, test.logToKey)
+			}
 		})
 	}
 }
