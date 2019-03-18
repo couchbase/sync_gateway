@@ -86,24 +86,30 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err 
 
 const (
 	// viewWrapper_adminViews adds the rev to metadata, and strips the _sync property from the view result
-	viewWrapper_adminViews = `function(doc,meta) {
-	                    var sync = doc._sync;
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	syncViewWrapper = `	function(doc,meta) {
+						var sync;
+						var isXattr;
+						var isUser = %t;
+						if(meta.id.substring(0,6) == "_sync:"){
+							return;
+						}
+						if (meta.xattrs === undefined || meta.xattrs.%s === undefined){
+							sync = doc._sync;
+							isXattr = false;
+						}else{
+							sync = meta.xattrs.%s;
+							isXattr = true;
+						}
+
+						if ((sync.flags & 1) || sync.deleted || sync === undefined)
 	                      return;
-	                    if ((sync.flags & 1) || sync.deleted)
-	                      return;
-	                    delete doc._sync;
-	                    meta.rev = sync.rev;
-						(%s) (doc, meta);
-						doc._sync = sync;}`
-	// viewWrapper_userViews does the same work as viewWrapper_adminViews, and also includes channel information in the view results
-	viewWrapper_userViews = `function(doc,meta) {
-		                    var sync = doc._sync;
-		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-		                      return;
-		                    if ((sync.flags & 1) || sync.deleted)
-		                      return;
-		                    var channels = [];
+
+						if(!isXattr){
+							delete doc._sync;
+						}
+
+						if(isUser){
+							var channels = [];
 		                    var channelMap = sync.channels;
 							if (channelMap) {
 								for (var name in channelMap) {
@@ -112,77 +118,41 @@ const (
 										channels.push(name);
 								}
 							}
-		                    delete doc._sync;
-		                    meta.rev = sync.rev;
-		                    meta.channels = channels;
-
-		                    var _emit = emit;
+							meta.channels = channels;
+							
+						}
+						
+						meta.rev = sync.rev;
+						
+						if(isUser){
+							var _emit = emit;
 		                    (function(){
 			                    var emit = function(key,value) {
 			                    	_emit(key,[channels, value]);
 			                    };
 								(%s) (doc, meta);
 							}());
+						}else{
+							(%s) (doc, meta);
+						}
+
+						if (!isXattr){
 							doc._sync = sync;
-						}`
-	viewWrapper_adminViews_xattr = `function(doc,meta) {
-	                    var sync = meta.xattrs._sync;
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-	                      return;
-	                    if ((sync.flags & 1) || sync.deleted)
-	                      return;
-	                    meta.rev = sync.rev;
-						(%s) (doc, meta);}`
-	viewWrapper_userViews_xattr = `function(doc,meta) {
-		                    var sync = meta.xattrs._sync;
-		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-		                      return;
-		                    if ((sync.flags & 1) || sync.deleted)
-		                      return;
-		                    var channels = [];
-		                    var channelMap = sync.channels;
-							if (channelMap) {
-								for (var name in channelMap) {
-									removed = channelMap[name];
-									if (!removed)
-										channels.push(name);
-								}
-							}
-		                    meta.rev = sync.rev;
-		                    meta.channels = channels;
-
-		                    var _emit = emit;
-		                    (function(){
-			                    var emit = function(key,value) {
-			                    	_emit(key,[channels, value]);
-			                    };
-								(%s) (doc, meta);
-							}());
+						}
 						}`
 )
-
-func getViewWrapper(enableUserViews bool, useXattrs bool) string {
-	if enableUserViews {
-		if useXattrs {
-			return viewWrapper_userViews_xattr
-		} else {
-			return viewWrapper_userViews
-		}
-	} else {
-		if useXattrs {
-			return viewWrapper_adminViews_xattr
-		} else {
-			return viewWrapper_adminViews
-		}
-	}
-}
 
 func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
 	// Wrap the map functions to ignore special docs and strip _sync metadata.  If user views are enabled, also
 	// add channel filtering.
-	viewWrapper := getViewWrapper(enableUserViews, useXattrs)
+	//viewWrapper := getViewWrapper(enableUserViews, useXattrs)
 	for name, view := range ddoc.Views {
-		view.Map = fmt.Sprintf(viewWrapper, view.Map)
+		//view.Map = fmt.Sprintf(viewWrapper, syncViewWrapper, KSyncXattrName, KSyncXattrName), view.Map)
+		fmt.Println(enableUserViews)
+		fmt.Println(KSyncXattrName)
+		fmt.Println(view.Map)
+
+		view.Map = fmt.Sprintf(syncViewWrapper, enableUserViews, KSyncXattrName, KSyncXattrName, view.Map, view.Map)
 		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 	}
 }
