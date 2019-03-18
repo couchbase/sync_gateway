@@ -515,12 +515,13 @@ func TestImportFilterLogging(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { console.error("Error"); return doc.type == "mobile"; }`
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
 			ImportFilter: &importFilter,
 		},
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	//Add document to bucket
