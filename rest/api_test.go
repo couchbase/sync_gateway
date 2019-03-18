@@ -3777,7 +3777,7 @@ func TestImportingPurgedDocument(t *testing.T) {
 }
 
 func TestRestSettingPurged(t *testing.T) {
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendRequest("PUT", "/db/doc1", `{"_purged": true, "foo": "bar"}`)
@@ -3785,7 +3785,7 @@ func TestRestSettingPurged(t *testing.T) {
 }
 
 func TestDocIDFilterResurrection(t *testing.T) {
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	//Create User
@@ -3828,12 +3828,14 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyJavascript)()
 
-	rt := RestTester{SyncFn: `
+	rtConfig := RestTesterConfig{SyncFn: `
 		function(doc) {
 			console.error("Error");
 			console.log("Log");
 			channel(doc.channel);
 		}`}
+
+	rt := NewRestTester(t, &rtConfig)
 
 	defer rt.Close()
 
