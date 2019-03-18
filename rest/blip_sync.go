@@ -47,6 +47,7 @@ type blipSyncContext struct {
 	lock                sync.Mutex
 	allowedAttachments  map[string]int
 	handlerSerialNumber uint64    // Each handler within a context gets a unique serial number for logging
+	terminatorOnce      sync.Once // Used to ensure the terminator channel below is only ever closed once.
 	terminator          chan bool // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
 	hasActiveSubChanges bool      // Track whether there is a subChanges subscription currently active
 }
@@ -172,7 +173,9 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 }
 
 func (ctx *blipSyncContext) close() {
-	close(ctx.terminator)
+	ctx.terminatorOnce.Do(func() {
+		close(ctx.terminator)
+	})
 }
 
 // Handler for unknown requests
