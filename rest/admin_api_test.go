@@ -33,7 +33,7 @@ import (
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
 func TestNoPanicInvalidUpdate(t *testing.T) {
 
-	var rt RestTester
+	var rt = NewRestTester(t, nil)
 	defer rt.Close()
 
 	docId := "conflictTest"
@@ -87,7 +87,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 func TestUserAPI(t *testing.T) {
 
 	// PUT a user
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
@@ -196,7 +196,7 @@ func TestUserAPI(t *testing.T) {
 func TestUserPasswordValidation(t *testing.T) {
 
 	// PUT a user
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
@@ -246,7 +246,7 @@ func TestUserPasswordValidation(t *testing.T) {
 func TestUserAllowEmptyPassword(t *testing.T) {
 
 	// PUT a user
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	rt.BucketAllowEmptyPassword()
@@ -332,7 +332,8 @@ function(doc, oldDoc) {
 }
 
 `
-	rt := RestTester{SyncFn: syncFunction}
+	rtConfig := RestTesterConfig{SyncFn: syncFunction}
+	var rt = NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
@@ -434,7 +435,7 @@ function(doc, oldDoc) {
 }
 
 func TestLoggingKeys(t *testing.T) {
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
@@ -510,7 +511,7 @@ func TestLoggingKeys(t *testing.T) {
 }
 
 func TestLoggingLevels(t *testing.T) {
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
@@ -544,7 +545,7 @@ func TestLoggingLevels(t *testing.T) {
 }
 
 func TestLoggingCombined(t *testing.T) {
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
@@ -569,7 +570,8 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyCache|base.KeyHTTP)()
 
-	rt := RestTester{SyncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
@@ -646,7 +648,7 @@ func readContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
 
 func TestRoleAPI(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// PUT a role
@@ -688,7 +690,8 @@ func TestGuestUser(t *testing.T) {
 
 	guestUserEndpoint := fmt.Sprintf("/db/_user/%s", base.GuestUsername)
 
-	rt := RestTester{noAdminParty: true}
+	rtConfig := RestTesterConfig{noAdminParty: true}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
@@ -725,7 +728,7 @@ func TestGuestUser(t *testing.T) {
 // fixes #974
 func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
@@ -781,7 +784,7 @@ func TestSessionExtension(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
@@ -833,7 +836,7 @@ func TestSessionExtension(t *testing.T) {
 
 func TestSessionAPI(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// create session test users
@@ -924,7 +927,7 @@ func TestFlush(t *testing.T) {
 		t.Skip("sgbucket.DeleteableBucket inteface only supported by Walrus")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	rt.createDoc(t, "doc1")
@@ -945,7 +948,7 @@ func TestFlush(t *testing.T) {
 //Test a single call to take DB offline
 func TestDBOfflineSingle(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -968,7 +971,7 @@ func TestDBOfflineSingle(t *testing.T) {
 // when both calls return
 func TestDBOfflineConcurrent(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -1011,7 +1014,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 //Test that a DB can be created offline
 func TestStartDBOffline(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 	log.Printf("Taking DB offline")
@@ -1032,7 +1035,7 @@ func TestStartDBOffline(t *testing.T) {
 //fail with status 503
 func TestDBOffline503Response(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -1056,7 +1059,7 @@ func TestDBOffline503Response(t *testing.T) {
 //Take DB offline and ensure can put db config
 func TestDBOfflinePutDbConfig(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -1081,7 +1084,7 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 // Reproduces #2223
 func TestDBGetConfigNames(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -1113,7 +1116,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -1141,7 +1144,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	//create documents in DB to cause resync to take a few seconds
@@ -1194,7 +1197,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 // Single threaded bring DB online
 func TestDBOnlineSingle(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -1228,7 +1231,7 @@ func TestDBOnlineSingle(t *testing.T) {
 //once both goroutines return
 func TestDBOnlineConcurrent(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -1254,14 +1257,14 @@ func TestDBOnlineConcurrent(t *testing.T) {
 		defer wg.Done()
 		goroutineresponse1 = rt.SendAdminRequest("POST", "/db/_online", "")
 		assertStatus(t, goroutineresponse1, 200)
-	}(rt)
+	}(*rt)
 
 	var goroutineresponse2 *TestResponse
 	go func(rt RestTester) {
 		defer wg.Done()
 		goroutineresponse2 = rt.SendAdminRequest("POST", "/db/_online", "")
 		assertStatus(t, goroutineresponse2, 200)
-	}(rt)
+	}(*rt)
 
 	//This only waits until both _online requests have been posted
 	//They may not have been processed at this point
@@ -1280,7 +1283,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -1325,7 +1328,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -1379,7 +1382,7 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
@@ -1439,7 +1442,7 @@ func (rt *RestTester) createSession(t *testing.T, username string) string {
 
 func TestPurgeWithBadJsonPayload(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", "foo")
@@ -1448,7 +1451,7 @@ func TestPurgeWithBadJsonPayload(t *testing.T) {
 
 func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":"list"}`)
@@ -1461,7 +1464,7 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 
 func TestPurgeWithEmptyRevisionList(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":[]}`)
@@ -1474,7 +1477,7 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 
 func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":["rev1","rev2"]}`)
@@ -1487,7 +1490,7 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 
 func TestPurgeWithNonStarRevision(t *testing.T) {
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":["rev1"]}`)
@@ -1499,7 +1502,7 @@ func TestPurgeWithNonStarRevision(t *testing.T) {
 }
 
 func TestPurgeWithStarRevision(t *testing.T) {
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
@@ -1515,7 +1518,7 @@ func TestPurgeWithStarRevision(t *testing.T) {
 }
 
 func TestPurgeWithMultipleValidDocs(t *testing.T) {
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
@@ -1536,7 +1539,7 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 // TestPurgeWithChannelCache will make sure thant upon calling _purge, the channel caches are also cleaned
 // This was fixed in #3765, previously channel caches were not cleaned up
 func TestPurgeWithChannelCache(t *testing.T) {
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
@@ -1561,7 +1564,7 @@ func TestPurgeWithChannelCache(t *testing.T) {
 }
 
 func TestPurgeWithSomeInvalidDocs(t *testing.T) {
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
@@ -1586,7 +1589,7 @@ func TestReplicateErrorConditions(t *testing.T) {
 		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	//Send empty JSON
@@ -1643,7 +1646,7 @@ func TestDocumentChangeReplicate(t *testing.T) {
 		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close() // Close RestTester, which closes ServerContext, which stops all replications
 
 	//Initiate synchronous one shot replication

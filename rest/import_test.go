@@ -53,7 +53,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{SyncFn: `
+	rtConfig := RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
@@ -62,6 +62,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 				channel("docDeleted")
 			}
 		}`}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -134,8 +135,9 @@ func TestXattrSGTombstone(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{SyncFn: `
+	rtConfig := RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -241,8 +243,9 @@ func TestXattrResurrectViaSG(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{SyncFn: `
+	rtConfig := RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	rt.Bucket()
@@ -285,8 +288,9 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{SyncFn: `
+	rtConfig := RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -345,8 +349,9 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{SyncFn: `
+	rtConfig := RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -389,8 +394,9 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{SyncFn: `
+	rtConfig := RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -458,12 +464,13 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
 			ImportFilter: &importFilter,
 		},
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -508,9 +515,10 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -561,9 +569,10 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -617,12 +626,13 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
 			AutoImport: "continuous",
 		},
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -691,9 +701,10 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -736,9 +747,10 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -801,9 +813,10 @@ func TestMigrateTombstone(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -866,9 +879,10 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -938,9 +952,10 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1013,9 +1028,10 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1094,9 +1110,10 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1150,12 +1167,13 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
 			AutoImport: "continuous",
 		},
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1207,12 +1225,13 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
 			AutoImport: "continuous",
 		},
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bucket := rt.Bucket()
 
@@ -1256,7 +1275,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	mobileBody := make(map[string]interface{})
@@ -1294,10 +1313,11 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	for i, testCase := range testCases {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 
-			rt = RestTester{
+			rtConfig := RestTesterConfig{
 				SyncFn:         `function(doc, oldDoc) { channel(doc.channels) }`,
 				DatabaseConfig: &DbConfig{},
 			}
+			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
 			bucket := rt.Bucket()
 
@@ -1344,7 +1364,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	triggerOnDemandViaGet := func(key string) {
@@ -1380,9 +1400,10 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
 			key := fmt.Sprintf("TestOnDemandGetWriteMigrateWithExpiry-%d", i)
 
-			rt = RestTester{
+			rtConfig := RestTesterConfig{
 				SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 			}
+			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
 			bucket := rt.Bucket()
 
@@ -1419,12 +1440,13 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
 			ImportFilter: &importFilter,
 		},
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	log.Printf("Starting get bucket....")
@@ -1466,8 +1488,9 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 // Test to write a binary document to the bucket, ensure it's not imported.
 func TestImportBinaryDoc(t *testing.T) {
 
-	rt := RestTester{SyncFn: `
+	rtConfig := RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	log.Printf("Starting get bucket....")
@@ -1491,12 +1514,13 @@ func TestImportRevisionCopy(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
 			ImportBackupOldRev: true,
 		},
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -1546,12 +1570,13 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
 			ImportBackupOldRev: true,
 		},
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	if rt.GetDatabase().DeltaSyncEnabled() {
@@ -1606,9 +1631,10 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 
 	// ImportBackupOldRev not set in config, defaults to false
-	rt := RestTester{
+	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 	}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	if rt.GetDatabase().DeltaSyncEnabled() {
@@ -1682,12 +1708,13 @@ func TestDcpBackfill(t *testing.T) {
 	log.Print("Creating new database context")
 
 	// Create a new context, with import docs enabled, to process backfill
-	newRt := RestTester{
+	newRtConfig := RestTesterConfig{
 		DatabaseConfig: &DbConfig{
 			AutoImport: "continuous",
 		},
 		NoFlush: true,
 	}
+	newRt := NewRestTester(t, &newRtConfig)
 	defer newRt.Close()
 	log.Printf("Poke the rest tester so it starts DCP processing:")
 	bucket = newRt.Bucket()

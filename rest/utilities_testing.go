@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -32,21 +32,54 @@ import (
 
 var gBucketCounter = 0
 
+type RestTesterConfig struct {
+	noAdminParty          bool      // Unless this is true, Admin Party is in full effect
+	SyncFn                string    // put the sync() function source in here (optional)
+	DatabaseConfig        *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	NoFlush               bool      // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
+	InitSyncSeq           uint64    // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	EnableNoConflictsMode bool      // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	distributedIndex      bool      // Test with walrus-based index bucket
+}
+
 type RestTester struct {
+	*RestTesterConfig
+	Testing                 testing.TB
 	RestTesterBucket        base.Bucket
 	RestTesterServerContext *ServerContext
-	noAdminParty            bool      // Unless this is true, Admin Party is in full effect
-	distributedIndex        bool      // Test with walrus-based index bucket
-	SyncFn                  string    // put the sync() function source in here (optional)
-	DatabaseConfig          *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	AdminHandler            http.Handler
 	PublicHandler           http.Handler
-	EnableNoConflictsMode   bool   // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
-	NoFlush                 bool   // Skip bucket flush step during creation.  Used by tests that need to simulate start/stop of Sync Gateway with backing bucket intact.
-	InitSyncSeq             uint64 // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+}
+
+func NewRestTester(tester testing.TB, restConfig *RestTesterConfig) *RestTester {
+	var rt RestTester
+	if tester == nil {
+		panic("tester parameter cannot be nil")
+	}
+	rt.Testing = tester
+	if restConfig != nil {
+		rt.RestTesterConfig = restConfig
+	} else {
+		rt.RestTesterConfig = &RestTesterConfig{}
+	}
+	return &rt
+}
+
+func NewRestTesterWithBucket(tester testing.TB, restConfig *RestTesterConfig, bucket base.Bucket) *RestTester {
+	rt := NewRestTester(tester, restConfig)
+	if bucket == nil {
+		panic("nil bucket supplied. Use NewRestTester if you aren't supplying a bucket")
+	}
+	rt.RestTesterBucket = bucket
+
+	return rt
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
+
+	if rt.Testing == nil {
+		panic("RestTester not properly initialized please use NewRestTester function")
+	}
 
 	if rt.RestTesterBucket != nil {
 		return rt.RestTesterBucket
@@ -63,13 +96,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 				log.Printf("Initializing %s to %d", db.SyncSeqKey, rt.InitSyncSeq)
 				_, incrErr := tempBucket.Incr(db.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 				if incrErr != nil {
-					panic(fmt.Sprintf("Error initializing %s in test bucket: %v", db.SyncSeqKey, incrErr))
+					rt.Testing.Fatalf("Error initializing %s in test bucket: %v", db.SyncSeqKey, incrErr)
+					return nil
 				}
 			}
 			tempBucket.Close()
 		} else {
 			if rt.InitSyncSeq > 0 {
-				panic("RestTester doesn't support NoFlush and InitSyncSeq in same test")
+				rt.Testing.Fatal("RestTester doesn't support NoFlush and InitSyncSeq in same test")
+				return nil
 			}
 		}
 
@@ -130,7 +165,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 		if err != nil {
-			panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
+			rt.Testing.Fatalf("Error from AddDatabaseFromConfig: %v", err)
+			return nil
 		}
 		rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
@@ -142,7 +178,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 					base.Infof(base.KeyAll, "WaitForIndexEmpty returned an error: %v.  Dropping indexes and retrying", err)
 					// if WaitForIndexEmpty returns error, drop the indexes and retry
 					if err := base.DropAllBucketIndexes(asGoCbBucket); err != nil {
-						panic(fmt.Sprintf("Failed to drop bucket indexes: %v", err))
+						rt.Testing.Fatalf("Failed to drop bucket indexes: %v", err)
+						return nil
 					}
 
 					continue // Go to the top of the for loop to retry
@@ -157,8 +194,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		return rt.RestTesterBucket
 	}
 
-	panic(fmt.Sprintf("Failed to create a RestTesterBucket after multiple attempts"))
-
+	rt.Testing.Fatalf("Failed to create a RestTesterBucket after multiple attempts")
+	return nil
 }
 
 func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
@@ -184,7 +221,7 @@ func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
 	})
 
 	if err != nil {
-		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
+		rt.Testing.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 	}
 	rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
@@ -265,6 +302,9 @@ func (rt *RestTester) DisableGuestUser() {
 }
 
 func (rt *RestTester) Close() {
+	if rt.Testing == nil {
+		panic("RestTester not properly initialized please use NewRestTester function")
+	}
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close()
 	}
@@ -648,24 +688,25 @@ func (bt BlipTester) Close() {
 }
 
 // Create a BlipTester using the default spec
-func NewBlipTester() (*BlipTester, error) {
+func NewBlipTester(tester testing.TB) (*BlipTester, error) {
 	defaultSpec := BlipTesterSpec{}
-	return NewBlipTesterFromSpec(defaultSpec)
+	return NewBlipTesterFromSpec(tester, defaultSpec)
 }
 
 // Create a BlipTester using the given spec
-func NewBlipTesterFromSpec(spec BlipTesterSpec) (*BlipTester, error) {
+func NewBlipTesterFromSpec(tester testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
 
 	bt := &BlipTester{}
 
 	if spec.restTester != nil {
 		bt.restTester = spec.restTester
 	} else {
-		rt := RestTester{
+		rtConfig := RestTesterConfig{
 			EnableNoConflictsMode: spec.noConflictsMode,
 			noAdminParty:          spec.noAdminParty,
 		}
-		bt.restTester = &rt
+		var rt = NewRestTester(tester, &rtConfig)
+		bt.restTester = rt
 	}
 
 	// Since blip requests all go over the public handler, wrap the public handler with the httptest server
