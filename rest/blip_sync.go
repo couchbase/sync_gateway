@@ -47,6 +47,7 @@ type blipSyncContext struct {
 	lock                sync.Mutex
 	allowedAttachments  map[string]int
 	handlerSerialNumber uint64    // Each handler within a context gets a unique serial number for logging
+	terminatorOnce      sync.Once // Used to ensure the terminator channel below is only ever closed once.
 	terminator          chan bool // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
 	activeSubChanges    uint32    // Flag for whether there is a subChanges subscription currently active.  Atomic access
 	useDeltas           bool      // Whether deltas can be used for this connection - This should be set via setUseDeltas()
@@ -201,7 +202,10 @@ func (ctx *blipSyncContext) close() {
 		}
 		ctx.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(stat, -1)
 	}
-	close(ctx.terminator)
+
+	ctx.terminatorOnce.Do(func() {
+		close(ctx.terminator)
+	})
 }
 
 // Handler for unknown requests
