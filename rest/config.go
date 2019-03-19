@@ -289,30 +289,15 @@ type Http2Config struct {
 
 //TODO: Add support for TLS 1.3 when we switch to Go 1.13
 
-var tlsVersionNames = []struct {
-	versionName  string
-	versionConst uint16
-}{
-	{
-		versionName:  "tlsv1",
-		versionConst: tls.VersionTLS10,
-	},
-	{
-		versionName:  "tlsv1.1",
-		versionConst: tls.VersionTLS11,
-	},
-	{
-		versionName:  "tlsv1.2",
-		versionConst: tls.VersionTLS12,
-	},
-}
-
 func GetTLSVersionFromString(stringV *string) uint16 {
 	if stringV != nil {
-		for _, versions := range tlsVersionNames {
-			if versions.versionName == *stringV {
-				return versions.versionConst
-			}
+		switch *stringV {
+		case "tlsv1":
+			return tls.VersionTLS10
+		case "tlsv1.1":
+			return tls.VersionTLS11
+		case "tlsv1.2":
+			return tls.VersionTLS12
 		}
 	}
 	return uint16(DefaultMinimumTLSVersionConst)
@@ -904,7 +889,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		http2Enabled = *config.Unsupported.Http2Config.Enabled
 	}
 
-	tlsVersion := GetTLSVersionFromString(config.TLSMinVersion)
+	tlsMinVersion := GetTLSVersionFromString(config.TLSMinVersion)
 
 	err := base.ListenAndServeHTTP(
 		addr,
@@ -915,7 +900,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		config.ServerReadTimeout,
 		config.ServerWriteTimeout,
 		http2Enabled,
-		tlsVersion,
+		tlsMinVersion,
 	)
 	if err != nil {
 		base.Fatalf(base.KeyAll, "Failed to start HTTP server on %s: %v", base.UD(addr), err)

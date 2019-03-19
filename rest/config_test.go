@@ -110,7 +110,7 @@ func TestLoadServerConfigExamples(t *testing.T) {
 }
 
 // Test TLS Version
-func TestTLSVersionSetting(t *testing.T) {
+func TestTLSMinimumVersionSetting(t *testing.T) {
 	tests := []struct {
 		name        string
 		tlsString   string
