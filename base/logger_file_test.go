@@ -12,53 +12,53 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestFileShouldLog(t *testing.T) {
-	tests := []struct {
-		enabled     bool
-		loggerLevel LogLevel
-		logToLevel  LogLevel
-		loggerKeys  []string
-		logToKey    LogKey
-		expected    bool
-	}{
-		{
-			// Log with matching log level
-			enabled:     true,
-			loggerLevel: LevelInfo,
-			logToLevel:  LevelInfo,
-			expected:    true,
-		},
-		{
-			// Log with higher log level
-			enabled:     true,
-			loggerLevel: LevelInfo,
-			logToLevel:  LevelWarn,
-			expected:    true,
-		},
-		{
-			// Log with lower log level
-			enabled:     true,
-			loggerLevel: LevelWarn,
-			logToLevel:  LevelInfo,
-			expected:    false,
-		},
-		{
-			// Logger disabled (enabled = false)
-			enabled:     false,
-			loggerLevel: LevelNone,
-			logToLevel:  LevelError,
-			expected:    false,
-		},
-		{
-			// Logger disabled (LevelNone)
-			enabled:     true,
-			loggerLevel: LevelNone,
-			logToLevel:  LevelInfo,
-			expected:    false,
-		},
-	}
+var fileShouldLogTests = []struct {
+	enabled     bool
+	loggerLevel LogLevel
+	logToLevel  LogLevel
+	loggerKeys  []string
+	logToKey    LogKey
+	expected    bool
+}{
+	{
+		// Log with matching log level
+		enabled:     true,
+		loggerLevel: LevelInfo,
+		logToLevel:  LevelInfo,
+		expected:    true,
+	},
+	{
+		// Log with higher log level
+		enabled:     true,
+		loggerLevel: LevelInfo,
+		logToLevel:  LevelWarn,
+		expected:    true,
+	},
+	{
+		// Log with lower log level
+		enabled:     true,
+		loggerLevel: LevelWarn,
+		logToLevel:  LevelInfo,
+		expected:    false,
+	},
+	{
+		// Logger disabled (enabled = false)
+		enabled:     false,
+		loggerLevel: LevelNone,
+		logToLevel:  LevelError,
+		expected:    false,
+	},
+	{
+		// Logger disabled (LevelNone)
+		enabled:     true,
+		loggerLevel: LevelNone,
+		logToLevel:  LevelInfo,
+		expected:    false,
+	},
+}
 
-	for _, test := range tests {
+func TestFileShouldLog(t *testing.T) {
+	for _, test := range fileShouldLogTests {
 		name := fmt.Sprintf("logger{%s,%s}.shouldLog(%s,%s)",
 			test.loggerLevel.StringShort(), test.loggerKeys,
 			test.logToLevel.StringShort(), test.logToKey)
@@ -73,6 +73,27 @@ func TestFileShouldLog(t *testing.T) {
 		t.Run(name, func(ts *testing.T) {
 			got := l.shouldLog(test.logToLevel)
 			goassert.Equals(ts, got, test.expected)
+		})
+	}
+}
+
+func BenchmarkFileShouldLog(b *testing.B) {
+	for _, test := range fileShouldLogTests {
+		name := fmt.Sprintf("logger{%s,%s}.shouldLog(%s,%s)",
+			test.loggerLevel.StringShort(), test.loggerKeys,
+			test.logToLevel.StringShort(), test.logToKey)
+
+		l := FileLogger{
+			Enabled: test.enabled,
+			level:   test.loggerLevel,
+			output:  ioutil.Discard,
+			logger:  log.New(ioutil.Discard, "", 0),
+		}
+
+		b.Run(name, func(bb *testing.B) {
+			for i := 0; i < bb.N; i++ {
+				l.shouldLog(test.logToLevel)
+			}
 		})
 	}
 }
