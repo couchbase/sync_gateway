@@ -640,6 +640,10 @@ func (db *Database) SameAs(otherdb *Database) bool {
 		db.Bucket == otherdb.Bucket
 }
 
+func (db *Database) IsCompactRunning() bool {
+	return atomic.LoadUint32(&db.CompactState) == DBCompactRunning
+}
+
 func (db *Database) User() auth.User {
 	return db.user
 }
