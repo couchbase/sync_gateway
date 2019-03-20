@@ -3580,7 +3580,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 
 	// This doesn't need to specify XATTR's because that is controlled by the test
 	// env variable: SG_TEST_USE_XATTRS
-	rt := RestTester{}
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	bulkDocsBody := `
