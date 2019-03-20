@@ -220,7 +220,7 @@ func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 }
 
 func WriteUserDirect(db *Database, username string, sequence uint64) {
-	docId := fmt.Sprintf(base.UserPrefix+"%v", username)
+	docId := base.UserPrefix + username
 	db.Bucket.Add(docId, 0, Body{"sequence": sequence, "name": username})
 }
 

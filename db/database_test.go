@@ -111,9 +111,9 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	tBucket := testBucket()
 
-	log.Printf("Initializing test"+base.SeqPrefix+" to %d", customSeq)
+	log.Printf("Initializing test %s to %d", base.SeqPrefix, customSeq)
 	_, incrErr := tBucket.Incr(SyncSeqKey, customSeq, customSeq, 0)
-	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment "+base.SeqPrefix+" seq by %d", customSeq))
+	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s seq by %d", base.SeqPrefix, customSeq))
 
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")

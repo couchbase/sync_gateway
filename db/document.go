@@ -545,7 +545,7 @@ func (doc *document) migrateRevisionBodies(bucket base.Bucket) error {
 }
 
 func generateRevBodyKey(docid, revid string) (revBodyKey string) {
-	return fmt.Sprintf(base.RBPrefix+"%s", generateRevDigest(docid, revid))
+	return base.RevBodyPrefix + generateRevDigest(docid, revid)
 }
 
 func generateRevDigest(docid, revid string) string {

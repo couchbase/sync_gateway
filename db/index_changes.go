@@ -691,17 +691,17 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 
 		pendingBackfillLog[0] = &ChangeEntry{
 			Seq:      pendingBackfillSequence,
-			ID:       fmt.Sprintf("%s0:%s", base.BackfillPendingPrefix, channel),
+			ID:       base.BackfillPendingPrefix + "0:" + channel,
 			backfill: BackfillFlag_Pending,
 		}
 		pendingBackfillLog[1] = &ChangeEntry{
 			Seq:      pendingBackfillSequence,
-			ID:       fmt.Sprintf("%s1:%s", base.BackfillPendingPrefix, channel),
+			ID:       base.BackfillPendingPrefix + "1:" + channel,
 			backfill: BackfillFlag_Pending,
 		}
 		pendingBackfillLog[2] = &ChangeEntry{
 			Seq:      pendingBackfillSequence,
-			ID:       fmt.Sprintf("%s2:%s", base.BackfillPendingPrefix, channel),
+			ID:       base.BackfillPendingPrefix + "2:" + channel,
 			backfill: BackfillFlag_Pending,
 		}
 
@@ -789,7 +789,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 					Seq:     options.Since.TriggeredBy,
 					vbNo:    options.Since.TriggeredByVbNo,
 				},
-				ID:       fmt.Sprintf("%s%s", base.BackfillCompletePrefix, channel),
+				ID:       base.BackfillCompletePrefix + channel,
 				backfill: BackfillFlag_Complete,
 			}
 
