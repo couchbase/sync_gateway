@@ -158,7 +158,7 @@ func dcpKeyFilter(key []byte) bool {
 	}
 
 	// User, role and unused sequence markers should be processed
-	if bytes.HasPrefix(key, []byte(UnusedPrefix)) ||
+	if bytes.HasPrefix(key, []byte(UnusedPrefixNoColon)) ||
 		bytes.HasPrefix(key, []byte(UserPrefix)) ||
 		bytes.HasPrefix(key, []byte(RolePrefix)) {
 		return true

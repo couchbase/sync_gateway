@@ -110,7 +110,7 @@ const (
 	SeqPrefix              = SyncPrefix + "seq:"
 	SessionPrefix          = SyncPrefix + "session:"
 	UserEmailPrefix        = SyncPrefix + "useremail:"
-	UnusedPrefix           = SyncPrefix + "unused:"
+	UnusedPrefixNoColon    = SyncPrefix + "unused"
 	UserPrefix             = SyncPrefix + "user:"
 	UnusedSeqPrefix        = SyncPrefix + "unusedSeq:"
 	UnusualSeqPrefix       = SyncPrefix + "unusualSeq:"
