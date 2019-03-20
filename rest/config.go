@@ -11,6 +11,7 @@ package rest
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -35,10 +36,11 @@ import (
 )
 
 var (
-	DefaultInterface      = ":4984"
-	DefaultAdminInterface = "127.0.0.1:4985" // Only accessible on localhost!
-	DefaultServer         = "walrus:"
-	DefaultPool           = "default"
+	DefaultInterface              = ":4984"
+	DefaultAdminInterface         = "127.0.0.1:4985" // Only accessible on localhost!
+	DefaultServer                 = "walrus:"
+	DefaultPool                   = "default"
+	DefaultMinimumTLSVersionConst = tls.VersionTLS10
 
 	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 	defaultLogFilePath string
@@ -69,6 +71,7 @@ const (
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
+	TLSMinVersion              *string                  `json:"tls_minimum_version,omitempty"`     // Set TLS Version
 	Interface                  *string                  `json:",omitempty"`                        // Interface to bind REST API to, default ":4984"
 	SSLCert                    *string                  `json:",omitempty"`                        // Path to SSL cert file, or nil
 	SSLKey                     *string                  `json:",omitempty"`                        // Path to SSL private key file, or nil
@@ -282,6 +285,22 @@ type UnsupportedServerConfig struct {
 
 type Http2Config struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether HTTP2 support is enabled
+}
+
+//TODO: Add support for TLS 1.3 when we switch to Go 1.13
+
+func GetTLSVersionFromString(stringV *string) uint16 {
+	if stringV != nil {
+		switch *stringV {
+		case "tlsv1":
+			return tls.VersionTLS10
+		case "tlsv1.1":
+			return tls.VersionTLS11
+		case "tlsv1.2":
+			return tls.VersionTLS12
+		}
+	}
+	return uint16(DefaultMinimumTLSVersionConst)
 }
 
 func (dbConfig *DbConfig) setup(name string) error {
@@ -869,6 +888,9 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 	if config.Unsupported != nil && config.Unsupported.Http2Config != nil {
 		http2Enabled = *config.Unsupported.Http2Config.Enabled
 	}
+
+	tlsMinVersion := GetTLSVersionFromString(config.TLSMinVersion)
+
 	err := base.ListenAndServeHTTP(
 		addr,
 		maxConns,
@@ -878,6 +900,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		config.ServerReadTimeout,
 		config.ServerWriteTimeout,
 		http2Enabled,
+		tlsMinVersion,
 	)
 	if err != nil {
 		base.Fatalf(base.KeyAll, "Failed to start HTTP server on %s: %v", base.UD(addr), err)
