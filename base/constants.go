@@ -91,34 +91,29 @@ const (
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
 
-	//==== Sync Prefix ====
+	//==== Sync Prefix Documents & Xattr====
 	SyncPrefix    = "_sync:"
 	SyncXattrName = "_sync"
 
-	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"
+	AttPrefix              = SyncPrefix + "att:"
 	BackfillCompletePrefix = SyncPrefix + "backfill:complete:"
-
-	// Key used to store sync function
-	KSyncDataKey = SyncPrefix + "syncdata"
-
-	RepairDryRun = SyncPrefix + "repair:dryrun:"
-	RepairBackup = SyncPrefix + "repair:backup:"
-
-	UserPrefix       = SyncPrefix + "user:"
-	RolePrefix       = SyncPrefix + "role:"
-	RevPrefix        = SyncPrefix + "rev:"
-	SessionPrefix    = SyncPrefix + "session:"
-	UserEmailPrefix  = SyncPrefix + "useremail:"
-	AttPrefix        = SyncPrefix + "att:"
-	SeqPrefix        = SyncPrefix + "seq:"
-	UnusualSeqPrefix = SyncPrefix + "unusualSeq:"
-	UnusedSeqPrefix  = SyncPrefix + "unusedSeq:"
-	UnusedPrefix     = SyncPrefix + "unused:"
-	RBPrefix         = SyncPrefix + "rb:"
-	DCPCkPrefix      = SyncPrefix + "dcp_ck:"
-
-	DCPCheckpointPrefix = SyncPrefix + "dcp_ck:"      // Prefix used for DCP checkpoint persistence (is appended with vbno)
-	DCPBackfillSeqs     = SyncPrefix + "dcp_backfill" // Bucket doc used for DCP sequence persistence during backfill
+	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"
+	DCPBackfillSeqs        = SyncPrefix + "dcp_backfill"
+	DCPCheckpointPrefix    = SyncPrefix + "dcp_ck:"
+	DCPCkPrefix            = SyncPrefix + "dcp_ck:"
+	KSyncDataKey           = SyncPrefix + "syncdata"
+	RBPrefix               = SyncPrefix + "rb:"
+	RepairBackup           = SyncPrefix + "repair:backup:"
+	RepairDryRun           = SyncPrefix + "repair:dryrun:"
+	RevPrefix              = SyncPrefix + "rev:"
+	RolePrefix             = SyncPrefix + "role:"
+	SeqPrefix              = SyncPrefix + "seq:"
+	SessionPrefix          = SyncPrefix + "session:"
+	UserEmailPrefix        = SyncPrefix + "useremail:"
+	UnusedPrefix           = SyncPrefix + "unused:"
+	UserPrefix             = SyncPrefix + "user:"
+	UnusedSeqPrefix        = SyncPrefix + "unusedSeq:"
+	UnusualSeqPrefix       = SyncPrefix + "unusualSeq:"
 )
 
 const (
