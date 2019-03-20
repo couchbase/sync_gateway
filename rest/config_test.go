@@ -2,6 +2,7 @@ package rest
 
 import (
 	"bytes"
+	"crypto/tls"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,4 +107,41 @@ func TestLoadServerConfigExamples(t *testing.T) {
 		return nil
 	})
 	assert.NoError(t, err)
+}
+
+// Test TLS Version
+func TestTLSMinimumVersionSetting(t *testing.T) {
+	tests := []struct {
+		name        string
+		tlsString   string
+		expectedTLS uint16
+	}{
+		{
+			name:        `Set TLS 1.0`,
+			tlsString:   `tlsv1`,
+			expectedTLS: tls.VersionTLS10,
+		},
+		{
+			name:        `Set TLS 1.1`,
+			tlsString:   `tlsv1.1`,
+			expectedTLS: tls.VersionTLS11,
+		},
+		{
+			name:        `Set TLS 1.2`,
+			tlsString:   `tlsv1.2`,
+			expectedTLS: tls.VersionTLS12,
+		},
+		{
+			name:        `No TLS set, should default to 1.0`,
+			tlsString:   ``,
+			expectedTLS: tls.VersionTLS10,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(tt *testing.T) {
+			assert.Equal(t, test.expectedTLS, GetTLSVersionFromString(&test.tlsString))
+		})
+	}
+
 }
