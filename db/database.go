@@ -51,10 +51,7 @@ const (
 const (
 	DefaultRevsLimitNoConflicts = 50
 	DefaultRevsLimitConflicts   = 100
-	DefaultPurgeInterval        = 30               // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
-	KSyncKeyPrefix              = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
-	kSyncDataKey                = "_sync:syncdata" // Key used to store sync function
-	KSyncXattrName              = "_sync"          // Name of XATTR used to store sync metadata
+	DefaultPurgeInterval        = 30 // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
 
 )
 
@@ -916,7 +913,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		Sync string
 	}
 
-	_, err = context.Bucket.Update(kSyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+	_, err = context.Bucket.Update(base.KSyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := json.Unmarshal(currentValue, &syncData)

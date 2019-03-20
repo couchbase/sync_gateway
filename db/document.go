@@ -545,7 +545,7 @@ func (doc *document) migrateRevisionBodies(bucket base.Bucket) error {
 }
 
 func generateRevBodyKey(docid, revid string) (revBodyKey string) {
-	return fmt.Sprintf("_sync:rb:%s", generateRevDigest(docid, revid))
+	return fmt.Sprintf(base.RBPrefix+"%s", generateRevDigest(docid, revid))
 }
 
 func generateRevDigest(docid, revid string) string {
@@ -706,7 +706,7 @@ func (doc *document) UnmarshalJSON(data []byte) error {
 		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
-	delete(doc._body, "_sync")
+	delete(doc._body, base.SyncXattrName)
 	return nil
 }
 
@@ -715,9 +715,9 @@ func (doc *document) MarshalJSON() ([]byte, error) {
 	if body == nil {
 		body = Body{}
 	}
-	body["_sync"] = &doc.syncData
+	body[base.SyncXattrName] = &doc.syncData
 	data, err := json.Marshal(body)
-	delete(body, "_sync")
+	delete(body, base.SyncXattrName)
 	if err != nil {
 		err = pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}

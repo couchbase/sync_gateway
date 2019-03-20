@@ -56,7 +56,7 @@ func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error)
 }
 
 // Key prefix reserved for role documents in the bucket
-const RoleKeyPrefix = "_sync:role:"
+const RoleKeyPrefix = base.RolePrefix
 
 func docIDForRole(name string) string {
 	return RoleKeyPrefix + name

@@ -20,7 +20,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/google/uuid"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -41,9 +41,6 @@ const (
 
 // Memcached datatype for raw (binary) document (non-flag)
 const MemcachedDataTypeRaw = 0
-
-const DCPCheckpointPrefix = "_sync:dcp_ck:"  // Prefix used for DCP checkpoint persistence (is appended with vbno)
-const DCPBackfillSeqs = "_sync:dcp_backfill" // Bucket doc used for DCP sequence persistence during backfill
 
 // Number of non-checkpoint updates per vbucket required to trigger metadata persistence.  Must be greater than zero to avoid
 // retriggering persistence solely based on checkpoint doc echo.
@@ -156,14 +153,14 @@ func (r *DCPReceiver) OnError(err error) {
 func dcpKeyFilter(key []byte) bool {
 
 	// If it's not a _sync doc, process
-	if !bytes.HasPrefix(key, []byte("_sync")) {
+	if !bytes.HasPrefix(key, []byte(SyncXattrName)) {
 		return true
 	}
 
 	// User, role and unused sequence markers should be processed
-	if bytes.HasPrefix(key, []byte("_sync:unused")) ||
-		bytes.HasPrefix(key, []byte("_sync:user:")) ||
-		bytes.HasPrefix(key, []byte("_sync:role:")) {
+	if bytes.HasPrefix(key, []byte(UnusedPrefix)) ||
+		bytes.HasPrefix(key, []byte(UserPrefix)) ||
+		bytes.HasPrefix(key, []byte(RolePrefix)) {
 		return true
 	}
 

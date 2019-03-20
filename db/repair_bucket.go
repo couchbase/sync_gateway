@@ -265,10 +265,10 @@ func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updat
 	var contentToSave []byte
 
 	if r.DryRun {
-		backupOrDryRunDocId = fmt.Sprintf("_sync:repair:dryrun:%v", docId)
+		backupOrDryRunDocId = fmt.Sprintf(base.RepairDryRun+"%v", docId)
 		contentToSave = updatedDoc
 	} else {
-		backupOrDryRunDocId = fmt.Sprintf("_sync:repair:backup:%v", docId)
+		backupOrDryRunDocId = fmt.Sprintf(base.RepairBackup+"%v", docId)
 		contentToSave = originalDoc
 	}
 

@@ -19,10 +19,10 @@ import (
 )
 
 const (
-	kMaxIncrRetries         = 3                  // Max retries for incr operations
-	UnusedSequenceKeyPrefix = "_sync:unusedSeq:" // Prefix for unused sequence documents
-	UnusedSequenceTTL       = 10 * 60            // 10 minute expiry for unused sequence docs
-	SyncSeqKey              = "_sync:seq"        // Key for sequence counter doc
+	kMaxIncrRetries         = 3                    // Max retries for incr operations
+	UnusedSequenceKeyPrefix = base.UnusedSeqPrefix // Prefix for unused sequence documents
+	UnusedSequenceTTL       = 10 * 60              // 10 minute expiry for unused sequence docs
+	SyncSeqKey              = "_sync:seq"          // Key for sequence counter doc
 )
 
 type sequenceAllocator struct {

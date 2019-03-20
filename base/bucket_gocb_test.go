@@ -19,6 +19,7 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -593,7 +594,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	bucket := testBucket.Bucket
 
 	key := "TestWriteCasXATTRSimple"
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 
@@ -661,7 +662,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	bucket.SetTranscoder(SGTranscoder{})
 
 	key := "TestWriteCasXATTRUpsert"
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 
@@ -727,7 +728,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	bucket := testBucket.Bucket
 
 	key := "TestWriteCasXATTRSimple"
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	val := make(map[string]interface{})
 	val["sg_field"] = "sg_value"
 
@@ -801,7 +802,7 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	bucket.SetTranscoder(SGTranscoder{})
 
 	key := "TestWriteCasXattrRaw"
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 	valRaw, _ := json.Marshal(val)
@@ -854,7 +855,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	bucket.SetTranscoder(SGTranscoder{})
 
 	key := "TestWriteCasXattrTombstoneResurrect"
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 
@@ -938,7 +939,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	bucket.SetTranscoder(SGTranscoder{})
 
 	key := "TestWriteCasXattrTombstoneXattrUpdate"
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 
@@ -1023,7 +1024,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	bucket.SetTranscoder(SGTranscoder{})
 
 	key := "TestWriteUpdateXATTR"
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	val := make(map[string]interface{})
 	val["counter"] = float64(1)
 
@@ -1138,7 +1139,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 	}
 
 	// Create document with XATTR
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 
@@ -1193,7 +1194,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	}
 
 	// Create document with XATTR
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 
@@ -1266,7 +1267,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	}
 
 	// Create document with XATTR
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 
@@ -1331,7 +1332,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	val := make(map[string]interface{})
 	val["type"] = key1
 
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
@@ -1431,7 +1432,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 	val := make(map[string]interface{})
 	val["type"] = key1
 
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
@@ -1513,7 +1514,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 	}
 
 	key := "TestDeleteWithXattrWithSimulatedRace"
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	createTombstonedDoc(bucket, key, xattrName)
 
 	numTimesCalledBack := 0
@@ -1570,7 +1571,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 	val := make(map[string]interface{})
 	val["type"] = key1
 
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
@@ -1662,7 +1663,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	val := make(map[string]interface{})
 	val["type"] = key1
 
-	xattrName := "_sync"
+	xattrName := base.SyncXattrName
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"

@@ -90,6 +90,35 @@ const (
 
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
+
+	//==== Sync Prefix ====
+	SyncPrefix    = "_sync:"
+	SyncXattrName = "_sync"
+
+	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"
+	BackfillCompletePrefix = SyncPrefix + "backfill:complete:"
+
+	// Key used to store sync function
+	KSyncDataKey = SyncPrefix + "syncdata"
+
+	RepairDryRun = SyncPrefix + "repair:dryrun:"
+	RepairBackup = SyncPrefix + "repair:backup:"
+
+	UserPrefix       = SyncPrefix + "user:"
+	RolePrefix       = SyncPrefix + "role:"
+	RevPrefix        = SyncPrefix + "rev:"
+	SessionPrefix    = SyncPrefix + "session:"
+	UserEmailPrefix  = SyncPrefix + "useremail:"
+	AttPrefix        = SyncPrefix + "att:"
+	SeqPrefix        = SyncPrefix + "seq:"
+	UnusualSeqPrefix = SyncPrefix + "unusualSeq:"
+	UnusedSeqPrefix  = SyncPrefix + "unusedSeq:"
+	UnusedPrefix     = SyncPrefix + "unused:"
+	RBPrefix         = SyncPrefix + "rb:"
+	DCPCkPrefix      = SyncPrefix + "dcp_ck:"
+
+	DCPCheckpointPrefix = SyncPrefix + "dcp_ck:"      // Prefix used for DCP checkpoint persistence (is appended with vbno)
+	DCPBackfillSeqs     = SyncPrefix + "dcp_backfill" // Bucket doc used for DCP sequence persistence during backfill
 )
 
 const (

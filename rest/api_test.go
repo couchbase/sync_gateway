@@ -3335,7 +3335,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	*/
 
 	// Modify the doc directly in the bucket to delete the digest field
-	s := couchbaseDoc["_sync"].(map[string]interface{})
+	s := couchbaseDoc[base.SyncXattrName].(map[string]interface{})
 	couchbaseDoc["_attachments"] = s["attachments"].(map[string]interface{})
 	attachments := couchbaseDoc["_attachments"].(map[string]interface{})
 
@@ -3622,7 +3622,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	gocbBucket, _ := base.AsGoCBBucket(baseBucket)
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err = gocbBucket.GetWithXattr("-21SK00U-ujxUO9fU2HezxL", "_sync", &retrievedVal, &retrievedXattr)
+	_, err = gocbBucket.GetWithXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, &retrievedVal, &retrievedXattr)
 	assert.NoError(t, err, "Unexpected Error")
 	goassert.True(t, retrievedXattr["rev"].(string) == "2-466a1fab90a810dc0a63565b70680e4e")
 
