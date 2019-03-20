@@ -183,7 +183,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{}
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -1688,7 +1688,7 @@ func TestDcpBackfill(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := RestTester{}
+	rt := NewRestTester(t, nil)
 
 	log.Printf("Starting get bucket....")
 
