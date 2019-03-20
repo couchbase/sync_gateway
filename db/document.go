@@ -193,7 +193,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 	// Note that there could be a non-sync xattr present
 	if dataType&base.MemcachedDataTypeXattr != 0 {
 		var syncXattr []byte
-		body, syncXattr, err = parseXattrStreamData(KSyncXattrName, data)
+		body, syncXattr, err = parseXattrStreamData(base.SyncXattrName, data)
 		if err != nil {
 			return nil, nil, nil, err
 		}

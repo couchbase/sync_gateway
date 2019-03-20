@@ -1033,7 +1033,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 					return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 				}
 			}
-			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, nil, writeUpdateFunc)
+			_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, nil, writeUpdateFunc)
 		} else {
 			_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 				// Be careful: this block can be invoked multiple times if there are races!

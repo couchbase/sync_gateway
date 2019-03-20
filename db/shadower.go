@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
@@ -52,7 +52,7 @@ func (s *Shadower) docIDMatches(docID string) bool {
 			return false
 		}
 	}
-	return !strings.HasPrefix(docID, KSyncKeyPrefix)
+	return !strings.HasPrefix(docID, base.SyncPrefix)
 }
 
 // Main loop that pulls changes from the external bucket. (Runs in its own goroutine.)

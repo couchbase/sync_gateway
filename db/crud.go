@@ -97,7 +97,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Cas, getErr = db.Bucket.GetWithXattr(key, KSyncXattrName, &rawBucketDoc.Body, &rawBucketDoc.Xattr)
+	rawBucketDoc.Cas, getErr = db.Bucket.GetWithXattr(key, base.SyncXattrName, &rawBucketDoc.Body, &rawBucketDoc.Xattr)
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -123,7 +123,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
 		var rawDoc, rawXattr []byte
-		cas, getErr := db.Bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
+		cas, getErr := db.Bucket.GetWithXattr(key, base.SyncXattrName, &rawDoc, &rawXattr)
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
@@ -1202,7 +1202,7 @@ func (db *Database) updateAndReturnDoc(
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
-		casOut, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, expiry, existingDoc, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
+		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, expiry, existingDoc, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll); err != nil {
 				return
@@ -1428,7 +1428,7 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 func (db *Database) Purge(key string) error {
 
 	if db.UseXattrs() {
-		return db.Bucket.DeleteWithXattr(key, KSyncXattrName)
+		return db.Bucket.DeleteWithXattr(key, base.SyncXattrName)
 	} else {
 		return db.Bucket.Delete(key)
 	}
@@ -1685,7 +1685,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 
 	if db.UseXattrs() {
 		var xattrValue []byte
-		cas, err := db.Bucket.GetXattr(docid, KSyncXattrName, &xattrValue)
+		cas, err := db.Bucket.GetXattr(docid, base.SyncXattrName, &xattrValue)
 
 		if err != nil {
 			if !base.IsDocNotFoundError(err) {

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -115,7 +115,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
 			// we'll end up in a feedback loop for their vbucket
 			requiresCheckpointPersistence = false
-		} else if !strings.HasPrefix(key, KSyncKeyPrefix) && !strings.HasPrefix(key, base.KIndexPrefix) { // Non-SG docs
+		} else if !strings.HasPrefix(key, base.SyncPrefix) && !strings.HasPrefix(key, base.KIndexPrefix) { // Non-SG docs
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}
