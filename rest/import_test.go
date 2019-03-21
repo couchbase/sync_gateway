@@ -14,6 +14,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func SkipImportTestsIfNotEnabled(t *testing.T) {
@@ -1275,17 +1276,14 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
 	mobileBody := make(map[string]interface{})
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
 
-	triggerOnDemandViaGet := func(key string) {
+	triggerOnDemandViaGet := func(rt *RestTester, key string) {
 		rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s", key), "")
 	}
-	triggerOnDemandViaWrite := func(key string) {
+	triggerOnDemandViaWrite := func(rt *RestTester, key string) {
 		mobileBody["foo"] = "bar"
 		mobileBodyMarshalled, err := json.Marshal(mobileBody)
 		assert.NoError(t, err, "Error marshalling body")
@@ -1293,7 +1291,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	}
 
 	type testcase struct {
-		onDemandCallback      func(string)
+		onDemandCallback      func(*RestTester, string)
 		name                  string
 		expectedRevGeneration int
 	}
@@ -1328,20 +1326,20 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			// Write directly to bucket with an expiry
 			expiryUnixEpoch := time.Now().Add(time.Second * 30).Unix()
 			_, err := bucket.Add(key, uint32(expiryUnixEpoch), mobileBody)
-			assert.NoError(t, err, "Error writing SDK doc")
+			require.NoError(t, err, "Error writing SDK doc")
 
 			// Verify the expiry before the on-demand import is triggered
 			gocbBucket, _ := base.AsGoCBBucket(bucket)
 			expiry, err := gocbBucket.GetExpiry(key)
-			assert.NoError(t, err, "Error calling GetExpiry()")
+			require.NoError(t, err, "Error calling GetExpiry()")
 			goassert.True(t, expiry == uint32(expiryUnixEpoch))
 
-			testCase.onDemandCallback(key)
+			testCase.onDemandCallback(rt, key)
 
 			// Wait until the change appears on the changes feed to ensure that it's been imported by this point.
 			// This is probably unnecessary in the case of on-demand imports, but it doesn't hurt to leave it in as a double check.
 			changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
-			assert.NoError(t, err, "Error waiting for changes")
+			require.NoError(t, err, "Error waiting for changes")
 			changeEntry := changes.Results[0]
 			goassert.Equals(t, changeEntry.ID, key)
 
@@ -1350,7 +1348,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 			// Verify the expiry has not been changed from the original expiry value
 			expiry, err = gocbBucket.GetExpiry(key)
-			assert.NoError(t, err, "Error calling GetExpiry()")
+			require.NoError(t, err, "Error calling GetExpiry()")
 			goassert.True(t, expiry == uint32(expiryUnixEpoch))
 
 		})
