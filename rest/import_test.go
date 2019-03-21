@@ -1362,21 +1362,18 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	triggerOnDemandViaGet := func(key string) {
+	triggerOnDemandViaGet := func(rt *RestTester, key string) {
 		// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
 		response := rt.SendAdminRequest("GET", "/db/"+key, "")
 		goassert.Equals(t, response.Code, 200)
 	}
-	triggerOnDemandViaWrite := func(key string) {
+	triggerOnDemandViaWrite := func(rt *RestTester, key string) {
 		bodyString := rawDocWithSyncMeta()
 		rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), bodyString)
 	}
 
 	type testcase struct {
-		onDemandCallback      func(string)
+		onDemandCallback      func(*RestTester, string)
 		name                  string
 		expectedRevGeneration int
 	}
@@ -1414,7 +1411,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			_, err := bucket.Add(key, uint32(syncMetaExpiry.Unix()), []byte(bodyString))
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
-			testCase.onDemandCallback(key)
+			testCase.onDemandCallback(rt, key)
 
 			// Double-check to make sure that it's been imported by checking the Sync Metadata in the xattr
 			assertXattrSyncMetaRevGeneration(t, bucket, key, testCase.expectedRevGeneration)
