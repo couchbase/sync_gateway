@@ -333,6 +333,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		ViewQueryTimeoutSecs: viewQueryTimeoutSecs,
 	}
 
+	if config.BucketOpTimeoutMs != nil {
+		operationTimeout := time.Millisecond * time.Duration(*config.BucketOpTimeoutMs)
+		spec.BucketOpTimeout = &operationTimeout
+	}
+
 	// Set cache properties, if present
 	cacheOptions := db.CacheOptions{}
 	if config.CacheConfig != nil {

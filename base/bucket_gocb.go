@@ -119,6 +119,17 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		return nil, err
 	}
 
+	// Set the GoCB opTimeout which controls how long blocking GoCB ops remain blocked before
+	// returning an "operation timed out" error.  Defaults to 2.5 seconds.  (SG #3508)
+	if spec.BucketOpTimeout != nil {
+
+		goCBBucket.SetOperationTimeout(*spec.BucketOpTimeout)
+
+		// Update the bulk op timeout to preserve the 1:4 ratio between op timeouts and bulk op timeouts.
+		goCBBucket.SetBulkOperationTimeout(*spec.BucketOpTimeout * 4)
+
+	}
+
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
 		// Set transcoder to SGTranscoder to avoid cases where it tries to write docs as []byte without setting
 		// the proper doctype flag and then later read them as JSON, which fails because it gets back a []byte
