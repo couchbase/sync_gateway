@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
@@ -220,7 +220,7 @@ func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 }
 
 func WriteUserDirect(db *Database, username string, sequence uint64) {
-	docId := fmt.Sprintf("_sync:user:%v", username)
+	docId := base.UserPrefix + username
 	db.Bucket.Add(docId, 0, Body{"sequence": sequence, "name": username})
 }
 
@@ -243,7 +243,7 @@ func WriteDirectWithKey(db *Database, key string, channelArray []string, sequenc
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
 	}
-	db.Bucket.Add(key, 0, Body{"_sync": syncData, "key": key})
+	db.Bucket.Add(key, 0, Body{base.SyncXattrName: syncData, "key": key})
 }
 
 // Create a document directly to the bucket with specific _sync metadata - used for
@@ -273,7 +273,7 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 		Channels:   chanMap,
 		Access:     accessMap,
 	}
-	db.Bucket.Add(docId, 0, Body{"_sync": syncData, "key": docId})
+	db.Bucket.Add(docId, 0, Body{base.SyncXattrName: syncData, "key": docId})
 }
 
 // Test notification when buffered entries are processed after a user doc arrives.
@@ -656,7 +656,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	goassert.Equals(t, len(changes), 3)
 	goassert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
-	_, incrErr := db.Bucket.Incr(SyncSeqKey, 7, 7, 0)
+	_, incrErr := db.Bucket.Incr(base.SyncSeqKey, 7, 7, 0)
 	goassert.True(t, incrErr == nil)
 
 	// Modify user to have access to both channels (sequence 2):

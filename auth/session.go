@@ -28,8 +28,6 @@ type LoginSession struct {
 
 const DefaultCookieName = "SyncGatewaySession"
 
-const SessionKeyPrefix = "_sync:session:"
-
 func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.ResponseWriter) (User, error) {
 
 	cookie, _ := rq.Cookie(auth.sessionCookieName)
@@ -133,5 +131,5 @@ func (auth Authenticator) DeleteSession(sessionid string) error {
 }
 
 func docIDForSession(sessionID string) string {
-	return SessionKeyPrefix + sessionID
+	return base.SessionPrefix + sessionID
 }

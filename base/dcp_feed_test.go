@@ -42,12 +42,12 @@ func TestTransformBucketCredentials(t *testing.T) {
 func TestDCPKeyFilter(t *testing.T) {
 
 	assert.True(t, dcpKeyFilter([]byte("doc123")))
-	assert.True(t, dcpKeyFilter([]byte("_sync:user:user1")))
-	assert.True(t, dcpKeyFilter([]byte("_sync:role:role2")))
-	assert.True(t, dcpKeyFilter([]byte("_sync:unusedSeq:1234")))
+	assert.True(t, dcpKeyFilter([]byte(UserPrefix+"user1")))
+	assert.True(t, dcpKeyFilter([]byte(RolePrefix+"role2")))
+	assert.True(t, dcpKeyFilter([]byte(UnusedSeqPrefix+"1234")))
 
-	assert.False(t, dcpKeyFilter([]byte("_sync:seq")))
-	assert.False(t, dcpKeyFilter([]byte("_sync:unusualSeq")))
-	assert.False(t, dcpKeyFilter([]byte("_sync:syncdata")))
-	assert.False(t, dcpKeyFilter([]byte("_sync:dcp_ck:12")))
+	assert.False(t, dcpKeyFilter([]byte(SyncSeqKey)))
+	assert.False(t, dcpKeyFilter([]byte(SyncPrefix+"unusualSeq")))
+	assert.False(t, dcpKeyFilter([]byte(SyncDataKey)))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix+"12")))
 }

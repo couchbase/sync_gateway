@@ -180,7 +180,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	json.Unmarshal(rv, &x)
 	goassert.True(t, err == nil)
 
-	sync := x["_sync"].(map[string]interface{})
+	sync := x[base.SyncXattrName].(map[string]interface{})
 	sync["sequence"] = 3
 	sync["rev"] = "3-e99405a23fa102238fa8c3fd499b15bc"
 	sync["recent_sequences"] = []uint64{1, 2, 3}
@@ -270,7 +270,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	goassert.True(t, err == nil)
 
-	sync := x["_sync"].(map[string]interface{})
+	sync := x[base.SyncXattrName].(map[string]interface{})
 	sync["sequence"] = 3
 	sync["rev"] = "3-e99405a23fa102238fa8c3fd499b15bc"
 	sync["recent_sequences"] = []uint64{1, 2, 3}

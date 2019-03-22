@@ -51,10 +51,7 @@ const (
 const (
 	DefaultRevsLimitNoConflicts = 50
 	DefaultRevsLimitConflicts   = 100
-	DefaultPurgeInterval        = 30               // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
-	KSyncKeyPrefix              = "_sync:"         // All special/internal documents the gateway creates have this prefix in their keys.
-	kSyncDataKey                = "_sync:syncdata" // Key used to store sync function
-	KSyncXattrName              = "_sync"          // Name of XATTR used to store sync metadata
+	DefaultPurgeInterval        = 30 // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
 
 )
 
@@ -578,7 +575,7 @@ func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removed
 // TODO: The underlying code (NotifyCheckForTermination) doesn't actually leverage the specific username - should be refactored
 //    to remove
 func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
-	context.mutationListener.NotifyCheckForTermination(base.SetOf(auth.UserKeyPrefix + username))
+	context.mutationListener.NotifyCheckForTermination(base.SetOf(base.UserPrefix + username))
 }
 
 func (dc *DatabaseContext) TakeDbOffline(reason string) error {
@@ -761,7 +758,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 	var principalName string
 	users = []string{}
 	roles = []string{}
-	lenUserKeyPrefix := len(auth.UserKeyPrefix)
+	lenUserKeyPrefix := len(base.UserPrefix)
 	for {
 		if db.Options.UseViews {
 			var viewRow principalsViewRow
@@ -780,7 +777,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 			if len(queryRow.Id) < lenUserKeyPrefix {
 				continue
 			}
-			isUser = queryRow.Id[0:lenUserKeyPrefix] == auth.UserKeyPrefix
+			isUser = queryRow.Id[0:lenUserKeyPrefix] == base.UserPrefix
 			principalName = queryRow.Id[lenUserKeyPrefix:]
 		}
 
@@ -916,7 +913,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		Sync string
 	}
 
-	_, err = context.Bucket.Update(kSyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+	_, err = context.Bucket.Update(base.SyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := json.Unmarshal(currentValue, &syncData)
@@ -1036,7 +1033,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 					return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 				}
 			}
-			_, err = db.Bucket.WriteUpdateWithXattr(key, KSyncXattrName, 0, nil, writeUpdateFunc)
+			_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, nil, writeUpdateFunc)
 		} else {
 			_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 				// Be careful: this block can be invoked multiple times if there are races!

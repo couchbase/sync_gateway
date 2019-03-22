@@ -543,7 +543,7 @@ func hasInlineAttachments(body Body) bool {
 }
 
 func attachmentKeyToString(key AttachmentKey) string {
-	return "_sync:att:" + string(key)
+	return base.AttPrefix + string(key)
 }
 
 func decodeAttachment(att interface{}) ([]byte, error) {

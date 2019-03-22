@@ -17,11 +17,6 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
-const (
-	backfillPendingPrefix  = "_sync:backfill:pending:"
-	backfillCompletePrefix = "_sync:backfill:complete:"
-)
-
 // Returns the (ordered) union of all of the changes made to multiple channels.
 func (db *Database) VectorMultiChangesFeed(chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	to := ""
@@ -696,17 +691,17 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 
 		pendingBackfillLog[0] = &ChangeEntry{
 			Seq:      pendingBackfillSequence,
-			ID:       fmt.Sprintf("%s0:%s", backfillPendingPrefix, channel),
+			ID:       base.BackfillPendingPrefix + "0:" + channel,
 			backfill: BackfillFlag_Pending,
 		}
 		pendingBackfillLog[1] = &ChangeEntry{
 			Seq:      pendingBackfillSequence,
-			ID:       fmt.Sprintf("%s1:%s", backfillPendingPrefix, channel),
+			ID:       base.BackfillPendingPrefix + "1:" + channel,
 			backfill: BackfillFlag_Pending,
 		}
 		pendingBackfillLog[2] = &ChangeEntry{
 			Seq:      pendingBackfillSequence,
-			ID:       fmt.Sprintf("%s2:%s", backfillPendingPrefix, channel),
+			ID:       base.BackfillPendingPrefix + "2:" + channel,
 			backfill: BackfillFlag_Pending,
 		}
 
@@ -794,7 +789,7 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 					Seq:     options.Since.TriggeredBy,
 					vbNo:    options.Since.TriggeredByVbNo,
 				},
-				ID:       fmt.Sprintf("%s%s", backfillCompletePrefix, channel),
+				ID:       base.BackfillCompletePrefix + channel,
 				backfill: BackfillFlag_Complete,
 			}
 
