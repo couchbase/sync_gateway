@@ -111,11 +111,8 @@ func (user *userImpl) validate() error {
 	return nil
 }
 
-// Key prefix reserved for user documents in the bucket
-const UserKeyPrefix = base.UserPrefix
-
 func docIDForUser(username string) string {
-	return UserKeyPrefix + username
+	return base.UserPrefix + username
 }
 
 func (user *userImpl) DocID() string {

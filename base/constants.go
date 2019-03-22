@@ -91,17 +91,14 @@ const (
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
 
-	//==== Sync Prefix Documents & Xattr====
-	SyncPrefix    = "_sync:"
-	SyncXattrName = "_sync"
+	//==== Sync Prefix Documents & Keys ====
+	SyncPrefix = "_sync:"
 
 	AttPrefix              = SyncPrefix + "att:"
 	BackfillCompletePrefix = SyncPrefix + "backfill:complete:"
 	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"
 	DCPBackfillSeqs        = SyncPrefix + "dcp_backfill"
 	DCPCheckpointPrefix    = SyncPrefix + "dcp_ck:"
-	DCPCkPrefix            = SyncPrefix + "dcp_ck:"
-	KSyncDataKey           = SyncPrefix + "syncdata"
 	RepairBackup           = SyncPrefix + "repair:backup:"
 	RepairDryRun           = SyncPrefix + "repair:dryrun:"
 	RevBodyPrefix          = SyncPrefix + "rb:"
@@ -110,10 +107,13 @@ const (
 	SeqPrefix              = SyncPrefix + "seq:"
 	SessionPrefix          = SyncPrefix + "session:"
 	UserEmailPrefix        = SyncPrefix + "useremail:"
-	UnusedPrefixNoColon    = SyncPrefix + "unused"
 	UserPrefix             = SyncPrefix + "user:"
 	UnusedSeqPrefix        = SyncPrefix + "unusedSeq:"
-	UnusualSeqPrefix       = SyncPrefix + "unusualSeq:"
+
+	KSyncDataKey  = SyncPrefix + "syncdata"
+	SeqKey        = SyncPrefix + "seq"
+	SyncXattrName = "_sync"
+	UnusualSeqKey = SyncPrefix + "unusualSeq"
 )
 
 const (

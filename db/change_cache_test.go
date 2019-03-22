@@ -656,7 +656,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	goassert.Equals(t, len(changes), 3)
 	goassert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
-	_, incrErr := db.Bucket.Incr(SyncSeqKey, 7, 7, 0)
+	_, incrErr := db.Bucket.Incr(base.SeqKey, 7, 7, 0)
 	goassert.True(t, incrErr == nil)
 
 	// Modify user to have access to both channels (sequence 2):

@@ -575,7 +575,7 @@ func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removed
 // TODO: The underlying code (NotifyCheckForTermination) doesn't actually leverage the specific username - should be refactored
 //    to remove
 func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
-	context.mutationListener.NotifyCheckForTermination(base.SetOf(auth.UserKeyPrefix + username))
+	context.mutationListener.NotifyCheckForTermination(base.SetOf(base.UserPrefix + username))
 }
 
 func (dc *DatabaseContext) TakeDbOffline(reason string) error {
@@ -758,7 +758,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 	var principalName string
 	users = []string{}
 	roles = []string{}
-	lenUserKeyPrefix := len(auth.UserKeyPrefix)
+	lenUserKeyPrefix := len(base.UserPrefix)
 	for {
 		if db.Options.UseViews {
 			var viewRow principalsViewRow
@@ -777,7 +777,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 			if len(queryRow.Id) < lenUserKeyPrefix {
 				continue
 			}
-			isUser = queryRow.Id[0:lenUserKeyPrefix] == auth.UserKeyPrefix
+			isUser = queryRow.Id[0:lenUserKeyPrefix] == base.UserPrefix
 			principalName = queryRow.Id[lenUserKeyPrefix:]
 		}
 

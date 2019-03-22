@@ -46,8 +46,8 @@ func TestDCPKeyFilter(t *testing.T) {
 	assert.True(t, dcpKeyFilter([]byte(RolePrefix+"role2")))
 	assert.True(t, dcpKeyFilter([]byte(UnusedSeqPrefix+"1234")))
 
-	assert.False(t, dcpKeyFilter([]byte(SeqPrefix)))
-	assert.False(t, dcpKeyFilter([]byte(UnusualSeqPrefix)))
-	assert.False(t, dcpKeyFilter([]byte(KSyncDataKey+":")))
-	assert.False(t, dcpKeyFilter([]byte(DCPCkPrefix)))
+	assert.False(t, dcpKeyFilter([]byte(SeqKey)))
+	assert.False(t, dcpKeyFilter([]byte(UnusualSeqKey)))
+	assert.False(t, dcpKeyFilter([]byte(KSyncDataKey)))
+	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix+"12")))
 }

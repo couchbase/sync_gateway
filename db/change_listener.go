@@ -101,13 +101,13 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	requiresCheckpointPersistence := true
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
-		if strings.HasPrefix(key, auth.UserKeyPrefix) ||
-			strings.HasPrefix(key, auth.RoleKeyPrefix) { // SG users and roles
+		if strings.HasPrefix(key, base.UserPrefix) ||
+			strings.HasPrefix(key, base.RolePrefix) { // SG users and roles
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
 			listener.Notify(base.SetOf(key))
-		} else if strings.HasPrefix(key, UnusedSequenceKeyPrefix) { // SG unused sequence marker docs
+		} else if strings.HasPrefix(key, base.UnusedSeqPrefix) { // SG unused sequence marker docs
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}
@@ -272,9 +272,9 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 	}
 	var userKeys []string
 	if user != nil {
-		userKeys = []string{auth.UserKeyPrefix + user.Name()}
+		userKeys = []string{base.UserPrefix + user.Name()}
 		for role := range user.RoleNames() {
-			userKeys = append(userKeys, auth.RoleKeyPrefix+role)
+			userKeys = append(userKeys, base.RolePrefix+role)
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}

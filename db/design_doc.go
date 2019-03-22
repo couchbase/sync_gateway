@@ -389,8 +389,8 @@ func installViews(bucket base.Bucket) error {
 							 var isUser = (prefix == %q);
 							 if (isUser || prefix == %q)
 			                     emit(meta.id.substring(%d), isUser); }`
-	principals_map = fmt.Sprintf(principals_map, auth.UserKeyPrefix, auth.RoleKeyPrefix,
-		len(auth.UserKeyPrefix))
+	principals_map = fmt.Sprintf(principals_map, base.UserPrefix, base.RolePrefix,
+		len(base.UserPrefix))
 
 	// By-channels view.
 	// Key is [channelname, sequence]; value is [docid, revid, flag?]

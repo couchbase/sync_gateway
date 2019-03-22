@@ -112,7 +112,7 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 	tBucket := testBucket()
 
 	log.Printf("Initializing test %s to %d", base.SeqPrefix, customSeq)
-	_, incrErr := tBucket.Incr(SyncSeqKey, customSeq, customSeq, 0)
+	_, incrErr := tBucket.Incr(base.SeqKey, customSeq, customSeq, 0)
 	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s seq by %d", base.SeqPrefix, customSeq))
 
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)

@@ -19,10 +19,8 @@ import (
 )
 
 const (
-	kMaxIncrRetries         = 3                    // Max retries for incr operations
-	UnusedSequenceKeyPrefix = base.UnusedSeqPrefix // Prefix for unused sequence documents
-	UnusedSequenceTTL       = 10 * 60              // 10 minute expiry for unused sequence docs
-	SyncSeqKey              = "_sync:seq"          // Key for sequence counter doc
+	kMaxIncrRetries   = 3       // Max retries for incr operations
+	UnusedSequenceTTL = 10 * 60 // 10 minute expiry for unused sequence docs
 )
 
 type sequenceAllocator struct {
@@ -48,7 +46,7 @@ func newSequenceAllocator(bucket base.Bucket, dbStats *DatabaseStats) (*sequence
 
 func (s *sequenceAllocator) lastSequence() (uint64, error) {
 	s.dbStats.StatsDatabase().Add(base.StatKeySequenceGetCount, 1)
-	last, err := s.incrWithRetry(SyncSeqKey, 0)
+	last, err := s.incrWithRetry(base.SeqKey, 0)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Error from Incr in lastSequence(): %v", err)
 	}
@@ -74,7 +72,7 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 	}
 	s.dbStats.StatsDatabase().Add(base.StatKeySequenceReservedCount, 1)
 
-	max, err := s.incrWithRetry(SyncSeqKey, numToReserve)
+	max, err := s.incrWithRetry(base.SeqKey, numToReserve)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
 		return err
@@ -125,7 +123,7 @@ func (s *sequenceAllocator) incrWithRetry(key string, numToReserve uint64) (uint
 
 // ReleaseSequence writes an unused sequence document, used to notify sequence buffering that a sequence has been allocated and not used.
 func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
-	key := fmt.Sprintf("%s%d", UnusedSequenceKeyPrefix, sequence)
+	key := fmt.Sprintf("%s%d", base.UnusedSeqPrefix, sequence)
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
 	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
