@@ -93,10 +93,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if !rt.NoFlush {
 			tempBucket := base.GetTestBucketOrPanic() // side effect of creating/flushing bucket
 			if rt.InitSyncSeq > 0 {
-				log.Printf("Initializing %s to %d", base.SeqKey, rt.InitSyncSeq)
-				_, incrErr := tempBucket.Incr(base.SeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+				log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
+				_, incrErr := tempBucket.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 				if incrErr != nil {
-					rt.Testing.Fatalf("Error initializing %s in test bucket: %v", base.SeqKey, incrErr)
+					rt.Testing.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
 					return nil
 				}
 			}

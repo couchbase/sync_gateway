@@ -797,12 +797,12 @@ func (b *backfillStatus) persistBackfillSequences(bucket Bucket, currentSeqs []u
 		SnapStart: b.snapStart,
 		SnapEnd:   b.snapEnd,
 	}
-	return bucket.Set(DCPBackfillSeqs, 0, backfillSeqs)
+	return bucket.Set(DCPBackfillSeqKey, 0, backfillSeqs)
 }
 
 func (b *backfillStatus) loadBackfillSequences(bucket Bucket) (*BackfillSequences, error) {
 	var backfillSeqs BackfillSequences
-	_, err := bucket.Get(DCPBackfillSeqs, &backfillSeqs)
+	_, err := bucket.Get(DCPBackfillSeqKey, &backfillSeqs)
 	if err != nil {
 		return nil, err
 	}
@@ -811,5 +811,5 @@ func (b *backfillStatus) loadBackfillSequences(bucket Bucket) (*BackfillSequence
 }
 
 func (b *backfillStatus) purgeBackfillSequences(bucket Bucket) error {
-	return bucket.Delete(DCPBackfillSeqs)
+	return bucket.Delete(DCPBackfillSeqKey)
 }

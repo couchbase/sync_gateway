@@ -97,23 +97,22 @@ const (
 	AttPrefix              = SyncPrefix + "att:"
 	BackfillCompletePrefix = SyncPrefix + "backfill:complete:"
 	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"
-	DCPBackfillSeqs        = SyncPrefix + "dcp_backfill"
 	DCPCheckpointPrefix    = SyncPrefix + "dcp_ck:"
 	RepairBackup           = SyncPrefix + "repair:backup:"
 	RepairDryRun           = SyncPrefix + "repair:dryrun:"
 	RevBodyPrefix          = SyncPrefix + "rb:"
 	RevPrefix              = SyncPrefix + "rev:"
 	RolePrefix             = SyncPrefix + "role:"
-	SeqPrefix              = SyncPrefix + "seq:"
 	SessionPrefix          = SyncPrefix + "session:"
+	SyncSeqPrefix          = SyncPrefix + "seq:"
 	UserEmailPrefix        = SyncPrefix + "useremail:"
 	UserPrefix             = SyncPrefix + "user:"
 	UnusedSeqPrefix        = SyncPrefix + "unusedSeq:"
 
-	KSyncDataKey  = SyncPrefix + "syncdata"
-	SeqKey        = SyncPrefix + "seq"
-	SyncXattrName = "_sync"
-	UnusualSeqKey = SyncPrefix + "unusualSeq"
+	DCPBackfillSeqKey = SyncPrefix + "dcp_backfill"
+	SyncDataKey       = SyncPrefix + "syncdata"
+	SyncSeqKey        = SyncPrefix + "seq"
+	SyncXattrName     = "_sync"
 )
 
 const (

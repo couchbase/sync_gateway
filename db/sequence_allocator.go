@@ -46,7 +46,7 @@ func newSequenceAllocator(bucket base.Bucket, dbStats *DatabaseStats) (*sequence
 
 func (s *sequenceAllocator) lastSequence() (uint64, error) {
 	s.dbStats.StatsDatabase().Add(base.StatKeySequenceGetCount, 1)
-	last, err := s.incrWithRetry(base.SeqKey, 0)
+	last, err := s.incrWithRetry(base.SyncSeqKey, 0)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Error from Incr in lastSequence(): %v", err)
 	}
@@ -72,7 +72,7 @@ func (s *sequenceAllocator) _reserveSequences(numToReserve uint64) error {
 	}
 	s.dbStats.StatsDatabase().Add(base.StatKeySequenceReservedCount, 1)
 
-	max, err := s.incrWithRetry(base.SeqKey, numToReserve)
+	max, err := s.incrWithRetry(base.SyncSeqKey, numToReserve)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Error from Incr in _reserveSequences(%d): %v", numToReserve, err)
 		return err
