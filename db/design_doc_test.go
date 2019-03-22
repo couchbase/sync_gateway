@@ -70,49 +70,6 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
 }
 
-func TestRemoveObsoleteDesignDocs2_0(t *testing.T) {
-	testBucket := testBucket()
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-	mapFunction := `function (doc, meta) { emit(); }`
-
-	err := bucket.PutDDoc(DesignDocSyncGatewayPrefix+"_2.0", sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			"channels": sgbucket.ViewDef{Map: mapFunction},
-		},
-	})
-	assert.NoError(t, err, "Unable to create design doc (sync_gateway_2.0)")
-
-	err = bucket.PutDDoc(DesignDocSyncHousekeepingPrefix+"_2.0", sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			"import": sgbucket.ViewDef{Map: mapFunction},
-		},
-	})
-	assert.NoError(t, err, "Unable to create design doc (sync_housekeeping_2.0)")
-
-	assert.True(t, designDocExists(bucket, DesignDocSyncGatewayPrefix+"_2.0"), "Design doc doesn't exist")
-	assert.True(t, designDocExists(bucket, DesignDocSyncHousekeepingPrefix+"_2.0"), "Design doc doesn't exist")
-
-	removedDDocs, removeErr := removeObsoleteDesignDocs(bucket, true)
-	assert.NoError(t, removeErr, "Error removing previous design docs")
-	goassert.Equals(t, len(removedDDocs), 2)
-	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix+"_2.0"), "Missing design doc from removed set")
-	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncHousekeepingPrefix+"_2.0"), "Missing design doc from removed set")
-
-	assert.True(t, designDocExists(bucket, DesignDocSyncGatewayPrefix+"_2.0"), "Design doc should exist")
-	assert.True(t, designDocExists(bucket, DesignDocSyncHousekeepingPrefix+"_2.0"), "Design doc should exist")
-
-	removedDDocs, removeErr = removeObsoleteDesignDocs(bucket, false)
-	assert.NoError(t, removeErr, "Error removing previous design docs")
-	goassert.Equals(t, len(removedDDocs), 2)
-	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix+"_2.0"), "Missing design doc from removed set")
-	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncHousekeepingPrefix+"_2.0"), "Missing design doc from removed set")
-
-	assert.True(t, !designDocExists(bucket, DesignDocSyncGatewayPrefix+"_2.0"), "Removed design doc still exists")
-	assert.True(t, !designDocExists(bucket, DesignDocSyncHousekeepingPrefix+"_2.0"), "Removed design doc still exists")
-
-}
-
 func designDocExists(bucket base.Bucket, ddocName string) bool {
 	var retrievedDDoc interface{}
 	err := bucket.GetDDoc(ddocName, &retrievedDDoc)
