@@ -11,8 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
-	"github.com/couchbase/sync_gateway/auth"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
@@ -366,16 +365,16 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc?
-	if strings.HasPrefix(docID, auth.UserKeyPrefix) {
+	if strings.HasPrefix(docID, base.UserPrefix) {
 		c.processPrincipalDoc(docID, docJSON, true, event.TimeReceived)
 		return
-	} else if strings.HasPrefix(docID, auth.RoleKeyPrefix) {
+	} else if strings.HasPrefix(docID, base.RolePrefix) {
 		c.processPrincipalDoc(docID, docJSON, false, event.TimeReceived)
 		return
 	}
 
 	// Is this an unused sequence notification?
-	if strings.HasPrefix(docID, UnusedSequenceKeyPrefix) {
+	if strings.HasPrefix(docID, base.UnusedSeqPrefix) {
 		c.processUnusedSequence(docID, event.TimeReceived)
 		return
 	}
@@ -575,7 +574,7 @@ func (c *changeCache) unmarshalCachePrincipal(docJSON []byte) (cachePrincipal, e
 
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
 func (c *changeCache) processUnusedSequence(docID string, timeReceived time.Time) {
-	sequenceStr := strings.TrimPrefix(docID, UnusedSequenceKeyPrefix)
+	sequenceStr := strings.TrimPrefix(docID, base.UnusedSeqPrefix)
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Unable to identify sequence number for unused sequence notification with key: %s, error: %v", base.UD(docID), err)

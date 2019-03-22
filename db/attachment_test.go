@@ -133,7 +133,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	db.Bucket.Dump()
 
 	// Attempt to retrieve the attachment doc
-	_, _, err = db.Bucket.GetRaw("_sync:att:sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+	_, _, err = db.Bucket.GetRaw(base.AttPrefix + "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
 
 	assert.True(t, err != nil, "Expect error when attempting to retrieve attachment document after doc is rejected.")
 

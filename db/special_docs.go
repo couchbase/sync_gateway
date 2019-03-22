@@ -104,7 +104,7 @@ func (db *Database) DeleteSpecial(doctype string, docid string, revid string) er
 }
 
 func (db *Database) realSpecialDocID(doctype string, docid string) string {
-	return "_sync:" + doctype + ":" + docid
+	return base.SyncPrefix + doctype + ":" + docid
 }
 
 func stripSpecialSpecialProperties(body Body) Body {

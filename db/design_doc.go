@@ -338,7 +338,7 @@ func installViews(bucket base.Bucket) error {
 		                  	} else {
 		                       	sync = meta.xattrs.%s
 		                    }
-		                     `, KSyncXattrName, KSyncXattrName)
+		                     `, base.SyncXattrName, base.SyncXattrName)
 
 	// View for _all_docs
 	// Key is docid; value is [revid, sequence]
@@ -372,7 +372,7 @@ func installViews(bucket base.Bucket) error {
                      	var prefix = meta.id.substring(0,%d);
                      	if (prefix == %q)
                      		emit(doc.username, meta.id);}`
-	sessions_map = fmt.Sprintf(sessions_map, len(auth.SessionKeyPrefix), auth.SessionKeyPrefix)
+	sessions_map = fmt.Sprintf(sessions_map, len(base.SessionPrefix), base.SessionPrefix)
 
 	// Tombstones view - used for view tombstone compaction
 	// Key is purge time; value is docid
@@ -389,8 +389,8 @@ func installViews(bucket base.Bucket) error {
 							 var isUser = (prefix == %q);
 							 if (isUser || prefix == %q)
 			                     emit(meta.id.substring(%d), isUser); }`
-	principals_map = fmt.Sprintf(principals_map, auth.UserKeyPrefix, auth.RoleKeyPrefix,
-		len(auth.UserKeyPrefix))
+	principals_map = fmt.Sprintf(principals_map, base.UserPrefix, base.RolePrefix,
+		len(base.UserPrefix))
 
 	// By-channels view.
 	// Key is [channelname, sequence]; value is [docid, revid, flag?]

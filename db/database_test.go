@@ -111,9 +111,9 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	tBucket := testBucket()
 
-	log.Printf("Initializing test _sync:seq to %d", customSeq)
-	_, incrErr := tBucket.Incr(SyncSeqKey, customSeq, customSeq, 0)
-	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment _sync:seq by %d", customSeq))
+	log.Printf("Initializing test %s to %d", base.SyncSeqPrefix, customSeq)
+	_, incrErr := tBucket.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
+	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s seq by %d", base.SyncSeqPrefix, customSeq))
 
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
@@ -1265,7 +1265,7 @@ func TestDocIDs(t *testing.T) {
 	goassert.Equals(t, realDocID("_foo"), "")
 	goassert.Equals(t, realDocID("foo"), "foo")
 	goassert.Equals(t, realDocID("_design/foo"), "")
-	goassert.Equals(t, realDocID("_sync:rev:x"), "")
+	goassert.Equals(t, realDocID(base.RevPrefix+"x"), "")
 }
 
 func TestUpdateDesignDoc(t *testing.T) {

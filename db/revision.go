@@ -293,7 +293,7 @@ func (db *Database) purgeOldRevisionJSON(docid string, revid string) error {
 //////// UTILITY FUNCTIONS:
 
 func oldRevisionKey(docid string, revid string) string {
-	return fmt.Sprintf("_sync:rev:%s:%d:%s", docid, len(revid), revid)
+	return fmt.Sprintf("%s%s:%d:%s", base.RevPrefix, docid, len(revid), revid)
 }
 
 // Version of FixJSONNumbers (see base/util.go) that operates on a Body

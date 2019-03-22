@@ -24,7 +24,7 @@ func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList
 	switch useXattrs {
 	case true:
 		var rawDoc, rawXattr []byte
-		_, getErr := bucket.GetWithXattr(key, KSyncXattrName, &rawDoc, &rawXattr)
+		_, getErr := bucket.GetWithXattr(key, base.SyncXattrName, &rawDoc, &rawXattr)
 		if getErr != nil {
 			return revTreeList{}, getErr
 		}

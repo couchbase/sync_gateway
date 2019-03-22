@@ -12,6 +12,7 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/coreos/go-oidc/jose"
@@ -60,7 +61,7 @@ func (auth *Authenticator) SetSessionCookieName(cookieName string) {
 }
 
 func docIDForUserEmail(email string) string {
-	return "_sync:useremail:" + email
+	return base.UserEmailPrefix + email
 }
 
 func (auth *Authenticator) GetPrincipal(name string, isUser bool) (Principal, error) {
