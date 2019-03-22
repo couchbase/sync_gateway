@@ -24,7 +24,7 @@ const DesignDocFormat = "%s_%s" // Design doc prefix, view version
 // design docs.  Must be updated whenever DesignDocVersion is incremented.
 // Uses a hardcoded list instead of version comparison to simpify the processing
 // (particularly since there aren't expected to be many view versions before moving to GSI).
-var DesignDocPreviousVersions = []string{""}
+var DesignDocPreviousVersions = []string{"", "2.0"}
 
 const (
 	DesignDocSyncGatewayPrefix      = "sync_gateway"
