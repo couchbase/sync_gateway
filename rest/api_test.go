@@ -3756,7 +3756,7 @@ func TestImportingPurgedDocument(t *testing.T) {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	body := `{"_purged": true, "foo": "bar"}`
