@@ -4034,7 +4034,7 @@ var threekdoc = `{"cols":["Name","Address","Location","phone"],"data":[["Melyssa
 
 func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 
-	prt := NewRestTester(t, nil)
+	prt := NewRestTester(b, nil)
 	defer prt.Close()
 
 	b.ResetTimer()
