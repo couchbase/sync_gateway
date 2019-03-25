@@ -3756,7 +3756,7 @@ func TestImportingPurgedDocument(t *testing.T) {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
 
-	var rt RestTester
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	body := `{"_purged": true, "foo": "bar"}`
@@ -4014,7 +4014,7 @@ func TestNumAccessErrors(t *testing.T) {
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
-	var prt RestTester
+	prt := NewRestTester(b, nil)
 	defer prt.Close()
 
 	//Create test document
@@ -4034,7 +4034,7 @@ var threekdoc = `{"cols":["Name","Address","Location","phone"],"data":[["Melyssa
 
 func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 
-	var prt RestTester
+	prt := NewRestTester(b, nil)
 	defer prt.Close()
 
 	b.ResetTimer()
