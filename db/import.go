@@ -172,7 +172,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		}
 
 		// Is this doc an SG Write?
-		isSgWrite, crc32Match := doc.IsSGWrite(nil)
+		isSgWrite, crc32Match := doc.IsSGWrite(existingDoc.Body)
 		if crc32Match {
 			db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
 		}
