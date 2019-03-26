@@ -146,7 +146,7 @@ func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
 	// Wrap the map functions to ignore special docs and strip _sync metadata.  If user views are enabled, also
 	// add channel filtering.
 	for name, view := range ddoc.Views {
-		view.Map = fmt.Sprintf(syncViewWrapper, enableUserViews, KSyncXattrName, KSyncXattrName, view.Map, view.Map)
+		view.Map = fmt.Sprintf(syncViewWrapper, enableUserViews, base.SyncXattrName, base.SyncXattrName, view.Map, view.Map)
 		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 	}
 }
