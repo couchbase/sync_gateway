@@ -1842,14 +1842,12 @@ func TestGetXattr(t *testing.T) {
 
 func TestApplyViewQueryOptions(t *testing.T) {
 
-	t.Skip("gocb testing")
-
 	// ------------------- Inline Helper functions ---------------------------
 
 	// Given a string "foo", return ""foo"" with an extra set of double quotes added
 	// This is to be in line with gocb's behavior of wrapping these startkey, endkey in an extra set of double quotes
 	wrapInDoubleQuotes := func(original string) string {
-		return fmt.Sprintf("\"%v\"", original)
+		return fmt.Sprintf("\"%v\"\n", original)
 	}
 
 	// The gocb viewquery options map is a url.Values map where each key points to a slice of values.
@@ -1956,7 +1954,7 @@ func TestApplyViewQueryOptions(t *testing.T) {
 	// "keys"
 	goassert.Equals(t,
 		findStringValue(mapKeys, optionsReflectedVal, ViewQueryParamKeys),
-		fmt.Sprintf("[%v,%v]", wrapInDoubleQuotes("a"), wrapInDoubleQuotes("b")))
+		"[\"a\",\"b\"]\n")
 
 }
 
