@@ -1,7 +1,7 @@
 pipeline {
     // Build on this uberjenkins node, as it has the Go environment set up in a known-state
     // We could potentially change this to use a dockerfile agent instead so it can be portable.
-    agent { label 'sync-gateway-ami-builder' }
+    agent { label 'sync-gateway-pipeline-builder' }
 
     environment {
         GO_VERSION = 'go1.11.5'
