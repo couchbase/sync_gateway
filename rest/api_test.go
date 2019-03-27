@@ -4012,6 +4012,25 @@ func TestNumAccessErrors(t *testing.T) {
 	assert.Equal(t, float64(1), numAccessErrors)
 }
 
+func TestNonImportedDuplicateID(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip this test under walrus testing")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+	body := `{"foo":"bar"}`
+	ok, err := bucket.Add("key", 0, []byte(body))
+
+	assert.True(t, ok)
+	assert.Nil(t, err)
+	res := rt.SendAdminRequest("PUT", "/db/key", `{"prop":true}`)
+	assertStatus(t, res, http.StatusConflict)
+}
+
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	prt := NewRestTester(b, nil)
