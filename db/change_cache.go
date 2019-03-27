@@ -166,7 +166,7 @@ func (c *changeCache) backgroundTask(name string, task func(ctx context.Context)
 			select {
 			case <-time.After(interval):
 				ctx := context.WithValue(context.Background(), base.LogContextKey{},
-					base.LogContext{CorrelationID: base.FormatChangeCacheContextID(c.context.Name)})
+					base.LogContext{CorrelationID: base.NewChangeCacheContextID(c.context.Name)})
 				task(ctx)
 			case <-c.terminator:
 				base.Debugf(base.KeyCache, "Database %s: Terminating background task: %s", base.UD(c.context.Name), name)
