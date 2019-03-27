@@ -4012,7 +4012,7 @@ func TestNumAccessErrors(t *testing.T) {
 	assert.Equal(t, float64(1), numAccessErrors)
 }
 
-func TestDuplicateID(t *testing.T) {
+func TestNonImportedDuplicateID(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip this test under walrus testing")
