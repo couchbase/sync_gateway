@@ -1662,18 +1662,16 @@ func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (c
 
 // Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
 func (context *DatabaseContext) checkForUpgrade(key string, unmarshalLevel DocumentUnmarshalLevel) (*document, *sgbucket.BucketDocument) {
-	if context.UseXattrs() {
+	//If we are using xattrs or Couchbase Server doesn't support them exit out
+	if context.UseXattrs() || !base.IsXattrSupported(context.Bucket) {
 		return nil, nil
 	}
 
-	if base.IsXattrSupported(context.Bucket) {
-		doc, rawDocument, err := context.GetDocWithXattr(key, unmarshalLevel)
-		if err != nil || doc == nil || !doc.HasValidSyncData(context.writeSequences()) {
-			return nil, nil
-		}
-		return doc, rawDocument
+	doc, rawDocument, err := context.GetDocWithXattr(key, unmarshalLevel)
+	if err != nil || doc == nil || !doc.HasValidSyncData(context.writeSequences()) {
+		return nil, nil
 	}
-	return nil, nil
+	return doc, rawDocument
 }
 
 //////// REVS_DIFF:
