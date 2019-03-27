@@ -3,6 +3,7 @@ package db
 import (
 	"container/heap"
 	"container/list"
+	"context"
 	"encoding/json"
 	"errors"
 	"expvar"
@@ -91,8 +92,8 @@ type CacheOptions struct {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) error {
-	c.context = context
+func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) error {
+	c.context = dbcontext
 
 	c.notifyChange = notifyChange
 	c.channelCaches = make(map[string]*channelCache, 10)
@@ -141,8 +142,8 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 
 	base.Infof(base.KeyCache, "Initializing changes cache with options %+v", c.options)
 
-	if context.UseGlobalSequence() {
-		base.Infof(base.KeyAll, "Initializing changes cache for database %s", base.UD(context.Name))
+	if dbcontext.UseGlobalSequence() {
+		base.Infof(base.KeyAll, "Initializing changes cache for database %s", base.UD(dbcontext.Name))
 	}
 
 	heap.Init(&c.pendingLogs)
@@ -159,12 +160,14 @@ func (c *changeCache) Init(context *DatabaseContext, notifyChange func(base.Set)
 }
 
 // backgroundTask runs task at the specified time interval in its own goroutine until the changeCache is stopped.
-func (c *changeCache) backgroundTask(name string, task func(), interval time.Duration) {
+func (c *changeCache) backgroundTask(name string, task func(ctx context.Context), interval time.Duration) {
 	go func() {
 		for {
 			select {
 			case <-time.After(interval):
-				task()
+				ctx := context.WithValue(context.Background(), base.LogContextKey{},
+					base.LogContext{CorrelationID: base.NewChangeCacheContextID(c.context.Name)})
+				task(ctx)
 			case <-c.terminator:
 				base.Debugf(base.KeyCache, "Database %s: Terminating background task: %s", base.UD(c.context.Name), name)
 				return
@@ -237,7 +240,7 @@ func (c *changeCache) EnableChannelIndexing(enable bool) {
 }
 
 // Inserts pending entries that have been waiting too long.
-func (c *changeCache) InsertPendingEntries() {
+func (c *changeCache) InsertPendingEntries(ctx context.Context) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -251,12 +254,12 @@ func (c *changeCache) InsertPendingEntries() {
 }
 
 // CleanAgedItems prunes the caches based on age of items
-func (c *changeCache) CleanAgedItems() {
+func (c *changeCache) CleanAgedItems(ctx context.Context) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	for _, channelCache := range c.channelCaches {
-		channelCache.pruneCacheAge()
+		channelCache.pruneCacheAge(ctx)
 	}
 
 	return
@@ -267,14 +270,14 @@ func (c *changeCache) CleanAgedItems() {
 // than MaxChannelLogMissingWaitTime from the queue.  Attempts view retrieval
 // prior to removal.  Only locks skipped sequence queue to build the initial set (GetSkippedSequencesOlderThanMaxWait)
 // and subsequent removal (RemoveSkipped).
-func (c *changeCache) CleanSkippedSequenceQueue() {
+func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) {
 
 	oldSkippedSequences := c.GetSkippedSequencesOlderThanMaxWait()
 	if len(oldSkippedSequences) == 0 {
 		return
 	}
 
-	base.Infof(base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.MD(c.context.Name))
+	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.MD(c.context.Name))
 
 	var foundEntries []*LogEntry
 	var pendingRemovals []uint64
@@ -294,14 +297,14 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 			oldSkippedSequences = nil
 		}
 
-		base.Infof(base.KeyCache, "Issuing skipped sequence clean query for %d sequences, %d remain pending (db:%s).", len(skippedSeqBatch), len(oldSkippedSequences), base.MD(c.context.Name))
+		base.InfofCtx(ctx, base.KeyCache, "Issuing skipped sequence clean query for %d sequences, %d remain pending (db:%s).", len(skippedSeqBatch), len(oldSkippedSequences), base.MD(c.context.Name))
 		// Note: The view query is only going to hit for active revisions - sequences associated with inactive revisions
 		//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
 		//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
 		//       the doc won't be flagged as removed from that channel in the in-memory channel cache.
-		entries, err := c.context.getChangesForSequences(skippedSeqBatch)
+		entries, err := c.context.getChangesForSequences(ctx, skippedSeqBatch)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error retrieving sequences via query during skipped sequence clean - #%d sequences treated as not found: %v", len(skippedSeqBatch), err)
+			base.WarnfCtx(ctx, base.KeyAll, "Error retrieving sequences via query during skipped sequence clean - #%d sequences treated as not found: %v", len(skippedSeqBatch), err)
 			continue
 		}
 
@@ -329,7 +332,7 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 		// view will only have the * channel
 		doc, err := c.context.GetDocument(entry.DocID, DocUnmarshalNoHistory)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", base.UD(entry.DocID), entry.Sequence)
+			base.WarnfCtx(ctx, base.KeyAll, "Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", base.UD(entry.DocID), entry.Sequence)
 			continue
 		}
 		entry.Channels = doc.Channels
@@ -345,10 +348,10 @@ func (c *changeCache) CleanSkippedSequenceQueue() {
 	}
 
 	// Purge sequences not found from the skipped sequence queue
-	numRemoved := c.RemoveSkippedSequences(pendingRemovals)
+	numRemoved := c.RemoveSkippedSequences(ctx, pendingRemovals)
 	c.context.DbStats.StatsCache().Add(base.StatKeyAbandonedSeqs, numRemoved)
 
-	base.Infof(base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.context.Name))
+	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.context.Name))
 	return
 }
 
@@ -892,8 +895,8 @@ func (c *changeCache) RemoveSkipped(x uint64) error {
 }
 
 // Removes a set of sequences.  Logs warning on removal error, returns count of successfully removed.
-func (c *changeCache) RemoveSkippedSequences(sequences []uint64) (removedCount int64) {
-	return c.skippedSeqs.RemoveSequences(sequences)
+func (c *changeCache) RemoveSkippedSequences(ctx context.Context, sequences []uint64) (removedCount int64) {
+	return c.skippedSeqs.RemoveSequences(ctx, sequences)
 }
 
 func (c *changeCache) WasSkipped(x uint64) bool {
@@ -943,12 +946,12 @@ func (l *SkippedSequenceList) Remove(x uint64) error {
 	return err
 }
 
-func (l *SkippedSequenceList) RemoveSequences(sequences []uint64) (removedCount int64) {
+func (l *SkippedSequenceList) RemoveSequences(ctx context.Context, sequences []uint64) (removedCount int64) {
 	l.lock.Lock()
 	for _, seq := range sequences {
 		err := l._remove(seq)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error purging skipped sequence %d from skipped sequence queue: %v", seq, err)
+			base.WarnfCtx(ctx, base.KeyAll, "Error purging skipped sequence %d from skipped sequence queue: %v", seq, err)
 		} else {
 			removedCount++
 		}

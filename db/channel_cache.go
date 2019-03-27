@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -241,7 +242,7 @@ func (c *channelCache) _pruneCacheLength() (pruned int) {
 	return pruned
 }
 
-func (c *channelCache) pruneCacheAge() {
+func (c *channelCache) pruneCacheAge(ctx context.Context) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -260,7 +261,7 @@ func (c *channelCache) pruneCacheAge() {
 		c.logs = c.logs[1:]
 		pruned++
 	}
-	base.Debugf(base.KeyCache, "Pruned %d old entries from channel %q", pruned, base.UD(c.channelName))
+	base.DebugfCtx(ctx, base.KeyCache, "Pruned %d old entries from channel %q", pruned, base.UD(c.channelName))
 
 }
 

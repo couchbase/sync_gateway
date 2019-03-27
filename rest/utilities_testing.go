@@ -767,7 +767,7 @@ func NewBlipTesterFromSpec(tester testing.TB, spec BlipTesterSpec) (*BlipTester,
 	bt.blipContext = blip.NewContext(BlipCBMobileReplication)
 	bt.blipContext.Logger = DefaultBlipLogger(
 		context.WithValue(context.Background(), base.LogContextKey{},
-			base.LogContext{CorrelationID: formatBlipContextID(bt.blipContext.ID)},
+			base.LogContext{CorrelationID: base.FormatBlipContextID(bt.blipContext.ID)},
 		),
 	)
 

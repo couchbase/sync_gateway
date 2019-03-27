@@ -845,13 +845,15 @@ func (db *Database) Compact() (int, error) {
 		return 0, err
 	}
 
-	base.Infof(base.KeyAll, "Compacting purged tombstones for %s ...", base.UD(db.Name))
+	ctx := db.Ctx
+
+	base.InfofCtx(ctx, base.KeyAll, "Compacting purged tombstones for %s ...", base.UD(db.Name))
 	purgeBody := Body{"_purged": true}
 	purgedDocs := make([]string, 0)
 
 	var tombstonesRow QueryIdRow
 	for results.Next(&tombstonesRow) {
-		base.Infof(base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
+		base.InfofCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
 		// First, attempt to purge.
 		purgeErr := db.Purge(tombstonesRow.Id)
 		if purgeErr == nil {
@@ -860,7 +862,7 @@ func (db *Database) Compact() (int, error) {
 			// If key no longer exists, need to add and remove to trigger removal from view
 			_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 			if addErr != nil {
-				base.Warnf(base.KeyAll, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
+				base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
 				continue
 			}
 
@@ -869,10 +871,10 @@ func (db *Database) Compact() (int, error) {
 			purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
 			if delErr := db.Bucket.Delete(tombstonesRow.Id); delErr != nil {
-				base.Errorf(base.KeyAll, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
+				base.ErrorfCtx(ctx, base.KeyAll, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
 			}
 		} else {
-			base.Warnf(base.KeyAll, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
+			base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
 		}
 	}
 
