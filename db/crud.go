@@ -1666,9 +1666,7 @@ func (context *DatabaseContext) checkForUpgrade(key string, unmarshalLevel Docum
 		return nil, nil
 	}
 
-	xattrSupported, _ := base.IsXattrSupported(&context.Bucket)
-
-	if xattrSupported {
+	if base.IsXattrSupported(context.Bucket) {
 		doc, rawDocument, err := context.GetDocWithXattr(key, unmarshalLevel)
 		if err != nil || doc == nil || !doc.HasValidSyncData(context.writeSequences()) {
 			return nil, nil
