@@ -382,11 +382,11 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
-			xattrsSupported, errServerVersion := IsMinimumServerVersion(bucket, 5, 0)
+			xattrSupported, errServerVersion := IsXattrSupported(&bucket)
 			if errServerVersion != nil {
 				return nil, errServerVersion
 			}
-			if !xattrsSupported {
+			if !xattrSupported {
 				Warnf(KeyAll, "If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
@@ -398,6 +398,17 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		bucket = &LoggingBucket{bucket: bucket}
 	}
 	return
+}
+
+func IsXattrSupported(bucket *Bucket) (bool, error) {
+	xattrsSupported, errServerVersion := IsMinimumServerVersion(*bucket, 5, 0)
+	if errServerVersion != nil {
+		return false, errServerVersion
+	}
+	if !xattrsSupported {
+		return false, ErrFatalBucketConnection
+	}
+	return true, nil
 }
 
 func WriteCasJSON(bucket Bucket, key string, value interface{}, cas uint64, exp uint32, callback func(v interface{}) (interface{}, error)) (casOut uint64, err error) {

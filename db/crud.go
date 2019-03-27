@@ -1665,11 +1665,17 @@ func (context *DatabaseContext) checkForUpgrade(key string, unmarshalLevel Docum
 	if context.UseXattrs() {
 		return nil, nil
 	}
-	doc, rawDocument, err := context.GetDocWithXattr(key, unmarshalLevel)
-	if err != nil || doc == nil || !doc.HasValidSyncData(context.writeSequences()) {
-		return nil, nil
+
+	xattrSupported, _ := base.IsXattrSupported(&context.Bucket)
+
+	if xattrSupported {
+		doc, rawDocument, err := context.GetDocWithXattr(key, unmarshalLevel)
+		if err != nil || doc == nil || !doc.HasValidSyncData(context.writeSequences()) {
+			return nil, nil
+		}
+		return doc, rawDocument
 	}
-	return doc, rawDocument
+	return nil, nil
 }
 
 //////// REVS_DIFF:
