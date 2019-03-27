@@ -1,5 +1,10 @@
 package base
 
+import (
+	"math/rand"
+	"strconv"
+)
+
 // LogContextKey is used to key a LogContext value
 type LogContextKey struct{}
 
@@ -21,4 +26,12 @@ func (lc *LogContext) addContext(format string) string {
 	}
 
 	return format
+}
+
+func FormatBlipContextID(contextID string) string {
+	return "[" + contextID + "]"
+}
+
+func NewChangeCacheContextID(dbName string) string {
+	return dbName + "-ChangeCache-" + strconv.Itoa(rand.Intn(65536))
 }
