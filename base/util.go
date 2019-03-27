@@ -975,6 +975,16 @@ func isMinimumVersion(major, minor, minMajor, minMinor uint64) bool {
 	return true
 }
 
+func encodeClusterVersion(major, minor int) int {
+	return major*0x10000 + minor
+}
+
+func decodeClusterVersion(combined int) (major, minor int) {
+	major = combined >> 16
+	minor = combined - (major << 16)
+	return major, minor
+}
+
 func HexCasToUint64(cas string) uint64 {
 	casBytes, err := hex.DecodeString(strings.TrimPrefix(cas, "0x"))
 	if err != nil || len(casBytes) != 8 {
