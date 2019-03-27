@@ -10,9 +10,11 @@ import (
 
 // A wrapper around a Bucket to support forced errors.  For testing use only.
 type LeakyBucket struct {
-	bucket    Bucket
-	incrCount uint16
-	config    LeakyBucketConfig
+	bucket               Bucket
+	incrCount            uint16
+	deleteDDocErrorCount int
+	getDDocErrorCount    int
+	config               LeakyBucketConfig
 }
 
 // The config object that controls the LeakyBucket behavior
@@ -20,6 +22,9 @@ type LeakyBucketConfig struct {
 
 	// Incr() fails 3 times before finally succeeding
 	IncrTemporaryFailCount uint16
+
+	DDocDeleteErrorCount int
+	DDocGetErrorCount    int
 
 	// Emulate TAP/DCP feed de-dupliation behavior, such that within a
 	// window of # of mutations or a timeout, mutations for a given document
@@ -116,12 +121,20 @@ func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error
 }
 
 func (b *LeakyBucket) GetDDoc(docname string, value interface{}) error {
+	if b.config.DDocGetErrorCount > 0 {
+		b.config.DDocGetErrorCount--
+		return errors.New("ERROR")
+	}
 	return b.bucket.GetDDoc(docname, value)
 }
 func (b *LeakyBucket) PutDDoc(docname string, value interface{}) error {
 	return b.bucket.PutDDoc(docname, value)
 }
 func (b *LeakyBucket) DeleteDDoc(docname string) error {
+	if b.config.DDocDeleteErrorCount > 0 {
+		b.config.DDocDeleteErrorCount--
+		return errors.New("ERROR")
+	}
 	return b.bucket.DeleteDDoc(docname)
 }
 func (b *LeakyBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {

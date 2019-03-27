@@ -646,7 +646,6 @@ func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool) (removedDesi
 				removeDDocErr := bucket.DeleteDDoc(ddocName)
 				if removeDDocErr != nil && !IsMissingDDocError(removeDDocErr) {
 					base.Warnf(base.KeyAll, "Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
-					return removedDesignDocs, removeDDocErr
 				}
 				// Only include in list of removedDesignDocs if it was actually removed
 				if removeDDocErr == nil {
