@@ -627,3 +627,57 @@ func TestSetUpTestLogging(t *testing.T) {
 	}()
 	SetUpTestLogging(LevelError, KeyAuth|KeyCRUD)
 }
+
+func TestEncodeDecodeCompatVersion(t *testing.T) {
+	tests := []struct {
+		major,
+		minor int
+	}{
+		{
+			major: 2,
+			minor: 5,
+		},
+		{
+			major: 3,
+			minor: 0,
+		},
+		{
+			major: 4,
+			minor: 0,
+		},
+		{
+			major: 4,
+			minor: 5,
+		},
+		{
+			major: 4,
+			minor: 6,
+		},
+		{
+			major: 5,
+			minor: 0,
+		},
+		{
+			major: 5,
+			minor: 5,
+		},
+		{
+			major: 0,
+			minor: 0,
+		},
+		{
+			major: 10,
+			minor: 65535,
+		},
+		{
+			major: 32767, //Max size 15 bit integer
+			minor: 65535, //Max size 16 bit integer
+		},
+	}
+
+	for _, test := range tests {
+		major, minor := decodeClusterVersion(encodeClusterVersion(test.major, test.minor))
+		assert.Equal(t, test.major, major, "Major")
+		assert.Equal(t, test.minor, minor, "Minor")
+	}
+}

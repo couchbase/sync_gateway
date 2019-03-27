@@ -58,11 +58,12 @@ var recoverableGoCBErrors = map[string]struct{}{
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb
 type CouchbaseBucketGoCB struct {
-	*gocb.Bucket               // the underlying gocb bucket
-	spec         BucketSpec    // keep a copy of the BucketSpec for DCP usage
-	singleOps    chan struct{} // Manages max concurrent single ops (per kv node)
-	bulkOps      chan struct{} // Manages max concurrent bulk ops (per kv node)
-	viewOps      chan struct{} // Manages max concurrent view ops (per kv node)
+	*gocb.Bucket                       // the underlying gocb bucket
+	spec                 BucketSpec    // keep a copy of the BucketSpec for DCP usage
+	singleOps            chan struct{} // Manages max concurrent single ops (per kv node)
+	bulkOps              chan struct{} // Manages max concurrent bulk ops (per kv node)
+	viewOps              chan struct{} // Manages max concurrent view ops (per kv node)
+	clusterCompatVersion int
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
@@ -142,6 +143,10 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		nodeCount = len(mgmtEps)
 	}
 
+	user, pass, _ := spec.Auth.GetCredentials()
+	nodesMetadata, err := cluster.Manager(user, pass).Internal().GetNodesMetadata()
+	clusterCompat := nodesMetadata[0].ClusterCompatibility
+
 	// Define channels to limit the number of concurrent single and bulk operations,
 	// to avoid gocb queue overflow issues
 	bucket = &CouchbaseBucketGoCB{
@@ -150,6 +155,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		make(chan struct{}, MaxConcurrentSingleOps*nodeCount),
 		make(chan struct{}, MaxConcurrentBulkOps*nodeCount),
 		make(chan struct{}, MaxConcurrentViewOps*nodeCount),
+		clusterCompat,
 	}
 
 	bucket.Bucket.SetViewTimeout(bucket.spec.GetViewQueryTimeout())
@@ -2303,20 +2309,15 @@ func (bucket *CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 
 func (bucket *CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
 
-	if versionString == "" {
-		stats, err := bucket.Bucket.Stats("")
-		if err != nil {
-			return 0, 0, "error", pkgerrors.Wrapf(err, "Unrecoverable GoCB error calling Stats()")
-		}
-
-		for _, serverMap := range stats {
-			versionString = serverMap["version"]
-			// We only check the version of the first server, hopefully same for whole cluster
-			break
-		}
+	if bucket.clusterCompatVersion == 0 {
+		return 0, 0, "", errors.New("cluster compat version not set")
 	}
 
-	return ParseCouchbaseServerVersion(versionString)
+	majorint, minorint := decodeClusterVersion(bucket.clusterCompatVersion)
+	major = uint64(majorint)
+	minor = uint64(minorint)
+
+	return major, minor, "", nil
 
 }
 

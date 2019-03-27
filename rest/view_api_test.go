@@ -127,6 +127,25 @@ func TestViewQueryMultipleViews(t *testing.T) {
 	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
 }
 
+func TestViewQueryWithParams(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
+	assertStatus(t, response, 201)
+	response = rt.SendRequest("PUT", "/db/doc1", `{"value": "foo", "key": "test1"}`)
+	assertStatus(t, response, 201)
+	response = rt.SendRequest("PUT", "/db/doc2", `{"value": "foo", "key": "test2"}`)
+	assertStatus(t, response, 201)
+
+	result, err := rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&end_key=doc2&endkey_docid=dockeys2&end_key_doc_id=doc2&inclusive_end=true&key=&limit=1000&skip=&stale=true&start_key=doc1&startkey_docid=doc1&update_seq=2751&keys=["test1", "test2"]&startkey="test1"&endkey="test2"`)
+	assert.NoError(t, err, "Unexpected error")
+	assert.Equal(t, 2, len(result.Rows))
+	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc1", Key: "test1", Value: interface{}(nil)})
+	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc2", Key: "test2", Value: interface{}(nil)})
+
+}
+
 func TestViewQueryUserAccess(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
