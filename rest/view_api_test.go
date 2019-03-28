@@ -138,7 +138,7 @@ func TestViewQueryWithParams(t *testing.T) {
 	response = rt.SendRequest("PUT", "/db/doc2", `{"value": "foo", "key": "test2"}`)
 	assertStatus(t, response, 201)
 
-	result, err := rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&endkey="test2"&end_key="test2"&endkey_docid=doc2&end_key_doc_id=doc2&startkey="test1"&start_key="test1"&startkey_docid=doc1`)
+	result, err := rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&endkey="test2"&endkey_docid=doc2&end_key_doc_id=doc2&startkey="test1"&startkey_docid=doc1`)
 	assert.NoError(t, err, "Unexpected error")
 	assert.Equal(t, 2, len(result.Rows))
 	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc1", Key: "test1", Value: interface{}(nil)})
