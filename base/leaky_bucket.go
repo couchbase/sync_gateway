@@ -23,6 +23,8 @@ type LeakyBucketConfig struct {
 	// Incr() fails 3 times before finally succeeding
 	IncrTemporaryFailCount uint16
 
+	// Allows us to force a number of failed executions of GetDDoc and DeleteDDoc. It will fail the
+	// number of times specific in these values and then succeed.
 	DDocDeleteErrorCount int
 	DDocGetErrorCount    int
 
@@ -123,7 +125,7 @@ func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error
 func (b *LeakyBucket) GetDDoc(docname string, value interface{}) error {
 	if b.config.DDocGetErrorCount > 0 {
 		b.config.DDocGetErrorCount--
-		return errors.New("ERROR")
+		return errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", b.config.DDocGetErrorCount))
 	}
 	return b.bucket.GetDDoc(docname, value)
 }
@@ -133,7 +135,7 @@ func (b *LeakyBucket) PutDDoc(docname string, value interface{}) error {
 func (b *LeakyBucket) DeleteDDoc(docname string) error {
 	if b.config.DDocDeleteErrorCount > 0 {
 		b.config.DDocDeleteErrorCount--
-		return errors.New("ERROR")
+		return errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", b.config.DDocDeleteErrorCount))
 	}
 	return b.bucket.DeleteDDoc(docname)
 }
