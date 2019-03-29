@@ -70,6 +70,40 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
 }
 
+//Test remove obsolete design docs returns the same in both preview and non-preview
+func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
+
+	DesignDocPreviousVersions = []string{"test"}
+
+	leakyBucketConfig := base.LeakyBucketConfig{
+		DDocGetErrorCount:    1,
+		DDocDeleteErrorCount: 1,
+	}
+	testBucket := testLeakyBucket(leakyBucketConfig)
+	defer testBucket.Close()
+
+	bucket := testBucket
+	mapFunction := `function (doc, meta){ emit(); }`
+
+	err := bucket.PutDDoc(DesignDocSyncGatewayPrefix+"_test", sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"channels": sgbucket.ViewDef{Map: mapFunction},
+		},
+	})
+	assert.NoError(t, err)
+	err = bucket.PutDDoc(DesignDocSyncHousekeepingPrefix+"_test", sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"channels": sgbucket.ViewDef{Map: mapFunction},
+		},
+	})
+
+	removedDDocsPreview, _ := removeObsoleteDesignDocs(bucket, true)
+	removedDDocsNonPreview, _ := removeObsoleteDesignDocs(bucket, false)
+
+	assert.Equal(t, removedDDocsPreview, removedDDocsNonPreview)
+
+}
+
 func designDocExists(bucket base.Bucket, ddocName string) bool {
 	var retrievedDDoc interface{}
 	err := bucket.GetDDoc(ddocName, &retrievedDDoc)
