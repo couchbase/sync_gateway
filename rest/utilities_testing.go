@@ -6,23 +6,29 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/couchbase/go-blip"
+	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/ory/dockertest"
+	"github.com/ory/dockertest/docker"
 	"golang.org/x/net/websocket"
 )
 
@@ -1479,4 +1485,236 @@ func (l TestLogger) Logf(logLevel base.LogLevel, logKey base.LogKey, format stri
 			logKey.String()+": "+
 			format, args...,
 	)
+}
+
+type nodes struct {
+	Status string `json:"status"`
+	Uptime string `json:"uptime"`
+}
+
+type responseBody struct {
+	Nodes []nodes `json:"nodes"`
+}
+
+func NewDockerTest(t *testing.M) {
+
+	var cluster *gocb.Cluster
+
+	pool, err := dockertest.NewPool("")
+	if err != nil {
+		log.Fatalf("Could not connect to docker: %s", err)
+	}
+
+	resource, err := pool.RunWithOptions(&dockertest.RunOptions{Repository: "couchbase", Tag: "enterprise-6.0.1"}, func(config *docker.HostConfig) {
+		config.PortBindings = map[docker.Port][]docker.PortBinding{
+			"8091/tcp": {{"0.0.0.0", "8091"}},
+			"8092/tcp": {{"0.0.0.0", "8092"}},
+			"8093/tcp": {{"0.0.0.0", "8093"}},
+			"8094/tcp": {{"0.0.0.0", "8094"}},
+			"8095/tcp": {{"0.0.0.0", "8095"}},
+			"8096/tcp": {{"0.0.0.0", "8096"}},
+
+			"11207/tcp": {{"0.0.0.0", "11207"}},
+			"11210/tcp": {{"0.0.0.0", "11210"}},
+			"11211/tcp": {{"0.0.0.0", "11211"}},
+
+			"18091/tcp": {{"0.0.0.0", "18091"}},
+			"18092/tcp": {{"0.0.0.0", "18092"}},
+			"18093/tcp": {{"0.0.0.0", "18093"}},
+			"18094/tcp": {{"0.0.0.0", "18094"}},
+			"18095/tcp": {{"0.0.0.0", "18095"}},
+			"18096/tcp": {{"0.0.0.0", "18096"}},
+		}
+	})
+	if err != nil {
+		log.Fatalf("Could not start resource: %s", err)
+	}
+
+	if err = pool.Retry(func() error {
+		var err error
+		_, err = http.Get("http://localhost:8091/pools")
+		if err != nil {
+			return err
+		}
+		return nil
+
+	}); err != nil {
+		log.Fatalf("Could not connect to docker: %s", err)
+	}
+
+	cluster, err = gocb.Connect("http://localhost:8091/")
+
+	data := url.Values{}
+	client := &http.Client{}
+	data.Set("storageMode", "memory_optimized")
+
+	req, err := http.NewRequest("POST", "http://localhost:8091/settings/indexes", strings.NewReader(data.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("Administrator", "password")
+	client.Do(req)
+
+	data = url.Values{}
+	data.Set("services", "kv,n1ql,index,fts")
+
+	response, err := http.PostForm("http://localhost:8091/node/controller/setupServices", data)
+
+	if err != nil {
+		fmt.Println(err.Error())
+	} else {
+		bodyBytes, _ := ioutil.ReadAll(response.Body)
+		fmt.Println(string(bodyBytes))
+	}
+
+	data = url.Values{}
+	data.Set("memoryQuota", "512")
+	data.Set("indexMemoryQuota", "256")
+
+	response, err = http.PostForm("http://localhost:8091/pools/default", data)
+
+	if err != nil {
+		fmt.Println(err.Error())
+	} else {
+		bodyBytes, _ := ioutil.ReadAll(response.Body)
+		fmt.Println(string(bodyBytes))
+	}
+
+	data = url.Values{}
+	data.Set("password", "password")
+	data.Set("username", "Administrator")
+	data.Set("port", "SAME")
+
+	response, _ = http.PostForm("http://localhost:8091/settings/web", data)
+
+	if err != nil {
+		fmt.Println(err.Error())
+	} else {
+		bodyBytes, _ := ioutil.ReadAll(response.Body)
+		fmt.Println(string(bodyBytes))
+	}
+
+	bucketSettings := gocb.BucketSettings{
+		FlushEnabled:  true,
+		IndexReplicas: true,
+		Name:          "test_data_bucket",
+		Password:      "",
+		Quota:         100,
+		Replicas:      1,
+		Type:          gocb.BucketType(0),
+	}
+
+	bucketSettings1 := gocb.BucketSettings{
+		FlushEnabled:  true,
+		IndexReplicas: true,
+		Name:          "test_shadowbucket",
+		Password:      "",
+		Quota:         100,
+		Replicas:      1,
+		Type:          gocb.BucketType(0),
+	}
+
+	bucketSettings2 := gocb.BucketSettings{
+		FlushEnabled:  true,
+		IndexReplicas: true,
+		Name:          "test_indexbucket",
+		Password:      "",
+		Quota:         100,
+		Replicas:      1,
+		Type:          gocb.BucketType(0),
+	}
+
+	userSettings := gocb.UserSettings{
+		Password: "password",
+		Roles: []gocb.UserRole{
+			{"bucket_full_access", "test_data_bucket"},
+			{"bucket_admin", "test_data_bucket"},
+		},
+	}
+
+	userSettings1 := gocb.UserSettings{
+		Password: "password",
+		Roles: []gocb.UserRole{
+			{"bucket_full_access", "test_shadowbucket"},
+			{"bucket_admin", "test_data_bucket"},
+		},
+	}
+
+	userSettings2 := gocb.UserSettings{
+		Password: "password",
+		Roles: []gocb.UserRole{
+			{"bucket_full_access", "test_indexbucket"},
+			{"bucket_admin", "test_indexbucket"},
+		},
+	}
+
+	manager := cluster.Manager("Administrator", "password")
+	err = manager.UpdateBucket(&bucketSettings)
+	err = manager.UpdateBucket(&bucketSettings1)
+	err = manager.UpdateBucket(&bucketSettings2)
+
+	err = manager.UpsertUser("local", "test_data_bucket", &userSettings)
+	err = manager.UpsertUser("local", "test_shadowbucket", &userSettings1)
+	err = manager.UpsertUser("local", "test_indexbucket", &userSettings2)
+
+	req, err = http.NewRequest("GET", "http://localhost:8091/pools/default/buckets", nil)
+	req.SetBasicAuth("Administrator", "password")
+	response, err = client.Do(req)
+	var jsonBody []responseBody
+	json.NewDecoder(response.Body).Decode(&jsonBody)
+
+	for !areBucketsReady(&jsonBody) {
+		fmt.Println("Buckets Not Ready Yet")
+		req, _ = http.NewRequest("GET", "http://localhost:8091/pools/default/buckets", nil)
+		req.SetBasicAuth("Administrator", "password")
+		response, err = client.Do(req)
+		json.NewDecoder(response.Body).Decode(&jsonBody)
+	}
+
+	var jsonBody2 responseBody
+	req, err = http.NewRequest("GET", "http://localhost:8091/pools/default", nil)
+	req.SetBasicAuth("Administrator", "password")
+	response, err = client.Do(req)
+	json.NewDecoder(response.Body).Decode(&jsonBody2)
+
+	for !isNodeReady(&jsonBody2) {
+		fmt.Println("Node Not Ready Yet")
+		req, _ = http.NewRequest("GET", "http://localhost:8091/pools/default", nil)
+		req.SetBasicAuth("Administrator", "password")
+		response, err = client.Do(req)
+		json.NewDecoder(response.Body).Decode(&jsonBody2)
+	}
+
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+
+	code := t.Run()
+
+	if err := pool.Purge(resource); err != nil {
+		log.Fatalf("Could not purge resource: %s", err)
+	}
+
+	os.Exit(code)
+}
+
+func areBucketsReady(res *[]responseBody) bool {
+	allReady := true
+	nres := *res
+	for i := 0; i < len(nres); i++ {
+		if len(nres[i].Nodes) == 1 && nres[i].Nodes[0].Status != "healthy" {
+			allReady = false
+		}
+	}
+	return allReady
+}
+
+func isNodeReady(res *responseBody) bool {
+	ready := true
+	nres := *res
+	uptime, _ := strconv.Atoi(nres.Nodes[0].Uptime)
+	if len(nres.Nodes) == 1 && nres.Nodes[0].Status != "healthy" || uptime <= 20 {
+		ready = false
+	}
+	fmt.Println(nres.Nodes)
+
+	return ready
 }

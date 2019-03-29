@@ -1,111 +1,83 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"net/http"
-	"net/url"
 	"testing"
-	"time"
 
 	"github.com/couchbase/gocb"
-	"github.com/ory/dockertest"
 )
 
 var cluster *gocb.Cluster
-var port8091 string
 
-func TestMain(t *testing.M) {
-	pool, err := dockertest.NewPool("")
-	if err != nil {
-		log.Fatalf("Could not connect to docker: %s", err)
-	}
+//var port8091 string
 
-	resource, err := pool.Run("couchbase", "enterprise-6.0.1", []string{})
-	if err != nil {
-		log.Fatalf("Could not start resource: %s", err)
-	}
+//func TestMain(t *testing.M) {
+//	rest.NewDockerTest(t)
+//
+//}
 
-	if err := pool.Retry(func() error {
-		var err error
-		port8091 = resource.GetPort("8091/tcp")
-		cluster, err = gocb.Connect("http://localhost:" + port8091)
-		if err != nil {
-			return err
-		}
-		return nil
+type nodes struct {
+	Status string `json:"status"`
+}
 
-	}); err != nil {
-		log.Fatalf("Could not connect to docker: %s", err)
-	}
-
-	time.Sleep(15 * time.Second)
-
-	data := url.Values{}
-	data.Set("services", "kv,n1ql,index,fts")
-
-	//response, err := http.Post("http://localhost:"+port8091+"/node/controller/setupServices", "application/x-www-form-url-encoded", strings.NewReader(data.Encode()))
-	response, err := http.PostForm("http://localhost:"+port8091+"/node/controller/setupServices", data)
-
-	if err != nil {
-		fmt.Println(err.Error())
-	} else {
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
-		fmt.Println(string(bodyBytes))
-	}
-
-	data = url.Values{}
-	data.Set("memoryQuota", "512")
-	data.Set("indexMemoryQuota", "256")
-
-	response, err = http.PostForm("http://localhost:"+port8091+"/pools/default", data)
-
-	if err != nil {
-		fmt.Println(err.Error())
-	} else {
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
-		fmt.Println(string(bodyBytes))
-	}
-
-	data = url.Values{}
-	data.Set("password", "password")
-	data.Set("username", "Administrator")
-	data.Set("port", "SAME")
-
-	response, _ = http.PostForm("http://localhost:"+port8091+"/settings/web", data)
-
-	if err != nil {
-		fmt.Println(err.Error())
-	} else {
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
-		fmt.Println(string(bodyBytes))
-	}
-
-	bucketSettings := gocb.BucketSettings{
-		FlushEnabled:  true,
-		IndexReplicas: true,
-		Name:          "test",
-		Password:      "",
-		Quota:         100,
-		Replicas:      1,
-		Type:          gocb.BucketType(0),
-	}
-
-	manager := cluster.Manager("Administrator", "password")
-	err = manager.UpdateBucket(&bucketSettings)
-
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-
-	t.Run()
-
-	//if err := pool.Purge(resource); err != nil {
-	//	log.Fatalf("Could not purge resource: %s", err)
-	//}
+type responseBody struct {
+	Nodes []nodes `json:"nodes"`
 }
 
 func TestHello(t *testing.T) {
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", "http://localhost:8091/pools/default/buckets", nil)
+	req.SetBasicAuth("Administrator", "password")
+	response, _ := client.Do(req)
+	var jsonBody []responseBody
+	json.NewDecoder(response.Body).Decode(&jsonBody)
 
+	for !areBucketsReady(&jsonBody) {
+		fmt.Println("Buckets Not Ready Yet")
+		req, _ = http.NewRequest("GET", "http://localhost:8091/pools/default/buckets", nil)
+		req.SetBasicAuth("Administrator", "password")
+		response, _ = client.Do(req)
+		json.NewDecoder(response.Body).Decode(&jsonBody)
+	}
+
+	var jsonBody2 responseBody
+	req, _ = http.NewRequest("GET", "http://localhost:8091/pools/default", nil)
+	req.SetBasicAuth("Administrator", "password")
+	response, _ = client.Do(req)
+	json.NewDecoder(response.Body).Decode(&jsonBody2)
+
+	for !isNodeReady(&jsonBody) {
+		fmt.Println("Node Not Ready Yet")
+		req, _ = http.NewRequest("GET", "http://localhost:8091/pools/default", nil)
+		req.SetBasicAuth("Administrator", "password")
+		response, _ = client.Do(req)
+		json.NewDecoder(response.Body).Decode(&jsonBody2)
+	}
+}
+
+func areBucketsReady(res *[]responseBody) bool {
+	allReady := true
+	nres := *res
+	for i := 0; i < len(nres); i++ {
+		if len(nres[i].Nodes) == 1 && nres[i].Nodes[0].Status != "healthy" {
+			allReady = false
+		}
+	}
+	return allReady
+}
+
+func isNodeReady(res *[]responseBody) bool {
+	ready := true
+	nres := *res
+	for i := 0; i < len(nres); i++ {
+		if len(nres[i].Nodes) == 1 && nres[i].Nodes[0].Status != "healthy" {
+			ready = false
+		}
+
+		fmt.Println(nres[i].Nodes[0].Status)
+	}
+
+	return ready
 }

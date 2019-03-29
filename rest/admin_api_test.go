@@ -30,6 +30,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestMain(t *testing.M) {
+	NewDockerTest(t)
+}
+
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
 func TestNoPanicInvalidUpdate(t *testing.T) {
 
