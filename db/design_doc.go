@@ -167,9 +167,9 @@ func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
 	// add channel filtering.
 	for name, view := range ddoc.Views {
 		if enableUserViews {
-			view.Map = fmt.Sprintf(syncViewAdminWrapper, base.SyncXattrName, base.SyncXattrName, view.Map)
-		} else {
 			view.Map = fmt.Sprintf(syncViewUserWrapper, base.SyncXattrName, base.SyncXattrName, view.Map)
+		} else {
+			view.Map = fmt.Sprintf(syncViewAdminWrapper, base.SyncXattrName, base.SyncXattrName, view.Map)
 		}
 		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 	}
