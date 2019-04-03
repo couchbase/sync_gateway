@@ -643,7 +643,8 @@ func TestViewQueryWrappers(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	testUser, err := a.NewUser("testUser", "password", channels.SetOf("userchannel"))
-	a.Save(testUser)
+	assert.NoError(t, err)
+	err = a.Save(testUser)
 	assert.NoError(t, err)
 
 	result, err = rt.WaitForNUserViewResults(1, "/db/_design/foodoc/_view/foobarview", testUser, "password")
