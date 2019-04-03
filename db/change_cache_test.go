@@ -283,15 +283,12 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll|base.KeyGoCB)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyDCP)()
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
-
-	fmt.Println("capture")
-	time.Sleep(10 * time.Second)
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
 	WriteDirect(db, []string{"ABC"}, 2)
