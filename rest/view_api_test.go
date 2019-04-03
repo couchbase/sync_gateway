@@ -622,29 +622,31 @@ func TestPostInstallCleanup(t *testing.T) {
 }
 
 func TestViewQueryWrappers(t *testing.T) {
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
 
-	_ = rt.SendAdminRequest("PUT", "/db/admindoc", `{"value":"foo"}`)
-	_ = rt.SendAdminRequest("PUT", "/db/admindoc2", `{"value":"foo"}`)
-	_ = rt.SendAdminRequest("PUT", "/db/userdoc", `{"value":"foo", "channels": ["userchannel"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/admindoc", `{"value":"foo"}`)
+	assertStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("PUT", "/db/admindoc2", `{"value":"foo"}`)
+	assertStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("PUT", "/db/userdoc", `{"value":"foo", "channels": ["userchannel"]}`)
+	assertStatus(t, response, http.StatusCreated)
 
-	response := rt.SendAdminRequest("PUT", "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
+	response = rt.SendAdminRequest("PUT", "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
 	assert.Equal(t, 201, response.Code)
 
-	result, err := rt.WaitForNAdminViewResults(3, "/db/_design/foodoc/_view/foobarview?stale=false")
+	result, err := rt.WaitForNAdminViewResults(3, "/db/_design/foodoc/_view/foobarview")
 	assert.NoError(t, err)
-	fmt.Println(result.Rows)
+	assert.Equal(t, 3, result.Len())
 
 	a := rt.ServerContext().Database("db").Authenticator()
-	password := "password"
-	testUser, _ := a.NewUser("testUser", password, channels.SetOf("userchannel"))
+	testUser, err := a.NewUser("testUser", "password", channels.SetOf("userchannel"))
 	a.Save(testUser)
-
-	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foodoc/_view/foobarview?stale=false")
 	assert.NoError(t, err)
-	fmt.Println(result.Rows)
+
+	result, err = rt.WaitForNUserViewResults(1, "/db/_design/foodoc/_view/foobarview", testUser, "password")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, result.Len())
 }

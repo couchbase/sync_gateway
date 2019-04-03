@@ -86,80 +86,102 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err 
 
 const (
 	// viewWrapper_adminViews adds the rev to metadata, and strips the _sync property from the view result
-	syncViewAdminWrapper = `function(doc,meta) {
-						var sync;
-						var isXattr;
-						if(meta.id.substring(0,6) == "_sync:"){
-							return;
-						}
-						if (meta.xattrs === undefined || meta.xattrs.%s === undefined){
-							sync = doc._sync;
-							isXattr = false;
-						}else{
-							sync = meta.xattrs.%s;
-							isXattr = true;
-						}
-
-						if ((sync.flags & 1) || sync.deleted || sync === undefined)
-	                      return;
-
-						if(!isXattr){
-							delete doc._sync;
-						}
-						
-						meta.rev = sync.rev;
-						(%s) (doc, meta);
-
-						if (!isXattr){
-							doc._sync = sync;
-						}
-						}`
-	syncViewUserWrapper = `function(doc,meta) {
-						var sync;
-						var isXattr;
-						if(meta.id.substring(0,6) == "_sync:"){
-							return;
-						}
-						if (meta.xattrs === undefined || meta.xattrs.%s === undefined){
-							sync = doc._sync;
-							isXattr = false;
-						}else{
-							sync = meta.xattrs.%s;
-							isXattr = true;
-						}
-
-						if ((sync.flags & 1) || sync.deleted || sync === undefined)
-	                      return;
-
-						if(!isXattr){
-							delete doc._sync;
-						}
-
-						var channels = [];
-						var channelMap = sync.channels;
-						if (channelMap) {
-							for (var name in channelMap) {
-								removed = channelMap[name];
-								if (!removed)
-									channels.push(name);
-							}
-						}
-						meta.channels = channels;
-						
-						meta.rev = sync.rev;
-
-						var _emit = emit;
-						(function(){
-							var emit = function(key,value) {
-								_emit(key,[channels, value]);
-							};
-							(%s) (doc, meta);
-						}());
-
-						if (!isXattr){
-							doc._sync = sync;
-						}
-						}`
+	syncViewAdminWrapper = `
+	function(doc, meta) {
+	
+		//Skip any internal sync documents
+		if (meta.id.substring(0, 6) == "_sync:") {
+			return;
+		}
+		var sync;
+		var isXattr;
+	
+		//Get sync data from xattrs or from the doc body
+		if (meta.xattrs === undefined || meta.xattrs. % s === undefined) {
+			sync = doc._sync;
+			isXattr = false;
+		} else {
+			sync = meta.xattrs. % s;
+			isXattr = true;
+		}
+	
+		//Skip if the document has been deleted or has no sync data defined
+		if ((sync.flags & 1) || sync.deleted || sync === undefined)
+			return;
+	
+		//If sync data is in body strip it from the view result
+		if (!isXattr) {
+			delete doc._sync;
+		}
+	
+		//Add rev to meta
+		meta.rev = sync.rev;
+	
+		//Run view
+		( % s)(doc, meta);
+	
+		//Re-add sync data to body
+		if (!isXattr) {
+			doc._sync = sync;
+		}
+	}`
+	syncViewUserWrapper = `
+	function(doc, meta) {
+		var sync;
+		var isXattr;
+	
+		//Skip any internal sync documents
+		if (meta.id.substring(0, 6) == "_sync:") {
+			return;
+		}
+	
+		//Get sync data from xattrs or from the doc body
+		if (meta.xattrs === undefined || meta.xattrs. % s === undefined) {
+			sync = doc._sync;
+			isXattr = false;
+		} else {
+			sync = meta.xattrs. % s;
+			isXattr = true;
+		}
+	
+		//Skip if the document has been deleted or has no sync data defined
+		if ((sync.flags & 1) || sync.deleted || sync === undefined)
+			return;
+	
+		//If sync data is in body strip it from the view result
+		if (!isXattr) {
+			delete doc._sync;
+		}
+	
+		//Update channels
+		var channels = [];
+		var channelMap = sync.channels;
+		if (channelMap) {
+			for (var name in channelMap) {
+				removed = channelMap[name];
+				if (!removed)
+					channels.push(name);
+			}
+		}
+		meta.channels = channels;
+	
+		//Add rev to meta
+		meta.rev = sync.rev;
+	
+		//Run view
+		var _emit = emit;
+		(function() {
+			var emit = function(key, value) {
+				_emit(key, [channels, value]);
+			};
+			( % s)(doc, meta);
+		}());
+	
+		//Re-add sync data to body
+		if (!isXattr) {
+			doc._sync = sync;
+		}
+	}`
 )
 
 func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
