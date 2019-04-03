@@ -24,12 +24,12 @@ var _ gocb.Logger = GoCBLogger{}
 
 // Log wraps the levelled SG logs for gocb to use.
 // Log levels are mapped as follows:
-// Error  -> SG Error
-// Warn   -> SG Warn
-// Info   -> SG Debug
-// Debug  -> SG Trace
-// Trace  -> SG Trace
-// Others -> SG Trace
+//   Error  -> SG Error
+//   Warn   -> SG Warn
+//   Info   -> SG Debug
+//   Debug  -> SG Trace
+//   Trace  -> SG Trace
+//   Others -> SG Trace
 func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocb.LogError:
@@ -53,12 +53,12 @@ var _ gocbcore.Logger = GoCBCoreLogger{}
 
 // Log wraps the levelled SG logs for gocbcore to use.
 // Log levels are mapped as follows:
-// Error  -> SG Error
-// Warn   -> SG Warn
-// Info   -> SG Debug
-// Debug  -> SG Trace
-// Trace  -> SG Trace
-// Others -> SG Trace
+//   Error  -> SG Error
+//   Warn   -> SG Warn
+//   Info   -> SG Debug
+//   Debug  -> SG Trace
+//   Trace  -> SG Trace
+//   Others -> SG Trace
 func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocbcore.LogError:
