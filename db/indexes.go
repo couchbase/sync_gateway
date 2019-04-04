@@ -266,7 +266,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 	}
 
 	if !gocbBucket.HasN1qlNodes() {
-		return errors.New("No available N1QL nodes. Either add N1QL service to Couchbase Server or set `use_views` to true in your Sync Gateway config")
+		return errors.New("No available nodes running the Query Service. Either add the Query Service to your Couchbase Server cluster or set `use_views` to true in your Sync Gateway config")
 	}
 
 	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
