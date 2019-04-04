@@ -361,11 +361,15 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 //  - indexes based on the inverse value of xattrs being used by the database
 //  - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
 func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool) (removedIndexes []string, err error) {
-
+	removedIndexes = make([]string, 0)
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if !ok {
 		base.Warnf(base.KeyAll, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
-		return
+		return removedIndexes, nil
+	}
+
+	if !gocbBucket.HasN1qlNodes() {
+		return removedIndexes, nil
 	}
 
 	// Build set of candidates for cleanup
@@ -381,7 +385,6 @@ func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool)
 	}
 
 	// Attempt removal of candidates, adding to set of removedIndexes when found
-	removedIndexes = make([]string, 0)
 	for _, indexName := range removalCandidates {
 		removed, removeError := removeObsoleteIndex(gocbBucket, indexName, previewOnly)
 		if removeError != nil {

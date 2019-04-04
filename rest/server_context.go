@@ -262,11 +262,7 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 		removedDDocs, _ := database.RemoveObsoleteDesignDocs(preview)
 
 		// Index cleanup
-		var removedIndexes = make([]string, 0)
-		gocbBucket, ok := base.AsGoCBBucket(database.Bucket)
-		if ok && gocbBucket.HasN1qlNodes() {
-			removedIndexes, _ = database.RemoveObsoleteIndexes(preview)
-		}
+		removedIndexes, _ := database.RemoveObsoleteIndexes(preview)
 
 		postUpgradeResults[name] = PostUpgradeDatabaseResult{
 			RemovedDDocs:   removedDDocs,
