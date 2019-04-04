@@ -12,7 +12,6 @@ package base
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"expvar"
 	"fmt"
 	"sync"
@@ -21,9 +20,9 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
-	uuid "github.com/satori/go.uuid"
+	"github.com/satori/go.uuid"
 )
 
 var dcpExpvars *expvar.Map
@@ -463,7 +462,7 @@ func (r *DCPReceiver) initFeed(backfillType uint64) error {
 
 	statsUuids, highSeqnos, err := r.bucket.GetStatsVbSeqno(r.maxVbNo, false)
 	if err != nil {
-		return errors.New("Error retrieving stats-vbseqno - DCP not supported")
+		return pkgerrors.Wrap(err, "Error retrieving stats-vbseqno - DCP not supported")
 	}
 
 	r.vbuuids = statsUuids
