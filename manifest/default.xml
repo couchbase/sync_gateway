@@ -7,9 +7,29 @@
 
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
 
+  <!-- Docker integration tests -->
+  <remote fetch="https://github.com/ory/" name="ory"/>
+  <remote fetch="https://github.com/Azure/" name="Azure"/>
+  <remote fetch="https://github.com/Microsoft/" name="Microsoft"/>
+  <remote fetch="https://github.com/Nvveen/" name="Nvveen"/>
+  <remote fetch="https://github.com/cenkalti/" name="cenkalti"/>
+  <remote fetch="https://github.com/containerd" name="containerd"/>
+  <remote fetch="https://github.com/davecgh/" name="davecgh"/>
+  <remote fetch="https://github.com/docker/" name="docker"/>
+  <remote fetch="https://github.com/google/" name="google"/>
+  <remote fetch="https://github.com/gotestyourself/" name="gotestyourself"/>
+  <remote fetch="https://github.com/lib/" name="lib"/>
+  <remote fetch="https://github.com/opencontainers/" name="opencontainers"/>
+  <remote fetch="https://github.com/pkg/" name="pkg"/>
+  <remote fetch="https://github.com/pmezard/" name="pmezard"/>
+  <remote fetch="https://github.com/sirupsen/" name="sirupsen"/>
+  <remote fetch="https://github.com/stretchr/" name="stretchr"/>
+
+
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
   <default remote="couchbase" revision="master"/>
+
 
   <!-- Build Scripts (required on CI servers) -->
   <project name="product-texts" path="product-texts" remote="couchbase"/>
@@ -134,5 +154,23 @@
 
   <project name="gopsutil" path="godeps/src/github.com/shirou/gopsutil" remote="couchbasedeps" revision="cce2d16538b41615132a07ec08d5bdc91c1851e3"/>
 
+  <!-- Docker Integration Test Dependencies -->
+  <project name="dockertest" path="godeps/src/github.com/ory/dockertest" remote="ory" revision="56b367fe94ad17019ab80b91fe686218e65ce9fa"/>
+  <project name="go-ansiterm" path="godeps/src/github.com/Azure/go-ansiterm" remote="Azure" revision="d6e3b3328b783f23731bc4d058875b0371ff8109"/>
+  <project name="go-winio" path="godeps/src/github.com/Microsoft/go-winio" remote="Microsoft" revision="7da180ee92d8bd8bb8c37fc560e673e6557c392f"/>
+  <project name="Gotty" path="godeps/src/github.com/Nvveen/Gotty" remote="Nvveen" revision="cd527374f1e5bff4938207604a14f2e38a9cf512"/>
+  <project name="backoff" path="godeps/src/github.com/cenkalti/backoff" remote="cenkalti" revision="2ea60e5f094469f9e65adb9cd103795b73ae743e"/>
+  <project name="continuity" path="godeps/src/github.com/containerd/continuity" remote="containerd" revision="3e8f2ea4b190484acb976a5b378d373429639a1a"/>
+  <project name="go-spew" path="godeps/src/github.com/davecgh/go-spew" remote="davecgh" revision="346938d642f2ec3594ed81d874461961cd0faa76"/>
+  <project name="go-connections" path="godeps/src/github.com/docker/go-connections" remote="docker" revision="3ede32e2033de7505e6500d6c868c2b9ed9f169d"/>
+  <project name="go-units" path="godeps/src/github.com/docker/go-units" remote="docker" revision="47565b4f722fb6ceae66b95f853feed578a4a51c"/>
+  <project name="go-cmp" path="godeps/src/github.com/google/go-cmp" remote="google" revision="3af367b6b30c263d47e8895973edcca9a49cf029"/>
+  <project name="gotestyourself" path="godeps/src/github.com/gotestyourself/gotestyourself" remote="gotestyourself" revision="03704babdbbc36b67d9a4cd94c9e00adf82f339f"/>
+  <project name="pq" path="godeps/src/github.com/lib/pq" remote="lib" revision="d34b9ff171c21ad295489235aec8b6626023cd04"/>
+  <project name="go-digest" path="godeps/src/github.com/opencontainers/go-digest" remote="opencontainers" revision="279bed98673dd5bef374d3b6e4b09e2af76183bf"/>
+  <project name="image-spec" path="godeps/src/github.com/opencontainers/image-spec" remote="opencontainers" revision="d60099175f88c47cd379c4738d158884749ed235"/>
+  <project name="runc" path="godeps/src/github.com/opencontainers/runc" remote="opencontainers" revision="4fc53a81fb7c994640722ac585fa9ca548971871"/>
+  <project name="go-difflib" path="godeps/src/github.com/pmezard/go-difflib" remote="pmezard" revision="792786c7400a136282c1664665ae0a8db921c6c2"/>
+  <project name="logrus" path="godeps/src/github.com/sirupsen/logrus" remote="sirupsen" revision="c155da19408a8799da419ed3eeb0cb5db0ad5dbc"/>
 
 </manifest>

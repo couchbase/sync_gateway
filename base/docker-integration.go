@@ -1,7 +1,6 @@
 package base
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -14,8 +13,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
-	"github.com/docker/docker/api/types"
-	client2 "github.com/docker/docker/client"
 	"github.com/ory/dockertest"
 	"github.com/ory/dockertest/docker"
 )
@@ -37,23 +34,22 @@ func NewDockerTest(t *testing.M) {
 	if os.Getenv("SG_TEST_USE_DOCKER") == "true" {
 		err := os.Setenv("SG_TEST_BACKING_STORE", "Couchbase")
 
-		//Use docker SDK to delete any existing containers. This can occur if a test fails and is unable to shutdown
-		// its instance
-		cli, err := client2.NewClientWithOpts(client2.WithVersion("1.39"))
+		//Delete any existing containers. This can occur if a test fails and is unable to shutdown its instance
+		cli, err := docker.NewClient("")
 		fatalError("Unable to create docker client", err)
 
-		containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{})
+		containers, err := cli.ListContainers(docker.ListContainersOptions{})
 		fatalError("Unable to list existing containers", err)
 
 		for _, container := range containers {
 			if val, ok := container.Labels["purpose"]; ok && val == "sg_integration_tests" {
 				fmt.Println(fmt.Sprintf("Old Couchbase Instance Found With ID %s and Image %s... Deleting", container.ID, container.Image))
-				timeout := time.Duration(10 * time.Second)
-				err = cli.ContainerStop(context.Background(), container.ID, &timeout)
+				timeout := uint(10)
+				err = cli.StopContainer(container.ID, timeout)
 				if err != nil {
 					fmt.Printf("Unable to stop existing container: %s", err.Error())
 				}
-				err = cli.ContainerRemove(context.Background(), container.ID, types.ContainerRemoveOptions{})
+				err = cli.RemoveContainer(docker.RemoveContainerOptions{ID: container.ID, Force: true})
 				if err != nil {
 					fmt.Printf("Unable to remove existing container: %s", err.Error())
 				}
