@@ -265,9 +265,13 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 		}
 
 		// Index cleanup
-		removedIndexes, err := database.RemoveObsoleteIndexes(preview)
-		if err != nil {
-			return nil, err
+		var removedIndexes = make([]string, 0)
+		gocbBucket, ok := base.AsGoCBBucket(database.Bucket)
+		if ok && gocbBucket.HasN1qlNodes() {
+			removedIndexes, err = database.RemoveObsoleteIndexes(preview)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		postUpgradeResults[name] = PostUpgradeDatabaseResult{
