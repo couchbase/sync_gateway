@@ -2447,6 +2447,11 @@ func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint
 
 }
 
+func (bucket *CouchbaseBucketGoCB) HasN1qlNodes() bool {
+	numberOfN1qlNodes := len(bucket.IoRouter().N1qlEps())
+	return numberOfN1qlNodes > 0
+}
+
 func (bucket *CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaError error) {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
