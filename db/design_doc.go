@@ -97,11 +97,11 @@ const (
 		var isXattr;
 	
 		//Get sync data from xattrs or from the doc body
-		if (meta.xattrs === undefined || meta.xattrs. % s === undefined) {
+		if (meta.xattrs === undefined || meta.xattrs. %s === undefined) {
 			sync = doc._sync;
 			isXattr = false;
 		} else {
-			sync = meta.xattrs. % s;
+			sync = meta.xattrs. %s;
 			isXattr = true;
 		}
 	
@@ -118,7 +118,7 @@ const (
 		meta.rev = sync.rev;
 	
 		//Run view
-		( % s)(doc, meta);
+		( %s)(doc, meta);
 	
 		//Re-add sync data to body
 		if (!isXattr) {
@@ -136,11 +136,11 @@ const (
 		}
 	
 		//Get sync data from xattrs or from the doc body
-		if (meta.xattrs === undefined || meta.xattrs. % s === undefined) {
+		if (meta.xattrs === undefined || meta.xattrs. %s === undefined) {
 			sync = doc._sync;
 			isXattr = false;
 		} else {
-			sync = meta.xattrs. % s;
+			sync = meta.xattrs. %s;
 			isXattr = true;
 		}
 	
@@ -174,7 +174,7 @@ const (
 			var emit = function(key, value) {
 				_emit(key, [channels, value]);
 			};
-			( % s)(doc, meta);
+			( %s)(doc, meta);
 		}());
 	
 		//Re-add sync data to body
