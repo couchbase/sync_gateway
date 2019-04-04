@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -263,6 +264,11 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 		base.Warnf(base.KeyAll, "Using a non-Couchbase bucket: %T - indexes will not be created.", bucket)
 		return nil
 	}
+
+	if !gocbBucket.HasN1qlNodes() {
+		return errors.New("No available nodes running the Query Service. Either add the Query Service to your Couchbase Server cluster or set `use_views` to true in your Sync Gateway config")
+	}
+
 	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
 	// Create any indexes that aren't present
