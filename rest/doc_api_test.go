@@ -93,16 +93,16 @@ func TestDocumentNumbers(t *testing.T) {
 		t.Run(test.name, func(ts *testing.T) {
 			//Create document
 			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", test.name), test.body)
-			assertStatus(t, response, 201)
+			assertStatus(ts, response, 201)
 
 			// Get document, validate number value
 			getResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s", test.name), "")
-			assertStatus(t, getResponse, 200)
+			assertStatus(ts, getResponse, 200)
 
 			// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 			responseString := string(getResponse.Body.Bytes())
 			if !strings.Contains(responseString, test.expectedString) {
-				t.Errorf("Response does not contain the expected number format (%s).  Response: %s", test.name, responseString)
+				ts.Errorf("Response does not contain the expected number format (%s).  Response: %s", test.name, responseString)
 			}
 
 			// Check channel assignment
@@ -110,8 +110,8 @@ func TestDocumentNumbers(t *testing.T) {
 			var rawResponse RawResponse
 			json.Unmarshal(getRawResponse.Body.Bytes(), &rawResponse)
 			log.Printf("raw response: %s", getRawResponse.Body.Bytes())
-			assert.Equal(t, 1, len(rawResponse.Sync.Channels))
-			assert.True(t, HasActiveChannel(rawResponse.Sync.Channels, test.expectedFormatChannel), fmt.Sprintf("Expected channel %s was not found in document channels (%s)", test.expectedFormatChannel, test.name))
+			assert.Equal(ts, 1, len(rawResponse.Sync.Channels))
+			assert.True(ts, HasActiveChannel(rawResponse.Sync.Channels, test.expectedFormatChannel), fmt.Sprintf("Expected channel %s was not found in document channels (%s)", test.expectedFormatChannel, test.name))
 
 		})
 	}
