@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sort"
 	"time"
 
@@ -360,7 +361,11 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 	go func() {
 
 		defer func() {
-			base.InfofCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed done %s", base.UD(to))
+			if panicked := recover(); panicked != nil {
+				base.WarnfCtx(db.Ctx, base.KeyChanges, "[%s] Unexpected panic sending changes - terminating changes: \n %s", panicked, debug.Stack())
+			} else {
+				base.InfofCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed done %s", base.UD(to))
+			}
 			close(output)
 		}()
 
