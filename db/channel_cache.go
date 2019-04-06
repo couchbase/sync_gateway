@@ -257,10 +257,20 @@ func (c *channelCache) pruneCache() {
 func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c._getCachedChanges(options)
+	sinceSeq := options.Since.SafeSequence()
+	limit := options.Limit
+
+	//If the activeOnly option is set, then do not limit the number of entries returned
+	//we don't know how many non active entries will be discarded from the entry set
+	//by the caller, so the additional entries may be needed to return up to the limit requested
+	if options.ActiveOnly {
+		limit = 0
+	}
+
+	return c._getCachedChanges(sinceSeq, limit)
 }
 
-func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
+func (c *channelCache) _getCachedChanges(sinceSeq uint64, limit int) (validFrom uint64, result []*LogEntry) {
 	// Find the first entry in the log to return:
 	log := c.logs
 	if len(log) == 0 {
@@ -268,7 +278,7 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint
 		return // Return nil if nothing is cached
 	}
 	var start int
-	for start = len(log) - 1; start >= 0 && log[start].Sequence > options.Since.SafeSequence(); start-- {
+	for start = len(log) - 1; start >= 0 && log[start].Sequence > sinceSeq; start-- {
 	}
 	start++
 
@@ -280,11 +290,8 @@ func (c *channelCache) _getCachedChanges(options ChangesOptions) (validFrom uint
 
 	n := len(log) - start
 
-	//If the activeOnly option is set, then do not limit the number of entries returned
-	//we don't know how many non active entries will be discarded from the entry set
-	//by the caller, so the additional entries may be needed to return up to the limit requested
-	if options.Limit > 0 && n > options.Limit && !options.ActiveOnly {
-		n = options.Limit
+	if limit > 0 && n > limit {
+		n = limit
 	}
 
 	result = make([]*LogEntry, n)
@@ -332,15 +339,21 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
 	// overlap, which helps confirm that we've got everything.
-	resultFromView, err := c.context.getChangesInChannelFromQuery(c.channelName, cacheValidFrom,
-		options)
+	endSeq := cacheValidFrom
+	resultFromView, err := c.context.getChangesInChannelFromQuery(c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
 
-	// Cache some of the view results, if there's room in the cache:
+	// Cache some of the query results, if there's room in the cache.  If query hit the limit,
+	// the query results are only valid for the range of sequences in the result set.
+	resultValidTo := endSeq
+	numResults := len(resultFromView)
+	if options.Limit != 0 && numResults >= options.Limit {
+		resultValidTo = resultFromView[numResults-1].Sequence
+	}
 	if len(resultFromCache) < c.options.ChannelCacheMaxLength {
-		c.prependChanges(resultFromView, startSeq, options.Limit == 0)
+		c.prependChanges(resultFromView, startSeq, resultValidTo)
 	}
 
 	result := resultFromView
@@ -467,89 +480,91 @@ func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 // the cache.
 //
 // Returns the number of entries actually prepended.
-func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint64, openEnded bool) int {
+func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint64, changesValidTo uint64) int {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if len(c.logs) == 0 {
-		// If my cache is empty, just copy the new changes:
-		if len(changes) > 0 {
-			if !openEnded && changes[len(changes)-1].Sequence < c.validFrom {
-				return 0 // changes might not go all the way to the current time
-			}
-			if excess := len(changes) - c.options.ChannelCacheMaxLength; excess > 0 {
-				changes = changes[excess:]
-				changesValidFrom = changes[0].Sequence
-			}
-			c.logs = make(LogEntries, len(changes))
-			copy(c.logs, changes)
-			base.Infof(base.KeyCache, "  Initialized cache of %q with %d entries from view (#%d--#%d)",
-				base.UD(c.channelName), len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
+	// If set of changes to prepend is empty, check whether validFrom should be updated
+	if len(changes) == 0 {
+		if changesValidFrom < c.validFrom && changesValidTo >= c.validFrom {
+			base.Debugf(base.KeyCache, " changesValidFrom (%d) < c.validFrom < changesValidTo (%d), setting c.validFrom from %v -> %v",
+				changesValidFrom, changesValidTo, c.validFrom, changesValidFrom)
+			c.validFrom = changesValidFrom
 		}
+		return 0
+	}
+
+	// Ensure changes are valid to the cache's validFrom, otherwise unsafe to prepend
+	if changesValidTo < c.validFrom {
+		return 0
+	}
+
+	// If my cache is empty, just copy the new changes
+	if len(c.logs) == 0 {
+		if excess := len(changes) - c.options.ChannelCacheMaxLength; excess > 0 {
+			changes = changes[excess:]
+			changesValidFrom = changes[0].Sequence
+		}
+		c.logs = make(LogEntries, len(changes))
+		copy(c.logs, changes)
+		base.Infof(base.KeyCache, "  Initialized cache of %q with %d entries from view (#%d--#%d)",
+			base.UD(c.channelName), len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
+
 		c.validFrom = changesValidFrom
 		c.addDocIDs(changes)
 		return len(changes)
 
-	} else if len(changes) == 0 {
+	}
 
-		if openEnded && changesValidFrom < c.validFrom {
-			base.Debugf(base.KeyCache, " openEnded && changesValidFrom < c.validFrom, setting c.validFrom from %v -> %v",
-				c.validFrom, changesValidFrom)
-			c.validFrom = changesValidFrom
-		}
-		return 0
-
-	} else {
-		// Look for an overlap, and prepend everything up to that point:
-		firstSequence := c.logs[0].Sequence
-		if changes[0].Sequence <= firstSequence {
-			// Found overlap - iterate backwards over query results from the overlap point, building set
-			// of entries to append.  Ignore docIDs already in the cache.  Stop when we have enough to
-			// fill to ChannelCacheMaxLength (or run out of query results)
-			for i := len(changes) - 1; i >= 0; i-- {
-				// Found overlap, iterate over remaining to build set to prepend
-				if changes[i].Sequence == firstSequence {
-					cacheCapacity := c.options.ChannelCacheMaxLength - len(c.logs)
-					if cacheCapacity == 0 {
-						return 0
-					}
-					// Build the set of entries to prepend by iterating backwards from the overlap point to the beginning of changes[]
-					entriesToPrepend := make(LogEntries, 0, cacheCapacity)
-					for changeIndex := i; changeIndex >= 0; changeIndex-- {
-						change := changes[changeIndex]
-
-						// If docid is already in cache, existing revision must be for a later sequence; can ignore this revision.
-						if _, docIdExists := c.cachedDocIDs[change.DocID]; docIdExists {
-							continue
-						}
-						entriesToPrepend = append(entriesToPrepend, nil)
-						copy(entriesToPrepend[1:], entriesToPrepend)
-						entriesToPrepend[0] = change
-						c.cachedDocIDs[change.DocID] = struct{}{}
-
-						if len(entriesToPrepend) >= cacheCapacity {
-							// If we reach capacity before prepending the entire set of changes, set changesValidFrom to the oldest sequence
-							// that's been prepended to the cache
-							changesValidFrom = change.Sequence
-							break
-						}
-					}
-
-					numToPrepend := len(entriesToPrepend)
-					if numToPrepend > 0 {
-						c.logs = append(entriesToPrepend, c.logs...)
-						base.Infof(base.KeyCache, "  Added %d entries from query (#%d--#%d) to cache of %q",
-							numToPrepend, entriesToPrepend[0].Sequence, entriesToPrepend[numToPrepend-1].Sequence, base.UD(c.channelName))
-					}
-					base.Debugf(base.KeyCache, " Backfill cache from query c.validFrom from %v -> %v",
-						c.validFrom, changesValidFrom)
-					c.validFrom = changesValidFrom
-					return numToPrepend
-				}
-			}
-		}
+	// Prepending changes to a non-empty cache
+	// Check whether there's capacity to prepend
+	cacheCapacity := c.options.ChannelCacheMaxLength - len(c.logs)
+	if cacheCapacity <= 0 {
 		return 0
 	}
+
+	// Check whether the results to prepend are contiguous with the cache
+	if changesValidFrom >= c.validFrom {
+		return 0
+	}
+
+	// Iterate backward over changes set, building set to prepend.
+	//   - Don't prepend any sequence values already in the cache (later than c.validFrom)
+	//   - Ignore docIDs already in the cache
+	//   - Stop when we have enough to fill to ChannelCacheMaxLength (or run out of query results)
+	entriesToPrepend := make(LogEntries, 0, cacheCapacity)
+	for i := len(changes) - 1; i >= 0; i-- {
+		change := changes[i]
+		if change != nil && change.Sequence < c.validFrom {
+			// If docid is already in cache, existing revision must be for a later sequence; can ignore this revision.
+			if _, docIdExists := c.cachedDocIDs[change.DocID]; docIdExists {
+				continue
+			}
+			entriesToPrepend = append(entriesToPrepend, nil)
+			copy(entriesToPrepend[1:], entriesToPrepend)
+			entriesToPrepend[0] = change
+			c.cachedDocIDs[change.DocID] = struct{}{}
+
+			if len(entriesToPrepend) >= cacheCapacity {
+				// If we reach capacity before prepending the entire set of changes, set changesValidFrom to the oldest sequence
+				// that's been prepended to the cache
+				changesValidFrom = change.Sequence
+				break
+			}
+		}
+	}
+
+	numToPrepend := len(entriesToPrepend)
+	if numToPrepend > 0 {
+		c.logs = append(entriesToPrepend, c.logs...)
+		base.Infof(base.KeyCache, "  Added %d entries from query (#%d--#%d) to cache of %q",
+			numToPrepend, entriesToPrepend[0].Sequence, entriesToPrepend[numToPrepend-1].Sequence, base.UD(c.channelName))
+	}
+	base.Debugf(base.KeyCache, " Backfill cache from query c.validFrom from %v -> %v",
+		c.validFrom, changesValidFrom)
+	c.validFrom = changesValidFrom
+	return numToPrepend
+
 }
 
 type lateLogEntry struct {

@@ -434,7 +434,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	// Attempt to retrieve via view.  Above operations were all synchronous (on-demand import of SDK delete, SG delete), so
 	// stale=false view results should be immediately updated.
-	results, err := rt.GetDatabase().ChannelViewTest("ABC", 1000, db.ChangesOptions{})
+	results, err := rt.GetDatabase().ChannelViewTest("ABC", 0, 1000)
 	assertNoError(t, err, "Error issuing channel view query")
 	for _, entry := range results {
 		log.Printf("Got view result: %v", entry)
@@ -1022,13 +1022,13 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 	}
 	testCases := []testcase{
 		{
-			onDemandCallback: triggerOnDemandViaGet,
-			name:             "triggerOnDemandViaGet",
+			onDemandCallback:      triggerOnDemandViaGet,
+			name:                  "triggerOnDemandViaGet",
 			expectedRevGeneration: 1,
 		},
 		{
-			onDemandCallback: triggerOnDemandViaWrite,
-			name:             "triggerOnDemandViaWrite",
+			onDemandCallback:      triggerOnDemandViaWrite,
+			name:                  "triggerOnDemandViaWrite",
 			expectedRevGeneration: 1,
 		},
 	}
@@ -1105,13 +1105,13 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 	}
 	testCases := []testcase{
 		{
-			onDemandCallback: triggerOnDemandViaGet,
-			name:             "triggerOnDemandViaGet",
+			onDemandCallback:      triggerOnDemandViaGet,
+			name:                  "triggerOnDemandViaGet",
 			expectedRevGeneration: 1,
 		},
 		{
-			onDemandCallback: triggerOnDemandViaWrite,
-			name:             "triggerOnDemandViaWrite",
+			onDemandCallback:      triggerOnDemandViaWrite,
+			name:                  "triggerOnDemandViaWrite",
 			expectedRevGeneration: 2,
 		},
 	}
