@@ -14,7 +14,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/go.assert"
+	assert "github.com/couchbaselabs/go.assert"
 )
 
 // This test performs the following steps against the Sync Gateway passive blip replicator:
@@ -1308,9 +1308,7 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 	log.Printf("errorCode: %v", errorCode3)
 	assert.True(t, errorCode == "")
 
-
 }
-
 
 // Reproduce issue SG #3738
 //
@@ -1326,7 +1324,7 @@ func TestMissingNoRev(t *testing.T) {
 
 	rt := RestTester{}
 	btSpec := BlipTesterSpec{
-		restTester:         &rt,
+		restTester: &rt,
 	}
 	bt, err := NewBlipTesterFromSpec(btSpec)
 	assertNoError(t, err, "Unexpected error creating BlipTester")
@@ -1340,7 +1338,6 @@ func TestMissingNoRev(t *testing.T) {
 		assert.True(t, sent)
 		log.Printf("resp: %v, err: %v", resp, err)
 	}
-
 
 	// Get a reference to the database
 	targetDbContext, err := rt.ServerContext().GetDatabase("db")
@@ -1359,7 +1356,5 @@ func TestMissingNoRev(t *testing.T) {
 	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
 	docs := bt.WaitForNumDocsViaChanges(4)
 	assert.True(t, len(docs) == 4)
-
-
 
 }
