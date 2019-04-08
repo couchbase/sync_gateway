@@ -220,6 +220,8 @@ func makeTestFile(sizeMB int, name string, dir string) (err error) {
 		return err
 	}
 
+	defer f.Close()
+
 	if err := f.Truncate(int64(sizeMB * 1024 * 1024)); err != nil {
 		return err
 	}
