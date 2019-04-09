@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sort"
+	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -751,30 +752,24 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntr
 }
 
 // Wait until the change-cache has caught up with the latest writes to the database.
-func (context *DatabaseContext) WaitForSequence(sequence uint64) (err error) {
+func (context *DatabaseContext) WaitForSequence(sequence uint64, tester testing.TB) (err error) {
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
-	if err == nil {
-		context.changeCache.waitForSequenceID(SequenceID{Seq: sequence}, base.DefaultWaitForSequenceTesting)
-	}
+	context.changeCache.waitForSequenceID(SequenceID{Seq: sequence}, base.DefaultWaitForSequenceTesting, tester)
 	return
 }
 
 // Wait until the change-cache has caught up with the latest writes to the database.
-func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64) (err error) {
+func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64, tester testing.TB) (err error) {
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
-	if err == nil {
-		context.changeCache.waitForSequenceWithMissing(sequence, base.DefaultWaitForSequenceTesting)
-	}
+	context.changeCache.waitForSequenceWithMissing(sequence, base.DefaultWaitForSequenceTesting, tester)
 	return
 }
 
 // Wait until the change-cache has caught up with the latest writes to the database.
-func (context *DatabaseContext) WaitForPendingChanges() (err error) {
+func (context *DatabaseContext) WaitForPendingChanges(tester testing.TB) (err error) {
 	lastSequence, err := context.LastSequence()
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", lastSequence)
-	if err == nil {
-		context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence}, base.DefaultWaitForSequenceTesting)
-	}
+	context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence}, base.DefaultWaitForSequenceTesting, tester)
 	return
 }
 

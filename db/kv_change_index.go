@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -195,14 +196,14 @@ func (k *kvChangeIndex) Remove(docIDs []string, startTime time.Time) int {
 }
 
 // TODO: refactor waitForSequence to accept either vbNo or clock
-func (k *kvChangeIndex) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration) {
-	k.waitForSequence(sequence.Seq, maxWaitTime)
+func (k *kvChangeIndex) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration, tester testing.TB) {
+	k.waitForSequence(sequence.Seq, maxWaitTime, tester)
 }
-func (k *kvChangeIndex) waitForSequence(sequence uint64, maxWaitTime time.Duration) {
+func (k *kvChangeIndex) waitForSequence(sequence uint64, maxWaitTime time.Duration, tester testing.TB) {
 	return
 }
-func (k *kvChangeIndex) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration) {
-	k.waitForSequence(sequence, maxWaitTime)
+func (k *kvChangeIndex) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration, tester testing.TB) {
+	k.waitForSequence(sequence, maxWaitTime, tester)
 }
 
 // If set to false, DocChanged() becomes a no-op.
