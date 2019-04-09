@@ -147,7 +147,7 @@ func TestReproduce2383(t *testing.T) {
 
 	testDb := rt.ServerContext().Database("db")
 
-	testDb.WaitForSequence(3)
+	testDb.WaitForSequence(3, t)
 	testDb.FlushChannelCache()
 
 	var changes struct {
@@ -187,7 +187,7 @@ func TestReproduce2383(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/doc4", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	testDb.WaitForSequence(4)
+	testDb.WaitForSequence(4, t)
 
 	changes.Results = nil
 	changesResponse = rt.Send(requestByUser("POST", "/db/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben"))
@@ -220,7 +220,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	response := rt.Send(request("PUT", "/db/alpha", `{"channel":"zero"}`))
 
 	// Check the _changes feed:
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 	var changes struct {
 		Results []db.ChangeEntry
 	}
@@ -670,7 +670,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 2)
 	WriteDirect(testDb, []string{"PBS"}, 5)
 	WriteDirect(testDb, []string{"PBS"}, 6)
-	testDb.WaitForSequenceWithMissing(6)
+	testDb.WaitForSequenceWithMissing(6, t)
 
 	// Check the _changes feed:
 	var changes struct {
@@ -695,7 +695,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	// Send a missing doc - low sequence should move to 3
 	WriteDirect(testDb, []string{"PBS"}, 3)
-	testDb.WaitForSequence(3)
+	testDb.WaitForSequence(3, t)
 
 	// WaitForSequence doesn't wait for low sequence to be updated on each channel - additional delay to ensure
 	// low is updated before making the next changes request.
@@ -709,7 +709,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
 	WriteDirect(testDb, []string{"PBS"}, 7)
-	testDb.WaitForSequenceWithMissing(7)
+	testDb.WaitForSequenceWithMissing(7, t)
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -760,7 +760,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	testDb.WaitForSequenceWithMissing(5)
+	testDb.WaitForSequenceWithMissing(5, t)
 
 	// Check the _changes feed:
 	var changes struct {
@@ -780,7 +780,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	testDb.WaitForSequenceWithMissing(10)
+	testDb.WaitForSequenceWithMissing(10, t)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -794,7 +794,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	testDb.WaitForSequenceWithMissing(12)
+	testDb.WaitForSequenceWithMissing(12, t)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -808,7 +808,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
 	WriteDirect(testDb, []string{"PBS"}, 13)
 	WriteDirect(testDb, []string{"PBS"}, 6)
-	testDb.WaitForSequence(13)
+	testDb.WaitForSequence(13, t)
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
@@ -888,7 +888,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	testDb.WaitForSequenceWithMissing(5)
+	testDb.WaitForSequenceWithMissing(5, t)
 
 	// Check the _changes feed:
 	var changes struct {
@@ -908,7 +908,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	testDb.WaitForSequenceWithMissing(10)
+	testDb.WaitForSequenceWithMissing(10, t)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -922,7 +922,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	testDb.WaitForSequenceWithMissing(12)
+	testDb.WaitForSequenceWithMissing(12, t)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -936,7 +936,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
 	WriteDirect(testDb, []string{"PBS"}, 13)
 	WriteDirect(testDb, []string{"PBS"}, 6)
-	testDb.WaitForSequence(13)
+	testDb.WaitForSequence(13, t)
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
@@ -1021,7 +1021,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	testDb.WaitForSequenceWithMissing(5)
+	testDb.WaitForSequenceWithMissing(5, t)
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1041,7 +1041,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	testDb.WaitForSequenceWithMissing(10)
+	testDb.WaitForSequenceWithMissing(10, t)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1055,7 +1055,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	testDb.WaitForSequenceWithMissing(12)
+	testDb.WaitForSequenceWithMissing(12, t)
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1148,13 +1148,13 @@ func _testConcurrentDelete(t *testing.T) {
 	wg.Wait()
 
 	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channel":"PBS"}`)
 	assertStatus(t, response, 201)
 
 	// Wait for writes to be processed and indexed
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 
 }
 
@@ -1187,13 +1187,13 @@ func _testConcurrentPutAsDelete(t *testing.T) {
 	wg.Wait()
 
 	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 
 	// Write another doc, to validate sequences restart
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channel":"PBS"}`)
 	assertStatus(t, response, 201)
 
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 }
 
 func _testConcurrentUpdate(t *testing.T) {
@@ -1225,13 +1225,13 @@ func _testConcurrentUpdate(t *testing.T) {
 	wg.Wait()
 
 	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 
 	// Write another doc, to validate sequences restart
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channel":"PBS"}`)
 	assertStatus(t, response, 201)
 
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 }
 
 func _testConcurrentNewEditsFalseDelete(t *testing.T) {
@@ -1265,12 +1265,12 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 	wg.Wait()
 
 	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 
 	// Write another doc, to see where sequences are at
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channel":"PBS"}`)
 	assertStatus(t, response, 201)
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 
 }
 
@@ -1789,7 +1789,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	}
 
 	testDb := rt.ServerContext().Database("db")
-	testDb.WaitForSequence(30)
+	testDb.WaitForSequence(30, t)
 
 	// Flush the channel cache
 	testDb.FlushChannelCache()
@@ -1859,7 +1859,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 	}
 
 	testDb := rt.ServerContext().Database("db")
-	testDb.WaitForSequence(30)
+	testDb.WaitForSequence(30, t)
 
 	// Flush the channel cache
 	testDb.FlushChannelCache()
@@ -1956,7 +1956,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 	}
 
 	testDb := rt.ServerContext().Database("db")
-	testDb.WaitForSequence(30)
+	testDb.WaitForSequence(30, t)
 
 	// Flush the channel cache
 	testDb.FlushChannelCache()
@@ -2037,7 +2037,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 	}
 
 	testDb := rt.ServerContext().Database("db")
-	testDb.WaitForSequence(30)
+	testDb.WaitForSequence(30, t)
 
 	// Flush the channel cache
 	testDb.FlushChannelCache()
@@ -2054,7 +2054,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/pbs11", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	testDb.WaitForSequence(35)
+	testDb.WaitForSequence(35, t)
 
 	// Issue a since=n changes request, where 0 < n < 30 (high sequence at cache init)Validate that there's a view-based backfill
 	var changes struct {
@@ -2114,7 +2114,7 @@ func TestChangesViewBackfill(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	testDb := rt.ServerContext().Database("db")
-	testDb.WaitForSequence(3)
+	testDb.WaitForSequence(3, t)
 
 	// Flush the channel cache
 	testDb.FlushChannelCache()
@@ -2126,7 +2126,7 @@ func TestChangesViewBackfill(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/doc5", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	testDb.WaitForSequence(5)
+	testDb.WaitForSequence(5, t)
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
 	var changes struct {
@@ -2183,7 +2183,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	testDb := rt.ServerContext().Database("db")
-	testDb.WaitForSequence(3)
+	testDb.WaitForSequence(3, t)
 
 	// Flush the channel cache
 	testDb.FlushChannelCache()
@@ -2195,7 +2195,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	testDb.WaitForSequence(5)
+	testDb.WaitForSequence(5, t)
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
 	var changes struct {
@@ -2261,7 +2261,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	revId := body["rev"].(string)
 
 	testDb := rt.ServerContext().Database("db")
-	testDb.WaitForSequence(1)
+	testDb.WaitForSequence(1, t)
 
 	log.Printf("about to flush")
 	// Flush the channel cache
@@ -2271,7 +2271,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	// Write another doc, to initialize the cache (and guarantee overlap)
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
-	testDb.WaitForSequence(2)
+	testDb.WaitForSequence(2, t)
 
 	// Set up PostQueryCallback on bucket - will be invoked when changes triggers the cache backfill view query
 
@@ -2291,7 +2291,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 			log.Printf("Putting doc w/ revid:%s", revId)
 			updateResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/doc1?rev=%s", revId), `{"modified":true, "channels":["PBS"]}`)
 			assertStatus(t, updateResponse, 201)
-			testDb.WaitForSequence(3)
+			testDb.WaitForSequence(3, t)
 		}
 
 	}
@@ -2872,7 +2872,7 @@ func TestChangesIncludeConflicts(t *testing.T) {
 	}
 
 	// Get changes
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 
 	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?style=all_docs", "")
 	err := json.Unmarshal(changesResponse.Body.Bytes(), &changes)
@@ -2908,7 +2908,7 @@ func TestChangesLargeSequences(t *testing.T) {
 	}
 
 	// Get changes
-	rt.ServerContext().Database("db").WaitForPendingChanges()
+	rt.ServerContext().Database("db").WaitForPendingChanges(t)
 
 	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?since=9223372036854775800", "")
 	err := json.Unmarshal(changesResponse.Body.Bytes(), &changes)
@@ -2955,7 +2955,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 
 	testDb := rt.ServerContext().Database("db")
 
-	testDb.WaitForSequence(5)
+	testDb.WaitForSequence(5, t)
 
 	errorCountStart := base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String()
 	warnCountStart := base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String()
