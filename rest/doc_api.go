@@ -198,11 +198,10 @@ func (h *handler) handleGetAttachment() error {
 	}
 	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
 	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(data)))
-
 	h.response.WriteHeader(status)
 	h.response.Write(data)
-
 	return nil
+
 }
 
 // HTTP handler for a PUT of an attachment

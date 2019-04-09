@@ -171,7 +171,7 @@ func (h *handler) handleAllDocs() error {
 	}
 
 	// Subroutine that writes a response entry for a document:
-	writeDoc := func(doc db.IDRevAndSequence, channels []string) bool {
+	writeDoc := func(doc db.IDRevAndSequence, channels []string) (bool, error) {
 		row := createRow(doc, channels)
 		if row != nil {
 			if row.Status >= 300 {
@@ -181,10 +181,14 @@ func (h *handler) handleAllDocs() error {
 				h.response.Write([]byte(","))
 			}
 			totalRows++
-			h.addJSON(row)
-			return true
+			var err error
+			err = h.addJSON(row)
+			if err != nil {
+				return false, err
+			}
+			return true, nil
 		}
-		return false
+		return false, nil
 	}
 
 	var options db.ForEachDocIDOptions
@@ -195,8 +199,10 @@ func (h *handler) handleAllDocs() error {
 	// Now it's time to actually write the response!
 	lastSeq, _ := h.db.LastSequence()
 	h.setHeader("Content-Type", "application/json")
+	//response.Write below would set Status OK implicitly. We manually do it here to ensure that our handler knows
+	//that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
+	h.writeStatus(http.StatusOK, http.StatusText(http.StatusOK))
 	h.response.Write([]byte(`{"rows":[` + "\n"))
-
 	if explicitDocIDs != nil {
 		count := uint64(0)
 		for _, docID := range explicitDocIDs {
@@ -215,6 +221,7 @@ func (h *handler) handleAllDocs() error {
 
 	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d,"update_seq":%d}`,
 		totalRows, lastSeq)))
+
 	return nil
 }
 

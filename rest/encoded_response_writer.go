@@ -6,17 +6,16 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-
-	"github.com/couchbase/sync_gateway/base"
 )
 
 // An implementation of http.ResponseWriter that wraps another instance and transparently applies
 // GZip compression when appropriate.
 type EncodedResponseWriter struct {
 	http.ResponseWriter
-	gz        *gzip.Writer
-	status    int
-	sniffDone bool
+	gz            *gzip.Writer
+	status        int
+	sniffDone     bool
+	headerWritten bool
 }
 
 // Creates a new EncodedResponseWriter, or returns nil if the request doesn't allow encoded responses.
@@ -46,7 +45,12 @@ func NewEncodedResponseWriter(response http.ResponseWriter, rq *http.Request) *E
 func (w *EncodedResponseWriter) WriteHeader(status int) {
 	w.status = status
 	w.sniff(nil) // Must do it now because headers can't be changed after WriteHeader call
+	if w.headerWritten {
+		return
+	}
 	w.ResponseWriter.WriteHeader(status)
+	w.headerWritten = true
+
 }
 
 func (w *EncodedResponseWriter) Write(b []byte) (int, error) {
@@ -59,9 +63,6 @@ func (w *EncodedResponseWriter) Write(b []byte) (int, error) {
 }
 
 func (w *EncodedResponseWriter) disableCompression() {
-	if w.sniffDone {
-		base.Warnf(base.KeyAll, "EncodedResponseWriter: Too late to disableCompression!")
-	}
 	w.sniffDone = true
 }
 
