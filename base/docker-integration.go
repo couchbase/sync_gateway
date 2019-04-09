@@ -3,6 +3,7 @@ package base
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -10,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/couchbase/gocb"
 	"github.com/ory/dockertest"
@@ -43,7 +43,7 @@ func NewDockerTest(t *testing.M) {
 	fatalError("Failed to set environment variable", err)
 
 	//Delete any existing containers. This can occur if a test fails and is unable to shutdown its instance
-	cli, err := docker.NewClient("")
+	cli, err := docker.NewClientFromEnv()
 	fatalError("Unable to create docker client", err)
 
 	containers, err := cli.ListContainers(docker.ListContainersOptions{})
@@ -241,47 +241,36 @@ func NewDockerTest(t *testing.M) {
 		fmt.Println("Failed to close gocb cluster connection but will continue")
 	}
 
-	//Poll buckets to ensure they are all healthy and ready to work
-	req, err = http.NewRequest("GET", "http://localhost:8091/pools/default/buckets", nil)
-	fatalError(`Failed to poll bucket status`, err)
-	req.SetBasicAuth(DefaultCouchbaseAdministrator, DefaultCouchbasePassword)
-	response, err = client.Do(req)
-	fatalError(`Failed to poll bucket status`, err)
-	var jsonBody []responseBody
-	err = json.NewDecoder(response.Body).Decode(&jsonBody)
-	fatalError(`Failed to poll bucket status`, err)
-
-	for !areBucketsReady(&jsonBody) {
-		fmt.Println("Buckets Not Ready Yet Will Retry In 1 Second")
-		time.Sleep(1 * time.Second)
-		req, _ = http.NewRequest("GET", "http://localhost:8091/pools/default/buckets", nil)
-		req.SetBasicAuth(DefaultCouchbaseAdministrator, DefaultCouchbasePassword)
-		response, err = client.Do(req)
-		fatalError(`Failed to poll bucket status`, err)
-		err = json.NewDecoder(response.Body).Decode(&jsonBody)
-		fatalError(`Failed to poll bucket status`, err)
+	areReady := func(url string, checkReady func(reader io.ReadCloser) bool) {
+		for {
+			req, err := http.NewRequest("GET", url, nil)
+			fatalError(`Failed to poll status`, err)
+			req.SetBasicAuth(DefaultCouchbaseAdministrator, DefaultCouchbasePassword)
+			response, err = client.Do(req)
+			fatalError(`Failed to poll status`, err)
+			if checkReady(response.Body) {
+				return
+			}
+		}
 	}
+
+	//Poll buckets to ensure they are all healthy and ready to work
+	bucketReadyCheck := func(reader io.ReadCloser) bool {
+		var jsonBody []responseBody
+		err = json.NewDecoder(reader).Decode(&jsonBody)
+		fatalError(`Failed to poll status`, err)
+		return areBucketsReady(&jsonBody)
+	}
+	areReady("http://localhost:8091/pools/default/buckets", bucketReadyCheck)
 
 	//Poll nodes / node to ensure they are all healthy and ready to work
-	var jsonBody2 responseBody
-	req, err = http.NewRequest("GET", "http://localhost:8091/pools/default", nil)
-	fatalError(`Failed to poll node status`, err)
-	req.SetBasicAuth(DefaultCouchbaseAdministrator, DefaultCouchbasePassword)
-	response, err = client.Do(req)
-	fatalError(`Failed to poll node status`, err)
-	err = json.NewDecoder(response.Body).Decode(&jsonBody2)
-
-	for !isNodeReady(&jsonBody2) {
-		fmt.Println("Node Not Ready Yet Will Retry In 1 Second")
-		time.Sleep(1 * time.Second)
-		req, err = http.NewRequest("GET", "http://localhost:8091/pools/default", nil)
-		fatalError(`Failed to poll node status`, err)
-		req.SetBasicAuth(DefaultCouchbaseAdministrator, DefaultCouchbasePassword)
-		response, err = client.Do(req)
-		fatalError(`Failed to poll node status`, err)
-		err = json.NewDecoder(response.Body).Decode(&jsonBody2)
-		fatalError(`Failed to poll node status`, err)
+	nodeReadyCheck := func(reader io.ReadCloser) bool {
+		var jsonBody responseBody
+		err = json.NewDecoder(reader).Decode(&jsonBody)
+		fatalError(`Failed to poll status`, err)
+		return isNodeReady(&jsonBody)
 	}
+	areReady("http://localhost:8091/pools/default", nodeReadyCheck)
 
 	//Run integration tests
 	code := t.Run()
