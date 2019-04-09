@@ -587,11 +587,11 @@ func (c *changeCache) processUnusedSequence(docID string, timeReceived time.Time
 		base.Warnf(base.KeyAll, "Unable to identify sequence number for unused sequence notification with key: %s, error: %v", base.UD(docID), err)
 		return
 	}
-	c.releaseUnusedSequence(sequence)
+	c.releaseUnusedSequence(sequence, timeReceived)
 
 }
 
-func (c *changeCache) releaseUnusedSequence(sequence uint64) {
+func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.Time) {
 	change := &LogEntry{
 		Sequence:     sequence,
 		TimeReceived: timeReceived,
@@ -627,7 +627,7 @@ func (c *changeCache) processUnusedSequenceRange(docID string) {
 
 	// TODO: There should be a more efficient way to do this
 	for seq := fromSequence; seq <= toSequence; seq++ {
-		c.releaseUnusedSequence(seq)
+		c.releaseUnusedSequence(seq, time.Now())
 	}
 }
 
