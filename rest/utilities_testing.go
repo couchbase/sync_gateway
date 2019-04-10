@@ -94,7 +94,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		// Initialize the bucket.  For couchbase-backed tests, triggers with creation/flushing of the bucket
 		if !rt.NoFlush {
-			tempBucket := base.GetTestBucketOrPanic() // side effect of creating/flushing bucket
+			tempBucket := base.GetTestBucket(rt.tb) // side effect of creating/flushing bucket
 			if rt.InitSyncSeq > 0 {
 				log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
 				_, incrErr := tempBucket.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)

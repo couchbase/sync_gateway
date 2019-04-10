@@ -16,7 +16,7 @@ func TestUserAuthenticateDisabled(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 
-	gTestBucket := base.GetTestBucketOrPanic()
+	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	bucket := gTestBucket.Bucket
 
@@ -52,7 +52,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 
-	gTestBucket := base.GetTestBucketOrPanic()
+	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	bucket := gTestBucket.Bucket
 

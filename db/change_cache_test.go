@@ -55,9 +55,9 @@ func logEntry(seq uint64, docid string, revid string, channelNames []string) *Lo
 	return entry
 }
 
-func testBucketContext() *DatabaseContext {
+func testBucketContext(tester testing.TB) *DatabaseContext {
 
-	context, _ := NewDatabaseContext("db", testBucket().Bucket, false, DatabaseContextOptions{})
+	context, _ := NewDatabaseContext("db", testBucket(tester).Bucket, false, DatabaseContextOptions{})
 	return context
 }
 
@@ -109,7 +109,7 @@ func TestSkippedSequenceList(t *testing.T) {
 
 func TestLateSequenceHandling(t *testing.T) {
 
-	context := testBucketContext()
+	context := testBucketContext(t)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
@@ -175,7 +175,7 @@ func TestLateSequenceHandling(t *testing.T) {
 
 func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
-	context := testBucketContext()
+	context := testBucketContext(t)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 

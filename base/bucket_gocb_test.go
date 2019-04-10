@@ -51,7 +51,7 @@ func TestTranscoder(t *testing.T) {
 
 func TestSetGetRaw(t *testing.T) {
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -80,7 +80,7 @@ func TestSetGetRaw(t *testing.T) {
 
 func TestAddRaw(t *testing.T) {
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -119,7 +119,7 @@ func TestAddRaw(t *testing.T) {
 
 func TestBulkGetRaw(t *testing.T) {
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -193,7 +193,7 @@ func TestBulkGetRaw(t *testing.T) {
 
 func TestWriteCasBasic(t *testing.T) {
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -235,7 +235,7 @@ func TestWriteCasBasic(t *testing.T) {
 
 func TestWriteCasAdvanced(t *testing.T) {
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -279,7 +279,7 @@ func TestSetBulk(t *testing.T) {
 	// However, there's no commented code in isRecoverableGoCBError()
 	t.Skip("TestSetBulk is currently not passing against both walrus and couchbase server.  Error logs: https://gist.github.com/tleyden/22d69ff9e627d7ad37043200614a3cc5")
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -381,7 +381,7 @@ func numNonNilErrors(entries []*sgbucket.BulkSetEntry) int {
 
 func TestUpdate(t *testing.T) {
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -437,7 +437,7 @@ func TestUpdate(t *testing.T) {
 
 func TestIncrCounter(t *testing.T) {
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -483,7 +483,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 	key := "TestGetAndTouchRaw"
 	val := []byte("bar")
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -590,7 +590,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -652,7 +652,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -724,7 +724,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -792,7 +792,7 @@ func TestXattrWriteCasRaw(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -845,7 +845,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -929,7 +929,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -1014,7 +1014,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -1130,7 +1130,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -1185,7 +1185,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -1259,7 +1259,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -1315,7 +1315,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -1415,7 +1415,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -1505,7 +1505,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -1554,7 +1554,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -1646,7 +1646,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -1757,7 +1757,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 func TestGetXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	defer SetUpTestLogging(LevelDebug, KeyAll)()
@@ -2030,7 +2030,7 @@ func TestCouchbaseServerVersion(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -2044,7 +2044,7 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 

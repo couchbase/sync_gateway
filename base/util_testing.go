@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/couchbase/gocb"
@@ -42,16 +43,16 @@ func (tb TestBucket) Close() {
 	DecrNumOpenBuckets(tb.Bucket.GetName())
 }
 
-func GetTestBucketOrPanic() TestBucket {
-	return GetBucketOrPanicCommon(DataBucket)
+func GetTestBucket(tester testing.TB) TestBucket {
+	return GetBucketCommon(DataBucket, tester)
 }
 
-func GetTestIndexBucketOrPanic() TestBucket {
-	return GetBucketOrPanicCommon(IndexBucket)
+func GetTestIndexBucket(tester testing.TB) TestBucket {
+	return GetBucketCommon(IndexBucket, tester)
 }
 
-func GetTestShadowBucketOrPanic() TestBucket {
-	return GetBucketOrPanicCommon(ShadowBucket)
+func GetTestShadowBucket(tester testing.TB) TestBucket {
+	return GetBucketCommon(ShadowBucket, tester)
 }
 
 func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
@@ -96,7 +97,7 @@ func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 
 }
 
-func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
+func GetBucketCommon(bucketType CouchbaseBucketType, tester testing.TB) TestBucket {
 
 	spec := GetTestBucketSpec(bucketType)
 
@@ -108,7 +109,7 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 		tbm := NewTestBucketManager(spec)
 		bucketExists, err := tbm.OpenTestBucket()
 		if err != nil {
-			panic(fmt.Sprintf("Error checking if bucket exists.  Spec: %+v err: %v", spec, err))
+			tester.Fatalf("Error checking if bucket exists.  Spec: %+v err: %v", spec, err)
 		}
 		switch bucketExists {
 		case true:
@@ -122,7 +123,7 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 			// TODO: in this case, we should still wait until it's empty, just in case there was somehow residue
 			// TODO: in between deleting and recreating it, if it happened in rapid succession
 			if err := tbm.CreateTestBucket(); err != nil {
-				panic(fmt.Sprintf("Could not create bucket.  Spec: %+v Err: %v", spec, err))
+				tester.Fatalf("Could not create bucket.  Spec: %+v Err: %v", spec, err)
 			}
 		}
 
@@ -134,7 +135,7 @@ func GetBucketOrPanicCommon(bucketType CouchbaseBucketType) TestBucket {
 	// Now open the bucket _again_ to ensure it's open with the correct driver
 	bucket, err := GetBucket(spec, nil)
 	if err != nil {
-		panic(fmt.Sprintf("Could not open bucket: %v", err))
+		tester.Fatalf("Could not open bucket: %v", err)
 	}
 
 	return TestBucket{
@@ -162,10 +163,10 @@ func GetBucketWithInvalidUsernamePassword(bucketType CouchbaseBucketType) (TestB
 }
 
 // Convenience function that will cause a bucket to be created if it doesn't already exist.
-func InitializeBucketOrPanic(bucketType CouchbaseBucketType) {
+func InitializeBucket(bucketType CouchbaseBucketType, tester testing.TB) {
 
 	// Create
-	tempBucket := GetBucketOrPanicCommon(bucketType)
+	tempBucket := GetBucketCommon(bucketType, tester)
 	tempBucket.Close()
 
 }

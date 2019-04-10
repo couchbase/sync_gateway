@@ -11,7 +11,7 @@ import (
 
 func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
-	testBucket := testBucket()
+	testBucket := testBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 	mapFunction := `function (doc, meta) { emit(); }`
@@ -79,7 +79,7 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 		DDocGetErrorCount:    1,
 		DDocDeleteErrorCount: 1,
 	}
-	testBucket := testLeakyBucket(leakyBucketConfig)
+	testBucket := testLeakyBucket(leakyBucketConfig, t)
 	defer testBucket.Close()
 
 	bucket := testBucket

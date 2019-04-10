@@ -43,7 +43,7 @@ func assertLogEntriesEqual(t *testing.T, actualEntry *LogEntry, expectedEntry *L
 // -----------------
 func TestDenseBlockSingleDoc(t *testing.T) {
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -93,7 +93,7 @@ func TestDenseBlockSingleDoc(t *testing.T) {
 
 func TestDenseBlockMultipleInserts(t *testing.T) {
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -128,7 +128,7 @@ func TestDenseBlockMultipleInserts(t *testing.T) {
 
 func TestDenseBlockGetIndexEntry(t *testing.T) {
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -155,7 +155,7 @@ func TestDenseBlockGetIndexEntry(t *testing.T) {
 
 func TestDenseBlockGetEntry(t *testing.T) {
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -184,7 +184,7 @@ func TestDenseBlockMultipleUpdates(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccel)()
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -249,7 +249,7 @@ func TestDenseBlockRemovalByKey(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccel)()
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -311,7 +311,7 @@ func TestDenseBlockRollbackTo(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccel)()
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -412,7 +412,7 @@ func TestDenseBlockOverflow(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccel)()
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -484,7 +484,7 @@ func TestDenseBlockConcurrentUpdates(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccel)()
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -552,7 +552,7 @@ func TestDenseBlockConcurrentUpdates(t *testing.T) {
 // ------------------------
 func TestDenseBlockIterator(t *testing.T) {
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -618,7 +618,7 @@ func TestDenseBlockList(t *testing.T) {
 
 	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -659,7 +659,7 @@ func TestDenseBlockListBadCas(t *testing.T) {
 
 	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -705,7 +705,7 @@ func TestDenseBlockListConcurrentInit(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccel)()
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -741,7 +741,7 @@ func TestDenseBlockListRotate(t *testing.T) {
 
 	log.Printf("Calling testIndexBucket() to bucket on server: %v", base.UnitTestUrl())
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
@@ -775,7 +775,7 @@ func TestDenseBlockListRotate(t *testing.T) {
 func TestCalculateChangedPartitions(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccel)()
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(t)
 	defer testIndexBucket.Close()
 	indexBucket := testIndexBucket.Bucket
 
