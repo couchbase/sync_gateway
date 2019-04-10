@@ -123,7 +123,7 @@ func (h *handler) handleBLIPSync() error {
 
 	// Overwrite the existing logging context with the blip context ID
 	h.db.Ctx = context.WithValue(h.db.Ctx, base.LogContextKey{},
-		base.LogContext{CorrelationID: formatBlipContextID(blipContext.ID)},
+		base.LogContext{CorrelationID: base.FormatBlipContextID(blipContext.ID)},
 	)
 	blipContext.Logger = DefaultBlipLogger(h.db.Ctx)
 
