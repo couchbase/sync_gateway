@@ -86,103 +86,113 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err 
 
 const (
 	// viewWrapper_adminViews adds the rev to metadata, and strips the _sync property from the view result
-	viewWrapper_adminViews = `function(doc,meta) {
-	                    var sync = doc._sync;
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-	                      return;
-	                    if ((sync.flags & 1) || sync.deleted)
-	                      return;
-	                    delete doc._sync;
-	                    meta.rev = sync.rev;
-						(%s) (doc, meta);
-						doc._sync = sync;}`
-	// viewWrapper_userViews does the same work as viewWrapper_adminViews, and also includes channel information in the view results
-	viewWrapper_userViews = `function(doc,meta) {
-		                    var sync = doc._sync;
-		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-		                      return;
-		                    if ((sync.flags & 1) || sync.deleted)
-		                      return;
-		                    var channels = [];
-		                    var channelMap = sync.channels;
-							if (channelMap) {
-								for (var name in channelMap) {
-									removed = channelMap[name];
-									if (!removed)
-										channels.push(name);
-								}
-							}
-		                    delete doc._sync;
-		                    meta.rev = sync.rev;
-		                    meta.channels = channels;
-
-		                    var _emit = emit;
-		                    (function(){
-			                    var emit = function(key,value) {
-			                    	_emit(key,[channels, value]);
-			                    };
-								(%s) (doc, meta);
-							}());
-							doc._sync = sync;
-						}`
-	viewWrapper_adminViews_xattr = `function(doc,meta) {
-	                    var sync = meta.xattrs._sync;
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-	                      return;
-	                    if ((sync.flags & 1) || sync.deleted)
-	                      return;
-	                    meta.rev = sync.rev;
-						(%s) (doc, meta);}`
-	viewWrapper_userViews_xattr = `function(doc,meta) {
-		                    var sync = meta.xattrs._sync;
-		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
-		                      return;
-		                    if ((sync.flags & 1) || sync.deleted)
-		                      return;
-		                    var channels = [];
-		                    var channelMap = sync.channels;
-							if (channelMap) {
-								for (var name in channelMap) {
-									removed = channelMap[name];
-									if (!removed)
-										channels.push(name);
-								}
-							}
-		                    meta.rev = sync.rev;
-		                    meta.channels = channels;
-
-		                    var _emit = emit;
-		                    (function(){
-			                    var emit = function(key,value) {
-			                    	_emit(key,[channels, value]);
-			                    };
-								(%s) (doc, meta);
-							}());
-						}`
+	syncViewAdminWrapper = `
+	function(doc, meta) {
+	
+		//Skip any internal sync documents
+		if (meta.id.substring(0, 6) == "_sync:") {
+			return;
+		}
+		var sync;
+		var isXattr;
+	
+		//Get sync data from xattrs or from the doc body
+		if (meta.xattrs === undefined || meta.xattrs.%s === undefined) {
+			sync = doc._sync;
+			isXattr = false;
+		} else {
+			sync = meta.xattrs.%s;
+			isXattr = true;
+		}
+	
+		//Skip if the document has been deleted or has no sync data defined
+		if (sync === undefined || (sync.flags & 1) || sync.deleted)
+			return;
+	
+		//If sync data is in body strip it from the view result
+		if (!isXattr) {
+			delete doc._sync;
+		}
+	
+		//Add rev to meta
+		meta.rev = sync.rev;
+	
+		//Run view
+		(%s)(doc, meta);
+	
+		//Re-add sync data to body
+		if (!isXattr) {
+			doc._sync = sync;
+		}
+	}`
+	syncViewUserWrapper = `
+	function(doc, meta) {
+		var sync;
+		var isXattr;
+	
+		//Skip any internal sync documents
+		if (meta.id.substring(0, 6) == "_sync:") {
+			return;
+		}
+	
+		//Get sync data from xattrs or from the doc body
+		if (meta.xattrs === undefined || meta.xattrs.%s === undefined) {
+			sync = doc._sync;
+			isXattr = false;
+		} else {
+			sync = meta.xattrs.%s;
+			isXattr = true;
+		}
+	
+		//Skip if the document has been deleted or has no sync data defined
+		if (sync === undefined || (sync.flags & 1) || sync.deleted)
+			return;
+	
+		//If sync data is in body strip it from the view result
+		if (!isXattr) {
+			delete doc._sync;
+		}
+	
+		//Update channels
+		var channels = [];
+		var channelMap = sync.channels;
+		if (channelMap) {
+			for (var name in channelMap) {
+				removed = channelMap[name];
+				if (!removed)
+					channels.push(name);
+			}
+		}
+		meta.channels = channels;
+	
+		//Add rev to meta
+		meta.rev = sync.rev;
+	
+		//Run view
+		var _emit = emit;
+		(function() {
+			var emit = function(key, value) {
+				_emit(key, [channels, value]);
+			};
+			(%s)(doc, meta);
+		}());
+	
+		//Re-add sync data to body
+		if (!isXattr) {
+			doc._sync = sync;
+		}
+	}`
 )
-
-func getViewWrapper(enableUserViews bool, useXattrs bool) string {
-	if enableUserViews {
-		if useXattrs {
-			return viewWrapper_userViews_xattr
-		} else {
-			return viewWrapper_userViews
-		}
-	} else {
-		if useXattrs {
-			return viewWrapper_adminViews_xattr
-		} else {
-			return viewWrapper_adminViews
-		}
-	}
-}
 
 func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
 	// Wrap the map functions to ignore special docs and strip _sync metadata.  If user views are enabled, also
 	// add channel filtering.
-	viewWrapper := getViewWrapper(enableUserViews, useXattrs)
 	for name, view := range ddoc.Views {
-		view.Map = fmt.Sprintf(viewWrapper, view.Map)
+		if enableUserViews {
+			view.Map = fmt.Sprintf(syncViewUserWrapper, base.SyncXattrName, base.SyncXattrName, view.Map)
+		} else {
+			view.Map = fmt.Sprintf(syncViewAdminWrapper, base.SyncXattrName, base.SyncXattrName, view.Map)
+		}
 		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 	}
 }
