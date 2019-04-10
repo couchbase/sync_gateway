@@ -356,8 +356,8 @@ func (h *handler) handleGetStatus() error {
 			lastSeq, _ = database.LastSequence()
 		}
 		dbStatus := db.Body{
-			"seq":             lastSeq,
-			"state":           runState,
+			"seq":   lastSeq,
+			"state": runState,
 		}
 		if uuid := database.GetServerUUID(); uuid != "" {
 			dbStatus["server_uuid"] = uuid
