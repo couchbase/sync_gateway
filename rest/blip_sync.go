@@ -691,23 +691,25 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 	}
 
 	bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
-	bh.sendDelta(deltaSrcRevID, sender, seq, docID, revDelta)
+	if err := bh.sendDelta(deltaSrcRevID, sender, seq, docID, revDelta); err != nil {
+		return err
+	}
+
 	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasSent, 1)
 
 	return nil
 }
 
-func (bh *blipHandler) sendDelta(deltaSrcRevID string, sender *blip.Sender, seq db.SequenceID, docID string, revDelta *db.RevisionDelta) {
+func (bh *blipHandler) sendDelta(deltaSrcRevID string, sender *blip.Sender, seq db.SequenceID, docID string, revDelta *db.RevisionDelta) error {
 
 	var body db.Body
 	if err := body.Unmarshal(revDelta.DeltaBytes); err != nil {
 		bh.Logf(base.LevelError, base.KeySync, "DELTA: couldn't unmarshal delta... err: %v", err)
-		bh.sendNoRev(err, sender, seq, docID, revDelta.ToRevID)
-		return
+		return bh.sendNoRev(err, sender, seq, docID, revDelta.ToRevID)
 	}
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s  User:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID, base.UD(bh.effectiveUsername))
-	bh.sendRevisionWithProperties(body, sender, seq, docID, revDelta.ToRevID, revDelta.RevisionHistory, revDelta.AttachmentDigests, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
+	return bh.sendRevisionWithProperties(body, sender, seq, docID, revDelta.ToRevID, revDelta.RevisionHistory, revDelta.AttachmentDigests, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
 }
 
 func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) error {
