@@ -650,4 +650,43 @@ func TestViewQueryWrappers(t *testing.T) {
 	result, err = rt.WaitForNUserViewResults(1, "/db/_design/foodoc/_view/foobarview", testUser, "password")
 	assert.NoError(t, err)
 	assert.Equal(t, 1, result.Len())
+	assert.Equal(t, "userdoc", result.Rows[0].ID)
+}
+
+func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test doesn't work with Walrus")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("Test requires xattrs to be enabled")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"foo"}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	//Document with sync data in body
+	body := `{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 2, "recent_sequences": [ 2 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`
+	ok, err := rt.Bucket().Add("doc2", 0, []byte(body))
+	assert.True(t, ok)
+	assert.NoError(t, err)
+
+	//Should handle the case where there is no sync data
+	body = `{"value": "foo"}`
+	ok, err = rt.Bucket().Add("doc3", 0, []byte(body))
+	assert.True(t, ok)
+	assert.NoError(t, err)
+
+	//Document with sync data in xattr
+	response = rt.SendAdminRequest("PUT", "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
+	assert.Equal(t, 201, response.Code)
+
+	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foodoc/_view/foobarview")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(result.Rows))
+	assert.Contains(t, "doc1", result.Rows[0].ID)
+	assert.Contains(t, "doc2", result.Rows[1].ID)
 }

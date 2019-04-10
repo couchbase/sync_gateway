@@ -106,7 +106,7 @@ const (
 		}
 	
 		//Skip if the document has been deleted or has no sync data defined
-		if ((sync.flags & 1) || sync.deleted || sync === undefined)
+		if (sync === undefined || (sync.flags & 1) || sync.deleted)
 			return;
 	
 		//If sync data is in body strip it from the view result
@@ -145,7 +145,7 @@ const (
 		}
 	
 		//Skip if the document has been deleted or has no sync data defined
-		if ((sync.flags & 1) || sync.deleted || sync === undefined)
+		if (sync === undefined || (sync.flags & 1) || sync.deleted)
 			return;
 	
 		//If sync data is in body strip it from the view result
