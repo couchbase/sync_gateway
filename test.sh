@@ -43,8 +43,11 @@ doTest () {
     # Extend timeout 
     EXTRA_FLAGS="$EXTRA_FLAGS -timeout=${SG_TEST_TIMEOUT}"
 
+    SG_PACKAGE='...'
+    if [ "$SG_TEST_PACKAGE"
+
     echo "    Running Sync Gateway unit tests:"
-    go test ${buildTags} "${@:2}" $EXTRA_FLAGS github.com/couchbase/sync_gateway/...
+    go test ${buildTags} "${@:2}" $EXTRA_FLAGS github.com/couchbase/sync_gateway/$SG_PACKAGE
 
     if [ -d godeps/src/github.com/couchbaselabs/sync-gateway-accel ]; then
         echo "    Running Sync Gateway Accel unit tests:"
