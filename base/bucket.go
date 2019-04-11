@@ -25,8 +25,8 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbase/gomemcached/client"
-	"github.com/couchbase/sg-bucket"
+	memcached "github.com/couchbase/gomemcached/client"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
@@ -423,6 +423,9 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 }
 
 func IsXattrSupported(bucket Bucket) bool {
+	if bucket == nil {
+		return false
+	}
 	xattrsSupported, _ := IsMinimumServerVersion(bucket, 5, 0)
 	return xattrsSupported
 }
