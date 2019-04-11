@@ -15,7 +15,7 @@ import optparse
 import atexit
 import signal
 import urllib
-import urllib2 
+import urllib2
 import shutil
 import urlparse
 import json
@@ -61,8 +61,8 @@ else:
 # See https://github.com/couchbase/sync_gateway/issues/1640
 #
 # Python version compatibility:
-# 
-# Until the libc / centos6 issues are resolved, this should remain python 2.6 compatible.  
+#
+# Until the libc / centos6 issues are resolved, this should remain python 2.6 compatible.
 # One common incompatibility is the formatting syntax, as discussed here: http://bit.ly/2rIH8wg
 USAGE = """usage: %prog [options] output_file.zip
 
@@ -131,6 +131,8 @@ def make_http_client_pprof_tasks(sg_url):
         "profile",
         "heap",
         "goroutine",
+        "block",
+        "mutex",
     ]
 
     base_pprof_url = "{0}/_debug/pprof".format(sg_url)
@@ -138,87 +140,20 @@ def make_http_client_pprof_tasks(sg_url):
     pprof_tasks = []
     for profile_type in profile_types:
         sg_pprof_url = "{0}/{1}".format(base_pprof_url, profile_type)
-        task = make_curl_task(name="Collect {0} pprof via http client".format(profile_type),
-                              user="",
-                              password="",
-                              url=sg_pprof_url,
-                              log_file="pprof_http_{0}.log".format(profile_type))
-
-        pprof_tasks.append(task)
-
-    return pprof_tasks
-
-
-def make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url):
-
-    """
-    These tasks use "go tool" to try to collect the pprof data.  This only works if "go" is
-    installed on the target system, but has the advantage that the output will be pre-rendered,
-    possibly into PDFs, which means less work will be required to generate human readable pprof
-    output
-    """
-
-    pprof_tasks = []
-
-    profile_types = [
-        "profile",
-        "heap",
-        "goroutine",
-    ]
-
-    format_types = [
-        "dot",
-        "pdf",
-        "text",
-        "raw",
-    ]
-
-    if sg_binary_path is None:
-        sg_binary_path = ""
-
-    #if sg_binary_path does not point to a file, generate a new path by starting with the location of sgcollect_info script
-    if not os.path.isfile(sg_binary_path):
-        # the filename of the sg_binary without any path information, eg, "sync_gateway"
-        sg_binary_filename = os.path.basename(sg_binary_path)
-
-        # generate path to sync_gateway root folder relative to the location of this sgcollect_info binary (__file__)
-        root_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-
-        sg_binary_path = os.path.join(root_path, "bin", sg_binary_filename)
-
-    sg_pprof_url = "{0}/_debug/pprof".format(sg_url)
-
-    # make sure raw profile gz files end up in results dir
-    os.environ["PPROF_TMPDIR"] = tempfile.mkdtemp()
-
-    for profile_type in profile_types:
-        for format_type in format_types:
-            out_filename = "{0}.{1}".format(profile_type, format_type)
-            dest_path = os.path.join(os.environ["PPROF_TMPDIR"], out_filename)
-            cmd = 'go tool pprof -{0} -seconds=5 "{1}" {2}/{3}'.format(
-                format_type,
-                sg_binary_path,
-                sg_pprof_url,
-                profile_type,
-            )
-            description = "Running go tool pprof -- which can take several seconds: {0} format: {1}".format(
-                profile_type,
-                format_type
-            )
-
-            task = AllOsTask(
-                description,
-                cmd,
-                log_file=dest_path,
-            )
-            pprof_tasks.append(task)
+        clean_task = make_curl_task(name="Collect {0} pprof via http client".format(profile_type),
+                                    user="",
+                                    password="",
+                                    url=sg_pprof_url,
+                                    log_file="pprof_{0}.pb.gz".format(profile_type))
+        clean_task.no_header = True
+        pprof_tasks.append(clean_task)
 
     return pprof_tasks
 
 def to_lower_case_keys_dict(original_dict):
     result = {}
     for k,v in original_dict.items():
-        result[k.lower()] = v 
+        result[k.lower()] = v
     return result
 
 def extract_element_from_config(element, config):
@@ -234,7 +169,7 @@ def extract_element_from_config(element, config):
         # convert dictionary keys to lower case
         original_dict = json.loads(config)
         lower_case_keys_dict = to_lower_case_keys_dict(original_dict)
-        
+
         #lookup key after converting element name to lower case
         return lower_case_keys_dict[element.lower()]
     except (ValueError, KeyError):
@@ -357,7 +292,8 @@ def make_collect_logs_tasks(zip_dir, sg_url):
         log_file_path = os.path.abspath(guessed_log_file_path)
 
         for log_file_name in sg_log_files:
-            # iterate over all log files, including those with a timestamp
+            # iterate over all log files, including those with a rotation timestamp
+            # e.g: sg_info-2018-12-31T13-33-41.055.log
             name, ext = os.path.splitext(log_file_name)
             log_file_pattern = "{0}*{1}".format(name, ext)
             rotated_logs_pattern = os.path.join(
@@ -372,6 +308,7 @@ def make_collect_logs_tasks(zip_dir, sg_url):
                 sg_tasks.append(task)
 
             # try gzipped logs too
+            # e.g: sg_info-2018-12-31T13-33-41.055.log.gz
             log_file_pattern = "{0}*{1}.gz".format(name, ext)
             rotated_logs_pattern = os.path.join(
                log_file_path,
@@ -380,9 +317,11 @@ def make_collect_logs_tasks(zip_dir, sg_url):
 
             for log_file_item_name in glob.iglob(rotated_logs_pattern):
                 log_file_item_path = os.path.join(log_file_path, log_file_item_name)
-                print('Capturing compressed rotated log file {0}'.format(log_file_item_path))
-                task = add_gzip_file_task(sourcefile_path=log_file_item_path, log_file_name="{0}{1}".format(name, ext))
-                sg_tasks.append(task)
+                # As long as a task that monitors this log file path has not already been added, add a new task
+                if log_file_item_path not in sg_log_file_paths:
+                    print('Capturing compressed rotated log file {0}'.format(log_file_item_path))
+                    task = add_gzip_file_task(sourcefile_path=log_file_item_path, salt=salt)
+                    sg_tasks.append(task)
 
     return sg_tasks
 
@@ -418,7 +357,7 @@ def make_status_tasks(sg_url, should_redact):
                           url=sg_url,
                           log_file="server_status.log")
     tasks.append(task)
-        
+
     # Get list of dbs from _all_dbs
     # For each db, get db config
     dbs = get_db_list(sg_url)
@@ -432,7 +371,7 @@ def make_status_tasks(sg_url, should_redact):
         tasks.append(task)
 
     return tasks
-    
+
 
 # Startup config
 #   Commandline args (covered in expvars, IIRC)
@@ -512,14 +451,14 @@ def get_config_path_from_cmdline(cmdline_args):
         if ".json" in cmdline_arg and "http" not in cmdline_arg:
             return cmdline_arg
     return None
-    
+
 
 def get_paths_from_expvars(sg_url):
 
     data = None
     sg_binary_path = None
     sg_config_path = None
-    
+
     # get content and parse into json
     try:
         response = urllib2.urlopen(expvar_url(sg_url))
@@ -563,7 +502,7 @@ def make_download_expvars_task(sg_url):
     )
 
 
-def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path, should_redact):
+def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway_executable_path, should_redact, salt):
 
     # Get path to sg binary (reliable) and config (not reliable)
     sg_binary_path, sg_config_path = get_paths_from_expvars(sg_url)
@@ -574,39 +513,35 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
         if not os.path.exists(sync_gateway_executable_path):
             raise Exception("Path to sync gateway executable passed in does not exist: {0}".format(sync_gateway_executable_path))
         sg_binary_path = sync_gateway_executable_path
-    
+
     # Collect logs
-    collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url)
+    collect_logs_tasks = make_collect_logs_tasks(zip_dir, sg_url, salt)
 
     py_expvar_task = make_download_expvars_task(sg_url)
 
     # If the user passed in a valid config path, then use that rather than what's in the expvars
     if sync_gateway_config_path_option is not None and len(sync_gateway_config_path_option) > 0 and os.path.exists(sync_gateway_config_path_option):
         sg_config_path = sync_gateway_config_path_option
-    
-    # Add a task to collect pprofs
-    go_tool_pprof_tasks = make_collect_gotool_pprof_tasks(zip_dir, sg_binary_path, sg_url)
 
     http_client_pprof_tasks = make_http_client_pprof_tasks(sg_url)
 
     # Add a task to collect Sync Gateway config
     config_tasks = make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact)
-    
-    # Curl the / endpoint and /db endpoints and save output 
+
+    # Curl the / endpoint and /db endpoints and save output
     status_tasks = make_status_tasks(sg_url, should_redact)
-    
+
     # Compbine all tasks into flattened list
     sg_tasks = flatten(
         [
             collect_logs_tasks,
             py_expvar_task,
             http_client_pprof_tasks,
-            go_tool_pprof_tasks,
             config_tasks,
             status_tasks,
         ]
     )
-    
+
     return sg_tasks
 
 def discover_sg_binary_path(options, sg_url):
@@ -646,7 +581,7 @@ def main():
     if platform.system() == 'Darwin':
         os.environ["COUCHBASE_TOP"] = os.path.abspath(os.path.join(mydir, ".."))
 
-    # Parse command line options 
+    # Parse command line options
     parser = create_option_parser()
     options, args = parser.parse_args()
 
@@ -711,7 +646,7 @@ def main():
 
         os.environ['LD_LIBRARY_PATH'] = ':'.join(library_path)
 
-    # Windows 
+    # Windows
     elif os.name == 'nt':
 
         path = [
@@ -740,7 +675,7 @@ def main():
     sg_binary_path = discover_sg_binary_path(options, sg_url)
 
     # Run SG specific tasks
-    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable, should_redact):
+    for task in make_sg_tasks(zip_dir, sg_url, options.sync_gateway_config, options.sync_gateway_executable, should_redact, options.salt_value):
         runner.run(task)
 
     if sg_binary_path is not None and sg_binary_path != "" and os.path.exists(sg_binary_path):
@@ -760,22 +695,11 @@ def main():
 
     # Build redacted zip file
     if options.redact_level != "none":
-        # We don't want to attempt to redact binary/pprof files, as this could result in corruption
-        blacklist = [
-            'profile.text',           'goroutine.text',           'heap.text',
-            'profile.raw',            'goroutine.raw',            'heap.raw',
-            'profile.dot',            'goroutine.dot',            'heap.dot',
-            'profile.pdf',            'goroutine.pdf',            'heap.pdf',
-            'pprof_http_profile.log', 'pprof_http_goroutine.log', 'pprof_http_heap.log'
-        ]
         log("Redacting log files to level: %s" % options.redact_level)
-        runner.redact_and_zip(redact_zip_file, 'sgcollect_info', options.salt_value, platform.node(), blacklist)
+        runner.redact_and_zip(redact_zip_file, 'sgcollect_info', options.salt_value, platform.node())
 
     # Build the actual zip file
     runner.zip(zip_filename, 'sgcollect_info', platform.node())
-
-    # Clean up intermediate pprof files
-    shutil.rmtree(os.environ["PPROF_TMPDIR"], ignore_errors=True)
 
     # Upload the zip to the URL to S3 if required
     if upload_url:

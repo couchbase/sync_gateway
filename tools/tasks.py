@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- python -*-
+import StringIO
 import os
 import sys
 import tempfile
@@ -26,12 +27,9 @@ import traceback
 
 
 class LogRedactor:
-    def __init__(self, salt, tmpdir, blacklist=[]):
+    def __init__(self, salt, tmpdir):
         self.target_dir = os.path.join(tmpdir, "redacted")
         os.makedirs(self.target_dir)
-
-        self.blacklist = blacklist
-        print('Redaction blacklist: {0}'.format(blacklist))
 
         self.couchbase_log = CouchbaseLogProcessor(salt)
         self.regular_log = RegularLogProcessor(salt)
@@ -50,12 +48,16 @@ class LogRedactor:
     def redact_file(self, name, ifile):
         ofile = os.path.join(self.target_dir, name)
         _, filename = os.path.split(name)
-        if any(s in filename for s in self.blacklist):
-            print('WARNING: Not redacting blacklisted file {0}'.format(filename))
+        if ".gz" in filename:
+            print('WARNING: Not redacting binary file file {0}'.format(filename))
             return ifile
         self._process_file(ifile, ofile, self.regular_log)
         return ofile
 
+    def redact_string(self, istring):
+        ostring = self.couchbase_log.do("RedactLevel")
+        ostring += self.regular_log.do(istring)
+        return ostring
 
 class CouchbaseLogProcessor:
     def __init__(self, salt):
@@ -316,11 +318,11 @@ class TaskRunner(object):
             fp.flush()
 
         elif self.verbosity >= 2:
-            log('Skipping "%s" (%s): not for platform %s' % (task.description, command_to_print, sys.platform))
+            log('Skipping "%s" (%s): not for platform %s' % (task.description, task.command_to_print, sys.platform))
 
-    def redact_and_zip(self, filename, log_type, salt, node, blacklist=[]):
+    def redact_and_zip(self, filename, log_type, salt, node):
         files = []
-        redactor = LogRedactor(salt, self.tmpdir, blacklist)
+        redactor = LogRedactor(salt, self.tmpdir)
 
         for name, fp in self.files.iteritems():
             files.append(redactor.redact_file(name, fp.name))
@@ -446,7 +448,8 @@ def make_curl_task(name, url, user="", password="", content_postprocessors=[],
         **kwargs
     )
 
-def add_gzip_file_task(sourcefile_path, log_file_name, content_postprocessors=[]):
+
+def add_gzip_file_task(sourcefile_path, salt, content_postprocessors=[]):
     """
     Adds the extracted contents of a file to the output zip
 
@@ -457,14 +460,24 @@ def add_gzip_file_task(sourcefile_path, log_file_name, content_postprocessors=[]
             contents = infile.read()
             for content_postprocessor in content_postprocessors:
                 contents = content_postprocessor(contents)
-            return contents
+            redactor = LogRedactor(salt, tempfile.mkdtemp())
+            contents = redactor.redact_string(contents)
+
+        out = StringIO.StringIO()
+        with gzip.GzipFile(fileobj=out, mode="w") as f:
+            f.write(contents)
+        return out.getvalue()
+
+    log_file = os.path.basename(sourcefile_path)
 
     task = PythonTask(
         description="Extracted contents of {0}".format(sourcefile_path),
         callable=python_add_file_task,
-        log_file=log_file_name,
+        log_file=log_file,
         log_exception=False,
     )
+
+    task.no_header = True
 
     return task
 
