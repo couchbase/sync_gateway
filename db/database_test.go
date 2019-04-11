@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbaselabs/go.assert"
+	assert "github.com/couchbaselabs/go.assert"
 	"github.com/robertkrimen/otto/underscore"
 
 	"strings"
@@ -564,12 +564,12 @@ func (e AllDocsEntry) Equal(e2 AllDocsEntry) bool {
 var options ForEachDocIDOptions
 
 func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
-	err = db.ForEachDocID(func(doc IDAndRev, channels []string) bool {
+	err = db.ForEachDocID(func(doc IDAndRev, channels []string) (bool, error) {
 		docs = append(docs, AllDocsEntry{
 			IDAndRev: doc,
 			Channels: channels,
 		})
-		return true
+		return true, nil
 	}, options)
 	return
 }

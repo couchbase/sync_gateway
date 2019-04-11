@@ -601,7 +601,7 @@ type ForEachDocIDOptions struct {
 	Limit    uint64
 }
 
-type ForEachDocIDFunc func(id IDAndRev, channels []string) bool
+type ForEachDocIDFunc func(id IDAndRev, channels []string) (bool, error)
 
 // Iterates over all documents in the database, calling the callback function on each
 func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
@@ -611,12 +611,15 @@ func (db *Database) ForEachDocID(callback ForEachDocIDFunc, resultsOpts ForEachD
 		return err
 	}
 
-	db.processForEachDocIDResults(callback, resultsOpts.Limit, results)
+	err = db.processForEachDocIDResults(callback, resultsOpts.Limit, results)
+	if err != nil {
+		return err
+	}
 	return results.Close()
 }
 
 // Iterate over the results of an AllDocs query, performing ForEachDocID handling for each row
-func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) {
+func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
 
 	count := uint64(0)
 	for {
@@ -653,8 +656,10 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 			break
 		}
 
-		if callback(IDAndRev{docid, revid, seq}, channels) {
+		if ok, err := callback(IDAndRev{docid, revid, seq}, channels); ok {
 			count++
+		} else if err != nil {
+			return err
 		}
 		//We have to apply limit check after callback has been called
 		//to account for rows that are not in the current users channels
@@ -663,6 +668,7 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 		}
 
 	}
+	return nil
 }
 
 type principalsViewRow struct {
