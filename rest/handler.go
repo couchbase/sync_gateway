@@ -625,19 +625,20 @@ func (h *handler) writeTextStatus(status int, value []byte) {
 
 }
 
-func (h *handler) addJSON(value interface{}) {
+func (h *handler) addJSON(value interface{}) error {
 	encoder := json.NewEncoder(h.response)
 	err := encoder.Encode(value)
 	if err != nil {
 		clientConnectionError := strings.Contains(err.Error(), "write: broken pipe")
 		if clientConnectionError {
 			base.Debugf(base.KeyCRUD, "Couldn't serialize document body, HTTP client closed connection")
-			h.writeStatus(http.StatusServiceUnavailable, "Couldn't serialize document body")
+			return err
 		} else {
 			base.Warnf(base.KeyAll, "Couldn't serialize JSON for %v : %s", base.UD(value), err)
 			h.writeStatus(http.StatusInternalServerError, "Couldn't serialize document body")
 		}
 	}
+	return nil
 }
 
 func (h *handler) writeMultipart(subtype string, callback func(*multipart.Writer) error) error {

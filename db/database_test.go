@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -583,12 +583,12 @@ func (e AllDocsEntry) Equal(e2 AllDocsEntry) bool {
 var options ForEachDocIDOptions
 
 func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
-	err = db.ForEachDocID(func(doc IDRevAndSequence, channels []string) bool {
+	err = db.ForEachDocID(func(doc IDRevAndSequence, channels []string) (bool, error) {
 		docs = append(docs, AllDocsEntry{
 			IDRevAndSequence: doc,
 			Channels:         channels,
 		})
-		return true
+		return true, nil
 	}, options)
 	return
 }
