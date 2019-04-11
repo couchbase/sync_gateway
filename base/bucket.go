@@ -25,8 +25,8 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbase/gomemcached/client"
-	"github.com/couchbase/sg-bucket"
+	memcached "github.com/couchbase/gomemcached/client"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
@@ -408,11 +408,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
-			xattrsSupported, errServerVersion := IsMinimumServerVersion(bucket, 5, 0)
-			if errServerVersion != nil {
-				return nil, errServerVersion
-			}
-			if !xattrsSupported {
+			if !IsXattrSupported(bucket) {
 				Warnf(KeyAll, "If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
@@ -424,6 +420,14 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		bucket = &LoggingBucket{bucket: bucket}
 	}
 	return
+}
+
+func IsXattrSupported(bucket Bucket) bool {
+	if bucket == nil {
+		return false
+	}
+	xattrsSupported, _ := IsMinimumServerVersion(bucket, 5, 0)
+	return xattrsSupported
 }
 
 func WriteCasJSON(bucket Bucket, key string, value interface{}, cas uint64, exp uint32, callback func(v interface{}) (interface{}, error)) (casOut uint64, err error) {
