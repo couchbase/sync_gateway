@@ -34,7 +34,7 @@ func TestN1qlQuery(t *testing.T) {
 		body := fmt.Sprintf(`{"val": %d}`, i)
 		added, err := bucket.AddRaw(key, 0, []byte(body))
 		if err != nil {
-			t.Errorf("Error adding doc for TestN1qlQuery: %v", err)
+			t.Fatalf("Error adding doc for TestN1qlQuery: %v", err)
 		}
 		assert.True(t, added, "AddRaw returned added=false, expected true")
 	}
@@ -50,7 +50,7 @@ func TestN1qlQuery(t *testing.T) {
 	// Wait for index readiness
 	onlineErr := bucket.WaitForIndexOnline("testIndex_value")
 	if onlineErr != nil {
-		t.Errorf("Error waiting for index to come online: %v", err)
+		t.Fatalf("Error waiting for index to come online: %v", err)
 	}
 
 	// Check index state
@@ -65,7 +65,7 @@ func TestN1qlQuery(t *testing.T) {
 		// Drop the index
 		err = bucket.DropIndex("testIndex_value")
 		if err != nil {
-			t.Errorf("Error dropping index: %s", err)
+			t.Fatalf("Error dropping index: %s", err)
 		}
 	}()
 
