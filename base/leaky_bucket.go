@@ -382,6 +382,10 @@ func (b *LeakyBucket) SetPostQueryCallback(callback func(ddoc, viewName string, 
 	b.config.PostQueryCallback = callback
 }
 
+func (b *LeakyBucket) IsSupported(feature sgbucket.Feature) bool {
+	return b.bucket.IsSupported(feature)
+}
+
 // An implementation of a sgbucket tap feed that wraps
 // tap events on the upstream tap feed to better emulate real world
 // TAP/DCP behavior.

@@ -1402,7 +1402,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 	log.Printf("Deleting key: %v", key4)
 	_, errDelete := bucket.UpdateXattr(key4, xattrName, 0, uint64(0), &updatedXattrVal, false)
 	assert.NoError(t, errDelete, "Unexpected error tombstoning non-existent doc")
-	assert.True(t, verifyDocDeletedXattrExists(bucket, key4, xattrName), "Expected doc to be deleted, but xattrs to exist")
+	assert.True(t, verifyDocDeletedXattrExists(bucket, key4, xattrName), "Expected doc to be deleted, but FeatureXattr to exist")
 
 }
 

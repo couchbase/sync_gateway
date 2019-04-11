@@ -44,7 +44,7 @@ const (
 	TestEnvSyncGatewayBackingStore = "SG_TEST_BACKING_STORE"
 	TestEnvBackingStoreCouchbase   = "Couchbase"
 
-	// Don't use Xattrs by default, but provide the test runner a way to specify Xattr usage
+	// Don't use FeatureXattr by default, but provide the test runner a way to specify Xattr usage
 	TestEnvSyncGatewayUseXattrs = "SG_TEST_USE_XATTRS"
 	TestEnvSyncGatewayTrue      = "True"
 
@@ -54,7 +54,7 @@ const (
 	// Don't use an auth handler by default, but provide a way to override
 	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"
 
-	DefaultUseXattrs      = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
+	DefaultUseXattrs      = false // Whether Sync Gateway uses FeatureXattr for metadata storage, if not specified in the config
 	DefaultAllowConflicts = true  // Whether Sync Gateway allows revision conflicts, if not specified in the config
 
 	DefaultDropIndexes = false // Whether Sync Gateway drops GSI indexes before each test while running in integration mode
@@ -66,7 +66,7 @@ const (
 
 	DefaultViewQueryPageSize = 5000 // This must be greater than 1, or the code won't work due to windowing method
 
-	// Until the sporadic integration tests failures in SG #3570 are fixed, should be GTE n1ql query timeout
+	// Until the sporadic integration tests failures in SG #3570 are fixed, should be GTE FeatureN1ql query timeout
 	// to make it easier to identify root cause of test failures.
 	DefaultWaitForSequenceTesting = time.Second * 30
 

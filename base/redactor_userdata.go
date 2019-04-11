@@ -18,7 +18,7 @@ var RedactUserData = false
 //  - Query statements included in the log file collected by support that leak the document fields (Select floor_price from stock).
 //  - Names and email addresses asked during product registration and alerting
 //  - Usernames
-//  - Document xattrs
+//  - Document FeatureXattr
 type UserData string
 
 // Redact tags the string with UserData tags for post-processing.

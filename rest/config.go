@@ -178,7 +178,7 @@ type DbConfig struct {
 	Users                     map[string]*db.PrincipalConfig `json:"users,omitempty"`                        // Initial user accounts
 	Roles                     map[string]*db.PrincipalConfig `json:"roles,omitempty"`                        // Initial roles
 	RevsLimit                 *uint32                        `json:"revs_limit,omitempty"`                   // Max depth a document's revision tree can grow to
-	AutoImport                interface{}                    `json:"import_docs,omitempty"`                  // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
+	AutoImport                interface{}                    `json:"import_docs,omitempty"`                  // Whether to automatically import Couchbase Server docs into SG.  FeatureXattr must be enabled.  true or "continuous" both enable this.
 	ImportFilter              *string                        `json:"import_filter,omitempty"`                // Filter function (import)
 	ImportBackupOldRev        bool                           `json:"import_backup_old_rev"`                  // Whether import should attempt to create a temporary backup of the previous revision body, when available.
 	Shadow                    *ShadowConfig                  `json:"shadow,omitempty"`                       // This is where the ShadowConfig used to be.  If found, it should throw an error

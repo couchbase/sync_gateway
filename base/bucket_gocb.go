@@ -1346,7 +1346,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 
 }
 
-// Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)
+// Delete a document and it's associated named xattr.  Couchbase server will preserve system FeatureXattr as part of the (CBS)
 // tombstone when a document is deleted.  To remove the system xattr as well, an explicit subdoc delete operation is required.
 // This is currently called only for Purge operations.
 //
@@ -1426,7 +1426,7 @@ func (bucket *CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey st
 
 	Debugf(KeyCRUD, "DeleteWithXattr called with key: %v xattrKey: %v", UD(k), UD(xattrKey))
 
-	// Try to delete body and xattrs in single op
+	// Try to delete body and FeatureXattr in single op
 	// NOTE: ongoing discussion w/ KV Engine team on whether this should handle cases where the body
 	// doesn't exist (eg, a tombstoned xattr doc) by just ignoring the "delete body" mutation, rather
 	// than current behavior of returning gocb.ErrKeyNotFound
@@ -2447,11 +2447,6 @@ func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint
 
 }
 
-func (bucket *CouchbaseBucketGoCB) HasN1qlNodes() bool {
-	numberOfN1qlNodes := len(bucket.IoRouter().N1qlEps())
-	return numberOfN1qlNodes > 0
-}
-
 func (bucket *CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaError error) {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
@@ -2489,6 +2484,20 @@ func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{
 	} else {
 		return input
 	}
+}
+
+func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.Feature) bool {
+	switch feature {
+	case FeatureXattr:
+		xattrsSupported, _ := IsMinimumServerVersion(bucket, 5, 0)
+		return xattrsSupported
+	case FeatureN1ql:
+		numberOfN1qlNodes := len(bucket.IoRouter().N1qlEps())
+		return numberOfN1qlNodes > 0
+	default:
+		return false
+	}
+
 }
 
 // Applies the viewquery options as specified in the params map to the viewQuery object,

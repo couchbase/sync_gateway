@@ -21,13 +21,13 @@ var SlowQueryWarningThreshold time.Duration
 // IndexOptions used to build the 'with' clause
 type N1qlIndexOptions struct {
 	NumReplica      uint `json:"num_replica,omitempty"`          // Number of replicas
-	IndexTombstones bool `json:"retain_deleted_xattr,omitempty"` // Whether system xattrs on tombstones should be indexed
+	IndexTombstones bool `json:"retain_deleted_xattr,omitempty"` // Whether system FeatureXattr on tombstones should be indexed
 	DeferBuild      bool `json:"defer_build,omitempty"`          // Whether to defer initial build of index (requires a subsequent BUILD INDEX invocation)
 }
 
 // Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
 // Params specified using the $param notation in the statement are intended to be used w/ N1QL prepared statements, and will be
-// passed through as params to n1ql.  e.g.:
+// passed through as params to FeatureN1ql.  e.g.:
 //   SELECT _sync.sequence FROM $_bucket WHERE _sync.sequence > $minSeq
 // https://developer.couchbase.com/documentation/server/current/sdk/go/n1ql-queries-with-sdk.html for additional details.
 // Will additionally replace all instances of BucketQueryToken($_bucket) in the statement

@@ -78,7 +78,7 @@ func TestN1qlQuery(t *testing.T) {
 	params["minvalue"] = 2
 
 	queryResults, queryErr := bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assert.NoError(t, queryErr, "Error executing n1ql query")
+	assert.NoError(t, queryErr, "Error executing FeatureN1ql query")
 
 	// Struct to receive the query response (META().id, val)
 	var queryResult struct {
@@ -104,7 +104,7 @@ func TestN1qlQuery(t *testing.T) {
 	params["minvalue"] = 10
 
 	queryResults, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assert.NoError(t, queryErr, "Error executing n1ql query")
+	assert.NoError(t, queryErr, "Error executing FeatureN1ql query")
 
 	count = 0
 	for {
@@ -169,7 +169,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 	// Query the index
 	queryExpression := fmt.Sprintf("SELECT META().id, val FROM %s WHERE %s AND META().id = 'doc1'", BucketQueryToken, filterExpression)
 	queryResults, queryErr := bucket.Query(queryExpression, nil, gocb.RequestPlus, false)
-	assert.NoError(t, queryErr, "Error executing n1ql query")
+	assert.NoError(t, queryErr, "Error executing FeatureN1ql query")
 
 	// Struct to receive the query response (META().id, val)
 	var queryResult struct {
@@ -238,7 +238,7 @@ func TestIndexMeta(t *testing.T) {
 	assert.NoError(t, err, "Error retrieving index state")
 }
 
-// Ensure that n1ql query errors are handled and returned (and don't result in panic etc)
+// Ensure that FeatureN1ql query errors are handled and returned (and don't result in panic etc)
 func TestMalformedN1qlQuery(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -283,25 +283,25 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	queryExpression := "SELECT META().id, val WHERE val > $minvalue"
 	params := make(map[string]interface{})
 	_, queryErr := bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assert.True(t, queryErr != nil, "Expected error for malformed n1ql query (syntax)")
+	assert.True(t, queryErr != nil, "Expected error for malformed FeatureN1ql query (syntax)")
 
 	// Query against non-existing bucket
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", "badBucket")
 	params = map[string]interface{}{"minvalue": 2}
 	_, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assert.True(t, queryErr != nil, "Expected error for malformed n1ql query (no bucket)")
+	assert.True(t, queryErr != nil, "Expected error for malformed FeatureN1ql query (no bucket)")
 
 	// Specify params for non-parameterized query (no error expected, ensure doesn't break)
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > 5", BucketQueryToken)
 	params = map[string]interface{}{"minvalue": 2}
 	_, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assert.True(t, queryErr == nil, "Unexpected error for malformed n1ql query (extra params)")
+	assert.True(t, queryErr == nil, "Unexpected error for malformed FeatureN1ql query (extra params)")
 
 	// Omit params for parameterized query
 	queryExpression = fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", BucketQueryToken)
 	params = make(map[string]interface{})
 	_, queryErr = bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assert.True(t, queryErr != nil, "Expected error for malformed n1ql query (missing params)")
+	assert.True(t, queryErr != nil, "Expected error for malformed FeatureN1ql query (missing params)")
 
 }
 

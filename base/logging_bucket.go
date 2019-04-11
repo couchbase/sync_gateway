@@ -223,3 +223,7 @@ func (b *LoggingBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (u
 func (b *LoggingBucket) GetUnderlyingBucket() Bucket {
 	return b.bucket
 }
+
+func (b *LoggingBucket) IsSupported(feature sgbucket.Feature) bool {
+	return b.bucket.IsSupported(feature)
+}

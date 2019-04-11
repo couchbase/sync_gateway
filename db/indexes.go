@@ -16,7 +16,7 @@ const (
 	indexNameFormat = "sg_%s_%s%d" // Name, xattrs, version.  e.g. "sg_channels_x1"
 	syncToken       = "$sync"      // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
 
-	// N1ql-encoded wildcard expression matching the '_sync:' prefix used for all sync gateway's system documents.
+	// FeatureN1ql-encoded wildcard expression matching the '_sync:' prefix used for all sync gateway's system documents.
 	// Need to escape the underscore in '_sync' to prevent it being treated as a N1QL wildcard
 	SyncDocWildcard = `\\_sync:%`
 )
@@ -265,7 +265,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 		return nil
 	}
 
-	if !gocbBucket.HasN1qlNodes() {
+	if !gocbBucket.IsSupported(base.FeatureXattr) {
 		return errors.New("No available nodes running the Query Service. Either add the Query Service to your Couchbase Server cluster or set `use_views` to true in your Sync Gateway config")
 	}
 
@@ -368,7 +368,7 @@ func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool)
 		return removedIndexes, nil
 	}
 
-	if !gocbBucket.HasN1qlNodes() {
+	if !gocbBucket.IsSupported(base.FeatureN1ql) {
 		return removedIndexes, nil
 	}
 

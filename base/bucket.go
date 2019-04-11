@@ -48,6 +48,11 @@ const (
 	ShadowBucket
 )
 
+const (
+	FeatureXattr = sgbucket.Feature(iota)
+	FeatureN1ql
+)
+
 func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 
 	// Otherwise use the default driver for the bucket type
@@ -102,7 +107,7 @@ type BucketSpec struct {
 	KvTLSPort                              int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
 	MaxNumRetries                          int            // max number of retries before giving up
 	InitialRetrySleepTimeMS                int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
-	UseXattrs                              bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
+	UseXattrs                              bool           // Whether to use FeatureXattr to store _sync metadata.  Used during view initialization
 	ViewQueryTimeoutSecs                   *uint32        // the view query timeout in seconds (default: 75 seconds)
 	BucketOpTimeout                        *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 }
@@ -382,7 +387,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
-			if !IsXattrSupported(bucket) {
+			if !bucket.IsSupported(FeatureXattr) {
 				Warnf(KeyAll, "If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
@@ -394,14 +399,6 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		bucket = &LoggingBucket{bucket: bucket}
 	}
 	return
-}
-
-func IsXattrSupported(bucket Bucket) bool {
-	if bucket == nil {
-		return false
-	}
-	xattrsSupported, _ := IsMinimumServerVersion(bucket, 5, 0)
-	return xattrsSupported
 }
 
 func WriteCasJSON(bucket Bucket, key string, value interface{}, cas uint64, exp uint32, callback func(v interface{}) (interface{}, error)) (casOut uint64, err error) {
