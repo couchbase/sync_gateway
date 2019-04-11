@@ -2488,10 +2488,10 @@ func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{
 
 func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.Feature) bool {
 	switch feature {
-	case FeatureXattr:
+	case sgbucket.FeatureXattrs:
 		xattrsSupported, _ := IsMinimumServerVersion(bucket, 5, 0)
 		return xattrsSupported
-	case FeatureN1ql:
+	case sgbucket.FeatureN1ql:
 		numberOfN1qlNodes := len(bucket.IoRouter().N1qlEps())
 		return numberOfN1qlNodes > 0
 	default:

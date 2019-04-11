@@ -48,11 +48,6 @@ const (
 	ShadowBucket
 )
 
-const (
-	FeatureXattr = sgbucket.Feature(iota)
-	FeatureN1ql
-)
-
 func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 
 	// Otherwise use the default driver for the bucket type
@@ -387,7 +382,7 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
-			if !bucket.IsSupported(FeatureXattr) {
+			if !bucket.IsSupported(sgbucket.FeatureXattrs) {
 				Warnf(KeyAll, "If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
