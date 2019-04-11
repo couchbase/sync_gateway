@@ -168,7 +168,8 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
 
         remove_passwords_from_config(parsed_json)
 
-        formatted_json_string = json.dumps(parsed_json, indent=4)
+        # Append a trailing \n here to ensure there's adequate separation in sync_gateway.log
+        formatted_json_string = json.dumps(parsed_json, indent=4) + "\n"
 
         return formatted_json_string
 
@@ -177,6 +178,18 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
             print("Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e))
             traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to remove passwords.  See logs for details"}'
+
+
+def pretty_print_json(json_text):
+    """
+    Content postprocessor that pretty prints JSON.
+    Returns original string with a trailing \n (to ensure separation in sync_gateway.log) if formatting fails
+    """
+    try:
+        json_text = json.dumps(json.loads(json_text), indent=4)
+    except Exception as e:
+        print("Exception trying to parse JSON {0}.  Exception: {1}".format(json_text, e))
+    return json_text + "\n"
 
 
 def strip_password_from_url(url_string):

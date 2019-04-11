@@ -505,7 +505,8 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
                                   user="",
                                   password="",
                                   url="{0}/_status".format(sg_url),
-                                  log_file="sync_gateway.log")
+                                  log_file="sync_gateway.log",
+                                  content_postprocessors=[password_remover.pretty_print_json])
 
     # Compbine all tasks into flattened list
     sg_tasks = flatten(
