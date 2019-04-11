@@ -397,6 +397,9 @@ func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket
 }
 
 func IsXattrSupported(bucket Bucket) bool {
+	if bucket == nil {
+		return false
+	}
 	xattrsSupported, _ := IsMinimumServerVersion(bucket, 5, 0)
 	return xattrsSupported
 }
