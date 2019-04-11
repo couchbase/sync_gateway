@@ -683,7 +683,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 		}
 		if currentRevIndex == 0 {
 			base.Debugf(base.KeyCRUD, "PutExistingRev(%q): No new revisions to add", base.UD(docid))
-			body["_rev"] = newRev                        // The _rev field is expected by some callers.  If missing, may cause problems for callers.
+			body["_rev"] = newRev                      // The _rev field is expected by some callers.  If missing, may cause problems for callers.
 			return nil, nil, nil, base.ErrUpdateCancel // No new revisions to add
 		}
 
@@ -1463,7 +1463,8 @@ func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (c
 
 // Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
 func (context *DatabaseContext) checkForUpgrade(key string) (*document, *sgbucket.BucketDocument) {
-	if context.UseXattrs() {
+	// If we are using xattrs or Couchbase Server doesn't support them, an upgrade isn't going to be in progress
+	if context.UseXattrs() || !base.IsXattrSupported(context.Bucket) {
 		return nil, nil
 	}
 	doc, rawDocument, err := context.GetDocWithXattr(key, DocUnmarshalNoHistory)
