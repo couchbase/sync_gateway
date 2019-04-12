@@ -2447,11 +2447,6 @@ func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint
 
 }
 
-func (bucket *CouchbaseBucketGoCB) HasN1qlNodes() bool {
-	numberOfN1qlNodes := len(bucket.IoRouter().N1qlEps())
-	return numberOfN1qlNodes > 0
-}
-
 func (bucket *CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaError error) {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
@@ -2489,6 +2484,20 @@ func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{
 	} else {
 		return input
 	}
+}
+
+func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.BucketFeature) bool {
+	switch feature {
+	case sgbucket.BucketFeatureXattrs:
+		xattrsSupported, _ := IsMinimumServerVersion(bucket, 5, 0)
+		return xattrsSupported
+	case sgbucket.BucketFeatureN1ql:
+		numberOfN1qlNodes := len(bucket.IoRouter().N1qlEps())
+		return numberOfN1qlNodes > 0
+	default:
+		return false
+	}
+
 }
 
 // Applies the viewquery options as specified in the params map to the viewQuery object,

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -265,7 +266,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 		return nil
 	}
 
-	if !gocbBucket.HasN1qlNodes() {
+	if !gocbBucket.IsSupported(sgbucket.BucketFeatureN1ql) {
 		return errors.New("No available nodes running the Query Service. Either add the Query Service to your Couchbase Server cluster or set `use_views` to true in your Sync Gateway config")
 	}
 
@@ -368,7 +369,7 @@ func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool)
 		return removedIndexes, nil
 	}
 
-	if !gocbBucket.HasN1qlNodes() {
+	if !gocbBucket.IsSupported(sgbucket.BucketFeatureN1ql) {
 		return removedIndexes, nil
 	}
 

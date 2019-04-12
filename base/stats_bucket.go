@@ -268,3 +268,7 @@ func (b *StatsBucket) UUID() (string, error) {
 func (b *StatsBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 	return b.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
 }
+
+func (b *StatsBucket) IsSupported(feature sgbucket.BucketFeature) bool {
+	return b.bucket.IsSupported(feature)
+}
