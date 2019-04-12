@@ -381,7 +381,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		c.processUnusedSequence(docID, event.TimeReceived)
 		return
 	}
-	if strings.HasPrefix(docID, UnusedSequenceRangeKeyPrefix) {
+	if strings.HasPrefix(docID, base.UnusedSeqRangePrefix) {
 		c.processUnusedSequenceRange(docID)
 		return
 	}
