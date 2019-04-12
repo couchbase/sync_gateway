@@ -266,7 +266,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 		return nil
 	}
 
-	if !gocbBucket.IsSupported(sgbucket.BucketFeatureXattrs) {
+	if !gocbBucket.IsSupported(sgbucket.BucketFeatureN1ql) {
 		return errors.New("No available nodes running the Query Service. Either add the Query Service to your Couchbase Server cluster or set `use_views` to true in your Sync Gateway config")
 	}
 
