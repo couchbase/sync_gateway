@@ -646,7 +646,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	db.changeCache.waitForSequence(101, base.DefaultWaitForSequenceTesting)
+	db.changeCache.waitForSequence(101, base.DefaultWaitForSequenceTesting, t)
 	changeLog := db.GetChangeLog("all", 0)
 	goassert.Equals(t, len(changeLog), 50)
 	goassert.Equals(t, int(changeLog[0].Sequence), 52)
@@ -809,7 +809,7 @@ func TestConflicts(t *testing.T) {
 		"channels": []string{"all", "2a"}})
 
 	// Verify the change-log of the "all" channel:
-	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting)
+	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting, t)
 	changeLog = db.GetChangeLog("all", 0)
 	goassert.Equals(t, len(changeLog), 1)
 	goassert.Equals(t, changeLog[0].Sequence, uint64(3))
@@ -849,7 +849,7 @@ func TestConflicts(t *testing.T) {
 	goassert.True(t, doc.Channels["2b"] != nil) // has been removed from 2b
 
 	// Verify the _changes feed:
-	db.changeCache.waitForSequence(4, base.DefaultWaitForSequenceTesting)
+	db.changeCache.waitForSequence(4, base.DefaultWaitForSequenceTesting, t)
 	changes, err = db.GetChanges(channels.SetOf("all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	goassert.Equals(t, len(changes), 1)
@@ -1467,7 +1467,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Recent sequence pruning only prunes entries older than what's been seen over DCP
 	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
 	// for caching before attempting to trigger pruning.
-	db.changeCache.waitForSequence(seqTracker, base.DefaultWaitForSequenceTesting)
+	db.changeCache.waitForSequence(seqTracker, base.DefaultWaitForSequenceTesting, t)
 
 	// Add another sequence to validate pruning when past max (20)
 	revid, err = db.Put("doc1", body)
@@ -1486,7 +1486,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		seqTracker++
 	}
 
-	db.changeCache.waitForSequence(seqTracker, base.DefaultWaitForSequenceTesting) //
+	db.changeCache.waitForSequence(seqTracker, base.DefaultWaitForSequenceTesting, t) //
 	revid, err = db.Put("doc1", body)
 	seqTracker++
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
