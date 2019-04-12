@@ -1592,7 +1592,7 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 		} else if isRecoverableGoCBError(err) {
 			// retry on recoverable failure, up to MaxNumRetries
 			if retryAttempts >= bucket.spec.MaxNumRetries {
-				return 0, err
+				return 0, pkgerrors.Wrapf(err, "retry loop aborted after %d attempts", retryAttempts)
 			}
 		} else {
 			// err will be nil if successful
@@ -1675,7 +1675,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 		} else if isRecoverableGoCBError(err) {
 			// retry on recoverable failure, up to MaxNumRetries
 			if retryAttempts >= bucket.spec.MaxNumRetries {
-				return 0, err
+				return 0, pkgerrors.Wrapf(err, "retry loop aborted after %d attempts", retryAttempts)
 			}
 		} else {
 			// err will be nil if successful
