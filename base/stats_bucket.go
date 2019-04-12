@@ -269,6 +269,6 @@ func (b *StatsBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uui
 	return b.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
 }
 
-func (b *StatsBucket) IsSupported(feature sgbucket.Feature) bool {
+func (b *StatsBucket) IsSupported(feature sgbucket.BucketFeature) bool {
 	return b.bucket.IsSupported(feature)
 }

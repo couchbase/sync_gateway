@@ -224,6 +224,6 @@ func (b *LoggingBucket) GetUnderlyingBucket() Bucket {
 	return b.bucket
 }
 
-func (b *LoggingBucket) IsSupported(feature sgbucket.Feature) bool {
+func (b *LoggingBucket) IsSupported(feature sgbucket.BucketFeature) bool {
 	return b.bucket.IsSupported(feature)
 }

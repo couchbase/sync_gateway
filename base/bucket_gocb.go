@@ -1346,7 +1346,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 
 }
 
-// Delete a document and it's associated named xattr.  Couchbase server will preserve system FeatureXattr as part of the (CBS)
+// Delete a document and it's associated named xattr.  Couchbase server will preserve system xattrs as part of the (CBS)
 // tombstone when a document is deleted.  To remove the system xattr as well, an explicit subdoc delete operation is required.
 // This is currently called only for Purge operations.
 //
@@ -1426,7 +1426,7 @@ func (bucket *CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey st
 
 	Debugf(KeyCRUD, "DeleteWithXattr called with key: %v xattrKey: %v", UD(k), UD(xattrKey))
 
-	// Try to delete body and FeatureXattr in single op
+	// Try to delete body and xattrs in single op
 	// NOTE: ongoing discussion w/ KV Engine team on whether this should handle cases where the body
 	// doesn't exist (eg, a tombstoned xattr doc) by just ignoring the "delete body" mutation, rather
 	// than current behavior of returning gocb.ErrKeyNotFound
@@ -2486,12 +2486,12 @@ func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{
 	}
 }
 
-func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.Feature) bool {
+func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.BucketFeature) bool {
 	switch feature {
-	case sgbucket.FeatureXattrs:
+	case sgbucket.BucketFeatureXattrs:
 		xattrsSupported, _ := IsMinimumServerVersion(bucket, 5, 0)
 		return xattrsSupported
-	case sgbucket.FeatureN1ql:
+	case sgbucket.BucketFeatureN1ql:
 		numberOfN1qlNodes := len(bucket.IoRouter().N1qlEps())
 		return numberOfN1qlNodes > 0
 	default:
