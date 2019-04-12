@@ -41,9 +41,9 @@ func initRestTester(sequenceType db.SequenceType, syncFn string, testing testing
 	}
 }
 
-func initIndexTester(useBucketIndex bool, syncFn string, tester testing.TB) indexTester {
+func initIndexTester(useBucketIndex bool, syncFn string, tb testing.TB) indexTester {
 
-	var rt = NewRestTester(tester, nil)
+	var rt = NewRestTester(tb, nil)
 
 	it := indexTester{RestTester: *rt}
 	it.SyncFn = syncFn

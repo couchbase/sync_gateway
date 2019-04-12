@@ -73,19 +73,19 @@ func ResultsEmpty(results gocb.QueryResults) (resultsEmpty bool) {
 }
 
 // FOR TESTS ONLY: Blocks until the given sequence has been received.
-func (c *changeCache) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration, tester testing.TB) {
-	c.waitForSequence(sequence.Seq, maxWaitTime, tester)
+func (c *changeCache) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration, tb testing.TB) {
+	c.waitForSequence(sequence.Seq, maxWaitTime, tb)
 }
 
 // FOR TESTS ONLY
-func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration, tester testing.TB) {
+func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration, tb testing.TB) {
 
 	startTime := time.Now()
 
 	for {
 
 		if time.Since(startTime) >= maxWaitTime {
-			tester.Fatalf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime))
+			tb.Fatalf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime))
 		}
 
 		if c.getNextSequence() >= sequence+1 {
@@ -97,14 +97,14 @@ func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration
 }
 
 // FOR TESTS ONLY: Blocks until the given sequence has been received.
-func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration, tester testing.TB) {
+func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration, tb testing.TB) {
 
 	startTime := time.Now()
 
 	for {
 
 		if time.Since(startTime) >= maxWaitTime {
-			tester.Fatalf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime))
+			tb.Fatalf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime))
 		}
 
 		if c.getNextSequence() >= sequence+1 {

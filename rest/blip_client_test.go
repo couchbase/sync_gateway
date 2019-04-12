@@ -337,8 +337,8 @@ func (btc *BlipTesterClient) getLastReplicatedRev(docID string) (revID string, o
 	return revID, ok
 }
 
-func newBlipTesterReplication(tester testing.TB, id string, btc *BlipTesterClient) (*BlipTesterReplicator, error) {
-	bt, err := NewBlipTesterFromSpec(tester, BlipTesterSpec{restTester: btc.rt})
+func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient) (*BlipTesterReplicator, error) {
+	bt, err := NewBlipTesterFromSpec(tb, BlipTesterSpec{restTester: btc.rt})
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +355,7 @@ func newBlipTesterReplication(tester testing.TB, id string, btc *BlipTesterClien
 }
 
 // NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
-func NewBlipTesterClient(tester testing.TB, rt *RestTester) (client *BlipTesterClient, err error) {
+func NewBlipTesterClient(tb testing.TB, rt *RestTester) (client *BlipTesterClient, err error) {
 	btc := BlipTesterClient{
 		rt:                rt,
 		docs:              make(map[string]map[string][]byte),
@@ -368,10 +368,10 @@ func NewBlipTesterClient(tester testing.TB, rt *RestTester) (client *BlipTesterC
 		return nil, err
 	}
 
-	if btc.pushReplication, err = newBlipTesterReplication(tester, "push"+id.String(), &btc); err != nil {
+	if btc.pushReplication, err = newBlipTesterReplication(tb, "push"+id.String(), &btc); err != nil {
 		return nil, err
 	}
-	if btc.pullReplication, err = newBlipTesterReplication(tester, "pull"+id.String(), &btc); err != nil {
+	if btc.pullReplication, err = newBlipTesterReplication(tb, "pull"+id.String(), &btc); err != nil {
 		return nil, err
 	}
 

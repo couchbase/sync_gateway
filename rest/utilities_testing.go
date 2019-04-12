@@ -44,19 +44,19 @@ type RestTesterConfig struct {
 
 type RestTester struct {
 	*RestTesterConfig
-	Testing                 testing.TB
+	tb                      testing.TB
 	RestTesterBucket        base.Bucket
 	RestTesterServerContext *ServerContext
 	AdminHandler            http.Handler
 	PublicHandler           http.Handler
 }
 
-func NewRestTester(tester testing.TB, restConfig *RestTesterConfig) *RestTester {
+func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	var rt RestTester
-	if tester == nil {
+	if tb == nil {
 		panic("tester parameter cannot be nil")
 	}
-	rt.Testing = tester
+	rt.tb = tb
 	if restConfig != nil {
 		rt.RestTesterConfig = restConfig
 	} else {
@@ -65,8 +65,8 @@ func NewRestTester(tester testing.TB, restConfig *RestTesterConfig) *RestTester 
 	return &rt
 }
 
-func NewRestTesterWithBucket(tester testing.TB, restConfig *RestTesterConfig, bucket base.Bucket) *RestTester {
-	rt := NewRestTester(tester, restConfig)
+func NewRestTesterWithBucket(tb testing.TB, restConfig *RestTesterConfig, bucket base.Bucket) *RestTester {
+	rt := NewRestTester(tb, restConfig)
 	if bucket == nil {
 		panic("nil bucket supplied. Use NewRestTester if you aren't supplying a bucket")
 	}
@@ -77,7 +77,7 @@ func NewRestTesterWithBucket(tester testing.TB, restConfig *RestTesterConfig, bu
 
 func (rt *RestTester) Bucket() base.Bucket {
 
-	if rt.Testing == nil {
+	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
 
@@ -96,14 +96,14 @@ func (rt *RestTester) Bucket() base.Bucket {
 				log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
 				_, incrErr := tempBucket.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 				if incrErr != nil {
-					rt.Testing.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
+					rt.tb.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
 					return nil
 				}
 			}
 			tempBucket.Close()
 		} else {
 			if rt.InitSyncSeq > 0 {
-				rt.Testing.Fatal("RestTester doesn't support NoFlush and InitSyncSeq in same test")
+				rt.tb.Fatal("RestTester doesn't support NoFlush and InitSyncSeq in same test")
 				return nil
 			}
 		}
@@ -165,7 +165,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 		if err != nil {
-			rt.Testing.Fatalf("Error from AddDatabaseFromConfig: %v", err)
+			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 			return nil
 		}
 		rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
@@ -178,7 +178,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 					base.Infof(base.KeyAll, "WaitForIndexEmpty returned an error: %v.  Dropping indexes and retrying", err)
 					// if WaitForIndexEmpty returns error, drop the indexes and retry
 					if err := base.DropAllBucketIndexes(asGoCbBucket); err != nil {
-						rt.Testing.Fatalf("Failed to drop bucket indexes: %v", err)
+						rt.tb.Fatalf("Failed to drop bucket indexes: %v", err)
 						return nil
 					}
 
@@ -194,7 +194,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		return rt.RestTesterBucket
 	}
 
-	rt.Testing.Fatalf("Failed to create a RestTesterBucket after multiple attempts")
+	rt.tb.Fatalf("Failed to create a RestTesterBucket after multiple attempts")
 	return nil
 }
 
@@ -221,7 +221,7 @@ func (rt *RestTester) BucketAllowEmptyPassword() base.Bucket {
 	})
 
 	if err != nil {
-		rt.Testing.Fatalf("Error from AddDatabaseFromConfig: %v", err)
+		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 	}
 	rt.RestTesterBucket = rt.RestTesterServerContext.Database("db").Bucket
 
@@ -274,7 +274,7 @@ func (rt *RestTester) WaitForSequence(seq uint64) error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForSequence(seq, rt.Testing)
+	return database.WaitForSequence(seq, rt.tb)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
@@ -282,7 +282,7 @@ func (rt *RestTester) WaitForPendingChanges() error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForPendingChanges(rt.Testing)
+	return database.WaitForPendingChanges(rt.tb)
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) {
@@ -302,7 +302,7 @@ func (rt *RestTester) DisableGuestUser() {
 }
 
 func (rt *RestTester) Close() {
-	if rt.Testing == nil {
+	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
 	if rt.RestTesterServerContext != nil {
@@ -688,13 +688,13 @@ func (bt BlipTester) Close() {
 }
 
 // Create a BlipTester using the default spec
-func NewBlipTester(tester testing.TB) (*BlipTester, error) {
+func NewBlipTester(tb testing.TB) (*BlipTester, error) {
 	defaultSpec := BlipTesterSpec{}
-	return NewBlipTesterFromSpec(tester, defaultSpec)
+	return NewBlipTesterFromSpec(tb, defaultSpec)
 }
 
 // Create a BlipTester using the given spec
-func NewBlipTesterFromSpec(tester testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
+func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
 
 	bt := &BlipTester{}
 
@@ -705,7 +705,7 @@ func NewBlipTesterFromSpec(tester testing.TB, spec BlipTesterSpec) (*BlipTester,
 			EnableNoConflictsMode: spec.noConflictsMode,
 			noAdminParty:          spec.noAdminParty,
 		}
-		var rt = NewRestTester(tester, &rtConfig)
+		var rt = NewRestTester(tb, &rtConfig)
 		bt.restTester = rt
 	}
 
