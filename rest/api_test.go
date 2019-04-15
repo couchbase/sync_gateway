@@ -68,6 +68,27 @@ func TestRoot(t *testing.T) {
 	goassert.Equals(t, response.Header().Get("Allow"), "GET, HEAD")
 }
 
+func TestDBRoot(t *testing.T) {
+	rtConfig := RestTesterConfig{NoFlush: true}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	response := rt.SendRequest("GET", "/db/", "")
+	assertStatus(t, response, 200)
+	var body db.Body
+	err := json.Unmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+
+	goassert.Equals(t, body["db_name"], "db")
+	goassert.Equals(t, body["state"], "Online")
+
+	response = rt.SendRequest("HEAD", "/db/", "")
+	assertStatus(t, response, 200)
+	response = rt.SendRequest("OPTIONS", "/db/", "")
+	assertStatus(t, response, 204)
+	goassert.Equals(t, response.Header().Get("Allow"), "GET, HEAD, POST, PUT")
+}
+
 func (rt *RestTester) createDoc(t *testing.T, docid string) string {
 	response := rt.SendRequest("PUT", "/db/"+docid, `{"prop":true}`)
 	assertStatus(t, response, 201)

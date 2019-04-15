@@ -21,7 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/sg-replicate"
+	sgreplicate "github.com/couchbaselabs/sg-replicate"
 	"github.com/gorilla/mux"
 )
 
@@ -337,6 +337,56 @@ func (h *handler) handleGetRevTree() error {
 
 func (h *handler) handleGetLogging() error {
 	h.writeJSON(base.GetLogKeys())
+	return nil
+}
+
+type DatabaseStatus struct {
+	SequenceNumber uint64 `json:"seq"`
+	ServerUUID     string `json:"server_uuid"`
+	State          string `json:"state"`
+}
+
+type Vendor struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+type Status struct {
+	Databases   map[string]DatabaseStatus `json:"databases"`
+	ActiveTasks []base.Task               `json:"active_tasks"`
+	Version     string                    `json:"version"`
+	Vendor      Vendor                    `json:"vendor"`
+}
+
+func (h *handler) handleGetStatus() error {
+
+	var status = Status{
+		Databases:   make(map[string]DatabaseStatus),
+		ActiveTasks: h.server.replicator.ActiveTasks(),
+		Version:     base.LongVersionString,
+		Vendor: Vendor{
+			Name:    base.ProductName,
+			Version: base.VersionNumber,
+		},
+	}
+
+	for _, database := range h.server.databases_ {
+		lastSeq := uint64(0)
+		runState := db.RunStateString[atomic.LoadUint32(&database.State)]
+
+		// Don't bother trying to lookup LastSequence() if offline
+		if runState != db.RunStateString[db.DBOffline] {
+			lastSeq, _ = database.LastSequence()
+		}
+
+		status.Databases[database.Name] = DatabaseStatus{
+			SequenceNumber: lastSeq,
+			State:          runState,
+			ServerUUID:     database.GetServerUUID(),
+		}
+	}
+
+	h.writeJSON(status)
 	return nil
 }
 

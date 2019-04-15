@@ -565,6 +565,27 @@ func TestLoggingCombined(t *testing.T) {
 	goassert.DeepEquals(t, logKeys, map[string]bool{"Changes": true, "Cache": true, "HTTP": true})
 }
 
+func TestGetStatus(t *testing.T) {
+	rtConfig := RestTesterConfig{NoFlush: true}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	response := rt.SendRequest("GET", "/_status", "")
+	assertStatus(t, response, 404)
+
+	response = rt.SendAdminRequest("GET", "/_status", "")
+	assertStatus(t, response, 200)
+	var responseBody Status
+	err := json.Unmarshal(response.Body.Bytes(), &responseBody)
+	assert.NoError(t, err)
+
+	goassert.Equals(t, responseBody.Version, base.LongVersionString)
+
+	response = rt.SendAdminRequest("OPTIONS", "/_status", "")
+	assertStatus(t, response, 204)
+	goassert.Equals(t, response.Header().Get("Allow"), "GET")
+}
+
 // Test user delete while that user has an active changes feed (see issue 809)
 func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
