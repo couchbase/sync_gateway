@@ -5,5 +5,5 @@ import (
 )
 
 func TestMain(t *testing.M) {
-	NewDockerTest(t)
+	InitTestMain(t)
 }

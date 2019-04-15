@@ -1,4 +1,4 @@
-package channels
+package db
 
 import (
 	"testing"
@@ -7,5 +7,5 @@ import (
 )
 
 func TestMain(t *testing.M) {
-	base.NewDockerTest(t)
+	base.InitTestMain(t)
 }

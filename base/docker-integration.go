@@ -35,10 +35,6 @@ type responseBody struct {
 //This will start up a Docker Instance of Couchbase Server and will be used to run tests against
 func NewDockerTest(t *testing.M) {
 
-	//Only spin up a Docker Instance if environment variable is set
-	if os.Getenv("SG_TEST_USE_DOCKER") != "true" {
-		os.Exit(t.Run())
-	}
 	err := os.Setenv("SG_TEST_BACKING_STORE", "Couchbase")
 	fatalError("Failed to set environment variable", err)
 
