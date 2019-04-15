@@ -69,8 +69,8 @@ func TestRoot(t *testing.T) {
 }
 
 func TestDBRoot(t *testing.T) {
-	var rt RestTester
-	rt.NoFlush = true
+	rtConfig := RestTesterConfig{NoFlush: true}
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/db/", "")
