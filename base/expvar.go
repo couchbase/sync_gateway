@@ -112,6 +112,7 @@ const (
 
 	// StatsSharedBucketImport
 	StatKeyImportCount          = "import_count"
+	StatKeyImportCancelCAS      = "import_cancel_cas"
 	StatKeyImportErrorCount     = "import_error_count"
 	StatKeyImportProcessingTime = "import_processing_time"
 
