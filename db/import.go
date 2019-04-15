@@ -241,6 +241,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		return nil, err
 	case base.ErrImportCasFailure:
 		// Import was cancelled due to CAS failure.
+		db.DbStats.SharedBucketImport().Add(base.StatKeyImportCancelCAS, 1)
 		return nil, err
 	case base.ErrImportCancelledPurged:
 		// Import ignored
