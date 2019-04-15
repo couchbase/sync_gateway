@@ -34,7 +34,7 @@ func TestN1qlQuery(t *testing.T) {
 		body := fmt.Sprintf(`{"val": %d}`, i)
 		added, err := bucket.AddRaw(key, 0, []byte(body))
 		if err != nil {
-			t.Errorf("Error adding doc for TestN1qlQuery: %v", err)
+			t.Fatalf("Error adding doc for TestN1qlQuery: %v", err)
 		}
 		assert.True(t, added, "AddRaw returned added=false, expected true")
 	}
@@ -50,7 +50,7 @@ func TestN1qlQuery(t *testing.T) {
 	// Wait for index readiness
 	onlineErr := bucket.WaitForIndexOnline("testIndex_value")
 	if onlineErr != nil {
-		t.Errorf("Error waiting for index to come online: %v", err)
+		t.Fatalf("Error waiting for index to come online: %v", err)
 	}
 
 	// Check index state
@@ -65,7 +65,7 @@ func TestN1qlQuery(t *testing.T) {
 		// Drop the index
 		err = bucket.DropIndex("testIndex_value")
 		if err != nil {
-			t.Errorf("Error dropping index: %s", err)
+			t.Fatalf("Error dropping index: %s", err)
 		}
 	}()
 
@@ -141,7 +141,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 		body := fmt.Sprintf(`{"val": %d}`, i)
 		added, err := bucket.AddRaw(key, 0, []byte(body))
 		if err != nil {
-			t.Errorf("Error adding doc for TestIndexFilterExpression: %v", err)
+			t.Fatalf("Error adding doc for TestIndexFilterExpression: %v", err)
 		}
 		assert.True(t, added, "AddRaw returned added=false, expected true")
 	}
@@ -150,7 +150,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 	filterExpression := "val < 3"
 	err := bucket.CreateIndex("testIndex_filtered_value", indexExpression, filterExpression, testN1qlOptions)
 	if err != nil {
-		t.Errorf("Error creating index: %s", err)
+		t.Fatalf("Error creating index: %s", err)
 	}
 
 	// Wait for index readiness
@@ -162,7 +162,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 		// Drop the index
 		err = bucket.DropIndex("testIndex_filtered_value")
 		if err != nil {
-			t.Errorf("Error dropping index: %s", err)
+			t.Fatalf("Error dropping index: %s", err)
 		}
 	}()
 
@@ -216,7 +216,7 @@ func TestIndexMeta(t *testing.T) {
 	indexExpression := "val"
 	err = bucket.CreateIndex("testIndex_value", indexExpression, "", testN1qlOptions)
 	if err != nil {
-		t.Errorf("Error creating index: %s", err)
+		t.Fatalf("Error creating index: %s", err)
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndex_value")
@@ -227,7 +227,7 @@ func TestIndexMeta(t *testing.T) {
 		// Drop the index
 		err = bucket.DropIndex("testIndex_value")
 		if err != nil {
-			t.Errorf("Error dropping index: %s", err)
+			t.Fatalf("Error dropping index: %s", err)
 		}
 	}()
 
@@ -256,7 +256,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 		body := fmt.Sprintf(`{"val": %d}`, i)
 		added, err := bucket.AddRaw(key, 0, []byte(body))
 		if err != nil {
-			t.Errorf("Error adding doc for TestN1qlQuery: %v", err)
+			t.Fatalf("Error adding doc for TestN1qlQuery: %v", err)
 		}
 		assert.True(t, added, "AddRaw returned added=false, expected true")
 	}
@@ -264,7 +264,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	indexExpression := "val"
 	err := bucket.CreateIndex("testIndex_value_malformed", indexExpression, "", testN1qlOptions)
 	if err != nil {
-		t.Errorf("Error creating index: %s", err)
+		t.Fatalf("Error creating index: %s", err)
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndex_value_malformed")
@@ -275,7 +275,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 		// Drop the index
 		err = bucket.DropIndex("testIndex_value_malformed")
 		if err != nil {
-			t.Errorf("Error dropping index: %s", err)
+			t.Fatalf("Error dropping index: %s", err)
 		}
 	}()
 
@@ -319,7 +319,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 	createExpression := "_sync.sequence"
 	err := bucket.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
-		t.Errorf("Error creating index: %s", err)
+		t.Fatalf("Error creating index: %s", err)
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndex_sequence")
@@ -328,7 +328,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 	// Drop the index
 	err = bucket.DropIndex("testIndex_sequence")
 	if err != nil {
-		t.Errorf("Error dropping index: %s", err)
+		t.Fatalf("Error dropping index: %s", err)
 	}
 }
 
@@ -346,7 +346,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 	createExpression := "_sync.sequence"
 	err := bucket.CreateIndex("testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
 	if err != nil {
-		t.Errorf("Error creating index: %s", err)
+		t.Fatalf("Error creating index: %s", err)
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndexDuplicateSequence")
@@ -359,7 +359,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 	// Drop the index
 	err = bucket.DropIndex("testIndexDuplicateSequence")
 	if err != nil {
-		t.Errorf("Error dropping index: %s", err)
+		t.Fatalf("Error dropping index: %s", err)
 	}
 }
 
@@ -377,7 +377,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 	createExpression := "_sync.sequence"
 	err := bucket.CreateIndex("testIndex-sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
-		t.Errorf("Error creating index: %s", err)
+		t.Fatalf("Error creating index: %s", err)
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndex-sequence")
@@ -386,7 +386,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 	// Drop the index
 	err = bucket.DropIndex("testIndex-sequence")
 	if err != nil {
-		t.Errorf("Error dropping index: %s", err)
+		t.Fatalf("Error dropping index: %s", err)
 	}
 }
 
@@ -413,14 +413,14 @@ func TestDeferredCreateIndex(t *testing.T) {
 	createExpression := "_sync.sequence"
 	err := bucket.CreateIndex(indexName, createExpression, "", deferN1qlOptions)
 	if err != nil {
-		t.Errorf("Error creating index: %s", err)
+		t.Fatalf("Error creating index: %s", err)
 	}
 
 	// Drop the index
 	defer func() {
 		err = bucket.DropIndex(indexName)
 		if err != nil {
-			t.Errorf("Error dropping index: %s", err)
+			t.Fatalf("Error dropping index: %s", err)
 		}
 	}()
 
@@ -464,20 +464,20 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	createExpression = "_sync.rev"
 	err = bucket.CreateIndex(nonDeferredIndexName, createExpression, "", &N1qlIndexOptions{NumReplica: 0})
 	if err != nil {
-		t.Errorf("Error creating index: %s", err)
+		t.Fatalf("Error creating index: %s", err)
 	}
 
 	// Drop the indexes
 	defer func() {
 		err = bucket.DropIndex(deferredIndexName)
 		if err != nil {
-			t.Errorf("Error dropping deferred index: %s", err)
+			t.Fatalf("Error dropping deferred index: %s", err)
 		}
 	}()
 	defer func() {
 		err = bucket.DropIndex(nonDeferredIndexName)
 		if err != nil {
-			t.Errorf("Error dropping non-deferred index: %s", err)
+			t.Fatalf("Error dropping non-deferred index: %s", err)
 		}
 	}()
 
@@ -513,38 +513,38 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 	createExpression := "_sync sequence"
 	err := bucket.CreateIndex("testIndex_malformed", createExpression, "", testN1qlOptions)
 	if err == nil {
-		t.Errorf("Expected error for malformed index expression")
+		t.Fatalf("Expected error for malformed index expression")
 	}
 
 	// Create index
 	createExpression = "_sync.sequence"
 	err = bucket.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
-		t.Errorf("Error creating index: %s", err)
+		t.Fatalf("Error creating index: %s", err)
 	}
 
 	// Attempt to recreate duplicate index
 	err = bucket.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
 	if err == nil {
-		t.Errorf("Expected error attempting to recreate already existing index")
+		t.Fatalf("Expected error attempting to recreate already existing index")
 	}
 
 	// Drop non-existent index
 	err = bucket.DropIndex("testIndex_not_found")
 	if err == nil {
-		t.Errorf("Expected error attempting to drop non-existent index")
+		t.Fatalf("Expected error attempting to drop non-existent index")
 	}
 
 	// Drop the index
 	err = bucket.DropIndex("testIndex_sequence")
 	if err != nil {
-		t.Errorf("Error dropping index: %s", err)
+		t.Fatalf("Error dropping index: %s", err)
 	}
 
 	// Drop index that's already been dropped
 	err = bucket.DropIndex("testIndex_sequence")
 	if err == nil {
-		t.Errorf("Expected error attempting to drop index twice")
+		t.Fatalf("Expected error attempting to drop index twice")
 	}
 }
 
