@@ -1408,31 +1408,6 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 
 }
 
-func TestIncrRetrySuccess(t *testing.T) {
-	leakyBucketConfig := base.LeakyBucketConfig{
-		IncrTemporaryFailCount: 2,
-	}
-	leakyBucket := testLeakyBucket(leakyBucketConfig)
-	defer leakyBucket.Close()
-	seqAllocator, _ := newSequenceAllocator(leakyBucket, NewDatabaseStats())
-	err := seqAllocator.reserveSequences(1)
-	goassert.True(t, err == nil)
-
-}
-
-func TestIncrRetryUnsuccessful(t *testing.T) {
-	leakyBucketConfig := base.LeakyBucketConfig{
-		IncrTemporaryFailCount: 10,
-	}
-	leakyBucket := testLeakyBucket(leakyBucketConfig)
-	defer leakyBucket.Close()
-	seqAllocator, _ := newSequenceAllocator(leakyBucket, NewDatabaseStats())
-	err := seqAllocator.reserveSequences(1)
-	log.Printf("Got error: %v", err)
-	goassert.True(t, err != nil)
-
-}
-
 func TestRecentSequenceHistory(t *testing.T) {
 
 	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})

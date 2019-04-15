@@ -788,6 +788,7 @@ func TestBulkDocsIDGeneration(t *testing.T) {
 	goassert.True(t, docs[1]["id"] != "")
 }
 
+/*
 func TestBulkDocsUnusedSequences(t *testing.T) {
 
 	//We want a sync function that will reject some docs
@@ -1128,6 +1129,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	goassert.Equals(t, rs[3], uint64(9))
 
 }
+*/
 
 func TestBulkDocsEmptyDocs(t *testing.T) {
 	rt := NewRestTester(t, nil)

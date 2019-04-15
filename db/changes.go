@@ -751,21 +751,21 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) []*LogEntr
 	return log
 }
 
-// Wait until the change-cache has caught up with the latest writes to the database.
+// TEST ONLY.  Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForSequence(sequence uint64, tb testing.TB) (err error) {
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
 	context.changeCache.waitForSequenceID(SequenceID{Seq: sequence}, base.DefaultWaitForSequenceTesting, tb)
 	return
 }
 
-// Wait until the change-cache has caught up with the latest writes to the database.
+// TEST ONLY.  Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64, tb testing.TB) (err error) {
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
 	context.changeCache.waitForSequenceWithMissing(sequence, base.DefaultWaitForSequenceTesting, tb)
 	return
 }
 
-// Wait until the change-cache has caught up with the latest writes to the database.
+// TEST ONLY.  Wait until the change-cache has caught up with the latest writes to the database.
 func (context *DatabaseContext) WaitForPendingChanges(tb testing.TB) (err error) {
 	lastSequence, err := context.LastSequence()
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", lastSequence)

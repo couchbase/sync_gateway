@@ -108,6 +108,7 @@ const (
 	UserEmailPrefix        = SyncPrefix + "useremail:"
 	UserPrefix             = SyncPrefix + "user:"
 	UnusedSeqPrefix        = SyncPrefix + "unusedSeq:"
+	UnusedSeqRangePrefix   = SyncPrefix + "unusedSeqs:"
 
 	DCPBackfillSeqKey = SyncPrefix + "dcp_backfill"
 	SyncDataKey       = SyncPrefix + "syncdata"
