@@ -76,7 +76,8 @@ func TestDBRoot(t *testing.T) {
 	response := rt.SendRequest("GET", "/db/", "")
 	assertStatus(t, response, 200)
 	var body db.Body
-	json.Unmarshal(response.Body.Bytes(), &body)
+	err := json.Unmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
 
 	goassert.Equals(t, body["db_name"], "db")
 	goassert.Equals(t, body["state"], "Online")

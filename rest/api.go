@@ -190,12 +190,12 @@ type DatabaseRoot struct {
 	DBName                        string      `json:"db_name"`
 	SequenceNumber                uint64      `json:"update_seq"`
 	CommittedUpdateSequenceNumber uint64      `json:"comitted_update_seq"`
-	InstanceStartName             json.Number `json:"instance_start_name"`
+	InstanceStartTime             json.Number `json:"instance_start_name"`
 	CompactRunning                bool        `json:"compact_running"`
 	PurgeSequenceNumber           uint64      `json:"purge_seq"`
 	DiskFormatVersion             uint64      `json:"disk_format_version"`
 	State                         string      `json:"state"`
-	ServerUUID                    string      `json:"server_uuid"`
+	ServerUUID                    string      `json:"server_uuid,omitempty"`
 }
 
 func (h *handler) handleGetDB() error {
@@ -215,15 +215,12 @@ func (h *handler) handleGetDB() error {
 		DBName:                        h.db.Name,
 		SequenceNumber:                lastSeq,
 		CommittedUpdateSequenceNumber: lastSeq,
-		InstanceStartName:             h.instanceStartTime(),
+		InstanceStartTime:             h.instanceStartTime(),
 		CompactRunning:                h.db.IsCompactRunning(),
-		PurgeSequenceNumber:           0,
-		DiskFormatVersion:             0,
+		PurgeSequenceNumber:           0, // TODO: Should track this value
+		DiskFormatVersion:             0, // Probably meaningless, but add for compatibility
 		State:                         runState,
-	}
-
-	if uuid := h.db.DatabaseContext.GetServerUUID(); uuid != "" {
-		response.ServerUUID = uuid
+		ServerUUID:                    h.db.DatabaseContext.GetServerUUID(),
 	}
 
 	h.writeJSON(response)

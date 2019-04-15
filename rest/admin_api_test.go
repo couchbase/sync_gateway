@@ -576,7 +576,8 @@ func TestGetStatus(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_status", "")
 	assertStatus(t, response, 200)
 	var responseBody Status
-	json.Unmarshal(response.Body.Bytes(), &responseBody)
+	err := json.Unmarshal(response.Body.Bytes(), &responseBody)
+	assert.NoError(t, err)
 
 	goassert.Equals(t, responseBody.Version, base.LongVersionString)
 
