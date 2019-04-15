@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -186,6 +186,18 @@ func (h *handler) instanceStartTime() json.Number {
 	return json.Number(strconv.FormatInt(h.db.StartTime.UnixNano()/1000, 10))
 }
 
+type DatabaseRoot struct {
+	DBName                        string      `json:"db_name"`
+	SequenceNumber                uint64      `json:"update_seq"`
+	CommittedUpdateSequenceNumber uint64      `json:"comitted_update_seq"`
+	InstanceStartName             json.Number `json:"instance_start_name"`
+	CompactRunning                bool        `json:"compact_running"`
+	PurgeSequenceNumber           uint64      `json:"purge_seq"`
+	DiskFormatVersion             uint64      `json:"disk_format_version"`
+	State                         string      `json:"state"`
+	ServerUUID                    string      `json:"server_uuid"`
+}
+
 func (h *handler) handleGetDB() error {
 	if h.rq.Method == "HEAD" {
 		return nil
@@ -199,19 +211,19 @@ func (h *handler) handleGetDB() error {
 		lastSeq, _ = h.db.LastSequence()
 	}
 
-	response := db.Body{
-		"db_name":              h.db.Name,
-		"update_seq":           lastSeq,
-		"committed_update_seq": lastSeq,
-		"instance_start_time":  h.instanceStartTime(),
-		"compact_running":      h.db.IsCompactRunning(),
-		"purge_seq":            0, // TODO: Should track this value
-		"disk_format_version":  0, // Probably meaningless, but add for compatibility
-		"state":                runState,
+	var response = DatabaseRoot{
+		DBName:                        h.db.Name,
+		SequenceNumber:                lastSeq,
+		CommittedUpdateSequenceNumber: lastSeq,
+		InstanceStartName:             h.instanceStartTime(),
+		CompactRunning:                h.db.IsCompactRunning(),
+		PurgeSequenceNumber:           0,
+		DiskFormatVersion:             0,
+		State:                         runState,
 	}
 
 	if uuid := h.db.DatabaseContext.GetServerUUID(); uuid != "" {
-		response["server_uuid"] = uuid
+		response.ServerUUID = uuid
 	}
 
 	h.writeJSON(response)

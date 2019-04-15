@@ -21,7 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbaselabs/sg-replicate"
+	sgreplicate "github.com/couchbaselabs/sg-replicate"
 	"github.com/gorilla/mux"
 )
 
@@ -340,13 +340,36 @@ func (h *handler) handleGetLogging() error {
 	return nil
 }
 
+type DatabaseStatus struct {
+	SequenceNumber uint64 `json:"seq"`
+	ServerUUID     string `json:"server_uuid"`
+	State          string `json:"state"`
+}
+
+type Vendor struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+type Status struct {
+	Databases   map[string]DatabaseStatus `json:"databases"`
+	ActiveTasks []base.Task               `json:"active_tasks"`
+	Version     string                    `json:"version"`
+	Vendor      Vendor                    `json:"vendor"`
+}
+
 func (h *handler) handleGetStatus() error {
-	status := db.Body{
-		"databases":    make(map[string]db.Body),
-		"active_tasks": h.server.replicator.ActiveTasks(),
-		"version":      base.LongVersionString,
-		"vendor":       db.Body{"name": base.ProductName, "version": base.VersionNumber},
+
+	var status = Status{
+		Databases:   make(map[string]DatabaseStatus),
+		ActiveTasks: h.server.replicator.ActiveTasks(),
+		Version:     base.LongVersionString,
+		Vendor: Vendor{
+			Name:    base.ProductName,
+			Version: base.VersionNumber,
+		},
 	}
+
 	for _, database := range h.server.databases_ {
 		lastSeq := uint64(0)
 		runState := db.RunStateString[atomic.LoadUint32(&database.State)]
@@ -355,14 +378,12 @@ func (h *handler) handleGetStatus() error {
 		if runState != db.RunStateString[db.DBOffline] {
 			lastSeq, _ = database.LastSequence()
 		}
-		dbStatus := db.Body{
-			"seq":   lastSeq,
-			"state": runState,
+
+		status.Databases[database.Name] = DatabaseStatus{
+			SequenceNumber: lastSeq,
+			State:          runState,
+			ServerUUID:     database.GetServerUUID(),
 		}
-		if uuid := database.GetServerUUID(); uuid != "" {
-			dbStatus["server_uuid"] = uuid
-		}
-		status["databases"].(map[string]db.Body)[database.Name] = dbStatus
 	}
 
 	h.writeJSON(status)

@@ -28,7 +28,6 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
-	"reflect"
 )
 
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
@@ -576,19 +575,10 @@ func TestGetStatus(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", "/_status", "")
 	assertStatus(t, response, 200)
-	var body db.Body
-	json.Unmarshal(response.Body.Bytes(), &body)
+	var responseBody Status
+	json.Unmarshal(response.Body.Bytes(), &responseBody)
 
-	model := map[string]interface{}{
-		"databases":    reflect.Map,
-		"active_tasks": reflect.Slice,
-		"version":      reflect.String,
-		"vendor":       reflect.Map,
-	}
-
-	assertBodySatisfiesModel(t, body, model)
-
-	goassert.Equals(t, body["version"], base.LongVersionString)
+	goassert.Equals(t, responseBody.Version, base.LongVersionString)
 
 	response = rt.SendAdminRequest("OPTIONS", "/_status", "")
 	assertStatus(t, response, 204)
