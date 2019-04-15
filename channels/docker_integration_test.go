@@ -1,4 +1,6 @@
-package auth
+// +build cb_sg_dockertest
+
+package channels
 
 import (
 	"testing"

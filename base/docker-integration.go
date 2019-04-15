@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/gocb"
 	"github.com/ory/dockertest"
@@ -20,6 +21,8 @@ import (
 const (
 	dockerRepository = "couchbase"
 	dockerTag        = "enterprise-6.0.1"
+
+	containerLabel = "dockertest_sg_integration_server"
 )
 
 //Structs used when checking health of nodes and buckets
@@ -32,7 +35,12 @@ type responseBody struct {
 	Nodes []nodes `json:"nodes"`
 }
 
-//This will start up a Docker Instance of Couchbase Server and will be used to run tests against
+// NewDockerTest will start up a Docker container running Couchbase Server and will be used by tests to run against.
+// Each Go package must declare its own TestMain which calls this function.
+// Usage:
+// func TestMain(m *testing.M){
+// 		base.NewDockerTest(m)
+//	}
 func NewDockerTest(t *testing.M) {
 
 	err := os.Setenv("SG_TEST_BACKING_STORE", "Couchbase")
@@ -42,17 +50,15 @@ func NewDockerTest(t *testing.M) {
 	cli, err := docker.NewClientFromEnv()
 	fatalError("Unable to create docker client", err)
 
+	err = cli.Ping()
+	fatalError("", err)
+
 	containers, err := cli.ListContainers(docker.ListContainersOptions{})
 	fatalError("Unable to list existing containers", err)
 
 	for _, container := range containers {
-		if val, ok := container.Labels["purpose"]; ok && val == "sg_integration_tests" {
+		if val, ok := container.Labels["purpose"]; ok && val == containerLabel {
 			log.Printf("Old Couchbase Instance Found With ID %s and Image %s... Deleting", container.ID, container.Image)
-			timeout := uint(10)
-			err = cli.StopContainer(container.ID, timeout)
-			if err != nil {
-				fmt.Printf("Unable to stop existing container: %s", err.Error())
-			}
 			err = cli.RemoveContainer(docker.RemoveContainerOptions{ID: container.ID, Force: true})
 			if err != nil {
 				fmt.Printf("Unable to remove existing container: %s", err.Error())
@@ -247,26 +253,15 @@ func NewDockerTest(t *testing.M) {
 			if checkReady(response.Body) {
 				return
 			}
+			time.Sleep(time.Second)
 		}
 	}
 
 	//Poll buckets to ensure they are all healthy and ready to work
-	bucketReadyCheck := func(reader io.ReadCloser) bool {
-		var jsonBody []responseBody
-		err = json.NewDecoder(reader).Decode(&jsonBody)
-		fatalError(`Failed to poll status`, err)
-		return areBucketsReady(&jsonBody)
-	}
-	areReady("http://localhost:8091/pools/default/buckets", bucketReadyCheck)
+	areReady("http://localhost:8091/pools/default/buckets", areBucketsReady)
 
 	//Poll nodes / node to ensure they are all healthy and ready to work
-	nodeReadyCheck := func(reader io.ReadCloser) bool {
-		var jsonBody responseBody
-		err = json.NewDecoder(reader).Decode(&jsonBody)
-		fatalError(`Failed to poll status`, err)
-		return isNodeReady(&jsonBody)
-	}
-	areReady("http://localhost:8091/pools/default", nodeReadyCheck)
+	areReady("http://localhost:8091/pools/default", areNodesReady)
 
 	//Run integration tests
 	code := t.Run()
@@ -279,9 +274,14 @@ func NewDockerTest(t *testing.M) {
 	os.Exit(code)
 }
 
-func areBucketsReady(res *[]responseBody) bool {
+func areBucketsReady(reader io.ReadCloser) bool {
+	fmt.Println("Polling for bucket readiness...")
+	var jsonBody []responseBody
+	err := json.NewDecoder(reader).Decode(&jsonBody)
+	fatalError(`Failed to poll status`, err)
+
 	allReady := true
-	nres := *res
+	nres := jsonBody
 	for i := 0; i < len(nres); i++ {
 		if len(nres[i].Nodes) == 1 && nres[i].Nodes[0].Status != "healthy" {
 			return false
@@ -290,15 +290,19 @@ func areBucketsReady(res *[]responseBody) bool {
 	return allReady
 }
 
-func isNodeReady(res *responseBody) bool {
+func areNodesReady(reader io.ReadCloser) bool {
+	fmt.Println("Polling for node readiness...")
+	var jsonBody responseBody
+	err := json.NewDecoder(reader).Decode(&jsonBody)
+	fatalError(`Failed to poll status`, err)
+
 	ready := true
-	nres := *res
+	nres := jsonBody
 	//TODO: Figure out a nice way of handling this other than waiting for 60 secs of uptime
 	uptime, err := strconv.Atoi(nres.Nodes[0].Uptime)
 	if err != nil || len(nres.Nodes) == 1 && nres.Nodes[0].Status != "healthy" || uptime <= 60 {
 		return false
 	}
-
 	return ready
 }
 

@@ -1,4 +1,6 @@
-package channels
+// +build cb_sg_dockertest
+
+package rest
 
 import (
 	"testing"
@@ -7,5 +9,5 @@ import (
 )
 
 func TestMain(t *testing.M) {
-	base.InitTestMain(t)
+	base.NewDockerTest(t)
 }

@@ -1,4 +1,6 @@
-package rest
+// +build cb_sg_dockertest
+
+package base
 
 import (
 	"testing"
