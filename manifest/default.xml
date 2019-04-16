@@ -7,24 +7,6 @@
 
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
 
-  <!-- Docker integration tests -->
-  <remote fetch="https://github.com/ory/" name="ory"/>
-  <remote fetch="https://github.com/Azure/" name="Azure"/>
-  <remote fetch="https://github.com/Microsoft/" name="Microsoft"/>
-  <remote fetch="https://github.com/Nvveen/" name="Nvveen"/>
-  <remote fetch="https://github.com/cenkalti/" name="cenkalti"/>
-  <remote fetch="https://github.com/containerd" name="containerd"/>
-  <remote fetch="https://github.com/davecgh/" name="davecgh"/>
-  <remote fetch="https://github.com/docker/" name="docker"/>
-  <remote fetch="https://github.com/google/" name="google"/>
-  <remote fetch="https://github.com/gotestyourself/" name="gotestyourself"/>
-  <remote fetch="https://github.com/lib/" name="lib"/>
-  <remote fetch="https://github.com/opencontainers/" name="opencontainers"/>
-  <remote fetch="https://github.com/pkg/" name="pkg"/>
-  <remote fetch="https://github.com/pmezard/" name="pmezard"/>
-  <remote fetch="https://github.com/sirupsen/" name="sirupsen"/>
-  <remote fetch="https://github.com/stretchr/" name="stretchr"/>
-
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
