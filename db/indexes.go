@@ -361,15 +361,10 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 // Iterates over the index set, removing obsolete indexes:
 //  - indexes based on the inverse value of xattrs being used by the database
 //  - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
-func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool) (removedIndexes []string, err error) {
+func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs bool) (removedIndexes []string, err error) {
 	removedIndexes = make([]string, 0)
-	gocbBucket, ok := base.AsGoCBBucket(bucket)
-	if !ok {
-		base.Warnf(base.KeyAll, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
-		return removedIndexes, nil
-	}
 
-	if !gocbBucket.IsSupported(sgbucket.BucketFeatureN1ql) {
+	if !bucket.IsSupported(sgbucket.BucketFeatureN1ql) {
 		return removedIndexes, nil
 	}
 
@@ -385,12 +380,11 @@ func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool)
 		}
 	}
 
+	fmt.Println(removalCandidates)
+
 	// Attempt removal of candidates, adding to set of removedIndexes when found
 	for _, indexName := range removalCandidates {
-		removed, removeError := removeObsoleteIndex(gocbBucket, indexName, previewOnly)
-		if removeError != nil {
-			return removedIndexes, removeError
-		}
+		removed, _ := removeObsoleteIndex(bucket, indexName, previewOnly)
 		if removed {
 			removedIndexes = append(removedIndexes, indexName)
 		}
@@ -400,7 +394,7 @@ func removeObsoleteIndexes(bucket base.Bucket, previewOnly bool, useXattrs bool)
 }
 
 // Removes an obsolete index from the database.  In preview mode, checks for existence of the index only.
-func removeObsoleteIndex(bucket *base.CouchbaseBucketGoCB, indexName string, previewOnly bool) (removed bool, err error) {
+func removeObsoleteIndex(bucket base.N1QLBucket, indexName string, previewOnly bool) (removed bool, err error) {
 
 	if previewOnly {
 		// Check for index existence
