@@ -685,15 +685,11 @@ func (h *handler) writeError(err error) {
 		status, message := base.ErrorAsHTTPStatus(err)
 		h.writeStatus(status, message)
 		if status >= 500 {
-			format := "%v"
-			if base.StacktraceOnAPIErrors {
-				format = "%+v"
-			}
 			// Log additional context when the handler has a database reference
 			if h.db != nil {
-				base.ErrorfCtx(h.db.Ctx, base.KeyAll, format, err)
+				base.ErrorfCtx(h.db.Ctx, base.KeyAll, "%v", err)
 			} else {
-				base.Errorf(base.KeyAll, format, err)
+				base.Errorf(base.KeyAll, "%v", err)
 			}
 		}
 	}
