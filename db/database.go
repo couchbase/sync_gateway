@@ -572,7 +572,8 @@ func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removed
 
 	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
-		return nil, errors.New("Must be gocbBucket")
+		base.Warnf(base.KeyAll, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
+		return removedIndexes, nil
 	}
 
 	return removeObsoleteIndexes(gocbBucket, previewOnly, context.UseXattrs())

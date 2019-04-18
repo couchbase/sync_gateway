@@ -447,13 +447,15 @@ func (b *LeakyBucket) GetIndexMeta(indexName string) (exists bool, meta *gocb.In
 }
 
 func (b *LeakyBucket) DropIndex(indexName string) error {
-	if b.config.DropIndexErrorCount != 0 {
-		b.config.DropIndexErrorCount--
-		return errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", b.config.DropIndexErrorCount))
-	}
+
 	gocbBucket, ok := AsGoCBBucket(b.bucket)
 	if !ok {
 		return errors.New("Not GOCB Bucket")
+	}
+
+	if b.config.DropIndexErrorCount != 0 {
+		b.config.DropIndexErrorCount--
+		return errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", b.config.DropIndexErrorCount))
 	}
 	return gocbBucket.DropIndex(indexName)
 }

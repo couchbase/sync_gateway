@@ -380,8 +380,6 @@ func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs b
 		}
 	}
 
-	fmt.Println(removalCandidates)
-
 	// Attempt removal of candidates, adding to set of removedIndexes when found
 	for _, indexName := range removalCandidates {
 		removed, _ := removeObsoleteIndex(bucket, indexName, previewOnly)

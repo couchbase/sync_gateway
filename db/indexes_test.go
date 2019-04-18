@@ -147,6 +147,11 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 }
 
 func TestRemoveObsoleteIndexOnFail(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Index tests require Couchbase Bucket")
+	}
+
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
@@ -156,6 +161,7 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	assert.True(t, ok)
 
 	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
+	assert.True(t, ok)
 
 	for _, name := range indexNames {
 		err := gocbBucket.CreatePrimaryIndex("sg_"+name+"_x1", &base.N1qlIndexOptions{})
@@ -164,8 +170,6 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 
 	removedIndexes, removeError := removeObsoleteIndexes(b, false, db.UseXattrs())
 	assert.True(t, len(indexNames) == len(removedIndexes)+1)
-	if removeError != nil {
-		fmt.Println(removeError.Error())
-	}
+	assert.NoError(t, err)
 	base.DropAllBucketIndexes(gocbBucket)
 }
