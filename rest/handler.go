@@ -684,11 +684,13 @@ func (h *handler) writeError(err error) {
 		err = auth.OIDCToHTTPError(err) // Map OIDC/OAuth2 errors to HTTP form
 		status, message := base.ErrorAsHTTPStatus(err)
 		h.writeStatus(status, message)
-		format := "%v"
-		if base.StacktraceOnAPIErrors {
-			format = "%+v"
+		if status >= 500 {
+			format := "%v"
+			if base.StacktraceOnAPIErrors {
+				format = "%+v"
+			}
+			base.ErrorfCtx(h.db.Ctx, base.KeyAll, format, err)
 		}
-		base.Errorf(base.KeyAll, format, err)
 	}
 }
 
