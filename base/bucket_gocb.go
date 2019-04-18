@@ -2509,6 +2509,8 @@ func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.BucketFeature) b
 	case sgbucket.BucketFeatureN1ql:
 		numberOfN1qlNodes := len(bucket.IoRouter().N1qlEps())
 		return numberOfN1qlNodes > 0
+	// Crc32c macro expansion is used to avoid conflicting with the Couchbase Eventing module, which also uses XATTRS.
+	// Since Couchbase Eventing was introduced in Couchbase Server 5.5, the Crc32c macro expansion only needs to be done on 5.5 or later.
 	case sgbucket.BucketFeatureCrc32cMacroExpansion:
 		return isMinimumVersion(major, minor, 5, 5)
 	default:
