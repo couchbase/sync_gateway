@@ -84,10 +84,6 @@ const (
 	// Keep idle connections around for a maximimum of 90 seconds.  This is the same value used by the Go DefaultTransport.
 	DefaultHttpIdleConnTimeoutMilliseconds = "90000"
 
-	// Set this to true to dump stacktraces (for pkgerrors wrapped errors only) whenever an error is returned to
-	// an API client.  Currently only works with REST API calls.
-	StacktraceOnAPIErrors = false
-
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
 
