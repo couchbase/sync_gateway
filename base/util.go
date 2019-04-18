@@ -963,18 +963,6 @@ func ConvertToEmptyInterfaceSlice(i interface{}) (result []interface{}, err erro
 
 }
 
-func isMinimumVersion(major, minor, minMajor, minMinor uint64) bool {
-	if major < minMajor {
-		return false
-	}
-
-	if major == minMajor && minor < minMinor {
-		return false
-	}
-
-	return true
-}
-
 func encodeClusterVersion(major, minor int) int {
 	return major*0x10000 + minor
 }

@@ -353,7 +353,7 @@ func (b *LeakyBucket) VBHash(docID string) uint32 {
 	}
 }
 
-func (b *LeakyBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+func (b *LeakyBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
 	return b.bucket.CouchbaseServerVersion()
 }
 

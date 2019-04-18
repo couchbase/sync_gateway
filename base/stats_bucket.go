@@ -257,7 +257,7 @@ func (b *StatsBucket) GetMaxVbno() (uint16, error) {
 	return b.bucket.GetMaxVbno()
 }
 
-func (b *StatsBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+func (b *StatsBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
 	return b.bucket.CouchbaseServerVersion()
 }
 

@@ -2032,8 +2032,7 @@ func TestCouchbaseServerVersion(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	major, _, _, err := bucket.CouchbaseServerVersion()
-	assert.NoError(t, err)
+	major, _, _ := bucket.CouchbaseServerVersion()
 	assert.NotZero(t, major)
 
 }

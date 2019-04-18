@@ -145,6 +145,16 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	user, pass, _ := spec.Auth.GetCredentials()
 	nodesMetadata, err := cluster.Manager(user, pass).Internal().GetNodesMetadata()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(nodesMetadata) == 0 {
+		return nil, errors.New("Unable to get server cluster compatibility")
+	}
+
+	//Safe to just get first node as there will always be at least one node in the list and cluster compat is the
+	//same across all nodes.
 	clusterCompat := nodesMetadata[0].ClusterCompatibility
 
 	// Define channels to limit the number of concurrent single and bulk operations,
@@ -1120,7 +1130,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
 	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
 
-	crc32cMacroExpansionSupported, err := IsCrc32cMacroExpansionSupported(bucket)
+	crc32cMacroExpansionSupported := bucket.IsSupported(sgbucket.BucketFeatureCrc32cMacroExpansion)
 	if err != nil {
 		return 0, err
 	}
@@ -1211,7 +1221,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
 func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
 
-	crc32cMacroExpansionSupported, err := IsCrc32cMacroExpansionSupported(bucket)
+	crc32cMacroExpansionSupported := bucket.IsSupported(sgbucket.BucketFeatureCrc32cMacroExpansion)
 	if err != nil {
 		return 0, err
 	}
@@ -2317,17 +2327,12 @@ func (bucket *CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 	return 0, fmt.Errorf("Unable to determine vbucket count")
 }
 
-func (bucket *CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
-
-	if bucket.clusterCompatVersion == 0 {
-		return 0, 0, "", errors.New("cluster compat version not set")
-	}
-
+func (bucket *CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
 	majorint, minorint := decodeClusterVersion(bucket.clusterCompatVersion)
 	major = uint64(majorint)
 	minor = uint64(minorint)
 
-	return major, minor, "", nil
+	return major, minor, ""
 
 }
 
@@ -2497,17 +2502,31 @@ func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{
 }
 
 func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.BucketFeature) bool {
+	major, minor, _ := bucket.CouchbaseServerVersion()
 	switch feature {
 	case sgbucket.BucketFeatureXattrs:
-		xattrsSupported, _ := IsMinimumServerVersion(bucket, 5, 0)
-		return xattrsSupported
+		return isMinimumVersion(major, minor, 5, 0)
 	case sgbucket.BucketFeatureN1ql:
 		numberOfN1qlNodes := len(bucket.IoRouter().N1qlEps())
 		return numberOfN1qlNodes > 0
+	case sgbucket.BucketFeatureCrc32cMacroExpansion:
+		return isMinimumVersion(major, minor, 5, 5)
 	default:
 		return false
 	}
 
+}
+
+func isMinimumVersion(major, minor, requiredMajor, requiredMinor uint64) bool {
+	if major < requiredMajor {
+		return false
+	}
+
+	if major == requiredMajor && minor < requiredMinor {
+		return false
+	}
+
+	return true
 }
 
 // Applies the viewquery options as specified in the params map to the viewQuery object,
