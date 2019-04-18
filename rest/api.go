@@ -18,7 +18,6 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
-	"strconv"
 	"sync/atomic"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -182,20 +181,20 @@ func (h *handler) handlePostUpgrade() error {
 	return nil
 }
 
-func (h *handler) instanceStartTime() json.Number {
-	return json.Number(strconv.FormatInt(h.db.StartTime.UnixNano()/1000, 10))
+func (h *handler) instanceStartTime() int64 {
+	return h.db.StartTime.UnixNano() / 1000
 }
 
 type DatabaseRoot struct {
-	DBName                        string      `json:"db_name"`
-	SequenceNumber                uint64      `json:"update_seq"`
-	CommittedUpdateSequenceNumber uint64      `json:"committed_update_seq"`
-	InstanceStartTime             json.Number `json:"instance_start_time"`
-	CompactRunning                bool        `json:"compact_running"`
-	PurgeSequenceNumber           uint64      `json:"purge_seq"`
-	DiskFormatVersion             uint64      `json:"disk_format_version"`
-	State                         string      `json:"state"`
-	ServerUUID                    string      `json:"server_uuid,omitempty"`
+	DBName                        string `json:"db_name"`
+	SequenceNumber                uint64 `json:"update_seq"`
+	CommittedUpdateSequenceNumber uint64 `json:"committed_update_seq"`
+	InstanceStartTime             int64  `json:"instance_start_time"`
+	CompactRunning                bool   `json:"compact_running"`
+	PurgeSequenceNumber           uint64 `json:"purge_seq"`
+	DiskFormatVersion             uint64 `json:"disk_format_version"`
+	State                         string `json:"state"`
+	ServerUUID                    string `json:"server_uuid,omitempty"`
 }
 
 func (h *handler) handleGetDB() error {
