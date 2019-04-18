@@ -169,7 +169,7 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	}
 
 	removedIndexes, removeError := removeObsoleteIndexes(b, false, db.UseXattrs())
-	assert.True(t, len(indexNames) == len(removedIndexes)+1)
-	assert.NoError(t, err)
+	assert.Equal(t, len(indexNames), len(removedIndexes)+1)
+	assert.NoError(t, removeError)
 	base.DropAllBucketIndexes(gocbBucket)
 }
