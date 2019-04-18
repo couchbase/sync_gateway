@@ -689,7 +689,12 @@ func (h *handler) writeError(err error) {
 			if base.StacktraceOnAPIErrors {
 				format = "%+v"
 			}
-			base.ErrorfCtx(h.db.Ctx, base.KeyAll, format, err)
+			// Log additional context when the handler has a database reference
+			if h.db != nil {
+				base.ErrorfCtx(h.db.Ctx, base.KeyAll, format, err)
+			} else {
+				base.Errorf(base.KeyAll, format, err)
+			}
 		}
 	}
 }
