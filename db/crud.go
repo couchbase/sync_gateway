@@ -1360,7 +1360,7 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 				if isRole {
 					for roleName := range db.user.RoleNames() {
 						if roleName == changedPrincipalName {
-							base.Debugf(base.KeyAccess, "Active user belongs to role %q with modified channel access - user %q will be reloaded.", base.UD(roleName), base.UD(db.user.Name()))
+							base.DebugfCtx(db.Ctx, base.KeyAccess, "Active user belongs to role %q with modified channel access - user %q will be reloaded.", base.UD(roleName), base.UD(db.user.Name()))
 							reloadActiveUser = true
 							break
 						}
@@ -1381,7 +1381,7 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 			db.invalUserRoles(name)
 			//If this is the current in memory db.user, reload to generate updated roles
 			if db.user != nil && db.user.Name() == name {
-				base.Debugf(base.KeyAccess, "Role set for active user has been modified - user %q will be reloaded.", base.UD(db.user.Name()))
+				base.DebugfCtx(db.Ctx, base.KeyAccess, "Role set for active user has been modified - user %q will be reloaded.", base.UD(db.user.Name()))
 				reloadActiveUser = true
 
 			}

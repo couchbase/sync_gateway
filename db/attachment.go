@@ -193,7 +193,7 @@ func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 	key := AttachmentKey(Sha1DigestKey(attachment))
 	_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
 	if err == nil {
-		base.Infof(base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
+		base.InfofCtx(db.Ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 	}
 	return key, err
 }
@@ -204,7 +204,7 @@ func (db *Database) setAttachments(attachments AttachmentData) error {
 		attachmentSize := int64(len(data))
 		_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, data)
 		if err == nil {
-			base.Infof(base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
+			base.InfofCtx(db.Ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 			db.DbStats.CblReplicationPush().Add(base.StatKeyAttachmentPushCount, 1)
 			db.DbStats.CblReplicationPush().Add(base.StatKeyAttachmentPushBytes, attachmentSize)
 		} else {
@@ -291,7 +291,7 @@ func (db *Database) WriteMultipartDocument(body Body, writer *multipart.Writer, 
 			info.contentType, _ = meta["content_type"].(string)
 			info.data, err = decodeAttachment(meta["data"])
 			if info.data == nil {
-				base.Warnf(base.KeyAll, "Couldn't decode attachment %q of doc %q: %v", base.UD(name), base.UD(body[BodyId]), err)
+				base.WarnfCtx(db.Ctx, base.KeyAll, "Couldn't decode attachment %q of doc %q: %v", base.UD(name), base.UD(body[BodyId]), err)
 				meta["stub"] = true
 				delete(meta, "data")
 			} else if len(info.data) > kMaxInlineAttachmentSize {
