@@ -124,6 +124,9 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 
 func testBucket() base.TestBucket {
 
+	//TODO: Temporary fix until sequence allocation unit test enhancements - CBG-316
+	MaxSequenceIncrFrequency = 0 * time.Millisecond
+
 	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
 	for i := 0; i < 2; i++ {
 

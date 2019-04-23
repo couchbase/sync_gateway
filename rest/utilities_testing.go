@@ -85,7 +85,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		return rt.RestTesterBucket
 	}
 
-	// Limit sequence batching for test usage, as it makes sequence-based tests non-deterministic
+	//TODO: Temporary fix until sequence allocation unit test enhancements - CBG-316
 	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
 
 	// Put this in a loop in case certain operations fail, like waiting for GSI indexes to be empty.
