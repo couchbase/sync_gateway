@@ -152,7 +152,7 @@ func (h *handler) handleBLIPSync() error {
 	server := blipContext.WebSocketServer()
 	defaultHandler := server.Handler
 	server.Handler = func(conn *websocket.Conn) {
-		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol. User:%s.", blipContext.ID, ctx.effectiveUsername))
+		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol%s.", blipContext.ID, formatEffectiveUserName(ctx.effectiveUsername)))
 		defer func() {
 			conn.Close() // in case it wasn't closed already
 			ctx.Logf(base.LevelInfo, base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())

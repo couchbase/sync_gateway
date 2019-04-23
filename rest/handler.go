@@ -227,7 +227,7 @@ func (h *handler) logRequestLine() {
 	}
 
 	queryValues := h.getQueryValues()
-	base.Infof(base.KeyHTTP, " %s: %s %s%s%s", h.formatSerialNumber(), h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formatEffectiveUserName())
+	base.Infof(base.KeyHTTP, " %s: %s %s%s%s", h.formatSerialNumber(), h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, formatEffectiveUserName(h.taggedEffectiveUserName()))
 }
 
 func (h *handler) logRequestBody() {
@@ -539,12 +539,12 @@ func (h *handler) taggedEffectiveUserName() string {
 
 // formatEffectiveUserName formats an effective name for appending to logs.
 // e.g: 'Did xyz (as %s)' or 'Did xyz (as <ud>alice</ud>)'
-func (h *handler) formatEffectiveUserName() string {
-	if name := h.taggedEffectiveUserName(); name != "" {
-		return " (as " + name + ")"
+func formatEffectiveUserName(effectiveUserName string) string {
+	if effectiveUserName == "" {
+		return ""
 	}
 
-	return ""
+	return " (as " + effectiveUserName + ")"
 }
 
 //////// RESPONSES:

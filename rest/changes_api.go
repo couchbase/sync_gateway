@@ -237,7 +237,7 @@ func (h *handler) handleChanges() error {
 			to = fmt.Sprintf("  (to %s)", h.user.Name())
 		}
 
-		base.Debugf(base.KeyChanges, "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
+		base.DebugfCtx(h.db.Ctx, base.KeyChanges, "Changes POST request.  URL: %v, feed: %v, options: %+v, filter: %v, bychannel: %v, docIds: %v %s",
 			h.rq.URL, feed, options, filter, base.UD(channelsArray), base.UD(docIdsArray), base.UD(to))
 
 	}
@@ -375,7 +375,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 		if ok {
 			closeNotify = cn.CloseNotify()
 		} else {
-			base.Infof(base.KeyChanges, "simple changes cannot get Close Notifier from ResponseWriter")
+			base.InfofCtx(h.db.Ctx, base.KeyChanges, "simple changes cannot get Close Notifier from ResponseWriter")
 		}
 
 		encoder := json.NewEncoder(h.response)
@@ -402,13 +402,13 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			case <-heartbeat:
 				_, err = h.response.Write([]byte("\n"))
 				h.flush()
-				base.Debugf(base.KeyChanges, "heartbeat written to _changes feed for request received %s", h.formatEffectiveUserName())
+				base.DebugfCtx(h.db.Ctx, base.KeyChanges, "heartbeat written to _changes feed for request received")
 			case <-timeout:
 				message = "OK (timeout)"
 				forceClose = true
 				break loop
 			case <-closeNotify:
-				base.Infof(base.KeyChanges, "Connection lost from client: %v", h.formatEffectiveUserName())
+				base.InfofCtx(h.db.Ctx, base.KeyChanges, "Connection lost from client")
 				forceClose = true
 				break loop
 			case <-h.db.ExitChanges:
@@ -591,17 +591,13 @@ loop:
 		case <-heartbeat:
 			err = send(nil)
 			if h != nil {
-				base.DebugfCtx(database.Ctx, base.KeyChanges, "heartbeat written to _changes feed for request received %s", h.formatEffectiveUserName())
+				base.DebugfCtx(database.Ctx, base.KeyChanges, "heartbeat written to _changes feed for request received")
 			}
 		case <-timeout:
 			forceClose = true
 			break loop
 		case <-closeNotify:
-			if h != nil {
-				base.DebugfCtx(database.Ctx, base.KeyChanges, "Client connection lost: %v", h.formatEffectiveUserName())
-			} else {
-				base.DebugfCtx(database.Ctx, base.KeyChanges, "Client connection lost")
-			}
+			base.DebugfCtx(database.Ctx, base.KeyChanges, "Client connection lost")
 			forceClose = true
 			break loop
 		case <-database.ExitChanges:
