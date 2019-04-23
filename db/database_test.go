@@ -658,7 +658,7 @@ func TestAllDocsOnly(t *testing.T) {
 	var options ChangesOptions
 	options.Terminator = make(chan bool)
 	defer close(options.Terminator)
-	changes, err := db.GetChanges(channels.SetOf("all"), options)
+	changes, err := db.GetChanges(channels.SetOfOrPanic("all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	goassert.Equals(t, len(changes), 100)
 	for i, change := range changes {
@@ -670,13 +670,13 @@ func TestAllDocsOnly(t *testing.T) {
 		goassert.Equals(t, change.Deleted, i == 99)
 		var removed base.Set
 		if i == 99 {
-			removed = channels.SetOf("all")
+			removed = channels.SetOfOrPanic("all")
 		}
 		goassert.DeepEquals(t, change.Removed, removed)
 	}
 
 	options.IncludeDocs = true
-	changes, err = db.GetChanges(channels.SetOf("KFJC"), options)
+	changes, err = db.GetChanges(channels.SetOfOrPanic("KFJC"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	goassert.Equals(t, len(changes), 10)
 	for i, change := range changes {
@@ -703,7 +703,7 @@ func TestUpdatePrincipal(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("ABC"))
 	authenticator.Save(user)
 
 	// Validate that a call to UpdatePrincipals with no changes to the user doesn't allocate a sequence
@@ -824,7 +824,7 @@ func TestConflicts(t *testing.T) {
 	options := ChangesOptions{
 		Conflicts: true,
 	}
-	changes, err := db.GetChanges(channels.SetOf("all"), options)
+	changes, err := db.GetChanges(channels.SetOfOrPanic("all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	goassert.Equals(t, len(changes), 1)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{
@@ -853,7 +853,7 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the _changes feed:
 	db.changeCache.waitForSequence(4, base.DefaultWaitForSequenceTesting, t)
-	changes, err = db.GetChanges(channels.SetOf("all"), options)
+	changes, err = db.GetChanges(channels.SetOfOrPanic("all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	goassert.Equals(t, len(changes), 1)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{
@@ -1179,7 +1179,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
 
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("Netflix"))
 	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)})
 	assert.NoError(t, authenticator.Save(user), "Save")
 
@@ -1198,7 +1198,7 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
-	expected := channels.AtSequence(channels.SetOf("Hulu", "Netflix", "!"), 1)
+	expected := channels.AtSequence(channels.SetOfOrPanic("Hulu", "Netflix", "!"), 1)
 	goassert.DeepEquals(t, user.Channels(), expected)
 
 	expected.AddChannel("CrunchyRoll", 2)
@@ -1226,7 +1226,7 @@ func TestAccessFunctionWithVbuckets(t *testing.T) {
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
 
-	user, _ := authenticator.NewUser("bernard", "letmein", channels.SetOf("Netflix"))
+	user, _ := authenticator.NewUser("bernard", "letmein", channels.SetOfOrPanic("Netflix"))
 	assert.NoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"bernard"}, "userChannels": []string{"ABC"}}
@@ -1302,7 +1302,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	goassert.NotEquals(t, retrievedView.Map, mapFunction) // SG should wrap the map function, so they shouldn't be equal
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
-	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf("Netflix"))
+	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
 }

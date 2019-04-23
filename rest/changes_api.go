@@ -249,7 +249,7 @@ func (h *handler) handleChanges() error {
 
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
-	userChannels := ch.SetOf(ch.AllChannelWildcard)
+	userChannels := ch.SetOfOrPanic(ch.AllChannelWildcard)
 	if filter != "" {
 		if filter == "sync_gateway/bychannel" {
 			if channelsArray == nil {

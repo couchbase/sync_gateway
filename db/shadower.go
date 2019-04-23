@@ -120,7 +120,10 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		if !reflect.DeepEqual(body, doc.getRevisionBody(newRev, s.context.RevisionBodyLoader)) {
 			// Nope, it's not. Assign it a new rev ID
 			generation, _ := ParseRevID(parentRev)
-			newRev = createRevID(generation+1, parentRev, body)
+			newRev, err = createRevID(generation+1, parentRev, body)
+			if err != nil {
+				return nil, nil, nil, err
+			}
 		}
 		doc.UpstreamRev = newRev
 		doc.UpstreamCAS = &cas

@@ -303,13 +303,17 @@ func (body Body) FixJSONNumbers() {
 	}
 }
 
-func createRevID(generation int, parentRevID string, body Body) string {
+func createRevID(generation int, parentRevID string, body Body) (string, error) {
 	// This should produce the same results as TouchDB.
 	digester := md5.New()
 	digester.Write([]byte{byte(len(parentRevID))})
 	digester.Write([]byte(parentRevID))
-	digester.Write(canonicalEncoding(stripSpecialProperties(body)))
-	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil))
+	encoding, err := canonicalEncoding(stripSpecialProperties(body))
+	if err != nil {
+		return "", err
+	}
+	digester.Write(encoding)
+	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil)), nil
 }
 
 // Returns the generation number (numeric prefix) of a revision ID.
@@ -380,12 +384,12 @@ func containsUserSpecialProperties(body Body) bool {
 	return false
 }
 
-func canonicalEncoding(body Body) []byte {
+func canonicalEncoding(body Body) ([]byte, error) {
 	encoded, err := json.Marshal(body) //FIX: Use canonical JSON encoder
 	if err != nil {
-		panic(fmt.Sprintf("Couldn't encode body %v", body))
+		return nil, errors.New(fmt.Sprintf("Couldn't encode body %v", body))
 	}
-	return encoded
+	return encoded, nil
 }
 
 func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {

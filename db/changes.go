@@ -232,7 +232,7 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 	}
 
 	if logEntry.Flags&channels.Removed != 0 {
-		change.Removed = channels.SetOf(channelName)
+		change.Removed = channels.SetOfOrPanic(channelName)
 	}
 
 	return change

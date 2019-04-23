@@ -11,7 +11,7 @@ package channels
 
 import (
 	"fmt"
-	"regexp"
+	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -29,22 +29,12 @@ const UserStarChannel = "*"     // user channel for "can access all docs"
 const DocumentStarChannel = "!" // doc channel for "visible to all users"
 const AllChannelWildcard = "*"  // wildcard for 'all channels'
 
-var kValidChannelRegexp *regexp.Regexp
-
-func init() {
-	var err error
-	kValidChannelRegexp, err = regexp.Compile(`,`)
-	if err != nil {
-		panic("Bad IsValidChannel regexp")
-	}
-}
-
 func illegalChannelError(name string) error {
 	return base.HTTPErrorf(400, "Illegal channel name %q", name)
 }
 
 func IsValidChannel(channel string) bool {
-	return len(channel) > 0 && !kValidChannelRegexp.MatchString(channel)
+	return len(channel) > 0 && !strings.Contains(channel, ",")
 }
 
 // Creates a new Set from an array of strings. Returns an error if any names are invalid.
@@ -66,22 +56,13 @@ func SetFromArray(names []string, mode StarMode) (base.Set, error) {
 	return result, nil
 }
 
-func ValidateChannelSet(set base.Set) error {
-	for name := range set {
-		if !IsValidChannel(name) {
-			return illegalChannelError(name)
-		}
-	}
-	return nil
-}
-
 // Creates a set from zero or more inline string arguments.
 // Channel names must be valid, else the function will panic, so this should only be called
 // with hardcoded known-valid strings.
-func SetOf(names ...string) base.Set {
+func SetOfOrPanic(names ...string) base.Set {
 	set, err := SetFromArray(names, KeepStar)
 	if err != nil {
-		panic(fmt.Sprintf("channels.SetOf failed: %v", err))
+		panic(fmt.Sprintf("channels.SetOfOrPanic failed: %v", err))
 	}
 	return set
 }
