@@ -28,7 +28,6 @@ func TestInitializeIndexes(t *testing.T) {
 
 	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0)
 	assert.NoError(t, initErr, "Error initializing all indexes")
-	defer base.DropAllBucketIndexes(goCbBucket)
 
 	validateErr := validateAllIndexesOnline(testBucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
@@ -156,20 +155,31 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{DropIndexErrorCount: 1})
+	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{DropIndexErrorCount: 5})
 	b, ok := leakyBucket.(*base.LeakyBucket)
 	assert.True(t, ok)
 
-	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
-	assert.True(t, ok)
+	oldIndexes := sgIndexes
 
-	for _, name := range indexNames {
-		err := gocbBucket.CreatePrimaryIndex("sg_"+name+"_x1", &base.N1qlIndexOptions{})
-		assert.NoError(t, err)
-	}
+	defer func() {
+		sgIndexes = map[SGIndexType]SGIndex{}
+		sgIndexes = oldIndexes
+	}()
 
-	removedIndexes, removeError := removeObsoleteIndexes(b, false, db.UseXattrs())
-	assert.Equal(t, len(indexNames), len(removedIndexes)+1)
-	assert.NoError(t, removeError)
-	base.DropAllBucketIndexes(gocbBucket)
+	sgIndexes = map[SGIndexType]SGIndex{}
+
+	accessIndex := oldIndexes[IndexAccess]
+	accessIndex.version = 2
+	accessIndex.previousVersions = []int{1}
+	sgIndexes[IndexAccess] = accessIndex
+
+	channelIndex := oldIndexes[IndexChannels]
+	channelIndex.version = 2
+	channelIndex.previousVersions = []int{1}
+	sgIndexes[IndexChannels] = channelIndex
+
+	removedIndex, removeErr := removeObsoleteIndexes(b, false, db.UseXattrs())
+	assert.NoError(t, removeErr)
+
+	assert.Equal(t, 1, len(removedIndex))
 }
