@@ -83,6 +83,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
+	MaxSequenceIncrFrequency = 0 * time.Millisecond
 	assert.NoError(t, err, "Couldn't create database 'db'")
 	return db, tBucket
 }
