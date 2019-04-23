@@ -1126,8 +1126,8 @@ func (db *Database) updateAndReturnDoc(
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
 
 			if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
-				major, _, _, err := db.Bucket.CouchbaseServerVersion()
-				if err == nil && major < 3 {
+				major, _, _ := db.Bucket.CouchbaseServerVersion()
+				if major < 3 {
 					// If the couchbase server version is less than 3, then do an indexable write.
 					// Prior to couchbase 3, a stale=false query required an indexable write (due to race).
 					// If this update affects user/role access privileges, make sure the write blocks till

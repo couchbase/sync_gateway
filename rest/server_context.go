@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
@@ -470,11 +471,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// Initialize Views or GSI indexes
 	if !useViews {
 
-		// Couchbase Server version must be 5.5 or higher to use GSI
-		gsiSupported, errServerVersion := base.IsMinimumServerVersion(bucket, 5, 5)
-		if errServerVersion != nil {
-			return nil, errServerVersion
-		}
+		gsiSupported := bucket.IsSupported(sgbucket.BucketFeatureN1ql)
 
 		if !gsiSupported {
 			return nil, errors.New("Couchbase Server version must be 5.5 or higher for Sync Gateway to use GSI.  Upgrade the server, or set 'use_views':true in Sync Gateway's database config.")

@@ -207,7 +207,7 @@ func (b *LoggingBucket) GetMaxVbno() (uint16, error) {
 	return b.bucket.GetMaxVbno()
 }
 
-func (b *LoggingBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string, err error) {
+func (b *LoggingBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
 	return b.bucket.CouchbaseServerVersion()
 }
 

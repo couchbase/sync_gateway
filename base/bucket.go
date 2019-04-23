@@ -325,23 +325,6 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 
 }
 
-func IsMinimumServerVersion(bucket Bucket, minMajor uint64, minMinor uint64) (bool, error) {
-
-	major, minor, _, err := bucket.CouchbaseServerVersion()
-	if err != nil {
-		return false, err
-	}
-
-	return isMinimumVersion(major, minor, minMajor, minMinor), nil
-
-}
-
-// Crc32c macro expansion is used to avoid conflicting with the Couchbase Eventing module, which also uses XATTRS.
-// Since Couchbase Eventing was introduced in Couchbase Server 5.5, the Crc32c macro expansion only needs to be done on 5.5 or later.
-func IsCrc32cMacroExpansionSupported(bucket Bucket) (bool, error) {
-	return IsMinimumServerVersion(bucket, 5, 5)
-}
-
 func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Infof(KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
