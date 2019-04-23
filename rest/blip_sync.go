@@ -131,7 +131,7 @@ func (h *handler) handleBLIPSync() error {
 	ctx := blipSyncContext{
 		blipContext:       blipContext,
 		db:                h.db,
-		effectiveUsername: h.currentEffectiveUserName(),
+		effectiveUsername: h.taggedEffectiveUserName(),
 		terminator:        make(chan bool),
 	}
 	defer ctx.close()

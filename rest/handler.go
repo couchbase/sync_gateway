@@ -227,7 +227,7 @@ func (h *handler) logRequestLine() {
 	}
 
 	queryValues := h.getQueryValues()
-	base.Infof(base.KeyHTTP, " %s: %s %s%s%s", h.formatSerialNumber(), h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.currentEffectiveUserNameAsUser())
+	base.Infof(base.KeyHTTP, " %s: %s %s%s%s", h.formatSerialNumber(), h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formatEffectiveUserName())
 }
 
 func (h *handler) logRequestBody() {
@@ -520,28 +520,30 @@ func (h *handler) getBearerToken() string {
 	return ""
 }
 
-// currentEffectiveUserName returns the effective name of the user for the request. This method will tag user names with UserData tags.
-func (h *handler) currentEffectiveUserName() string {
-	var effectiveName string
-
+// taggedEffectiveUserName returns the tagged effective name of the user for the request.
+// e.g: '<ud>alice</ud>' or 'GUEST'
+func (h *handler) taggedEffectiveUserName() string {
 	if h.privs == adminPrivs {
-		effectiveName = "ADMIN"
-	} else if h.user != nil {
-		if name := h.user.Name(); name != "" {
-			effectiveName = base.UD(name).Redact()
-		} else {
-			effectiveName = "GUEST"
-		}
+		return "ADMIN"
+	} else if h.user == nil {
+		return ""
 	}
 
-	return effectiveName
+	// Tag actual user names ahead of actual logging, as we lose the UD type information
+	if name := h.user.Name(); name != "" {
+		return base.UD(name).Redact()
+	}
+
+	return "GUEST"
 }
 
-// currentEffectiveUserNameAsUser formats an effectiveUserName for appending to logs.
-func (h *handler) currentEffectiveUserNameAsUser() string {
-	if name := h.currentEffectiveUserName(); name != "" {
-		return fmt.Sprintf(" (as %s)", name)
+// formatEffectiveUserName formats an effective name for appending to logs.
+// e.g: 'Did xyz (as %s)' or 'Did xyz (as <ud>alice</ud>)'
+func (h *handler) formatEffectiveUserName() string {
+	if name := h.taggedEffectiveUserName(); name != "" {
+		return " (as " + name + ")"
 	}
+
 	return ""
 }
 
