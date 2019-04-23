@@ -41,7 +41,6 @@ var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 type blipSyncContext struct {
 	blipContext         *blip.Context
 	db                  *db.Database
-	effectiveUsername   string
 	batchSize           int
 	gotSubChanges       bool
 	continuous          bool
@@ -129,10 +128,9 @@ func (h *handler) handleBLIPSync() error {
 
 	// Create a BLIP-sync context and register handlers:
 	ctx := blipSyncContext{
-		blipContext:       blipContext,
-		db:                h.db,
-		effectiveUsername: h.taggedEffectiveUserName(),
-		terminator:        make(chan bool),
+		blipContext: blipContext,
+		db:          h.db,
+		terminator:  make(chan bool),
 	}
 	defer ctx.close()
 
@@ -152,7 +150,7 @@ func (h *handler) handleBLIPSync() error {
 	server := blipContext.WebSocketServer()
 	defaultHandler := server.Handler
 	server.Handler = func(conn *websocket.Conn) {
-		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol%s.", blipContext.ID, formatEffectiveUserName(ctx.effectiveUsername)))
+		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol%s", blipContext.ID, h.formattedEffectiveUserName()))
 		defer func() {
 			conn.Close() // in case it wasn't closed already
 			ctx.Logf(base.LevelInfo, base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
