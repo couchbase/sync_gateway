@@ -72,12 +72,12 @@ var (
 
 	// Index versions - must be incremented when index definition changes
 	indexPreviousVersions = map[SGIndexType][]int{
-		IndexAccess:     {1},
-		IndexRoleAccess: {1},
-		IndexChannels:   {1},
-		IndexAllDocs:    {1},
-		IndexTombstones: {1},
-		IndexSyncDocs:   {1},
+		IndexAccess:     {},
+		IndexRoleAccess: {},
+		IndexChannels:   {},
+		IndexAllDocs:    {},
+		IndexTombstones: {},
+		IndexSyncDocs:   {},
 	}
 
 	// Expressions used to create index.
