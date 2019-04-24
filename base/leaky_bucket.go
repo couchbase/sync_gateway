@@ -28,7 +28,10 @@ type LeakyBucketConfig struct {
 	// number of times specific in these values and then succeed.
 	DDocDeleteErrorCount int
 	DDocGetErrorCount    int
-	DropIndexErrorCount  int
+
+	// Allows us to force a specific index to be deleted. We will always error when attempting to delete an index if its
+	// name is specified in this slice
+	DropIndexErrorNames []string
 
 	// Emulate TAP/DCP feed de-dupliation behavior, such that within a
 	// window of # of mutations or a timeout, mutations for a given document
@@ -453,10 +456,14 @@ func (b *LeakyBucket) DropIndex(indexName string) error {
 		return errors.New("Not GOCB Bucket")
 	}
 
-	if b.config.DropIndexErrorCount != 0 {
-		b.config.DropIndexErrorCount--
-		return errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", b.config.DropIndexErrorCount))
+	if len(b.config.DropIndexErrorNames) > 0 {
+		for _, indexNameFail := range b.config.DropIndexErrorNames {
+			if indexNameFail == indexName {
+				return errors.New(fmt.Sprintf("Artificial leaky bucket error"))
+			}
+		}
 	}
+
 	return gocbBucket.DropIndex(indexName)
 }
 

@@ -155,9 +155,7 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	//As seen below there are 6 removal candidates. In order to test whether deletion will continue on a failed drop
-	//we force five failures, this should result in five failing to be removed and one actually being removed.
-	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{DropIndexErrorCount: 5})
+	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
 	b, ok := leakyBucket.(*base.LeakyBucket)
 	assert.True(t, ok)
 
@@ -172,6 +170,7 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 
 	//Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
 	//indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:
+	// All previous versions and opposite of current xattr setting eg. for this test ran with non-xattrs:
 	// [sg_channels_x2 sg_channels_x1 sg_channels_1 sg_access_x2 sg_access_x1 sg_access_1]
 	sgIndexes = map[SGIndexType]SGIndex{}
 
@@ -188,6 +187,9 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	removedIndex, removeErr := removeObsoleteIndexes(b, false, db.UseXattrs())
 	assert.NoError(t, removeErr)
 
-	//Six removal candidates and five failures should mean one index is actually removed
-	assert.Equal(t, 1, len(removedIndex))
+	if base.TestUseXattrs() {
+		assert.Contains(t, removedIndex, "sg_channels_x1")
+	} else {
+		assert.Contains(t, removedIndex, "sg_channels_1")
+	}
 }

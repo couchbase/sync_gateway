@@ -70,6 +70,16 @@ var (
 		IndexSyncDocs:   1,
 	}
 
+	// Index versions - must be incremented when index definition changes
+	indexPreviousVersions = map[SGIndexType][]int{
+		IndexAccess:     {1},
+		IndexRoleAccess: {1},
+		IndexChannels:   {1},
+		IndexAllDocs:    {1},
+		IndexTombstones: {1},
+		IndexSyncDocs:   {1},
+	}
+
 	// Expressions used to create index.
 	// See https://issues.couchbase.com/browse/MB-28728 for details on IFMISSING handling in IndexChannels
 	indexExpressions = map[SGIndexType]string{
@@ -124,6 +134,7 @@ func init() {
 		sgIndex := SGIndex{
 			simpleName:       indexNames[i],
 			version:          indexVersions[i],
+			previousVersions: indexPreviousVersions[i],
 			expression:       indexExpressions[i],
 			filterExpression: indexFilterExpressions[i],
 			flags:            indexFlags[i],
@@ -379,6 +390,8 @@ func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs b
 			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, false))
 		}
 	}
+
+	fmt.Println(removalCandidates)
 
 	// Attempt removal of candidates, adding to set of removedIndexes when found
 	for _, indexName := range removalCandidates {
