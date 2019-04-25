@@ -29,7 +29,7 @@ var _ gocb.Logger = GoCBLogger{}
 //   Info   -> SG Debug
 //   Debug  -> SG Trace
 //   Trace  -> SG Trace
-//   Others -> SG Trace
+//   Others -> no-op
 func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocb.LogError:
@@ -38,7 +38,7 @@ func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...inter
 		Warnf(KeyGoCB, format, v...)
 	case gocb.LogInfo:
 		Debugf(KeyGoCB, format, v...)
-	default:
+	case gocb.LogDebug, gocb.LogTrace:
 		Tracef(KeyGoCB, format, v...)
 	}
 	return nil
@@ -58,7 +58,7 @@ var _ gocbcore.Logger = GoCBCoreLogger{}
 //   Info   -> SG Debug
 //   Debug  -> SG Trace
 //   Trace  -> SG Trace
-//   Others -> SG Trace
+//   Others -> no-op
 func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocbcore.LogError:
@@ -67,7 +67,7 @@ func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v 
 		Warnf(KeyGoCB, format, v...)
 	case gocbcore.LogInfo:
 		Debugf(KeyGoCB, format, v...)
-	default:
+	case gocbcore.LogDebug, gocbcore.LogTrace:
 		Tracef(KeyGoCB, format, v...)
 	}
 	return nil
