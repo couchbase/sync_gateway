@@ -70,7 +70,7 @@ var (
 		IndexSyncDocs:   1,
 	}
 
-	// Index versions - must be incremented when index definition changes
+	// Previous index versions - must be appended to when index version changes
 	indexPreviousVersions = map[SGIndexType][]int{
 		IndexAccess:     {},
 		IndexRoleAccess: {},
@@ -390,8 +390,6 @@ func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs b
 			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, false))
 		}
 	}
-
-	fmt.Println(removalCandidates)
 
 	// Attempt removal of candidates, adding to set of removedIndexes when found
 	for _, indexName := range removalCandidates {
