@@ -1,6 +1,7 @@
 package base
 
 import (
+	"github.com/couchbase/clog"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/goutils/logging"
 	"gopkg.in/couchbase/gocbcore.v7"
@@ -71,6 +72,29 @@ func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v 
 		Tracef(KeyGoCB, format, v...)
 	}
 	return nil
+}
+
+// ******************************************************
+// SG Replicate Stuff
+// ******************************************************
+// Log levels are mapped as follows:
+//   Debug   -> SG Debug
+//   Normal  -> SG Info
+//   Warning -> SG Warn
+//   Error   -> SG Error
+//   Panic   -> no-op
+
+var sgreplicateLogFn = func(level clog.LogLevel, format string, args ...interface{}) {
+	switch level {
+	case clog.LevelDebug:
+		Debugf(KeyReplicate, format, args...)
+	case clog.LevelNormal:
+		Infof(KeyReplicate, format, args...)
+	case clog.LevelWarning:
+		Warnf(KeyReplicate, format, args...)
+	case clog.LevelError:
+		Errorf(KeyReplicate, format, args...)
+	}
 }
 
 // **************************************************************

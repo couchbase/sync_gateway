@@ -118,6 +118,8 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 		parameters.ReplicationId = CreateUUID()
 	}
 
+	parameters.LogFn = sgreplicateLogFn
+
 	Infof(KeyReplicate, "Creating replication with parameters %s", UD(parameters))
 
 	// Create stats for this replication
