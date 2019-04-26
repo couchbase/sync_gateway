@@ -385,7 +385,12 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 
 	channelSet := bh.channels
 	if channelSet == nil {
-		channelSet = channels.SetOfOrPanic(channels.AllChannelWildcard)
+		channelSetReturn, err := channels.SetFromArray([]string{channels.AllChannelWildcard}, channels.KeepStar)
+		if err != nil {
+			//panic("HAI")
+			return
+		}
+		channelSet = channelSetReturn
 	}
 
 	caughtUp := false

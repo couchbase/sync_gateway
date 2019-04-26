@@ -133,7 +133,7 @@ func TestReproduce2383(t *testing.T) {
 	defer rt.Close()
 
 	a := rt.ServerContext().Database("db").Authenticator()
-	user, err := a.NewUser("ben", "letmein", channels.SetOfOrPanic("PBS"))
+	user, err := a.NewUser("ben", "letmein", channels.SetOf(t, "PBS"))
 	assert.NoError(t, err, "Error creating new user")
 	a.Save(user)
 
@@ -213,7 +213,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	a := rt.ServerContext().Database("db").Authenticator()
 
 	// Create user:
-	alice, _ := a.NewUser("alice", "letmein", channels.SetOfOrPanic("zero"))
+	alice, _ := a.NewUser("alice", "letmein", channels.SetOf(t, "zero"))
 	a.Save(alice)
 
 	// Create a doc Alice can see:
@@ -286,7 +286,7 @@ func postChanges(t *testing.T, it indexTester) {
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -327,7 +327,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("bernard"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "bernard"))
 	assert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -494,7 +494,7 @@ func postChangesChannelFilter(t *testing.T, it indexTester) {
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -560,7 +560,7 @@ func postChangesAdminChannelGrant(t *testing.T, it indexTester) {
 
 	// Create user with access to channel ABC:
 	a := it.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("ABC"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -1659,7 +1659,7 @@ func changesActiveOnly(t *testing.T, it indexTester) {
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS", "ABC"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -1771,7 +1771,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -1841,7 +1841,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -1938,7 +1938,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -2019,7 +2019,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -2101,7 +2101,7 @@ func TestChangesViewBackfill(t *testing.T) {
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS", "ABC"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -2170,7 +2170,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("*"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "*"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -2248,7 +2248,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -2347,7 +2347,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS", "ABC"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -2504,7 +2504,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS", "ABC"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -2701,7 +2701,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("PBS", "ABC"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -3001,7 +3001,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 
 	// Create user with access to channel ABC:
 	a := rt.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOfOrPanic("ABC"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 

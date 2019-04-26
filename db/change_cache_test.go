@@ -294,7 +294,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 2)
 
 	// Start wait for doc in ABC
-	waiter := db.mutationListener.NewWaiterWithChannels(channels.SetOfOrPanic("ABC"), nil)
+	waiter := db.mutationListener.NewWaiterWithChannels(channels.SetOf(t, "ABC"), nil)
 
 	successChan := make(chan bool)
 	go func() {
@@ -331,7 +331,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("ABC", "PBS", "NBC", "TBS"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	authenticator.Save(user)
 
 	// Simulate seq 3 being delayed - write 1,2,4,5
@@ -398,7 +398,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("ABC", "PBS", "NBC", "CBS"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "CBS"))
 	authenticator.Save(user)
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -500,7 +500,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	assert.True(t, authenticator != nil, "db.Authenticator() returned nil")
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("ABC", "PBS", "NBC", "TBS"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
 	authenticator.Save(user)
 
@@ -565,7 +565,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("ABC"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err, fmt.Sprintf("db.Authenticator() returned err: %v", err))
 	authenticator.Save(user)
 
@@ -623,7 +623,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
 	authenticator.Save(user)
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -830,7 +830,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	assert.True(t, authenticator != nil, "db.Authenticator() returned nil")
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("ABC", "PBS", "NBC", "TBS"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
 	authenticator.Save(user)
 
@@ -922,7 +922,7 @@ func TestChannelRace(t *testing.T) {
 
 	// Create a user with access to channels "Odd", "Even"
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("Even", "Odd"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Even", "Odd"))
 	authenticator.Save(user)
 
 	// Write initial sequences
@@ -1139,7 +1139,7 @@ func TestChannelCacheSize(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOfOrPanic("ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
 	authenticator.Save(user)
 
 	// Write 750 docs to channel ABC

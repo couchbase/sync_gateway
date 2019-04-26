@@ -10,8 +10,8 @@
 package channels
 
 import (
-	"fmt"
 	"strings"
+	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -59,10 +59,10 @@ func SetFromArray(names []string, mode StarMode) (base.Set, error) {
 // Creates a set from zero or more inline string arguments.
 // Channel names must be valid, else the function will panic, so this should only be called
 // with hardcoded known-valid strings.
-func SetOfOrPanic(names ...string) base.Set {
+func SetOf(tb testing.TB, names ...string) base.Set {
 	set, err := SetFromArray(names, KeepStar)
 	if err != nil {
-		panic(fmt.Sprintf("channels.SetOfOrPanic failed: %v", err))
+		tb.Fatalf("channels.SetOf failed: %v", err)
 	}
 	return set
 }

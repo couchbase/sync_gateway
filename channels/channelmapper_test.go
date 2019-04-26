@@ -44,7 +44,7 @@ func TestJavaScriptWorks(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {channel(doc.x.concat(doc.y));}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"x":["abc"],"y":["xyz"]}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Channels, SetOfOrPanic("abc", "xyz"))
+	goassert.DeepEquals(t, res.Channels, SetOf(t, "abc", "xyz"))
 }
 
 // Just verify that the calls to the channel() fn show up in the output channel list.
@@ -52,7 +52,7 @@ func TestSyncFunction(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {channel("foo", "bar"); channel("baz")}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"channels": []}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Channels, SetOfOrPanic("foo", "bar", "baz"))
+	goassert.DeepEquals(t, res.Channels, SetOf(t, "foo", "bar", "baz"))
 }
 
 // Just verify that the calls to the access() fn show up in the output channel list.
@@ -60,7 +60,7 @@ func TestAccessFunction(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {access("foo", "bar"); access("foo", "baz")}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Access, AccessMap{"foo": SetOfOrPanic("bar", "baz")})
+	goassert.DeepEquals(t, res.Access, AccessMap{"foo": SetOf(t, "bar", "baz")})
 }
 
 // Just verify that the calls to the channel() fn show up in the output channel list.
@@ -68,7 +68,7 @@ func TestSyncFunctionTakesArray(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {channel(["foo", "bar ok","baz"])}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"channels": []}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Channels, SetOfOrPanic("foo", "bar ok", "baz"))
+	goassert.DeepEquals(t, res.Channels, SetOf(t, "foo", "bar ok", "baz"))
 }
 
 // Calling channel() with an invalid channel name should return an error.
@@ -90,7 +90,7 @@ func TestAccessFunctionTakesArrayOfUsers(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {access(["foo","bar","baz"], "ginger")}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Access, AccessMap{"bar": SetOfOrPanic("ginger"), "baz": SetOfOrPanic("ginger"), "foo": SetOfOrPanic("ginger")})
+	goassert.DeepEquals(t, res.Access, AccessMap{"bar": SetOf(t, "ginger"), "baz": SetOf(t, "ginger"), "foo": SetOf(t, "ginger")})
 }
 
 // Just verify that the calls to the access() fn show up in the output channel list.
@@ -98,15 +98,15 @@ func TestAccessFunctionTakesArrayOfChannels(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {access("lee", ["ginger", "earl_grey", "green"])}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Access, AccessMap{"lee": SetOfOrPanic("ginger", "earl_grey", "green")})
+	goassert.DeepEquals(t, res.Access, AccessMap{"lee": SetOf(t, "ginger", "earl_grey", "green")})
 }
 
 func TestAccessFunctionTakesArrayOfChannelsAndUsers(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {access(["lee", "nancy"], ["ginger", "earl_grey", "green"])}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Access["lee"], SetOfOrPanic("ginger", "earl_grey", "green"))
-	goassert.DeepEquals(t, res.Access["nancy"], SetOfOrPanic("ginger", "earl_grey", "green"))
+	goassert.DeepEquals(t, res.Access["lee"], SetOf(t, "ginger", "earl_grey", "green"))
+	goassert.DeepEquals(t, res.Access["nancy"], SetOf(t, "ginger", "earl_grey", "green"))
 }
 
 func TestAccessFunctionTakesEmptyArrayUser(t *testing.T) {
@@ -141,7 +141,7 @@ func TestAccessFunctionTakesNonChannelsInArray(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {access("lee", ["ginger", null, 5])}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Access, AccessMap{"lee": SetOfOrPanic("ginger")})
+	goassert.DeepEquals(t, res.Access, AccessMap{"lee": SetOf(t, "ginger")})
 }
 
 func TestAccessFunctionTakesUndefinedUser(t *testing.T) {
@@ -157,7 +157,7 @@ func TestRoleFunction(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {role(["foo","bar","baz"], "role:froods")}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Roles, AccessMap{"bar": SetOfOrPanic("froods"), "baz": SetOfOrPanic("froods"), "foo": SetOfOrPanic("froods")})
+	goassert.DeepEquals(t, res.Roles, AccessMap{"bar": SetOf(t, "froods"), "baz": SetOf(t, "froods"), "foo": SetOf(t, "froods")})
 }
 
 // Now just make sure the input comes through intact
@@ -165,7 +165,7 @@ func TestInputParse(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {channel(doc.channel);}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"channel": "foo"}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Channels, SetOfOrPanic("foo"))
+	goassert.DeepEquals(t, res.Channels, SetOf(t, "foo"))
 }
 
 // A more realistic example
@@ -173,7 +173,7 @@ func TestDefaultChannelMapper(t *testing.T) {
 	mapper := NewDefaultChannelMapper()
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Channels, SetOfOrPanic("foo", "bar", "baz"))
+	goassert.DeepEquals(t, res.Channels, SetOf(t, "foo", "bar", "baz"))
 
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"x": "y"}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -195,7 +195,7 @@ func TestChannelMapperUnderscoreLib(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {channel(_.first(doc.channels));}`)
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, res.Channels, SetOfOrPanic("foo"))
+	goassert.DeepEquals(t, res.Channels, SetOf(t, "foo"))
 }
 
 // Validation by calling reject()
@@ -226,7 +226,7 @@ func TestPublicChannelMapper(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc) {channel(doc.channels);}`)
 	output, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, output.Channels, SetOfOrPanic("foo", "bar", "baz"))
+	goassert.DeepEquals(t, output.Channels, SetOf(t, "foo", "bar", "baz"))
 }
 
 // Test the userCtx name parameter
@@ -359,7 +359,7 @@ func TestSetFunction(t *testing.T) {
 	assert.NoError(t, err, "SetFunction failed")
 	output, err = mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	goassert.DeepEquals(t, output.Channels, SetOfOrPanic("all"))
+	goassert.DeepEquals(t, output.Channels, SetOf(t, "all"))
 }
 
 // Test that expiry function sets the expiry property
@@ -499,8 +499,8 @@ func TestExpiryFunctionMultipleInvocation(t *testing.T) {
 }
 
 func TestChangedUsers(t *testing.T) {
-	a := AccessMap{"alice": SetOfOrPanic("x", "y"), "bita": SetOfOrPanic("z"), "claire": SetOfOrPanic("w")}
-	b := AccessMap{"alice": SetOfOrPanic("x", "z"), "bita": SetOfOrPanic("z"), "diana": SetOfOrPanic("w")}
+	a := AccessMap{"alice": SetOf(t, "x", "y"), "bita": SetOf(t, "z"), "claire": SetOf(t, "w")}
+	b := AccessMap{"alice": SetOf(t, "x", "z"), "bita": SetOf(t, "z"), "diana": SetOf(t, "w")}
 
 	changes := map[string]bool{}
 	ForChangedUsers(a, b, func(name string) {

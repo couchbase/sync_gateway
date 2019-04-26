@@ -1127,7 +1127,10 @@ func (db *Database) updateAndReturnDoc(
 
 			// Update the document struct's channel assignment and user access.
 			// (This uses the new sequence # so has to be done after updating doc.Sequence)
-			doc.updateChannels(channelSet) //FIX: Incorrect if new rev is not current!
+			_, err := doc.updateChannels(channelSet) //FIX: Incorrect if new rev is not current!
+			if err != nil {
+				return doc, writeOpts, shadowerEcho, updatedExpiry, err
+			}
 			changedPrincipals = doc.Access.updateAccess(doc, access)
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
 

@@ -570,7 +570,7 @@ func (doc *document) UpdateExpiry(expiry uint32) {
 
 // Updates the Channels property of a document object with current & past channels.
 // Returns the set of channels that have changed (document joined or left in this revision)
-func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.Set) {
+func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.Set, err error) {
 	var changed []string
 	oldChannels := doc.Channels
 	if oldChannels == nil {
@@ -599,7 +599,8 @@ func (doc *document) updateChannels(newChannels base.Set) (changedChannels base.
 	}
 	if changed != nil {
 		base.Infof(base.KeyCRUD, "\tDoc %q / %q in channels %q", base.UD(doc.ID), doc.CurrentRev, base.UD(newChannels))
-		changedChannels = channels.SetOfOrPanic(changed...)
+		changedChannels, err = channels.SetFromArray(changed, channels.KeepStar)
+		//panic("HAI")
 	}
 	return
 }

@@ -1000,9 +1000,13 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 				rev.Channels = channels
 
 				if rev.ID == doc.CurrentRev {
+					changedChannels, err := doc.updateChannels(channels)
 					changed = len(doc.Access.updateAccess(doc, access)) +
 						len(doc.RoleAccess.updateAccess(doc, roles)) +
-						len(doc.updateChannels(channels))
+						len(changedChannels)
+					if err != nil {
+						return
+					}
 					// Only update document expiry based on the current (active) rev
 					if syncExpiry != nil {
 						doc.UpdateExpiry(*syncExpiry)

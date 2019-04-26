@@ -32,7 +32,7 @@ func TestTimedSetMarshal(t *testing.T) {
 	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":{}}`)
 
-	str.Channels = AtSequence(SetOfOrPanic("a", "b"), 17)
+	str.Channels = AtSequence(SetOf(t, "a", "b"), 17)
 	bytes, err = json.Marshal(str)
 	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":{"a":17,"b":17}}`)
