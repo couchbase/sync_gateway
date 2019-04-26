@@ -569,7 +569,14 @@ func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (remo
 
 // Removes previous versions of Sync Gateway's design docs found on the server
 func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removedIndexes []string, err error) {
-	return removeObsoleteIndexes(context.Bucket, previewOnly, context.UseXattrs())
+
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
+	if !ok {
+		base.Warnf(base.KeyAll, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
+		return make([]string, 0), nil
+	}
+
+	return removeObsoleteIndexes(gocbBucket, previewOnly, context.UseXattrs())
 }
 
 // Trigger terminate check handling for connected continuous replications.

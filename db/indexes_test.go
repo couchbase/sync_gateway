@@ -76,6 +76,9 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
+	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
+	assert.True(t, ok)
+
 	// We have one xattr-only index - adjust expected indexes accordingly
 	expectedIndexes := int(indexTypeCount)
 	if !db.UseXattrs() {
@@ -84,22 +87,22 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	// We don't know the current state of the bucket (may already have xattrs enabled), so run
 	// an initial cleanup to remove existing obsolete indexes
-	removedIndexes, removeErr := removeObsoleteIndexes(testBucket.Bucket, false, db.UseXattrs())
+	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs())
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
-	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, true, !db.UseXattrs())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, !db.UseXattrs())
 	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
-	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, false, !db.UseXattrs())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs())
 	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone
-	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, false, !db.UseXattrs())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs())
 	goassert.Equals(t, len(removedIndexes), 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
@@ -115,8 +118,11 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
+	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
+	assert.True(t, ok)
+
 	// Validate that removeObsoleteIndexes is a no-op for the default case
-	removedIndexes, removeErr := removeObsoleteIndexes(testBucket.Bucket, true, db.UseXattrs())
+	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, true, db.UseXattrs())
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	goassert.Equals(t, len(removedIndexes), 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
@@ -133,8 +139,57 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	sgIndexes[IndexAccess] = accessIndex
 
 	// Validate that removeObsoleteIndexes now triggers removal of one index
-	removedIndexes, removeErr = removeObsoleteIndexes(testBucket.Bucket, true, db.UseXattrs())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, db.UseXattrs())
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	goassert.Equals(t, len(removedIndexes), 1)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
+}
+
+func TestRemoveObsoleteIndexOnFail(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Index tests require Couchbase Bucket")
+	}
+
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
+	b, ok := leakyBucket.(*base.LeakyBucket)
+	assert.True(t, ok)
+
+	//Copy references to existing indexes to variable for future use
+	oldIndexes := sgIndexes
+
+	//Remove all index references used in testing and restore the earlier indexes
+	defer func() {
+		sgIndexes = map[SGIndexType]SGIndex{}
+		sgIndexes = oldIndexes
+	}()
+
+	//Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
+	//indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:
+	// All previous versions and opposite of current xattr setting eg. for this test ran with non-xattrs:
+	// [sg_channels_x2 sg_channels_x1 sg_channels_1 sg_access_x2 sg_access_x1 sg_access_1]
+	sgIndexes = map[SGIndexType]SGIndex{}
+
+	accessIndex := oldIndexes[IndexAccess]
+	accessIndex.version = 2
+	accessIndex.previousVersions = []int{1}
+	sgIndexes[IndexAccess] = accessIndex
+
+	channelIndex := oldIndexes[IndexChannels]
+	channelIndex.version = 2
+	channelIndex.previousVersions = []int{1}
+	sgIndexes[IndexChannels] = channelIndex
+
+	removedIndex, removeErr := removeObsoleteIndexes(b, false, db.UseXattrs())
+	assert.NoError(t, removeErr)
+
+	if base.TestUseXattrs() {
+		assert.Contains(t, removedIndex, "sg_channels_x1")
+	} else {
+		assert.Contains(t, removedIndex, "sg_channels_1")
+	}
 }

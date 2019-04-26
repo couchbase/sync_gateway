@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
@@ -23,10 +24,14 @@ type LeakyBucketConfig struct {
 	// Incr() fails 3 times before finally succeeding
 	IncrTemporaryFailCount uint16
 
-	// Allows us to force a number of failed executions of GetDDoc and DeleteDDoc. It will fail the
+	// Allows us to force a number of failed executions of GetDDoc, DeleteDDoc and DropIndex. It will fail the
 	// number of times specific in these values and then succeed.
 	DDocDeleteErrorCount int
 	DDocGetErrorCount    int
+
+	// Allows us to force a specific index to be deleted. We will always error when attempting to delete an index if its
+	// name is specified in this slice
+	DropIndexErrorNames []string
 
 	// Emulate TAP/DCP feed de-dupliation behavior, such that within a
 	// window of # of mutations or a timeout, mutations for a given document
@@ -48,6 +53,8 @@ func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
 		config: config,
 	}
 }
+
+var _ N1QLBucket = &LeakyBucket{}
 
 func (b *LeakyBucket) GetName() string {
 	return b.bucket.GetName()
@@ -384,6 +391,80 @@ func (b *LeakyBucket) SetPostQueryCallback(callback func(ddoc, viewName string, 
 
 func (b *LeakyBucket) IsSupported(feature sgbucket.BucketFeature) bool {
 	return b.bucket.IsSupported(feature)
+}
+
+func (b *LeakyBucket) Query(statement string, params interface{}, consistency gocb.ConsistencyMode, adhoc bool) (results gocb.QueryResults, err error) {
+	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	if !ok {
+		return nil, errors.New("Not GOCB Bucket")
+	}
+	return gocbBucket.Query(statement, params, consistency, adhoc)
+}
+
+func (b *LeakyBucket) ExplainQuery(statement string, params interface{}) (plain map[string]interface{}, err error) {
+	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	if !ok {
+		return nil, errors.New("Not GOCB Bucket")
+	}
+	return gocbBucket.ExplainQuery(statement, params)
+}
+
+func (b *LeakyBucket) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	if !ok {
+		return errors.New("Not GOCB Bucket")
+	}
+	return gocbBucket.CreateIndex(indexName, expression, filterExpression, options)
+}
+
+func (b *LeakyBucket) BuildDeferredIndexes(indexSet []string) error {
+	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	if !ok {
+		return errors.New("Not GOCB Bucket")
+	}
+	return gocbBucket.BuildDeferredIndexes(indexSet)
+}
+
+func (b *LeakyBucket) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
+	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	if !ok {
+		return errors.New("Not GOCB Bucket")
+	}
+	return gocbBucket.CreatePrimaryIndex(indexName, options)
+}
+
+func (b *LeakyBucket) WaitForIndexOnline(indexName string) error {
+	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	if !ok {
+		return errors.New("Not GOCB Bucket")
+	}
+	return gocbBucket.WaitForIndexOnline(indexName)
+}
+
+func (b *LeakyBucket) GetIndexMeta(indexName string) (exists bool, meta *gocb.IndexInfo, err error) {
+	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	if !ok {
+		return false, nil, errors.New("Not GOCB Bucket")
+	}
+	return gocbBucket.GetIndexMeta(indexName)
+}
+
+func (b *LeakyBucket) DropIndex(indexName string) error {
+
+	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	if !ok {
+		return errors.New("Not GOCB Bucket")
+	}
+
+	if len(b.config.DropIndexErrorNames) > 0 {
+		for _, indexNameFail := range b.config.DropIndexErrorNames {
+			if indexNameFail == indexName {
+				return errors.New(fmt.Sprintf("Artificial leaky bucket error"))
+			}
+		}
+	}
+
+	return gocbBucket.DropIndex(indexName)
 }
 
 // An implementation of a sgbucket tap feed that wraps
