@@ -609,6 +609,18 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
+	compactInterval := config.CompactInterval
+	if compactInterval == nil {
+		compactInterval = &db.DefaultCompactInterval
+	} else {
+		if *compactInterval < db.CompactIntervalMin && *compactInterval != 0 {
+			return nil, fmt.Errorf("compact_interval cannot be lower than %d", db.CompactIntervalMin)
+		}
+		if *compactInterval > db.CompactIntervalMax {
+			return nil, fmt.Errorf("compact_interval cannot be higher than %d", db.CompactIntervalMax)
+		}
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		IndexOptions:              channelIndexOptions,
@@ -628,6 +640,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		UseViews:                  useViews,
 		DeltaSyncOptions:          deltaSyncOptions,
+		CompactInterval:           *compactInterval,
 	}
 
 	// Create the DB Context
