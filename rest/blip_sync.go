@@ -387,7 +387,6 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 	if channelSet == nil {
 		channelSetReturn, err := channels.SetFromArray([]string{channels.AllChannelWildcard}, channels.KeepStar)
 		if err != nil {
-			//panic("HAI")
 			return
 		}
 		channelSet = channelSetReturn
