@@ -298,6 +298,8 @@ func (h *handler) handleChanges() error {
 
 	forceClose := false
 
+	var err error
+
 	switch feed {
 	case "normal":
 		if filter == "_doc_ids" {
