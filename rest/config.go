@@ -203,7 +203,7 @@ type DbConfig struct {
 	SendWWWAuthenticateHeader *bool                          `json:"send_www_authenticate_header,omitempty"` // If false, disables setting of 'WWW-Authenticate' header in 401 responses
 	BucketOpTimeoutMs         *uint32                        `json:"bucket_op_timeout_ms,omitempty"`         // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 	DeltaSync                 *DeltaSyncConfig               `json:"delta_sync,omitempty"`                   // Config for delta sync
-	CompactInterval           *uint32                        `json:"compact_interval,omitempty"`             //Interval in minutes between compaction is automatically ran - 0 means don't run
+	CompactIntervalDays       *float32                       `json:"compact_interval_days,omitempty"`        //Interval in days between compaction is automatically ran - 0 means don't run
 }
 
 type DeltaSyncConfig struct {

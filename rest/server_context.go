@@ -609,16 +609,18 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
-	compactInterval := config.CompactInterval
-	if compactInterval == nil {
-		compactInterval = &db.DefaultCompactInterval
+	compactIntervalDays := config.CompactIntervalDays
+	var compactIntervalSecs uint32
+	if compactIntervalDays == nil {
+		compactIntervalSecs = db.DefaultCompactInterval
 	} else {
-		if *compactInterval < db.CompactIntervalMin && *compactInterval != 0 {
-			return nil, fmt.Errorf("compact_interval cannot be lower than %d", db.CompactIntervalMin)
+		if *compactIntervalDays < db.CompactIntervalMinDays && *compactIntervalDays != 0 {
+			return nil, fmt.Errorf("compact_interval_days cannot be lower than %d", db.CompactIntervalMinDays)
 		}
-		if *compactInterval > db.CompactIntervalMax {
-			return nil, fmt.Errorf("compact_interval cannot be higher than %d", db.CompactIntervalMax)
+		if *compactIntervalDays > db.CompactIntervalMaxDays {
+			return nil, fmt.Errorf("compact_interval_days cannot be higher than %d", db.CompactIntervalMaxDays)
 		}
+		compactIntervalSecs = uint32(*compactIntervalDays * 60 * 60 * 24)
 	}
 
 	contextOptions := db.DatabaseContextOptions{
@@ -640,7 +642,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		UseViews:                  useViews,
 		DeltaSyncOptions:          deltaSyncOptions,
-		CompactInterval:           *compactInterval,
+		CompactInterval:           compactIntervalSecs,
 	}
 
 	// Create the DB Context

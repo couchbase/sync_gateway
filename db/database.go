@@ -61,11 +61,11 @@ var (
 	DefaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24) // 24 hours in seconds
 )
 
-var DefaultCompactInterval = uint32(1440) // Default compact interval in minutes
+var DefaultCompactInterval = uint32(60 * 60 * 24) // Default compact interval in seconds = 1 Day
 
 const (
-	CompactIntervalMin = 60
-	CompactIntervalMax = 86400
+	CompactIntervalMinDays = float32(0.042) //1 Hour in days
+	CompactIntervalMaxDays = float32(60)    //60 Days in seconds
 )
 
 // Basic description of a database. Shared between all Database objects on the same database.
@@ -97,7 +97,7 @@ type DatabaseContext struct {
 	serverUUID         string                  // UUID of the server, if available
 	DbStats            *DatabaseStats          // stats that correspond to this database context
 	CompactState       uint32                  //Status of database compaction
-	terminator         chan bool               //Signal termination of background gorountes
+	terminator         chan bool               //Signal termination of background goroutines
 }
 
 type DatabaseContextOptions struct {
@@ -119,7 +119,7 @@ type DatabaseContextOptions struct {
 	SendWWWAuthenticateHeader *bool            // False disables setting of 'WWW-Authenticate' header
 	UseViews                  bool             // Force use of views
 	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
-	CompactInterval           uint32
+	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
 }
 
 type OidcTestProviderOptions struct {
@@ -436,7 +436,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				context.backgroundTask("Compact database", func() error {
 					_, err := context.Compact()
 					return err
-				}, time.Duration(context.Options.CompactInterval)*time.Minute)
+				}, time.Duration(context.Options.CompactInterval)*time.Second)
 			} else {
 				base.Warnf(base.KeyAll, "Automatic compaction can only be enabled on nodes running an Import process")
 			}
@@ -931,7 +931,7 @@ func VacuumAttachments(bucket base.Bucket) (int, error) {
 	return 0, base.HTTPErrorf(http.StatusNotImplemented, "Vacuum is temporarily out of order")
 }
 
-//backgroundTask runs task at the specified time interval in its own goroutine until the changeCache is stopped
+//backgroundTask runs task at the specified time interval in its own goroutine until stopped
 func (context *DatabaseContext) backgroundTask(name string, task BackgroundTaskFunc, interval time.Duration) {
 	base.Infof(base.KeyAll, "Database %s: Created background task: %q with interval %v", base.MD(context.Name), name, interval)
 	go func() {
