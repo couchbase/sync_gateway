@@ -75,7 +75,7 @@ func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v 
 }
 
 // ******************************************************
-// SG Replicate Stuff
+// SG Replicate Logging
 // ******************************************************
 // Log levels are mapped as follows:
 //   Debug   -> SG Debug
