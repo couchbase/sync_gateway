@@ -829,7 +829,6 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 				Seq: logEntry.Sequence,
 			}
 			change := makeChangeEntry(logEntry, seqID, feedHandler.channelName)
-
 			feed <- &change
 		}
 	}()
