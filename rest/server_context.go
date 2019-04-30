@@ -381,28 +381,28 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// Set cache properties, if present
 	cacheOptions := db.CacheOptions{}
 	if config.CacheConfig != nil {
-		if config.CacheConfig.CachePendingSeqMaxNum != nil && *config.CacheConfig.CachePendingSeqMaxNum > 0 {
-			cacheOptions.CachePendingSeqMaxNum = *config.CacheConfig.CachePendingSeqMaxNum
+		if config.CacheConfig.ChannelCache.MaxNumPending != nil && *config.CacheConfig.ChannelCache.MaxNumPending > 0 {
+			cacheOptions.CachePendingSeqMaxNum = *config.CacheConfig.ChannelCache.MaxNumPending
 		}
-		if config.CacheConfig.CachePendingSeqMaxWait != nil && *config.CacheConfig.CachePendingSeqMaxWait > 0 {
-			cacheOptions.CachePendingSeqMaxWait = time.Duration(*config.CacheConfig.CachePendingSeqMaxWait) * time.Millisecond
+		if config.CacheConfig.ChannelCache.MaxWaitPending != nil && *config.CacheConfig.ChannelCache.MaxWaitPending > 0 {
+			cacheOptions.CachePendingSeqMaxWait = time.Duration(*config.CacheConfig.ChannelCache.MaxWaitPending) * time.Millisecond
 		}
-		if config.CacheConfig.CacheSkippedSeqMaxWait != nil && *config.CacheConfig.CacheSkippedSeqMaxWait > 0 {
-			cacheOptions.CacheSkippedSeqMaxWait = time.Duration(*config.CacheConfig.CacheSkippedSeqMaxWait) * time.Millisecond
+		if config.CacheConfig.ChannelCache.MaxWaitSkipped != nil && *config.CacheConfig.ChannelCache.MaxWaitSkipped > 0 {
+			cacheOptions.CacheSkippedSeqMaxWait = time.Duration(*config.CacheConfig.ChannelCache.MaxWaitSkipped) * time.Millisecond
 		}
 		// set EnableStarChannelLog directly here (instead of via NewDatabaseContext), so that it's set when we create the channels view in ConnectToBucket
-		if config.CacheConfig.EnableStarChannel != nil {
-			db.EnableStarChannelLog = *config.CacheConfig.EnableStarChannel
+		if config.CacheConfig.ChannelCache.EnableStarChannelCache != nil {
+			db.EnableStarChannelLog = *config.CacheConfig.ChannelCache.EnableStarChannelCache
 		}
 
-		if config.CacheConfig.ChannelCacheMaxLength != nil && *config.CacheConfig.ChannelCacheMaxLength > 0 {
-			cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheMaxLength
+		if config.CacheConfig.ChannelCache.MaxLength != nil && *config.CacheConfig.ChannelCache.MaxLength > 0 {
+			cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCache.MaxLength
 		}
-		if config.CacheConfig.ChannelCacheMinLength != nil && *config.CacheConfig.ChannelCacheMinLength > 0 {
-			cacheOptions.ChannelCacheMinLength = *config.CacheConfig.ChannelCacheMinLength
+		if config.CacheConfig.ChannelCache.MinLength != nil && *config.CacheConfig.ChannelCache.MinLength > 0 {
+			cacheOptions.ChannelCacheMinLength = *config.CacheConfig.ChannelCache.MinLength
 		}
-		if config.CacheConfig.ChannelCacheAge != nil && *config.CacheConfig.ChannelCacheAge > 0 {
-			cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheAge) * time.Second
+		if config.CacheConfig.ChannelCache.Expiry != nil && *config.CacheConfig.ChannelCache.Expiry > 0 {
+			cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCache.Expiry) * time.Second
 		}
 
 	}

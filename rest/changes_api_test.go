@@ -649,9 +649,11 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	numIndexReplicas := uint(0)
 	shortWaitConfig := &DbConfig{
 		CacheConfig: &CacheConfig{
-			CachePendingSeqMaxWait: &pendingMaxWait,
-			CachePendingSeqMaxNum:  &maxNum,
-			CacheSkippedSeqMaxWait: &skippedMaxWait,
+			ChannelCache: &ChannelCacheConfig{
+				MaxWaitPending: &pendingMaxWait,
+				MaxNumPending:  &maxNum,
+				MaxWaitSkipped: &skippedMaxWait,
+			},
 		},
 		NumIndexReplicas: &numIndexReplicas,
 	}
@@ -738,9 +740,11 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	numIndexReplicas := uint(0)
 	shortWaitConfig := &DbConfig{
 		CacheConfig: &CacheConfig{
-			CachePendingSeqMaxWait: &pendingMaxWait,
-			CachePendingSeqMaxNum:  &maxNum,
-			CacheSkippedSeqMaxWait: &skippedMaxWait,
+			ChannelCache: &ChannelCacheConfig{
+				MaxWaitPending: &pendingMaxWait,
+				MaxNumPending:  &maxNum,
+				MaxWaitSkipped: &skippedMaxWait,
+			},
 		},
 		NumIndexReplicas: &numIndexReplicas,
 	}
@@ -870,9 +874,11 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	numIndexReplicas := uint(0)
 	shortWaitConfig := &DbConfig{
 		CacheConfig: &CacheConfig{
-			CachePendingSeqMaxWait: &pendingMaxWait,
-			CachePendingSeqMaxNum:  &maxNum,
-			CacheSkippedSeqMaxWait: &skippedMaxWait,
+			ChannelCache: &ChannelCacheConfig{
+				MaxWaitPending: &pendingMaxWait,
+				MaxNumPending:  &maxNum,
+				MaxWaitSkipped: &skippedMaxWait,
+			},
 		},
 		NumIndexReplicas: &numIndexReplicas,
 	}
@@ -999,9 +1005,11 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	numIndexReplicas := uint(0)
 	shortWaitConfig := &DbConfig{
 		CacheConfig: &CacheConfig{
-			CachePendingSeqMaxWait: &pendingMaxWait,
-			CachePendingSeqMaxNum:  &maxNum,
-			CacheSkippedSeqMaxWait: &skippedMaxWait,
+			ChannelCache: &ChannelCacheConfig{
+				MaxWaitPending: &pendingMaxWait,
+				MaxNumPending:  &maxNum,
+				MaxWaitSkipped: &skippedMaxWait,
+			},
 		},
 		NumIndexReplicas: &numIndexReplicas,
 	}
@@ -2687,8 +2695,10 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	cacheSize := 2
 	shortWaitConfig := &DbConfig{
 		CacheConfig: &CacheConfig{
-			ChannelCacheMinLength: &cacheSize,
-			ChannelCacheMaxLength: &cacheSize,
+			ChannelCache: &ChannelCacheConfig{
+				MinLength: &cacheSize,
+				MaxLength: &cacheSize,
+			},
 		},
 	}
 
