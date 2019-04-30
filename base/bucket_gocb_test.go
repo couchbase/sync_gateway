@@ -481,11 +481,20 @@ func TestIncrAmtZero(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+
 	key := "TestIncrAmtZero"
 
 	bucket, ok := AsGoCBBucket(GetTestBucketOrPanic())
 	require.True(t, ok, "bucket was not a gocb bucket")
-	defer bucket.Close()
+
+	defer func() {
+		err := bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing counter from bucket")
+		}
+	}()
 
 	// key hasn't been created, so we'll fall into the special 'Get' handling in Incr
 	val, err := bucket.Incr(key, 0, 1, 0)
