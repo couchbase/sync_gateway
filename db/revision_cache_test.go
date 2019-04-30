@@ -47,7 +47,7 @@ func TestRevisionCache(t *testing.T) {
 		goassert.DeepEquals(t, channels, base.Set(nil))
 	}
 
-	cache := NewRevisionCacheShard(10, nil, initEmptyStatsMap(base.StatsGroupKeyCache))
+	cache := NewLRURevisionCache(10, nil, initEmptyStatsMap(base.StatsGroupKeyCache))
 	for i := 0; i < 10; i++ {
 		body, history, channels := revForTest(i)
 		docRev := testDocRev(body[BodyRev].(string), body, history, channels, nil, nil)
@@ -55,7 +55,7 @@ func TestRevisionCache(t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
-		getDocRev, _ := cache.Get(ids[i], "x")
+		getDocRev, _ := cache.Get(ids[i], "x", BodyShallowCopy)
 		verify(getDocRev.Body, getDocRev.History, getDocRev.Channels, i)
 	}
 
@@ -66,11 +66,11 @@ func TestRevisionCache(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		docRev, _ := cache.Get(ids[i], "x")
+		docRev, _ := cache.Get(ids[i], "x", BodyShallowCopy)
 		goassert.True(t, docRev.Body == nil)
 	}
 	for i := 3; i < 13; i++ {
-		docRev, _ := cache.Get(ids[i], "x")
+		docRev, _ := cache.Get(ids[i], "x", BodyShallowCopy)
 		verify(docRev.Body, docRev.History, docRev.Channels, i)
 	}
 }
@@ -91,28 +91,28 @@ func TestLoaderFunction(t *testing.T) {
 		}
 		return
 	}
-	cache := NewRevisionCache(10, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
+	cache := NewShardedLRURevisionCache(10, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
 
-	docRev, err := cache.Get("Jens", "1")
+	docRev, err := cache.Get("Jens", "1", BodyShallowCopy)
 	goassert.Equals(t, docRev.Body[BodyId], "Jens")
 	goassert.True(t, docRev.History != nil)
 	goassert.True(t, docRev.Channels != nil)
 	goassert.Equals(t, err, error(nil))
 	goassert.Equals(t, callsToLoader, 1)
 
-	docRev, err = cache.Get("Peter", "1")
+	docRev, err = cache.Get("Peter", "1", BodyShallowCopy)
 	goassert.DeepEquals(t, docRev.Body, Body(nil))
 	goassert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
 	goassert.Equals(t, callsToLoader, 2)
 
-	docRev, err = cache.Get("Jens", "1")
+	docRev, err = cache.Get("Jens", "1", BodyShallowCopy)
 	goassert.Equals(t, docRev.Body[BodyId], "Jens")
 	goassert.True(t, docRev.History != nil)
 	goassert.True(t, docRev.Channels != nil)
 	goassert.Equals(t, err, error(nil))
 	goassert.Equals(t, callsToLoader, 2)
 
-	docRev, err = cache.Get("Peter", "1")
+	docRev, err = cache.Get("Peter", "1", BodyShallowCopy)
 	goassert.DeepEquals(t, docRev.Body, Body(nil))
 	goassert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
 	goassert.Equals(t, callsToLoader, 3)
@@ -190,8 +190,8 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
 
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
-	docRevision, err := db.revisionCache.GetCached(rev1key, rev1id)
-	assert.NoError(t, err, "Unexpected error calling db.revisionCache.Get")
+	docRevision, ok := db.revisionCache.Peek(rev1key, rev1id)
+	assert.True(t, ok)
 	_, ok = docRevision.Body[BodyAttachments]
 	assert.False(t, ok, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
@@ -240,7 +240,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
 
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
-	docRevision, err := db.revisionCache.Get(docKey, rev2id)
+	docRevision, err := db.revisionCache.Get(docKey, rev2id, BodyShallowCopy)
 	assert.NoError(t, err, "Unexpected error calling db.revisionCache.Get")
 	_, ok = docRevision.Body[BodyAttachments]
 	assert.False(t, ok, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
@@ -269,18 +269,18 @@ func TestRevisionImmutableDelta(t *testing.T) {
 		channels = base.SetOf("*")
 		return
 	}
-	cache := NewRevisionCache(10, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
+	cache := NewShardedLRURevisionCache(10, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
 
 	firstDelta := []byte("delta")
 	secondDelta := []byte("modified delta")
 
 	// Trigger load into cache
-	_, err := cache.Get("doc1", "rev1")
+	_, err := cache.Get("doc1", "rev1", BodyShallowCopy)
 	assert.NoError(t, err, "Error adding to cache")
 	cache.UpdateDelta("doc1", "rev1", &RevisionDelta{ToRevID: "rev2", DeltaBytes: firstDelta})
 
 	// Retrieve from cache
-	retrievedRev, err := cache.Get("doc1", "rev1")
+	retrievedRev, err := cache.Get("doc1", "rev1", BodyShallowCopy)
 	assert.NoError(t, err, "Error retrieving from cache")
 	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
@@ -291,7 +291,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 	// Retrieve again, validate delta is correct
-	updatedRev, err := cache.Get("doc1", "rev1")
+	updatedRev, err := cache.Get("doc1", "rev1", BodyShallowCopy)
 	assert.NoError(t, err, "Error retrieving from cache")
 	assert.Equal(t, "rev3", updatedRev.Delta.ToRevID)
 	assert.Equal(t, secondDelta, updatedRev.Delta.DeltaBytes)
@@ -313,11 +313,11 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 		channels = base.SetOf("*")
 		return
 	}
-	cache := NewRevisionCache(5000, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
+	cache := NewShardedLRURevisionCache(5000, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
 
 	// trigger load into cache
 	for i := 0; i < 5000; i++ {
-		_, err := cache.Get(fmt.Sprintf("doc%d", i), "rev1")
+		_, err := cache.Get(fmt.Sprintf("doc%d", i), "rev1", BodyShallowCopy)
 		assert.NoError(b, err, "Error initializing cache for BenchmarkRevisionCacheRead")
 	}
 
@@ -326,7 +326,7 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 		//GET the document until test run has completed
 		for pb.Next() {
 			docId := fmt.Sprintf("doc%d", rand.Intn(5000))
-			docrev, err := cache.Get(docId, "rev1")
+			docrev, err := cache.Get(docId, "rev1", BodyShallowCopy)
 			if err != nil {
 				assert.Fail(b, "Unexpected error for docrev:%+v", docrev)
 			}

@@ -281,10 +281,10 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 	if revIDGiven {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, err = db.revisionCache.GetWithCopy(docid, revid, copyType)
+		revision, err = db.revisionCache.Get(docid, revid, copyType)
 	} else {
 		// No rev ID given, so load active revision
-		revision, err = db.revisionCache.GetActive(docid, db.DatabaseContext)
+		revision, err = db.revisionCache.GetActive(docid, db.DatabaseContext, copyType)
 		if revision.Body != nil {
 			revid = revision.RevID
 		}
@@ -377,7 +377,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		return nil, nil
 	}
 
-	fromRevision, err := db.revisionCache.GetWithCopy(docID, fromRevID, BodyNoCopy)
+	fromRevision, err := db.revisionCache.Get(docID, fromRevID, BodyNoCopy)
 
 	// If neither body nor delta is available for fromRevId, the delta can't be generated
 	if fromRevision.Body == nil && fromRevision.Delta == nil {
@@ -400,7 +400,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	if fromRevision.Body != nil {
 
 		db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
-		toBody, err := db.revisionCache.GetWithCopy(docID, toRevID, BodyDeepCopy)
+		toBody, err := db.revisionCache.Get(docID, toRevID, BodyDeepCopy)
 		if err != nil {
 			return nil, err
 		}
@@ -422,7 +422,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		if err != nil {
 			return nil, err
 		}
-		revCacheDelta := NewRevCacheDelta(deltaBytes, fromRevID, toBody)
+		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toBody)
 
 		// Write the newly calculated delta back into the cache before returning
 		db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)

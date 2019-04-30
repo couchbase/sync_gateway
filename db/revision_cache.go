@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -16,22 +16,22 @@ var KDefaultRevisionCacheCapacity uint32 = 5000
 var KDefaultNumCacheShards uint16 = 8
 
 type ShardedRevisionCache struct {
-	caches    []*RevisionCache
+	caches    []*LRURevisionCache
 	numShards uint16
 }
 
-// Creates a revision cache with the given capacity and an optional loader function.
-func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *ShardedRevisionCache {
+// Creates a sharded revision cache with the given capacity and an optional loader function.
+func NewShardedLRURevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *ShardedRevisionCache {
 
 	numShards := KDefaultNumCacheShards
 	if capacity == 0 {
 		capacity = KDefaultRevisionCacheCapacity
 	}
 
-	caches := make([]*RevisionCache, numShards)
+	caches := make([]*LRURevisionCache, numShards)
 	perCacheCapacity := uint32(capacity/uint32(numShards)) + 1
 	for i := 0; i < int(numShards); i++ {
-		caches[i] = NewRevisionCacheShard(perCacheCapacity, loaderFunc, statsCache)
+		caches[i] = NewLRURevisionCache(perCacheCapacity, loaderFunc, statsCache)
 	}
 
 	return &ShardedRevisionCache{
@@ -40,36 +40,32 @@ func NewRevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, stats
 	}
 }
 
-func (sc *ShardedRevisionCache) getShard(docID string) uint32 {
-	return sgbucket.VBHash(docID, sc.numShards)
+func (sc *ShardedRevisionCache) getShard(docID string) *LRURevisionCache {
+	return sc.caches[sgbucket.VBHash(docID, sc.numShards)]
 }
 
-func (sc *ShardedRevisionCache) Get(docID, revID string) (DocumentRevision, error) {
-	return sc.caches[sc.getShard(docID)].Get(docID, revID)
+func (sc *ShardedRevisionCache) Get(docID, revID string, copyType BodyCopyType) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).Get(docID, revID, copyType)
 }
 
-func (sc *ShardedRevisionCache) GetCached(docID, revID string) (DocumentRevision, error) {
-	return sc.caches[sc.getShard(docID)].GetCached(docID, revID)
-}
-
-func (sc *ShardedRevisionCache) GetWithCopy(docID, revID string, copyType BodyCopyType) (DocumentRevision, error) {
-	return sc.caches[sc.getShard(docID)].GetWithCopy(docID, revID, copyType)
+func (sc *ShardedRevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
+	return sc.getShard(docID).Peek(docID, revID)
 }
 
 func (sc *ShardedRevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
-	sc.caches[sc.getShard(docID)].UpdateDelta(docID, revID, toDelta)
+	sc.getShard(docID).UpdateDelta(docID, revID, toDelta)
 }
 
-func (sc *ShardedRevisionCache) GetActive(docID string, context *DatabaseContext) (docRev DocumentRevision, err error) {
-	return sc.caches[sc.getShard(docID)].GetActive(docID, context)
+func (sc *ShardedRevisionCache) GetActive(docID string, context *DatabaseContext, copyType BodyCopyType) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).GetActive(docID, context, copyType)
 }
 
 func (sc *ShardedRevisionCache) Put(docID string, docRev DocumentRevision) {
-	sc.caches[sc.getShard(docID)].Put(docID, docRev)
+	sc.getShard(docID).Put(docID, docRev)
 }
 
 // An LRU cache of document revision bodies, together with their channel access.
-type RevisionCache struct {
+type LRURevisionCache struct {
 	cache       map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
 	lruList     *list.List                 // List ordered by most recent access (Front is newest)
 	capacity    uint32                     // Max number of revisions to cache
@@ -77,22 +73,6 @@ type RevisionCache struct {
 	lock        sync.Mutex                 // For thread-safety
 	cacheHits   *expvar.Int
 	cacheMisses *expvar.Int
-}
-
-// Revision information as returned by the rev cache
-type DocumentRevision struct {
-	RevID       string
-	Body        Body
-	History     Revisions
-	Channels    base.Set
-	Expiry      *time.Time
-	Attachments AttachmentsMeta
-	Delta       *RevisionDelta
-}
-
-type IDAndRev struct {
-	DocID string
-	RevID string
 }
 
 // Callback function signature for loading something from the rev cache
@@ -111,32 +91,14 @@ type revCacheValue struct {
 	lock        sync.RWMutex    // Synchronizes access to this struct
 }
 
-type RevisionDelta struct {
-	ToRevID           string   // Target revID for the delta
-	DeltaBytes        []byte   // The actual delta
-	AttachmentDigests []string // Digests for all attachments present on ToRevID
-	RevisionHistory   []string // Revision history from parent of ToRevID to source revID, in descending order
-}
-
-func NewRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision) *RevisionDelta {
-
-	return &RevisionDelta{
-		ToRevID:           toRevision.RevID,
-		DeltaBytes:        deltaBytes,
-		AttachmentDigests: AttachmentDigests(toRevision.Attachments), // Flatten the AttachmentsMeta into a list of digests
-		RevisionHistory:   toRevision.History.parseAncestorRevisions(fromRevID),
-	}
-
-}
-
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewRevisionCacheShard(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *RevisionCache {
+func NewLRURevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *LRURevisionCache {
 
 	if capacity == 0 {
 		capacity = KDefaultRevisionCacheCapacity
 	}
 
-	return &RevisionCache{
+	return &LRURevisionCache{
 		cache:       map[IDAndRev]*list.Element{},
 		lruList:     list.New(),
 		capacity:    capacity,
@@ -150,32 +112,31 @@ func NewRevisionCacheShard(capacity uint32, loaderFunc RevisionCacheLoaderFunc, 
 // Returns the body of the revision, its history, and the set of channels it's in.
 // If the cache has a loaderFunction, it will be called if the revision isn't in the cache;
 // any error returned by the loaderFunction will be returned from Get.
-func (rc *RevisionCache) Get(docid, revid string) (DocumentRevision, error) {
-	return rc.getFromCache(docid, revid, BodyShallowCopy, rc.loaderFunc != nil)
+func (rc *LRURevisionCache) Get(docID, revID string, copyType BodyCopyType) (DocumentRevision, error) {
+	return rc.getFromCache(docID, revID, copyType, rc.loaderFunc != nil)
 }
 
 // Looks up a revision from the cache only.  Will not fall back to loader function if not
 // present in the cache.
-func (rc *RevisionCache) GetCached(docid, revid string) (DocumentRevision, error) {
-	return rc.getFromCache(docid, revid, BodyShallowCopy, false)
-}
-
-// Returns the body of the revision based on the specified body copy policy (deep/shallow/none)
-func (rc *RevisionCache) GetWithCopy(docid, revid string, copyType BodyCopyType) (DocumentRevision, error) {
-	return rc.getFromCache(docid, revid, copyType, rc.loaderFunc != nil)
+func (rc *LRURevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
+	docRev, err := rc.getFromCache(docID, revID, BodyShallowCopy, false)
+	if err != nil {
+		return DocumentRevision{}, false
+	}
+	return docRev, docRev.Body != nil
 }
 
 // Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
 // fails silently
-func (rc *RevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
+func (rc *LRURevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
 	value := rc.getValue(docID, revID, false)
 	if value != nil {
 		value.updateDelta(toDelta)
 	}
 }
 
-func (rc *RevisionCache) getFromCache(docid, revid string, copyType BodyCopyType, loadOnCacheMiss bool) (DocumentRevision, error) {
-	value := rc.getValue(docid, revid, loadOnCacheMiss)
+func (rc *LRURevisionCache) getFromCache(docID, revID string, copyType BodyCopyType, loadOnCacheMiss bool) (DocumentRevision, error) {
+	value := rc.getValue(docID, revID, loadOnCacheMiss)
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
@@ -193,10 +154,10 @@ func (rc *RevisionCache) getFromCache(docid, revid string, copyType BodyCopyType
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
 // rev cache, will use it.  Otherwise will add to the rev cache using the raw document obtained in the
 // initial retrieval.
-func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (docRev DocumentRevision, err error) {
+func (rc *LRURevisionCache) GetActive(docID string, context *DatabaseContext, copyType BodyCopyType) (docRev DocumentRevision, err error) {
 
 	// Look up active rev for doc
-	bucketDoc, getErr := context.GetDocument(docid, DocUnmarshalSync)
+	bucketDoc, getErr := context.GetDocument(docID, DocUnmarshalSync)
 	if getErr != nil {
 		return DocumentRevision{}, getErr
 	}
@@ -205,8 +166,8 @@ func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (docR
 	}
 
 	// Retrieve from or add to rev cache
-	value := rc.getValue(docid, bucketDoc.CurrentRev, true)
-	docRev, statEvent, err := value.loadForDoc(bucketDoc, context, BodyShallowCopy)
+	value := rc.getValue(docID, bucketDoc.CurrentRev, true)
+	docRev, statEvent, err := value.loadForDoc(bucketDoc, context, copyType)
 	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
@@ -215,7 +176,7 @@ func (rc *RevisionCache) GetActive(docid string, context *DatabaseContext) (docR
 	return docRev, err
 }
 
-func (rc *RevisionCache) statsRecorderFunc(cacheHit bool) {
+func (rc *LRURevisionCache) statsRecorderFunc(cacheHit bool) {
 
 	if cacheHit {
 		rc.cacheHits.Add(1)
@@ -225,19 +186,19 @@ func (rc *RevisionCache) statsRecorderFunc(cacheHit bool) {
 }
 
 // Adds a revision to the cache.
-func (rc *RevisionCache) Put(docid string, docRev DocumentRevision) {
+func (rc *LRURevisionCache) Put(docID string, docRev DocumentRevision) {
 	if docRev.History == nil {
 		panic("Missing history for RevisionCache.Put")
 	}
-	value := rc.getValue(docid, docRev.RevID, true)
+	value := rc.getValue(docID, docRev.RevID, true)
 	value.store(docRev)
 }
 
-func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revCacheValue) {
-	if docid == "" || revid == "" {
+func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {
+	if docID == "" || revID == "" {
 		panic("RevisionCache: invalid empty doc/rev id")
 	}
-	key := IDAndRev{DocID: docid, RevID: revid}
+	key := IDAndRev{DocID: docID, RevID: revID}
 	rc.lock.Lock()
 	if elem := rc.cache[key]; elem != nil {
 		rc.lruList.MoveToFront(elem)
@@ -253,7 +214,7 @@ func (rc *RevisionCache) getValue(docid, revid string, create bool) (value *revC
 	return
 }
 
-func (rc *RevisionCache) removeValue(value *revCacheValue) {
+func (rc *LRURevisionCache) removeValue(value *revCacheValue) {
 	rc.lock.Lock()
 	if element := rc.cache[value.key]; element != nil && element.Value == value {
 		rc.lruList.Remove(element)
@@ -262,7 +223,7 @@ func (rc *RevisionCache) removeValue(value *revCacheValue) {
 	rc.lock.Unlock()
 }
 
-func (rc *RevisionCache) purgeOldest_() {
+func (rc *LRURevisionCache) purgeOldest_() {
 	value := rc.lruList.Remove(rc.lruList.Back()).(*revCacheValue)
 	delete(rc.cache, value.key)
 }
