@@ -22,7 +22,6 @@ import (
 	goassert "github.com/couchbaselabs/go.assert"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
@@ -477,17 +476,11 @@ func TestIncrCounter(t *testing.T) {
 // TestIncrAmtZero covers the special handling in Incr for when amt=0 on an unknown key
 func TestIncrAmtZero(t *testing.T) {
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	testBucket := GetTestBucketOrPanic()
 	defer testBucket.Close()
+	bucket := testBucket.Bucket
 
 	key := "TestIncrAmtZero"
-
-	bucket, ok := AsGoCBBucket(GetTestBucketOrPanic())
-	require.True(t, ok, "bucket was not a gocb bucket")
 
 	defer func() {
 		err := bucket.Delete(key)
@@ -497,7 +490,7 @@ func TestIncrAmtZero(t *testing.T) {
 	}()
 
 	// key hasn't been created, so we'll fall into the special 'Get' handling in Incr
-	val, err := bucket.Incr(key, 0, 1, 0)
+	val, err := bucket.Incr(key, 0, 0, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(0), val)
 
@@ -507,7 +500,7 @@ func TestIncrAmtZero(t *testing.T) {
 	assert.Equal(t, uint64(1), val)
 
 	// Do another amt=0 to make sure we get the new incremented value
-	val, err = bucket.Incr(key, 0, 1, 0)
+	val, err = bucket.Incr(key, 0, 0, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(1), val)
 }
