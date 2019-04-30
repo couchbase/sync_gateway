@@ -434,7 +434,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				db := Database{DatabaseContext: dbContext}
 				NewBackgroundTask("Compact database", dbContext.Name, func(ctx context.Context) error {
 					_, err := db.Compact()
-					return err
+					base.WarnfCtx(ctx, base.KeyAll, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
+					return nil
 				}, time.Duration(dbContext.Options.CompactInterval)*time.Second, dbContext.terminator)
 			} else {
 				base.Warnf(base.KeyAll, "Automatic compaction can only be enabled on nodes running an Import process")

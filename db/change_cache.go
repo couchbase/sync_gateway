@@ -222,7 +222,7 @@ func (c *changeCache) EnableChannelIndexing(enable bool) {
 	c.lock.Unlock()
 }
 
-// Inserts pending entries that have been waiting too long.
+// Inserts pending entries that have been waiting too long. Error returned to fulfil BackgroundTaskFunc signature.
 func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -236,7 +236,7 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	return nil
 }
 
-// CleanAgedItems prunes the caches based on age of items
+// CleanAgedItems prunes the caches based on age of items. Error returned to fulfil BackgroundTaskFunc signature.
 func (c *changeCache) CleanAgedItems(ctx context.Context) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
