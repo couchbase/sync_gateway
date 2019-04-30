@@ -10,7 +10,7 @@ import (
 type BackgroundTaskFunc func(ctx context.Context) error
 
 // backgroundTask runs task at the specified time interval in its own goroutine until stopped
-func NewBackgroundTask(name string, contextID string, task BackgroundTaskFunc, interval time.Duration) {
+func NewBackgroundTask(name string, contextID string, task BackgroundTaskFunc, interval time.Duration, c chan bool) {
 	ctx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: base.NewChangeCacheContextID(contextID)})
 	base.InfofCtx(ctx, base.KeyAll, "Created background task: %q with interval %v", name, interval)
 	go func() {
@@ -21,8 +21,9 @@ func NewBackgroundTask(name string, contextID string, task BackgroundTaskFunc, i
 				if err := task(ctx); err != nil {
 					base.Warnf(base.KeyAll, "Background task %q returned error: %v", name, err)
 				}
-			case <-ctx.Done():
+			case <-c:
 				base.DebugfCtx(ctx, base.KeyAll, "Terminating background task: %q", name)
+				return
 			}
 		}
 	}()

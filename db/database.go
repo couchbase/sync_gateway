@@ -435,7 +435,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				NewBackgroundTask("Compact database", dbContext.Name, func(ctx context.Context) error {
 					_, err := db.Compact()
 					return err
-				}, time.Duration(dbContext.Options.CompactInterval)*time.Second)
+				}, time.Duration(dbContext.Options.CompactInterval)*time.Second, dbContext.terminator)
 			} else {
 				base.Warnf(base.KeyAll, "Automatic compaction can only be enabled on nodes running an Import process")
 			}
