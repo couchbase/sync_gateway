@@ -930,24 +930,6 @@ func VacuumAttachments(bucket base.Bucket) (int, error) {
 	return 0, base.HTTPErrorf(http.StatusNotImplemented, "Vacuum is temporarily out of order")
 }
 
-// backgroundTask runs task at the specified time interval in its own goroutine until stopped
-// func (context *DatabaseContext) backgroundTask(name string, task BackgroundTaskFunc, interval time.Duration) {
-// 	base.Infof(base.KeyAll, "Database %s: Created background task: %q with interval %v", base.MD(context.Name), name, interval)
-// 	go func() {
-// 		for {
-// 			select {
-// 			case <-time.After(interval):
-// 				base.Debugf(base.KeyAll, "Database %s: Running background task: %q", base.MD(context.Name), name)
-// 				if err := task(); err != nil {
-// 					base.Warnf(base.KeyAll, "Database %s: Background task %q returned error: %v", base.MD(context.Name), name, err)
-// 				}
-// 			case <-context.terminator:
-// 				base.Debugf(base.KeyAll, "Database %s: Terminating background task: %q", base.MD(context.Name), name)
-// 			}
-// 		}
-// 	}()
-// }
-
 //////// SYNC FUNCTION:
 
 // Sets the database context's sync function based on the JS code from config.

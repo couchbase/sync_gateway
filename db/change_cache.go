@@ -159,23 +159,6 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	return nil
 }
 
-// backgroundTask runs task at the specified time interval in its own goroutine until the changeCache is stopped.
-// func (c *changeCache) backgroundTask(name string, task func(ctx context.Context), interval time.Duration) {
-// 	go func() {
-// 		for {
-// 			select {
-// 			case <-time.After(interval):
-// 				ctx := context.WithValue(context.Background(), base.LogContextKey{},
-// 					base.LogContext{CorrelationID: base.NewChangeCacheContextID(c.context.Name)})
-// 				task(ctx)
-// 			case <-c.terminator:
-// 				base.Debugf(base.KeyCache, "Database %s: Terminating background task: %s", base.UD(c.context.Name), name)
-// 				return
-// 			}
-// 		}
-// 	}()
-// }
-
 func (c *changeCache) Start() error {
 
 	// Unlock the cache after this function returns.
