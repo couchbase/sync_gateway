@@ -48,20 +48,20 @@ func (sc *ShardedRevisionCache) Get(docID, revID string, copyType BodyCopyType) 
 	return sc.getShard(docID).Get(docID, revID, copyType)
 }
 
-func (sc *ShardedRevisionCache) GetActive(docID string, context *DatabaseContext, copyType BodyCopyType) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).GetActive(docID, context, copyType)
-}
-
 func (sc *ShardedRevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
 	return sc.getShard(docID).Peek(docID, revID)
 }
 
-func (sc *ShardedRevisionCache) Put(docID string, docRev DocumentRevision) {
-	sc.getShard(docID).Put(docID, docRev)
-}
-
 func (sc *ShardedRevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
 	sc.getShard(docID).UpdateDelta(docID, revID, toDelta)
+}
+
+func (sc *ShardedRevisionCache) GetActive(docID string, context *DatabaseContext, copyType BodyCopyType) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).GetActive(docID, context, copyType)
+}
+
+func (sc *ShardedRevisionCache) Put(docID string, docRev DocumentRevision) {
+	sc.getShard(docID).Put(docID, docRev)
 }
 
 // An LRU cache of document revision bodies, together with their channel access.
@@ -116,6 +116,36 @@ func (rc *LRURevisionCache) Get(docID, revID string, copyType BodyCopyType) (Doc
 	return rc.getFromCache(docID, revID, copyType, rc.loaderFunc != nil)
 }
 
+// Looks up a revision from the cache only.  Will not fall back to loader function if not
+// present in the cache.
+func (rc *LRURevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
+	docRev, _ = rc.getFromCache(docID, revID, BodyShallowCopy, false)
+	return docRev, docRev.Body != nil
+}
+
+// Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
+// fails silently
+func (rc *LRURevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
+	value := rc.getValue(docID, revID, false)
+	if value != nil {
+		value.updateDelta(toDelta)
+	}
+}
+
+func (rc *LRURevisionCache) getFromCache(docID, revID string, copyType BodyCopyType, loadOnCacheMiss bool) (DocumentRevision, error) {
+	value := rc.getValue(docID, revID, loadOnCacheMiss)
+	if value == nil {
+		return DocumentRevision{}, nil
+	}
+	docRev, statEvent, err := value.load(rc.loaderFunc, copyType)
+	rc.statsRecorderFunc(statEvent)
+
+	if err != nil {
+		rc.removeValue(value) // don't keep failed loads in the cache
+	}
+	return docRev, err
+}
+
 // Attempts to retrieve the active revision for a document from the cache.  Requires retrieval
 // of the document from the bucket to guarantee the current active revision, but does minimal unmarshalling
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
@@ -143,11 +173,13 @@ func (rc *LRURevisionCache) GetActive(docID string, context *DatabaseContext, co
 	return docRev, err
 }
 
-// Looks up a revision from the cache only.  Will not fall back to loader function if not
-// present in the cache.
-func (rc *LRURevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
-	docRev, _ = rc.getFromCache(docID, revID, BodyShallowCopy, false)
-	return docRev, docRev.Body != nil
+func (rc *LRURevisionCache) statsRecorderFunc(cacheHit bool) {
+
+	if cacheHit {
+		rc.cacheHits.Add(1)
+	} else {
+		rc.cacheMisses.Add(1)
+	}
 }
 
 // Adds a revision to the cache.
@@ -157,38 +189,6 @@ func (rc *LRURevisionCache) Put(docID string, docRev DocumentRevision) {
 	}
 	value := rc.getValue(docID, docRev.RevID, true)
 	value.store(docRev)
-}
-
-// Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,
-// fails silently
-func (rc *LRURevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
-	value := rc.getValue(docID, revID, false)
-	if value != nil {
-		value.updateDelta(toDelta)
-	}
-}
-
-func (rc *LRURevisionCache) getFromCache(docID, revID string, copyType BodyCopyType, loadOnCacheMiss bool) (DocumentRevision, error) {
-	value := rc.getValue(docID, revID, loadOnCacheMiss)
-	if value == nil {
-		return DocumentRevision{}, nil
-	}
-	docRev, statEvent, err := value.load(rc.loaderFunc, copyType)
-	rc.statsRecorderFunc(statEvent)
-
-	if err != nil {
-		rc.removeValue(value) // don't keep failed loads in the cache
-	}
-	return docRev, err
-}
-
-func (rc *LRURevisionCache) statsRecorderFunc(cacheHit bool) {
-
-	if cacheHit {
-		rc.cacheHits.Add(1)
-	} else {
-		rc.cacheMisses.Add(1)
-	}
 }
 
 func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {
