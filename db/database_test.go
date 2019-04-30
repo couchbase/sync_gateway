@@ -388,7 +388,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
-	db.DatabaseContext.revisionCache = NewRevisionCache(KDefaultRevisionCacheCapacity, db.DatabaseContext.revCacheLoader, db.DatabaseContext.DbStats.StatsCache())
+	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(KDefaultRevisionCacheCapacity, db.DatabaseContext.revCacheLoader, db.DatabaseContext.DbStats.StatsCache())
 	err = db.purgeOldRevisionJSON("doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -472,7 +472,7 @@ func TestGetRemoved(t *testing.T) {
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
-	db.DatabaseContext.revisionCache = NewRevisionCache(KDefaultRevisionCacheCapacity, db.DatabaseContext.revCacheLoader, db.DatabaseContext.DbStats.StatsCache())
+	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(KDefaultRevisionCacheCapacity, db.DatabaseContext.revCacheLoader, db.DatabaseContext.DbStats.StatsCache())
 	err = db.purgeOldRevisionJSON("doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -547,7 +547,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
-	db.DatabaseContext.revisionCache = NewRevisionCache(KDefaultRevisionCacheCapacity, db.DatabaseContext.revCacheLoader, db.DatabaseContext.DbStats.StatsCache())
+	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(KDefaultRevisionCacheCapacity, db.DatabaseContext.revCacheLoader, db.DatabaseContext.DbStats.StatsCache())
 	err = db.purgeOldRevisionJSON("doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 

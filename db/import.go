@@ -320,12 +320,8 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 		return nil
 	}
 
-	previousRev, err := db.revisionCache.GetCached(docid, revid)
-	if err != nil {
-		return fmt.Errorf("Cache error: %v", err)
-	}
-
-	if previousRev.Body == nil {
+	previousRev, ok := db.revisionCache.Peek(docid, revid)
+	if !ok {
 		return nil
 	}
 
