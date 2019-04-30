@@ -149,9 +149,9 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	heap.Init(&c.pendingLogs)
 
 	// background tasks that perform housekeeping duties on the cache
-	c.backgroundTask("InsertPendingEntries", c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2)
-	c.backgroundTask("CleanSkippedSequenceQueue", c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2)
-	c.backgroundTask("CleanAgedItems", c.CleanAgedItems, c.options.ChannelCacheAge)
+	NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2)
+	NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2)
+	NewBackgroundTask("CleanAgedItems", c.context.Name, c.CleanAgedItems, c.options.ChannelCacheAge)
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
 	c.lock.Lock()
@@ -160,21 +160,21 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 }
 
 // backgroundTask runs task at the specified time interval in its own goroutine until the changeCache is stopped.
-func (c *changeCache) backgroundTask(name string, task func(ctx context.Context), interval time.Duration) {
-	go func() {
-		for {
-			select {
-			case <-time.After(interval):
-				ctx := context.WithValue(context.Background(), base.LogContextKey{},
-					base.LogContext{CorrelationID: base.NewChangeCacheContextID(c.context.Name)})
-				task(ctx)
-			case <-c.terminator:
-				base.Debugf(base.KeyCache, "Database %s: Terminating background task: %s", base.UD(c.context.Name), name)
-				return
-			}
-		}
-	}()
-}
+// func (c *changeCache) backgroundTask(name string, task func(ctx context.Context), interval time.Duration) {
+// 	go func() {
+// 		for {
+// 			select {
+// 			case <-time.After(interval):
+// 				ctx := context.WithValue(context.Background(), base.LogContextKey{},
+// 					base.LogContext{CorrelationID: base.NewChangeCacheContextID(c.context.Name)})
+// 				task(ctx)
+// 			case <-c.terminator:
+// 				base.Debugf(base.KeyCache, "Database %s: Terminating background task: %s", base.UD(c.context.Name), name)
+// 				return
+// 			}
+// 		}
+// 	}()
+// }
 
 func (c *changeCache) Start() error {
 
@@ -240,7 +240,7 @@ func (c *changeCache) EnableChannelIndexing(enable bool) {
 }
 
 // Inserts pending entries that have been waiting too long.
-func (c *changeCache) InsertPendingEntries(ctx context.Context) {
+func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -250,11 +250,11 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) {
 		c.notifyChange(changedChannels)
 	}
 
-	return
+	return nil
 }
 
 // CleanAgedItems prunes the caches based on age of items
-func (c *changeCache) CleanAgedItems(ctx context.Context) {
+func (c *changeCache) CleanAgedItems(ctx context.Context) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -262,7 +262,7 @@ func (c *changeCache) CleanAgedItems(ctx context.Context) {
 		channelCache.pruneCacheAge(ctx)
 	}
 
-	return
+	return nil
 }
 
 // Cleanup function, invoked periodically.
@@ -270,11 +270,11 @@ func (c *changeCache) CleanAgedItems(ctx context.Context) {
 // than MaxChannelLogMissingWaitTime from the queue.  Attempts view retrieval
 // prior to removal.  Only locks skipped sequence queue to build the initial set (GetSkippedSequencesOlderThanMaxWait)
 // and subsequent removal (RemoveSkipped).
-func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) {
+func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 
 	oldSkippedSequences := c.GetSkippedSequencesOlderThanMaxWait()
 	if len(oldSkippedSequences) == 0 {
-		return
+		return nil
 	}
 
 	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.MD(c.context.Name))
@@ -352,7 +352,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) {
 	c.context.DbStats.StatsCache().Add(base.StatKeyAbandonedSeqs, numRemoved)
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.context.Name))
-	return
+	return nil
 }
 
 //////// ADDING CHANGES:
