@@ -22,6 +22,7 @@ import (
 	goassert "github.com/couchbaselabs/go.assert"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
@@ -471,6 +472,35 @@ func TestIncrCounter(t *testing.T) {
 	}
 	goassert.Equals(t, retrieval, uint64(2))
 
+}
+
+// TestIncrAmtZero covers the special handling in Incr for when amt=0 on an unknown key
+func TestIncrAmtZero(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	key := "TestIncrAmtZero"
+
+	bucket, ok := AsGoCBBucket(GetTestBucketOrPanic())
+	require.True(t, ok, "bucket was not a gocb bucket")
+	defer bucket.Close()
+
+	// key hasn't been created, so we'll fall into the special 'Get' handling in Incr
+	val, err := bucket.Incr(key, 0, 1, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(0), val)
+
+	// Actually increment key to create it
+	val, err = bucket.Incr(key, 1, 1, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(1), val)
+
+	// Do another amt=0 to make sure we get the new incremented value
+	val, err = bucket.Incr(key, 0, 1, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(1), val)
 }
 
 func TestGetAndTouchRaw(t *testing.T) {
