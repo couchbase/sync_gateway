@@ -1434,11 +1434,11 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 }
 
 // Purges a document from the bucket (no tombstone)
-func (context *DatabaseContext) Purge(key string) error {
-	if context.UseXattrs() {
-		return context.Bucket.DeleteWithXattr(key, base.SyncXattrName)
+func (db *Database) Purge(key string) error {
+	if db.UseXattrs() {
+		return db.Bucket.DeleteWithXattr(key, base.SyncXattrName)
 	} else {
-		return context.Bucket.Delete(key)
+		return db.Bucket.Delete(key)
 	}
 }
 

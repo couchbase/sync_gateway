@@ -615,7 +615,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		compactIntervalSecs = db.DefaultCompactInterval
 	} else {
 		if *compactIntervalDays < db.CompactIntervalMinDays && *compactIntervalDays != 0 {
-			return nil, fmt.Errorf("compact_interval_days cannot be lower than %g", db.CompactIntervalMinDays)
+			// return nil, fmt.Errorf("compact_interval_days cannot be lower than %g", db.CompactIntervalMinDays)
 		}
 		if *compactIntervalDays > db.CompactIntervalMaxDays {
 			return nil, fmt.Errorf("compact_interval_days cannot be higher than %g", db.CompactIntervalMaxDays)

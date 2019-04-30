@@ -431,8 +431,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 		if dbContext.Options.CompactInterval != 0 {
 			if autoImport {
+				db := Database{DatabaseContext: dbContext}
 				NewBackgroundTask("Compact database", dbContext.Name, func(ctx context.Context) error {
-					_, err := dbContext.Compact()
+					_, err := db.Compact()
 					return err
 				}, time.Duration(dbContext.Options.CompactInterval)*time.Second)
 			} else {
@@ -860,44 +861,44 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // When compact is run, Sync Gateway initiates a normal delete operation for the document and xattr (a Sync Gateway purge).  This triggers
 // removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
-func (context *DatabaseContext) Compact() (int, error) {
-
-	if !atomic.CompareAndSwapUint32(&context.CompactState, DBCompactNotRunning, DBCompactRunning) {
+func (db *Database) Compact() (int, error) {
+	if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
 		return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")
 	}
 
-	defer atomic.CompareAndSwapUint32(&context.CompactState, DBCompactRunning, DBCompactNotRunning)
+	defer atomic.CompareAndSwapUint32(&db.CompactState, DBCompactRunning, DBCompactNotRunning)
 
 	// Compact should be a no-op if not running w/ xattrs
-	if !context.UseXattrs() {
+	if !db.UseXattrs() {
 		return 0, nil
 	}
 
 	// Trigger view compaction for all tombstoned documents older than the purge interval
-	purgeIntervalDuration := time.Duration(-context.PurgeInterval) * time.Hour
+	purgeIntervalDuration := time.Duration(-db.PurgeInterval) * time.Hour
 	startTime := time.Now()
 	purgeOlderThan := startTime.Add(purgeIntervalDuration)
-	results, err := context.QueryTombstones(purgeOlderThan)
+	results, err := db.QueryTombstones(purgeOlderThan)
 	if err != nil {
 		return 0, err
 	}
 
-	base.Infof(base.KeyAll, "Database %s: Compacting purged tombstones...", base.MD(context.Name))
+	ctx := db.Ctx
+	base.InfofCtx(ctx, base.KeyAll, "Compacting purged tombstones for %s ...", base.MD(db.Name))
 	purgeBody := Body{"_purged": true}
 	purgedDocs := make([]string, 0)
 
 	var tombstonesRow QueryIdRow
 	for results.Next(&tombstonesRow) {
-		base.Infof(base.KeyCRUD, "Database %s:\tDeleting %q", base.MD(context.Name), tombstonesRow.Id)
+		base.InfofCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
 		// First, attempt to purge.
-		purgeErr := context.Purge(tombstonesRow.Id)
+		purgeErr := db.Purge(tombstonesRow.Id)
 		if purgeErr == nil {
 			purgedDocs = append(purgedDocs, tombstonesRow.Id)
-		} else if base.IsKeyNotFoundError(context.Bucket, purgeErr) {
+		} else if base.IsKeyNotFoundError(db.Bucket, purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
-			_, addErr := context.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
+			_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 			if addErr != nil {
-				base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (add) - tombstone will not be compacted.  %v", base.MD(context.Name), base.UD(tombstonesRow.Id), addErr)
+				base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
 				continue
 			}
 
@@ -905,21 +906,21 @@ func (context *DatabaseContext) Compact() (int, error) {
 			// so mark it to be removed from cache, even if the subsequent delete fails
 			purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
-			if delErr := context.Bucket.Delete(tombstonesRow.Id); delErr != nil {
-				base.Errorf(base.KeyAll, "Database %s: Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.MD(context.Name), base.UD(tombstonesRow.Id), delErr)
+			if delErr := db.Bucket.Delete(tombstonesRow.Id); delErr != nil {
+				base.ErrorfCtx(ctx, base.KeyAll, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
 			}
 		} else {
-			base.Warnf(base.KeyAll, "Database %s: Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.MD(context.Name), base.UD(tombstonesRow.Id), purgeErr)
+			base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
 		}
 	}
 
 	// Now purge them from all channel caches
 	count := len(purgedDocs)
 	if count > 0 {
-		context.changeCache.Remove(purgedDocs, startTime)
-		context.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
+		db.changeCache.Remove(purgedDocs, startTime)
+		db.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
 	}
-	base.Infof(base.KeyAll, "Database %s: Compacted %v tombstones", base.MD(context.Name), count)
+	base.InfofCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 
 	return count, nil
 }
