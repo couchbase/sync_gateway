@@ -119,7 +119,10 @@ func (rc *LRURevisionCache) Get(docID, revID string, copyType BodyCopyType) (Doc
 // Looks up a revision from the cache only.  Will not fall back to loader function if not
 // present in the cache.
 func (rc *LRURevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
-	docRev, _ = rc.getFromCache(docID, revID, BodyShallowCopy, false)
+	docRev, err := rc.getFromCache(docID, revID, BodyShallowCopy, false)
+	if err != nil {
+		return DocumentRevision{}, false
+	}
 	return docRev, docRev.Body != nil
 }
 

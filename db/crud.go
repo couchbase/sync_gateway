@@ -284,7 +284,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		revision, err = db.revisionCache.Get(docid, revid, copyType)
 	} else {
 		// No rev ID given, so load active revision
-		revision, err = db.revisionCache.GetActive(docid, db.DatabaseContext, BodyShallowCopy)
+		revision, err = db.revisionCache.GetActive(docid, db.DatabaseContext, copyType)
 		if revision.Body != nil {
 			revid = revision.RevID
 		}
