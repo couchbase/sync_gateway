@@ -64,8 +64,8 @@ var (
 var DefaultCompactInterval = uint32(60 * 60 * 24) // Default compact interval in seconds = 1 Day
 
 const (
-	CompactIntervalMinDays = float32(0.042) //1 Hour in days
-	CompactIntervalMaxDays = float32(60)    //60 Days in seconds
+	CompactIntervalMinDays = float32(0.04) // ~1 Hour in days
+	CompactIntervalMaxDays = float32(60)   // 60 Days in days
 )
 
 // Basic description of a database. Shared between all Database objects on the same database.
@@ -96,8 +96,8 @@ type DatabaseContext struct {
 	PurgeInterval      int                     // Metadata purge interval, in hours
 	serverUUID         string                  // UUID of the server, if available
 	DbStats            *DatabaseStats          // stats that correspond to this database context
-	CompactState       uint32                  //Status of database compaction
-	terminator         chan bool               //Signal termination of background goroutines
+	CompactState       uint32                  // Status of database compaction
+	terminator         chan bool               // Signal termination of background goroutines
 }
 
 type DatabaseContextOptions struct {
@@ -917,7 +917,7 @@ func (context *DatabaseContext) Compact() (int, error) {
 	count := len(purgedDocs)
 	if count > 0 {
 		context.changeCache.Remove(purgedDocs, startTime)
-		context.DbStats.StatsDatabase().Add(base.StatKeyNumDocsCompacted, int64(count))
+		context.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
 	}
 	base.Infof(base.KeyAll, "Database %s: Compacted %v tombstones", base.MD(context.Name), count)
 

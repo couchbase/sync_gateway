@@ -89,7 +89,7 @@ const (
 	StatKeyNumReplicationsActive   = "num_replications_active"
 	StatKeyNumReplicationsTotal    = "num_replications_total"
 	StatKeyNumDocWrites            = "num_doc_writes"
-	StatKeyNumDocsCompacted        = "num_tombstones_compacted"
+	StatKeyNumTombstonesCompacted  = "num_tombstones_compacted"
 	StatKeyDocWritesBytes          = "doc_writes_bytes"
 	StatKeyNumDocReadsRest         = "num_doc_reads_rest"
 	StatKeyNumDocReadsBlip         = "num_doc_reads_blip"
