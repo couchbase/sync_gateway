@@ -385,7 +385,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 
 	channelSet := bh.channels
 	if channelSet == nil {
-		channelSet = channels.SetOf(channels.AllChannelWildcard)
+		channelSet = base.SetOf(channels.AllChannelWildcard)
 	}
 
 	caughtUp := false

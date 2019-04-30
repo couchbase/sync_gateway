@@ -236,7 +236,7 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	goassert.Equals(t, err, nil)
 
 	//Create a test user
-	user, err = a.NewUser("user1", "letmein", channels.SetOf("foo"))
+	user, err = a.NewUser("user1", "letmein", channels.SetOf(t, "foo"))
 	a.Save(user)
 
 	response := rt.Send(requestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user1"))
@@ -274,7 +274,7 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 	goassert.Equals(t, err, nil)
 
 	//Create a test user
-	user, err = a.NewUser("user1", "letmein", channels.SetOf("foo"))
+	user, err = a.NewUser("user1", "letmein", channels.SetOf(t, "foo"))
 	a.Save(user)
 	//Create document
 	response := rt.Send(requestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user1"))
@@ -1570,7 +1570,7 @@ func TestLogin(t *testing.T) {
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
 	assertStatus(t, response, 401)
 
-	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf("*"))
+	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
 	a.Save(user)
 
 	assertStatus(t, rt.SendRequest("GET", "/db/_session", ""), 200)
@@ -1730,7 +1730,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	goassert.Equals(t, err, nil)
 
 	// Create a user:
-	alice, err := a.NewUser("alice", "letmein", channels.SetOf("Cinemax"))
+	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "Cinemax"))
 	a.Save(alice)
 
 	// Get a single doc the user has access to:
@@ -1953,7 +1953,7 @@ func TestVbSeqAllDocsAccessControl(t *testing.T) {
 	goassert.Equals(t, err, nil)
 
 	// Create a user:
-	alice, err := a.NewUser("alice", "letmein", channels.SetOf("Cinemax"))
+	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "Cinemax"))
 	a.Save(alice)
 
 	// Get a single doc the user has access to:
@@ -2149,9 +2149,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	goassert.Equals(t, err, nil)
 
 	// Create users:
-	alice, err := a.NewUser("alice", "letmein", channels.SetOf("zero"))
+	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "zero"))
 	a.Save(alice)
-	zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf("zero"))
+	zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf(t, "zero"))
 	a.Save(zegpold)
 
 	// Create some docs that give users access:
@@ -2322,7 +2322,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	goassert.Equals(t, err, nil)
 
 	// Create user:
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("zero"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "zero"))
 	a.Save(bernard)
 
 	// Create doc that gives user access to its channel
@@ -2525,12 +2525,12 @@ func TestRoleAccessChanges(t *testing.T) {
 	goassert.Equals(t, err, nil)
 
 	// Create users:
-	alice, err := a.NewUser("alice", "letmein", channels.SetOf("alpha"))
+	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "alpha"))
 	a.Save(alice)
-	zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf("beta"))
+	zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf(t, "beta"))
 	a.Save(zegpold)
 
-	hipster, err := a.NewRole("hipster", channels.SetOf("gamma"))
+	hipster, err := a.NewRole("hipster", channels.SetOf(t, "gamma"))
 	a.Save(hipster)
 
 	// Create some docs in the channels:
@@ -2938,7 +2938,7 @@ func TestStarAccess(t *testing.T) {
 	//
 	// Part 1 - Tests for user with single channel access:
 	//
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("books"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "books"))
 	a.Save(bernard)
 
 	// GET /db/docid - basic test for channel user has
@@ -3013,7 +3013,7 @@ func TestStarAccess(t *testing.T) {
 	//
 
 	// Create a user:
-	fran, err := a.NewUser("fran", "letmein", channels.SetOf("*"))
+	fran, err := a.NewUser("fran", "letmein", channels.SetOf(t, "*"))
 	a.Save(fran)
 
 	// GET /db/docid - basic test for doc that has channel
@@ -3671,7 +3671,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	a := rt.ServerContext().Database("db").Authenticator()
 
 	// Create user:
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf("PBS"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	goassert.True(t, err == nil)
 	a.Save(bernard)
 
@@ -3813,7 +3813,7 @@ func TestDocIDFilterResurrection(t *testing.T) {
 
 	//Create User
 	a := rt.ServerContext().Database("db").Authenticator()
-	jacques, err := a.NewUser("jacques", "letmein", channels.SetOf("A", "B"))
+	jacques, err := a.NewUser("jacques", "letmein", channels.SetOf(t, "A", "B"))
 	assert.NoError(t, err)
 	a.Save(jacques)
 
@@ -4020,7 +4020,7 @@ func TestNumAccessErrors(t *testing.T) {
 	a := rt.ServerContext().Database("db").Authenticator()
 
 	//Create a test user
-	user, err := a.NewUser("user", "letmein", channels.SetOf("A"))
+	user, err := a.NewUser("user", "letmein", channels.SetOf(t, "A"))
 	assert.NoError(t, err)
 	a.Save(user)
 

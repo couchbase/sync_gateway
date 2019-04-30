@@ -40,7 +40,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf("ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
 	authenticator.Save(user)
 
 	// Create a doc on two channels (sequence 1):
@@ -148,7 +148,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf("A"))
+	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
 	authenticator.Save(user)
 
 	// Create a doc on two channels (sequence 1):
@@ -236,7 +236,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator()
-	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf("A"))
+	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
 	authenticator.Save(user)
 
 	// Create a doc on two channels (sequence 1):

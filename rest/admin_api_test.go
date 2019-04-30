@@ -766,7 +766,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
 	assertStatus(t, response, 401)
 
-	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf("*"))
+	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
 	a.Save(user)
 
 	//create a session with the maximum offset ttl value (30days) 2592000 seconds
@@ -822,7 +822,7 @@ func TestSessionExtension(t *testing.T) {
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
 	assertStatus(t, response, 401)
 
-	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf("*"))
+	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
 	a.Save(user)
 
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_session", ""), 200)

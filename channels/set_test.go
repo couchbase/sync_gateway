@@ -44,7 +44,7 @@ func TestSetFromArray(t *testing.T) {
 	for _, cas := range cases {
 		channels, err := SetFromArray(cas[0], RemoveStar)
 		assert.NoError(t, err, "SetFromArray failed")
-		goassert.DeepEquals(t, channels, SetOf(cas[1]...))
+		goassert.DeepEquals(t, channels, SetOf(t, cas[1]...))
 	}
 }
 
@@ -61,7 +61,7 @@ func TestSetFromArrayWithStar(t *testing.T) {
 	for _, cas := range cases {
 		channels, err := SetFromArray(cas[0], ExpandStar)
 		assert.NoError(t, err, "SetFromArray failed")
-		goassert.DeepEquals(t, channels, SetOf(cas[1]...))
+		goassert.DeepEquals(t, channels, SetOf(t, cas[1]...))
 	}
 }
 

@@ -627,7 +627,10 @@ func (db *Database) backupAncestorRevs(doc *document, newRevId string, newBody B
 // Used when importing an existing Couchbase doc that hasn't been seen by the gateway before.
 func (db *Database) initializeSyncData(doc *document) (err error) {
 	body := doc.Body()
-	doc.CurrentRev = createRevID(1, "", body)
+	doc.CurrentRev, err = createRevID(1, "", body)
+	if err != nil {
+		return err
+	}
 	body[BodyRev] = doc.CurrentRev
 	doc.setFlag(channels.Deleted, false)
 	doc.History = make(RevTree)
@@ -733,7 +736,10 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		}
 
 		// Make up a new _rev, and add it to the history:
-		newRev := createRevID(generation, matchRev, body)
+		newRev, err := createRevID(generation, matchRev, body)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 		body[BodyRev] = newRev
 		if err := doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
@@ -1121,7 +1127,10 @@ func (db *Database) updateAndReturnDoc(
 
 			// Update the document struct's channel assignment and user access.
 			// (This uses the new sequence # so has to be done after updating doc.Sequence)
-			doc.updateChannels(channelSet) //FIX: Incorrect if new rev is not current!
+			_, err := doc.updateChannels(channelSet) //FIX: Incorrect if new rev is not current!
+			if err != nil {
+				return doc, writeOpts, shadowerEcho, updatedExpiry, err
+			}
 			changedPrincipals = doc.Access.updateAccess(doc, access)
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
 
