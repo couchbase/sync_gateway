@@ -19,16 +19,13 @@ type ShardedLRURevisionCache struct {
 	numShards uint16
 }
 
+type RevisionCacheOptions struct {
+	Size        uint32
+	ShardNumber uint16
+}
+
 // Creates a sharded revision cache with the given capacity and an optional loader function.
 func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *expvar.Int) *ShardedLRURevisionCache {
-
-	// TODO: Remove when defaults are set further up
-	if shardCount == 0 {
-		shardCount = KDefaultNumCacheShards
-	}
-	if capacity == 0 {
-		capacity = KDefaultRevisionCacheCapacity
-	}
 
 	caches := make([]*LRURevisionCache, shardCount)
 	perCacheCapacity := uint32(capacity/uint32(shardCount)) + 1

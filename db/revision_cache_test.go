@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // testBackingStore always returns an empty doc at rev:"1-abc" in channel "*" except for docs not in 'notFoundDocIDs'
@@ -230,8 +230,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	assert.NoError(t, err)
 
 	bypassStat := expvar.Int{}
-	rc, err := NewBypassRevisionCache(db.DatabaseContext, &bypassStat)
-	require.NoError(t, err)
+	rc := NewBypassRevisionCache(db.DatabaseContext, &bypassStat)
 
 	// Peek always returns false for BypassRevisionCache
 	_, ok := rc.Peek(key, rev1, BodyShallowCopy)

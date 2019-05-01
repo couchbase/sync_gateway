@@ -538,13 +538,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		channelIndexOptions = nil
 	}
 
-	var revCacheSize uint32
-	if config.RevCacheSize != nil && *config.RevCacheSize > 0 {
-		revCacheSize = *config.RevCacheSize
-	} else {
-		revCacheSize = db.KDefaultRevisionCacheCapacity
-	}
-
 	// Enable doc tracking if needed for autoImport or shadowing.  Only supported for non-xattr configurations
 	trackDocs := false
 	if !config.UseXattrs() {
@@ -621,7 +614,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		CacheOptions:              &cacheOptions,
 		IndexOptions:              channelIndexOptions,
 		SequenceHashOptions:       sequenceHashOptions,
-		RevisionCacheCapacity:     revCacheSize,
 		OldRevExpirySeconds:       oldRevExpirySeconds,
 		LocalDocExpirySecs:        localDocExpirySecs,
 		AdminInterface:            sc.config.AdminInterface,
