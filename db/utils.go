@@ -11,20 +11,20 @@ type BackgroundTaskFunc func(ctx context.Context) error
 
 // backgroundTask runs task at the specified time interval in its own goroutine until stopped or an error is thrown by
 // the BackgroundTaskFunc
-func NewBackgroundTask(name string, contextID string, task BackgroundTaskFunc, interval time.Duration, c chan bool) {
-	base.Infof(base.KeyAll, "Created background task: %q with interval %v", name, interval)
+func NewBackgroundTask(taskName string, dbName string, task BackgroundTaskFunc, interval time.Duration, c chan bool) {
+	base.Infof(base.KeyAll, "Created background task: %q with interval %v", taskName, interval)
 	go func() {
 		for {
 			select {
 			case <-time.After(interval):
-				ctx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: base.NewTaskID(contextID, name)})
-				base.DebugfCtx(ctx, base.KeyAll, "Running background task: %q", name)
+				ctx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: base.NewTaskID(dbName, taskName)})
+				base.DebugfCtx(ctx, base.KeyAll, "Running background task")
 				if err := task(ctx); err != nil {
-					base.ErrorfCtx(ctx, base.KeyAll, "Background task %q returned error: %v", name, err)
+					base.ErrorfCtx(ctx, base.KeyAll, "Background task returned error: %v", err)
 					return
 				}
 			case <-c:
-				base.Debugf(base.KeyAll, "Terminating background task: %q", name)
+				base.Debugf(base.KeyAll, "Terminating background task: %q", taskName)
 				return
 			}
 		}

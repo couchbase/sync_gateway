@@ -432,7 +432,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if dbContext.Options.CompactInterval != 0 {
 			if autoImport {
 				db := Database{DatabaseContext: dbContext}
-				NewBackgroundTask("Compact database", dbContext.Name, func(ctx context.Context) error {
+				NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
 					_, err := db.Compact()
 					base.WarnfCtx(ctx, base.KeyAll, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
 					return nil
