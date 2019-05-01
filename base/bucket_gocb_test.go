@@ -473,6 +473,38 @@ func TestIncrCounter(t *testing.T) {
 
 }
 
+// TestIncrAmtZero covers the special handling in Incr for when amt=0 on an unknown key
+func TestIncrAmtZero(t *testing.T) {
+
+	testBucket := GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	key := "TestIncrAmtZero"
+
+	defer func() {
+		err := bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing counter from bucket")
+		}
+	}()
+
+	// key hasn't been created, so we'll fall into the special 'Get' handling in Incr
+	val, err := bucket.Incr(key, 0, 0, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(0), val)
+
+	// Actually increment key to create it
+	val, err = bucket.Incr(key, 1, 1, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(1), val)
+
+	// Do another amt=0 to make sure we get the new incremented value
+	val, err = bucket.Incr(key, 0, 0, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(1), val)
+}
+
 func TestGetAndTouchRaw(t *testing.T) {
 
 	// There's no easy way to validate the expiry time of a doc (that I know of)

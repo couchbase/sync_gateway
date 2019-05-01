@@ -21,7 +21,7 @@ type LeakyBucket struct {
 // The config object that controls the LeakyBucket behavior
 type LeakyBucketConfig struct {
 
-	// Incr() fails 3 times before finally succeeding
+	// Incr() fails N times before finally succeeding
 	IncrTemporaryFailCount uint16
 
 	// Allows us to force a number of failed executions of GetDDoc, DeleteDDoc and DropIndex. It will fail the

@@ -1796,9 +1796,14 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 	if amt == 0 {
 		var result uint64
 		_, err := bucket.Get(k, &result)
-		if err != nil {
+		if bucket.IsKeyNotFoundError(err) {
+			// Return Incr value as zero
 			return uint64(0), nil
+		} else if err != nil {
+			// Got an error when trying to fetch the value
+			return 0, err
 		}
+		// Got a non-zero value to return
 		return result, nil
 	}
 
