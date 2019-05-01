@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -163,6 +164,59 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	goassert.True(t, startOk)
 	_, idsOk := validRevisionsMap[RevisionsIds]
 	goassert.True(t, idsOk)
+}
+
+func TestBypassRevisionCache(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	docBody := Body{
+		"value": 1234,
+	}
+	key := "doc1"
+	rev1, err := db.Put(key, docBody)
+	assert.NoError(t, err)
+
+	docBody["_rev"] = rev1
+	docBody["value"] = 5678
+	rev2, err := db.Put(key, docBody)
+	assert.NoError(t, err)
+
+	rc := BypassRevisionCache{
+		loaderFunc: db.DatabaseContext.revCacheLoader,
+	}
+
+	// Peek always returns false for BypassRevisionCache
+	_, ok := rc.Peek(key, rev1)
+	assert.False(t, ok)
+	_, ok = rc.Peek(key, rev2)
+	assert.False(t, ok)
+
+	// Get specific revision
+	doc, err := rc.Get(key, rev1, BodyShallowCopy)
+	assert.NoError(t, err)
+	assert.Equal(t, "1234", doc.Body["value"].(json.Number).String())
+
+	// Check peek is still returning false for "Get"
+	_, ok = rc.Peek(key, rev1)
+	assert.False(t, ok)
+
+	// Put no-ops
+	rc.Put(key, doc)
+
+	// Check peek is still returning false for "Put"
+	_, ok = rc.Peek(key, rev1)
+	assert.False(t, ok)
+
+	// Get active revision
+	doc, err = rc.GetActive(key, db.DatabaseContext, BodyShallowCopy)
+	assert.NoError(t, err)
+	assert.Equal(t, "5678", doc.Body["value"].(json.Number).String())
+
 }
 
 // Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via Put

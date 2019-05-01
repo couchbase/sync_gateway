@@ -27,6 +27,7 @@ type RevisionCache interface {
 // Force compile-time check of RevisionCache types for interface
 var _ RevisionCache = &LRURevisionCache{}
 var _ RevisionCache = &ShardedLRURevisionCache{}
+var _ RevisionCache = &BypassRevisionCache{}
 
 // Revision information as returned by the rev cache
 type DocumentRevision struct {
@@ -44,6 +45,7 @@ type IDAndRev struct {
 	RevID string
 }
 
+// RevisionDelta stores data about a delta between a revision and ToRevID.
 type RevisionDelta struct {
 	ToRevID           string   // Target revID for the delta
 	DeltaBytes        []byte   // The actual delta
