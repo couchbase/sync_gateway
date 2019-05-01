@@ -15,13 +15,13 @@ import (
 var KDefaultRevisionCacheCapacity uint32 = 5000
 var KDefaultNumCacheShards uint16 = 8
 
-type ShardedRevisionCache struct {
+type ShardedLRURevisionCache struct {
 	caches    []*LRURevisionCache
 	numShards uint16
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
-func NewShardedLRURevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *ShardedRevisionCache {
+func NewShardedLRURevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderFunc, statsCache *expvar.Map) *ShardedLRURevisionCache {
 
 	numShards := KDefaultNumCacheShards
 	if capacity == 0 {
@@ -34,33 +34,33 @@ func NewShardedLRURevisionCache(capacity uint32, loaderFunc RevisionCacheLoaderF
 		caches[i] = NewLRURevisionCache(perCacheCapacity, loaderFunc, statsCache)
 	}
 
-	return &ShardedRevisionCache{
+	return &ShardedLRURevisionCache{
 		caches:    caches,
 		numShards: numShards,
 	}
 }
 
-func (sc *ShardedRevisionCache) getShard(docID string) *LRURevisionCache {
+func (sc *ShardedLRURevisionCache) getShard(docID string) *LRURevisionCache {
 	return sc.caches[sgbucket.VBHash(docID, sc.numShards)]
 }
 
-func (sc *ShardedRevisionCache) Get(docID, revID string, copyType BodyCopyType) (docRev DocumentRevision, err error) {
+func (sc *ShardedLRURevisionCache) Get(docID, revID string, copyType BodyCopyType) (docRev DocumentRevision, err error) {
 	return sc.getShard(docID).Get(docID, revID, copyType)
 }
 
-func (sc *ShardedRevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
+func (sc *ShardedLRURevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
 	return sc.getShard(docID).Peek(docID, revID)
 }
 
-func (sc *ShardedRevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
+func (sc *ShardedLRURevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
 	sc.getShard(docID).UpdateDelta(docID, revID, toDelta)
 }
 
-func (sc *ShardedRevisionCache) GetActive(docID string, context *DatabaseContext, copyType BodyCopyType) (docRev DocumentRevision, err error) {
+func (sc *ShardedLRURevisionCache) GetActive(docID string, context *DatabaseContext, copyType BodyCopyType) (docRev DocumentRevision, err error) {
 	return sc.getShard(docID).GetActive(docID, context, copyType)
 }
 
-func (sc *ShardedRevisionCache) Put(docID string, docRev DocumentRevision) {
+func (sc *ShardedLRURevisionCache) Put(docID string, docRev DocumentRevision) {
 	sc.getShard(docID).Put(docID, docRev)
 }
 

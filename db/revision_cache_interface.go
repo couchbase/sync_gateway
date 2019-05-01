@@ -26,7 +26,7 @@ type RevisionCache interface {
 
 // Force compile-time check of RevisionCache types for interface
 var _ RevisionCache = &LRURevisionCache{}
-var _ RevisionCache = &ShardedRevisionCache{}
+var _ RevisionCache = &ShardedLRURevisionCache{}
 
 // Revision information as returned by the rev cache
 type DocumentRevision struct {
