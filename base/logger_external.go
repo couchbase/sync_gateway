@@ -82,7 +82,7 @@ func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v 
 //   Normal  -> SG Info
 //   Warning -> SG Warn
 //   Error   -> SG Error
-//   Panic   -> no-op
+//   Panic   -> SG Error
 
 func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 	switch level {
@@ -93,6 +93,8 @@ func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 	case clog.LevelWarning:
 		Warnf(KeyReplicate, format, args...)
 	case clog.LevelError:
+		Errorf(KeyReplicate, format, args...)
+	case clog.LevelPanic:
 		Errorf(KeyReplicate, format, args...)
 	}
 }
