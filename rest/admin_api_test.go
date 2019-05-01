@@ -1661,7 +1661,6 @@ func TestReplicateErrorConditions(t *testing.T) {
 func TestDocumentChangeReplicate(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
-	base.EnableSgReplicateLogging()
 
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")

@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/clog"
 	"github.com/couchbase/goutils/logging"
 )
 
@@ -233,14 +232,6 @@ func ToLogLevel(deprecatedLogLevel Level) *LogLevel {
 		newLogLevel.Set(LevelError)
 	}
 	return &newLogLevel
-}
-
-func EnableSgReplicateLogging() {
-	clog.EnableKey("Replicate")
-}
-
-func DisableSgReplicateLogging() {
-	clog.DisableKey("Replicate")
 }
 
 // GetLogKeys returns log keys in a map
