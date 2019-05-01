@@ -610,6 +610,9 @@ func TestAllDocsOnly(t *testing.T) {
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
+	// Trigger creation of the channel cache for channel "all"
+	db.changeCache.getChannelCache("all")
+
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
 		channels := []string{"all"}
@@ -627,9 +630,9 @@ func TestAllDocsOnly(t *testing.T) {
 
 	alldocs, err := allDocIDs(db)
 	assert.NoError(t, err, "AllDocIDs failed")
-	goassert.Equals(t, len(alldocs), 100)
+	assert.Equal(t, 100, len(alldocs))
 	for i, entry := range alldocs {
-		goassert.True(t, entry.Equal(ids[i]))
+		assert.True(t, entry.Equal(ids[i]))
 	}
 
 	// Now delete one document and try again:
@@ -638,21 +641,21 @@ func TestAllDocsOnly(t *testing.T) {
 
 	alldocs, err = allDocIDs(db)
 	assert.NoError(t, err, "AllDocIDs failed")
-	goassert.Equals(t, len(alldocs), 99)
+	assert.Equal(t, 99, len(alldocs))
 	for i, entry := range alldocs {
 		j := i
 		if i >= 23 {
 			j++
 		}
-		goassert.True(t, entry.Equal(ids[j]))
+		assert.True(t, entry.Equal(ids[j]))
 	}
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
 	db.changeCache.waitForSequence(101, base.DefaultWaitForSequenceTesting, t)
 	changeLog := db.GetChangeLog("all", 0)
-	goassert.Equals(t, len(changeLog), 50)
-	goassert.Equals(t, int(changeLog[0].Sequence), 52)
+	assert.Equal(t, 50, len(changeLog))
+	assert.Equal(t, 52, int(changeLog[0].Sequence))
 
 	// Now check the changes feed:
 	var options ChangesOptions
@@ -660,14 +663,15 @@ func TestAllDocsOnly(t *testing.T) {
 	defer close(options.Terminator)
 	changes, err := db.GetChanges(channels.SetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
-	goassert.Equals(t, len(changes), 100)
+	assert.Equal(t, 100, len(changes))
+
 	for i, change := range changes {
 		seq := i + 1
 		if i >= 23 {
 			seq++
 		}
-		goassert.Equals(t, change.Seq, SequenceID{Seq: uint64(seq)})
-		goassert.Equals(t, change.Deleted, i == 99)
+		assert.Equal(t, SequenceID{Seq: uint64(seq)}, change.Seq)
+		assert.Equal(t, i == 99, change.Deleted)
 		var removed base.Set
 		if i == 99 {
 			removed = channels.SetOf(t, "all")
@@ -774,6 +778,9 @@ func TestConflicts(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Instantiate channel cache for channel 'all'
+	db.changeCache.getChannelCache("all")
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}

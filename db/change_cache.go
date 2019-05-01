@@ -735,7 +735,10 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	if change.DocID == "" || change.IsPrincipal {
 		return nil
 	}
-	addedTo := make(base.Set)
+
+	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
+	// the change's active channels, as well as any channel removals for the active revision.
+	updatedChannels := make(base.Set)
 
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
@@ -752,25 +755,29 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 
 		for channelName, removal := range ch {
 			if removal == nil || removal.Seq == change.Sequence {
-				channelCache := c._getChannelCache(channelName)
-				channelCache.addToCache(change, removal != nil)
-				addedTo = addedTo.Add(channelName)
-				if change.Skipped {
-					channelCache.AddLateSequence(change)
+				channelCache, ok := c._getActiveChannelCache(channelName)
+				if ok {
+					channelCache.addToCache(change, removal != nil)
+					if change.Skipped {
+						channelCache.AddLateSequence(change)
+					}
 				}
+				updatedChannels = updatedChannels.Add(channelName)
 			}
 		}
 
 		if EnableStarChannelLog {
-			channelCache := c._getChannelCache(channels.UserStarChannel)
-			channelCache.addToCache(change, false)
-			addedTo = addedTo.Add(channels.UserStarChannel)
-			if change.Skipped {
-				channelCache.AddLateSequence(change)
+			channelCache, ok := c._getActiveChannelCache(channels.UserStarChannel)
+			if ok {
+				channelCache.addToCache(change, false)
+				if change.Skipped {
+					channelCache.AddLateSequence(change)
+				}
 			}
+			updatedChannels = updatedChannels.Add(channels.UserStarChannel)
 		}
 
-		base.Infof(base.KeyCache, "#%d ==> channels %v", change.Sequence, base.UD(addedTo))
+		base.Infof(base.KeyCache, "#%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 	}()
 
 	if !change.TimeReceived.IsZero() {
@@ -778,7 +785,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
 	}
 
-	return addedTo
+	return updatedChannels
 }
 
 // Add the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
@@ -823,14 +830,22 @@ func (c *changeCache) _getChannelCache(channelName string) *channelCache {
 	cache := c.channelCaches[channelName]
 	if cache == nil {
 
-		// expect to see everything _after_ the sequence at the time of cache init, but not the sequence itself since it not expected to appear on DCP
-		validFrom := c.initialSequence + 1
+		// Expect to see everything from nextSequence at the time of channel cache init.  Since callers of _getChannelCache
+		// holds c.lock, we don't need to worry about DCP events updating nextSequence before the channel is added
+		// to c.channelCaches
+		validFrom := c.nextSequence
 
 		cache = newChannelCacheWithOptions(c.context, channelName, validFrom, c.options)
 		c.channelCaches[channelName] = cache
+
 		c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheNumChannels, 1)
 	}
 	return cache
+}
+
+func (c *changeCache) _getActiveChannelCache(channelName string) (*channelCache, bool) {
+	cache, ok := c.channelCaches[channelName]
+	return cache, ok
 }
 
 //////// CHANGE ACCESS:
@@ -841,10 +856,6 @@ func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
 	return c.getChannelCache(channelName).GetChanges(options)
-}
-
-func (c *changeCache) GetCachedChanges(channelName string, options ChangesOptions) (uint64, []*LogEntry) {
-	return c.getChannelCache(channelName).getCachedChanges(options)
 }
 
 // Returns the sequence number the cache is up-to-date with.

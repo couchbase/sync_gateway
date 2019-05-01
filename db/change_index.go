@@ -44,8 +44,6 @@ type ChangeIndex interface {
 
 	// Retrieve changes in a channel
 	GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error)
-	// Retrieve in-memory changes in a channel
-	GetCachedChanges(channelName string, options ChangesOptions) (validFrom uint64, entries []*LogEntry)
 
 	// Called to add a document to the index
 	DocChanged(event sgbucket.FeedEvent)
