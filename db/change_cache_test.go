@@ -1341,7 +1341,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	// -------- Test setup ----------------
 
 	if base.TestUseXattrs() {
-		t.Skip("This test only works in channel cache mode")
+		t.Skip("This test only works with in-document metadata")
 	}
 
 	// Enable relevant logging
@@ -1544,6 +1544,38 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	assert.NoError(t, err, "Couldn't GetChanges")
 	secondChangesCount := len(changes)
 	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
+
+}
+
+// Verify that notifyChange for channel zero is sent even when the channel isn't active in the cache.
+func TestNotifyForInactiveChannel(t *testing.T) {
+
+	// Enable relevant logging
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache|base.KeyDCP)()
+
+	db, testBucket := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
+	// -------- Setup notifyChange callback ----------------
+	changeCacheImpl := db.changeCache.(*changeCache)
+
+	var waitForNotify sync.WaitGroup
+	waitForNotify.Add(1)
+	changeCacheImpl.notifyChange = func(channels base.Set) {
+		log.Printf("channelsChanged: %v", channels)
+		if channels.Contains("zero") {
+			waitForNotify.Done()
+		}
+	}
+
+	// Write a document to channel zero
+	body := Body{"channels": []string{"zero"}}
+	_, err := db.Put("inactiveCacheNotify", body)
+	assert.NoError(t, err)
+
+	// Wait for notify
+	waitForNotify.Wait()
 
 }
 

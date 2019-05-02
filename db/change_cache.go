@@ -536,7 +536,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
 	}
-	base.Infof(base.KeyCache, "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLatency/time.Millisecond), base.UD(change.DocID), change.RevID)
+	base.Infof(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLatency/time.Millisecond), base.UD(change.DocID), change.RevID)
 
 	changedChannels := c.processEntry(change)
 	changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
@@ -659,7 +659,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 		change.DocID = "_role/" + princ.Name
 	}
 
-	base.Infof(base.KeyCache, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
+	base.Infof(base.KeyDCP, "Received #%d (%q)", change.Sequence, base.UD(change.DocID))
 
 	changedChannels := c.processEntry(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
@@ -777,7 +777,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 			updatedChannels = updatedChannels.Add(channels.UserStarChannel)
 		}
 
-		base.Infof(base.KeyCache, "#%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
+		base.Infof(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 	}()
 
 	if !change.TimeReceived.IsZero() {
