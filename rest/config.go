@@ -405,6 +405,15 @@ func (dbConfig DbConfig) validate() error {
 		}
 	}
 
+	if dbConfig.CompactIntervalDays != nil {
+		if *dbConfig.CompactIntervalDays < db.CompactIntervalMinDays && *dbConfig.CompactIntervalDays != 0 {
+			return fmt.Errorf("compact_interval_days cannot be lower than %g", db.CompactIntervalMinDays)
+		}
+		if *dbConfig.CompactIntervalDays > db.CompactIntervalMinDays && *dbConfig.CompactIntervalDays != 0 {
+			return fmt.Errorf("compact_interval_days cannot be higher than %g", db.CompactIntervalMaxDays)
+		}
+	}
+
 	// if the feed type is DCPSHARD, then there must be a ChannelIndex
 	if strings.ToLower(dbConfig.FeedType) == strings.ToLower(base.DcpShardFeedType) {
 		if dbConfig.ChannelIndex == nil {
