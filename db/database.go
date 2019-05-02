@@ -245,9 +245,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	dbContext.terminator = make(chan bool)
 
-	dbContext.revisionCache = NewShardedLRURevisionCache(
+	dbContext.revisionCache = NewRevisionCache(
 		options.RevisionCacheCapacity,
-		dbContext.revCacheLoader,
+		dbContext,
 		dbContext.DbStats.StatsCache(),
 	)
 
@@ -1212,9 +1212,9 @@ func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 // For test usage
 func (context *DatabaseContext) FlushRevisionCacheForTest() {
 
-	context.revisionCache = NewShardedLRURevisionCache(
+	context.revisionCache = NewRevisionCache(
 		context.Options.RevisionCacheCapacity,
-		context.revCacheLoader,
+		context,
 		context.DbStats.StatsCache(),
 	)
 

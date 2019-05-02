@@ -10,7 +10,18 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+type noopBackingStore struct{}
+
+func (noopBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
+	return nil, nil
+}
+
+func (noopBackingStore) getRevision(doc *document, revid string) (Body, error) {
+	return nil, nil
+}
 
 func testDocRev(revId string, body Body, history Revisions, channels base.Set, expiry *time.Time, attachments AttachmentsMeta) DocumentRevision {
 	return DocumentRevision{
@@ -48,7 +59,7 @@ func TestRevisionCache(t *testing.T) {
 		goassert.DeepEquals(t, channels, base.Set(nil))
 	}
 
-	cache := NewLRURevisionCache(10, nil, initEmptyStatsMap(base.StatsGroupKeyCache))
+	cache := NewLRURevisionCache(10, noopBackingStore{}, initEmptyStatsMap(base.StatsGroupKeyCache))
 	for i := 0; i < 10; i++ {
 		body, history, channels := revForTest(i)
 		docRev := testDocRev(body[BodyRev].(string), body, history, channels, nil, nil)
@@ -78,7 +89,7 @@ func TestRevisionCache(t *testing.T) {
 
 func TestLoaderFunction(t *testing.T) {
 	var callsToLoader = 0
-	loader := func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
+	_ = func(backingStore RevisionCacheBackingStore, id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
 		callsToLoader++
 		if id.DocID[0] != 'J' {
 			err = base.HTTPErrorf(404, "missing")
@@ -92,7 +103,7 @@ func TestLoaderFunction(t *testing.T) {
 		}
 		return
 	}
-	cache := NewShardedLRURevisionCache(10, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
+	cache := NewShardedLRURevisionCache(10, noopBackingStore{}, initEmptyStatsMap(base.StatsGroupKeyCache))
 
 	docRev, err := cache.Get("Jens", "1", BodyShallowCopy)
 	goassert.Equals(t, docRev.Body[BodyId], "Jens")
@@ -186,9 +197,8 @@ func TestBypassRevisionCache(t *testing.T) {
 	rev2, err := db.Put(key, docBody)
 	assert.NoError(t, err)
 
-	rc := BypassRevisionCache{
-		loaderFunc: db.DatabaseContext.revCacheLoader,
-	}
+	rc, err := NewBypassRevisionCache(db.DatabaseContext, db.DbStats.StatsCache())
+	require.NoError(t, err)
 
 	// Peek always returns false for BypassRevisionCache
 	_, ok := rc.Peek(key, rev1)
@@ -213,7 +223,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	assert.False(t, ok)
 
 	// Get active revision
-	doc, err = rc.GetActive(key, db.DatabaseContext, BodyShallowCopy)
+	doc, err = rc.GetActive(key, BodyShallowCopy)
 	assert.NoError(t, err)
 	assert.Equal(t, "5678", doc.Body["value"].(json.Number).String())
 
@@ -314,7 +324,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestRevisionImmutableDelta(t *testing.T) {
-	loader := func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
+	_ = func(backingStore RevisionCacheBackingStore, id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
 		body = Body{
 			BodyId:  id.DocID,
 			BodyRev: id.RevID,
@@ -323,7 +333,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 		channels = base.SetOf("*")
 		return
 	}
-	cache := NewShardedLRURevisionCache(10, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
+	cache := NewShardedLRURevisionCache(10, noopBackingStore{}, initEmptyStatsMap(base.StatsGroupKeyCache))
 
 	firstDelta := []byte("delta")
 	secondDelta := []byte("modified delta")
@@ -358,7 +368,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 func BenchmarkRevisionCacheRead(b *testing.B) {
 
 	//Create test document
-	loader := func(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
+	_ = func(backingStore RevisionCacheBackingStore, id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
 		body = Body{
 			BodyId:  id.DocID,
 			BodyRev: id.RevID,
@@ -367,7 +377,7 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 		channels = base.SetOf("*")
 		return
 	}
-	cache := NewShardedLRURevisionCache(5000, loader, initEmptyStatsMap(base.StatsGroupKeyCache))
+	cache := NewShardedLRURevisionCache(5000, noopBackingStore{}, initEmptyStatsMap(base.StatsGroupKeyCache))
 
 	// trigger load into cache
 	for i := 0; i < 5000; i++ {

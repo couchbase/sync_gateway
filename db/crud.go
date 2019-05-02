@@ -187,48 +187,6 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 	return docOut, nil
 }
 
-// This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
-// Its job is to load a revision from the bucket when there's a cache miss.
-func (context *DatabaseContext) revCacheLoader(id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
-	var doc *document
-	if doc, err = context.GetDocument(id.DocID, DocUnmarshalAll); doc == nil {
-		return body, history, channels, attachments, expiry, err
-	}
-	return context.revCacheLoaderForDocument(doc, id.RevID)
-
-}
-
-// Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
-func (context *DatabaseContext) revCacheLoaderForDocument(doc *document, revid string) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
-
-	if body, err = context.getRevision(doc, revid); err != nil {
-		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
-		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
-		removalBody, removalHistory, removalChannels, isRemoval, isRemovalErr := doc.IsChannelRemoval(revid)
-		if isRemovalErr != nil {
-			return body, history, channels, nil, nil, isRemovalErr
-		}
-		if isRemoval {
-			return removalBody, removalHistory, removalChannels, nil, nil, nil
-		} else {
-			// If this wasn't a removal, return the original error from getRevision
-			return body, history, channels, nil, nil, err
-		}
-	}
-	if doc.History[revid].Deleted {
-		body[BodyDeleted] = true
-	}
-
-	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
-	if getHistoryErr != nil {
-		return body, history, channels, nil, nil, getHistoryErr
-	}
-	history = encodeRevisions(validatedHistory)
-	channels = doc.History[revid].Channels
-
-	return body, history, channels, doc.Attachments, doc.Expiry, err
-}
-
 // Returns the body of the current revision of a document
 func (db *Database) Get(docid string) (Body, error) {
 	return db.GetRevWithHistory(docid, "", 0, nil, nil, false)
@@ -284,7 +242,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		revision, err = db.revisionCache.Get(docid, revid, copyType)
 	} else {
 		// No rev ID given, so load active revision
-		revision, err = db.revisionCache.GetActive(docid, db.DatabaseContext, copyType)
+		revision, err = db.revisionCache.GetActive(docid, copyType)
 		if revision.Body != nil {
 			revid = revision.RevID
 		}

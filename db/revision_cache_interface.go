@@ -1,6 +1,7 @@
 package db
 
 import (
+	"expvar"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -12,7 +13,7 @@ type RevisionCache interface {
 	Get(docID, revID string, copyType BodyCopyType) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached
-	GetActive(docID string, context *DatabaseContext, copyType BodyCopyType) (docRev DocumentRevision, err error)
+	GetActive(docID string, copyType BodyCopyType) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
 	Peek(docID, revID string) (docRev DocumentRevision, found bool)
@@ -28,6 +29,29 @@ type RevisionCache interface {
 var _ RevisionCache = &LRURevisionCache{}
 var _ RevisionCache = &ShardedLRURevisionCache{}
 var _ RevisionCache = &BypassRevisionCache{}
+
+// NewRevisionCache returns a RevisionCache implementation for the given config options.
+func NewRevisionCache(capacity uint32, backingStore RevisionCacheBackingStore, statsCache *expvar.Map) RevisionCache {
+
+	// TODO: CBG-353 Fix up for new config and replace capacity param
+	// if options.revCache.size == 0 {
+	// 	return NewBypassRevisionCache(backingStore, statsCache)
+	// }
+	//
+	// if options.revCache.shard_count > 0 {
+	// 	return NewShardedLRURevisionCache(options.revCache.size, backingStore, statsCache)
+	// }
+	//
+	// return NewLRURevisionCache(options.revCache.size, backingStore, statsCache)
+
+	return NewShardedLRURevisionCache(capacity, backingStore, statsCache)
+}
+
+// RevisionCacheBackingStore is the inteface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.
+type RevisionCacheBackingStore interface {
+	GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error)
+	getRevision(doc *document, revid string) (Body, error)
+}
 
 // Revision information as returned by the rev cache
 type DocumentRevision struct {
@@ -60,4 +84,46 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 		AttachmentDigests: AttachmentDigests(toRevision.Attachments), // Flatten the AttachmentsMeta into a list of digests
 		RevisionHistory:   toRevision.History.parseAncestorRevisions(fromRevID),
 	}
+}
+
+// This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
+// Its job is to load a revision from the bucket when there's a cache miss.
+func revCacheLoader(backingStore RevisionCacheBackingStore, id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
+	var doc *document
+	if doc, err = backingStore.GetDocument(id.DocID, DocUnmarshalAll); doc == nil {
+		return body, history, channels, attachments, expiry, err
+	}
+
+	return revCacheLoaderForDocument(backingStore, doc, id.RevID)
+}
+
+// Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
+func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *document, revid string) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
+
+	if body, err = backingStore.getRevision(doc, revid); err != nil {
+		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
+		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
+		removalBody, removalHistory, removalChannels, isRemoval, isRemovalErr := doc.IsChannelRemoval(revid)
+		if isRemovalErr != nil {
+			return body, history, channels, nil, nil, isRemovalErr
+		}
+		if isRemoval {
+			return removalBody, removalHistory, removalChannels, nil, nil, nil
+		} else {
+			// If this wasn't a removal, return the original error from getRevision
+			return body, history, channels, nil, nil, err
+		}
+	}
+	if doc.History[revid].Deleted {
+		body[BodyDeleted] = true
+	}
+
+	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+	if getHistoryErr != nil {
+		return body, history, channels, nil, nil, getHistoryErr
+	}
+	history = encodeRevisions(validatedHistory)
+	channels = doc.History[revid].Channels
+
+	return body, history, channels, doc.Attachments, doc.Expiry, err
 }
