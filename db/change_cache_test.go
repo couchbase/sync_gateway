@@ -1341,7 +1341,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	// -------- Test setup ----------------
 
 	if base.TestUseXattrs() {
-		t.Skip("This test only works in channel cache mode")
+		t.Skip("This test only works with in-document metadata")
 	}
 
 	// Enable relevant logging
@@ -1431,5 +1431,167 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	// Block until the notifyChange callback was invoked with the expected channels.
 	// If the callback is never called back with expected, will block forever.
 	waitForOnChangeCallback.Wait()
+
+}
+
+// Trigger initialization of empty cache, then write and validate a subsequent changes request returns expected data.
+func TestInitializeEmptyCache(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
+
+	// Increase the cache max size
+	cacheOptions := CacheOptions{}
+	cacheOptions.ChannelCacheMaxLength = 50
+
+	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	docCount := 0
+	// Write docs to non-queried channel first, to increase cache.nextSequence
+	for i := 0; i < 10; i++ {
+		channels := []string{"islands"}
+		body := Body{"serialnumber": int64(i), "channels": channels}
+		docID := fmt.Sprintf("loadCache-ch-%d", i)
+		_, err := db.Put(docID, body)
+		assert.NoError(t, err, "Couldn't create document")
+		docCount++
+	}
+
+	// Issue getChanges for empty channel
+	changes, err := db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{})
+	assert.NoError(t, err, "Couldn't GetChanges")
+	changesCount := len(changes)
+	assert.Equal(t, 0, changesCount)
+
+	// Write some documents to channel zero
+	for i := 0; i < 10; i++ {
+		channels := []string{"zero"}
+		body := Body{"serialnumber": int64(i), "channels": channels}
+		docID := fmt.Sprintf("loadCache-z-%d", i)
+		_, err := db.Put(docID, body)
+		assert.NoError(t, err, "Couldn't create document")
+		docCount++
+	}
+
+	// Wait for writes to complete, then getChanges again
+	db.changeCache.waitForSequence(uint64(docCount), base.DefaultWaitForSequenceTesting, t)
+
+	changes, err = db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{})
+	assert.NoError(t, err, "Couldn't GetChanges")
+	changesCount = len(changes)
+	assert.Equal(t, 10, changesCount)
+}
+
+// Trigger initialization of the channel cache under load via getChanges.  Ensures validFrom handling correctly
+// sets query/cache boundaries
+func TestInitializeCacheUnderLoad(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
+
+	// Increase the cache max size
+	cacheOptions := CacheOptions{}
+	cacheOptions.ChannelCacheMaxLength = 50
+
+	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Writes [docCount] documents.  Use wait group (writesDone)to identify when all docs have been written.
+	// Use another waitGroup (writesInProgress) to trigger getChanges midway through writes
+	docCount := 1000
+	inProgressCount := 100
+
+	var writesDone sync.WaitGroup
+	var writesInProgress sync.WaitGroup
+	writesDone.Add(docCount)
+	writesInProgress.Add(inProgressCount)
+
+	// Start writing docs
+	go func() {
+		for i := 0; i < docCount; i++ {
+			channels := []string{"zero"}
+			body := Body{"serialnumber": int64(i), "channels": channels}
+			docID := fmt.Sprintf("loadCache-%d", i)
+			_, err := db.Put(docID, body)
+			assert.NoError(t, err, "Couldn't create document")
+			if i < inProgressCount {
+				writesInProgress.Done()
+			}
+			writesDone.Done()
+		}
+	}()
+
+	// Wait for writes to be in progress, then getChanges for channel zero
+	writesInProgress.Wait()
+	changes, err := db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{})
+	assert.NoError(t, err, "Couldn't GetChanges")
+	firstChangesCount := len(changes)
+	var lastSeq SequenceID
+	if firstChangesCount > 0 {
+		lastSeq = changes[len(changes)-1].Seq
+	}
+
+	// Wait for writes to complete, then getChanges again
+	writesDone.Wait()
+	db.changeCache.waitForSequence(uint64(docCount), base.DefaultWaitForSequenceTesting, t)
+
+	changes, err = db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{Since: lastSeq})
+	assert.NoError(t, err, "Couldn't GetChanges")
+	secondChangesCount := len(changes)
+	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
+
+}
+
+// Verify that notifyChange for channel zero is sent even when the channel isn't active in the cache.
+func TestNotifyForInactiveChannel(t *testing.T) {
+
+	// Enable relevant logging
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache|base.KeyDCP)()
+
+	db, testBucket := setupTestDB(t)
+	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
+	// -------- Setup notifyChange callback ----------------
+	changeCacheImpl := db.changeCache.(*changeCache)
+
+	notifyChannel := make(chan struct{})
+	changeCacheImpl.notifyChange = func(channels base.Set) {
+		log.Printf("channelsChanged: %v", channels)
+		if channels.Contains("zero") {
+			notifyChannel <- struct{}{}
+		}
+	}
+
+	// Write a document to channel zero
+	body := Body{"channels": []string{"zero"}}
+	_, err := db.Put("inactiveCacheNotify", body)
+	assert.NoError(t, err)
+
+	// Wait for notify to arrive
+	select {
+	case <-notifyChannel:
+		// success
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "Timed out waiting for notify to fire")
+	}
+
+}
+
+// logChangesResponse helper function, useful to dump changes response during test development.
+func logChangesResponse(changes []*ChangeEntry) {
+	log.Printf("Changes response:")
+	for _, change := range changes {
+		var rev string
+		if len(change.Changes) > 0 {
+			rev, _ = change.Changes[0]["rev"]
+		}
+		log.Printf("  seq: %v id:%v rev:%s", change.Seq, change.ID, rev)
+	}
 
 }
