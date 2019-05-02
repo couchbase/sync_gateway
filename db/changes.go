@@ -321,14 +321,13 @@ func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, 
 	return feeds, names
 }
 
-func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *changeWaiter, isContinuous bool) (isChanged bool, newCount uint64, newChannels base.Set, err error) {
+func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *changeWaiter, isContinuous bool) (isChanged bool, newCount uint64, changedChannels channels.ChangedKeys, err error) {
 
 	newCount = changeWaiter.CurrentUserCount()
-	// If not continuous, we force user reload as a workaround for https://github.com/couchbase/sync_gateway/issues/2068.  For continuous, #2068 is handled by addedChannels check, and
+	// If not continuous, we force user reload as a workaround for https://github.com/couchbase/sync_gateway/issues/2068.  For continuous, #2068 is handled by changedChannels check, and
 	// we can reload only when there's been a user change notification
 	if newCount > userChangeCount || !isContinuous {
 		var previousChannels channels.TimedSet
-		var newChannels base.Set
 		base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed reloading user %+v", base.UD(db.user))
 		userChangeCount = newCount
 
@@ -338,13 +337,13 @@ func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ch
 				base.WarnfCtx(db.Ctx, base.KeyAll, "Error reloading user %q: %v", base.UD(db.user.Name()), err)
 				return false, 0, nil, err
 			}
-			// check whether channels have changed
-			newChannels = db.user.GetAddedChannels(previousChannels)
-			if len(newChannels) > 0 {
-				base.DebugfCtx(db.Ctx, base.KeyChanges, "New channels found after user reload: %v", base.UD(newChannels))
+			// check whether channel set has changed
+			changedChannels = db.user.InheritedChannels().CompareKeys(previousChannels)
+			if len(changedChannels) > 0 {
+				base.DebugfCtx(db.Ctx, base.KeyChanges, "Modified channel set after user reload: %v", base.UD(changedChannels))
 			}
 		}
-		return true, newCount, newChannels, nil
+		return true, newCount, changedChannels, nil
 	}
 	return false, userChangeCount, nil, nil
 }
@@ -374,10 +373,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		var lowSequence uint64
 		var currentCachedSequence uint64
 		var lateSequenceFeeds map[string]*lateSequenceFeed
-		var userCounter uint64     // Wait counter used to identify changes to the user document
-		var addedChannels base.Set // Tracks channels added to the user during changes processing.
-		var userChanged bool       // Whether the user document has changed in a given iteration loop
-		var deferredBackfill bool  // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
+		var userCounter uint64              // Wait counter used to identify changes to the user document
+		var changedChannels map[string]bool // Tracks channels added/removed to the user during changes processing.
+		var userChanged bool                // Whether the user document has changed in a given iteration loop
+		var deferredBackfill bool           // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
 
 		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
 		currentCachedSequence = db.changeCache.GetStableSequence("").Seq
@@ -407,6 +406,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		} else {
 			channelsSince = channels.AtSequence(chans, 0)
 		}
+
+		// Mark channel set as active, schedule defer
+		db.activeChannels.IncrChannels(channelsSince)
+		defer db.activeChannels.DecrChannels(channelsSince)
 
 		// For a continuous feed, initialise the lateSequenceFeeds that track late-arriving sequences
 		// to the channel caches.
@@ -459,10 +462,10 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				chanOpts := options
 				seqAddedAt := vbSeqAddedAt.Sequence
 
-				// Check whether requires backfill based on addedChannels in this _changes feed
+				// Check whether requires backfill based on changedChannels in this _changes feed
 				isNewChannel := false
-				if addedChannels != nil {
-					_, isNewChannel = addedChannels[name]
+				if changedChannels != nil {
+					isNewChannel, _ = changedChannels[name]
 				}
 
 				// Check whether requires backfill based on current sequence, seqAddedAt
@@ -698,7 +701,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// Check whether user channel access has changed while waiting:
 			var err error
-			userChanged, userCounter, addedChannels, err = db.checkForUserUpdates(userCounter, changeWaiter, options.Continuous)
+			userChanged, userCounter, changedChannels, err = db.checkForUserUpdates(userCounter, changeWaiter, options.Continuous)
 			if err != nil {
 				change := makeErrorEntry("User not found during reload - terminating changes feed")
 				base.DebugfCtx(db.Ctx, base.KeyChanges, "User not found during reload - terminating changes feed with entry %+v", base.UD(change))
@@ -706,7 +709,12 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				return
 			}
 			if userChanged && db.user != nil {
-				channelsSince = db.user.FilterToAvailableChannels(chans)
+				newChannelsSince := db.user.FilterToAvailableChannels(chans)
+				changedChannels = newChannelsSince.CompareKeys(channelsSince)
+				if len(changedChannels) > 0 {
+					db.activeChannels.UpdateChanged(changedChannels)
+				}
+				channelsSince = newChannelsSince
 			}
 
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)

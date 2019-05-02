@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"expvar"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -98,6 +99,7 @@ type DatabaseContext struct {
 	DbStats            *DatabaseStats          // stats that correspond to this database context
 	CompactState       uint32                  // Status of database compaction
 	terminator         chan bool               // Signal termination of background goroutines
+	activeChannels     channels.ActiveChannels // Tracks active replications by channel
 }
 
 type DatabaseContextOptions struct {
@@ -291,6 +293,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Initialize the tap Listener for notify handling
 	dbContext.mutationListener.Init(bucket.GetName())
+
+	// Initialize the active channel counter
+	dbContext.activeChannels = channels.NewActiveChannels(dbStats.StatsCache().Get(base.StatKeyChannelCacheActiveChannels).(*expvar.Int))
 
 	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
 	feedMode := uint64(sgbucket.FeedNoBackfill)

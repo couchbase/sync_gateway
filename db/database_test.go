@@ -1540,9 +1540,9 @@ func TestConcurrentImport(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			doc, err := db.GetDocument("directWrite", DocUnmarshalAll)
-			goassert.True(t, doc != nil)
+			assert.True(t, doc != nil)
 			assert.NoError(t, err, "Document retrieval error")
-			goassert.Equals(t, doc.syncData.CurrentRev, "1-36fa688dc2a2c39a952ddce46ab53d12")
+			assert.Equal(t, "1-36fa688dc2a2c39a952ddce46ab53d12", doc.syncData.CurrentRev)
 		}()
 	}
 	wg.Wait()
@@ -1568,7 +1568,7 @@ func TestViewCustom(t *testing.T) {
 	if err != nil {
 		log.Printf("error putting doc: %v", err)
 	}
-	goassert.True(t, err == nil)
+	assert.True(t, err == nil)
 
 	// Workaround race condition where queryAllDocs doesn't return the doc we just added
 	// TODO: stale=false will guarantee no race when using a couchbase bucket, but this test
@@ -1580,7 +1580,7 @@ func TestViewCustom(t *testing.T) {
 	opts := Body{"stale": false, "reduce": false}
 	viewResult := sgbucket.ViewResult{}
 	errViewCustom := db.Bucket.ViewCustom(DesignDocSyncHousekeeping(), ViewAllDocs, opts, &viewResult)
-	goassert.True(t, errViewCustom == nil)
+	assert.True(t, errViewCustom == nil)
 
 	// assert that the doc added earlier is in the results
 	foundDoc := false
@@ -1589,7 +1589,7 @@ func TestViewCustom(t *testing.T) {
 			foundDoc = true
 		}
 	}
-	goassert.True(t, foundDoc)
+	assert.True(t, foundDoc)
 
 }
 

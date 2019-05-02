@@ -77,6 +77,7 @@ const (
 	StatKeyChannelCacheRevsRemoval    = "chan_cache_removal_revs"
 	StatKeyChannelCacheNumChannels    = "chan_cache_num_channels"
 	StatKeyChannelCacheMaxEntries     = "chan_cache_max_entries"
+	StatKeyChannelCacheActiveChannels = "num_active_channels"
 	StatKeyChannelCachePendingQueries = "chan_cache_pending_queries"
 	StatKeyNumSkippedSeqs             = "num_skipped_seqs"
 	StatKeyAbandonedSeqs              = "abandoned_seqs"

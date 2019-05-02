@@ -134,9 +134,5 @@ type User interface {
 	// to the same channel, priority is given to values prior to the specified since.
 	FilterToAvailableChannelsForSince(channels base.Set, since base.SequenceClock) (ch.TimedSet, ch.TimedSet)
 
-	// Returns a Set containing channels that the user has access to, that aren't present in the
-	// input set
-	GetAddedChannels(channels ch.TimedSet) base.Set
-
 	setRolesSince(ch.TimedSet)
 }
