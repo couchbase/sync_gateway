@@ -61,6 +61,13 @@ var (
 	DefaultDeltaSyncRevMaxAge = uint32(60 * 60 * 24) // 24 hours in seconds
 )
 
+var DefaultCompactInterval = uint32(60 * 60 * 24) // Default compact interval in seconds = 1 Day
+
+const (
+	CompactIntervalMinDays = float32(0.04) // ~1 Hour in days
+	CompactIntervalMaxDays = float32(60)   // 60 Days in days
+)
+
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
@@ -89,7 +96,8 @@ type DatabaseContext struct {
 	PurgeInterval      int                     // Metadata purge interval, in hours
 	serverUUID         string                  // UUID of the server, if available
 	DbStats            *DatabaseStats          // stats that correspond to this database context
-	CompactState       uint32                  //Status of database compaction
+	CompactState       uint32                  // Status of database compaction
+	terminator         chan bool               // Signal termination of background goroutines
 }
 
 type DatabaseContextOptions struct {
@@ -111,6 +119,7 @@ type DatabaseContextOptions struct {
 	SendWWWAuthenticateHeader *bool            // False disables setting of 'WWW-Authenticate' header
 	UseViews                  bool             // Force use of views
 	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
+	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
 }
 
 type OidcTestProviderOptions struct {
@@ -219,7 +228,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	base.PerDbStats.Set(dbName, dbStats.ExpvarMap())
 
-	context := &DatabaseContext{
+	dbContext := &DatabaseContext{
 		Name:       dbName,
 		Bucket:     bucket,
 		StartTime:  time.Now(),
@@ -228,35 +237,37 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		DbStats:    dbStats,
 	}
 
-	if context.AllowConflicts() {
-		context.RevsLimit = DefaultRevsLimitConflicts
+	if dbContext.AllowConflicts() {
+		dbContext.RevsLimit = DefaultRevsLimitConflicts
 	} else {
-		context.RevsLimit = DefaultRevsLimitNoConflicts
+		dbContext.RevsLimit = DefaultRevsLimitNoConflicts
 	}
 
-	context.revisionCache = NewShardedLRURevisionCache(
+	dbContext.terminator = make(chan bool)
+
+	dbContext.revisionCache = NewShardedLRURevisionCache(
 		options.RevisionCacheCapacity,
-		context.revCacheLoader,
-		context.DbStats.StatsCache(),
+		dbContext.revCacheLoader,
+		dbContext.DbStats.StatsCache(),
 	)
 
-	context.EventMgr = NewEventManager()
+	dbContext.EventMgr = NewEventManager()
 
 	var err error
-	context.sequences, err = newSequenceAllocator(bucket, dbStats)
+	dbContext.sequences, err = newSequenceAllocator(bucket, dbStats)
 	if err != nil {
 		return nil, err
 	}
 
 	if options.IndexOptions == nil {
 		// In-memory channel cache
-		context.SequenceType = IntSequenceType
-		context.changeCache = &changeCache{}
+		dbContext.SequenceType = IntSequenceType
+		dbContext.changeCache = &changeCache{}
 	} else {
 		// KV channel index
-		context.SequenceType = ClockSequenceType
-		context.changeCache = &kvChangeIndex{}
-		context.SequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
+		dbContext.SequenceType = ClockSequenceType
+		dbContext.changeCache = &kvChangeIndex{}
+		dbContext.SequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -264,26 +275,26 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
 	notifyChange := func(changedChannels base.Set) {
-		context.mutationListener.Notify(changedChannels)
+		dbContext.mutationListener.Notify(changedChannels)
 	}
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
-	context.changeCache.Init(
-		context,
+	dbContext.changeCache.Init(
+		dbContext,
 		notifyChange,
 		options.CacheOptions,
 		options.IndexOptions,
 	)
 
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
-	context.SetOnChangeCallback(context.changeCache.DocChanged)
+	dbContext.SetOnChangeCallback(dbContext.changeCache.DocChanged)
 
 	// Initialize the tap Listener for notify handling
-	context.mutationListener.Init(bucket.GetName())
+	dbContext.mutationListener.Init(bucket.GetName())
 
 	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
 	feedMode := uint64(sgbucket.FeedNoBackfill)
-	if context.UseXattrs() && context.autoImport {
+	if dbContext.UseXattrs() && dbContext.autoImport {
 		feedMode = sgbucket.FeedResume
 	}
 
@@ -291,18 +302,18 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if options.IndexOptions == nil || options.TrackDocs {
 		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
 
-		err = context.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
+		err = dbContext.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
 			msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
 			base.Warnf(base.KeyAll, msgFormat, base.UD(bucket), err)
-			errTakeDbOffline := context.TakeDbOffline(fmt.Sprintf(msgFormat, bucket, err))
+			errTakeDbOffline := dbContext.TakeDbOffline(fmt.Sprintf(msgFormat, bucket, err))
 			if errTakeDbOffline == nil {
 
 				//start a retry loop to pick up tap feed again backing off double the delay each time
 				worker := func() (shouldRetry bool, err error, value interface{}) {
 					//If DB is going online via an admin request Bucket will be nil
-					if context.Bucket != nil {
-						err = context.Bucket.Refresh()
+					if dbContext.Bucket != nil {
+						err = dbContext.Bucket.Refresh()
 					} else {
 						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is not available", dbName)
 						return false, err, nil
@@ -315,11 +326,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 					5,  //InitialRetrySleepTimeMS
 				)
 
-				description := fmt.Sprintf("Attempt reconnect to lost Mutation (TAP/DCP) Feed for : %v", context.Name)
+				description := fmt.Sprintf("Attempt reconnect to lost Mutation (TAP/DCP) Feed for : %v", dbContext.Name)
 				err, _ := base.RetryLoop(description, worker, sleeper)
 
 				if err == nil {
-					base.Infof(base.KeyCRUD, "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(context.Name))
+					base.Infof(base.KeyCRUD, "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(dbContext.Name))
 
 					// The 10 second wait was introduced because the bucket was not fully initialised
 					// after the return of the retry loop.
@@ -327,13 +338,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 					<-timer.C
 
 					if options.DBOnlineCallback != nil {
-						options.DBOnlineCallback(context)
+						options.DBOnlineCallback(dbContext)
 					}
 				}
 			}
 
 			// If errTakeDbOffline is non-nil, it can be safely ignored because:
-			// - The only known error state for context.TakeDbOffline is if the current db state wasn't online
+			// - The only known error state for dbContext.TakeDbOffline is if the current db state wasn't online
 			// - That code would hit an error if the dropped tap feed triggered TakeDbOffline, but the db was already non-online
 			// - In that case (some other event, potentially an admin action, took the DB offline), and so there is no reason to do the auto-reconnect processing
 
@@ -343,12 +354,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 		// Check if there is an error starting the DCP feed
 		if err != nil {
-			context.changeCache = nil
+			dbContext.changeCache = nil
 			return nil, err
 		}
 
 		// Unlock change cache
-		err := context.changeCache.Start()
+		err := dbContext.changeCache.Start()
 		if err != nil {
 			return nil, err
 		}
@@ -357,7 +368,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
 	if options.OIDCOptions != nil {
-		context.OIDCProviders = make(auth.OIDCProviderMap)
+		dbContext.OIDCProviders = make(auth.OIDCProviderMap)
 
 		for name, provider := range options.OIDCOptions.Providers {
 			if provider.Issuer == "" || provider.ClientID == nil {
@@ -373,7 +384,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				return nil, base.RedactErrorf("OpenID Connect provider names cannot contain underscore:%s", base.UD(name))
 			}
 			provider.Name = name
-			if _, ok := context.OIDCProviders[provider.Issuer]; ok {
+			if _, ok := dbContext.OIDCProviders[provider.Issuer]; ok {
 				return nil, base.RedactErrorf("Multiple OIDC providers defined for issuer %v", base.UD(provider.Issuer))
 			}
 
@@ -393,30 +404,43 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				provider.CallbackURL = &updatedCallback
 			}
 
-			context.OIDCProviders[name] = provider
+			dbContext.OIDCProviders[name] = provider
 		}
-		if len(context.OIDCProviders) == 0 {
+		if len(dbContext.OIDCProviders) == 0 {
 			return nil, errors.New("OpenID Connect defined in config, but no valid OpenID Connect providers specified.")
 		}
 
 	}
 
 	// watchDocChanges is used for bucket shadowing
-	if !context.UseXattrs() {
-		go context.watchDocChanges()
+	if !dbContext.UseXattrs() {
+		go dbContext.watchDocChanges()
 	} else {
 		// Set the purge interval for tombstone compaction
-		context.PurgeInterval = DefaultPurgeInterval
+		dbContext.PurgeInterval = DefaultPurgeInterval
 		gocbBucket, ok := base.AsGoCBBucket(bucket)
 		if ok {
 			serverPurgeInterval, err := gocbBucket.GetMetadataPurgeInterval()
 			if err != nil {
 				base.Warnf(base.KeyAll, "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
 			} else if serverPurgeInterval > 0 {
-				context.PurgeInterval = serverPurgeInterval
+				dbContext.PurgeInterval = serverPurgeInterval
 			}
 		}
-		base.Infof(base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", float64(context.PurgeInterval)/24)
+		base.Infof(base.KeyAll, "Using metadata purge interval of %.2f days for tombstone compaction.", float64(dbContext.PurgeInterval)/24)
+
+		if dbContext.Options.CompactInterval != 0 {
+			if autoImport {
+				db := Database{DatabaseContext: dbContext}
+				NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
+					_, err := db.Compact()
+					base.WarnfCtx(ctx, base.KeyAll, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
+					return nil
+				}, time.Duration(dbContext.Options.CompactInterval)*time.Second, dbContext.terminator)
+			} else {
+				base.Warnf(base.KeyAll, "Automatic compaction can only be enabled on nodes running an Import process")
+			}
+		}
 
 	}
 
@@ -433,7 +457,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		}
 	}
 
-	return context, nil
+	return dbContext, nil
 }
 
 func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
@@ -522,6 +546,7 @@ func (context *DatabaseContext) Close() {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
+	close(context.terminator)
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
@@ -838,7 +863,6 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
 func (db *Database) Compact() (int, error) {
-
 	if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
 		return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")
 	}
@@ -860,8 +884,7 @@ func (db *Database) Compact() (int, error) {
 	}
 
 	ctx := db.Ctx
-
-	base.InfofCtx(ctx, base.KeyAll, "Compacting purged tombstones for %s ...", base.UD(db.Name))
+	base.InfofCtx(ctx, base.KeyAll, "Compacting purged tombstones for %s ...", base.MD(db.Name))
 	purgeBody := Body{"_purged": true}
 	purgedDocs := make([]string, 0)
 
@@ -896,7 +919,9 @@ func (db *Database) Compact() (int, error) {
 	count := len(purgedDocs)
 	if count > 0 {
 		db.changeCache.Remove(purgedDocs, startTime)
+		db.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
 	}
+	base.InfofCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 
 	return count, nil
 }

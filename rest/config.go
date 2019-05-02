@@ -203,6 +203,7 @@ type DbConfig struct {
 	SendWWWAuthenticateHeader *bool                          `json:"send_www_authenticate_header,omitempty"` // If false, disables setting of 'WWW-Authenticate' header in 401 responses
 	BucketOpTimeoutMs         *uint32                        `json:"bucket_op_timeout_ms,omitempty"`         // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 	DeltaSync                 *DeltaSyncConfig               `json:"delta_sync,omitempty"`                   // Config for delta sync
+	CompactIntervalDays       *float32                       `json:"compact_interval_days,omitempty"`        //Interval in days between compaction is automatically ran - 0 means don't run
 }
 
 type DeltaSyncConfig struct {
@@ -401,6 +402,15 @@ func (dbConfig DbConfig) validate() error {
 			msg := "ChannelIndex declared in config, but the FeedType is %v " +
 				"rather than expected value of DCPSHARD"
 			return fmt.Errorf(msg, dbConfig.FeedType)
+		}
+	}
+
+	if dbConfig.CompactIntervalDays != nil {
+		if *dbConfig.CompactIntervalDays < db.CompactIntervalMinDays && *dbConfig.CompactIntervalDays != 0 {
+			return fmt.Errorf("compact_interval_days cannot be lower than %g", db.CompactIntervalMinDays)
+		}
+		if *dbConfig.CompactIntervalDays > db.CompactIntervalMinDays && *dbConfig.CompactIntervalDays != 0 {
+			return fmt.Errorf("compact_interval_days cannot be higher than %g", db.CompactIntervalMaxDays)
 		}
 	}
 

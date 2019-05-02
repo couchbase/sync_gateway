@@ -609,6 +609,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
+	compactIntervalDays := config.CompactIntervalDays
+	var compactIntervalSecs uint32
+	if compactIntervalDays == nil {
+		compactIntervalSecs = db.DefaultCompactInterval
+	} else {
+		compactIntervalSecs = uint32(*compactIntervalDays * 60 * 60 * 24)
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		IndexOptions:              channelIndexOptions,
@@ -628,6 +636,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		UseViews:                  useViews,
 		DeltaSyncOptions:          deltaSyncOptions,
+		CompactInterval:           compactIntervalSecs,
 	}
 
 	// Create the DB Context

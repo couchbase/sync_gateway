@@ -32,6 +32,6 @@ func FormatBlipContextID(contextID string) string {
 	return "[" + contextID + "]"
 }
 
-func NewChangeCacheContextID(dbName string) string {
-	return dbName + "-ChangeCache-" + strconv.Itoa(rand.Intn(65536))
+func NewTaskID(contextID string, taskName string) string {
+	return contextID + "-" + taskName + "-" + strconv.Itoa(rand.Intn(65536))
 }

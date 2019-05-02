@@ -1435,7 +1435,6 @@ func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 
 // Purges a document from the bucket (no tombstone)
 func (db *Database) Purge(key string) error {
-
 	if db.UseXattrs() {
 		return db.Bucket.DeleteWithXattr(key, base.SyncXattrName)
 	} else {

@@ -56,6 +56,20 @@ func TestReadServerConfig(t *testing.T) {
 			config: "{\"databases\": {\"db\": {\"shadow\": {}}}}",
 			err:    "Bucket shadowing configuration has been moved to the 'deprecated' section of the config.  Please update your config and retry",
 		},
+		{
+			name:   "Compact Interval too low",
+			config: `{"databases": {"db":{"compact_interval_days": 0.039}}}`,
+			err:    "compact_interval_days cannot be lower than 0.04",
+		},
+		{
+			name:   "Compact Interval too high",
+			config: `{"databases": {"db":{"compact_interval_days": 61}}}`,
+			err:    "compact_interval_days cannot be higher than 60",
+		},
+		{
+			name:   "Compact Interval just right",
+			config: `{"databases": {"db":{"compact_interval_days": 0.04}}}`,
+		},
 	}
 
 	for _, test := range tests {
