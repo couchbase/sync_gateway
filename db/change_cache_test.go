@@ -1560,12 +1560,11 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	// -------- Setup notifyChange callback ----------------
 	changeCacheImpl := db.changeCache.(*changeCache)
 
-	var waitForNotify sync.WaitGroup
-	waitForNotify.Add(1)
+	notifyChannel := make(chan struct{})
 	changeCacheImpl.notifyChange = func(channels base.Set) {
 		log.Printf("channelsChanged: %v", channels)
 		if channels.Contains("zero") {
-			waitForNotify.Done()
+			notifyChannel <- struct{}{}
 		}
 	}
 
@@ -1574,8 +1573,13 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	_, err := db.Put("inactiveCacheNotify", body)
 	assert.NoError(t, err)
 
-	// Wait for notify
-	waitForNotify.Wait()
+	// Wait for notify to arrive
+	select {
+	case <-notifyChannel:
+		// success
+	case <-time.After(10 * time.Second):
+		assert.Fail(t, "Timed out waiting for notify to fire")
+	}
 
 }
 
