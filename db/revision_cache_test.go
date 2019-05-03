@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testBackingStore always returns an empty doc at rev:"1-abc" in channel "*" except for docs not in 'notFoundDocIDs'
 type testBackingStore struct {
 	// notFoundDocIDs is a list of doc IDs that GetDocument returns a 404 for.
 	notFoundDocIDs     []string
@@ -21,7 +22,6 @@ type testBackingStore struct {
 	getRevisionCounter *expvar.Int
 }
 
-// Always returns an empty doc at rev:"1-abc" in channel "*" for docs not in 'notFoundDocIDs'
 func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
 	t.getDocumentCounter.Add(1)
 
@@ -32,6 +32,9 @@ func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnma
 	}
 
 	doc = newDocument(docid)
+	doc._body = Body{
+		"testing": true,
+	}
 	doc.CurrentRev = "1-abc"
 	doc.History = RevTree{
 		doc.CurrentRev: {
@@ -45,6 +48,7 @@ func (t *testBackingStore) getRevision(doc *document, revid string) (Body, error
 	t.getRevisionCounter.Add(1)
 
 	return Body{
+		"testing":     true,
 		BodyId:        doc.ID,
 		BodyRev:       doc.CurrentRev,
 		BodyRevisions: Revisions{RevisionsStart: 1},
@@ -225,7 +229,8 @@ func TestBypassRevisionCache(t *testing.T) {
 	rev2, err := db.Put(key, docBody)
 	assert.NoError(t, err)
 
-	rc, err := NewBypassRevisionCache(db.DatabaseContext, db.DbStats.StatsCache())
+	bypassStat := expvar.Int{}
+	rc, err := NewBypassRevisionCache(db.DatabaseContext, &bypassStat)
 	require.NoError(t, err)
 
 	// Peek always returns false for BypassRevisionCache
@@ -234,8 +239,16 @@ func TestBypassRevisionCache(t *testing.T) {
 	_, ok = rc.Peek(key, rev2, BodyShallowCopy)
 	assert.False(t, ok)
 
+	// Get non-existing doc
+	doc, err := rc.Get("invalid", rev1, BodyShallowCopy)
+	assert.EqualError(t, err, "key \"invalid\" missing")
+
+	// Get non-existing revision
+	doc, err = rc.Get(key, "3-abc", BodyShallowCopy)
+	assertHTTPError(t, err, 404)
+
 	// Get specific revision
-	doc, err := rc.Get(key, rev1, BodyShallowCopy)
+	doc, err = rc.Get(key, rev1, BodyShallowCopy)
 	assert.NoError(t, err)
 	assert.Equal(t, "1234", doc.Body["value"].(json.Number).String())
 

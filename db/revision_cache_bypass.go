@@ -3,7 +3,6 @@ package db
 import (
 	"expvar"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/pkg/errors"
 )
 
@@ -14,14 +13,14 @@ type BypassRevisionCache struct {
 	bypassStat   *expvar.Int
 }
 
-func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, statsMap *expvar.Map) (*BypassRevisionCache, error) {
+func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *expvar.Int) (*BypassRevisionCache, error) {
 	if backingStore == nil {
 		return nil, errors.New("nil backingStore")
 	}
 
 	return &BypassRevisionCache{
 		backingStore: backingStore,
-		bypassStat:   statsMap.Get(base.StatKeyRevisionCacheBypass).(*expvar.Int),
+		bypassStat:   bypassStat,
 	}, nil
 }
 
