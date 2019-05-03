@@ -2,8 +2,10 @@ package db
 
 import (
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"testing"
 	"time"
 
@@ -13,121 +15,148 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type testBackingStore struct {
+	// notFoundDocIDs is a list of doc IDs that GetDocument returns a 404 for.
+	notFoundDocIDs     []string
+	getDocumentCounter *expvar.Int
+	getRevisionCounter *expvar.Int
+}
+
+// Always returns an empty doc at rev:"1-abc" in channel "*" for docs not in 'notFoundDocIDs'
+func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
+	t.getDocumentCounter.Add(1)
+
+	for _, d := range t.notFoundDocIDs {
+		if docid == d {
+			return nil, base.HTTPErrorf(404, "missing")
+		}
+	}
+
+	doc = newDocument(docid)
+	doc.CurrentRev = "1-abc"
+	doc.History = RevTree{
+		doc.CurrentRev: {
+			Channels: base.SetOf("*"),
+		},
+	}
+	return doc, nil
+}
+
+func (t *testBackingStore) getRevision(doc *document, revid string) (Body, error) {
+	t.getRevisionCounter.Add(1)
+
+	return Body{
+		BodyId:        doc.ID,
+		BodyRev:       doc.CurrentRev,
+		BodyRevisions: Revisions{RevisionsStart: 1},
+	}, nil
+}
+
 type noopBackingStore struct{}
 
-func (noopBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
+func (*noopBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
 	return nil, nil
 }
 
-func (noopBackingStore) getRevision(doc *document, revid string) (Body, error) {
+func (*noopBackingStore) getRevision(doc *document, revid string) (Body, error) {
 	return nil, nil
 }
 
-func testDocRev(revId string, body Body, history Revisions, channels base.Set, expiry *time.Time, attachments AttachmentsMeta) DocumentRevision {
-	return DocumentRevision{
-		RevID:       revId,
-		Body:        body,
-		History:     history,
-		Channels:    channels,
-		Expiry:      expiry,
-		Attachments: attachments,
-	}
-}
+// Tests the eviction from the LRURevisionCache
+func TestLRURevisionCacheEviction(t *testing.T) {
+	cacheHitCounter, cacheMissCounter := expvar.Int{}, expvar.Int{}
+	cache := NewLRURevisionCache(10, &noopBackingStore{}, &cacheHitCounter, &cacheMissCounter)
 
-func TestRevisionCache(t *testing.T) {
-	ids := make([]string, 20)
-	for i := 0; i < 20; i++ {
-		ids[i] = fmt.Sprintf("%d", i)
+	// Fill up the rev cache with the first 10 docs
+	for docID := 0; docID < 10; docID++ {
+		id := strconv.Itoa(docID)
+		cache.Put(id, DocumentRevision{Body: Body{BodyId: id}, RevID: "1-abc", History: Revisions{"start": 1}})
 	}
 
-	revForTest := func(i int) (Body, Revisions, base.Set) {
-		body := Body{
-			BodyId:  ids[i],
-			BodyRev: "x",
-		}
-		history := Revisions{RevisionsStart: i}
-		return body, history, nil
-	}
-	verify := func(body Body, history Revisions, channels base.Set, i int) {
-		if body == nil {
-			t.Fatalf("nil body at #%d", i)
-		}
-		goassert.True(t, body != nil)
-		goassert.Equals(t, body[BodyId], ids[i])
-		goassert.True(t, history != nil)
-		goassert.Equals(t, history[RevisionsStart], i)
-		goassert.DeepEquals(t, channels, base.Set(nil))
-	}
-
-	cache := NewLRURevisionCache(10, noopBackingStore{}, initEmptyStatsMap(base.StatsGroupKeyCache))
+	// Get them back out
 	for i := 0; i < 10; i++ {
-		body, history, channels := revForTest(i)
-		docRev := testDocRev(body[BodyRev].(string), body, history, channels, nil, nil)
-		cache.Put(body[BodyId].(string), docRev)
+		docID := strconv.Itoa(i)
+		docRev, err := cache.Get(docID, "1-abc", BodyShallowCopy)
+		assert.NoError(t, err)
+		assert.NotNil(t, docRev.Body, "nil body for %s", docID)
+		assert.Equal(t, docID, docRev.Body[BodyId])
+		assert.Equal(t, int64(0), cacheMissCounter.Value())
+		assert.Equal(t, int64(i+1), cacheHitCounter.Value())
 	}
 
-	for i := 0; i < 10; i++ {
-		getDocRev, _ := cache.Get(ids[i], "x", BodyShallowCopy)
-		verify(getDocRev.Body, getDocRev.History, getDocRev.Channels, i)
-	}
-
+	// Add 3 more docs to the now full revcache
 	for i := 10; i < 13; i++ {
-		body, history, channels := revForTest(i)
-		docRev := testDocRev(body[BodyRev].(string), body, history, channels, nil, nil)
-		cache.Put(body[BodyId].(string), docRev)
+		docID := strconv.Itoa(i)
+		cache.Put(docID, DocumentRevision{Body: Body{BodyId: docID}, RevID: "1-abc", History: Revisions{"start": 1}})
 	}
 
+	// Check that the first 3 docs were evicted
+	prevCacheHitCount := cacheHitCounter.Value()
 	for i := 0; i < 3; i++ {
-		docRev, _ := cache.Get(ids[i], "x", BodyShallowCopy)
-		goassert.True(t, docRev.Body == nil)
+		docID := strconv.Itoa(i)
+		docRev, ok := cache.Peek(docID, "1-abc", BodyShallowCopy)
+		assert.False(t, ok)
+		assert.Nil(t, docRev.Body)
+		assert.Equal(t, int64(0), cacheMissCounter.Value()) // peek incurs no cache miss if not found
+		assert.Equal(t, int64(prevCacheHitCount), cacheHitCounter.Value())
 	}
-	for i := 3; i < 13; i++ {
-		docRev, _ := cache.Get(ids[i], "x", BodyShallowCopy)
-		verify(docRev.Body, docRev.History, docRev.Channels, i)
+
+	// and check we can Get up to and including the last 3 we put in
+	for i := 0; i < 10; i++ {
+		id := strconv.Itoa(i + 3)
+		docRev, err := cache.Get(id, "1-abc", BodyShallowCopy)
+		assert.NoError(t, err)
+		assert.NotNil(t, docRev.Body, "nil body for %s", id)
+		assert.Equal(t, id, docRev.Body[BodyId])
+		assert.Equal(t, int64(0), cacheMissCounter.Value())
+		assert.Equal(t, prevCacheHitCount+int64(i)+1, cacheHitCounter.Value())
 	}
 }
 
-func TestLoaderFunction(t *testing.T) {
-	var callsToLoader = 0
-	_ = func(backingStore RevisionCacheBackingStore, id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
-		callsToLoader++
-		if id.DocID[0] != 'J' {
-			err = base.HTTPErrorf(404, "missing")
-		} else {
-			body = Body{
-				BodyId:  id.DocID,
-				BodyRev: id.RevID,
-			}
-			history = Revisions{RevisionsStart: 1}
-			channels = base.SetOf("*")
-		}
-		return
-	}
-	cache := NewShardedLRURevisionCache(10, noopBackingStore{}, initEmptyStatsMap(base.StatsGroupKeyCache))
+func TestBackingStore(t *testing.T) {
 
-	docRev, err := cache.Get("Jens", "1", BodyShallowCopy)
-	goassert.Equals(t, docRev.Body[BodyId], "Jens")
-	goassert.True(t, docRev.History != nil)
-	goassert.True(t, docRev.Channels != nil)
-	goassert.Equals(t, err, error(nil))
-	goassert.Equals(t, callsToLoader, 1)
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
+	cache := NewLRURevisionCache(10, &testBackingStore{[]string{"Peter"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	docRev, err = cache.Get("Peter", "1", BodyShallowCopy)
-	goassert.DeepEquals(t, docRev.Body, Body(nil))
-	goassert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
-	goassert.Equals(t, callsToLoader, 2)
+	// Get Rev for the first time - miss cache, but fetch the doc and revision to store
+	docRev, err := cache.Get("Jens", "1-abc", BodyShallowCopy)
+	assert.NoError(t, err)
+	assert.Equal(t, "Jens", docRev.Body[BodyId])
+	assert.NotNil(t, docRev.History)
+	assert.NotNil(t, docRev.Channels)
+	assert.Equal(t, int64(0), cacheHitCounter.Value())
+	assert.Equal(t, int64(1), cacheMissCounter.Value())
+	assert.Equal(t, int64(1), getDocumentCounter.Value())
+	assert.Equal(t, int64(1), getRevisionCounter.Value())
 
-	docRev, err = cache.Get("Jens", "1", BodyShallowCopy)
-	goassert.Equals(t, docRev.Body[BodyId], "Jens")
-	goassert.True(t, docRev.History != nil)
-	goassert.True(t, docRev.Channels != nil)
-	goassert.Equals(t, err, error(nil))
-	goassert.Equals(t, callsToLoader, 2)
+	// Doc doesn't exist, so miss the cache, and fail when getting the doc
+	docRev, err = cache.Get("Peter", "1-abc", BodyShallowCopy)
+	assertHTTPError(t, err, 404)
+	assert.Nil(t, docRev.Body)
+	assert.Equal(t, int64(0), cacheHitCounter.Value())
+	assert.Equal(t, int64(2), cacheMissCounter.Value())
+	assert.Equal(t, int64(2), getDocumentCounter.Value())
+	assert.Equal(t, int64(1), getRevisionCounter.Value())
 
-	docRev, err = cache.Get("Peter", "1", BodyShallowCopy)
-	goassert.DeepEquals(t, docRev.Body, Body(nil))
-	goassert.DeepEquals(t, err, base.HTTPErrorf(404, "missing"))
-	goassert.Equals(t, callsToLoader, 3)
+	// Rev is already resident, but still issue GetDocument to check for later revisions
+	docRev, err = cache.Get("Jens", "1-abc", BodyShallowCopy)
+	assert.NoError(t, err)
+	assert.Equal(t, "Jens", docRev.Body[BodyId])
+	assert.NotNil(t, docRev.History)
+	assert.NotNil(t, docRev.Channels)
+	assert.Equal(t, int64(1), cacheHitCounter.Value())
+	assert.Equal(t, int64(2), cacheMissCounter.Value())
+	assert.Equal(t, int64(2), getDocumentCounter.Value())
+	assert.Equal(t, int64(1), getRevisionCounter.Value())
+
+	// Rev still doesn't exist, make sure it wasn't cached
+	docRev, err = cache.Get("Peter", "1-abc", BodyShallowCopy)
+	assertHTTPError(t, err, 404)
+	assert.Nil(t, docRev.Body)
+	assert.Equal(t, int64(1), cacheHitCounter.Value())
+	assert.Equal(t, int64(3), cacheMissCounter.Value())
+	assert.Equal(t, int64(3), getDocumentCounter.Value())
+	assert.Equal(t, int64(1), getRevisionCounter.Value())
 }
 
 // Ensure internal properties aren't being incorrectly stored in revision cache
@@ -201,9 +230,9 @@ func TestBypassRevisionCache(t *testing.T) {
 	require.NoError(t, err)
 
 	// Peek always returns false for BypassRevisionCache
-	_, ok := rc.Peek(key, rev1)
+	_, ok := rc.Peek(key, rev1, BodyShallowCopy)
 	assert.False(t, ok)
-	_, ok = rc.Peek(key, rev2)
+	_, ok = rc.Peek(key, rev2, BodyShallowCopy)
 	assert.False(t, ok)
 
 	// Get specific revision
@@ -212,14 +241,14 @@ func TestBypassRevisionCache(t *testing.T) {
 	assert.Equal(t, "1234", doc.Body["value"].(json.Number).String())
 
 	// Check peek is still returning false for "Get"
-	_, ok = rc.Peek(key, rev1)
+	_, ok = rc.Peek(key, rev1, BodyShallowCopy)
 	assert.False(t, ok)
 
 	// Put no-ops
 	rc.Put(key, doc)
 
 	// Check peek is still returning false for "Put"
-	_, ok = rc.Peek(key, rev1)
+	_, ok = rc.Peek(key, rev1, BodyShallowCopy)
 	assert.False(t, ok)
 
 	// Get active revision
@@ -254,7 +283,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
 
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
-	docRevision, ok := db.revisionCache.Peek(rev1key, rev1id)
+	docRevision, ok := db.revisionCache.Peek(rev1key, rev1id, BodyShallowCopy)
 	assert.True(t, ok)
 	_, ok = docRevision.Body[BodyAttachments]
 	assert.False(t, ok, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
@@ -324,38 +353,30 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestRevisionImmutableDelta(t *testing.T) {
-	_ = func(backingStore RevisionCacheBackingStore, id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
-		body = Body{
-			BodyId:  id.DocID,
-			BodyRev: id.RevID,
-		}
-		history = Revisions{RevisionsStart: 1}
-		channels = base.SetOf("*")
-		return
-	}
-	cache := NewShardedLRURevisionCache(10, noopBackingStore{}, initEmptyStatsMap(base.StatsGroupKeyCache))
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
+	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	firstDelta := []byte("delta")
 	secondDelta := []byte("modified delta")
 
 	// Trigger load into cache
-	_, err := cache.Get("doc1", "rev1", BodyShallowCopy)
+	_, err := cache.Get("doc1", "1-abc", BodyShallowCopy)
 	assert.NoError(t, err, "Error adding to cache")
-	cache.UpdateDelta("doc1", "rev1", &RevisionDelta{ToRevID: "rev2", DeltaBytes: firstDelta})
+	cache.UpdateDelta("doc1", "1-abc", &RevisionDelta{ToRevID: "rev2", DeltaBytes: firstDelta})
 
 	// Retrieve from cache
-	retrievedRev, err := cache.Get("doc1", "rev1", BodyShallowCopy)
+	retrievedRev, err := cache.Get("doc1", "1-abc", BodyShallowCopy)
 	assert.NoError(t, err, "Error retrieving from cache")
 	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 	// Update delta again, validate data in retrievedRev isn't mutated
-	cache.UpdateDelta("doc1", "rev1", &RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
+	cache.UpdateDelta("doc1", "1-abc", &RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
 	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 	// Retrieve again, validate delta is correct
-	updatedRev, err := cache.Get("doc1", "rev1", BodyShallowCopy)
+	updatedRev, err := cache.Get("doc1", "1-abc", BodyShallowCopy)
 	assert.NoError(t, err, "Error retrieving from cache")
 	assert.Equal(t, "rev3", updatedRev.Delta.ToRevID)
 	assert.Equal(t, secondDelta, updatedRev.Delta.DeltaBytes)
@@ -377,11 +398,13 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 		channels = base.SetOf("*")
 		return
 	}
-	cache := NewShardedLRURevisionCache(5000, noopBackingStore{}, initEmptyStatsMap(base.StatsGroupKeyCache))
+
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
+	cache := NewLRURevisionCache(5000, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	// trigger load into cache
 	for i := 0; i < 5000; i++ {
-		_, err := cache.Get(fmt.Sprintf("doc%d", i), "rev1", BodyShallowCopy)
+		_, err := cache.Get(fmt.Sprintf("doc%d", i), "1-abc", BodyShallowCopy)
 		assert.NoError(b, err, "Error initializing cache for BenchmarkRevisionCacheRead")
 	}
 
@@ -390,7 +413,7 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 		//GET the document until test run has completed
 		for pb.Next() {
 			docId := fmt.Sprintf("doc%d", rand.Intn(5000))
-			docrev, err := cache.Get(docId, "rev1", BodyShallowCopy)
+			docrev, err := cache.Get(docId, "1-abc", BodyShallowCopy)
 			if err != nil {
 				assert.Fail(b, "Unexpected error for docrev:%+v", docrev)
 			}

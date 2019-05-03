@@ -16,7 +16,7 @@ type RevisionCache interface {
 	GetActive(docID string, copyType BodyCopyType) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
-	Peek(docID, revID string) (docRev DocumentRevision, found bool)
+	Peek(docID, revID string, copyType BodyCopyType) (docRev DocumentRevision, found bool)
 
 	// Put will store the given docRev in the cache
 	Put(docID string, docRev DocumentRevision)
@@ -25,7 +25,7 @@ type RevisionCache interface {
 	UpdateDelta(docID, revID string, toDelta *RevisionDelta)
 }
 
-// Force compile-time check of RevisionCache types for interface
+// Force compile-time check of all RevisionCache types for interface
 var _ RevisionCache = &LRURevisionCache{}
 var _ RevisionCache = &ShardedLRURevisionCache{}
 var _ RevisionCache = &BypassRevisionCache{}
@@ -34,17 +34,21 @@ var _ RevisionCache = &BypassRevisionCache{}
 func NewRevisionCache(capacity uint32, backingStore RevisionCacheBackingStore, statsCache *expvar.Map) RevisionCache {
 
 	// TODO: CBG-353 Fix up for new config and replace capacity param
-	// if options.revCache.size == 0 {
-	// 	return NewBypassRevisionCache(backingStore, statsCache)
+	// if revCacheOptions.size == 0 {
+	// bypassStat := statsCache.Get(base.StatKeyRevisionCacheBypass).(*expvar.Int)
+	// 	return NewBypassRevisionCache(backingStore, bypassStat)
 	// }
-	//
-	// if options.revCache.shard_count > 0 {
-	// 	return NewShardedLRURevisionCache(options.revCache.size, backingStore, statsCache)
-	// }
-	//
-	// return NewLRURevisionCache(options.revCache.size, backingStore, statsCache)
 
-	return NewShardedLRURevisionCache(capacity, backingStore, statsCache)
+	cacheHitStat := statsCache.Get(base.StatKeyRevisionCacheHits).(*expvar.Int)
+	cacheMissStat := statsCache.Get(base.StatKeyRevisionCacheMisses).(*expvar.Int)
+	// if revCacheOptions.shard_count > 1 {
+	// 	return NewShardedLRURevisionCache(revCacheOptions.size, revCacheOptions.shard_count, backingStore, cacheHitStat, cacheMissStat)
+	// }
+	//
+	// return NewLRURevisionCache(revCacheOptions.size, backingStore, cacheHitStat, cacheMissStat)
+
+	// TODO: Remove when above is added
+	return NewShardedLRURevisionCache(0, capacity, backingStore, cacheHitStat, cacheMissStat)
 }
 
 // RevisionCacheBackingStore is the inteface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.

@@ -20,22 +20,25 @@ type ShardedLRURevisionCache struct {
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
-func NewShardedLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore, statsCache *expvar.Map) *ShardedLRURevisionCache {
+func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *expvar.Int) *ShardedLRURevisionCache {
 
-	numShards := KDefaultNumCacheShards
+	// TODO: Remove when defaults are set further up
+	if shardCount == 0 {
+		shardCount = KDefaultNumCacheShards
+	}
 	if capacity == 0 {
 		capacity = KDefaultRevisionCacheCapacity
 	}
 
-	caches := make([]*LRURevisionCache, numShards)
-	perCacheCapacity := uint32(capacity/uint32(numShards)) + 1
-	for i := 0; i < int(numShards); i++ {
-		caches[i] = NewLRURevisionCache(perCacheCapacity, backingStore, statsCache)
+	caches := make([]*LRURevisionCache, shardCount)
+	perCacheCapacity := uint32(capacity/uint32(shardCount)) + 1
+	for i := 0; i < int(shardCount); i++ {
+		caches[i] = NewLRURevisionCache(perCacheCapacity, backingStore, cacheHitStat, cacheMissStat)
 	}
 
 	return &ShardedLRURevisionCache{
 		caches:    caches,
-		numShards: numShards,
+		numShards: shardCount,
 	}
 }
 
@@ -47,8 +50,8 @@ func (sc *ShardedLRURevisionCache) Get(docID, revID string, copyType BodyCopyTyp
 	return sc.getShard(docID).Get(docID, revID, copyType)
 }
 
-func (sc *ShardedLRURevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
-	return sc.getShard(docID).Peek(docID, revID)
+func (sc *ShardedLRURevisionCache) Peek(docID, revID string, copyType BodyCopyType) (docRev DocumentRevision, found bool) {
+	return sc.getShard(docID).Peek(docID, revID, copyType)
 }
 
 func (sc *ShardedLRURevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
@@ -88,8 +91,9 @@ type revCacheValue struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore, statsCache *expvar.Map) *LRURevisionCache {
+func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *expvar.Int) *LRURevisionCache {
 
+	// TODO: Remove when defaults set further up
 	if capacity == 0 {
 		capacity = KDefaultRevisionCacheCapacity
 	}
@@ -99,8 +103,8 @@ func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore
 		lruList:      list.New(),
 		capacity:     capacity,
 		backingStore: backingStore,
-		cacheHits:    statsCache.Get(base.StatKeyRevisionCacheHits).(*expvar.Int),
-		cacheMisses:  statsCache.Get(base.StatKeyRevisionCacheMisses).(*expvar.Int),
+		cacheHits:    cacheHitStat,
+		cacheMisses:  cacheMissStat,
 	}
 }
 
@@ -114,8 +118,8 @@ func (rc *LRURevisionCache) Get(docID, revID string, copyType BodyCopyType) (Doc
 
 // Looks up a revision from the cache only.  Will not fall back to loader function if not
 // present in the cache.
-func (rc *LRURevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
-	docRev, err := rc.getFromCache(docID, revID, BodyShallowCopy, false)
+func (rc *LRURevisionCache) Peek(docID, revID string, copyType BodyCopyType) (docRev DocumentRevision, found bool) {
+	docRev, err := rc.getFromCache(docID, revID, copyType, false)
 	if err != nil {
 		return DocumentRevision{}, false
 	}

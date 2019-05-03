@@ -57,7 +57,7 @@ func (rc *BypassRevisionCache) GetActive(docID string, copyType BodyCopyType) (d
 }
 
 // Peek is a no-op for a BypassRevisionCache, and always returns an empty DocumentRevision with a false 'found' value.
-func (rc *BypassRevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
+func (rc *BypassRevisionCache) Peek(docID, revID string, copyType BodyCopyType) (docRev DocumentRevision, found bool) {
 	return DocumentRevision{}, false
 }
 
