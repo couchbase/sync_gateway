@@ -70,6 +70,7 @@ const (
 	// StatsCache
 	StatKeyRevisionCacheHits          = "rev_cache_hits"
 	StatKeyRevisionCacheMisses        = "rev_cache_misses"
+	StatKeyRevisionCacheBypass        = "rev_cache_bypass"
 	StatKeyChannelCacheHits           = "chan_cache_hits"
 	StatKeyChannelCacheMisses         = "chan_cache_misses"
 	StatKeyChannelCacheRevsActive     = "chan_cache_active_revs"

@@ -323,7 +323,7 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 		return nil
 	}
 
-	previousRev, ok := db.revisionCache.Peek(docid, revid)
+	previousRev, ok := db.revisionCache.Peek(docid, revid, BodyShallowCopy)
 	if !ok {
 		return nil
 	}
