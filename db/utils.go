@@ -1,10 +1,10 @@
 package db
 
 import (
+	"context"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"golang.org/x/net/context"
 )
 
 type BackgroundTaskFunc func(ctx context.Context) error
