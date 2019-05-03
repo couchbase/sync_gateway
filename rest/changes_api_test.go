@@ -3046,6 +3046,38 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 
 }
 
+func TestTombstoneCompaction(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)
+
+	rt := NewRestTester(t, nil)
+
+	count := 0
+
+	rt.GetDatabase().PurgeInterval = 0
+
+	for count < 200 {
+		count++
+		response := rt.SendAdminRequest("POST", "/db/", `{"foo":"bar"}`)
+		assert.Equal(t, 200, response.Code)
+		var body db.Body
+		err := json.Unmarshal(response.Body.Bytes(), &body)
+		assert.NoError(t, err)
+		revId := body["rev"].(string)
+		docId := body["id"].(string)
+
+		response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", docId, revId), "")
+		assert.Equal(t, 200, response.Code)
+	}
+
+	rt.SendAdminRequest("POST", "/db/_compact", "")
+
+	assert.Equal(t, int64(200), base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumTombstonesCompacted)))
+
+	// This number is 5 because it compact until query results < Batch count. 200/50 and an extra for 0 results
+	assert.Equal(t, int64(5), base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, db.QueryTypeTombstones))))
+
+}
+
 func waitForCaughtUp(dbc *db.DatabaseContext, targetCount int64) error {
 	for i := 0; i < 100; i++ {
 		caughtUpCount := base.ExpvarVar2Int(dbc.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
