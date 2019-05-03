@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
@@ -387,17 +386,6 @@ func TestRevisionImmutableDelta(t *testing.T) {
 }
 
 func BenchmarkRevisionCacheRead(b *testing.B) {
-
-	//Create test document
-	_ = func(backingStore RevisionCacheBackingStore, id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
-		body = Body{
-			BodyId:  id.DocID,
-			BodyRev: id.RevID,
-		}
-		history = Revisions{RevisionsStart: 1}
-		channels = base.SetOf("*")
-		return
-	}
 
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
 	cache := NewLRURevisionCache(5000, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
