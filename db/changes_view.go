@@ -66,9 +66,8 @@ func nextChannelQueryEntry(results sgbucket.QueryResultIterator) (*LogEntry, boo
 		entry.RevID = queryRow.RemovalRev
 		if queryRow.RemovalDel {
 			entry.SetDeleted()
-		} else {
-			entry.SetRemoved()
 		}
+		entry.SetRemoved()
 	}
 	return entry, true
 
