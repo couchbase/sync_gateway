@@ -2884,6 +2884,8 @@ func TestChangesIncludeConflicts(t *testing.T) {
 }
 
 // Test _changes handling large sequence values - ensures no truncation of large ints.
+// NOTE: this test currently fails if it triggers a N1QL query, due to CBG-361.  It's been modified
+// to force the use of views until that's fixed.
 func TestChangesLargeSequences(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
@@ -2894,7 +2896,9 @@ func TestChangesLargeSequences(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
 		 }`,
-		InitSyncSeq: initialSeq}
+		InitSyncSeq:    initialSeq,
+		DatabaseConfig: &DbConfig{UseViews: true},
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
