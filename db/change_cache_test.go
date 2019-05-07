@@ -56,7 +56,6 @@ func logEntry(seq uint64, docid string, revid string, channelNames []string) *Lo
 }
 
 func testBucketContext(tester testing.TB) *DatabaseContext {
-
 	context, _ := NewDatabaseContext("db", testBucket(tester).Bucket, false, DatabaseContextOptions{})
 	return context
 }
