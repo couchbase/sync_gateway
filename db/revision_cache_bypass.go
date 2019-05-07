@@ -2,8 +2,6 @@ package db
 
 import (
 	"expvar"
-
-	"github.com/pkg/errors"
 )
 
 // BypassRevisionCache is an implementation of the RevisionCache interface that does not perform any caching.
@@ -13,15 +11,11 @@ type BypassRevisionCache struct {
 	bypassStat   *expvar.Int
 }
 
-func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *expvar.Int) (*BypassRevisionCache, error) {
-	if backingStore == nil {
-		return nil, errors.New("nil backingStore")
-	}
-
+func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *expvar.Int) *BypassRevisionCache {
 	return &BypassRevisionCache{
 		backingStore: backingStore,
 		bypassStat:   bypassStat,
-	}, nil
+	}
 }
 
 // Get fetches the revision for the given docID and revID immediately from the bucket.

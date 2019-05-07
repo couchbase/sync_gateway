@@ -111,6 +111,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 			ChannelCacheAge:       DefaultChannelCacheAge,
 			ChannelCacheMinLength: DefaultChannelCacheMinLength,
 			ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
+			ChannelCacheMaxNumber: DefaultChannelCacheMaxNumber,
 		},
 	}
 
@@ -137,6 +138,10 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 
 		if options.ChannelCacheMaxLength > 0 {
 			c.options.ChannelCacheMaxLength = options.ChannelCacheMaxLength
+		}
+
+		if options.ChannelCacheMaxNumber > 0 {
+			c.options.ChannelCacheMaxNumber = options.ChannelCacheMaxNumber
 		}
 	}
 

@@ -15,6 +15,7 @@ var (
 	DefaultChannelCacheMinLength = 50               // Keep at least this many entries in cache
 	DefaultChannelCacheMaxLength = 500              // Don't put more than this many entries in cache
 	DefaultChannelCacheAge       = 60 * time.Second // Keep entries at least this long
+	DefaultChannelCacheMaxNumber = 50000            // Default of 50k channel caches
 )
 
 const NoSeq = uint64(0x7FFFFFFFFFFFFFFF)
@@ -107,6 +108,7 @@ func newChannelCache(context *DatabaseContext, channelName string, validFrom uin
 		ChannelCacheMinLength: DefaultChannelCacheMinLength,
 		ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
 		ChannelCacheAge:       DefaultChannelCacheAge,
+		ChannelCacheMaxNumber: DefaultChannelCacheMaxNumber,
 	}
 	cache.logs = make(LogEntries, 0)
 
@@ -129,6 +131,10 @@ func newChannelCacheWithOptions(context *DatabaseContext, channelName string, va
 		cache.options.ChannelCacheAge = options.ChannelCacheAge
 	}
 
+	if options.ChannelCacheMaxNumber > 0 {
+		cache.options.ChannelCacheMaxNumber = options.ChannelCacheMaxNumber
+	}
+
 	base.Infof(base.KeyCache, "Initialized cache for channel %q with options: %+v", base.UD(cache.channelName), cache.options)
 
 	return cache
@@ -138,6 +144,7 @@ type ChannelCacheOptions struct {
 	ChannelCacheMinLength int           // Keep at least this many entries in cache
 	ChannelCacheMaxLength int           // Don't put more than this many entries in cache
 	ChannelCacheAge       time.Duration // Keep entries at least this long
+	ChannelCacheMaxNumber int           // Maximum number of channel caches which will exist at any one point
 }
 
 // Low-level method to add a LogEntry to a single channel's cache.

@@ -102,9 +102,9 @@ type DatabaseContext struct {
 
 type DatabaseContextOptions struct {
 	CacheOptions              *CacheOptions
+	RevisionCacheOptions      *RevisionCacheOptions
 	IndexOptions              *ChannelIndexOptions
 	SequenceHashOptions       *SequenceHashOptions
-	RevisionCacheCapacity     uint32
 	OldRevExpirySeconds       uint32
 	AdminInterface            *string
 	UnsupportedOptions        UnsupportedOptions
@@ -245,8 +245,28 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	dbContext.terminator = make(chan bool)
 
+	numShards := KDefaultNumCacheShards
+	cacheSize := KDefaultRevisionCacheCapacity
+
+	if options.RevisionCacheOptions != nil {
+		if options.RevisionCacheOptions.ShardNumber != 0 {
+			numShards = options.RevisionCacheOptions.ShardNumber
+		}
+
+		if options.RevisionCacheOptions.Size != 0 {
+			cacheSize = options.RevisionCacheOptions.Size
+		}
+	}
+
+	revisionCacheOptions := RevisionCacheOptions{
+		Size:        cacheSize,
+		ShardNumber: numShards,
+	}
+
+	dbContext.Options.RevisionCacheOptions = &revisionCacheOptions
+
 	dbContext.revisionCache = NewRevisionCache(
-		options.RevisionCacheCapacity,
+		&revisionCacheOptions,
 		dbContext,
 		dbContext.DbStats.StatsCache(),
 	)
@@ -1213,7 +1233,7 @@ func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
 func (context *DatabaseContext) FlushRevisionCacheForTest() {
 
 	context.revisionCache = NewRevisionCache(
-		context.Options.RevisionCacheCapacity,
+		context.Options.RevisionCacheOptions,
 		context,
 		context.DbStats.StatsCache(),
 	)

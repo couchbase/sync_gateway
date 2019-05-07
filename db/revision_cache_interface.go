@@ -31,24 +31,20 @@ var _ RevisionCache = &ShardedLRURevisionCache{}
 var _ RevisionCache = &BypassRevisionCache{}
 
 // NewRevisionCache returns a RevisionCache implementation for the given config options.
-func NewRevisionCache(capacity uint32, backingStore RevisionCacheBackingStore, statsCache *expvar.Map) RevisionCache {
+func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore RevisionCacheBackingStore, statsCache *expvar.Map) RevisionCache {
 
-	// TODO: CBG-353 Fix up for new config and replace capacity param
-	// if revCacheOptions.size == 0 {
-	// bypassStat := statsCache.Get(base.StatKeyRevisionCacheBypass).(*expvar.Int)
-	// 	return NewBypassRevisionCache(backingStore, bypassStat)
-	// }
+	if cacheOptions.Size == 0 {
+		bypassStat := statsCache.Get(base.StatKeyRevisionCacheBypass).(*expvar.Int)
+		return NewBypassRevisionCache(backingStore, bypassStat)
+	}
 
 	cacheHitStat := statsCache.Get(base.StatKeyRevisionCacheHits).(*expvar.Int)
 	cacheMissStat := statsCache.Get(base.StatKeyRevisionCacheMisses).(*expvar.Int)
-	// if revCacheOptions.shard_count > 1 {
-	// 	return NewShardedLRURevisionCache(revCacheOptions.size, revCacheOptions.shard_count, backingStore, cacheHitStat, cacheMissStat)
-	// }
-	//
-	// return NewLRURevisionCache(revCacheOptions.size, backingStore, cacheHitStat, cacheMissStat)
+	if cacheOptions.ShardNumber > 1 {
+		return NewShardedLRURevisionCache(cacheOptions.ShardNumber, cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
+	}
 
-	// TODO: Remove when above is added
-	return NewShardedLRURevisionCache(0, capacity, backingStore, cacheHitStat, cacheMissStat)
+	return NewLRURevisionCache(cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
 }
 
 // RevisionCacheBackingStore is the inteface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.
