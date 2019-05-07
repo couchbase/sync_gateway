@@ -1581,6 +1581,25 @@ func TestLogin(t *testing.T) {
 	goassert.True(t, response.Header().Get("Set-Cookie") != "")
 }
 
+func TestInvalidSession(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/db/testdoc", `{"hi": "there"}`)
+	assertStatus(t, response, 201)
+
+	headers := map[string]string{}
+	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, "FakeSession")
+	response = rt.SendRequestWithHeaders("GET", "/db/testdoc", "", headers)
+	assertStatus(t, response, 401)
+
+	var body db.Body
+	err := json.Unmarshal(response.Body.Bytes(), &body)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "Session Invalid", body["reason"])
+}
+
 func TestCustomCookieName(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
