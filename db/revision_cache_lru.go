@@ -90,11 +90,6 @@ type revCacheValue struct {
 // Creates a revision cache with the given capacity and an optional loader function.
 func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *expvar.Int) *LRURevisionCache {
 
-	// TODO: Remove when defaults set further up
-	if capacity == 0 {
-		capacity = KDefaultRevisionCacheCapacity
-	}
-
 	return &LRURevisionCache{
 		cache:        map[IDAndRev]*list.Element{},
 		lruList:      list.New(),
