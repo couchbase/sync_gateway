@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
@@ -41,27 +41,27 @@ func init() {
 //
 // Core responsibilities:
 //
-// - Manage collection of channel caches
 // - Receive DCP changes via callbacks
 //    - Perform sequence buffering to ensure documents are received in sequence order
 //    - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
 	context         *DatabaseContext
-	logsDisabled    bool                     // If true, ignore incoming tap changes
-	nextSequence    uint64                   // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
-	initialSequence uint64                   // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
-	receivedSeqs    map[uint64]struct{}      // Set of all sequences received
-	pendingLogs     LogPriorityQueue         // Out-of-sequence entries waiting to be cached
-	channelCaches   map[string]*channelCache // A cache of changes for each channel
-	notifyChange    func(base.Set)           // Client callback that notifies of channel changes
-	stopped         bool                     // Set by the Stop method
-	skippedSeqs     *SkippedSequenceList     // Skipped sequences still pending on the TAP feed
-	lock            sync.RWMutex             // Coordinates access to struct fields
-	lateSeqLock     sync.RWMutex             // Coordinates access to late sequence caches
-	options         CacheOptions             // Cache config
-	terminator      chan bool                // Signal termination of background goroutines
-	initTime        time.Time                // Cache init time - used for latency calculations
+	logsDisabled    bool                 // If true, ignore incoming tap changes
+	nextSequence    uint64               // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
+	initialSequence uint64               // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
+	receivedSeqs    map[uint64]struct{}  // Set of all sequences received
+	pendingLogs     LogPriorityQueue     // Out-of-sequence entries waiting to be cached
+	notifyChange    func(base.Set)       // Client callback that notifies of channel changes
+	stopped         bool                 // Set by the Stop method
+	skippedSeqs     *SkippedSequenceList // Skipped sequences still pending on the TAP feed
+	lock            sync.RWMutex         // Coordinates access to struct fields
+	options         CacheOptions         // Cache config
+	terminator      chan bool            // Signal termination of background goroutines
+	initTime        time.Time            // Cache init time - used for latency calculations
+	channelCache    ChannelCache         // Underlying channel cache
 }
+
+// TODO: remove options, just pass down to NewChannelCache
 
 type LogEntry channels.LogEntry
 
@@ -97,7 +97,6 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	c.context = dbcontext
 
 	c.notifyChange = notifyChange
-	c.channelCaches = make(map[string]*channelCache, 10)
 	c.receivedSeqs = make(map[uint64]struct{})
 	c.terminator = make(chan bool)
 	c.initTime = time.Now()
@@ -146,6 +145,8 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		}
 	}
 
+	c.channelCache = NewChannelCache(c.terminator, c.options.ChannelCacheOptions, c.context)
+
 	base.Infof(base.KeyCache, "Initializing changes cache with options %+v", c.options)
 
 	if dbcontext.UseGlobalSequence() {
@@ -157,7 +158,6 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	// background tasks that perform housekeeping duties on the cache
 	NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
 	NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
-	NewBackgroundTask("CleanAgedItems", c.context.Name, c.CleanAgedItems, c.options.ChannelCacheAge, c.terminator)
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
 	c.lock.Lock()
@@ -176,7 +176,12 @@ func (c *changeCache) Start() error {
 		return err
 	}
 
+	// Set initial sequence for sequence buffering
 	c._setInitialSequence(lastSequence)
+
+	// Set initial sequence for cache (validFrom)
+	c.channelCache.Init(lastSequence)
+
 	return nil
 }
 
@@ -213,11 +218,12 @@ func (c *changeCache) Clear() error {
 		return err
 	}
 
-	c.channelCaches = make(map[string]*channelCache, 10)
 	c.pendingLogs = nil
 	heap.Init(&c.pendingLogs)
 
 	c.initTime = time.Now()
+
+	c.channelCache.Clear()
 	return nil
 }
 
@@ -237,18 +243,6 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	changedChannels := c._addPendingLogs()
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(changedChannels)
-	}
-
-	return nil
-}
-
-// CleanAgedItems prunes the caches based on age of items. Error returned to fulfil BackgroundTaskFunc signature.
-func (c *changeCache) CleanAgedItems(ctx context.Context) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	for _, channelCache := range c.channelCaches {
-		channelCache.pruneCacheAge(ctx)
 	}
 
 	return nil
@@ -537,28 +531,14 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 }
 
-// Remove purges the given doc IDs from all channel caches and returns the number of items removed.
-// count will be larger than the input slice if the same document is removed from multiple channel caches.
-func (c *changeCache) Remove(docIDs []string, startTime time.Time) (count int) {
-	// Exit early if there's no work to do
-	if len(docIDs) == 0 {
-		return 0
-	}
-
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	for _, channelCache := range c.channelCaches {
-		count += channelCache.Remove(docIDs, startTime)
-	}
-
-	return count
-}
-
 // Simplified principal limited to properties needed by caching
 type cachePrincipal struct {
 	Name     string `json:"name"`
 	Sequence uint64 `json:"sequence"`
+}
+
+func (c *changeCache) Remove(docIDs []string, startTime time.Time) (count int) {
+	return c.channelCache.Remove(docIDs, startTime)
 }
 
 // Principals unmarshalled during caching don't need to instantiate a real principal - we're just using name and seq from the document
@@ -721,53 +701,19 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	}
 
 	// If unused sequence or principal, we're done after updating sequence
-	if change.DocID == "" || change.IsPrincipal {
+	if change.DocID == "" {
+		return nil
+	}
+
+	if change.IsPrincipal {
+		c.channelCache.AddPrincipal(change)
 		return nil
 	}
 
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
-	updatedChannels := make(base.Set)
-
-	ch := change.Channels
-	change.Channels = nil // not needed anymore, so free some memory
-
-	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
-	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
-	// twice)
-	func() {
-		if change.Skipped {
-			c.lateSeqLock.Lock()
-			base.Infof(base.KeyChanges, "Acquired late sequence lock in order to cache %d - doc %q / %q", change.Sequence, base.UD(change.DocID), change.RevID)
-			defer c.lateSeqLock.Unlock()
-		}
-
-		for channelName, removal := range ch {
-			if removal == nil || removal.Seq == change.Sequence {
-				channelCache, ok := c._getActiveChannelCache(channelName)
-				if ok {
-					channelCache.addToCache(change, removal != nil)
-					if change.Skipped {
-						channelCache.AddLateSequence(change)
-					}
-				}
-				updatedChannels = updatedChannels.Add(channelName)
-			}
-		}
-
-		if EnableStarChannelLog {
-			channelCache, ok := c._getActiveChannelCache(channels.UserStarChannel)
-			if ok {
-				channelCache.addToCache(change, false)
-				if change.Skipped {
-					channelCache.AddLateSequence(change)
-				}
-			}
-			updatedChannels = updatedChannels.Add(channels.UserStarChannel)
-		}
-
-		base.Infof(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
-	}()
+	updatedChannels := c.channelCache.AddToCache(change)
+	base.Infof(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 
 	if !change.TimeReceived.IsZero() {
 		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingCount, 1)
@@ -800,12 +746,6 @@ func (c *changeCache) _addPendingLogs() base.Set {
 	return changedChannels
 }
 
-func (c *changeCache) getChannelCache(channelName string) *channelCache {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	return c._getChannelCache(channelName)
-}
-
 func (c *changeCache) GetStableSequence(docID string) SequenceID {
 	// Stable sequence is independent of docID in changeCache
 	return SequenceID{Seq: c.LastSequence()}
@@ -815,26 +755,8 @@ func (c *changeCache) GetStableClock(stale bool) (clock base.SequenceClock, err 
 	return nil, errors.New("Change cache doesn't use vector clocks")
 }
 
-func (c *changeCache) _getChannelCache(channelName string) *channelCache {
-	cache := c.channelCaches[channelName]
-	if cache == nil {
-
-		// Expect to see everything from nextSequence at the time of channel cache init.  Since callers of _getChannelCache
-		// holds c.lock, we don't need to worry about DCP events updating nextSequence before the channel is added
-		// to c.channelCaches
-		validFrom := c.nextSequence
-
-		cache = newChannelCacheWithOptions(c.context, channelName, validFrom, c.options)
-		c.channelCaches[channelName] = cache
-
-		c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheNumChannels, 1)
-	}
-	return cache
-}
-
-func (c *changeCache) _getActiveChannelCache(channelName string) (*channelCache, bool) {
-	cache, ok := c.channelCaches[channelName]
-	return cache, ok
+func (c *changeCache) getChannelCache() ChannelCache {
+	return c.channelCache
 }
 
 //////// CHANGE ACCESS:
@@ -844,7 +766,7 @@ func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]
 	if c.IsStopped() {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
-	return c.getChannelCache(channelName).GetChanges(options)
+	return c.channelCache.GetChanges(channelName, options)
 }
 
 // Returns the sequence number the cache is up-to-date with.
@@ -852,14 +774,6 @@ func (c *changeCache) LastSequence() uint64 {
 
 	lastSequence := c.getNextSequence() - 1
 	return lastSequence
-}
-
-func (c *changeCache) _allChannels() base.Set {
-	allChannelSet := make(base.Set)
-	for name := range c.channelCaches {
-		allChannelSet = allChannelSet.Add(name)
-	}
-	return allChannelSet
 }
 
 func (c *changeCache) getOldestSkippedSequence() uint64 {
@@ -870,37 +784,26 @@ func (c *changeCache) getOldestSkippedSequence() uint64 {
 	return oldestSkippedSeq
 }
 
-func (c *changeCache) MaxCacheSize() int {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	maxCacheSize := 0
-	for _, channelCache := range c.channelCaches {
-		channelSize := channelCache.GetSize()
-		if channelSize > maxCacheSize {
-			maxCacheSize = channelSize
-		}
-	}
-	return maxCacheSize
-}
-
-// Set the initial sequence.  Presumes that change chache is already locked.
+// Set the initial sequence.  Presumes that change cache is already locked.
 func (c *changeCache) _setInitialSequence(initialSequence uint64) {
 	c.initialSequence = initialSequence
 	c.nextSequence = initialSequence + 1
 }
 
 // Concurrent-safe get value of nextSequence
-func (c *changeCache) getNextSequence() uint64 {
+func (c *changeCache) getNextSequence() (nextSequence uint64) {
 	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.nextSequence
+	nextSequence = c.nextSequence
+	c.lock.RUnlock()
+	return nextSequence
 }
 
 // Concurrent-safe get value of initialSequence
-func (c *changeCache) getInitialSequence() uint64 {
+func (c *changeCache) getInitialSequence() (initialSequence uint64) {
 	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c.initialSequence
+	initialSequence = c.initialSequence
+	c.lock.RUnlock()
+	return initialSequence
 }
 
 //////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()

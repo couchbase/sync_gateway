@@ -188,9 +188,11 @@ func (k *kvChangeIndex) DocChanged(event sgbucket.FeedEvent) {
 func (k *kvChangeIndex) getOldestSkippedSequence() uint64 {
 	return uint64(0)
 }
-func (k *kvChangeIndex) getChannelCache(channelName string) *channelCache {
+
+func (k *kvChangeIndex) getChannelCache() ChannelCache {
 	return nil
 }
+
 func (k *kvChangeIndex) Remove(docIDs []string, startTime time.Time) int {
 	return 0
 }

@@ -40,6 +40,21 @@ func et(seq uint64, docid string, revid string) *LogEntry {
 	return entry
 }
 
+func logEntry(seq uint64, docid string, revid string, channelNames []string) *LogEntry {
+	entry := &LogEntry{
+		Sequence:     seq,
+		DocID:        docid,
+		RevID:        revid,
+		TimeReceived: time.Now(),
+	}
+	channelMap := make(channels.ChannelMap)
+	for _, channelName := range channelNames {
+		channelMap[channelName] = nil
+	}
+	entry.Channels = channelMap
+	return entry
+}
+
 func testBucketContext() *DatabaseContext {
 
 	context, _ := NewDatabaseContext("db", testBucket().Bucket, false, DatabaseContextOptions{})
@@ -102,7 +117,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	goassert.True(t, cache != nil)
 
 	// Empty late sequence cache should return empty set
-	startSequence := cache.InitLateSequenceClient()
+	startSequence := cache.RegisterLateSequenceClient()
 	entries, lastSeq, err := cache.GetLateSequencesSince(startSequence)
 	goassert.Equals(t, len(entries), 0)
 	goassert.Equals(t, lastSeq, uint64(0))
@@ -168,7 +183,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	goassert.True(t, cache != nil)
 
 	// Add Listener before late entries arrive
-	startSequence := cache.InitLateSequenceClient()
+	startSequence := cache.RegisterLateSequenceClient()
 	entries, lastSeq1, err := cache.GetLateSequencesSince(startSequence)
 	goassert.Equals(t, len(entries), 0)
 	goassert.Equals(t, lastSeq1, uint64(0))
@@ -179,7 +194,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	cache.AddLateSequence(e(8, "foo2", "1-a"))
 
 	// Add a second client.  Expect the first listener at [0], and the new one at [2]
-	startSequence = cache.InitLateSequenceClient()
+	startSequence = cache.RegisterLateSequenceClient()
 	entries, lastSeq2, err := cache.GetLateSequencesSince(startSequence)
 	goassert.Equals(t, startSequence, uint64(8))
 	goassert.Equals(t, lastSeq2, uint64(8))
@@ -358,16 +373,16 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"CBS"}, 7)
 	db.changeCache.waitForSequenceID(SequenceID{Seq: 7}, base.DefaultWaitForSequenceTesting, t)
 	// verify insert at start (PBS)
-	pbsCache := db.changeCache.getChannelCache("PBS")
+	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache("PBS")
 	goassert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
-	abcCache := db.changeCache.getChannelCache("ABC")
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC")
 	goassert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
-	nbcCache := db.changeCache.getChannelCache("NBC")
+	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache("NBC")
 	goassert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
-	tbsCache := db.changeCache.getChannelCache("TBS")
+	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache("TBS")
 	goassert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
@@ -1157,7 +1172,7 @@ func TestChannelCacheSize(t *testing.T) {
 	// Validate that cache stores the expected number of values
 	changeCache, ok := db.changeCache.(*changeCache)
 	assert.True(t, ok, "Testing skipped sequences without a change cache")
-	abcCache := changeCache.channelCaches["ABC"]
+	abcCache := changeCache.getChannelCache().getSingleChannelCache("ABC")
 	goassert.Equals(t, len(abcCache.logs), 600)
 }
 
@@ -1194,7 +1209,7 @@ func verifySkippedSequences(list *SkippedSequenceList, sequences []uint64) bool 
 	return true
 }
 
-func verifyCacheSequences(cache *channelCache, sequences []uint64) bool {
+func verifyCacheSequences(cache *singleChannelCache, sequences []uint64) bool {
 	if len(cache.logs) != len(sequences) {
 
 		log.Printf("verifyCacheSequences: cache size (%v) not equals to sequences size (%v)",

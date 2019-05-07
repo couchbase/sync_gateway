@@ -169,7 +169,7 @@ func (db *DatabaseContext) UpdateCalculatedStats() {
 
 	// Max channel cache size
 	if cache, ok := db.changeCache.(*changeCache); ok {
-		db.DbStats.StatsCache().Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(cache.MaxCacheSize()))
+		db.DbStats.StatsCache().Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(cache.channelCache.MaxCacheSize()))
 	}
 
 }

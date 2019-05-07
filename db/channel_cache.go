@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -19,6 +20,266 @@ var (
 )
 
 const NoSeq = uint64(0x7FFFFFFFFFFFFFFF)
+
+type ChannelCache interface {
+
+	// Initializes the cache high sequence value
+	Init(initialSequence uint64)
+
+	// Adds an entry to the cache, returns set of channels it was added to
+	AddToCache(change *LogEntry) base.Set
+
+	// Notifies the cache of a principal update.  Updates the cache's high sequence
+	AddPrincipal(change *LogEntry)
+
+	// Remove purges the given doc IDs from all channel caches and returns the number of items removed.
+	Remove(docIDs []string, startTime time.Time) (count int)
+
+	// Returns set of changes for a given channel, within the bounds specified in options
+	GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error)
+
+	// Returns the set of all cached data for a given channel (intended for diagnostic usage)
+	GetCachedChanges(channelName string) []*LogEntry
+
+	// Clear reinitializes the cache to an empty state
+	Clear()
+
+	// Size of the the largest individual channel cache, invoked for stats reporting
+	//// TODO: let the cache manage its own stats internally (maybe take an updateStats call)
+	MaxCacheSize() int
+
+	// Returns the highest cached sequence, used for changes synchronization
+	GetHighCacheSequence() uint64
+
+	// Late sequence handling
+	GetLateSequencesSince(channelName string, sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error)
+	RegisterLateSequenceClient(channelName string) uint64
+	ReleaseLateSequenceClient(channelName string, currentSeq uint64) bool
+
+	// Access to individual channel cache, intended for testing
+	getSingleChannelCache(channelName string) *singleChannelCache
+}
+
+type StableSequenceCallbackFunc func() uint64
+
+type channelCacheImpl struct {
+	context           *DatabaseContext               // Passed to singleChannelCache for view queries  TODO: Could replace with view query callback?
+	channelCaches     map[string]*singleChannelCache // A cache of changes for each channel
+	cacheLock         sync.RWMutex                   // Mutex for access to channelCaches map
+	terminator        chan bool                      // Signal terminator of background goroutines
+	options           ChannelCacheOptions            // Channel cache options
+	lateSeqLock       sync.RWMutex                   // Coordinates access to late sequence caches
+	highCacheSequence uint64                         // The highest sequence that has been cached.  Used to initialize validFrom for new singleChannelCaches
+}
+
+func NewChannelCache(terminator chan bool, options ChannelCacheOptions, context *DatabaseContext) *channelCacheImpl {
+
+	channelCache := &channelCacheImpl{
+		context:       context,
+		channelCaches: make(map[string]*singleChannelCache),
+		terminator:    terminator,
+		options:       options,
+	}
+	NewBackgroundTask("CleanAgedItems", context.Name, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
+	return channelCache
+}
+
+func (c *channelCacheImpl) Clear() {
+	c.cacheLock.Lock()
+	c.channelCaches = make(map[string]*singleChannelCache)
+	c.cacheLock.Unlock()
+}
+
+func (c *channelCacheImpl) Init(initialSequence uint64) {
+	c.cacheLock.Lock()
+	c.highCacheSequence = initialSequence
+	c.cacheLock.Unlock()
+}
+
+func (c *channelCacheImpl) GetHighCacheSequence() uint64 {
+	c.cacheLock.RLock()
+	highSeq := c.highCacheSequence
+	c.cacheLock.RUnlock()
+	return highSeq
+}
+
+// Returns high cache sequence.  Callers should hold read lock on cacheLock
+func (c *channelCacheImpl) _getHighCacheSequence() uint64 {
+	return c.highCacheSequence
+}
+
+// Updates the high cache sequence if the incoming sequence is higher than current
+// Note: doesn't require compareAndSet on update, as cache expects AddToCache to only be called from
+// a single goroutine
+func (c *channelCacheImpl) updateHighCacheSequence(sequence uint64) {
+	c.cacheLock.Lock()
+	if sequence > c.highCacheSequence {
+		c.highCacheSequence = sequence
+	}
+	c.cacheLock.Unlock()
+}
+
+func (c *channelCacheImpl) getSingleChannelCache(channelName string) *singleChannelCache {
+	return c.getChannelCache(channelName)
+}
+
+func (c *channelCacheImpl) AddPrincipal(change *LogEntry) {
+	c.updateHighCacheSequence(change.Sequence)
+}
+
+// Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
+// flag indicates whether it was a change arriving out of sequence
+func (c *channelCacheImpl) AddToCache(change *LogEntry) base.Set {
+
+	log.Printf("Main AddToCache: %s %d", change.DocID, change.Sequence)
+	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
+	// the change's active channels, as well as any channel removals for the active revision.
+	updatedChannels := make(base.Set)
+
+	ch := change.Channels
+	change.Channels = nil // not needed anymore, so free some memory
+
+	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
+	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
+	// twice)
+	if change.Skipped {
+		c.lateSeqLock.Lock()
+		base.Infof(base.KeyChanges, "Acquired late sequence lock in order to cache %d - doc %q / %q", change.Sequence, base.UD(change.DocID), change.RevID)
+		defer c.lateSeqLock.Unlock()
+	}
+
+	for channelName, removal := range ch {
+		if removal == nil || removal.Seq == change.Sequence {
+			channelCache, ok := c.getActiveChannelCache(channelName)
+			if ok {
+				channelCache.addToCache(change, removal != nil)
+				if change.Skipped {
+					channelCache.AddLateSequence(change)
+				}
+			}
+			updatedChannels = updatedChannels.Add(channelName)
+		}
+	}
+
+	if EnableStarChannelLog {
+		channelCache, ok := c.getActiveChannelCache(channels.UserStarChannel)
+		if ok {
+			channelCache.addToCache(change, false)
+			if change.Skipped {
+				channelCache.AddLateSequence(change)
+			}
+		}
+		updatedChannels = updatedChannels.Add(channels.UserStarChannel)
+	}
+
+	c.updateHighCacheSequence(change.Sequence)
+	return updatedChannels
+}
+
+// Remove purges the given doc IDs from all channel caches and returns the number of items removed.
+// count will be larger than the input slice if the same document is removed from multiple channel caches.
+func (c *channelCacheImpl) Remove(docIDs []string, startTime time.Time) (count int) {
+	// Exit early if there's no work to do
+	if len(docIDs) == 0 {
+		return 0
+	}
+
+	c.cacheLock.Lock()
+	for _, channelCache := range c.channelCaches {
+		count += channelCache.Remove(docIDs, startTime)
+	}
+	c.cacheLock.Unlock()
+	return count
+}
+
+func (c *channelCacheImpl) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
+	return c.getChannelCache(channelName).GetChanges(options)
+}
+
+func (c *channelCacheImpl) GetCachedChanges(channelName string) []*LogEntry {
+	options := ChangesOptions{Since: SequenceID{Seq: 0}}
+	_, changes := c.getChannelCache(channelName).getCachedChanges(options)
+	return changes
+}
+
+func (c *channelCacheImpl) GetLateSequencesSince(channelName string, sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
+	return c.getChannelCache(channelName).GetLateSequencesSince(sinceSequence)
+}
+
+func (c *channelCacheImpl) RegisterLateSequenceClient(channelName string) uint64 {
+	return c.getChannelCache(channelName).RegisterLateSequenceClient()
+}
+
+func (c *channelCacheImpl) ReleaseLateSequenceClient(channelName string, currentSequence uint64) bool {
+	return c.getChannelCache(channelName).ReleaseLateSequenceClient(currentSequence)
+}
+
+// CleanAgedItems prunes the caches based on age of items. Error returned to fulfill BackgroundTaskFunc signature.
+func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
+	c.cacheLock.Lock()
+	for _, channelCache := range c.channelCaches {
+		channelCache.pruneCacheAge(ctx)
+	}
+	c.cacheLock.Unlock()
+	return nil
+}
+
+func (c *channelCacheImpl) getChannelCache(channelName string) *singleChannelCache {
+
+	c.cacheLock.RLock()
+	singleChannelCache, ok := c.channelCaches[channelName]
+	c.cacheLock.RUnlock()
+
+	if ok {
+		return singleChannelCache
+	}
+
+	// Cache doesn't exist, lock and create.  Note that locking here also prevents missed data in the following scenario:
+	//     1. getChannelCache issued for channel A
+	//     2. getChannelCache obtains stable sequence, seq=10
+	//     3. addToCache (from another goroutine) receives sequence 11 in channel A, but detects that it's inactive (not in c.channelCaches)
+	//     4. getChannelCache initializes cache with validFrom=10 and adds to c.channelCaches
+	//  This scenario would result in sequence 11 missing from the cache.  Locking cacheLock here ensures that
+	//  step 3 blocks until step 4 is complete (and so sees the channel as active)
+	c.cacheLock.Lock()
+	// Check if it was created while we waited for the lock
+	if singleChannelCache, ok = c.channelCaches[channelName]; ok {
+		c.cacheLock.Unlock()
+		return singleChannelCache
+	}
+
+	// Everything after the current high sequence will be added to the cache via the feed
+	validFrom := c._getHighCacheSequence() + 1
+
+	singleChannelCache = newChannelCacheWithOptions(c.context, channelName, validFrom, c.options)
+	c.channelCaches[channelName] = singleChannelCache
+
+	c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheNumChannels, 1)
+	c.cacheLock.Unlock()
+
+	return singleChannelCache
+}
+
+func (c *channelCacheImpl) getActiveChannelCache(channelName string) (*singleChannelCache, bool) {
+	c.cacheLock.RLock()
+	cache, ok := c.channelCaches[channelName]
+	c.cacheLock.RUnlock()
+	return cache, ok
+}
+
+// TODO: let the cache manage its own stats internally (maybe take an updateStats call)
+func (c *channelCacheImpl) MaxCacheSize() int {
+	c.cacheLock.RLock()
+	maxCacheSize := 0
+	for _, channelCache := range c.channelCaches {
+		channelSize := channelCache.GetSize()
+		if channelSize > maxCacheSize {
+			maxCacheSize = channelSize
+		}
+	}
+	c.cacheLock.RUnlock()
+	return maxCacheSize
+}
 
 // Minimizes need to perform GSI/View queries to respond to the changes feed by keeping a per-channel
 // cache of the most recent changes in the channel.  Changes might be received over DCP won't necessarily
@@ -86,7 +347,7 @@ const NoSeq = uint64(0x7FFFFFFFFFFFFFFF)
 // values would be _prepended_ to the front of the cache and the validFrom sequence would be lowered
 // to account for the fact that it's now valid from a lower sequence value.  Entries that violated
 // the guarantees described above would possibly be discarded.
-type channelCache struct {
+type singleChannelCache struct {
 	channelName      string               // The channel name, duh
 	context          *DatabaseContext     // Database connection (used for view queries)
 	logs             LogEntries           // Log entries in sequence order
@@ -100,8 +361,8 @@ type channelCache struct {
 	cachedDocIDs     map[string]struct{}
 }
 
-func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *channelCache {
-	cache := &channelCache{context: context, channelName: channelName, validFrom: validFrom}
+func newChannelCache(context *DatabaseContext, channelName string, validFrom uint64) *singleChannelCache {
+	cache := &singleChannelCache{context: context, channelName: channelName, validFrom: validFrom}
 	cache.initializeLateLogs()
 	cache.cachedDocIDs = make(map[string]struct{})
 	cache.options = &ChannelCacheOptions{
@@ -115,7 +376,7 @@ func newChannelCache(context *DatabaseContext, channelName string, validFrom uin
 	return cache
 }
 
-func newChannelCacheWithOptions(context *DatabaseContext, channelName string, validFrom uint64, options CacheOptions) *channelCache {
+func newChannelCacheWithOptions(context *DatabaseContext, channelName string, validFrom uint64, options ChannelCacheOptions) *singleChannelCache {
 	cache := newChannelCache(context, channelName, validFrom)
 
 	// Update cache options when present
@@ -135,7 +396,7 @@ func newChannelCacheWithOptions(context *DatabaseContext, channelName string, va
 		cache.options.ChannelCacheMaxNumber = options.ChannelCacheMaxNumber
 	}
 
-	base.Infof(base.KeyCache, "Initialized cache for channel %q with options: %+v", base.UD(cache.channelName), cache.options)
+	base.Infof(base.KeyCache, "Initialized cache for channel %q with options: %+v, validFrom: %d", base.UD(cache.channelName), cache.options, validFrom)
 
 	return cache
 }
@@ -148,10 +409,11 @@ type ChannelCacheOptions struct {
 }
 
 // Low-level method to add a LogEntry to a single channel's cache.
-func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
+func (c *singleChannelCache) addToCache(change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	log.Printf("Adding to cache %d (%s)", change.Sequence, c.channelName)
 	if c.wouldBeImmediatelyPruned(change) {
 		base.Infof(base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
 			change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channelName))
@@ -170,20 +432,21 @@ func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 
 // If certain conditions are met, it's possible that this change will be added and then
 // immediately pruned, which causes the issues described in https://github.com/couchbase/sync_gateway/issues/2662
-func (c *channelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
+func (c *singleChannelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 
 	// This might not be the one that is going to be immediately pruned
 	if change.Sequence >= c.validFrom {
 		return false
 	}
 
+	log.Printf("would be immediately pruned, validFrom: %d, %d", change.Sequence, c.validFrom)
 	// If older than validFrom, never try to cache it
 	return true
 
 }
 
 // Remove purges the given doc IDs from the channel cache and returns the number of items removed.
-func (c *channelCache) Remove(docIDs []string, startTime time.Time) (count int) {
+func (c *singleChannelCache) Remove(docIDs []string, startTime time.Time) (count int) {
 	// Exit early if there's no work to do
 	if len(docIDs) == 0 {
 		return 0
@@ -232,7 +495,7 @@ func (c *channelCache) Remove(docIDs []string, startTime time.Time) (count int) 
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
-func (c *channelCache) _pruneCacheLength() (pruned int) {
+func (c *singleChannelCache) _pruneCacheLength() (pruned int) {
 	// If we are over max length, prune it down to max length
 	if len(c.logs) > c.options.ChannelCacheMaxLength {
 		pruned = len(c.logs) - c.options.ChannelCacheMaxLength
@@ -249,7 +512,7 @@ func (c *channelCache) _pruneCacheLength() (pruned int) {
 	return pruned
 }
 
-func (c *channelCache) pruneCacheAge(ctx context.Context) {
+func (c *singleChannelCache) pruneCacheAge(ctx context.Context) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -274,7 +537,7 @@ func (c *channelCache) pruneCacheAge(ctx context.Context) {
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
-func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
+func (c *singleChannelCache) getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	sinceSeq := options.Since.SafeSequence()
@@ -290,7 +553,7 @@ func (c *channelCache) getCachedChanges(options ChangesOptions) (validFrom uint6
 	return c._getCachedChanges(sinceSeq, limit)
 }
 
-func (c *channelCache) _getCachedChanges(sinceSeq uint64, limit int) (validFrom uint64, result []*LogEntry) {
+func (c *singleChannelCache) _getCachedChanges(sinceSeq uint64, limit int) (validFrom uint64, result []*LogEntry) {
 	// Find the first entry in the log to return:
 	log := c.logs
 	if len(log) == 0 {
@@ -325,7 +588,7 @@ func (c *channelCache) _getCachedChanges(sinceSeq uint64, limit int) (validFrom 
 // initialSequence is used only if the cache is empty: it gives the max sequence to which the
 // view should be queried, because we don't want the view query to outrun the chanceCache's
 // nextSequence.
-func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
+func (c *singleChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	// Use the cache, and return if it fulfilled the entire request:
 	cacheValidFrom, resultFromCache := c.getCachedChanges(options)
 	numFromCache := len(resultFromCache)
@@ -411,7 +674,7 @@ func (c *channelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 
 //////// LOGENTRIES:
 
-func (c *channelCache) _adjustFirstSeq(change *LogEntry) {
+func (c *singleChannelCache) _adjustFirstSeq(change *LogEntry) {
 	if change.Sequence < c.validFrom {
 		c.validFrom = change.Sequence
 	}
@@ -419,7 +682,7 @@ func (c *channelCache) _adjustFirstSeq(change *LogEntry) {
 
 // Adds an entry to the end of an array of LogEntries.
 // Any existing entry with the same DocID is removed.
-func (c *channelCache) _appendChange(change *LogEntry) {
+func (c *singleChannelCache) _appendChange(change *LogEntry) {
 
 	log := c.logs
 	end := len(log) - 1
@@ -454,7 +717,7 @@ func (c *channelCache) _appendChange(change *LogEntry) {
 }
 
 // Updates cache utilization.  Note that cache entries that are both removals and tombstones are counted as removals
-func (c *channelCache) UpdateCacheUtilization(entry *LogEntry, delta int64) {
+func (c *singleChannelCache) UpdateCacheUtilization(entry *LogEntry, delta int64) {
 	if entry.IsRemoved() {
 		c.context.DbStats.StatsCache().Add(base.StatKeyChannelCacheRevsRemoval, delta)
 	} else if entry.IsDeleted() {
@@ -467,7 +730,7 @@ func (c *channelCache) UpdateCacheUtilization(entry *LogEntry, delta int64) {
 // Insert out-of-sequence entry into the cache.  If the docId is already present in a later
 // sequence, we skip the insert.  If the docId is already present in an earlier sequence,
 // we remove the earlier sequence.
-func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
+func (c *singleChannelCache) insertChange(log *LogEntries, change *LogEntry) {
 
 	defer func() {
 		c.cachedDocIDs[change.DocID] = struct{}{}
@@ -532,7 +795,7 @@ func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 // the cache.
 //
 // Returns the number of entries actually prepended.
-func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint64, changesValidTo uint64) int {
+func (c *singleChannelCache) prependChanges(changes LogEntries, changesValidFrom uint64, changesValidTo uint64) int {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -547,6 +810,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 	}
 
 	// Ensure changes are valid to the cache's validFrom, otherwise unsafe to prepend
+	log.Printf("Prepending, validFrom is %d", c.validFrom)
 	if changesValidTo < c.validFrom {
 		return 0
 	}
@@ -620,7 +884,7 @@ func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint6
 
 }
 
-func (c *channelCache) GetSize() int {
+func (c *singleChannelCache) GetSize() int {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return len(c.logs)
@@ -635,25 +899,26 @@ type lateLogEntry struct {
 
 func (l *lateLogEntry) addListener() {
 	l.listenerLock.Lock()
-	defer l.listenerLock.Unlock()
 	l.listenerCount++
+	l.listenerLock.Unlock()
 }
 
 func (l *lateLogEntry) removeListener() {
 	l.listenerLock.Lock()
-	defer l.listenerLock.Unlock()
 	l.listenerCount--
+	l.listenerLock.Unlock()
 }
 
-func (l *lateLogEntry) getListenerCount() uint64 {
+func (l *lateLogEntry) getListenerCount() (count uint64) {
 	l.listenerLock.RLock()
-	defer l.listenerLock.RUnlock()
-	return l.listenerCount
+	count = l.listenerCount
+	l.listenerLock.RUnlock()
+	return count
 }
 
 // Initialize the late-arriving log queue with a zero entry, used to track listeners.  This is needed
 // to support purging later entries once everyone has seen them.
-func (c *channelCache) initializeLateLogs() {
+func (c *singleChannelCache) initializeLateLogs() {
 	log := &LogEntry{Sequence: 0}
 	lateEntry := &lateLogEntry{
 		logEntry:      log,
@@ -664,7 +929,7 @@ func (c *channelCache) initializeLateLogs() {
 
 // Retrieve late-arriving sequences that have arrived since the previous sequence.  Retrieves set of sequences, and the last
 // sequence number in the list.  Note that lateLogs is sorted by arrival on feed, not sequence number.
-func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
+func (c *singleChannelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
 
 	c.lateLogLock.RLock()
 	defer c.lateLogLock.RUnlock()
@@ -710,28 +975,29 @@ func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*L
 
 // Called on first call to the channel during changes processing, to get starting point for
 // subsequent checks for late arriving sequences.
-func (c *channelCache) InitLateSequenceClient() uint64 {
+func (c *singleChannelCache) RegisterLateSequenceClient() (latestLateSeq uint64) {
 
 	c.lateLogLock.RLock()
-	defer c.lateLogLock.RUnlock()
 	latestLog := c._mostRecentLateLog()
 	latestLog.addListener()
-	return latestLog.logEntry.Sequence
+	latestLateSeq = latestLog.logEntry.Sequence
+	c.lateLogLock.RUnlock()
+	return latestLateSeq
 }
 
 // Called when a client (a continuous _changes feed) is no longer referencing the sequence number.
-func (c *channelCache) ReleaseLateSequenceClient(sequence uint64) error {
+func (c *singleChannelCache) ReleaseLateSequenceClient(sequence uint64) (success bool) {
 	for _, log := range c.lateLogs {
 		if log.logEntry.Sequence == sequence {
 			log.removeListener()
-			return nil
+			return true
 		}
 	}
-	return errors.New("Sequence not found")
+	return false
 }
 
 // Receive new late sequence
-func (c *channelCache) AddLateSequence(change *LogEntry) {
+func (c *singleChannelCache) AddLateSequence(change *LogEntry) {
 	// Add to lateLogs.
 	lateEntry := &lateLogEntry{
 		logEntry:      change,
@@ -739,7 +1005,6 @@ func (c *channelCache) AddLateSequence(change *LogEntry) {
 		listenerCount: 0,
 	}
 	c.lateLogLock.Lock()
-	defer c.lateLogLock.Unlock()
 	c.lateLogs = append(c.lateLogs, lateEntry)
 	c.lastLateSequence = change.Sequence
 	// Currently we're only purging on add.  Could also consider a timed purge to handle the case
@@ -747,12 +1012,13 @@ func (c *channelCache) AddLateSequence(change *LogEntry) {
 	// a high priority, as the memory overhead for the late entries should be trivial, and probably
 	// doesn't merit
 	c._purgeLateLogEntries()
+	c.lateLogLock.Unlock()
 }
 
 // Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients
 // will get these entries directly from the cache.  Always maintain
 // at least one entry in the list, to track new listeners.  Expects to have a lock on lateLogLock.
-func (c *channelCache) _purgeLateLogEntries() {
+func (c *singleChannelCache) _purgeLateLogEntries() {
 	for len(c.lateLogs) > 1 && c.lateLogs[0].getListenerCount() == 0 {
 		c.lateLogs = c.lateLogs[1:]
 	}
@@ -761,22 +1027,21 @@ func (c *channelCache) _purgeLateLogEntries() {
 // Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients
 // will get these entries directly from the cache.  Always maintain
 // at least one entry in the list, to track new listeners.
-func (c *channelCache) purgeLateLogEntries() {
+func (c *singleChannelCache) purgeLateLogEntries() {
 	c.lateLogLock.Lock()
-	defer c.lateLogLock.Unlock()
 	c._purgeLateLogEntries()
-
+	c.lateLogLock.Unlock()
 }
 
 // mostRecentLateLog assumes caller has at least read lock on c.lateLogLock
-func (c *channelCache) _mostRecentLateLog() *lateLogEntry {
+func (c *singleChannelCache) _mostRecentLateLog() *lateLogEntry {
 	if len(c.lateLogs) > 0 {
 		return c.lateLogs[len(c.lateLogs)-1]
 	}
 	return nil
 }
 
-func (c *channelCache) addDocIDs(changes LogEntries) {
+func (c *singleChannelCache) addDocIDs(changes LogEntries) {
 	for _, change := range changes {
 		c.cachedDocIDs[change.DocID] = struct{}{}
 	}

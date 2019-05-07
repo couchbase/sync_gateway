@@ -161,10 +161,11 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
 	nonIntegerSequenceReceived := false
+	changeCount := 0
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
-
+		log.Printf("got change with body %s, count %d", body, changeCount)
 		if string(body) != "null" {
 
 			atomic.AddInt32(&numbatchesReceived, 1)
@@ -194,13 +195,9 @@ func TestContinuousChangesSubscription(t *testing.T) {
 				docId := change[1].(string)
 				goassert.True(t, strings.HasPrefix(docId, "foo"))
 				goassert.Equals(t, change[2], "1-abc") // Rev id of pushed rev
-
+				changeCount++
 				receivedChangesWg.Done()
 			}
-
-		} else {
-
-			receivedChangesWg.Done()
 
 		}
 
@@ -214,11 +211,6 @@ func TestContinuousChangesSubscription(t *testing.T) {
 		}
 
 	}
-
-	// Increment waitgroup since just the act of subscribing to continuous changes will cause
-	// the callback changes handler to be invoked with an initial change w/ empty body, signaling that
-	// all of the changes have been sent (eg, there are no changes to send)
-	receivedChangesWg.Add(1)
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := blip.NewRequest()

@@ -64,7 +64,7 @@ type ChangeIndex interface {
 	// Handling specific to change_cache.go's sequence handling.  Ideally should refactor usage in changes.go to push
 	// down into internal change_cache.go handling, but it's non-trivial refactoring
 	getOldestSkippedSequence() uint64
-	getChannelCache(channelName string) *channelCache
+	getChannelCache() ChannelCache
 
 	// Unit test support
 	waitForSequence(sequence uint64, maxWaitTime time.Duration, tb testing.TB)
