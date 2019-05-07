@@ -237,6 +237,42 @@ func (set TimedSet) UpdateIfPresent(other TimedSet) {
 	}
 }
 
+// TimedSetDiff stores the result of TimedSet.CompareKeys
+// Elements present in the set but not in the other are returned with value true
+// Elements present in the other set but not in set are returned with value false
+// Unchanged elements are not included in ChangedKeys
+type ChangedKeys map[string]bool
+
+// CompareKeys returns sets of added and removed keys between two sets.
+// Elements present in the set but not in the other are returned as 'added'.
+// Elements present in the other set but not in set are returned as 'removed'.
+// of false.
+func (set TimedSet) CompareKeys(other TimedSet) ChangedKeys {
+
+	changed := make(ChangedKeys)
+
+	// Elements in set but not in other
+	for ch := range set {
+		if _, ok := other[ch]; !ok {
+			changed[ch] = true
+		}
+	}
+
+	// If no additions and lengths are the same, then set keys are identical
+	if len(changed) == 0 && len(other) == len(set) {
+		return changed
+	}
+
+	// Elements in other but not in set
+	for ch := range other {
+		if _, ok := set[ch]; !ok {
+			changed[ch] = false
+		}
+	}
+	return changed
+
+}
+
 // TimedSet can unmarshal from either:
 //   1. The regular format {"channel":vbSequence, ...}
 //   2. The sequence-only format {"channel":uint64, ...} or

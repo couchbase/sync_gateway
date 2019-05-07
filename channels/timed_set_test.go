@@ -105,3 +105,61 @@ func TestEqualsWithUnequalSet(t *testing.T) {
 	goassert.True(t, !set1.Equals(set3))
 
 }
+
+func TestTimedSetCompareKeys(t *testing.T) {
+	tests := []struct {
+		name     string
+		fromSet  TimedSet
+		toSet    TimedSet
+		expected ChangedKeys
+	}{
+		{
+			name:     "NoChange",
+			fromSet:  TimedSetFromString("ABC:1,BBC:2"),
+			toSet:    TimedSetFromString("ABC:1,BBC:2"),
+			expected: ChangedKeys{},
+		},
+		{
+			name:     "AddedKey",
+			fromSet:  TimedSetFromString("ABC:1"),
+			toSet:    TimedSetFromString("ABC:1,BBC:2"),
+			expected: ChangedKeys{"BBC": true},
+		},
+		{
+			name:     "RemovedKey",
+			fromSet:  TimedSetFromString("ABC:1,BBC:2"),
+			toSet:    TimedSetFromString("BBC:2"),
+			expected: ChangedKeys{"ABC": false},
+		},
+		{
+			name:     "AddedAll",
+			fromSet:  TimedSet{},
+			toSet:    TimedSetFromString("ABC:1,BBC:2"),
+			expected: ChangedKeys{"ABC": true, "BBC": true},
+		},
+		{
+			name:     "RemovedAll",
+			fromSet:  TimedSetFromString("ABC:1,BBC:2"),
+			toSet:    TimedSet{},
+			expected: ChangedKeys{"ABC": false, "BBC": false},
+		},
+		{
+			name:     "AddAndRemove",
+			fromSet:  TimedSetFromString("ABC:1,BBC:2,NBC:1"),
+			toSet:    TimedSetFromString("ABC:1,HBO:3,PBS:5"),
+			expected: ChangedKeys{"BBC": false, "NBC": false, "HBO": true, "PBS": true},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(tt *testing.T) {
+			result := test.toSet.CompareKeys(test.fromSet)
+			assert.Equal(t, len(test.expected), len(result))
+			for expectedChannel, expectedValue := range test.expected {
+				actualValue, found := result[expectedChannel]
+				assert.True(t, found)
+				assert.Equal(t, expectedValue, actualValue)
+			}
+		})
+	}
+}

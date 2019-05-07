@@ -92,6 +92,7 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyChannelCacheRevsTombstone, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyChannelCacheNumChannels, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyChannelCacheActiveChannels, base.ExpvarIntVal(0))
 	case base.StatsGroupKeyDatabase:
 		result.Set(base.StatKeySequenceGetCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeySequenceReservedCount, base.ExpvarIntVal(0))
