@@ -39,7 +39,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	_, err := auth.bucket.Get(docIDForSession(cookie.Value), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
-			err = nil
+			return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
 		}
 		return nil, err
 	}
