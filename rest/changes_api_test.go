@@ -3057,33 +3057,44 @@ func TestTombstoneCompaction(t *testing.T) {
 		t.Skip("If running with no xattrs compact acts as a no-op")
 	}
 
-	rt := NewRestTester(t, nil)
+	TestCompact := func(numDocs int) {
+		rt := NewRestTester(t, nil)
+		count := 0
 
-	count := 0
+		rt.GetDatabase().PurgeInterval = 0
 
-	rt.GetDatabase().PurgeInterval = 0
+		for count < numDocs {
+			count++
+			response := rt.SendAdminRequest("POST", "/db/", `{"foo":"bar"}`)
+			assert.Equal(t, 200, response.Code)
+			var body db.Body
+			err := json.Unmarshal(response.Body.Bytes(), &body)
+			assert.NoError(t, err)
+			revId := body["rev"].(string)
+			docId := body["id"].(string)
 
-	for count < 200 {
-		count++
-		response := rt.SendAdminRequest("POST", "/db/", `{"foo":"bar"}`)
-		assert.Equal(t, 200, response.Code)
-		var body db.Body
-		err := json.Unmarshal(response.Body.Bytes(), &body)
-		assert.NoError(t, err)
-		revId := body["rev"].(string)
-		docId := body["id"].(string)
+			response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", docId, revId), "")
+			assert.Equal(t, 200, response.Code)
+		}
 
-		response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", docId, revId), "")
-		assert.Equal(t, 200, response.Code)
+		rt.SendAdminRequest("POST", "/db/_compact", "")
+
+		assert.Equal(t, int64(numDocs), base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumTombstonesCompacted)))
+
+		assert.Equal(t, int64(numDocs/db.QueryTombstoneBatch+1), base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, db.QueryTypeTombstones))))
+		rt.Close()
 	}
 
-	rt.SendAdminRequest("POST", "/db/_compact", "")
+	// Multiples of Batch Size
+	TestCompact(db.QueryTombstoneBatch)
+	TestCompact(db.QueryTombstoneBatch * 4)
 
-	assert.Equal(t, int64(200), base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumTombstonesCompacted)))
+	// Smaller Than Batch Size
+	TestCompact(1)
+	TestCompact(db.QueryTombstoneBatch / 4)
 
-	// This number is 5 because it compact until query results < Batch count. 200/50 and an extra for 0 results
-	assert.Equal(t, int64(5), base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, db.QueryTypeTombstones))))
-
+	// Larger than Batch Size
+	TestCompact(db.QueryTombstoneBatch + 20)
 }
 
 func waitForCaughtUp(dbc *db.DatabaseContext, targetCount int64) error {

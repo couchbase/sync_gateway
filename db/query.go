@@ -483,7 +483,9 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int, 
 
 	// N1QL Query
 	tombstoneQueryStatement := replaceSyncTokensQuery(QueryTombstones.statement, context.UseXattrs())
-	tombstoneQueryStatement = fmt.Sprintf("%s LIMIT %d", tombstoneQueryStatement, limit)
+	if limit != 0 {
+		tombstoneQueryStatement = fmt.Sprintf("%s LIMIT %d", tombstoneQueryStatement, limit)
+	}
 	params := make(map[string]interface{}, 1)
 	params[QueryParamOlderThan] = olderThan.Unix()
 	params[QueryParamLimit] = limit

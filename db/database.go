@@ -23,7 +23,6 @@ import (
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -881,23 +880,23 @@ func (db *Database) Compact() (int, error) {
 	startTime := time.Now()
 	purgeOlderThan := startTime.Add(purgeIntervalDuration)
 
-	purgedDocs := make([]string, 0)
+	purgedDocCount := 0
 
 	ctx := db.Ctx
 
+	base.InfofCtx(ctx, base.KeyAll, "Starting compaction of purged tombstones for %s ...", base.MD(db.Name))
+	purgeBody := Body{"_purged": true}
 	for {
+		purgedDocs := make([]string, 0)
 		results, err := db.QueryTombstones(purgeOlderThan, QueryTombstoneBatch, gocb.RequestPlus)
 		if err != nil {
 			return 0, err
 		}
-
-		base.InfofCtx(ctx, base.KeyAll, "Compacting purged tombstones for %s ...", base.MD(db.Name))
-		purgeBody := Body{"_purged": true}
 		var tombstonesRow QueryIdRow
 		var resultCount int
 		for results.Next(&tombstonesRow) {
 			resultCount++
-			base.InfofCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
+			base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
 			// First, attempt to purge.
 			purgeErr := db.Purge(tombstonesRow.Id)
 			if purgeErr == nil {
@@ -922,20 +921,23 @@ func (db *Database) Compact() (int, error) {
 			}
 		}
 
+		// Now purge them from all channel caches
+		count := len(purgedDocs)
+		purgedDocCount += count
+		if count > 0 {
+			db.changeCache.Remove(purgedDocs, startTime)
+			db.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
+		}
+		base.InfofCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
+
 		if resultCount < QueryTombstoneBatch {
 			break
 		}
 	}
 
-	// Now purge them from all channel caches
-	count := len(purgedDocs)
-	if count > 0 {
-		db.changeCache.Remove(purgedDocs, startTime)
-		db.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
-	}
-	base.InfofCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
+	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s ...", base.MD(db.Name))
 
-	return count, nil
+	return purgedDocCount, nil
 }
 
 // Deletes all orphaned CouchDB attachments not used by any revisions.
