@@ -3057,11 +3057,16 @@ func TestTombstoneCompaction(t *testing.T) {
 		t.Skip("If running with no xattrs compact acts as a no-op")
 	}
 
-	TestCompact := func(numDocs int) {
-		rt := NewRestTester(t, nil)
-		count := 0
+	rt := NewRestTester(t, nil)
+	rt.GetDatabase().PurgeInterval = 0
+	defer rt.Close()
 
-		rt.GetDatabase().PurgeInterval = 0
+	compactionTotal := 0
+	queryTotal := 0
+
+	TestCompact := func(numDocs int) {
+
+		count := 0
 
 		for count < numDocs {
 			count++
@@ -3079,10 +3084,11 @@ func TestTombstoneCompaction(t *testing.T) {
 
 		rt.SendAdminRequest("POST", "/db/_compact", "")
 
-		assert.Equal(t, int64(numDocs), base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumTombstonesCompacted)))
+		compactionTotal += numDocs
+		assert.Equal(t, compactionTotal, int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumTombstonesCompacted))))
 
-		assert.Equal(t, int64(numDocs/db.QueryTombstoneBatch+1), base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, db.QueryTypeTombstones))))
-		rt.Close()
+		queryTotal += numDocs/db.QueryTombstoneBatch + 1
+		assert.Equal(t, queryTotal, int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, db.QueryTypeTombstones)))))
 	}
 
 	// Multiples of Batch Size
@@ -3090,7 +3096,7 @@ func TestTombstoneCompaction(t *testing.T) {
 	TestCompact(db.QueryTombstoneBatch * 4)
 
 	// Smaller Than Batch Size
-	TestCompact(1)
+	TestCompact(2)
 	TestCompact(db.QueryTombstoneBatch / 4)
 
 	// Larger than Batch Size
