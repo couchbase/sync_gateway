@@ -928,14 +928,14 @@ func (db *Database) Compact() (int, error) {
 			db.changeCache.Remove(purgedDocs, startTime)
 			db.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
 		}
-		base.InfofCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
+		base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 
 		if resultCount < QueryTombstoneBatch {
 			break
 		}
 	}
 
-	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s ...", base.MD(db.Name))
+	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s... Total Tombstones Compacted: %d", base.MD(db.Name), purgedDocCount)
 
 	return purgedDocCount, nil
 }
