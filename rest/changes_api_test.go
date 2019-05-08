@@ -3050,6 +3050,63 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 
 }
 
+func TestTombstoneCompaction(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support Xattrs")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("If running with no xattrs compact acts as a no-op")
+	}
+
+	rt := NewRestTester(t, nil)
+	rt.GetDatabase().PurgeInterval = 0
+	defer rt.Close()
+
+	compactionTotal := 0
+	queryTotal := 0
+
+	TestCompact := func(numDocs int) {
+
+		count := 0
+
+		for count < numDocs {
+			count++
+			response := rt.SendAdminRequest("POST", "/db/", `{"foo":"bar"}`)
+			assert.Equal(t, 200, response.Code)
+			var body db.Body
+			err := json.Unmarshal(response.Body.Bytes(), &body)
+			assert.NoError(t, err)
+			revId := body["rev"].(string)
+			docId := body["id"].(string)
+
+			response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", docId, revId), "")
+			assert.Equal(t, 200, response.Code)
+		}
+
+		rt.SendAdminRequest("POST", "/db/_compact", "")
+
+		compactionTotal += numDocs
+		assert.Equal(t, compactionTotal, int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumTombstonesCompacted))))
+
+		queryTotal += numDocs/db.QueryTombstoneBatch + 1
+		assert.Equal(t, queryTotal, int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, db.QueryTypeTombstones)))))
+	}
+
+	// Multiples of Batch Size
+	TestCompact(db.QueryTombstoneBatch)
+	TestCompact(db.QueryTombstoneBatch * 4)
+
+	// Smaller Than Batch Size
+	TestCompact(2)
+	TestCompact(db.QueryTombstoneBatch / 4)
+
+	// Larger than Batch Size
+	TestCompact(db.QueryTombstoneBatch + 20)
+}
+
 func waitForCaughtUp(dbc *db.DatabaseContext, targetCount int64) error {
 	for i := 0; i < 100; i++ {
 		caughtUpCount := base.ExpvarVar2Int(dbc.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))

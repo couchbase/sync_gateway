@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -903,52 +904,65 @@ func (db *Database) Compact() (int, error) {
 	purgeIntervalDuration := time.Duration(-db.PurgeInterval) * time.Hour
 	startTime := time.Now()
 	purgeOlderThan := startTime.Add(purgeIntervalDuration)
-	results, err := db.QueryTombstones(purgeOlderThan)
-	if err != nil {
-		return 0, err
-	}
+
+	purgedDocCount := 0
 
 	ctx := db.Ctx
-	base.InfofCtx(ctx, base.KeyAll, "Compacting purged tombstones for %s ...", base.MD(db.Name))
+
+	base.InfofCtx(ctx, base.KeyAll, "Starting compaction of purged tombstones for %s ...", base.MD(db.Name))
 	purgeBody := Body{"_purged": true}
-	purgedDocs := make([]string, 0)
+	for {
+		purgedDocs := make([]string, 0)
+		results, err := db.QueryTombstones(purgeOlderThan, QueryTombstoneBatch, gocb.RequestPlus)
+		if err != nil {
+			return 0, err
+		}
+		var tombstonesRow QueryIdRow
+		var resultCount int
+		for results.Next(&tombstonesRow) {
+			resultCount++
+			base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
+			// First, attempt to purge.
+			purgeErr := db.Purge(tombstonesRow.Id)
+			if purgeErr == nil {
+				purgedDocs = append(purgedDocs, tombstonesRow.Id)
+			} else if base.IsKeyNotFoundError(db.Bucket, purgeErr) {
+				// If key no longer exists, need to add and remove to trigger removal from view
+				_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
+				if addErr != nil {
+					base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
+					continue
+				}
 
-	var tombstonesRow QueryIdRow
-	for results.Next(&tombstonesRow) {
-		base.InfofCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
-		// First, attempt to purge.
-		purgeErr := db.Purge(tombstonesRow.Id)
-		if purgeErr == nil {
-			purgedDocs = append(purgedDocs, tombstonesRow.Id)
-		} else if base.IsKeyNotFoundError(db.Bucket, purgeErr) {
-			// If key no longer exists, need to add and remove to trigger removal from view
-			_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
-			if addErr != nil {
-				base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
-				continue
+				// At this point, the doc is not in a usable state for mobile
+				// so mark it to be removed from cache, even if the subsequent delete fails
+				purgedDocs = append(purgedDocs, tombstonesRow.Id)
+
+				if delErr := db.Bucket.Delete(tombstonesRow.Id); delErr != nil {
+					base.ErrorfCtx(ctx, base.KeyAll, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
+				}
+			} else {
+				base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
 			}
+		}
 
-			// At this point, the doc is not in a usable state for mobile
-			// so mark it to be removed from cache, even if the subsequent delete fails
-			purgedDocs = append(purgedDocs, tombstonesRow.Id)
+		// Now purge them from all channel caches
+		count := len(purgedDocs)
+		purgedDocCount += count
+		if count > 0 {
+			db.changeCache.Remove(purgedDocs, startTime)
+			db.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
+		}
+		base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 
-			if delErr := db.Bucket.Delete(tombstonesRow.Id); delErr != nil {
-				base.ErrorfCtx(ctx, base.KeyAll, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
-			}
-		} else {
-			base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
+		if resultCount < QueryTombstoneBatch {
+			break
 		}
 	}
 
-	// Now purge them from all channel caches
-	count := len(purgedDocs)
-	if count > 0 {
-		db.changeCache.Remove(purgedDocs, startTime)
-		db.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
-	}
-	base.InfofCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
+	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s... Total Tombstones Compacted: %d", base.MD(db.Name), purgedDocCount)
 
-	return count, nil
+	return purgedDocCount, nil
 }
 
 // Deletes all orphaned CouchDB attachments not used by any revisions.

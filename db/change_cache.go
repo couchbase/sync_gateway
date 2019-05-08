@@ -21,6 +21,7 @@ const (
 	DefaultCachePendingSeqMaxNum  = 10000            // Max number of waiting sequences
 	DefaultCachePendingSeqMaxWait = 5 * time.Second  // Max time we'll wait for a pending sequence before sending to missed queue
 	DefaultSkippedSeqMaxWait      = 60 * time.Minute // Max time we'll wait for an entry in the missing before purging
+	QueryTombstoneBatch           = 250              // Max number of tombstones checked per query during Compact
 )
 
 var SkippedSeqCleanViewBatch = 50 // Max number of sequences checked per query during CleanSkippedSequence.  Var to support testing
