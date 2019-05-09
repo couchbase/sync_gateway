@@ -187,6 +187,9 @@ type DbConfig struct {
 	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
 	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
 	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitempty"`        // Channel index settings
+	// ***************************************************************
+	//	Kept around for CBG-356 backwards compatability
+	// ***************************************************************
 	// RevCacheSize              *uint32                        `json:"rev_cache_size,omitempty"`               // Maximum number of revisions to store in the revision cache
 	StartOffline              bool                  `json:"offline,omitempty"`                      // start the DB in the offline state, defaults to false
 	Unsupported               db.UnsupportedOptions `json:"unsupported,omitempty"`                  // Config for unsupported features
@@ -258,6 +261,9 @@ type EventConfig struct {
 type CacheConfig struct {
 	RevCacheConfig     *RevCacheConfig     `json:"rev_cache"`     // Revision Cache Config Settings
 	ChannelCacheConfig *ChannelCacheConfig `json:"channel_cache"` // Channel Cache Config Settings
+	// ***************************************************************
+	//	Kept around for CBG-356 backwards compatability
+	// ***************************************************************
 	// CachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Max wait for pending sequence before skipping
 	// CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
 	// CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
