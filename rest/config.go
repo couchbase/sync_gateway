@@ -259,8 +259,8 @@ type EventConfig struct {
 }
 
 type CacheConfig struct {
-	RevCacheConfig     *RevCacheConfig     `json:"rev_cache"`     // Revision Cache Config Settings
-	ChannelCacheConfig *ChannelCacheConfig `json:"channel_cache"` // Channel Cache Config Settings
+	RevCacheConfig     *RevCacheConfig     `json:"rev_cache,omitempty"`     // Revision Cache Config Settings
+	ChannelCacheConfig *ChannelCacheConfig `json:"channel_cache,omitempty"` // Channel Cache Config Settings
 	// ***************************************************************
 	//	Kept around for CBG-356 backwards compatability
 	// ***************************************************************
@@ -274,19 +274,19 @@ type CacheConfig struct {
 }
 
 type RevCacheConfig struct {
-	Size       *uint32 `json:"size"`
-	ShardCount *uint16 `json:"shard_count"`
+	Size       *uint32 `json:"size,omitempty"`
+	ShardCount *uint16 `json:"shard_count,omitempty"`
 }
 
 type ChannelCacheConfig struct {
-	MaxNumber              *int    `json:"max_number"`
-	MaxWaitPending         *uint32 `json:"max_wait_pending"`
-	MaxNumPending          *int    `json:"max_num_pending"`
-	MaxWaitSkipped         *uint32 `json:"max_wait_skipped"`
-	EnableStarChannelCache *bool   `json:"enable_star_channel_cache"`
-	MaxLength              *int    `json:"max_length"`
-	MinLength              *int    `json:"min_length"`
-	Expiry                 *int    `json:"expiry"`
+	MaxNumber              *int    `json:"max_number,omitempty"`
+	MaxWaitPending         *uint32 `json:"max_wait_pending,omitempty"`
+	MaxNumPending          *int    `json:"max_num_pending,omitempty"`
+	MaxWaitSkipped         *uint32 `json:"max_wait_skipped,omitempty"`
+	EnableStarChannelCache *bool   `json:"enable_star_channel_cache,omitempty"`
+	MaxLength              *int    `json:"max_length,omitempty"`
+	MinLength              *int    `json:"min_length,omitempty"`
+	Expiry                 *int    `json:"expiry,omitempty"`
 }
 
 type ChannelIndexConfig struct {
@@ -443,7 +443,7 @@ func (dbConfig DbConfig) validate() error {
 		if dbConfig.CacheConfig.ChannelCacheConfig != nil {
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber != nil {
 				if *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber < 1 {
-					return fmt.Errorf("minimum value for max_number is 1")
+					return fmt.Errorf("minimum value for cache.channel_cache.max_number is 1")
 				}
 			}
 		}
@@ -451,7 +451,7 @@ func (dbConfig DbConfig) validate() error {
 		if dbConfig.CacheConfig.RevCacheConfig != nil {
 			if dbConfig.CacheConfig.RevCacheConfig.ShardCount != nil {
 				if *dbConfig.CacheConfig.RevCacheConfig.ShardCount < 1 {
-					return fmt.Errorf("minimum value for shard_count is 1")
+					return fmt.Errorf("minimum value for cache.rev_cache.shard_count is 1")
 				}
 			}
 		}
