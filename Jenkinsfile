@@ -198,12 +198,11 @@ pipeline {
                     }
                 }
                 stage('Integration') {
-                    //when { branch 'master' }
+                    when { branch 'master' }
                     steps {
                         echo 'Queueing Integration test for branch "master" ...'
                         // Queues up an async integration test run for the master branch, but waits up to an hour for all merges into master before actually running (via quietPeriod)
-                        build job: 'sync-gateway-integration-master', wait: false
-                        //build job: 'sync-gateway-integration-master', quietPeriod: 3600, wait: false
+                        build job: 'sync-gateway-integration-master', quietPeriod: 3600, wait: false
                     }
                 }
             }
