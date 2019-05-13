@@ -239,7 +239,7 @@ func TestBypassRevisionCache(t *testing.T) {
 
 	// Get non-existing doc
 	doc, err := rc.Get("invalid", rev1, BodyShallowCopy)
-	assert.EqualError(t, err, "key \"invalid\" missing")
+	assert.True(t, base.IsDocNotFoundError(err))
 
 	// Get non-existing revision
 	doc, err = rc.Get(key, "3-abc", BodyShallowCopy)
