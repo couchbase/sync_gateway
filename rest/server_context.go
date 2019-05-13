@@ -393,8 +393,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				cacheOptions.CacheSkippedSeqMaxWait = time.Duration(*config.CacheConfig.ChannelCacheConfig.MaxWaitSkipped) * time.Millisecond
 			}
 			// set EnableStarChannelLog directly here (instead of via NewDatabaseContext), so that it's set when we create the channels view in ConnectToBucket
-			if config.CacheConfig.ChannelCacheConfig.EnableStarChannelCache != nil {
-				db.EnableStarChannelLog = *config.CacheConfig.ChannelCacheConfig.EnableStarChannelCache
+			if config.CacheConfig.ChannelCacheConfig.EnableStarChannel != nil {
+				db.EnableStarChannelLog = *config.CacheConfig.ChannelCacheConfig.EnableStarChannel
 			}
 			if config.CacheConfig.ChannelCacheConfig.MaxLength != nil && *config.CacheConfig.ChannelCacheConfig.MaxLength > 0 {
 				cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheConfig.MaxLength
@@ -402,8 +402,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			if config.CacheConfig.ChannelCacheConfig.MinLength != nil && *config.CacheConfig.ChannelCacheConfig.MinLength > 0 {
 				cacheOptions.ChannelCacheMinLength = *config.CacheConfig.ChannelCacheConfig.MinLength
 			}
-			if config.CacheConfig.ChannelCacheConfig.Expiry != nil && *config.CacheConfig.ChannelCacheConfig.Expiry > 0 {
-				cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheConfig.Expiry) * time.Second
+			if config.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil && *config.CacheConfig.ChannelCacheConfig.ExpirySeconds > 0 {
+				cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheConfig.ExpirySeconds) * time.Second
 			}
 			if config.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *config.CacheConfig.ChannelCacheConfig.MaxNumber > 0 {
 				cacheOptions.ChannelCacheMaxNumber = *config.CacheConfig.ChannelCacheConfig.MaxNumber

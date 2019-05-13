@@ -274,19 +274,19 @@ type CacheConfig struct {
 }
 
 type RevCacheConfig struct {
-	Size       *uint32 `json:"size,omitempty"`
-	ShardCount *uint16 `json:"shard_count,omitempty"`
+	Size       *uint32 `json:"size,omitempty"`        // Maximum number of revisions to store in the revision cache
+	ShardCount *uint16 `json:"shard_count,omitempty"` // Number of shards the rev cache should be split into
 }
 
 type ChannelCacheConfig struct {
-	MaxNumber              *int    `json:"max_number,omitempty"`
-	MaxWaitPending         *uint32 `json:"max_wait_pending,omitempty"`
-	MaxNumPending          *int    `json:"max_num_pending,omitempty"`
-	MaxWaitSkipped         *uint32 `json:"max_wait_skipped,omitempty"`
-	EnableStarChannelCache *bool   `json:"enable_star_channel_cache,omitempty"`
-	MaxLength              *int    `json:"max_length,omitempty"`
-	MinLength              *int    `json:"min_length,omitempty"`
-	Expiry                 *int    `json:"expiry,omitempty"`
+	MaxNumber         *int    `json:"max_number,omitempty"`          // Maximum number of channel caches which will exist at any one point
+	MaxWaitPending    *uint32 `json:"max_wait_pending,omitempty"`    // Max wait for pending sequence before skipping
+	MaxNumPending     *int    `json:"max_num_pending,omitempty"`     // Max number of pending sequences before skipping
+	MaxWaitSkipped    *uint32 `json:"max_wait_skipped,omitempty"`    // Max wait for skipped sequence before abandoning
+	EnableStarChannel *bool   `json:"enable_star_channel,omitempty"` // Enable star channel
+	MaxLength         *int    `json:"max_length,omitempty"`          // Maximum number of entries maintained in cache per channel
+	MinLength         *int    `json:"min_length,omitempty"`          // Minimum number of entries maintained in cache per channel
+	ExpirySeconds     *int    `json:"expiry_seconds,omitempty"`      // Time (seconds) to keep entries in cache beyond the minimum retained
 }
 
 type ChannelIndexConfig struct {
