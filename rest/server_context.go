@@ -380,31 +380,44 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Set cache properties, if present
 	cacheOptions := db.CacheOptions{}
+	revCacheOptions := db.RevisionCacheOptions{}
 	if config.CacheConfig != nil {
-		if config.CacheConfig.CachePendingSeqMaxNum != nil && *config.CacheConfig.CachePendingSeqMaxNum > 0 {
-			cacheOptions.CachePendingSeqMaxNum = *config.CacheConfig.CachePendingSeqMaxNum
-		}
-		if config.CacheConfig.CachePendingSeqMaxWait != nil && *config.CacheConfig.CachePendingSeqMaxWait > 0 {
-			cacheOptions.CachePendingSeqMaxWait = time.Duration(*config.CacheConfig.CachePendingSeqMaxWait) * time.Millisecond
-		}
-		if config.CacheConfig.CacheSkippedSeqMaxWait != nil && *config.CacheConfig.CacheSkippedSeqMaxWait > 0 {
-			cacheOptions.CacheSkippedSeqMaxWait = time.Duration(*config.CacheConfig.CacheSkippedSeqMaxWait) * time.Millisecond
-		}
-		// set EnableStarChannelLog directly here (instead of via NewDatabaseContext), so that it's set when we create the channels view in ConnectToBucket
-		if config.CacheConfig.EnableStarChannel != nil {
-			db.EnableStarChannelLog = *config.CacheConfig.EnableStarChannel
+		if config.CacheConfig.ChannelCacheConfig != nil {
+			if config.CacheConfig.ChannelCacheConfig.MaxNumPending != nil && *config.CacheConfig.ChannelCacheConfig.MaxNumPending > 0 {
+				cacheOptions.CachePendingSeqMaxNum = *config.CacheConfig.ChannelCacheConfig.MaxNumPending
+			}
+			if config.CacheConfig.ChannelCacheConfig.MaxWaitPending != nil && *config.CacheConfig.ChannelCacheConfig.MaxWaitPending > 0 {
+				cacheOptions.CachePendingSeqMaxWait = time.Duration(*config.CacheConfig.ChannelCacheConfig.MaxWaitPending) * time.Millisecond
+			}
+			if config.CacheConfig.ChannelCacheConfig.MaxWaitSkipped != nil && *config.CacheConfig.ChannelCacheConfig.MaxWaitSkipped > 0 {
+				cacheOptions.CacheSkippedSeqMaxWait = time.Duration(*config.CacheConfig.ChannelCacheConfig.MaxWaitSkipped) * time.Millisecond
+			}
+			// set EnableStarChannelLog directly here (instead of via NewDatabaseContext), so that it's set when we create the channels view in ConnectToBucket
+			if config.CacheConfig.ChannelCacheConfig.EnableStarChannel != nil {
+				db.EnableStarChannelLog = *config.CacheConfig.ChannelCacheConfig.EnableStarChannel
+			}
+			if config.CacheConfig.ChannelCacheConfig.MaxLength != nil && *config.CacheConfig.ChannelCacheConfig.MaxLength > 0 {
+				cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheConfig.MaxLength
+			}
+			if config.CacheConfig.ChannelCacheConfig.MinLength != nil && *config.CacheConfig.ChannelCacheConfig.MinLength > 0 {
+				cacheOptions.ChannelCacheMinLength = *config.CacheConfig.ChannelCacheConfig.MinLength
+			}
+			if config.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil && *config.CacheConfig.ChannelCacheConfig.ExpirySeconds > 0 {
+				cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheConfig.ExpirySeconds) * time.Second
+			}
+			if config.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *config.CacheConfig.ChannelCacheConfig.MaxNumber > 0 {
+				cacheOptions.ChannelCacheMaxNumber = *config.CacheConfig.ChannelCacheConfig.MaxNumber
+			}
 		}
 
-		if config.CacheConfig.ChannelCacheMaxLength != nil && *config.CacheConfig.ChannelCacheMaxLength > 0 {
-			cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheMaxLength
+		if config.CacheConfig.RevCacheConfig != nil {
+			if config.CacheConfig.RevCacheConfig.Size != nil {
+				revCacheOptions.Size = *config.CacheConfig.RevCacheConfig.Size
+			}
+			if config.CacheConfig.RevCacheConfig.ShardCount != nil {
+				revCacheOptions.ShardNumber = *config.CacheConfig.RevCacheConfig.ShardCount
+			}
 		}
-		if config.CacheConfig.ChannelCacheMinLength != nil && *config.CacheConfig.ChannelCacheMinLength > 0 {
-			cacheOptions.ChannelCacheMinLength = *config.CacheConfig.ChannelCacheMinLength
-		}
-		if config.CacheConfig.ChannelCacheAge != nil && *config.CacheConfig.ChannelCacheAge > 0 {
-			cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheAge) * time.Second
-		}
-
 	}
 
 	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
@@ -612,6 +625,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
+		RevisionCacheOptions:      &revCacheOptions,
 		IndexOptions:              channelIndexOptions,
 		SequenceHashOptions:       sequenceHashOptions,
 		OldRevExpirySeconds:       oldRevExpirySeconds,
