@@ -3051,7 +3051,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 }
 
 func TestTombstoneCompaction(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Walrus does not support Xattrs")
