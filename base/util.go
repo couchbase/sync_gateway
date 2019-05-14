@@ -781,12 +781,20 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 	}
 }
 
-func BooleanPointer(booleanValue bool) *bool {
-	return &booleanValue
-}
-
 func StringPointer(value string) *string {
 	return &value
+}
+
+func Uint32Ptr(u uint32) *uint32 {
+	return &u
+}
+
+func IntPtr(i int) *int {
+	return &i
+}
+
+func BoolPtr(b bool) *bool {
+	return &b
 }
 
 // Convert a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
@@ -937,14 +945,6 @@ func StringSliceContains(set []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func Uint32Ptr(u uint32) *uint32 {
-	return &u
-}
-
-func BoolPtr(b bool) *bool {
-	return &b
 }
 
 func ConvertToEmptyInterfaceSlice(i interface{}) (result []interface{}, err error) {

@@ -642,7 +642,7 @@ func (dbConfig *DbConfig) ConflictsAllowed() *bool {
 	if dbConfig.AllowConflicts != nil {
 		return dbConfig.AllowConflicts
 	}
-	return base.BooleanPointer(base.DefaultAllowConflicts)
+	return base.BoolPtr(base.DefaultAllowConflicts)
 }
 
 func (dbConfig *DbConfig) UseXattrs() bool {
