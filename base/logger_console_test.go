@@ -126,9 +126,6 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 }
 
 func TestConsoleLogDefaults(t *testing.T) {
-	logLevelPtr := func(level LogLevel) *LogLevel { return &level }
-	logKeyPtr := func(key LogKey) *LogKey { return &key }
-
 	tests := []struct {
 		name     string
 		config   ConsoleLoggerConfig
