@@ -401,21 +401,21 @@ func (dbConfig *DbConfig) setup(name string) error {
 }
 
 func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
-
-	autoImport := false
-	switch dbConfig.AutoImport {
-	case nil:
-	case false:
-	case true:
-		autoImport = true
-	case "continuous":
-		autoImport = true
-	default:
-		return false, fmt.Errorf("Unrecognized value for import_docs: %#v.  Must be set to 'continuous', true or false, or be omitted entirely", dbConfig.AutoImport)
+	if dbConfig.AutoImport == nil {
+		return base.DefaultAutoImport, nil
 	}
 
-	return autoImport, nil
+	if b, ok := dbConfig.AutoImport.(bool); ok {
+		return b, nil
+	}
 
+	str, ok := dbConfig.AutoImport.(string)
+	if ok && str == "continuous" {
+		base.Warnf(base.KeyAll, `Using deprecated config value for "import_docs": "continuous". Use "import_docs": true instead.`)
+		return true, nil
+	}
+
+	return false, fmt.Errorf("Unrecognized value for import_docs: %#v.  Must be set to true, false, or be omitted entirely", dbConfig.AutoImport)
 }
 
 func (dbConfig DbConfig) validate() error {
