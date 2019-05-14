@@ -415,7 +415,7 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 		return true, nil
 	}
 
-	return false, fmt.Errorf("Unrecognized value for import_docs: %#v.  Must be set to true, false, or be omitted entirely", dbConfig.AutoImport)
+	return false, fmt.Errorf("Unrecognized value for import_docs: %#v. Valid values are true and false.", dbConfig.AutoImport)
 }
 
 func (dbConfig DbConfig) validate() error {
