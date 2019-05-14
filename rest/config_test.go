@@ -164,8 +164,8 @@ func TestAutoImportEnabled(t *testing.T) {
 	tests := []struct {
 		name        string
 		configValue interface{}
-		want        bool
-		wantErr     bool
+		expected    bool
+		hasError    bool
 	}{
 		{
 			"default",
@@ -203,11 +203,8 @@ func TestAutoImportEnabled(t *testing.T) {
 			dbConfig := &DbConfig{AutoImport: test.configValue}
 
 			got, err := dbConfig.AutoImportEnabled()
-			assert.Equal(t, test.wantErr, err != nil, "unexpected error from AutoImportEnabled")
-			assert.Equal(t, test.want, got, "unexpected value from AutoImportEnabled")
-			if got != test.want {
-				t.Errorf("DbConfig.AutoImportEnabled() = %v, want %v", got, test.want)
-			}
+			assert.Equal(t, test.hasError, err != nil, "unexpected error from AutoImportEnabled")
+			assert.Equal(t, test.expected, got, "unexpected value from AutoImportEnabled")
 		})
 	}
 }
