@@ -123,6 +123,63 @@ func TestLoadServerConfigExamples(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestDeprecatedCacheConfig(t *testing.T) {
+	// Create new DbConfig
+	dbConfig := DbConfig{
+		CacheConfig: &CacheConfig{},
+	}
+
+	// Set Deprecated Values
+	dbConfig.DeprecatedRevCacheSize = base.Uint32Ptr(10)
+	dbConfig.CacheConfig.DeprecatedChannelCacheAge = base.IntPtr(10)
+	dbConfig.CacheConfig.DeprecatedChannelCacheMinLength = base.IntPtr(10)
+	dbConfig.CacheConfig.DeprecatedChannelCacheMaxLength = base.IntPtr(10)
+	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.BoolPtr(true)
+	dbConfig.CacheConfig.DeprecatedCacheSkippedSeqMaxWait = base.Uint32Ptr(10)
+	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum = base.IntPtr(10)
+	dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxWait = base.Uint32Ptr(10)
+
+	// Run Deprecated Fallback
+	warnings := dbConfig.deprecatedConfigCacheFallback()
+
+	// Check we have 8 warnings as this is the number of deprecated values we are testing
+	assert.Equal(t, 8, len(warnings))
+
+	// Check that the deprecated values have correctly been propagated upto the new config values
+	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.Size, uint32(10))
+	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds, 10)
+	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.MinLength, 10)
+	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.MaxLength, 10)
+	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel, true)
+	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped, uint32(10))
+	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending, 10)
+	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending, uint32(10))
+
+	// Reset DBConfig
+	dbConfig = DbConfig{
+		CacheConfig: &CacheConfig{
+			RevCacheConfig:     &RevCacheConfig{},
+			ChannelCacheConfig: &ChannelCacheConfig{},
+		},
+	}
+
+	// Set A Couple Deprecated Values AND Their New Counterparts
+	dbConfig.DeprecatedRevCacheSize = base.Uint32Ptr(10)
+	dbConfig.CacheConfig.RevCacheConfig.Size = base.Uint32Ptr(20)
+	dbConfig.CacheConfig.DeprecatedEnableStarChannel = base.BoolPtr(false)
+	dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = base.BoolPtr(true)
+
+	// Run Deprecated Fallback
+	warnings = dbConfig.deprecatedConfigCacheFallback()
+
+	// Check we have 2 warnings as this is the number of deprecated values we are testing
+	assert.Equal(t, 2, len(warnings))
+
+	// Check that the deprecated value has been ignored as the new value is the priority
+	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.Size, uint32(20))
+	assert.Equal(t, *dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel, true)
+}
+
 // Test TLS Version
 func TestTLSMinimumVersionSetting(t *testing.T) {
 	tests := []struct {

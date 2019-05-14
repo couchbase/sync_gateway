@@ -885,7 +885,7 @@ func TestConflictRevLimit(t *testing.T) {
 
 	//Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
-		AllowConflicts: base.BooleanPointer(true),
+		AllowConflicts: base.BoolPtr(true),
 	}
 
 	AddOptionsFromEnvironmentVariables(&dbOptions)
@@ -898,7 +898,7 @@ func TestConflictRevLimit(t *testing.T) {
 
 	//Test AllowConflicts false
 	dbOptions = DatabaseContextOptions{
-		AllowConflicts: base.BooleanPointer(false),
+		AllowConflicts: base.BoolPtr(false),
 	}
 
 	AddOptionsFromEnvironmentVariables(&dbOptions)
@@ -918,7 +918,7 @@ func TestNoConflictsMode(t *testing.T) {
 	defer tearDownTestDB(t, db)
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
-	db.Options.AllowConflicts = base.BooleanPointer(false)
+	db.Options.AllowConflicts = base.BoolPtr(false)
 
 	// Create revs 1 and 2 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -998,7 +998,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	assert.NoError(t, db.PutExistingRev("doc3", body, []string{"2-a", "1-a"}, false), "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.BooleanPointer(false)
+	db.Options.AllowConflicts = base.BoolPtr(false)
 	delete(body, "n")
 	body[BodyDeleted] = true
 
@@ -1064,7 +1064,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 	assert.NoError(t, db.PutExistingRev("doc3", body, []string{"2-a", "1-a"}, false), "add 2-a")
 
 	// Set AllowConflicts to false
-	db.Options.AllowConflicts = base.BooleanPointer(false)
+	db.Options.AllowConflicts = base.BoolPtr(false)
 	delete(body, "n")
 	body[BodyDeleted] = true
 

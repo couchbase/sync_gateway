@@ -190,7 +190,7 @@ type DbConfig struct {
 	// ***************************************************************
 	//	Kept around for CBG-356 backwards compatability
 	// ***************************************************************
-	// RevCacheSize              *uint32                        `json:"rev_cache_size,omitempty"`               // Maximum number of revisions to store in the revision cache
+	DeprecatedRevCacheSize    *uint32               `json:"rev_cache_size,omitempty"`               // Maximum number of revisions to store in the revision cache
 	StartOffline              bool                  `json:"offline,omitempty"`                      // start the DB in the offline state, defaults to false
 	Unsupported               db.UnsupportedOptions `json:"unsupported,omitempty"`                  // Config for unsupported features
 	Deprecated                DeprecatedOptions     `json:"deprecated,omitempty"`                   // Config for Deprecated features
@@ -259,18 +259,22 @@ type EventConfig struct {
 }
 
 type CacheConfig struct {
-	RevCacheConfig     *RevCacheConfig     `json:"rev_cache,omitempty"`     // Revision Cache Config Settings
-	ChannelCacheConfig *ChannelCacheConfig `json:"channel_cache,omitempty"` // Channel Cache Config Settings
-	// ***************************************************************
-	//	Kept around for CBG-356 backwards compatability
-	// ***************************************************************
-	// CachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Max wait for pending sequence before skipping
-	// CachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
-	// CacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
-	// EnableStarChannel      *bool   `json:"enable_star_channel"`        // Enable star channel
-	// ChannelCacheMaxLength  *int    `json:"channel_cache_max_length"`   // Maximum number of entries maintained in cache per channel
-	// ChannelCacheMinLength  *int    `json:"channel_cache_min_length"`   // Minimum number of entries maintained in cache per channel
-	// ChannelCacheAge        *int    `json:"channel_cache_expiry"`       // Time (seconds) to keep entries in cache beyond the minimum retained
+	RevCacheConfig     *RevCacheConfig     `json:"rev_cache"`     // Revision Cache Config Settings
+	ChannelCacheConfig *ChannelCacheConfig `json:"channel_cache"` // Channel Cache Config Settings
+	DeprecatedCacheConfig
+}
+
+// ***************************************************************
+//	Kept around for CBG-356 backwards compatability
+// ***************************************************************
+type DeprecatedCacheConfig struct {
+	DeprecatedCachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Max wait for pending sequence before skipping
+	DeprecatedCachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
+	DeprecatedCacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
+	DeprecatedEnableStarChannel      *bool   `json:"enable_star_channel"`        // Enable star channel
+	DeprecatedChannelCacheMaxLength  *int    `json:"channel_cache_max_length"`   // Maximum number of entries maintained in cache per channel
+	DeprecatedChannelCacheMinLength  *int    `json:"channel_cache_min_length"`   // Minimum number of entries maintained in cache per channel
+	DeprecatedChannelCacheAge        *int    `json:"channel_cache_expiry"`       // Time (seconds) to keep entries in cache beyond the minimum retained
 }
 
 type RevCacheConfig struct {
@@ -504,6 +508,85 @@ func (dbConfig *DbConfig) validateSgDbConfig() error {
 
 }
 
+// Checks for deprecated cache config options and if they are set it will return a warning. If the old one is set and
+// the new one is not set it will set the new to the old value. If they are both set it will still give the warning but
+// will choose the new value.
+func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
+
+	warningMsgFmt := "Using deprecated config option: %q. Use %q instead."
+
+	if dbConfig.CacheConfig == nil {
+		dbConfig.CacheConfig = &CacheConfig{}
+	}
+
+	if dbConfig.CacheConfig.RevCacheConfig == nil {
+		dbConfig.CacheConfig.RevCacheConfig = &RevCacheConfig{}
+	}
+
+	if dbConfig.CacheConfig.ChannelCacheConfig == nil {
+		dbConfig.CacheConfig.ChannelCacheConfig = &ChannelCacheConfig{}
+	}
+
+	if dbConfig.DeprecatedRevCacheSize != nil {
+		if dbConfig.CacheConfig.RevCacheConfig.Size == nil {
+			dbConfig.CacheConfig.RevCacheConfig.Size = dbConfig.DeprecatedRevCacheSize
+		}
+		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "rev_cache_size", "cache.rev_cache.size"))
+	}
+
+	if dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxWait != nil {
+		if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending == nil {
+			dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending = dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxWait
+		}
+		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "max_wait_pending", "cache.channel_cache.max_wait_pending"))
+	}
+
+	if dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum != nil {
+		if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending == nil {
+			dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending = dbConfig.CacheConfig.DeprecatedCachePendingSeqMaxNum
+		}
+		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "max_num_pending", "cache.channel_cache.max_num_pending"))
+	}
+
+	if dbConfig.CacheConfig.DeprecatedCacheSkippedSeqMaxWait != nil {
+		if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped == nil {
+			dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped = dbConfig.CacheConfig.DeprecatedCacheSkippedSeqMaxWait
+		}
+		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "max_wait_skipped", "cache.channel_cache.max_wait_skipped"))
+	}
+
+	if dbConfig.CacheConfig.DeprecatedEnableStarChannel != nil {
+		if dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel == nil {
+			dbConfig.CacheConfig.ChannelCacheConfig.EnableStarChannel = dbConfig.CacheConfig.DeprecatedEnableStarChannel
+		}
+		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "enable_star_channel", "cache.channel_cache.enable_star_channel"))
+	}
+
+	if dbConfig.CacheConfig.DeprecatedChannelCacheMaxLength != nil {
+		if dbConfig.CacheConfig.ChannelCacheConfig.MaxLength == nil {
+			dbConfig.CacheConfig.ChannelCacheConfig.MaxLength = dbConfig.CacheConfig.DeprecatedChannelCacheMaxLength
+		}
+		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "channel_cache_max_length", "cache.channel_cache.max_length"))
+	}
+
+	if dbConfig.CacheConfig.DeprecatedChannelCacheMinLength != nil {
+		if dbConfig.CacheConfig.ChannelCacheConfig.MinLength == nil {
+			dbConfig.CacheConfig.ChannelCacheConfig.MinLength = dbConfig.CacheConfig.DeprecatedChannelCacheMinLength
+		}
+		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "channel_cache_min_length", "cache.channel_cache.min_length"))
+	}
+
+	if dbConfig.CacheConfig.DeprecatedChannelCacheAge != nil {
+		if dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds == nil {
+			dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds = dbConfig.CacheConfig.DeprecatedChannelCacheAge
+		}
+		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "channel_cache_expiry", "cache.channel_cache.expiry"))
+	}
+
+	return warnings
+
+}
+
 func (dbConfig *DbConfig) validateSgAccelDbConfig() error {
 
 	if err := dbConfig.validate(); err != nil {
@@ -559,7 +642,7 @@ func (dbConfig *DbConfig) ConflictsAllowed() *bool {
 	if dbConfig.AllowConflicts != nil {
 		return dbConfig.AllowConflicts
 	}
-	return base.BooleanPointer(base.DefaultAllowConflicts)
+	return base.BoolPtr(base.DefaultAllowConflicts)
 }
 
 func (dbConfig *DbConfig) UseXattrs() bool {
@@ -662,7 +745,7 @@ func (config *ServerConfig) SetupAndValidateLogging() (warnings []base.DeferredL
 		config.Logging = &base.LoggingConfig{}
 	}
 
-	// populate values from deprecated config options if not set
+	// populate values from deprecated logging config options if not set
 	warnings = config.deprecatedConfigLoggingFallback()
 
 	base.SetRedaction(config.Logging.RedactionLevel)
