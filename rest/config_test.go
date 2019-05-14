@@ -159,3 +159,52 @@ func TestTLSMinimumVersionSetting(t *testing.T) {
 	}
 
 }
+
+func TestAutoImportEnabled(t *testing.T) {
+	tests := []struct {
+		name        string
+		configValue interface{}
+		expected    bool
+		hasError    bool
+	}{
+		{
+			"default",
+			nil,
+			base.DefaultAutoImport,
+			false,
+		},
+		{
+			"true",
+			true,
+			true,
+			false,
+		},
+		{
+			"false",
+			false,
+			false,
+			false,
+		},
+		{
+			"continuous",
+			"continuous",
+			true,
+			false,
+		},
+		{
+			"unknown",
+			"unknown",
+			false,
+			true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dbConfig := &DbConfig{AutoImport: test.configValue}
+
+			got, err := dbConfig.AutoImportEnabled()
+			assert.Equal(t, test.hasError, err != nil, "unexpected error from AutoImportEnabled")
+			assert.Equal(t, test.expected, got, "unexpected value from AutoImportEnabled")
+		})
+	}
+}

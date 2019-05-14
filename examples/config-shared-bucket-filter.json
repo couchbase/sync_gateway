@@ -4,7 +4,7 @@
       "server": "http://localhost:8091",
       "bucket": "default",
       "password": "password",
-      "import_docs": "continuous",
+      "import_docs": true,
       "enable_shared_bucket_access":true,  
       "import_filter": `
 		function(doc) {

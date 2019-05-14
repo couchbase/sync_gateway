@@ -671,7 +671,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
-			AutoImport: "continuous",
+			AutoImport: true,
 		},
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -1212,7 +1212,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
-			AutoImport: "continuous",
+			AutoImport: true,
 		},
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -1270,7 +1270,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
-			AutoImport: "continuous",
+			AutoImport: true,
 		},
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -1746,7 +1746,7 @@ func TestDcpBackfill(t *testing.T) {
 	// Create a new context, with import docs enabled, to process backfill
 	newRtConfig := RestTesterConfig{
 		DatabaseConfig: &DbConfig{
-			AutoImport: "continuous",
+			AutoImport: true,
 		},
 		NoFlush: true,
 	}
