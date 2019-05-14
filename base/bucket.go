@@ -448,6 +448,16 @@ func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp uint32
 	}
 }
 
+// GetCounter returns a uint64 result for the given counter key.
+// If the given key is not found in the bucket, this function returns a result of zero.
+func GetCounter(bucket Bucket, k string) (result uint64, err error) {
+	_, err = bucket.Get(k, &result)
+	if IsKeyNotFoundError(bucket, err) {
+		return 0, nil
+	}
+	return result, err
+}
+
 func IsKeyNotFoundError(bucket Bucket, err error) bool {
 
 	if err == nil {

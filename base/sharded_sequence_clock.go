@@ -256,7 +256,7 @@ func (s *ShardedClock) write() (err error) {
 // entries in the bucket for the clock.
 func (s *ShardedClock) Load() (isChanged bool, err error) {
 
-	newCounter, err := s.bucket.Incr(s.countKey, 0, 0, 0)
+	newCounter, err := GetCounter(s.bucket, s.countKey)
 	if err != nil {
 		Warnf(KeyAll, "Error getting count for %s:%v", s.countKey, err)
 		Debugf(KeyAccel, "Error getting count:%v", err)
@@ -645,7 +645,7 @@ func (p *ShardedClockPartition) resize(seq uint64) {
 // Count retrieval - utility for use outside of the context of a sharded clock.
 func LoadClockCounter(baseKey string, bucket Bucket) (uint64, error) {
 	countKey := fmt.Sprintf(kCountKeyFormat, baseKey)
-	return bucket.Incr(countKey, 0, 0, 0)
+	return GetCounter(bucket, countKey)
 }
 
 // Index partitions for unit tests

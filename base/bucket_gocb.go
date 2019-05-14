@@ -1784,27 +1784,10 @@ func (bucket *CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp
 	}
 }
 
-// Increment the atomic counter k by amt.
-//
-// - If amt is 0 and the atomic counter for that key exists, this is treated as a GET operation that returns the current value.
-// - If amt is 0 but the key does not exist, then it will return 0
+// Increment the atomic counter k by amt, where amt must be a non-zero delta for the counter.
 func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
-
-	// GoCB's Counter returns an error if amt=0 and the counter exists.  If amt=0, instead first
-	// attempt a simple get, which gocb will transcode to uint64.  The call to Get includes its own
-	// retry handling, so doesn't need redundant retry handling here.
 	if amt == 0 {
-		var result uint64
-		_, err := bucket.Get(k, &result)
-		if bucket.IsKeyNotFoundError(err) {
-			// Return Incr value as zero
-			return uint64(0), nil
-		} else if err != nil {
-			// Got an error when trying to fetch the value
-			return 0, err
-		}
-		// Got a non-zero value to return
-		return result, nil
+		return 0, errors.New("amt passed to Incr must be non-zero")
 	}
 
 	// This is an actual incr, not just counter retrieval.

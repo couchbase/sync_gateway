@@ -134,9 +134,9 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 		return lastSeq, nil
 	}
 	s.dbStats.StatsDatabase().Add(base.StatKeySequenceGetCount, 1)
-	last, err := s.incrementSequence(0)
+	last, err := s.getSequence()
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error from Incr in lastSequence(): %v", err)
+		base.Warnf(base.KeyAll, "Error from Get in getSequence(): %v", err)
 	}
 	return last, err
 }
@@ -189,6 +189,11 @@ func (s *sequenceAllocator) _reserveSequenceRange() error {
 	s.reserveNotify <- struct{}{}
 	s.dbStats.StatsDatabase().Add(base.StatKeySequenceReservedCount, 1)
 	return nil
+}
+
+// Gets the _sync:seq document value.  Retry handling provided by bucket.Get.
+func (s *sequenceAllocator) getSequence() (max uint64, err error) {
+	return base.GetCounter(s.bucket, base.SyncSeqKey)
 }
 
 // Increments the _sync:seq document.  Retry handling provided by bucket.Incr.
