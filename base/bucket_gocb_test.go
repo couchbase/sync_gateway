@@ -455,10 +455,11 @@ func TestIncrCounter(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error incrementing non-existent counter")
 	}
+	// key did not exist - so expect the "initial" value of 1
 	goassert.Equals(t, value, uint64(1))
 
-	// Retrieve an existing counter using delta=0
-	retrieval, err := bucket.Incr(key, 0, 0, 0)
+	// Retrieve existing counter value using GetCounter
+	retrieval, err := GetCounter(bucket, key)
 	if err != nil {
 		t.Errorf("Error retrieving value for existing counter")
 	}
@@ -469,40 +470,9 @@ func TestIncrCounter(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error incrementing value for existing counter")
 	}
+	// and now increment the existing value
 	goassert.Equals(t, retrieval, uint64(2))
 
-}
-
-// TestIncrAmtZero covers the special handling in Incr for when amt=0 on an unknown key
-func TestIncrAmtZero(t *testing.T) {
-
-	testBucket := GetTestBucketOrPanic()
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
-	key := "TestIncrAmtZero"
-
-	defer func() {
-		err := bucket.Delete(key)
-		if err != nil {
-			t.Errorf("Error removing counter from bucket")
-		}
-	}()
-
-	// key hasn't been created, so we'll fall into the special 'Get' handling in Incr
-	val, err := bucket.Incr(key, 0, 0, 0)
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(0), val)
-
-	// Actually increment key to create it
-	val, err = bucket.Incr(key, 1, 1, 0)
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(1), val)
-
-	// Do another amt=0 to make sure we get the new incremented value
-	val, err = bucket.Incr(key, 0, 0, 0)
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(1), val)
 }
 
 func TestGetAndTouchRaw(t *testing.T) {

@@ -466,7 +466,7 @@ func (k *kvChangeIndexReader) pollPrincipals() {
 	defer indexReaderPollPrincipalsCount.AddValue(int64(len(k.activePrincipalCounts)))
 
 	// Check whether ANY principals have been updated since last poll, before doing the work of retrieving individual keys
-	overallCount, err := k.indexReadBucket.Incr(base.KTotalPrincipalCountKey, 0, 0, 0)
+	overallCount, err := base.GetCounter(k.indexReadBucket, base.KTotalPrincipalCountKey)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Principal polling encountered error getting overall count:%v", err)
 		return
@@ -512,7 +512,7 @@ func (k *kvChangeIndexReader) pollPrincipals() {
 		// There's been a change - check whether any of our active principals have changed
 		for principalID, currentCount := range k.activePrincipalCounts {
 			key := fmt.Sprintf(base.KPrincipalCountKeyFormat, principalID)
-			newCount, err := k.indexReadBucket.Incr(key, 0, 0, 0)
+			newCount, err := base.GetCounter(k.indexReadBucket, key)
 			if err != nil {
 				base.Warnf(base.KeyAll, "Principal polling encountered error getting overall count for key %s:%v", base.UD(key), err)
 				continue
@@ -542,7 +542,7 @@ func (k *kvChangeIndexReader) addActivePrincipals(keys []string) {
 		if !ok {
 			// Get the count
 			countKey := fmt.Sprintf(base.KPrincipalCountKeyFormat, key)
-			currentCount, err := k.indexReadBucket.Incr(countKey, 0, 0, 0)
+			currentCount, err := base.GetCounter(k.indexReadBucket, countKey)
 			if err != nil {
 				currentCount = 0
 			}
