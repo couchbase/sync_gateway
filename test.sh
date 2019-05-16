@@ -53,10 +53,6 @@ doTest () {
         go test ${buildTags} "${@:2}" $EXTRA_FLAGS github.com/couchbase/sync_gateway/...
     fi
 
-    if [ -d godeps/src/github.com/couchbaselabs/sync-gateway-accel ]; then
-        echo "    Running Sync Gateway Accel unit tests:"
-        go test ${buildTags} "${@:2}" $EXTRA_FLAGS github.com/couchbaselabs/sync-gateway-accel/...
-    fi
 }
 
 for edition in "${build_editions[@]}"; do
