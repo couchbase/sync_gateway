@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -131,7 +130,6 @@ func (c *channelCacheImpl) AddPrincipal(change *LogEntry) {
 // flag indicates whether it was a change arriving out of sequence
 func (c *channelCacheImpl) AddToCache(change *LogEntry) base.Set {
 
-	log.Printf("Main AddToCache: %s %d", change.DocID, change.Sequence)
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
 	updatedChannels := make(base.Set)
@@ -413,7 +411,6 @@ func (c *singleChannelCache) addToCache(change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	log.Printf("Adding to cache %d (%s)", change.Sequence, c.channelName)
 	if c.wouldBeImmediatelyPruned(change) {
 		base.Infof(base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
 			change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channelName))
@@ -439,7 +436,6 @@ func (c *singleChannelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 		return false
 	}
 
-	log.Printf("would be immediately pruned, validFrom: %d, %d", change.Sequence, c.validFrom)
 	// If older than validFrom, never try to cache it
 	return true
 
@@ -810,7 +806,6 @@ func (c *singleChannelCache) prependChanges(changes LogEntries, changesValidFrom
 	}
 
 	// Ensure changes are valid to the cache's validFrom, otherwise unsafe to prepend
-	log.Printf("Prepending, validFrom is %d", c.validFrom)
 	if changesValidTo < c.validFrom {
 		return 0
 	}
