@@ -92,7 +92,6 @@ pipeline {
                     steps {
                         withEnv(["GOOS=windows", "PATH+=${GO}:${GOPATH}/bin"]) {
                             sh 'go build -v github.com/couchbase/sync_gateway/service/sg-windows/sg-service'
-                            sh 'go build -v github.com/couchbase/sync_gateway/service/sg-windows/sg-accel-service'
                         }
                     }
                 }

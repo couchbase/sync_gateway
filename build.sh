@@ -55,15 +55,6 @@ doBuild () {
         echo "      Binary compiled to: ${GOPATH}/bin/sync_gateway${binarySuffix}"
     fi
 
-    # Go install Sg Accel
-    if [ -d godeps/src/github.com/couchbaselabs/sync-gateway-accel ]; then
-        echo "    Building Sync Gateway Accel with 'go install' ..."
-        go install "${@:2}" github.com/couchbaselabs/sync-gateway-accel/...
-        echo "      Success!"
-        if [ -f "godeps/bin/sync-gateway-accel" ]; then
-            echo "        Binary compiled to: godeps/bin/sync-gateway-accel"
-        fi
-    fi
 }
 
 for edition in "${build_editions[@]}"; do
