@@ -140,12 +140,12 @@ pipeline {
 
                                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
                                     sh 'gocov convert cover_ce.out | gocov-xml > reports/coverage-ce.xml'
-                                }
 
-                                // Publish CE coverage to coveralls.io
-                                // Replace covermode values with set just for coveralls to reduce the variability in reports.
-                                sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce.out > cover_ce_coveralls.out'
-                                sh "goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN}"
+                                    // Publish CE coverage to coveralls.io
+                                    // Replace covermode values with set just for coveralls to reduce the variability in reports.
+                                    sh 'awk \'NR==1{print "mode: set";next} $NF>0{$NF=1} {print}\' cover_ce.out > cover_ce_coveralls.out'
+                                    sh "goveralls -coverprofile=cover_ce_coveralls.out -service=uberjenkins -repotoken=${COVERALLS_TOKEN}"
+                                }
                             }
                         }
 
