@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
@@ -119,6 +120,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		if unwrappedErr.Code == gocbcore.StatusTooBig {
 			return http.StatusRequestEntityTooLarge, "Document too large!"
 		}
+	case walrus.DocTooBigErr:
+		return http.StatusRequestEntityTooLarge, "Document too large!"
 	case sgbucket.MissingError:
 		return http.StatusNotFound, "missing"
 	case *sgError:
