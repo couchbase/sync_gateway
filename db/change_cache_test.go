@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func e(seq uint64, docid string, revid string) *LogEntry {
@@ -243,9 +244,9 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
-	assert.True(t, authenticator != nil, "db.Authenticator() returned nil")
+	require.NotNil(t, authenticator, "db.Authenticator() returned nil")
 	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
-	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
+	require.NoError(t, err, "Error creating new user")
 	authenticator.Save(user)
 
 	// Start continuous changes feed
@@ -256,10 +257,10 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("ABC"), options)
-	goassert.True(t, err == nil)
+	require.NoError(t, err, "Feed initialization error")
 
 	// Reads events until it gets a nil event, which indicates the changes loop has entered wait mode.
-	// Returns the last non-nil event it
+	// Returns slice of non-nil events received.
 	nextFeedIteration := func() []*ChangeEntry {
 		events := make([]*ChangeEntry, 0)
 		for {
@@ -283,14 +284,14 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 1)
 
 	nextEvents = nextFeedIteration()
-	assert.Equal(t, len(nextEvents), 1)
+	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "1")
 
 	// Write sequence 6, wait for it on feed
 	WriteDirect(db, []string{"ABC"}, 6)
 
 	nextEvents = nextFeedIteration()
-	assert.Equal(t, len(nextEvents), 1)
+	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "1::6")
 
 	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
@@ -303,44 +304,44 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 4)
 
 	nextEvents = nextFeedIteration()
-	assert.Equal(t, len(nextEvents), 2)
+	require.Equal(t, len(nextEvents), 2)
 	assert.Equal(t, nextEvents[0].Seq.String(), "1::4")
 	assert.Equal(t, nextEvents[1].Seq.String(), "1::6")
 
 	// Write non-late sequence 7, should arrive normally
 	WriteDirect(db, []string{"ABC"}, 7)
 	nextEvents = nextFeedIteration()
-	assert.Equal(t, len(nextEvents), 1)
+	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "1::7")
 
 	// Write late sequence 3, validates late handling recovery
 	WriteDirect(db, []string{"ABC"}, 3)
 	nextEvents = nextFeedIteration()
-	assert.Equal(t, len(nextEvents), 1)
+	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "1::3")
 
 	// Write sequence 2.
 	WriteDirect(db, []string{"ABC"}, 2)
 	nextEvents = nextFeedIteration()
-	assert.Equal(t, len(nextEvents), 1)
+	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "2")
 
 	// Write sequence 8, 5 should still be pending
 	WriteDirect(db, []string{"ABC"}, 8)
 	nextEvents = nextFeedIteration()
-	assert.Equal(t, len(nextEvents), 1)
+	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "4::8")
 
 	// Write sequence 5 (all skipped sequences have arrived)
 	WriteDirect(db, []string{"ABC"}, 5)
 	nextEvents = nextFeedIteration()
-	assert.Equal(t, len(nextEvents), 1)
+	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "5")
 
 	// Write sequence 9, validate non-compound sequences
 	WriteDirect(db, []string{"ABC"}, 9)
 	nextEvents = nextFeedIteration()
-	assert.Equal(t, len(nextEvents), 1)
+	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "9")
 
 }
