@@ -9,6 +9,7 @@ import (
 	"github.com/couchbase/gocb"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var testN1qlOptions = &N1qlIndexOptions{
@@ -70,7 +71,7 @@ func TestN1qlQuery(t *testing.T) {
 	}()
 
 	readyErr := bucket.WaitForIndexOnline("testIndex_value")
-	assert.NoError(t, readyErr, "Error validating index online")
+	require.NoError(t, readyErr, "Error validating index online")
 
 	// Query the index
 	queryExpression := fmt.Sprintf("SELECT META().id, val FROM %s WHERE val > $minvalue", BucketQueryToken)
@@ -78,7 +79,7 @@ func TestN1qlQuery(t *testing.T) {
 	params["minvalue"] = 2
 
 	queryResults, queryErr := bucket.Query(queryExpression, params, gocb.RequestPlus, false)
-	assert.NoError(t, queryErr, "Error executing n1ql query")
+	require.NoError(t, queryErr, "Error executing n1ql query")
 
 	// Struct to receive the query response (META().id, val)
 	var queryResult struct {
@@ -155,7 +156,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 
 	// Wait for index readiness
 	readyErr := bucket.WaitForIndexOnline("testIndex_filtered_value")
-	assert.NoError(t, readyErr, "Error validating index online")
+	require.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
 	defer func() {
@@ -169,7 +170,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 	// Query the index
 	queryExpression := fmt.Sprintf("SELECT META().id, val FROM %s WHERE %s AND META().id = 'doc1'", BucketQueryToken, filterExpression)
 	queryResults, queryErr := bucket.Query(queryExpression, nil, gocb.RequestPlus, false)
-	assert.NoError(t, queryErr, "Error executing n1ql query")
+	require.NoError(t, queryErr, "Error executing n1ql query")
 
 	// Struct to receive the query response (META().id, val)
 	var queryResult struct {
@@ -220,7 +221,7 @@ func TestIndexMeta(t *testing.T) {
 	}
 
 	readyErr := bucket.WaitForIndexOnline("testIndex_value")
-	assert.NoError(t, readyErr, "Error validating index online")
+	require.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
 	defer func() {
