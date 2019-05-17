@@ -14,14 +14,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func makeExternalBucket() base.TestBucket {
+func makeExternalBucket(tester testing.TB) base.TestBucket {
 
 	// Call this for the side effect of emptying out the data bucket, in case it interferes
 	// with bucket shadowing tests by causing unwanted data to get pulled into shadow bucket
-	tempBucket := base.GetTestBucketOrPanic()
+	tempBucket := base.GetTestBucket(tester)
 	tempBucket.Close()
 
-	return base.GetTestShadowBucketOrPanic()
+	return base.GetTestShadowBucket(tester)
 }
 
 // Evaluates a condition every 100ms until it becomes true. If 3sec elapse, fails an assertion
@@ -43,7 +43,7 @@ func TestShadowerPull(t *testing.T) {
 		t.Skip("BucketShadowing with XATTRS is not a supported configuration")
 	}
 
-	testBucket := makeExternalBucket()
+	testBucket := makeExternalBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -94,7 +94,7 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 	}
 
 	//Create shadow bucket
-	testBucket := makeExternalBucket()
+	testBucket := makeExternalBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -163,7 +163,7 @@ func TestShadowerPush(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyShadow)()
 
-	testBucket := makeExternalBucket()
+	testBucket := makeExternalBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -213,7 +213,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyShadow)()
 
-	testBucket := makeExternalBucket()
+	testBucket := makeExternalBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -247,7 +247,7 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyShadow)()
 
-	testBucket := makeExternalBucket()
+	testBucket := makeExternalBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -305,7 +305,7 @@ func TestShadowerPattern(t *testing.T) {
 		t.Skip("BucketShadowing with XATTRS is not a supported configuration")
 	}
 
-	testBucket := makeExternalBucket()
+	testBucket := makeExternalBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 

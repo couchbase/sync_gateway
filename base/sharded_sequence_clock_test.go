@@ -36,7 +36,7 @@ func GenerateTestIndexPartitions(maxVbNo uint16, numPartitions uint16) *IndexPar
 
 func TestShardedSequenceClock(t *testing.T) {
 
-	testBucket := GetTestIndexBucketOrPanic()
+	testBucket := GetTestIndexBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -57,7 +57,7 @@ func TestShardedSequenceClock(t *testing.T) {
 
 func TestShardedSequenceClockCasError(t *testing.T) {
 
-	testBucket := GetTestIndexBucketOrPanic()
+	testBucket := GetTestIndexBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 

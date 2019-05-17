@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func testSequenceHasher(size uint8, expiry uint32) (*sequenceHasher, error) {
+func testSequenceHasher(size uint8, expiry uint32, tester testing.TB) (*sequenceHasher, error) {
 
-	testHashBucket := base.GetTestBucketOrPanic()
+	testHashBucket := base.GetTestBucket(tester)
 
 	// Since the handle to test bucket is getting lost, immediately decrement to disable open bucket counting
 	base.DecrNumOpenBuckets(testHashBucket.Bucket.GetName())
@@ -42,7 +42,7 @@ func testSequenceHasherForBucket(bucket base.Bucket, size uint8, expiry uint32) 
 
 func TestHashCalculation(t *testing.T) {
 	// Create a hasher with a small range (0-256) for testing
-	seqHasher, err := testSequenceHasher(8, 0)
+	seqHasher, err := testSequenceHasher(8, 0, t)
 	defer seqHasher.bucket.Close()
 	assert.NoError(t, err, "Error creating new sequence hasher")
 	clock := base.NewSequenceClockImpl()
@@ -61,7 +61,7 @@ func TestHashCalculation(t *testing.T) {
 
 func TestHashStorage(t *testing.T) {
 	// Create a hasher with a small range (0-256) for testing
-	seqHasher, err := testSequenceHasher(8, 0)
+	seqHasher, err := testSequenceHasher(8, 0, t)
 	defer seqHasher.bucket.Close()
 	assert.NoError(t, err, "Error creating new sequence hasher")
 
@@ -158,7 +158,7 @@ func TestHashStorage(t *testing.T) {
 
 func TestConcurrentHashStorage(t *testing.T) {
 	// Create a hasher with a small range (0-256) for testing
-	seqHasher, err := testSequenceHasher(8, 0)
+	seqHasher, err := testSequenceHasher(8, 0, t)
 	defer seqHasher.bucket.Close()
 	assert.NoError(t, err, "Error creating new sequence hasher")
 
@@ -196,7 +196,7 @@ func TestHashExpiry(t *testing.T) {
 	}
 
 	// Create a hasher with a small range (0-256) and short expiry for testing
-	seqHasher, err := testSequenceHasher(8, 5)
+	seqHasher, err := testSequenceHasher(8, 5, t)
 	defer seqHasher.bucket.Close()
 	assert.NoError(t, err, "Error creating new sequence hasher")
 

@@ -15,10 +15,10 @@ const (
 	docIdProblematicRevTree2 = "docIdProblematicRevTree2"
 )
 
-func testBucketWithViewsAndBrokenDoc() (tBucket base.TestBucket, numDocs int) {
+func testBucketWithViewsAndBrokenDoc(tester testing.TB) (tBucket base.TestBucket, numDocs int) {
 
 	numDocsAdded := 0
-	tBucket = testBucket()
+	tBucket = testBucket(tester)
 	bucket := tBucket.Bucket
 
 	installViews(bucket)
@@ -57,7 +57,7 @@ func TestRepairBucket(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCRUD)()
 
-	testBucket, numDocs := testBucketWithViewsAndBrokenDoc()
+	testBucket, numDocs := testBucketWithViewsAndBrokenDoc(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -89,7 +89,7 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCRUD)()
 
-	testBucket, _ := testBucketWithViewsAndBrokenDoc()
+	testBucket, _ := testBucketWithViewsAndBrokenDoc(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -139,7 +139,7 @@ func TestRepairBucketDryRun(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCRUD)()
 
-	testBucket, _ := testBucketWithViewsAndBrokenDoc()
+	testBucket, _ := testBucketWithViewsAndBrokenDoc(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 

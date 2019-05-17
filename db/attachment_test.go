@@ -36,7 +36,7 @@ func tojson(obj interface{}) string {
 
 func TestAttachments(t *testing.T) {
 
-	testBucket := base.GetTestBucketOrPanic()
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -111,7 +111,7 @@ func TestAttachments(t *testing.T) {
 
 func TestAttachmentForRejectedDocument(t *testing.T) {
 
-	testBucket := testBucket()
+	testBucket := testBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -141,7 +141,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 
 func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 
-	testBucket := base.GetTestBucketOrPanic()
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 

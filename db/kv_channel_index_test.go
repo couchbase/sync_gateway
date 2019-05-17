@@ -38,9 +38,9 @@ func testPartitionMapWithShards(numShards int) *base.IndexPartitions {
 	return indexPartitions
 }
 
-func testBitFlagStorage(channelName string) *BitFlagStorage {
+func testBitFlagStorage(channelName string, tester testing.TB) *BitFlagStorage {
 
-	testIndexBucket := base.GetTestIndexBucketOrPanic()
+	testIndexBucket := base.GetTestIndexBucket(tester)
 
 	// Since the handle to testIndexBucket is getting lost, immediately decrement to disable open bucket counting
 	base.DecrNumOpenBuckets(testIndexBucket.Bucket.GetName())
@@ -84,7 +84,7 @@ func makeLogEntry(seq uint64, docid string) *LogEntry {
 
 func TestIndexBlockCreation(t *testing.T) {
 
-	testStorage := testBitFlagStorage("ABC")
+	testStorage := testBitFlagStorage("ABC", t)
 	defer testStorage.bucket.Close()
 	entry := makeEntry(1, 1, false)
 	block := testStorage.getIndexBlockForEntry(entry)
@@ -96,7 +96,7 @@ func TestIndexBlockCreation(t *testing.T) {
 
 func TestIndexBlockStorage(t *testing.T) {
 
-	testStorage := testBitFlagStorage("ABC")
+	testStorage := testBitFlagStorage("ABC", t)
 	defer testStorage.bucket.Close()
 
 	// Add entries

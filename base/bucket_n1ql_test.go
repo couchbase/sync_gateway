@@ -21,7 +21,7 @@ func TestN1qlQuery(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -128,7 +128,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -201,7 +201,7 @@ func TestIndexMeta(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -243,7 +243,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -309,7 +309,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -336,7 +336,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -367,7 +367,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {
@@ -394,7 +394,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -436,7 +436,7 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -502,7 +502,7 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	testBucket := GetTestBucketOrPanic()
+	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if !ok {

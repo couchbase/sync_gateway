@@ -41,9 +41,9 @@ func (u *UnitTestAuth) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(u.Username, u.Password, u.Bucketname)
 }
 
-func testLeakyBucket(config base.LeakyBucketConfig) base.Bucket {
+func testLeakyBucket(config base.LeakyBucketConfig, tester testing.TB) base.Bucket {
 
-	testBucket := testBucket()
+	testBucket := testBucket(tester)
 	// Since this doesn't return the testbucket handle, disable the "open bucket counting system" by immediately
 	// decrementing counter
 	base.DecrNumOpenBuckets(testBucket.Bucket.GetName())
@@ -57,7 +57,7 @@ func setupTestDBForShadowing(t *testing.T) *Database {
 		TrackDocs: true,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := testBucket()
+	tBucket := testBucket(t)
 	// Since the handle to the test bucket is getting lost, immediately decrement to disable open bucket counting
 	base.DecrNumOpenBuckets(tBucket.Bucket.GetName())
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
@@ -80,7 +80,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 		CacheOptions: &options,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := testBucket()
+	tBucket := testBucket(t)
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -96,7 +96,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, base.TestBucket) {
 		UseViews: true,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := testBucket()
+	tBucket := testBucket(t)
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -110,7 +110,7 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 
 	dbcOptions := DatabaseContextOptions{}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := testBucket()
+	tBucket := testBucket(t)
 
 	log.Printf("Initializing test %s to %d", base.SyncSeqPrefix, customSeq)
 	_, incrErr := tBucket.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
@@ -123,7 +123,7 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 	return db, tBucket
 }
 
-func testBucket() base.TestBucket {
+func testBucket(tester testing.TB) base.TestBucket {
 
 	//TODO: Temporary fix until sequence allocation unit test enhancements - CBG-316
 	MaxSequenceIncrFrequency = 0 * time.Millisecond
@@ -131,7 +131,7 @@ func testBucket() base.TestBucket {
 	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
 	for i := 0; i < 2; i++ {
 
-		testBucket := base.GetTestBucketOrPanic()
+		testBucket := base.GetTestBucket(tester)
 		err := installViews(testBucket.Bucket)
 		if err != nil {
 			log.Fatalf("Couldn't connect to bucket: %v", err)
@@ -144,7 +144,7 @@ func testBucket() base.TestBucket {
 			// ^^ effectively panics
 		}
 
-		// Since GetTestBucketOrPanic() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
+		// Since GetTestBucke() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
 		gocbBucket, isGoCbBucket := base.AsGoCBBucket(testBucket.Bucket)
 		if isGoCbBucket {
 			waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec.UseXattrs)
@@ -173,7 +173,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 		CacheOptions: &options,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	leakyBucket := testLeakyBucket(leakyOptions)
+	leakyBucket := testLeakyBucket(leakyOptions, t)
 	context, err := NewDatabaseContext("db", leakyBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -889,7 +889,7 @@ func TestConflictRevLimit(t *testing.T) {
 	}
 
 	AddOptionsFromEnvironmentVariables(&dbOptions)
-	bucket = testBucket()
+	bucket = testBucket(t)
 	context, _ := NewDatabaseContext("db", bucket, false, dbOptions)
 	db, _ = CreateDatabase(context)
 	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
@@ -902,7 +902,7 @@ func TestConflictRevLimit(t *testing.T) {
 	}
 
 	AddOptionsFromEnvironmentVariables(&dbOptions)
-	bucket = testBucket()
+	bucket = testBucket(t)
 	context, _ = NewDatabaseContext("db", bucket, false, dbOptions)
 	db, _ = CreateDatabase(context)
 	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
