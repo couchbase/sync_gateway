@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
+	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 type sgError struct {
@@ -113,6 +114,10 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		default:
 			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
 				string(unwrappedErr.Body), unwrappedErr.Status.String())
+		}
+	case *gocbcore.KvError:
+		if unwrappedErr.Code == gocbcore.StatusTooBig {
+			return http.StatusRequestEntityTooLarge, "Document too large!"
 		}
 	case sgbucket.MissingError:
 		return http.StatusNotFound, "missing"
