@@ -416,6 +416,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		// to the channel caches.
 		if options.Continuous {
 			lateSequenceFeeds = make(map[string]*lateSequenceFeed)
+			defer db.closeLateFeeds(lateSequenceFeeds)
 		}
 
 		// Store incoming low sequence, for potential use by longpoll iterations
@@ -460,7 +461,34 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 			deferredBackfill = false
 			for name, vbSeqAddedAt := range channelsSince {
+
 				chanOpts := options
+
+				// Set up late sequence handling first, as we need to roll back the regular feed on error
+				// Handles previously skipped sequences prior to options.Since that
+				// have arrived in the channel cache since this changes request started.  Only needed for
+				// continuous feeds - one-off changes requests only require the standard channel cache.
+				if options.Continuous {
+					lateSequenceFeedHandler := lateSequenceFeeds[name]
+					if lateSequenceFeedHandler != nil {
+						latefeed, err := db.getLateFeed(lateSequenceFeedHandler)
+						if err != nil {
+							base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel feed to low sequence.", base.UD(name))
+							chanOpts.Since.LowSeq = lowSequence
+							lateSequenceFeeds[name] = db.newLateSequenceFeed(name)
+						} else {
+							// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
+							// when the user loses channel access
+							lateSequenceFeedHandler.active = true
+							feeds = append(feeds, latefeed)
+							names = append(names, fmt.Sprintf("late_%s", name))
+						}
+					} else {
+						// Initialize lateSequenceFeeds[name] for next iteration
+						lateSequenceFeeds[name] = db.newLateSequenceFeed(name)
+					}
+				}
+
 				seqAddedAt := vbSeqAddedAt.Sequence
 
 				// Check whether requires backfill based on changedChannels in this _changes feed
@@ -511,28 +539,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				feeds = append(feeds, feed)
 				names = append(names, name)
 
-				// Late sequence handling - for out-of-order sequences prior to options.Since that
-				// have arrived in the channel cache since this changes request started.  Only need for
-				// continuous feeds - one-off changes requests only need the standard channel cache.
-				if options.Continuous {
-					lateSequenceFeedHandler := lateSequenceFeeds[name]
-					if lateSequenceFeedHandler != nil {
-						latefeed, err := db.getLateFeed(lateSequenceFeedHandler)
-						if err != nil {
-							base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading late sequence feed %q: %v", base.UD(name), err)
-						} else {
-							// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
-							// when the user loses channel access
-							lateSequenceFeedHandler.active = true
-							feeds = append(feeds, latefeed)
-							names = append(names, fmt.Sprintf("late_%s", name))
-						}
-
-					} else {
-						// Initialize lateSequenceFeeds[name] for next iteration
-						lateSequenceFeeds[name] = db.newLateSequenceFeed(name)
-					}
-				}
 			}
 			// If the user object has changed, create a special pseudo-feed for it:
 			if db.user != nil {
@@ -611,7 +617,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				// Update options.Since for use in the next outer loop iteration.  Only update
 				// when minSeq is greater than the previous options.Since value - we don't want to
-				// roll back the Since value when we get an late sequence is processed.
+				// roll back the Since value when a late sequence is processed.
 				if options.Since.Before(minSeq) {
 					options.Since = minSeq
 				}
@@ -727,6 +733,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					lateFeed.active = false
 				}
 			}
+
 		}
 	}()
 
@@ -803,7 +810,8 @@ func (db *Database) newLateSequenceFeed(channelName string) *lateSequenceFeed {
 	return lsf
 }
 
-// Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.
+// Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.  Error indicates
+// previous position in late sequence feed isn't available, and caller should reset to low sequence.
 func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEntry, error) {
 
 	// Use LogPriorityQueue for late entries, to utilize the existing Len/Less/Swap methods on LogPriorityQueue for sort
@@ -843,8 +851,16 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 	return feed, nil
 }
 
+// Closes a single late sequence feed.
 func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
 	db.changeCache.getChannelCache().ReleaseLateSequenceClient(feedHandler.channelName, feedHandler.lastSequence)
+}
+
+// Closes set of feeds.  Invoked on changes termination
+func (db *Database) closeLateFeeds(feeds map[string]*lateSequenceFeed) {
+	for _, feed := range feeds {
+		db.closeLateFeed(feed)
+	}
 }
 
 // Generate the changes for a specific list of doc ID's, only documents accesible to the user will generate

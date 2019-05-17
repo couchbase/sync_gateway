@@ -225,6 +225,126 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
 }
 
+// Verify that a continuous changes feed hitting an error when building its late sequence feed will roll back to
+// its low sequence value, then recover and successfully send subsequent late sequences.
+func TestLateSequenceErrorRecovery(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyCache)()
+
+	db, testBucket := setupTestDBWithCacheOptions(t, shortWaitCache())
+	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channel ABC
+	authenticator := db.Authenticator()
+	assert.True(t, authenticator != nil, "db.Authenticator() returned nil")
+	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
+	authenticator.Save(user)
+
+	// Start continuous changes feed
+	var options ChangesOptions
+	options.Since = SequenceID{Seq: 0}
+	options.Terminator = make(chan bool)
+	defer close(options.Terminator)
+	options.Continuous = true
+	options.Wait = true
+	feed, err := db.MultiChangesFeed(base.SetOf("ABC"), options)
+	goassert.True(t, err == nil)
+
+	// Reads events until it gets a nil event, which indicates the changes loop has entered wait mode.
+	// Returns the last non-nil event it
+	nextFeedIteration := func() []*ChangeEntry {
+		events := make([]*ChangeEntry, 0)
+		for {
+			select {
+			case event := <-feed:
+				if event == nil {
+					return events
+				}
+				events = append(events, event)
+			case <-time.After(10 * time.Second):
+				assert.Fail(t, "Expected sequence didn't arrive over feed")
+				return nil
+			}
+		}
+	}
+
+	nextEvents := nextFeedIteration()
+	assert.Equal(t, len(nextEvents), 0) // Empty feed indicates changes is in wait mode
+
+	// Write sequence 1, wait for it on feed
+	WriteDirect(db, []string{"ABC"}, 1)
+
+	nextEvents = nextFeedIteration()
+	assert.Equal(t, len(nextEvents), 1)
+	assert.Equal(t, nextEvents[0].Seq.String(), "1")
+
+	// Write sequence 6, wait for it on feed
+	WriteDirect(db, []string{"ABC"}, 6)
+
+	nextEvents = nextFeedIteration()
+	assert.Equal(t, len(nextEvents), 1)
+	assert.Equal(t, nextEvents[0].Seq.String(), "1::6")
+
+	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
+	// cache's lateLogs.  This will trigger an error on the next feed iteration, which should trigger
+	// rollback to resend all changes since low sequence (1)
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC")
+	abcCache.lateLogs[0].logEntry.Sequence = 1
+
+	// Write sequence 3.  Error should trigger rollback that resends everything since low sequence (1)
+	WriteDirect(db, []string{"ABC"}, 4)
+
+	nextEvents = nextFeedIteration()
+	assert.Equal(t, len(nextEvents), 2)
+	assert.Equal(t, nextEvents[0].Seq.String(), "1::4")
+	assert.Equal(t, nextEvents[1].Seq.String(), "1::6")
+
+	// Write non-late sequence 7, should arrive normally
+	WriteDirect(db, []string{"ABC"}, 7)
+	nextEvents = nextFeedIteration()
+	assert.Equal(t, len(nextEvents), 1)
+	assert.Equal(t, nextEvents[0].Seq.String(), "1::7")
+
+	// Write late sequence 3, validates late handling recovery
+	WriteDirect(db, []string{"ABC"}, 3)
+	nextEvents = nextFeedIteration()
+	assert.Equal(t, len(nextEvents), 1)
+	assert.Equal(t, nextEvents[0].Seq.String(), "1::3")
+
+	// Write sequence 2.
+	WriteDirect(db, []string{"ABC"}, 2)
+	nextEvents = nextFeedIteration()
+	assert.Equal(t, len(nextEvents), 1)
+	assert.Equal(t, nextEvents[0].Seq.String(), "2")
+
+	// Write sequence 8, 5 should still be pending
+	WriteDirect(db, []string{"ABC"}, 8)
+	nextEvents = nextFeedIteration()
+	assert.Equal(t, len(nextEvents), 1)
+	assert.Equal(t, nextEvents[0].Seq.String(), "4::8")
+
+	// Write sequence 5 (all skipped sequences have arrived)
+	WriteDirect(db, []string{"ABC"}, 5)
+	nextEvents = nextFeedIteration()
+	assert.Equal(t, len(nextEvents), 1)
+	assert.Equal(t, nextEvents[0].Seq.String(), "5")
+
+	// Write sequence 9, validate non-compound sequences
+	WriteDirect(db, []string{"ABC"}, 9)
+	nextEvents = nextFeedIteration()
+	assert.Equal(t, len(nextEvents), 1)
+	assert.Equal(t, nextEvents[0].Seq.String(), "9")
+
+}
+
 // Create a document directly to the bucket with specific _sync metadata - used for
 // simulating out-of-order arrivals on the tap feed using walrus.
 

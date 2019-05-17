@@ -923,7 +923,8 @@ func (c *singleChannelCache) initializeLateLogs() {
 }
 
 // Retrieve late-arriving sequences that have arrived since the previous sequence.  Retrieves set of sequences, and the last
-// sequence number in the list.  Note that lateLogs is sorted by arrival on feed, not sequence number.
+// sequence number in the list.  Note that lateLogs is sorted by arrival on feed, not sequence number. Error indicates
+// that sinceSequence isn't found in history, and caller should reset to low sequence.
 func (c *singleChannelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
 
 	c.lateLogLock.RLock()
