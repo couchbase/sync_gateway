@@ -34,7 +34,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccel)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges)()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 

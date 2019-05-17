@@ -602,24 +602,19 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
-	context.changeCache.getChannelCache("TestA") // initialize, don't add any entries
-	cacheB := context.changeCache.getChannelCache("TestB")
-	cacheC := context.changeCache.getChannelCache("TestC")
-	cacheD := context.changeCache.getChannelCache("TestD")
+	cache := context.changeCache.getChannelCache()
 
-	// Add some entries to caches, leaving some empty cache
-	cacheB.addToCache(e(1, "doc1", "1-a"), false)
-	cacheB.addToCache(e(2, "doc2", "1-a"), false)
-	cacheB.addToCache(e(3, "doc3", "1-a"), false)
+	// Make channels active
+	cache.GetChanges("TestA", ChangesOptions{})
+	cache.GetChanges("TestB", ChangesOptions{})
+	cache.GetChanges("TestC", ChangesOptions{})
+	cache.GetChanges("TestD", ChangesOptions{})
 
-	cacheC.addToCache(e(1, "doc1", "1-a"), false)
-	cacheC.addToCache(e(2, "doc2", "1-a"), false)
-	cacheC.addToCache(e(3, "doc3", "1-a"), false)
-	cacheC.addToCache(e(4, "doc4", "1-a"), false)
-
-	cacheD.addToCache(e(1, "doc1", "1-a"), false)
-	cacheD.addToCache(e(2, "doc2", "1-a"), false)
-	cacheD.addToCache(e(3, "doc3", "1-a"), false)
+	// Add some entries to caches, leaving some empty caches
+	cache.AddToCache(logEntry(1, "doc1", "1-a", []string{"TestB", "TestC", "TestD"}))
+	cache.AddToCache(logEntry(2, "doc2", "1-a", []string{"TestB", "TestC", "TestD"}))
+	cache.AddToCache(logEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}))
+	cache.AddToCache(logEntry(4, "doc4", "1-a", []string{"TestC"}))
 
 	context.UpdateCalculatedStats()
 

@@ -615,7 +615,7 @@ func TestAllDocsOnly(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Trigger creation of the channel cache for channel "all"
-	db.changeCache.getChannelCache("all")
+	db.changeCache.getChannelCache().getSingleChannelCache("all")
 
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
@@ -784,7 +784,7 @@ func TestConflicts(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Instantiate channel cache for channel 'all'
-	db.changeCache.getChannelCache("all")
+	db.changeCache.getChannelCache().getSingleChannelCache("all")
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
