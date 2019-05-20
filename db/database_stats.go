@@ -2,6 +2,7 @@ package db
 
 import (
 	"expvar"
+	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -15,6 +16,15 @@ type DatabaseStats struct {
 
 	// The expvars map the stats for this db will be stored in
 	storage *expvar.Map
+
+	statsCacheMapSync,
+	statsDatabaseMapSync,
+	statsDeltaSyncMapSync,
+	sharedBucketImportMapSync,
+	cblReplicationPushSync,
+	cblReplicationPullSync,
+	statsSecuritySync,
+	statsGsiViewsSync sync.Once
 
 	statsCacheMap,
 	statsDatabaseMap,
@@ -39,59 +49,60 @@ func (d *DatabaseStats) ExpvarMap() *expvar.Map {
 }
 
 func (d *DatabaseStats) StatsCache() (stats *expvar.Map) {
-	if d.statsCacheMap != nil {
-		return d.statsCacheMap
-	}
-	return d.StatsByKey(base.StatsGroupKeyCache)
+	d.statsCacheMapSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyCache)
+	})
+	return d.statsCacheMap
 }
 
 func (d *DatabaseStats) StatsDatabase() (stats *expvar.Map) {
-	if d.statsDatabaseMap != nil {
-		return d.statsDatabaseMap
-	}
-	return d.StatsByKey(base.StatsGroupKeyDatabase)
+	d.statsDatabaseMapSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyDatabase)
+	})
+	return d.statsDatabaseMap
 }
 
 func (d *DatabaseStats) StatsDeltaSync() (stats *expvar.Map) {
-	if d.statsDeltaSyncMap != nil {
-		return d.statsDeltaSyncMap
-	}
-	return d.StatsByKey(base.StatsGroupKeyDeltaSync)
+	d.statsDeltaSyncMapSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyDeltaSync)
+	})
+	return d.statsDeltaSyncMap
 }
 
 func (d *DatabaseStats) SharedBucketImport() (stats *expvar.Map) {
-	if d.sharedBucketImportMap != nil {
-		return d.sharedBucketImportMap
-	}
-	return d.StatsByKey(base.StatsGroupKeySharedBucketImport)
+	d.sharedBucketImportMapSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeySharedBucketImport)
+	})
+	return d.sharedBucketImportMap
 }
 
 func (d *DatabaseStats) CblReplicationPush() (stats *expvar.Map) {
-	if d.cblReplicationPush != nil {
-		return d.cblReplicationPush
-	}
-	return d.StatsByKey(base.StatsGroupKeyCblReplicationPush)
+	d.cblReplicationPushSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyCblReplicationPush)
+	})
+	return d.cblReplicationPush
 }
 
 func (d *DatabaseStats) StatsCblReplicationPull() (stats *expvar.Map) {
-	if d.cblReplicationPull != nil {
-		return d.cblReplicationPull
-	}
-	return d.StatsByKey(base.StatsGroupKeyCblReplicationPull)
+	d.cblReplicationPullSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyCblReplicationPull)
+	})
+	return d.cblReplicationPull
 }
 
 func (d *DatabaseStats) StatsSecurity() (stats *expvar.Map) {
-	if d.statsSecurity != nil {
-		return d.statsSecurity
-	}
-	return d.StatsByKey(base.StatsGroupKeySecurity)
+	d.statsSecuritySync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeySecurity)
+	})
+	return d.statsSecurity
 }
 
 func (d *DatabaseStats) StatsGsiViews() (stats *expvar.Map) {
-	if d.statsGsiViews != nil {
-		return d.statsGsiViews
-	}
-	return d.StatsByKey(base.StatsGroupKeyGsiViews)
+
+	d.statsGsiViewsSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyGsiViews)
+	})
+	return d.statsGsiViews
 }
 
 func (d *DatabaseStats) StatsByKey(key string) (stats *expvar.Map) {
