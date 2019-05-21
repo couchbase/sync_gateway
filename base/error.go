@@ -94,10 +94,10 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrBusy)"
 	case gocb.ErrTmpFail:
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrTmpFail)"
-	case ErrViewTimeoutError:
-		return http.StatusServiceUnavailable, unwrappedErr.Error()
 	case gocb.ErrTooBig:
 		return http.StatusRequestEntityTooLarge, "Document too large!"
+	case ErrViewTimeoutError:
+		return http.StatusServiceUnavailable, unwrappedErr.Error()
 	}
 
 	switch unwrappedErr := unwrappedErr.(type) {
