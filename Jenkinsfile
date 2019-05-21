@@ -41,13 +41,12 @@ pipeline {
                         sh 'cp .scm-checkout/bootstrap.sh .'
                         sh 'chmod +x bootstrap.sh'
                         sh "./bootstrap.sh -p sg-accel -c ${SG_COMMIT}"
-
                     }
                 }
 
-                stage(' ') {
+                stage('Go') {
                     stages {
-                        stage('Go') {
+                        stage('Install') {
                             steps {
                                 echo 'Installing Go via gvm..'
                                 // We'll use Go 1.10.4 to bootstrap compilation of newer Go versions
@@ -58,7 +57,7 @@ pipeline {
                                 }
                             }
                         }
-                        stage('Tools') {
+                        stage('Get Tools') {
                             steps {
                                 withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
                                     sh "go version"
@@ -70,7 +69,7 @@ pipeline {
                                     sh 'go get -v -u github.com/axw/gocov/...'
                                     sh 'go get -v -u github.com/AlekSi/gocov-xml'
                                     // Jenkins test reporting tools
-                                    // sh 'go get -v -u github.com/jstemmer/go-junit-report'
+                                    sh 'go get -v -u github.com/tebeka/go2xunit'
                                 }
                             }
                         }
@@ -79,36 +78,93 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Builds') {
             parallel {
-                stage('gofmt check') {
+                stage('CE Linux') {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                            sh "test -z \"\$(gofmt -d -e ${GOPATH}/src/github.com/couchbase/sync_gateway)\""
+                            sh "GOOS=linux go build -o sync_gateway_ce-linux -v github.com/couchbase/sync_gateway"
+                        }
+                    }
+                }
+                stage('EE Linux') {
+                    steps {
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                            sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v github.com/couchbase/sync_gateway"
+                        }
+                    }
+                }
+                stage('CE macOS') {
+                    // TODO: Remove skip
+                    when { expression { return false } }
+                    steps {
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                            echo 'TODO: figure out why build issues are caused by gosigar'
+                            sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v github.com/couchbase/sync_gateway"
+                        }
+                    }
+                }
+                stage('EE macOS') {
+                    // TODO: Remove skip
+                    when { expression { return false } }
+                    steps {
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                            echo 'TODO: figure out why build issues are caused by gosigar'
+                            sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v github.com/couchbase/sync_gateway"
+                        }
+                    }
+                }
+                stage('CE Windows') {
+                    steps {
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                            sh "GOOS=windows go build -o sync_gateway_ce-windows -v github.com/couchbase/sync_gateway"
+                        }
+                    }
+                }
+                stage('EE Windows') {
+                    steps {
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                            sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v github.com/couchbase/sync_gateway"
                         }
                     }
                 }
                 stage('Windows Service') {
                     steps {
-                        withEnv(["GOOS=windows", "PATH+=${GO}:${GOPATH}/bin"]) {
-                            sh 'go build -v github.com/couchbase/sync_gateway/service/sg-windows/sg-service'
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                            sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v github.com/couchbase/sync_gateway/service/sg-windows/sg-service"
                         }
                     }
                 }
-                stage(' ') {
-                    stages {
-                        stage('CE') {
-                            steps {
-                                withEnv(["SG_EDITION=CE", "PATH+=${GO}:${GOPATH}/bin"]) {
-                                    sh './build.sh -v'
-                                }
+            }
+        }
+
+        stage('Checks') {
+            parallel {
+                stage('gofmt') {
+                    steps {
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                            warnError(message: "gofmt failed") {
+                                sh "test -z \"\$(gofmt -d -e ${GOPATH}/src/github.com/couchbase/sync_gateway)\""
                             }
                         }
-                        stage('EE') {
-                            steps {
-                                withEnv(["SG_EDITION=EE", "PATH+=${GO}:${GOPATH}/bin"]) {
-                                    sh './build.sh -v'
-                                }
+                    }
+                }
+                stage('go vet') {
+                    // TODO: Remove skip
+                    when { expression { return false } }
+                    steps {
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                            warnError(message: "go vet failed") {
+                                sh "go vet github.com/couchbase/sync_gateway/..."
+                            }
+                        }
+                    }
+                }
+                stage('go fix') {
+                    steps {
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                            warnError(message: "go fix failed") {
+                                sh "test -z \"\$(go tool fix -diff ${GOPATH}/src/github.com/couchbase/sync_gateway)\""
                             }
                         }
                     }
@@ -116,30 +172,33 @@ pipeline {
             }
         }
 
-        stage('Test') {
+        stage('Tests') {
             parallel {
-                stage(' ') {
+                stage('Unit') {
                     stages {
-                        stage('CE -cover') {
+                        stage('CE') {
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
                                 withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     // Build CE coverprofiles
-                                    sh 'go test -timeout=20m -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ce.out github.com/couchbase/sync_gateway/...'
+                                    sh '2>&1 go test -timeout=20m -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ce.out -race -count=1 -v github.com/couchbase/sync_gateway/... > verbose_ce.out || true'
+                                    //sh 'cat verbose_ce.out'
 
                                     // Print total coverage stats
                                     sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
 
                                     sh 'mkdir -p reports'
 
-                                    // Generate junit-formatted test report
-                                    // sh 'cat test_ce.out | go-junit-report > reports/test-ce.xml'
-
                                     // Generate HTML coverage report
                                     sh 'go tool cover -html=cover_ce.out -o reports/coverage-ce.html'
 
                                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
                                     sh 'gocov convert cover_ce.out | gocov-xml > reports/coverage-ce.xml'
+
+                                    // Generate junit-formatted test report
+                                    warnError(message: "At least one CE unit test failed") {
+                                        sh 'go2xunit -fail -suite-name-prefix="CE-" -input verbose_ce.out -output reports/test-ce.xml'
+                                    }
 
                                     // Publish CE coverage to coveralls.io
                                     // Replace covermode values with set just for coveralls to reduce the variability in reports.
@@ -149,51 +208,82 @@ pipeline {
                             }
                         }
 
-                        stage('EE -cover') {
+                        stage('EE') {
                             steps {
                                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                                     // Build EE coverprofiles
-                                    sh "go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ee.out github.com/couchbase/sync_gateway/..."
+                                    sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ee.out -race -count=1 -v github.com/couchbase/sync_gateway/... > verbose_ee.out || true"
+                                    //sh 'cat verbose_ce.out'
+
                                     sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
                                     sh 'mkdir -p reports'
-
-                                    // Generate junit-formatted test report
-                                    // sh 'cat test_ee.out | go-junit-report > reports/test-ee.xml'
 
                                     sh 'go tool cover -html=cover_ee.out -o reports/coverage-ee.html'
 
                                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
                                     sh 'gocov convert cover_ee.out | gocov-xml > reports/coverage-ee.xml'
-                                }
-                            }
-                        }
 
-                        stage('CE -race') {
-                            steps {
-                                echo 'Testing with -race..'
-                                withEnv(["SG_EDITION=CE", "PATH+=${GO}:${GOPATH}/bin"]) {
-                                    sh './test.sh -race -count=1'
-                                }
-                            }
-                        }
-
-                        stage('EE -race') {
-                            steps {
-                                echo 'Testing with -race..'
-                                withEnv(["SG_EDITION=EE", "PATH+=${GO}:${GOPATH}/bin"]) {
-                                    sh './test.sh -race -count=1'
+                                    // Generate junit-formatted test report
+                                    warnError(message: "At least one EE unit test failed") {
+                                        sh 'go2xunit -fail -suite-name-prefix="EE-" -input verbose_ee.out -output reports/test-ee.xml'
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
+                stage('LiteCore') {
+                    stages {
+                        stage('against CE') {
+                            // TODO: Remove skip
+                            when { expression { return false } }
+                            steps {
+                                echo 'Example of where we could run lite-core unit tests against a running SG CE'
+                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'CE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ce', successDescription: 'CE with LiteCore Test Passed') {
+                                    echo "..."
+                                }
+                            }
+                        }
+                        stage('against EE') {
+                            // TODO: Remove skip
+                            when { expression { return false } }
+                            steps {
+                                echo 'Example of where we could run lite-core unit tests against a running SG EE'
+                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
+                                    echo "..."
+                                }
+                            }
+                        }
+                    }
+                }
+
                 stage('Integration') {
-                    when { branch 'master' }
-                    steps {
-                        echo 'Queueing Integration test for branch "master" ...'
-                        // Queues up an async integration test run for the master branch, but waits up to an hour for all merges into master before actually running (via quietPeriod)
-                        build job: 'sync-gateway-integration-master', quietPeriod: 3600, wait: false
+                    stages {
+                        stage('Master') {
+                            when { branch 'master' }
+                            steps {
+                                echo 'Queueing Integration test for branch "master" ...'
+                                // Queues up an async integration test run for the master branch, but waits up to an hour for all merges into master before actually running (via quietPeriod)
+                                build job: 'sync-gateway-integration-master', quietPeriod: 3600, wait: false
+                            }
+                        }
+                        stage('PR') {
+                            // TODO: Remove skip
+                            when { expression { return false } }
+                            steps {
+                                // TODO: Read labels on PR for 'integration-test'
+                                // if present, run stage as separate GH status
+                                echo 'Example of where we can run integration tests for this commit'
+                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration-ee', successDescription: 'EE Integration Test Passed') {
+                                    echo "Waiting for integration test to finish..."
+                                    // TODO: add commit parameter
+                                    // Block the pipeline, but don't propagate a failure up to the top-level job - rely on gitStatusWrapper letting us know it failed
+                                    build job: 'sync-gateway-integration-master', wait: true, propagate: false
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -207,10 +297,10 @@ pipeline {
             publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: 'coverage-*.html', keepAll: false, reportDir: 'reports', reportFiles: '*.html', reportName: 'Code Coverage', reportTitles: ''])
 
             // Publish the cobertura formatted test coverage reports into Jenkins
-            cobertura autoUpdateHealth: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
+            cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
 
             // Publish the junit test reports
-            // junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
+            junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
 
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
