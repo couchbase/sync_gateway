@@ -82,6 +82,10 @@ const (
 	StatKeyChannelCachePendingQueries = "chan_cache_pending_queries"
 	StatKeyNumSkippedSeqs             = "num_skipped_seqs"
 	StatKeyAbandonedSeqs              = "abandoned_seqs"
+	StatKeyMaxCached                  = "max_cached"
+	StatKeyMaxStableCached            = "max_stable_cached"
+	StatKeyNumSkipped                 = "num_skipped"
+	StatKeyNumPending                 = "num_pending"
 
 	// StatsDatabase
 	StatKeySequenceGetCount        = "sequence_get_count"
@@ -101,6 +105,7 @@ const (
 	StatKeyWarnChannelsPerDocCount = "warn_channels_per_doc_count"
 	StatKeyWarnGrantsPerDocCount   = "warn_grants_per_doc_count"
 	StatKeyDcpReceivedCount        = "dcp_received_count"
+	StatKeyDcpMaxReceived          = "dcp_max_received"
 	StatKeyDcpReceivedTime         = "dcp_received_time"
 	StatKeyDcpCachingCount         = "dcp_caching_count"
 	StatKeyDcpCachingTime          = "dcp_caching_time"
