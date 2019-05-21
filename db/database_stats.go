@@ -2,6 +2,7 @@ package db
 
 import (
 	"expvar"
+	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -15,6 +16,24 @@ type DatabaseStats struct {
 
 	// The expvars map the stats for this db will be stored in
 	storage *expvar.Map
+
+	statsCacheMapSync,
+	statsDatabaseMapSync,
+	statsDeltaSyncMapSync,
+	sharedBucketImportMapSync,
+	cblReplicationPushSync,
+	cblReplicationPullSync,
+	statsSecuritySync,
+	statsGsiViewsSync sync.Once
+
+	statsCacheMap,
+	statsDatabaseMap,
+	statsDeltaSyncMap,
+	sharedBucketImportMap,
+	cblReplicationPush,
+	cblReplicationPull,
+	statsSecurity,
+	statsGsiViews *expvar.Map
 }
 
 func NewDatabaseStats() *DatabaseStats {
@@ -30,43 +49,67 @@ func (d *DatabaseStats) ExpvarMap() *expvar.Map {
 }
 
 func (d *DatabaseStats) StatsCache() (stats *expvar.Map) {
-	statsCache := d.StatsByKey(base.StatsGroupKeyCache)
-	return statsCache
+	d.statsCacheMapSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyCache)
+	})
+	return d.statsCacheMap
 }
 
 func (d *DatabaseStats) StatsDatabase() (stats *expvar.Map) {
-	return d.StatsByKey(base.StatsGroupKeyDatabase)
+	d.statsDatabaseMapSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyDatabase)
+	})
+	return d.statsDatabaseMap
 }
 
 func (d *DatabaseStats) StatsDeltaSync() (stats *expvar.Map) {
-	return d.StatsByKey(base.StatsGroupKeyDeltaSync)
+	d.statsDeltaSyncMapSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyDeltaSync)
+	})
+	return d.statsDeltaSyncMap
 }
 
 func (d *DatabaseStats) SharedBucketImport() (stats *expvar.Map) {
-	return d.StatsByKey(base.StatsGroupKeySharedBucketImport)
+	d.sharedBucketImportMapSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeySharedBucketImport)
+	})
+	return d.sharedBucketImportMap
 }
 
 func (d *DatabaseStats) CblReplicationPush() (stats *expvar.Map) {
-	return d.StatsByKey(base.StatsGroupKeyCblReplicationPush)
+	d.cblReplicationPushSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyCblReplicationPush)
+	})
+	return d.cblReplicationPush
 }
 
 func (d *DatabaseStats) StatsCblReplicationPull() (stats *expvar.Map) {
-	return d.StatsByKey(base.StatsGroupKeyCblReplicationPull)
+	d.cblReplicationPullSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyCblReplicationPull)
+	})
+	return d.cblReplicationPull
 }
 
 func (d *DatabaseStats) StatsSecurity() (stats *expvar.Map) {
-	return d.StatsByKey(base.StatsGroupKeySecurity)
+	d.statsSecuritySync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeySecurity)
+	})
+	return d.statsSecurity
 }
 
 func (d *DatabaseStats) StatsGsiViews() (stats *expvar.Map) {
-	return d.StatsByKey(base.StatsGroupKeyGsiViews)
+
+	d.statsGsiViewsSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyGsiViews)
+	})
+	return d.statsGsiViews
 }
 
 func (d *DatabaseStats) StatsByKey(key string) (stats *expvar.Map) {
 	var subStatsMap *expvar.Map
 	subStatsVar := d.storage.Get(key)
 	if subStatsVar == nil {
-		subStatsMap = initEmptyStatsMap(key)
+		subStatsMap = initEmptyStatsMap(key, d)
 		d.storage.Set(key, subStatsMap)
 	} else {
 		subStatsMap = subStatsVar.(*expvar.Map)
@@ -75,7 +118,7 @@ func (d *DatabaseStats) StatsByKey(key string) (stats *expvar.Map) {
 	return subStatsMap
 }
 
-func initEmptyStatsMap(key string) *expvar.Map {
+func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 
 	result := new(expvar.Map).Init()
 
@@ -93,6 +136,7 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyChannelCacheNumChannels, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyChannelCacheActiveChannels, base.ExpvarIntVal(0))
+		d.statsCacheMap = result
 	case base.StatsGroupKeyDatabase:
 		result.Set(base.StatKeySequenceGetCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeySequenceReservedCount, base.ExpvarIntVal(0))
@@ -114,6 +158,7 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyDcpCachingTime, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDcpReceivedCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDcpReceivedTime, base.ExpvarIntVal(0))
+		d.statsDatabaseMap = result
 	case base.StatsGroupKeyDeltaSync:
 		result.Set(base.StatKeyDeltasRequested, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDeltasSent, base.ExpvarIntVal(0))
@@ -121,11 +166,13 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyDeltaCacheHits, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDeltaCacheMisses, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDeltaPushDocCount, base.ExpvarIntVal(0))
+		d.statsDeltaSyncMap = result
 	case base.StatsGroupKeySharedBucketImport:
 		result.Set(base.StatKeyImportCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyImportCancelCAS, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyImportErrorCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyImportProcessingTime, base.ExpvarIntVal(0))
+		d.sharedBucketImportMap = result
 	case base.StatsGroupKeyCblReplicationPush:
 		result.Set(base.StatKeyDocPushCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyWriteProcessingTime, base.ExpvarIntVal(0))
@@ -136,6 +183,7 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyAttachmentPushCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAttachmentPushBytes, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyConflictWriteCount, base.ExpvarIntVal(0))
+		d.cblReplicationPush = result
 	case base.StatsGroupKeyCblReplicationPull:
 		result.Set(base.StatKeyPullReplicationsActiveContinuous, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyPullReplicationsActiveOneShot, base.ExpvarIntVal(0))
@@ -151,14 +199,17 @@ func initEmptyStatsMap(key string) *expvar.Map {
 		result.Set(base.StatKeyMaxPending, new(base.IntMax))
 		result.Set(base.StatKeyAttachmentPullCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAttachmentPullBytes, base.ExpvarIntVal(0))
+		d.cblReplicationPull = result
 	case base.StatsGroupKeySecurity:
 		result.Set(base.StatKeyNumDocsRejected, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumAccessErrors, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAuthSuccessCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAuthFailedCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyTotalAuthTime, base.ExpvarIntVal(0))
+		d.statsSecurity = result
 	case base.StatsGroupKeyGsiViews:
 		// GsiView stat keys are dynamically generated based on query names - see query.go
+		d.statsGsiViews = result
 	}
 
 	return result
