@@ -7,6 +7,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDocumentUnmarshal(t *testing.T) {
@@ -56,25 +58,35 @@ func TestAttachmentRoundTrip(t *testing.T) {
 	doc := RestDocument{}
 	attachmentMap := db.AttachmentMap{
 		"foo": &db.DocAttachment{
-			ContentType: "text",
-			Digest:      "whatever",
+			ContentType: "application/octet-stream",
+			Digest:      "WHATEVER",
 		},
 		"bar": &db.DocAttachment{
-			ContentType: "text",
-			Digest:      "whatever",
+			ContentType: "text/plain",
+			Digest:      "something",
+		},
+		"baz": &db.DocAttachment{
+			Data: []byte(""),
 		},
 	}
 
 	doc.SetAttachments(attachmentMap)
 
 	attachments, err := doc.GetAttachments()
-	goassert.True(t, err == nil)
+	require.NoError(t, err)
+	require.Equal(t, 3, len(attachments))
 
-	goassert.Equals(t, len(attachments), 2)
+	require.NotNil(t, attachments["foo"])
+	assert.Equal(t, "application/octet-stream", attachments["foo"].ContentType)
+	assert.Equal(t, "WHATEVER", attachments["foo"].Digest)
 
-	for attachName, attachment := range attachments {
-		goassert.Equals(t, attachment.ContentType, "text")
-		goassert.True(t, attachName == "foo" || attachName == "bar")
-	}
+	require.NotNil(t, attachments["bar"])
+	assert.Equal(t, "text/plain", attachments["bar"].ContentType)
+	assert.Equal(t, "something", attachments["bar"].Digest)
+
+	require.NotNil(t, attachments["baz"])
+	assert.Equal(t, "", attachments["baz"].ContentType)
+	assert.Equal(t, "", attachments["baz"].Digest)
+	assert.Equal(t, []byte{}, attachments["baz"].Data) // data field is explicitly ignored
 
 }
