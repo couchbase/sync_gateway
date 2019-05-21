@@ -19,7 +19,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
-	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 type sgError struct {
@@ -97,6 +96,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrTmpFail)"
 	case ErrViewTimeoutError:
 		return http.StatusServiceUnavailable, unwrappedErr.Error()
+	case gocb.ErrTooBig:
+		return http.StatusRequestEntityTooLarge, "Document too large!"
 	}
 
 	switch unwrappedErr := unwrappedErr.(type) {
@@ -115,10 +116,6 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		default:
 			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
 				string(unwrappedErr.Body), unwrappedErr.Status.String())
-		}
-	case *gocbcore.KvError:
-		if unwrappedErr.Code == gocbcore.StatusTooBig {
-			return http.StatusRequestEntityTooLarge, "Document too large!"
 		}
 	case walrus.DocTooBigErr:
 		return http.StatusRequestEntityTooLarge, "Document too large!"
