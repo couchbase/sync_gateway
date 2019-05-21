@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -93,6 +94,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrBusy)"
 	case gocb.ErrTmpFail:
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrTmpFail)"
+	case gocb.ErrTooBig:
+		return http.StatusRequestEntityTooLarge, "Document too large!"
 	case ErrViewTimeoutError:
 		return http.StatusServiceUnavailable, unwrappedErr.Error()
 	}
@@ -114,6 +117,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
 				string(unwrappedErr.Body), unwrappedErr.Status.String())
 		}
+	case walrus.DocTooBigErr:
+		return http.StatusRequestEntityTooLarge, "Document too large!"
 	case sgbucket.MissingError:
 		return http.StatusNotFound, "missing"
 	case *sgError:

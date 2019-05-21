@@ -2846,8 +2846,6 @@ func TestAddingAttachment(t *testing.T) {
 				"Content-Type": attachmentContentType,
 			}
 
-			fmt.Println(len(attachmentBody))
-
 			//Set attachment
 			response := rt.SendRequestWithHeaders("PUT", "/db/"+testCase.docName+"/attach1?rev="+docrevId, attachmentBody, reqHeaders)
 			assertStatus(tt, response, testCase.expectedPut)
@@ -2863,6 +2861,22 @@ func TestAddingAttachment(t *testing.T) {
 		})
 	}
 
+}
+
+func TestAddingLargeDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	defer func() { walrus.MaxDocSize = 0 }()
+
+	walrus.MaxDocSize = 20 * 1024 * 1024
+
+	docBody := `{"value":"` + base64.StdEncoding.EncodeToString(make([]byte, 22000000)) + `"}`
+
+	response := rt.SendRequest("PUT", "/db/doc1", docBody)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+
+	response = rt.SendRequest("GET", "/db/doc1", "")
+	assert.Equal(t, http.StatusNotFound, response.Code)
 }
 
 func TestOldDocHandling(t *testing.T) {
