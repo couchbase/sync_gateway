@@ -342,12 +342,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		dbName = spec.BucketName
 	}
 
-	if config.OldRevExpirySeconds != nil && *config.OldRevExpirySeconds >= 0 {
+	if config.OldRevExpirySeconds != nil {
 		oldRevExpirySeconds = *config.OldRevExpirySeconds
 	}
 
 	localDocExpirySecs := base.DefaultLocalDocExpirySecs
-	if config.LocalDocExpirySecs != nil && *config.LocalDocExpirySecs >= 0 {
+	if config.LocalDocExpirySecs != nil {
 		localDocExpirySecs = *config.LocalDocExpirySecs
 	}
 
@@ -389,29 +389,29 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	revCacheOptions := db.RevisionCacheOptions{}
 	if config.CacheConfig != nil {
 		if config.CacheConfig.ChannelCacheConfig != nil {
-			if config.CacheConfig.ChannelCacheConfig.MaxNumPending != nil && *config.CacheConfig.ChannelCacheConfig.MaxNumPending > 0 {
+			if config.CacheConfig.ChannelCacheConfig.MaxNumPending != nil {
 				cacheOptions.CachePendingSeqMaxNum = *config.CacheConfig.ChannelCacheConfig.MaxNumPending
 			}
-			if config.CacheConfig.ChannelCacheConfig.MaxWaitPending != nil && *config.CacheConfig.ChannelCacheConfig.MaxWaitPending > 0 {
+			if config.CacheConfig.ChannelCacheConfig.MaxWaitPending != nil {
 				cacheOptions.CachePendingSeqMaxWait = time.Duration(*config.CacheConfig.ChannelCacheConfig.MaxWaitPending) * time.Millisecond
 			}
-			if config.CacheConfig.ChannelCacheConfig.MaxWaitSkipped != nil && *config.CacheConfig.ChannelCacheConfig.MaxWaitSkipped > 0 {
+			if config.CacheConfig.ChannelCacheConfig.MaxWaitSkipped != nil {
 				cacheOptions.CacheSkippedSeqMaxWait = time.Duration(*config.CacheConfig.ChannelCacheConfig.MaxWaitSkipped) * time.Millisecond
 			}
 			// set EnableStarChannelLog directly here (instead of via NewDatabaseContext), so that it's set when we create the channels view in ConnectToBucket
 			if config.CacheConfig.ChannelCacheConfig.EnableStarChannel != nil {
 				db.EnableStarChannelLog = *config.CacheConfig.ChannelCacheConfig.EnableStarChannel
 			}
-			if config.CacheConfig.ChannelCacheConfig.MaxLength != nil && *config.CacheConfig.ChannelCacheConfig.MaxLength > 0 {
+			if config.CacheConfig.ChannelCacheConfig.MaxLength != nil {
 				cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheConfig.MaxLength
 			}
-			if config.CacheConfig.ChannelCacheConfig.MinLength != nil && *config.CacheConfig.ChannelCacheConfig.MinLength > 0 {
+			if config.CacheConfig.ChannelCacheConfig.MinLength != nil {
 				cacheOptions.ChannelCacheMinLength = *config.CacheConfig.ChannelCacheConfig.MinLength
 			}
-			if config.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil && *config.CacheConfig.ChannelCacheConfig.ExpirySeconds > 0 {
+			if config.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil {
 				cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheConfig.ExpirySeconds) * time.Second
 			}
-			if config.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *config.CacheConfig.ChannelCacheConfig.MaxNumber > 0 {
+			if config.CacheConfig.ChannelCacheConfig.MaxNumber != nil {
 				cacheOptions.ChannelCacheMaxNumber = *config.CacheConfig.ChannelCacheConfig.MaxNumber
 			}
 		}
