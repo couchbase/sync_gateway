@@ -10,6 +10,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReadServerConfig(t *testing.T) {
@@ -51,11 +52,27 @@ func TestReadServerConfig(t *testing.T) {
 			name:   "sync fn backquotes",
 			config: "{\"databases\": {\"db\": {\"sync\": `function(doc, oldDoc) {channel(doc.channels)}`}}}",
 		},
-		{
-			name:   "db deprecated shadow",
-			config: "{\"databases\": {\"db\": {\"shadow\": {}}}}",
-			err:    "Bucket shadowing configuration has been moved to the 'deprecated' section of the config.  Please update your config and retry",
-		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(tt *testing.T) {
+			buf := bytes.NewBufferString(test.config)
+			_, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+			if test.err == "" {
+				assert.NoError(tt, err, "unexpected error for test config")
+			} else {
+				assert.EqualError(tt, err, test.err, "expecting error for test config")
+			}
+		})
+	}
+}
+
+func TestConfigValidation(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+		err    string
+	}{
 		{
 			name:   "Compact Interval too low",
 			config: `{"databases": {"db":{"compact_interval_days": 0.039}}}`,
@@ -70,16 +87,24 @@ func TestReadServerConfig(t *testing.T) {
 			name:   "Compact Interval just right",
 			config: `{"databases": {"db":{"compact_interval_days": 0.04}}}`,
 		},
+		{
+			name:   "db deprecated shadow",
+			config: "{\"databases\": {\"db\": {\"shadow\": {}}}}",
+			err:    "Bucket shadowing configuration has been moved to the 'deprecated' section of the config.  Please update your config and retry",
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
 			buf := bytes.NewBufferString(test.config)
-			_, err := readServerConfig(SyncGatewayRunModeNormal, buf)
-			if test.err == "" {
-				assert.NoError(tt, err, "unexpected error for test config")
+			config, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+			assert.NoError(tt, err)
+			errorMessages := config.setupAndValidateDatabases()
+			if test.err != "" {
+				require.Len(t, errorMessages, 1)
+				assert.EqualError(tt, errorMessages[0], test.err)
 			} else {
-				assert.EqualError(tt, err, test.err, "expecting error for test config")
+				assert.Nil(t, errorMessages)
 			}
 		})
 	}

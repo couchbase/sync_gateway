@@ -743,6 +743,10 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 }
 
 func (config *ServerConfig) setupAndValidateDatabases() []error {
+	if config == nil {
+		return nil
+	}
+
 	for name, dbConfig := range config.Databases {
 
 		if err := dbConfig.setup(name); err != nil {
