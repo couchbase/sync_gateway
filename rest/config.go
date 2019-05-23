@@ -447,25 +447,25 @@ func (dbConfig DbConfig) validate() []error {
 	if dbConfig.CacheConfig != nil {
 
 		if dbConfig.CacheConfig.ChannelCacheConfig != nil {
-			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending <= 0 {
+			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending < 1 {
 				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_num_pending is 1"))
 			}
-			if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending <= 0 {
+			if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending < 1 {
 				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_wait_pending is 1"))
 			}
-			if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped <= 0 {
+			if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped < 1 {
 				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_wait_skipped is 1"))
 			}
-			if dbConfig.CacheConfig.ChannelCacheConfig.MaxLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxLength <= 0 {
+			if dbConfig.CacheConfig.ChannelCacheConfig.MaxLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxLength < 1 {
 				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_length is 1"))
 			}
-			if dbConfig.CacheConfig.ChannelCacheConfig.MinLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MinLength <= 0 {
+			if dbConfig.CacheConfig.ChannelCacheConfig.MinLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MinLength < 1 {
 				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.min_length is 1"))
 			}
-			if dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil && *dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds <= 0 {
+			if dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil && *dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds < 1 {
 				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.expiry_seconds is 1"))
 			}
-			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber <= 0 {
+			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber < 1 {
 				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_number is 1"))
 			}
 		}
@@ -502,32 +502,32 @@ func (dbConfig DbConfig) validate() []error {
 
 func (dbConfig *DbConfig) validateSgDbConfig() []error {
 
-	warnings := make([]error, 0)
+	errorMessages := make([]error, 0)
 
 	if err := dbConfig.validate(); err != nil {
-		warnings = append(warnings, err...)
+		errorMessages = append(errorMessages, err...)
 	}
 
 	if dbConfig.ChannelIndex != nil && dbConfig.ChannelIndex.IndexWriter == true {
-		warnings = append(warnings, fmt.Errorf("Invalid configuration for Sync Gw.  Must not be configured as an IndexWriter"))
+		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw.  Must not be configured as an IndexWriter"))
 	}
 
 	// Don't allow Distributed Index and Bucket Shadowing to co-exist
 	if err := dbConfig.verifyNoDistributedIndexAndBucketShadowing(); err != nil {
-		warnings = append(warnings, err)
+		errorMessages = append(errorMessages, err)
 	}
 
 	autoImportEnabled, err := dbConfig.AutoImportEnabled()
 	if err != nil {
-		warnings = append(warnings, err)
+		errorMessages = append(errorMessages, err)
 
 	}
 
 	if dbConfig.FeedType == base.TapFeedType && autoImportEnabled == true {
-		warnings = append(warnings, fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import"))
+		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import"))
 	}
 
-	return warnings
+	return errorMessages
 
 }
 
@@ -612,30 +612,30 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 
 func (dbConfig *DbConfig) validateSgAccelDbConfig() []error {
 
-	warnings := make([]error, 0)
+	errorMessages := make([]error, 0)
 
 	if err := dbConfig.validate(); err != nil {
-		warnings = append(warnings, err...)
+		errorMessages = append(errorMessages, err...)
 	}
 
 	if dbConfig.ChannelIndex == nil {
-		warnings = append(warnings, fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must have a ChannelIndex defined"))
+		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must have a ChannelIndex defined"))
 	}
 
 	if dbConfig.ChannelIndex.IndexWriter == false {
-		warnings = append(warnings, fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured as an IndexWriter"))
+		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured as an IndexWriter"))
 	}
 
 	if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
-		warnings = append(warnings, fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured for DCPSHARD feedtype"))
+		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured for DCPSHARD feedtype"))
 	}
 
 	// Don't allow Distributed Index and Bucket Shadowing to co-exist
 	if err := dbConfig.verifyNoDistributedIndexAndBucketShadowing(); err != nil {
-		warnings = append(warnings, err)
+		errorMessages = append(errorMessages, err)
 	}
 
-	return warnings
+	return errorMessages
 
 }
 
@@ -1231,7 +1231,7 @@ func ServerMain(runMode SyncGatewayRunMode) {
 	// Validation
 	if errorMsgs := config.setupAndValidateDatabases(); errorMsgs != nil && len(errorMsgs) > 0 {
 		for _, err := range errorMsgs {
-			base.Errorf(base.KeyAll, "An error %v", err)
+			base.Errorf(base.KeyAll, "Error during config validation: %v", err)
 		}
 		base.Fatalf(base.KeyAll, "Error(s) during config validation")
 	}
