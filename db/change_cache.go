@@ -61,7 +61,7 @@ type changeCache struct {
 	channelCache    ChannelCache         // Underlying channel cache
 }
 
-// TODO: remove options, just pass down to NewChannelCache
+// TODO: remove options, just pass down to NewChannelCacheForContext
 
 type LogEntry channels.LogEntry
 
@@ -86,6 +86,22 @@ type CacheOptions struct {
 	CacheSkippedSeqMaxWait time.Duration // Max wait for skipped sequence before abandoning
 }
 
+func DefaultCacheOptions() CacheOptions {
+	return CacheOptions{
+		CachePendingSeqMaxWait: DefaultCachePendingSeqMaxWait,
+		CachePendingSeqMaxNum:  DefaultCachePendingSeqMaxNum,
+		CacheSkippedSeqMaxWait: DefaultSkippedSeqMaxWait,
+		ChannelCacheOptions: ChannelCacheOptions{
+			ChannelCacheAge:             DefaultChannelCacheAge,
+			ChannelCacheMinLength:       DefaultChannelCacheMinLength,
+			ChannelCacheMaxLength:       DefaultChannelCacheMaxLength,
+			MaxNumChannels:              DefaultChannelCacheMaxNumber,
+			CompactHighWatermarkPercent: DefaultCompactHighWatermarkPercent,
+			CompactLowWatermarkPercent:  DefaultCompactLowWatermarkPercent,
+		},
+	}
+}
+
 //////// HOUSEKEEPING:
 
 // Initializes a new changeCache.
@@ -103,49 +119,13 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	c.skippedSeqs = NewSkippedSequenceList()
 
 	// init cache options
-	c.options = CacheOptions{
-		CachePendingSeqMaxWait: DefaultCachePendingSeqMaxWait,
-		CachePendingSeqMaxNum:  DefaultCachePendingSeqMaxNum,
-		CacheSkippedSeqMaxWait: DefaultSkippedSeqMaxWait,
-		ChannelCacheOptions: ChannelCacheOptions{
-			ChannelCacheAge:       DefaultChannelCacheAge,
-			ChannelCacheMinLength: DefaultChannelCacheMinLength,
-			ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
-			ChannelCacheMaxNumber: DefaultChannelCacheMaxNumber,
-		},
-	}
-
 	if options != nil {
-		if options.CachePendingSeqMaxNum > 0 {
-			c.options.CachePendingSeqMaxNum = options.CachePendingSeqMaxNum
-		}
-
-		if options.CachePendingSeqMaxWait > 0 {
-			c.options.CachePendingSeqMaxWait = options.CachePendingSeqMaxWait
-		}
-
-		if options.CacheSkippedSeqMaxWait > 0 {
-			c.options.CacheSkippedSeqMaxWait = options.CacheSkippedSeqMaxWait
-		}
-
-		if options.ChannelCacheAge > 0 {
-			c.options.ChannelCacheAge = options.ChannelCacheAge
-		}
-
-		if options.ChannelCacheMinLength > 0 {
-			c.options.ChannelCacheMinLength = options.ChannelCacheMinLength
-		}
-
-		if options.ChannelCacheMaxLength > 0 {
-			c.options.ChannelCacheMaxLength = options.ChannelCacheMaxLength
-		}
-
-		if options.ChannelCacheMaxNumber > 0 {
-			c.options.ChannelCacheMaxNumber = options.ChannelCacheMaxNumber
-		}
+		c.options = *options
+	} else {
+		c.options = DefaultCacheOptions()
 	}
 
-	c.channelCache = NewChannelCache(c.terminator, c.options.ChannelCacheOptions, c.context)
+	c.channelCache = NewChannelCacheForContext(c.terminator, c.options.ChannelCacheOptions, c.context)
 
 	base.Infof(base.KeyCache, "Initializing changes cache with options %+v", c.options)
 
