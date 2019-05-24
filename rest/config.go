@@ -845,12 +845,12 @@ func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) []error {
 
 	switch config.RunMode {
 	case SyncGatewayRunModeNormal:
-		if config.HasAnyIndexWriterConfiguredDatabases() && !config.SkipRunmodeValidation {
+		if !config.SkipRunmodeValidation && config.HasAnyIndexWriterConfiguredDatabases() {
 			base.Panicf(base.KeyAll, "SG is running in normal mode but there are databases configured as index writers")
 		}
 		return dbConfig.validateSgDbConfig()
 	case SyncGatewayRunModeAccel:
-		if config.HasAnyIndexReaderConfiguredDatabases() && !config.SkipRunmodeValidation {
+		if !config.SkipRunmodeValidation && config.HasAnyIndexReaderConfiguredDatabases() {
 			base.Panicf(base.KeyAll, "SG is running in sg-accelerator mode but there are databases configured as index readers")
 		}
 		return dbConfig.validateSgAccelDbConfig()
