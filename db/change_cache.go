@@ -336,7 +336,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	numRemoved := c.RemoveSkippedSequences(ctx, pendingRemovals)
 	c.context.DbStats.StatsCache().Add(base.StatKeyAbandonedSeqs, numRemoved)
 
-	c.context.DbStats.StatsCache().Set(base.StatKeyMaxStableCached, base.ExpvarIntVal(int(c.getMaxStableCached())))
+	c.context.DbStats.StatsCache().Set(base.StatKeyMaxStableCached, base.ExpvarUInt64Val(c.getMaxStableCached()))
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.context.Name))
 	return nil
@@ -649,7 +649,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	}
 
 	sequence := change.Sequence
-	c.context.DbStats.StatsDatabase().Set(base.StatKeyDcpMaxReceived, base.ExpvarIntVal(int(change.Sequence)))
+	c.context.DbStats.StatsDatabase().Set(base.StatKeyDcpMaxReceived, base.ExpvarUInt64Val(change.Sequence))
 
 	if _, found := c.receivedSeqs[sequence]; found {
 		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
@@ -724,10 +724,10 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 
 	if change.Sequence > c.maxCached {
 		c.maxCached = change.Sequence
-		c.context.DbStats.StatsCache().Set(base.StatKeyMaxCached, base.ExpvarIntVal(int(change.Sequence)))
+		c.context.DbStats.StatsCache().Set(base.StatKeyMaxCached, base.ExpvarUInt64Val(change.Sequence))
 	}
 
-	c.context.DbStats.StatsCache().Set(base.StatKeyMaxStableCached, base.ExpvarIntVal(int(c._getMaxStableCached())))
+	c.context.DbStats.StatsCache().Set(base.StatKeyMaxStableCached, base.ExpvarUInt64Val(c._getMaxStableCached()))
 
 	if !change.TimeReceived.IsZero() {
 		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingCount, 1)
@@ -758,7 +758,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		}
 	}
 
-	c.context.DbStats.StatsCache().Set(base.StatKeyMaxStableCached, base.ExpvarIntVal(int(c._getMaxStableCached())))
+	c.context.DbStats.StatsCache().Set(base.StatKeyMaxStableCached, base.ExpvarUInt64Val(c._getMaxStableCached()))
 	c.context.DbStats.StatsCache().Set(base.StatKeyNumPending, base.ExpvarIntVal(len(c.pendingLogs)))
 
 	return changedChannels
