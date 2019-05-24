@@ -1001,7 +1001,23 @@ func (bh *blipHandler) downloadOrVerifyAttachments(body db.Body, minRevpos int, 
 				if !sender.Send(outrq) {
 					return nil, ErrClosedBLIPSender
 				}
-				return outrq.Response().Body()
+				attBody, err := outrq.Response().Body()
+				if err != nil {
+					return nil, err
+				}
+
+				lNum, metaLengthOK := meta["length"].(json.Number)
+				metaLength, err := lNum.Int64()
+				if err != nil {
+					return nil, err
+				}
+
+				// Verify that the attachment we received matches the metadata stored in the document
+				if !metaLengthOK || len(attBody) != int(metaLength) || db.Sha1DigestKey(attBody) != digest {
+					return nil, base.HTTPErrorf(http.StatusBadRequest, "Incorrect data sent for attachment with digest: %s", digest)
+				}
+
+				return attBody, nil
 			}
 		})
 }
