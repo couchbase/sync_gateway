@@ -208,7 +208,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		if err != nil {
 			return nil, nil, updatedExpiry, err
 		}
-		base.DebugfCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(docid), newRev)
+		base.InfofCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(docid), newRev)
 		body[BodyRev] = newRev
 		doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 

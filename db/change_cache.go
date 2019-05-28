@@ -521,7 +521,15 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
 	}
-	base.Debugf(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLatency/time.Millisecond), base.UD(change.DocID), change.RevID)
+
+	millisecondLatency := int(feedLatency / time.Millisecond)
+
+	// If latency is larger than 1 minute or is negative there is likely an issue and this should be clear to the user
+	if millisecondLatency >= 60*1000 || millisecondLatency < 0 {
+		base.Infof(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
+	} else {
+		base.Debugf(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
+	}
 
 	changedChannels := c.processEntry(change)
 	changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
@@ -667,7 +675,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
-		c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(len(c.pendingLogs)))
+		c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(numPending))
 		base.Infof(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d) doc %q / %q",
 			sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1, base.UD(change.DocID), change.RevID)
 
