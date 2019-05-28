@@ -848,14 +848,15 @@ func (h *LogPriorityQueue) Pop() interface{} {
 //////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	c.context.DbStats.statsCacheMap.Add(base.StatKeySkippedSeqLen, -1)
-	return c.skippedSeqs.Remove(x)
+	err := c.skippedSeqs.Remove(x)
+	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
+	return err
 }
 
 // Removes a set of sequences.  Logs warning on removal error, returns count of successfully removed.
 func (c *changeCache) RemoveSkippedSequences(ctx context.Context, sequences []uint64) (removedCount int64) {
 	numRemoved := c.skippedSeqs.RemoveSequences(ctx, sequences)
-	c.context.DbStats.statsCacheMap.Add(base.StatKeySkippedSeqLen, -1*numRemoved)
+	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
 	return numRemoved
 }
 
@@ -865,7 +866,7 @@ func (c *changeCache) WasSkipped(x uint64) bool {
 
 func (c *changeCache) PushSkipped(sequence uint64) {
 	c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
-	c.context.DbStats.statsCacheMap.Add(base.StatKeySkippedSeqLen, 1)
+	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
 }
 
 func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint64) {
@@ -983,13 +984,6 @@ func (l *SkippedSequenceList) getOlderThan(skippedExpiry time.Duration) []uint64
 	}
 	l.lock.RUnlock()
 	return oldSequences
-}
-
-func (c *changeCache) _getOldestPending() uint64 {
-	if c.pendingLogs.Len() > 0 {
-		return c.pendingLogs[0].Sequence
-	}
-	return 0
 }
 
 func (c *changeCache) getMaxStableCached() uint64 {
