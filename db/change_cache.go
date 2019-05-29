@@ -728,8 +728,6 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	updatedChannels := c.channelCache.AddToCache(change)
 	base.Debugf(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 
-	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqCached, base.ExpvarUInt64Val(c.channelCache.GetHighCacheSequence()))
-
 	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c._getMaxStableCached()))
 
 	if !change.TimeReceived.IsZero() {
@@ -761,7 +759,6 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		}
 	}
 
-	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c._getMaxStableCached()))
 	c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(len(c.pendingLogs)))
 
 	return changedChannels
