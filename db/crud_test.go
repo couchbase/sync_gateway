@@ -52,7 +52,7 @@ func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList
 // Tests permutations of inline and external storage of conflicts and tombstones
 func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -218,7 +218,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 // TestRevisionStoragePruneTombstone - tests cleanup of external tombstone bodies when pruned.
 func TestRevisionStoragePruneTombstone(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -358,7 +358,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 // Checks for unwanted interaction between old revision body backups and revision cache
 func TestOldRevisionStorage(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -505,7 +505,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	leakyConfig := base.LeakyBucketConfig{
 		ForceErrorSetRawKeys: []string{forceErrorKey},
 	}
-	db := setupTestLeakyDBWithCacheOptions(t, CacheOptions{}, leakyConfig)
+	db := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
 	defer tearDownTestDB(t, db)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)
@@ -657,7 +657,7 @@ const rawDocMalformedRevisionStorage = `
     }`
 
 func TestMalformedRevisionStorageRecovery(t *testing.T) {
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 

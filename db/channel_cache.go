@@ -67,20 +67,19 @@ type ChannelQueryHandler interface {
 type StableSequenceCallbackFunc func() uint64
 
 type channelCacheImpl struct {
-	queryHandler         ChannelQueryHandler            // Passed to singleChannelCache for view queries.
-	channelCaches        map[string]*singleChannelCache // A cache of changes for each channel
-	channelCacheList     *base.AppendOnlyList           // List of pointers to channelCache entries, for non-locking iteration during compaction
-	cacheLock            sync.RWMutex                   // Mutex for access to channelCaches map
-	terminator           chan bool                      // Signal terminator of background goroutines
-	options              ChannelCacheOptions            // Channel cache options
-	lateSeqLock          sync.RWMutex                   // Coordinates access to late sequence caches
-	highCacheSequence    uint64                         // The highest sequence that has been cached.  Used to initialize validFrom for new singleChannelCaches
-	maxChannels          int                            // Maximum number of channels in the cache
-	compactHighWatermark int                            // High Watermark for cache compaction
-	compactLowWatermark  int                            // Low Watermark for cache compaction
-	compactRunning       base.AtomicBool                // Whether compact is currently running
-	activeChannels       channels.ActiveChannels        // Active channel handler
-	statsMap             *expvar.Map                    // Map used for cache stats
+	queryHandler         ChannelQueryHandler       // Passed to singleChannelCache for view queries.
+	channelCaches        *base.RangeSafeCollection // A collection of singleChannelCaches
+	terminator           chan bool                 // Signal terminator of background goroutines
+	options              ChannelCacheOptions       // Channel cache options
+	lateSeqLock          sync.RWMutex              // Coordinates access to late sequence caches
+	highCacheSequence    uint64                    // The highest sequence that has been cached.  Used to initialize validFrom for new singleChannelCaches
+	seqLock              sync.RWMutex              // Mutex for highCacheSequence
+	maxChannels          int                       // Maximum number of channels in the cache
+	compactHighWatermark int                       // High Watermark for cache compaction
+	compactLowWatermark  int                       // Low Watermark for cache compaction
+	compactRunning       base.AtomicBool           // Whether compact is currently running
+	activeChannels       channels.ActiveChannels   // Active channel handler
+	statsMap             *expvar.Map               // Map used for cache stats
 
 }
 
@@ -92,8 +91,7 @@ func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOp
 
 	channelCache := &channelCacheImpl{
 		queryHandler:         queryHandler,
-		channelCaches:        make(map[string]*singleChannelCache),
-		channelCacheList:     base.NewAppendOnlyList(),
+		channelCaches:        base.NewRangeSafeCollection(),
 		terminator:           terminator,
 		options:              options,
 		maxChannels:          options.MaxNumChannels,
@@ -103,26 +101,26 @@ func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOp
 		statsMap:             statsMap,
 	}
 	NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
-	base.Infof(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d", channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
+	base.Debugf(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d", channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
 	return channelCache
 }
 
 func (c *channelCacheImpl) Clear() {
-	c.cacheLock.Lock()
-	c.channelCaches = make(map[string]*singleChannelCache)
-	c.cacheLock.Unlock()
+	c.seqLock.Lock()
+	c.channelCaches.Init()
+	c.seqLock.Unlock()
 }
 
 func (c *channelCacheImpl) Init(initialSequence uint64) {
-	c.cacheLock.Lock()
+	c.seqLock.Lock()
 	c.highCacheSequence = initialSequence
-	c.cacheLock.Unlock()
+	c.seqLock.Unlock()
 }
 
 func (c *channelCacheImpl) GetHighCacheSequence() uint64 {
-	c.cacheLock.RLock()
+	c.seqLock.RLock()
 	highSeq := c.highCacheSequence
-	c.cacheLock.RUnlock()
+	c.seqLock.RUnlock()
 	return highSeq
 }
 
@@ -135,11 +133,11 @@ func (c *channelCacheImpl) _getHighCacheSequence() uint64 {
 // Note: doesn't require compareAndSet on update, as cache expects AddToCache to only be called from
 // a single goroutine
 func (c *channelCacheImpl) updateHighCacheSequence(sequence uint64) {
-	c.cacheLock.Lock()
+	c.seqLock.Lock()
 	if sequence > c.highCacheSequence {
 		c.highCacheSequence = sequence
 	}
-	c.cacheLock.Unlock()
+	c.seqLock.Unlock()
 }
 
 // GetSingleChannelCache will create the cache for the channel if it doesn't exist.  Intended for test
@@ -208,11 +206,18 @@ func (c *channelCacheImpl) Remove(docIDs []string, startTime time.Time) (count i
 		return 0
 	}
 
-	c.cacheLock.Lock()
-	for _, channelCache := range c.channelCaches {
+	removeCallback := func(v interface{}) bool {
+		channelCache := AsSingleChannelCache(v)
+		if channelCache == nil {
+			return false
+		}
+
 		count += channelCache.Remove(docIDs, startTime)
+		return true
 	}
-	c.cacheLock.Unlock()
+
+	c.channelCaches.Range(removeCallback)
+
 	return count
 }
 
@@ -240,80 +245,100 @@ func (c *channelCacheImpl) ReleaseLateSequenceClient(channelName string, current
 
 // CleanAgedItems prunes the caches based on age of items. Error returned to fulfill BackgroundTaskFunc signature.
 func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
-	c.cacheLock.Lock()
-	for _, channelCache := range c.channelCaches {
+
+	callback := func(v interface{}) bool {
+		channelCache := AsSingleChannelCache(v)
+		if channelCache == nil {
+			return false
+		}
 		channelCache.pruneCacheAge(ctx)
+		return true
 	}
-	c.cacheLock.Unlock()
+	c.channelCaches.Range(callback)
+
 	return nil
 }
 
 func (c *channelCacheImpl) getChannelCache(channelName string) *singleChannelCache {
 
-	c.cacheLock.RLock()
-	singleChannelCache, ok := c.channelCaches[channelName]
-	c.cacheLock.RUnlock()
-
-	if ok {
-		return singleChannelCache
+	cacheValue, found := c.channelCaches.Get(channelName)
+	if found {
+		return AsSingleChannelCache(cacheValue)
 	}
 
 	return c.addChannelCache(channelName)
 }
 
-// Adds a new channel to the channel cache.  Note that locking here also prevents missed data in the following scenario:
-//	//     1. getChannelCache issued for channel A
-//	//     2. getChannelCache obtains stable sequence, seq=10
+// Converts an RangeSafeCollection value to a singleChannelCache.  On type
+// conversion error, logs a warning and returns nil.
+func AsSingleChannelCache(cacheValue interface{}) *singleChannelCache {
+	singleChannelCache, ok := cacheValue.(*singleChannelCache)
+	if !ok {
+		base.Warnf(base.KeyCache, "Unexpected channel cache value type: %T", cacheValue)
+		return nil
+	}
+	return singleChannelCache
+}
+
+// Adds a new channel to the channel cache.  Locking seqLock is required here to prevent missed data in the following scenario:
+//	//     1. addChannelCache issued for channel A
+//	//     2. addChannelCache obtains stable sequence, seq=10
 //	//     3. addToCache (from another goroutine) receives sequence 11 in channel A, but detects that it's inactive (not in c.channelCaches)
-//	//     4. getChannelCache initializes cache with validFrom=10 and adds to c.channelCaches
-//	//  This scenario would result in sequence 11 missing from the cache.  Locking cacheLock here ensures that
+//	//     4. addChannelCache initializes cache with validFrom=10 and adds to c.channelCaches
+//	//  This scenario would result in sequence 11 missing from the cache.  Locking seqLock ensures that
 //	//  step 3 blocks until step 4 is complete (and so sees the channel as active)
 func (c *channelCacheImpl) addChannelCache(channelName string) *singleChannelCache {
 
-	c.cacheLock.Lock()
-
-	// Check if it was created by another goroutine while we waited for the lock
-	singleChannelCache, ok := c.channelCaches[channelName]
-	if ok {
-		c.cacheLock.Unlock()
-		return singleChannelCache
-	}
+	// TODO: Lock seqLock instead of cacheLock
+	c.seqLock.Lock()
 
 	// Everything after the current high sequence will be added to the cache via the feed
 	validFrom := c._getHighCacheSequence() + 1
 
-	singleChannelCache = newChannelCacheWithOptions(c.queryHandler, channelName, validFrom, c.options, c.statsMap)
-	c.channelCaches[channelName] = singleChannelCache
-	c.channelCacheList.PushBack(singleChannelCache)
+	singleChannelCache := newChannelCacheWithOptions(c.queryHandler, channelName, validFrom, c.options, c.statsMap)
+	cacheValue, created, cacheSize := c.channelCaches.GetOrInsert(channelName, singleChannelCache)
+	c.seqLock.Unlock()
 
-	if !c.isCompactActive() && len(c.channelCaches) > c.compactHighWatermark {
+	singleChannelCache = AsSingleChannelCache(cacheValue)
+
+	if !c.isCompactActive() && cacheSize > c.compactHighWatermark {
 		c.startCacheCompaction()
 	}
 
-	c.statsMap.Add(base.StatKeyChannelCacheNumChannels, 1)
-	c.cacheLock.Unlock()
+	if created {
+		c.statsMap.Add(base.StatKeyChannelCacheNumChannels, 1)
+	}
 
 	return singleChannelCache
 }
 
 func (c *channelCacheImpl) getActiveChannelCache(channelName string) (*singleChannelCache, bool) {
-	c.cacheLock.RLock()
-	cache, ok := c.channelCaches[channelName]
-	c.cacheLock.RUnlock()
-	return cache, ok
+
+	cacheValue, found := c.channelCaches.Get(channelName)
+	if !found {
+		return nil, false
+	}
+	cache := AsSingleChannelCache(cacheValue)
+	return cache, cache != nil
 }
 
 // TODO: let the cache manage its own stats internally (maybe take an updateStats call)
 func (c *channelCacheImpl) MaxCacheSize() int {
-	c.cacheLock.RLock()
+
 	maxCacheSize := 0
-	for _, channelCache := range c.channelCaches {
+	callback := func(v interface{}) bool {
+		channelCache := AsSingleChannelCache(v)
+		if channelCache == nil {
+			return false
+		}
 		channelSize := channelCache.GetSize()
 		if channelSize > maxCacheSize {
 			maxCacheSize = channelSize
 		}
+		return true
 	}
-	c.cacheLock.RUnlock()
+	c.channelCaches.Range(callback)
+
 	return maxCacheSize
 }
 
@@ -328,13 +353,10 @@ func (c *channelCacheImpl) startCacheCompaction() {
 
 // Compact runs until the number of channels in the cache is lower than compactLowWatermark
 func (c *channelCacheImpl) compactChannelCache() {
-	c.cacheLock.RLock()
-	cacheSize := len(c.channelCaches)
-	c.cacheLock.RUnlock()
-
-	base.Infof(base.KeyCache, "Starting channel cache compaction, size %d", cacheSize)
 	defer c.compactRunning.Set(false)
 
+	cacheSize := c.channelCaches.Length()
+	base.Infof(base.KeyCache, "Starting channel cache compaction, size %d", cacheSize)
 	for {
 		// channelCache close handling
 		select {
@@ -355,24 +377,24 @@ func (c *channelCacheImpl) compactChannelCache() {
 
 		// Iterates through cache entries based on cache size at start of compaction iteration loop.  Intentionally
 		// ignores channels added during compaction iteration
-		inactiveEvictionCandidates := make([]*base.AppendOnlyElement, 0)
-		nruEvictionCandidates := make([]*base.AppendOnlyElement, 0)
-		elem := c.channelCacheList.Front()
+		inactiveEvictionCandidates := make([]*base.AppendOnlyListElement, 0)
+		nruEvictionCandidates := make([]*base.AppendOnlyListElement, 0)
 
-		// channelCacheList is an append only list.  Iterating up to (cacheSize - 1) during compaction ensures that there are no data races
-		// with goroutines appending to the list.
-		for i := 0; i < cacheSize-1; i++ {
+		// channelCacheList is an append only list.  Iterator iterates over the current list at the time the iterator was created.
+		// Ensures that there are no data races with goroutines appending to the list.
+		var elementCount int
+		compactCallback := func(elem *base.AppendOnlyListElement) bool {
+			elementCount++
 			singleChannelCache, ok := elem.Value.(*singleChannelCache)
 			if !ok {
 				base.Warnf(base.KeyCache, "Non-cache entry (%T) found in channel cache during compaction - ignoring", elem.Value)
-				continue
+				return true
 			}
 
 			// If channel marked as recently used, update recently used flag and continue
 			if singleChannelCache.recentlyUsed.IsTrue() {
 				singleChannelCache.recentlyUsed.Set(false)
-				elem = elem.Next()
-				continue
+				return true
 			}
 
 			// Determine whether NRU channel is active, to establish eviction priority
@@ -385,48 +407,40 @@ func (c *channelCacheImpl) compactChannelCache() {
 				nruEvictionCandidates = append(nruEvictionCandidates, elem)
 			}
 
-			// If we have enough inactive channels to reach
+			// If we have enough inactive channels to reach targetCount, terminate range
 			if len(inactiveEvictionCandidates) >= targetEvictCount {
 				base.Tracef(base.KeyCache, "Eviction count target (%d) reached with inactive channels, proceeding to removal", targetEvictCount)
-				break
+				return false
 			}
-			elem = elem.Next()
+			return true
 		}
 
-		evictedCount := 0
-		c.cacheLock.Lock()
-		// Evict inactive
-		for _, elem := range inactiveEvictionCandidates {
-			c._evictChannel(elem)
-			evictedCount++
-			if evictedCount >= targetEvictCount {
-				break
+		c.channelCaches.RangeElements(compactCallback)
+
+		remainingToEvict := targetEvictCount
+
+		// We only want to evict up to targetEvictCount, with priority for inactive channels
+		var evictionElements []*base.AppendOnlyListElement
+		if len(inactiveEvictionCandidates) > targetEvictCount {
+			evictionElements = inactiveEvictionCandidates[0:targetEvictCount]
+			remainingToEvict = 0
+		} else {
+			evictionElements = inactiveEvictionCandidates
+			remainingToEvict = remainingToEvict - len(inactiveEvictionCandidates)
+		}
+
+		if remainingToEvict > 0 {
+			if len(nruEvictionCandidates) > remainingToEvict {
+				evictionElements = append(evictionElements, nruEvictionCandidates[0:remainingToEvict]...)
+				remainingToEvict = 0
+			} else {
+				evictionElements = append(evictionElements, nruEvictionCandidates...)
+				remainingToEvict = remainingToEvict - len(nruEvictionCandidates)
 			}
 		}
 
-		// Evict NRU
-		for _, elem := range nruEvictionCandidates {
-			if evictedCount >= targetEvictCount {
-				break
-			}
-			c._evictChannel(elem)
-			evictedCount++
-		}
+		cacheSize = c.channelCaches.RemoveElements(evictionElements)
 
-		base.Tracef(base.KeyCache, "Compact iteration complete - eviction count: %d (lwm:%d)", evictedCount, c.compactLowWatermark)
-		cacheSize = len(c.channelCaches)
-		c.cacheLock.Unlock()
+		base.Tracef(base.KeyCache, "Compact iteration complete - eviction count: %d (lwm:%d)", len(evictionElements), c.compactLowWatermark)
 	}
-}
-
-// Evicts a channel from the cache based on a channelCacheList element.  Requires caller to hold c.cacheLock.Lock
-func (c *channelCacheImpl) _evictChannel(elem *base.AppendOnlyElement) {
-	value := c.channelCacheList.Remove(elem)
-	channelCache, ok := value.(*singleChannelCache)
-	if !ok {
-		base.Warnf(base.KeyCache, "Unexpected channelCacheList element type: %T", value)
-	}
-	delete(c.channelCaches, channelCache.channelName)
-
-	base.Tracef(base.KeyCache, "Evicted channel %s from cache", channelCache.channelName)
 }

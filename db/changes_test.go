@@ -30,7 +30,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -140,7 +140,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -228,7 +228,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -306,7 +306,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 // Benchmark to validate fix for https://github.com/couchbase/sync_gateway/issues/2428
 func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
-	db, testBucket := setupTestDBWithCacheOptions(b, CacheOptions{})
+	db, testBucket := setupTestDB(b)
 	defer testBucket.Close()
 	defer tearDownTestDB(b, db)
 

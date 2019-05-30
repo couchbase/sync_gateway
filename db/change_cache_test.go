@@ -74,7 +74,10 @@ func logEntry(seq uint64, docid string, revid string, channelNames []string) *Lo
 }
 
 func testBucketContext(tester testing.TB) *DatabaseContext {
-	context, _ := NewDatabaseContext("db", testBucket(tester).Bucket, false, DatabaseContextOptions{})
+	contextOptions := DatabaseContextOptions{}
+	cacheOptions := DefaultCacheOptions()
+	contextOptions.CacheOptions = &cacheOptions
+	context, _ := NewDatabaseContext("db", testBucket(tester).Bucket, false, contextOptions)
 	return context
 }
 
@@ -437,7 +440,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyDCP)()
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -880,7 +883,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		PostQueryCallback: postQueryCallback,
 	}
 
-	db := setupTestLeakyDBWithCacheOptions(t, CacheOptions{}, queryCallbackConfig)
+	db := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 	defer tearDownTestDB(t, db)
 
@@ -1236,10 +1239,10 @@ func TestStopChangeCache(t *testing.T) {
 	}
 
 	// Setup short-wait cache to ensure cleanup goroutines fire often
-	cacheOptions := CacheOptions{
-		CachePendingSeqMaxWait: 10 * time.Millisecond,
-		CachePendingSeqMaxNum:  50,
-		CacheSkippedSeqMaxWait: 1 * time.Second}
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 10 * time.Millisecond
+	cacheOptions.CachePendingSeqMaxNum = 50
+	cacheOptions.CacheSkippedSeqMaxWait = 1 * time.Second
 
 	// Use leaky bucket to have the tap feed 'lose' document 3
 	leakyConfig := base.LeakyBucketConfig{
@@ -1275,13 +1278,9 @@ func TestChannelCacheSize(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
 
-	channelOptions := ChannelCacheOptions{
-		ChannelCacheMinLength: 600,
-		ChannelCacheMaxLength: 600,
-	}
-	options := CacheOptions{
-		ChannelCacheOptions: channelOptions,
-	}
+	options := DefaultCacheOptions()
+	options.ChannelCacheOptions.ChannelCacheMinLength = 600
+	options.ChannelCacheOptions.ChannelCacheMaxLength = 600
 
 	log.Printf("Options in test:%+v", options)
 	db, testBucket := setupTestDBWithCacheOptions(t, options)
@@ -1317,7 +1316,7 @@ func TestChannelCacheSize(t *testing.T) {
 func shortWaitCache() CacheOptions {
 
 	//cacheOptions := DefaultCacheOptions()
-	cacheOptions := CacheOptions{}
+	cacheOptions := DefaultCacheOptions()
 	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
 	cacheOptions.CachePendingSeqMaxNum = 50
 	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
@@ -1507,9 +1506,9 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 		ChannelCacheMinLength: 600,
 		ChannelCacheMaxLength: 600,
 	}
-	options := CacheOptions{
-		ChannelCacheOptions: channelOptions,
-	}
+	options := DefaultCacheOptions()
+	options.ChannelCacheOptions = channelOptions
+
 	db, testBucket := setupTestDBWithCacheOptions(t, options)
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
@@ -1595,7 +1594,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 
 	// Increase the cache max size
-	cacheOptions := CacheOptions{}
+	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelCacheMaxLength = 50
 
 	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
@@ -1647,7 +1646,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 
 	// Increase the cache max size
-	cacheOptions := CacheOptions{}
+	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelCacheMaxLength = 50
 
 	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)

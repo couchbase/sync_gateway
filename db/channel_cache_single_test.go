@@ -431,14 +431,15 @@ func TestChannelCacheStats(t *testing.T) {
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
-	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
+	testStats := &expvar.Map{}
+	cache := newSingleChannelCache(context, "Test1", 0, testStats)
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(1, "doc1", "1-a"), false)
 	cache.addToCache(testLogEntry(2, "doc2", "1-a"), false)
 	cache.addToCache(testLogEntry(3, "doc3", "1-a"), false)
 
-	active, tombstones, removals := getCacheUtilization(context)
+	active, tombstones, removals := getCacheUtilization(testStats)
 	assert.Equal(t, 3, active)
 	assert.Equal(t, 0, tombstones)
 	assert.Equal(t, 0, removals)
@@ -446,21 +447,21 @@ func TestChannelCacheStats(t *testing.T) {
 	// Update keys already present in the cache, shouldn't modify utilization
 	cache.addToCache(testLogEntry(4, "doc1", "2-a"), false)
 	cache.addToCache(testLogEntry(5, "doc2", "2-a"), false)
-	active, tombstones, removals = getCacheUtilization(context)
+	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 3, active)
 	assert.Equal(t, 0, tombstones)
 	assert.Equal(t, 0, removals)
 
 	// Add a removal rev for a doc not previously in the cache
 	cache.addToCache(testLogEntry(6, "doc4", "2-a"), true)
-	active, tombstones, removals = getCacheUtilization(context)
+	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 3, active)
 	assert.Equal(t, 0, tombstones)
 	assert.Equal(t, 1, removals)
 
 	// Add a removal rev for a doc previously in the cache
 	cache.addToCache(testLogEntry(7, "doc1", "3-a"), true)
-	active, tombstones, removals = getCacheUtilization(context)
+	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 2, active)
 	assert.Equal(t, 0, tombstones)
 	assert.Equal(t, 2, removals)
@@ -469,7 +470,7 @@ func TestChannelCacheStats(t *testing.T) {
 	tombstone := testLogEntry(8, "doc5", "2-a")
 	tombstone.SetDeleted()
 	cache.addToCache(tombstone, false)
-	active, tombstones, removals = getCacheUtilization(context)
+	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 2, active)
 	assert.Equal(t, 1, tombstones)
 	assert.Equal(t, 2, removals)
@@ -478,7 +479,7 @@ func TestChannelCacheStats(t *testing.T) {
 	tombstone = testLogEntry(9, "doc6", "2-a")
 	tombstone.SetDeleted()
 	cache.addToCache(tombstone, true)
-	active, tombstones, removals = getCacheUtilization(context)
+	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 2, active)
 	assert.Equal(t, 1, tombstones)
 	assert.Equal(t, 3, removals)
@@ -487,7 +488,7 @@ func TestChannelCacheStats(t *testing.T) {
 	tombstone = testLogEntry(10, "doc2", "3-a")
 	tombstone.SetDeleted()
 	cache.addToCache(tombstone, false)
-	active, tombstones, removals = getCacheUtilization(context)
+	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 1, active)
 	assert.Equal(t, 2, tombstones)
 	assert.Equal(t, 3, removals)
@@ -501,7 +502,8 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
-	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
+	testStats := &expvar.Map{}
+	cache := newSingleChannelCache(context, "Test1", 0, testStats)
 	cache.options.ChannelCacheMaxLength = 5
 
 	// Add more than ChannelCacheMaxLength entries to cache
@@ -516,7 +518,7 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 	cache.addToCache(testLogEntry(9, "doc9", "1-a"), false)
 	cache.addToCache(testLogEntry(10, "doc10", "1-a"), true)
 
-	active, tombstones, removals := getCacheUtilization(context)
+	active, tombstones, removals := getCacheUtilization(testStats)
 	assert.Equal(t, 2, active)
 	assert.Equal(t, 0, tombstones)
 	assert.Equal(t, 3, removals)
@@ -531,7 +533,8 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
-	cache := newSingleChannelCache(context, "Test1", 99, &expvar.Map{})
+	testStats := &expvar.Map{}
+	cache := newSingleChannelCache(context, "Test1", 99, testStats)
 	cache.options.ChannelCacheMaxLength = 15
 
 	// Add 9 entries to cache, 3 of each type
@@ -545,7 +548,7 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	cache.addToCache(et(111, "tombstone3", "2-a"), false)
 	cache.addToCache(testLogEntry(112, "active3", "2-a"), false)
 
-	active, tombstones, removals := getCacheUtilization(context)
+	active, tombstones, removals := getCacheUtilization(testStats)
 	assert.Equal(t, 3, active)
 	assert.Equal(t, 3, tombstones)
 	assert.Equal(t, 3, removals)
@@ -559,7 +562,7 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	prependDuplicatesSet[4] = (testLogEntry(54, "tombstone3", "1-a"))
 	cache.prependChanges(prependDuplicatesSet, 50, 99)
 
-	active, tombstones, removals = getCacheUtilization(context)
+	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 3, active)
 	assert.Equal(t, 3, tombstones)
 	assert.Equal(t, 3, removals)
@@ -578,7 +581,7 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	prependSet[9] = (et(49, "new10", "1-a"))
 	prependSet[10] = (et(50, "active1", "1-a"))
 	cache.prependChanges(prependSet, 40, 50)
-	active, tombstones, removals = getCacheUtilization(context)
+	active, tombstones, removals = getCacheUtilization(testStats)
 	assert.Equal(t, 6, active)
 	assert.Equal(t, 6, tombstones)
 	assert.Equal(t, 3, removals)

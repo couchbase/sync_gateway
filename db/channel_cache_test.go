@@ -13,6 +13,7 @@ import (
 	"expvar"
 	"fmt"
 	"log"
+	"math/rand"
 	"strconv"
 	"sync"
 	"testing"
@@ -51,10 +52,21 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	assert.Equal(t, 4, maxEntries)
 }
 
-func getCacheUtilization(context *DatabaseContext) (active, tombstones, removals int) {
-	active, _ = strconv.Atoi(context.DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsActive).String())
-	tombstones, _ = strconv.Atoi(context.DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsTombstone).String())
-	removals, _ = strconv.Atoi(context.DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsRemoval).String())
+func getCacheUtilization(stats *expvar.Map) (active, tombstones, removals int) {
+	activeStat := stats.Get(base.StatKeyChannelCacheRevsActive)
+	if activeStat != nil {
+		active, _ = strconv.Atoi(activeStat.String())
+	}
+
+	tombstoneStat := stats.Get(base.StatKeyChannelCacheRevsTombstone)
+	if tombstoneStat != nil {
+		tombstones, _ = strconv.Atoi(tombstoneStat.String())
+	}
+
+	removalStat := stats.Get(base.StatKeyChannelCacheRevsRemoval)
+	if removalStat != nil {
+		removals, _ = strconv.Atoi(removalStat.String())
+	}
 	return active, tombstones, removals
 }
 
@@ -89,8 +101,7 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 		cache.addChannelCache(channelName)
 	}
 	// Validate cache size
-	assert.Equal(t, 16, len(cache.channelCaches))
-	assert.Equal(t, 16, cache.channelCacheList.Len())
+	assert.Equal(t, 16, cache.channelCaches.Length())
 
 	// Add another channel to cache
 	cache.addChannelCache("chan_17")
@@ -98,8 +109,7 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	assert.True(t, waitForCompaction(cache), "Compaction didn't complete in expected time")
 
 	// Validate cache size
-	assert.Equal(t, 12, len(cache.channelCaches))
-	assert.Equal(t, 12, cache.channelCacheList.Len())
+	assert.Equal(t, 12, cache.channelCaches.Length())
 
 }
 
@@ -133,8 +143,7 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 		}
 	}
 	// Validate cache size
-	assert.Equal(t, 18, len(cache.channelCaches))
-	assert.Equal(t, 18, cache.channelCacheList.Len())
+	assert.Equal(t, 18, cache.channelCaches.Length())
 
 	log.Printf("adding 19th element to cache...")
 	// Add another channel to cache, should trigger compaction
@@ -143,13 +152,12 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	assert.True(t, waitForCompaction(cache), "Compaction didn't complete in expected time")
 
 	// Validate cache size
-	assert.Equal(t, 10, len(cache.channelCaches))
-	assert.Equal(t, 10, cache.channelCacheList.Len())
+	assert.Equal(t, 10, cache.channelCaches.Length())
 
 	// Validate active channels have been retained in cache
 	for i := 1; i <= 19; i++ {
 		channelName := fmt.Sprintf("chan_%d", i)
-		_, isCached := cache.channelCaches[channelName]
+		_, isCached := cache.channelCaches.Get(channelName)
 		if i%2 == 1 {
 			assert.True(t, isCached, fmt.Sprintf("Channel %s was active, should be retained in cache", channelName))
 		} else {
@@ -191,21 +199,19 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 		}
 	}
 	// Validate cache size
-	assert.Equal(t, 18, len(cache.channelCaches))
-	assert.Equal(t, 18, cache.channelCacheList.Len())
+	assert.Equal(t, 18, cache.channelCaches.Length())
 
 	// Add another channel to cache, should trigger compaction
 	cache.addChannelCache("chan_19")
 	assert.True(t, waitForCompaction(cache), "Compaction didn't complete in expected time")
 
 	// Expect channels 1-10, 11-15 to be evicted, and all to be marked as NRU during compaction
-	assert.Equal(t, 14, len(cache.channelCaches))
-	assert.Equal(t, 14, cache.channelCacheList.Len())
+	assert.Equal(t, 14, cache.channelCaches.Length())
 
 	// Validate recently used channels have been retained in cache
 	for i := 1; i <= 19; i++ {
 		channelName := fmt.Sprintf("chan_%d", i)
-		_, isCached := cache.channelCaches[channelName]
+		_, isCached := cache.channelCaches.Get(channelName)
 		if i <= 10 || i > 15 {
 			assert.True(t, isCached, fmt.Sprintf("Expected %s to be cached", channelName))
 		} else {
@@ -216,9 +222,9 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	// Mark channels 1-5 as recently used
 	for i := 1; i <= 5; i++ {
 		channelName := fmt.Sprintf("chan_%d", i)
-		channelCache, isCached := cache.channelCaches[channelName]
+		cacheElement, isCached := cache.channelCaches.Get(channelName)
 		assert.True(t, isCached, fmt.Sprintf("Expected %s to be cached during recently used update", channelName))
-		channelCache.recentlyUsed.Set(true)
+		AsSingleChannelCache(cacheElement).recentlyUsed.Set(true)
 	}
 
 	// Add new channels to trigger compaction.  At start of compaction, expect:
@@ -242,12 +248,11 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	//   15-19 were recently used (added)
 	//   Need to compact 5 channels to reach LRU
 	// Expect channels 1-5, 11-19 to be retained in cache
-	assert.Equal(t, 14, len(cache.channelCaches))
-	assert.Equal(t, 14, cache.channelCacheList.Len())
+	assert.Equal(t, 14, cache.channelCaches.Length())
 	// Validate recently used channels have been retained in cache
 	for i := 1; i <= 19; i++ {
 		channelName := fmt.Sprintf("chan_%d", i)
-		_, isCached := cache.channelCaches[channelName]
+		_, isCached := cache.channelCaches.Get(channelName)
 		if i <= 5 || i >= 11 {
 			assert.True(t, isCached, fmt.Sprintf("Expected %s to be cached", channelName))
 		} else {
@@ -256,17 +261,18 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	}
 }
 
-// TestChannelCacheHighLoad validates behaviour when channels are continuously added to the cache
-func TestChannelCacheHighLoad(t *testing.T) {
+// TestChannelCacheHighLoadCache validates behaviour under high query load when the total number of channels is lower than
+// or equal to the CompactHighWatermark
+func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
 
 	terminator := make(chan bool)
 	defer close(terminator)
 
 	// Define cache with max channels 20, watermarks 50/90
 	options := DefaultCacheOptions().ChannelCacheOptions
-	options.MaxNumChannels = 20
+	options.MaxNumChannels = 100
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 70
 
@@ -276,56 +282,121 @@ func TestChannelCacheHighLoad(t *testing.T) {
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
 	cache := newChannelCache("testDb", terminator, options, queryHandler, activeChannels, testStats)
 
-	// define channel set, add channels to cache
+	channelCount := 90
+	// define channel set
 	channelNames := make([]string, 0)
-	for i := 1; i <= 1000; i++ {
+	for i := 1; i <= channelCount; i++ {
 		channelName := fmt.Sprintf("chan_%d", i)
 		channelNames = append(channelNames, channelName)
 	}
 
 	// Seed the query handler with a single doc that's in all the channels
+	queryEntry := testLogEntryForChannels(1, channelNames)
+	queryHandler.seedEntries(LogEntries{queryEntry})
+
+	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
 	logEntry := testLogEntryForChannels(1, channelNames)
-	queryHandler.seedEntries(LogEntries{logEntry})
-
-	// Start goroutines to add channels to the cache, query channels
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		for _, channelName := range channelNames {
-			cache.addChannelCache(channelName)
-		}
-		wg.Done()
-	}()
-
-	// Send entry to the cache
 	cache.AddToCache(logEntry)
 
-	getChangesSuccessCount := 0
-	go func() {
-		for _, channelName := range channelNames {
-			options := ChangesOptions{}
-			changes, err := cache.GetChanges(channelName, options)
-			if len(changes) == 1 {
-				getChangesSuccessCount++
+	workerCount := 25
+	getChangesCount := 400
+	// Start [workerCount] goroutines, each issuing [getChangesCount] changes queries against a random channel
+
+	var workerWg sync.WaitGroup
+	for w := 0; w < workerCount; w++ {
+		workerWg.Add(1)
+		go func() {
+			changesSuccessCount := 0
+			for i := 0; i < getChangesCount; i++ {
+				channelNumber := rand.Intn(channelCount) + 1
+				channelName := fmt.Sprintf("chan_%d", channelNumber)
+				options := ChangesOptions{}
+				changes, err := cache.GetChanges(channelName, options)
+				if len(changes) == 1 {
+					changesSuccessCount++
+				}
+				assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %s", channelName))
+				assert.True(t, len(changes) == 1, "Expected one change per channel")
 			}
-			assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %s", channelName))
-			assert.True(t, len(changes) == 1, "Expected one change per channel")
-		}
-		wg.Done()
-	}()
+			assert.Equal(t, changesSuccessCount, getChangesCount)
+			workerWg.Done()
+		}()
 
-	wg.Wait()
+	}
+	workerWg.Wait()
 
-	// Wait for compaction to complete
-	assert.True(t, waitForCompaction(cache), "Compaction didn't complete in expected time")
+	log.Printf("Query count: %d, Changes count:%d", queryHandler.queryCount, workerCount*getChangesCount)
 
-	// Validate cache size
-	assert.Equal(t, 14, len(cache.channelCaches))
-	assert.Equal(t, 14, cache.channelCacheList.Len())
+	// Expect only a single query per channel (cache initialization)
+	assert.Equal(t, queryHandler.queryCount, channelCount)
+}
 
-	log.Printf("GetChanges success count: %d", getChangesSuccessCount)
-	log.Printf("Query count: %d", queryHandler.queryCount)
+// TestChannelCacheHighLoadCache validates behaviour under high query load when the total number of channels is much higher than
+// CompactHighWatermark.  Validates that all changes requests return the expected response, even for queries issued while compaction is
+// active.
+func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
+
+	terminator := make(chan bool)
+	defer close(terminator)
+
+	// Define cache with max channels 20, watermarks 50/90
+	options := DefaultCacheOptions().ChannelCacheOptions
+	options.MaxNumChannels = 100
+	options.CompactHighWatermarkPercent = 90
+	options.CompactLowWatermarkPercent = 70
+
+	testStats := &expvar.Map{}
+	queryHandler := &testQueryHandler{}
+	activeChannelStat := &expvar.Int{}
+	activeChannels := channels.NewActiveChannels(activeChannelStat)
+	cache := newChannelCache("testDb", terminator, options, queryHandler, activeChannels, testStats)
+
+	channelCount := 200
+	// define channel set
+	channelNames := make([]string, 0)
+	for i := 1; i <= channelCount; i++ {
+		channelName := fmt.Sprintf("chan_%d", i)
+		channelNames = append(channelNames, channelName)
+	}
+
+	// Seed the query handler with a single doc that's in all the channels
+	queryEntry := testLogEntryForChannels(1, channelNames)
+	queryHandler.seedEntries(LogEntries{queryEntry})
+
+	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
+	logEntry := testLogEntryForChannels(1, channelNames)
+	cache.AddToCache(logEntry)
+
+	workerCount := 25
+	getChangesCount := 400
+	// Start [workerCount] goroutines, each issuing [getChangesCount] changes queries against a random channel
+
+	var workerWg sync.WaitGroup
+	for w := 0; w < workerCount; w++ {
+		workerWg.Add(1)
+		go func() {
+			changesSuccessCount := 0
+			for i := 0; i < getChangesCount; i++ {
+				channelNumber := rand.Intn(channelCount) + 1
+				channelName := fmt.Sprintf("chan_%d", channelNumber)
+				options := ChangesOptions{}
+				changes, err := cache.GetChanges(channelName, options)
+				if len(changes) == 1 {
+					changesSuccessCount++
+				}
+				assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %s", channelName))
+				assert.True(t, len(changes) == 1, "Expected one change per channel")
+			}
+			assert.Equal(t, changesSuccessCount, getChangesCount)
+			workerWg.Done()
+		}()
+
+	}
+	workerWg.Wait()
+
+	log.Printf("Query count: %d, Changes count:%d", queryHandler.queryCount, workerCount*getChangesCount)
 }
 
 func waitForCompaction(cache *channelCacheImpl) (compactionComplete bool) {
