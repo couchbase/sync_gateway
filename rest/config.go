@@ -477,18 +477,18 @@ func (dbConfig DbConfig) validate() []error {
 			lwm := db.DefaultCompactLowWatermarkPercent
 			if dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil {
 				if *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent < 1 || *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 100 {
-					return fmt.Errorf("valid range for cache.channel_cache.compact_high_watermark_pct is 0-100")
+					errorMessages = append(errorMessages, fmt.Errorf("valid range for cache.channel_cache.compact_high_watermark_pct is 0-100"))
 				}
 				hwm = *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent != nil {
 				if *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent < 1 || *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent > 100 {
-					return fmt.Errorf("valid range for cache.channel_cache.compact_low_watermark_pct is 0-100")
+					errorMessages = append(errorMessages, fmt.Errorf("valid range for cache.channel_cache.compact_low_watermark_pct is 0-100"))
 				}
 				lwm = *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent
 			}
 			if lwm >= hwm {
-				return fmt.Errorf("cache.channel_cache.compact_high_watermark_pct (%v) must be greater than cache.channel_cache.compact_low_watermark_pct (%v)", hwm, lwm)
+				errorMessages = append(errorMessages, fmt.Errorf("cache.channel_cache.compact_high_watermark_pct (%v) must be greater than cache.channel_cache.compact_low_watermark_pct (%v)", hwm, lwm))
 			}
 
 		}
