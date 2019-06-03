@@ -746,7 +746,7 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 		// Special handling for unknown field errors
 		// json.Decode continues to decode the full data into the struct
 		// so it's safe to use even after this error
-		return errors.Wrap(ErrUnknownField, err.Error())
+		return errors.WithMessage(ErrUnknownField, err.Error())
 	}
 	return err
 }
@@ -939,16 +939,16 @@ func ParseCommandLine(runMode SyncGatewayRunMode) (err error) {
 			newConfig, newConfigErr := LoadServerConfig(runMode, filename)
 			if errors.Cause(newConfigErr) == ErrUnknownField {
 				// Delay returning this error so we can continue with other setup
-				err = errors.Wrapf(newConfigErr, "Error reading config file %s", base.UD(filename))
+				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
 			} else if newConfigErr != nil {
-				return errors.Wrapf(newConfigErr, "Error reading config file %s", base.UD(filename))
+				return errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
 			}
 
 			if config == nil {
 				config = newConfig
 			} else {
 				if err := config.MergeWith(newConfig); err != nil {
-					base.Fatalf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
+					return errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
 				}
 			}
 		}
