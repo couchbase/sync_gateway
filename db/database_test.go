@@ -390,7 +390,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.StatsCache().Get(base.StatKeyRevisionCacheHits).(*expvar.Int), db.DatabaseContext.DbStats.StatsCache().Get(base.StatKeyRevisionCacheMisses).(*expvar.Int)
-	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(KDefaultNumCacheShards, KDefaultRevisionCacheCapacity, db.DatabaseContext, cacheHitCounter, cacheMissCounter)
+	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(defaultRevisionCacheShardCount, defaultRevisionCacheSize, db.DatabaseContext, cacheHitCounter, cacheMissCounter)
 	err = db.purgeOldRevisionJSON("doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -475,7 +475,7 @@ func TestGetRemoved(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.StatsCache().Get(base.StatKeyRevisionCacheHits).(*expvar.Int), db.DatabaseContext.DbStats.StatsCache().Get(base.StatKeyRevisionCacheMisses).(*expvar.Int)
-	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(KDefaultNumCacheShards, KDefaultRevisionCacheCapacity, db.DatabaseContext, cacheHitCounter, cacheMissCounter)
+	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(defaultRevisionCacheShardCount, defaultRevisionCacheSize, db.DatabaseContext, cacheHitCounter, cacheMissCounter)
 	err = db.purgeOldRevisionJSON("doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -551,7 +551,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.StatsCache().Get(base.StatKeyRevisionCacheHits).(*expvar.Int), db.DatabaseContext.DbStats.StatsCache().Get(base.StatKeyRevisionCacheMisses).(*expvar.Int)
-	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(KDefaultNumCacheShards, KDefaultRevisionCacheCapacity, db.DatabaseContext, cacheHitCounter, cacheMissCounter)
+	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(defaultRevisionCacheShardCount, defaultRevisionCacheSize, db.DatabaseContext, cacheHitCounter, cacheMissCounter)
 	err = db.purgeOldRevisionJSON("doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 

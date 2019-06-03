@@ -248,28 +248,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	dbContext.terminator = make(chan bool)
 
-	numShards := KDefaultNumCacheShards
-	cacheSize := KDefaultRevisionCacheCapacity
-
-	if options.RevisionCacheOptions != nil {
-		if options.RevisionCacheOptions.ShardCount != nil {
-			numShards = *options.RevisionCacheOptions.ShardCount
-		}
-
-		if options.RevisionCacheOptions.Size != nil {
-			cacheSize = *options.RevisionCacheOptions.Size
-		}
-	}
-
-	revisionCacheOptions := RevisionCacheOptions{
-		Size:       &cacheSize,
-		ShardCount: &numShards,
-	}
-
-	dbContext.Options.RevisionCacheOptions = &revisionCacheOptions
-
 	dbContext.revisionCache = NewRevisionCache(
-		&revisionCacheOptions,
+		dbContext.Options.RevisionCacheOptions,
 		dbContext,
 		dbContext.DbStats.StatsCache(),
 	)
