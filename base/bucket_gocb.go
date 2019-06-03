@@ -1929,7 +1929,7 @@ func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) er
 
 type XattrEnabledDesignDoc struct {
 	*gocb.DesignDocument
-	IndexXattrOnTombstones bool `json:"index_xattr_on_deleted_docs, omitempty"`
+	IndexXattrOnTombstones bool `json:"index_xattr_on_deleted_docs,omitempty"`
 }
 
 // For the view engine to index tombstones, we need to set an explicit property in the design doc.
