@@ -175,7 +175,6 @@ func (h *handler) handleOIDCRefresh() error {
 	if err != nil {
 		base.Infof(base.KeyAuth, "Unsuccessful token refresh: %v", err)
 		return base.HTTPErrorf(http.StatusUnauthorized, "Unable to refresh token.")
-		return err
 	}
 
 	username, sessionID, err := h.createSessionForTrustedIdToken(tokenResponse.IDToken, provider)
