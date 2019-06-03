@@ -484,8 +484,6 @@ func (tbm *TestBucketManager) CreateTestBucket() error {
 		time.Sleep(time.Millisecond * 500)
 
 	}
-
-	return nil
 }
 
 // Generates a string of size int

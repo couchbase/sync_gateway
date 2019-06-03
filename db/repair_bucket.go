@@ -254,9 +254,6 @@ func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
 
 	}
 
-	// Should never get here, due to early returns above
-	return results, nil
-
 }
 
 func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updatedDoc []byte) (backupOrDryRunDocId string, err error) {
