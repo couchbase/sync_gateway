@@ -33,18 +33,18 @@ var _ RevisionCache = &BypassRevisionCache{}
 // NewRevisionCache returns a RevisionCache implementation for the given config options.
 func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore RevisionCacheBackingStore, statsCache *expvar.Map) RevisionCache {
 
-	if cacheOptions.Size == 0 {
+	if *cacheOptions.Size == 0 {
 		bypassStat := statsCache.Get(base.StatKeyRevisionCacheBypass).(*expvar.Int)
 		return NewBypassRevisionCache(backingStore, bypassStat)
 	}
 
 	cacheHitStat := statsCache.Get(base.StatKeyRevisionCacheHits).(*expvar.Int)
 	cacheMissStat := statsCache.Get(base.StatKeyRevisionCacheMisses).(*expvar.Int)
-	if cacheOptions.ShardNumber > 1 {
-		return NewShardedLRURevisionCache(cacheOptions.ShardNumber, cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
+	if *cacheOptions.ShardCount > 1 {
+		return NewShardedLRURevisionCache(*cacheOptions.ShardCount, *cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
 	}
 
-	return NewLRURevisionCache(cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
+	return NewLRURevisionCache(*cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
 }
 
 // RevisionCacheBackingStore is the inteface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.

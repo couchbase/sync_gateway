@@ -20,8 +20,8 @@ type ShardedLRURevisionCache struct {
 }
 
 type RevisionCacheOptions struct {
-	Size        uint32
-	ShardNumber uint16
+	Size       *uint32
+	ShardCount *uint16
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.

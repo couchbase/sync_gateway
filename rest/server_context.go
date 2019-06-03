@@ -418,10 +418,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 		if config.CacheConfig.RevCacheConfig != nil {
 			if config.CacheConfig.RevCacheConfig.Size != nil {
-				revCacheOptions.Size = *config.CacheConfig.RevCacheConfig.Size
+				revCacheOptions.Size = config.CacheConfig.RevCacheConfig.Size
 			}
 			if config.CacheConfig.RevCacheConfig.ShardCount != nil {
-				revCacheOptions.ShardNumber = *config.CacheConfig.RevCacheConfig.ShardCount
+				revCacheOptions.ShardCount = config.CacheConfig.RevCacheConfig.ShardCount
 			}
 		}
 	}
