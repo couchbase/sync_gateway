@@ -121,7 +121,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 	}
 
 	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
-	numDocs := int(revCacheOptions.Size + 1)
+	numDocs := int(*revCacheOptions.Size + 1)
 	var revid string
 	for i := 0; i < numDocs; i++ {
 		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/doc1k_%d", i), doc1k_putDoc)
