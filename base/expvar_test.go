@@ -41,7 +41,7 @@ func TestRollingMeanExpvar(t *testing.T) {
 
 }
 
-func assertMapEntry(t *testing.T, e SequenceTimingExpvar, key string) {
+func assertMapEntry(t *testing.T, e *SequenceTimingExpvar, key string) {
 	assert.True(t, e.timingMap.Get(key) != nil, fmt.Sprintf("Expected map key %s not found", key))
 }
 
@@ -59,9 +59,9 @@ func TestTimingExpvarSequenceOnly(t *testing.T) {
 	e.UpdateBySequence("SequenceBased", 0, 16)
 
 	log.Printf("sequence only: %s", e.String())
-	assertMapEntry(t, e, "seq5:SequenceBased")
-	assertMapEntry(t, e, "seq10:SequenceBased")
-	assertMapEntry(t, e, "seq15:SequenceBased")
+	assertMapEntry(t, &e, "seq5:SequenceBased")
+	assertMapEntry(t, &e, "seq10:SequenceBased")
+	assertMapEntry(t, &e, "seq15:SequenceBased")
 
 }
 
@@ -76,9 +76,9 @@ func TestTimingExpvarRangeOnly(t *testing.T) {
 	e.UpdateBySequenceRange("SequenceBased", 0, 10, 12)
 	e.UpdateBySequenceRange("SequenceBased", 0, 13, 15)
 
-	assertMapEntry(t, e, "seq5:SequenceBased")
-	assertMapEntry(t, e, "seq10:SequenceBased")
-	assertMapEntry(t, e, "seq15:SequenceBased")
+	assertMapEntry(t, &e, "seq5:SequenceBased")
+	assertMapEntry(t, &e, "seq10:SequenceBased")
+	assertMapEntry(t, &e, "seq15:SequenceBased")
 	log.Printf("range only: %s", e.String())
 
 }
@@ -110,11 +110,11 @@ func TestTimingExpvarMixed(t *testing.T) {
 	e.UpdateBySequence("ChangeEntrySent", 0, 18)
 
 	log.Printf("mixed only: %s", e.String())
-	assertMapEntry(t, e, "seq5:Polled")
-	assertMapEntry(t, e, "seq5:ChangesNotified")
-	assertMapEntry(t, e, "seq5:ChangeEntrySent")
-	assertMapEntry(t, e, "seq10:Polled")
-	assertMapEntry(t, e, "seq10:ChangesNotified")
-	assertMapEntry(t, e, "seq10:ChangeEntrySent")
+	assertMapEntry(t, &e, "seq5:Polled")
+	assertMapEntry(t, &e, "seq5:ChangesNotified")
+	assertMapEntry(t, &e, "seq5:ChangeEntrySent")
+	assertMapEntry(t, &e, "seq10:Polled")
+	assertMapEntry(t, &e, "seq10:ChangesNotified")
+	assertMapEntry(t, &e, "seq10:ChangeEntrySent")
 
 }

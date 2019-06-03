@@ -314,7 +314,7 @@ const (
 	TimingStatusInit
 )
 
-func (s SequenceTimingExpvar) String() string {
+func (s *SequenceTimingExpvar) String() string {
 	return s.timingMap.String()
 }
 
