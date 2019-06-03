@@ -30,6 +30,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/pkg/errors"
 
 	// Register profiling handlers (see Go docs)
 	_ "net/http/pprof"
@@ -44,6 +45,9 @@ var (
 
 	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 	defaultLogFilePath string
+
+	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON config with unknown fields
+	ErrUnknownField = errors.New("unrecognized config value")
 )
 
 var config *ServerConfig
@@ -695,21 +699,21 @@ func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 }
 
 // LoadServerConfig loads a ServerConfig from either a JSON file or from a URL
-func LoadServerConfig(runMode SyncGatewayRunMode, path string) (config *ServerConfig, unknownFields error, err error) {
+func LoadServerConfig(runMode SyncGatewayRunMode, path string) (config *ServerConfig, err error) {
 	var dataReadCloser io.ReadCloser
 
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		resp, err := http.Get(path)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		} else if resp.StatusCode >= 300 {
-			return nil, nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
+			return nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
 		}
 		dataReadCloser = resp.Body
 	} else {
 		dataReadCloser, err = os.Open(path)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
@@ -718,22 +722,19 @@ func LoadServerConfig(runMode SyncGatewayRunMode, path string) (config *ServerCo
 }
 
 // readServerConfig returns a validated ServerConfig from an io.Reader
-func readServerConfig(runMode SyncGatewayRunMode, r io.Reader) (config *ServerConfig, unknownFields error, err error) {
-	unknownFields, err = decodeAndSanitiseConfig(r, &config)
-	if err != nil {
-		return nil, nil, err
+func readServerConfig(runMode SyncGatewayRunMode, r io.Reader) (config *ServerConfig, err error) {
+	err = decodeAndSanitiseConfig(r, &config)
+	if config != nil {
+		config.RunMode = runMode
 	}
-
-	config.RunMode = runMode
-
-	return config, unknownFields, nil
+	return config, err
 }
 
 // decodeAndSanitiseConfig will sanitise a ServerConfig or dbConfig from an io.Reader and unmarshal it into the given config parameter.
-func decodeAndSanitiseConfig(r io.Reader, config interface{}) (unknownFields error, err error) {
+func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	b, err := ioutil.ReadAll(r)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	b = base.ConvertBackQuotedStrings(b)
@@ -745,9 +746,9 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (unknownFields err
 		// Special handling for unknown field errors
 		// json.Decode continues to decode the full data into the struct
 		// so it's safe to use even after this error
-		return err, nil
+		return errors.Wrap(ErrUnknownField, err.Error())
 	}
-	return nil, err
+	return err
 }
 
 func (config *ServerConfig) setupAndValidateDatabases() []error {
@@ -906,7 +907,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 }
 
 // Reads the command line flags and the optional config file.
-func ParseCommandLine(runMode SyncGatewayRunMode) (unknownFields error) {
+func ParseCommandLine(runMode SyncGatewayRunMode) (err error) {
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
@@ -934,16 +935,19 @@ func ParseCommandLine(runMode SyncGatewayRunMode) (unknownFields error) {
 		// Read the configuration file(s), if any:
 		for i := 0; i < flag.NArg(); i++ {
 			filename := flag.Arg(i)
-			var c *ServerConfig
-			var err error
-			c, unknownFields, err = LoadServerConfig(runMode, filename)
-			if err != nil {
-				base.Fatalf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
+
+			newConfig, newConfigErr := LoadServerConfig(runMode, filename)
+			if errors.Cause(newConfigErr) == ErrUnknownField {
+				// Delay returning this error so we can continue with other setup
+				err = errors.Wrapf(newConfigErr, "Error reading config file %s", base.UD(filename))
+			} else if newConfigErr != nil {
+				return errors.Wrapf(newConfigErr, "Error reading config file %s", base.UD(filename))
 			}
+
 			if config == nil {
-				config = c
+				config = newConfig
 			} else {
-				if err := config.MergeWith(c); err != nil {
+				if err := config.MergeWith(newConfig); err != nil {
 					base.Fatalf(base.KeyAll, "Error reading config file %s: %v", base.UD(filename), err)
 				}
 			}
@@ -1041,7 +1045,7 @@ func ParseCommandLine(runMode SyncGatewayRunMode) (unknownFields error) {
 		}
 	}
 
-	return unknownFields
+	return err
 }
 
 func SetMaxFileDescriptors(maxP *uint64) {
@@ -1218,7 +1222,13 @@ func ServerMain(runMode SyncGatewayRunMode) {
 	RegisterSignalHandler()
 	defer PanicHandler()()
 
-	unknownFields := ParseCommandLine(runMode)
+	var unknownFieldsErr error
+	err := ParseCommandLine(runMode)
+	if errors.Cause(err) == ErrUnknownField {
+		unknownFieldsErr = err
+	} else if err != nil {
+		base.Fatalf(base.KeyAll, err.Error())
+	}
 
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
@@ -1237,8 +1247,8 @@ func ServerMain(runMode SyncGatewayRunMode) {
 
 	// If we got an unknownFields error when reading the config
 	// log and exit now we've tried setting up the logging.
-	if unknownFields != nil {
-		base.Fatalf(base.KeyAll, unknownFields.Error())
+	if unknownFieldsErr != nil {
+		base.Fatalf(base.KeyAll, unknownFieldsErr.Error())
 	}
 
 	// Execute any deferred warnings from setup.

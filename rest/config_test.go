@@ -57,13 +57,10 @@ func TestReadServerConfig(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
 			buf := bytes.NewBufferString(test.config)
-			_, unknownFields, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+			_, err := readServerConfig(SyncGatewayRunModeNormal, buf)
 			if test.err == "" {
 				assert.NoError(tt, err, "unexpected error for test config")
 			} else {
-				if err == nil && unknownFields != nil {
-					err = unknownFields
-				}
 				assert.EqualError(tt, err, test.err, "expecting error for test config")
 			}
 		})
@@ -100,7 +97,7 @@ func TestConfigValidation(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
 			buf := bytes.NewBufferString(test.config)
-			config, _, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+			config, err := readServerConfig(SyncGatewayRunModeNormal, buf)
 			assert.NoError(tt, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
@@ -142,7 +139,7 @@ func TestLoadServerConfigExamples(t *testing.T) {
 		}
 
 		t.Run(configPath, func(tt *testing.T) {
-			_, _, err := LoadServerConfig(runMode, configPath)
+			_, err := LoadServerConfig(runMode, configPath)
 			assert.NoError(tt, err, "unexpected error validating example config")
 		})
 

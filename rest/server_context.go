@@ -11,7 +11,6 @@ package rest
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -26,6 +25,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/pkg/errors"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -997,13 +997,9 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	var config DbConfig
 	defer resp.Body.Close()
 
-	unknownFields, err := decodeAndSanitiseConfig(resp.Body, &config)
-	if err != nil {
+	if err := decodeAndSanitiseConfig(resp.Body, &config); err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,
 			"Bad response from config server: %v", err)
-	} else if unknownFields != nil {
-		return nil, base.HTTPErrorf(http.StatusBadGateway,
-			"Unknown fields from config server: %v", unknownFields)
 	}
 
 	if err = config.setup(dbName); err != nil {
