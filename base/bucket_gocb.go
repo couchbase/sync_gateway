@@ -2689,6 +2689,8 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 	case TestBucket:
 		gocbBucket, ok := typedBucket.Bucket.(*CouchbaseBucketGoCB)
 		return gocbBucket, ok
+	case *LeakyBucket:
+		return AsGoCBBucket(typedBucket.GetUnderlyingBucket())
 	default:
 		return nil, false
 	}
