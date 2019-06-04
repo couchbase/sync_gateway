@@ -36,7 +36,7 @@ func TestReadServerConfig(t *testing.T) {
 		{
 			name:   "unknown field",
 			config: `{"invalid": true}`,
-			err:    `json: unknown field "invalid"`,
+			err:    `json: unknown field "invalid": unrecognized config value`,
 		},
 		{
 			name:   "incorrect type",
