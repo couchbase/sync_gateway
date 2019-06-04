@@ -43,7 +43,7 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore RevisionC
 
 	// If cacheOptions is not passed in, use defaults
 	if cacheOptions == nil {
-		cacheOptions = &RevisionCacheOptions{Size: defaultRevisionCacheSize, ShardCount: defaultRevisionCacheShardCount}
+		cacheOptions = DefaultRevisionCacheOptions()
 	}
 
 	if cacheOptions.Size == 0 {
