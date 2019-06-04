@@ -56,6 +56,10 @@ func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
 
 var _ N1QLBucket = &LeakyBucket{}
 
+func (b *LeakyBucket) GetUnderlyingBucket() Bucket {
+	return b.bucket
+}
+
 func (b *LeakyBucket) GetName() string {
 	return b.bucket.GetName()
 }
