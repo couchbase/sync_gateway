@@ -20,8 +20,8 @@ type ActiveChannels struct {
 	countStat     *expvar.Int       // Channel count stat
 }
 
-func NewActiveChannels(activeChannelCountStat *expvar.Int) ActiveChannels {
-	return ActiveChannels{
+func NewActiveChannels(activeChannelCountStat *expvar.Int) *ActiveChannels {
+	return &ActiveChannels{
 		channelCounts: make(map[string]uint64),
 		countStat:     activeChannelCountStat,
 	}

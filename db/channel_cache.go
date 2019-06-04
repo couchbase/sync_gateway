@@ -78,7 +78,7 @@ type channelCacheImpl struct {
 	compactHighWatermark int                       // High Watermark for cache compaction
 	compactLowWatermark  int                       // Low Watermark for cache compaction
 	compactRunning       base.AtomicBool           // Whether compact is currently running
-	activeChannels       channels.ActiveChannels   // Active channel handler
+	activeChannels       *channels.ActiveChannels  // Active channel handler
 	statsMap             *expvar.Map               // Map used for cache stats
 
 }
@@ -87,7 +87,7 @@ func NewChannelCacheForContext(terminator chan bool, options ChannelCacheOptions
 	return newChannelCache(context.Name, terminator, options, context, context.activeChannels, context.DbStats.StatsCache())
 }
 
-func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOptions, queryHandler ChannelQueryHandler, activeChannels channels.ActiveChannels, statsMap *expvar.Map) *channelCacheImpl {
+func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOptions, queryHandler ChannelQueryHandler, activeChannels *channels.ActiveChannels, statsMap *expvar.Map) *channelCacheImpl {
 
 	channelCache := &channelCacheImpl{
 		queryHandler:         queryHandler,
