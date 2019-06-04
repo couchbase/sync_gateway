@@ -681,3 +681,10 @@ func TestEncodeDecodeCompatVersion(t *testing.T) {
 		assert.Equal(t, test.minor, minor, "Minor")
 	}
 }
+
+func TestDefaultHTTPTransport(t *testing.T) {
+	assert.NotPanics(t, func() {
+		transport := DefaultHTTPTransport()
+		assert.NotNil(t, transport, "Returned DefaultHTTPTransport was unexpectedly nil")
+	})
+}
