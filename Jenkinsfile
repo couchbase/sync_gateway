@@ -150,8 +150,6 @@ pipeline {
                     }
                 }
                 stage('go vet') {
-                    // TODO: Remove skip
-                    when { expression { return false } }
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                             warnError(message: "go vet failed") {
