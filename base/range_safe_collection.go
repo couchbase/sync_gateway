@@ -261,14 +261,13 @@ func (l *AppendOnlyList) remove(e *AppendOnlyListElement) *AppendOnlyListElement
 // Remove removes e from l if e is an element of list l.
 // It returns the element value e.Value.
 // The element must not be nil.
-// Returns an error if called while the list has active iterators.
-func (l *AppendOnlyList) Remove(e *AppendOnlyListElement) (interface{}, error) {
+func (l *AppendOnlyList) Remove(e *AppendOnlyListElement) interface{} {
 	if e.list == l {
 		// if e.list == l, l must have been initialized when e was inserted
 		// in l or l == nil (e is a zero Element) and l.remove will crash
 		l.remove(e)
 	}
-	return e.Value, nil
+	return e.Value
 }
 
 // PushBack inserts a new element e with value v at the back of list l and returns e.

@@ -289,7 +289,6 @@ func AsSingleChannelCache(cacheValue interface{}) *singleChannelCache {
 //	//  step 3 blocks until step 4 is complete (and so sees the channel as active)
 func (c *channelCacheImpl) addChannelCache(channelName string) *singleChannelCache {
 
-	// TODO: Lock seqLock instead of cacheLock
 	c.seqLock.Lock()
 
 	// Everything after the current high sequence will be added to the cache via the feed
@@ -322,7 +321,6 @@ func (c *channelCacheImpl) getActiveChannelCache(channelName string) (*singleCha
 	return cache, cache != nil
 }
 
-// TODO: let the cache manage its own stats internally (maybe take an updateStats call)
 func (c *channelCacheImpl) MaxCacheSize() int {
 
 	maxCacheSize := 0
@@ -440,6 +438,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 		}
 
 		cacheSize = c.channelCaches.RemoveElements(evictionElements)
+		c.statsMap.Add(base.StatKeyChannelCacheNumChannels, -1*int64(len(evictionElements)))
 
 		base.Tracef(base.KeyCache, "Compact iteration complete - eviction count: %d (lwm:%d)", len(evictionElements), c.compactLowWatermark)
 	}
