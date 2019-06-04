@@ -7,6 +7,14 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+const (
+	// defaultRevisionCacheSize is the number of recently-accessed doc revisions to cache in RAM
+	defaultRevisionCacheSize = 5000
+
+	// defaultRevisionCacheShardCount is the default number of shards to use for the revision cache
+	defaultRevisionCacheShardCount = 8
+)
+
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
 	// Get returns the given revision, and stores if not already cached
@@ -33,6 +41,11 @@ var _ RevisionCache = &BypassRevisionCache{}
 // NewRevisionCache returns a RevisionCache implementation for the given config options.
 func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore RevisionCacheBackingStore, statsCache *expvar.Map) RevisionCache {
 
+	// If cacheOptions is not passed in, use defaults
+	if cacheOptions == nil {
+		cacheOptions = DefaultRevisionCacheOptions()
+	}
+
 	if cacheOptions.Size == 0 {
 		bypassStat := statsCache.Get(base.StatKeyRevisionCacheBypass).(*expvar.Int)
 		return NewBypassRevisionCache(backingStore, bypassStat)
@@ -40,11 +53,23 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore RevisionC
 
 	cacheHitStat := statsCache.Get(base.StatKeyRevisionCacheHits).(*expvar.Int)
 	cacheMissStat := statsCache.Get(base.StatKeyRevisionCacheMisses).(*expvar.Int)
-	if cacheOptions.ShardNumber > 1 {
-		return NewShardedLRURevisionCache(cacheOptions.ShardNumber, cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
+	if cacheOptions.ShardCount > 1 {
+		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
 	}
 
 	return NewLRURevisionCache(cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
+}
+
+type RevisionCacheOptions struct {
+	Size       uint32
+	ShardCount uint16
+}
+
+func DefaultRevisionCacheOptions() *RevisionCacheOptions {
+	return &RevisionCacheOptions{
+		Size:       defaultRevisionCacheSize,
+		ShardCount: defaultRevisionCacheShardCount,
+	}
 }
 
 // RevisionCacheBackingStore is the inteface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.

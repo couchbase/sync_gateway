@@ -386,7 +386,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Set cache properties, if present
 	cacheOptions := db.CacheOptions{}
-	revCacheOptions := db.RevisionCacheOptions{}
+	revCacheOptions := db.DefaultRevisionCacheOptions()
 	if config.CacheConfig != nil {
 		if config.CacheConfig.ChannelCacheConfig != nil {
 			if config.CacheConfig.ChannelCacheConfig.MaxNumPending != nil {
@@ -421,7 +421,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				revCacheOptions.Size = *config.CacheConfig.RevCacheConfig.Size
 			}
 			if config.CacheConfig.RevCacheConfig.ShardCount != nil {
-				revCacheOptions.ShardNumber = *config.CacheConfig.RevCacheConfig.ShardCount
+				revCacheOptions.ShardCount = *config.CacheConfig.RevCacheConfig.ShardCount
 			}
 		}
 	}
@@ -631,7 +631,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
-		RevisionCacheOptions:      &revCacheOptions,
+		RevisionCacheOptions:      revCacheOptions,
 		IndexOptions:              channelIndexOptions,
 		SequenceHashOptions:       sequenceHashOptions,
 		OldRevExpirySeconds:       oldRevExpirySeconds,

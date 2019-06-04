@@ -10,18 +10,9 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// Number of recently-accessed doc revisions to cache in RAM
-var KDefaultRevisionCacheCapacity uint32 = 5000
-var KDefaultNumCacheShards uint16 = 8
-
 type ShardedLRURevisionCache struct {
 	caches    []*LRURevisionCache
 	numShards uint16
-}
-
-type RevisionCacheOptions struct {
-	Size        uint32
-	ShardNumber uint16
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
