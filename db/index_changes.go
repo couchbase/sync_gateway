@@ -656,10 +656,10 @@ func (db *Database) vectorChangesFeed(channel string, options ChangesOptions, se
 	case ChannelFeedType_ActiveBackfill:
 		// In-progress backfill for this channel
 		// Backfill position: (vb,seq) position in the backfill. e.g. [0,0] if we're just starting the backfill, [vb,seq] if we're midway through.
-		backfillPosition := base.VbSeq{options.Since.vbNo, options.Since.Seq}
+		backfillPosition := base.VbSeq{Vb: options.Since.vbNo, Seq: options.Since.Seq}
 
 		// Trigger position: (vb,seq) of the document that triggered this backfill (e.g. access granting doc or user doc)
-		triggerPosition := base.VbSeq{options.Since.TriggeredByVbNo, options.Since.TriggeredBy}
+		triggerPosition := base.VbSeq{Vb: options.Since.TriggeredByVbNo, Seq: options.Since.TriggeredBy}
 
 		backfillFrom, backfillTo := calculateBackfillRange(backfillPosition, triggerPosition, options.Since.TriggeredByClock)
 		backfillLog, err = changeIndex.reader.GetChangesForRange(channel, backfillFrom, backfillTo, options.Limit, options.ActiveOnly)

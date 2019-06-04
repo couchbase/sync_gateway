@@ -229,7 +229,7 @@ func (user *userImpl) CanSeeChannelSinceVbSeq(channel string, hashFunction VBHas
 		userDocVbno := user.getVbNo(hashFunction)
 		seq.VbNo = &userDocVbno
 	}
-	return base.VbSeq{*seq.VbNo, seq.Sequence}, true
+	return base.VbSeq{Vb: *seq.VbNo, Seq: seq.Sequence}, true
 }
 
 func (user *userImpl) getVbNo(hashFunction VBHashFunction) uint16 {
@@ -401,7 +401,7 @@ func (user *userImpl) InheritedChannelsForClock(sinceClock base.SequenceClock) (
 			}
 
 			rolePreSince, grantSeq, secondarySeq := CalculateRoleChannelGrant(roleSince.AsVbSeq(), roleChannelSince.AsVbSeq(), sinceClock)
-			roleGrantingSeq := ch.VbSequence{&grantSeq.Vb, grantSeq.Seq}
+			roleGrantingSeq := ch.VbSequence{VbNo: &grantSeq.Vb, Sequence: grantSeq.Seq}
 			secondaryTriggerSeq := ch.VbSequence{}
 			if secondarySeq.Seq > 0 {
 				secondaryTriggerSeq.VbNo = &secondarySeq.Vb
@@ -468,7 +468,7 @@ func (user *userImpl) CanSeeChannelSinceForClock(channel string, sinceClock base
 			if !isValid {
 				continue
 			}
-			roleGrantSince := base.VbSeq{*roleGrant.VbNo, roleGrant.Sequence}
+			roleGrantSince := base.VbSeq{Vb: *roleGrant.VbNo, Seq: roleGrant.Sequence}
 			preSince, grantingSeq, roleSecondaryTrigger := CalculateRoleChannelGrant(roleGrantSince, roleChannelSince, sinceClock)
 			if preSince {
 				minPreSince.UpdateIfEarlier(grantingSeq)

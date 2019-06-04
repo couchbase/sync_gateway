@@ -23,20 +23,18 @@ func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
 	cbProvider := OIDCProvider{
 		Name: "Couchbase",
 	}
-	cbProviderDefault := cbProvider
-	cbProviderDefault.IsDefault = true
+	cbProviderDefault := OIDCProvider{
+		Name:      "Couchbase",
+		IsDefault: true,
+	}
 
 	glProvider := OIDCProvider{
 		Name: "Gügul",
 	}
-	glProviderDefault := glProvider
-	glProviderDefault.IsDefault = true
 
 	fbProvider := OIDCProvider{
 		Name: "Fæsbuk",
 	}
-	fbProviderDefault := fbProvider
-	fbProviderDefault.IsDefault = true
 
 	tests := []struct {
 		Name             string

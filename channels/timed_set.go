@@ -72,7 +72,7 @@ func (vbs VbSequence) AsVbSeq() base.VbSeq {
 	if vbs.VbNo == nil {
 		return base.VbSeq{}
 	}
-	return base.VbSeq{*vbs.VbNo, vbs.Sequence}
+	return base.VbSeq{Vb: *vbs.VbNo, Seq: vbs.Sequence}
 }
 
 // Compares to other VbSequence.  If EITHER vbNo is nil, does a sequence-only

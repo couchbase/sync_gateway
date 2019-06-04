@@ -12,9 +12,10 @@ package db
 import (
 	"errors"
 	"fmt"
+	"sync"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"sync"
 )
 
 // Implementation of ChannelStorage that stores entries as an append-based list of
@@ -328,7 +329,7 @@ func NewDensePartitionStorageReader(channelName string, partitionNo uint16, inde
 	return storage
 }
 
-func (d DensePartitionStorageReader) String() string {
+func (d *DensePartitionStorageReader) String() string {
 	return fmt.Sprintf("partition: %d channel: %s", d.partitionNo, d.channelName)
 }
 
