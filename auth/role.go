@@ -159,7 +159,7 @@ func (role *roleImpl) CanSeeChannelSinceVbSeq(channel string, hashFunction VBHas
 		roleDocVbNo := role.getVbNo(hashFunction)
 		seq.VbNo = &roleDocVbNo
 	}
-	return base.VbSeq{*seq.VbNo, seq.Sequence}, true
+	return base.VbSeq{Vb: *seq.VbNo, Seq: seq.Sequence}, true
 }
 
 func (role *roleImpl) AuthorizeAllChannels(channels base.Set) error {
