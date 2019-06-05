@@ -89,7 +89,9 @@ const (
 
 	// StatsDatabase
 	StatKeySequenceGetCount        = "sequence_get_count"
+	StatKeySequenceIncrCount       = "sequence_incr_count"
 	StatKeySequenceReservedCount   = "sequence_reserved_count"
+	StatKeySequenceAssignedCount   = "sequence_assigned_count"
 	StatKeySequenceReleasedCount   = "sequence_released_count"
 	StatKeyCrc32cMatchCount        = "crc32c_match_count"
 	StatKeyNumReplicationsActive   = "num_replications_active"
