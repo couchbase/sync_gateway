@@ -29,6 +29,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/go-couchbase"
@@ -1116,4 +1117,20 @@ func ContainsString(s []string, e string) bool {
 		}
 	}
 	return false
+}
+
+type AtomicBool struct {
+	value int32
+}
+
+func (ab *AtomicBool) Set(flag bool) {
+	if flag {
+		atomic.StoreInt32(&ab.value, 1)
+	} else {
+		atomic.StoreInt32(&ab.value, 0)
+	}
+}
+
+func (ab *AtomicBool) IsTrue() bool {
+	return atomic.LoadInt32(&ab.value) == 1
 }

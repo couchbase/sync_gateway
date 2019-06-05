@@ -79,7 +79,7 @@ func makeEntryForDoc(docId string, revId string, vbNo int, sequence int, removal
 }
 
 func makeLogEntry(seq uint64, docid string) *LogEntry {
-	return e(seq, docid, "1-abc")
+	return testLogEntry(seq, docid, "1-abc")
 }
 
 func TestIndexBlockCreation(t *testing.T) {

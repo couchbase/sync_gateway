@@ -11,6 +11,7 @@ package db
 
 import (
 	"errors"
+	"expvar"
 	"fmt"
 	"log"
 	"sync"
@@ -25,7 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func e(seq uint64, docid string, revid string) *LogEntry {
+func testLogEntry(seq uint64, docid string, revid string) *LogEntry {
 	return &LogEntry{
 		Sequence:     seq,
 		DocID:        docid,
@@ -34,9 +35,25 @@ func e(seq uint64, docid string, revid string) *LogEntry {
 	}
 }
 
+// Creates a log entry with key "doc_[sequence]", rev="1-abc" with the specified channels
+func testLogEntryForChannels(seq int, channelNames []string) *LogEntry {
+	channelMap := make(channels.ChannelMap)
+	for _, channelName := range channelNames {
+		channelMap[channelName] = nil
+	}
+
+	return &LogEntry{
+		Sequence:     uint64(seq),
+		DocID:        fmt.Sprintf("doc_%d", seq),
+		RevID:        "1-abc",
+		TimeReceived: time.Now(),
+		Channels:     channelMap,
+	}
+}
+
 // Tombstoned entry
 func et(seq uint64, docid string, revid string) *LogEntry {
-	entry := e(seq, docid, revid)
+	entry := testLogEntry(seq, docid, revid)
 	entry.SetDeleted()
 	return entry
 }
@@ -57,7 +74,10 @@ func logEntry(seq uint64, docid string, revid string, channelNames []string) *Lo
 }
 
 func testBucketContext(tester testing.TB) *DatabaseContext {
-	context, _ := NewDatabaseContext("db", testBucket(tester).Bucket, false, DatabaseContextOptions{})
+	contextOptions := DatabaseContextOptions{}
+	cacheOptions := DefaultCacheOptions()
+	contextOptions.CacheOptions = &cacheOptions
+	context, _ := NewDatabaseContext("db", testBucket(tester).Bucket, false, contextOptions)
 	return context
 }
 
@@ -113,7 +133,8 @@ func TestLateSequenceHandling(t *testing.T) {
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
-	cache := newChannelCache(context, "Test1", 0)
+	cacheStats := &expvar.Map{}
+	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
 	goassert.True(t, cache != nil)
 
 	// Empty late sequence cache should return empty set
@@ -123,8 +144,8 @@ func TestLateSequenceHandling(t *testing.T) {
 	goassert.Equals(t, lastSeq, uint64(0))
 	goassert.True(t, err == nil)
 
-	cache.AddLateSequence(e(5, "foo", "1-a"))
-	cache.AddLateSequence(e(8, "foo2", "1-a"))
+	cache.AddLateSequence(testLogEntry(5, "foo", "1-a"))
+	cache.AddLateSequence(testLogEntry(8, "foo2", "1-a"))
 
 	// Retrieve since 0
 	entries, lastSeq, err = cache.GetLateSequencesSince(0)
@@ -135,8 +156,8 @@ func TestLateSequenceHandling(t *testing.T) {
 	goassert.True(t, err == nil)
 
 	// Add Sequences.  Will trigger purge on old sequences without listeners
-	cache.AddLateSequence(e(2, "foo3", "1-a"))
-	cache.AddLateSequence(e(7, "foo4", "1-a"))
+	cache.AddLateSequence(testLogEntry(2, "foo3", "1-a"))
+	cache.AddLateSequence(testLogEntry(7, "foo4", "1-a"))
 	goassert.Equals(t, len(cache.lateLogs), 3)
 	goassert.Equals(t, cache.lateLogs[0].logEntry.Sequence, uint64(8))
 	goassert.Equals(t, cache.lateLogs[1].logEntry.Sequence, uint64(2))
@@ -154,8 +175,8 @@ func TestLateSequenceHandling(t *testing.T) {
 	goassert.True(t, err == nil)
 
 	// Purge.  We have a listener sitting at seq=7, so purge should only clear previous
-	cache.AddLateSequence(e(15, "foo5", "1-a"))
-	cache.AddLateSequence(e(11, "foo6", "1-a"))
+	cache.AddLateSequence(testLogEntry(15, "foo5", "1-a"))
+	cache.AddLateSequence(testLogEntry(11, "foo6", "1-a"))
 	log.Println("cache.lateLogs:", cache.lateLogs)
 	cache.purgeLateLogEntries()
 	goassert.Equals(t, len(cache.lateLogs), 3)
@@ -178,8 +199,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	context := testBucketContext(t)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
-
-	cache := newChannelCache(context, "Test1", 0)
+	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
 	goassert.True(t, cache != nil)
 
 	// Add Listener before late entries arrive
@@ -190,8 +210,8 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	goassert.True(t, err == nil)
 
 	// Add two entries
-	cache.AddLateSequence(e(5, "foo", "1-a"))
-	cache.AddLateSequence(e(8, "foo2", "1-a"))
+	cache.AddLateSequence(testLogEntry(5, "foo", "1-a"))
+	cache.AddLateSequence(testLogEntry(8, "foo2", "1-a"))
 
 	// Add a second client.  Expect the first listener at [0], and the new one at [2]
 	startSequence = cache.RegisterLateSequenceClient()
@@ -202,7 +222,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	goassert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(1))
 	goassert.Equals(t, cache.lateLogs[2].getListenerCount(), uint64(1))
 
-	cache.AddLateSequence(e(3, "foo3", "1-a"))
+	cache.AddLateSequence(testLogEntry(3, "foo3", "1-a"))
 	// First client requests again.  Expect first client at latest (3), second still at (8).
 	entries, lastSeq1, err = cache.GetLateSequencesSince(lastSeq1)
 	goassert.Equals(t, lastSeq1, uint64(3))
@@ -210,7 +230,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	goassert.Equals(t, cache.lateLogs[3].getListenerCount(), uint64(1))
 
 	// Add another sequence, which triggers a purge.  Ensure we don't lose our listeners
-	cache.AddLateSequence(e(12, "foo4", "1-a"))
+	cache.AddLateSequence(testLogEntry(12, "foo4", "1-a"))
 	goassert.Equals(t, cache.lateLogs[0].getListenerCount(), uint64(1))
 	goassert.Equals(t, cache.lateLogs[1].getListenerCount(), uint64(1))
 
@@ -420,7 +440,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyDCP)()
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -863,7 +883,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		PostQueryCallback: postQueryCallback,
 	}
 
-	db := setupTestLeakyDBWithCacheOptions(t, CacheOptions{}, queryCallbackConfig)
+	db := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 	defer tearDownTestDB(t, db)
 
@@ -1219,10 +1239,10 @@ func TestStopChangeCache(t *testing.T) {
 	}
 
 	// Setup short-wait cache to ensure cleanup goroutines fire often
-	cacheOptions := CacheOptions{
-		CachePendingSeqMaxWait: 10 * time.Millisecond,
-		CachePendingSeqMaxNum:  50,
-		CacheSkippedSeqMaxWait: 1 * time.Second}
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 10 * time.Millisecond
+	cacheOptions.CachePendingSeqMaxNum = 50
+	cacheOptions.CacheSkippedSeqMaxWait = 1 * time.Second
 
 	// Use leaky bucket to have the tap feed 'lose' document 3
 	leakyConfig := base.LeakyBucketConfig{
@@ -1258,13 +1278,9 @@ func TestChannelCacheSize(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
 
-	channelOptions := ChannelCacheOptions{
-		ChannelCacheMinLength: 600,
-		ChannelCacheMaxLength: 600,
-	}
-	options := CacheOptions{
-		ChannelCacheOptions: channelOptions,
-	}
+	options := DefaultCacheOptions()
+	options.ChannelCacheOptions.ChannelCacheMinLength = 600
+	options.ChannelCacheOptions.ChannelCacheMaxLength = 600
 
 	log.Printf("Options in test:%+v", options)
 	db, testBucket := setupTestDBWithCacheOptions(t, options)
@@ -1299,10 +1315,12 @@ func TestChannelCacheSize(t *testing.T) {
 
 func shortWaitCache() CacheOptions {
 
-	return CacheOptions{
-		CachePendingSeqMaxWait: 5 * time.Millisecond,
-		CachePendingSeqMaxNum:  50,
-		CacheSkippedSeqMaxWait: 2 * time.Minute}
+	//cacheOptions := DefaultCacheOptions()
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 5 * time.Millisecond
+	cacheOptions.CachePendingSeqMaxNum = 50
+	cacheOptions.CacheSkippedSeqMaxWait = 2 * time.Minute
+	return cacheOptions
 }
 
 func verifySkippedSequences(list *SkippedSequenceList, sequences []uint64) bool {
@@ -1488,9 +1506,9 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 		ChannelCacheMinLength: 600,
 		ChannelCacheMaxLength: 600,
 	}
-	options := CacheOptions{
-		ChannelCacheOptions: channelOptions,
-	}
+	options := DefaultCacheOptions()
+	options.ChannelCacheOptions = channelOptions
+
 	db, testBucket := setupTestDBWithCacheOptions(t, options)
 	defer tearDownTestDB(t, db)
 	defer testBucket.Close()
@@ -1576,7 +1594,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 
 	// Increase the cache max size
-	cacheOptions := CacheOptions{}
+	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelCacheMaxLength = 50
 
 	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
@@ -1628,7 +1646,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 
 	// Increase the cache max size
-	cacheOptions := CacheOptions{}
+	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelCacheMaxLength = 50
 
 	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)

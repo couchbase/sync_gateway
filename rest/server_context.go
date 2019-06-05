@@ -385,7 +385,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	// Set cache properties, if present
-	cacheOptions := db.CacheOptions{}
+	cacheOptions := db.DefaultCacheOptions()
 	revCacheOptions := db.DefaultRevisionCacheOptions()
 	if config.CacheConfig != nil {
 		if config.CacheConfig.ChannelCacheConfig != nil {
@@ -411,8 +411,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			if config.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil {
 				cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheConfig.ExpirySeconds) * time.Second
 			}
-			if config.CacheConfig.ChannelCacheConfig.MaxNumber != nil {
-				cacheOptions.ChannelCacheMaxNumber = *config.CacheConfig.ChannelCacheConfig.MaxNumber
+			if config.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *config.CacheConfig.ChannelCacheConfig.MaxNumber > 0 {
+				cacheOptions.MaxNumChannels = *config.CacheConfig.ChannelCacheConfig.MaxNumber
+			}
+			if config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil && *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 0 {
+				cacheOptions.CompactHighWatermarkPercent = *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
+			}
+			if config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil && *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 0 {
+				cacheOptions.CompactLowWatermarkPercent = *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
 			}
 		}
 

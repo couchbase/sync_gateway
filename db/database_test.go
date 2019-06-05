@@ -71,7 +71,7 @@ func setupTestDBForShadowing(t *testing.T) *Database {
 // For example, if .Close() is not called on the TestBucket before the test is finished, it will be detected and
 // the next test will fail.
 func setupTestDB(t testing.TB) (*Database, base.TestBucket) {
-	return setupTestDBWithCacheOptions(t, CacheOptions{})
+	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
 
 func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, base.TestBucket) {
@@ -210,7 +210,7 @@ func assertHTTPError(t *testing.T, err error, status int) {
 
 func TestDatabase(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -301,7 +301,7 @@ func TestDatabase(t *testing.T) {
 
 func TestGetDeleted(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -342,7 +342,7 @@ func TestGetDeleted(t *testing.T) {
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemovedAsUser(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -427,7 +427,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemoved(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -503,7 +503,7 @@ func TestGetRemoved(t *testing.T) {
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemovedAndDeleted(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -605,7 +605,7 @@ func TestAllDocsOnly(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyCache)()
 
 	// Lower the log max length so no more than 50 items will be kept.
-	cacheOptions := CacheOptions{}
+	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelCacheMaxLength = 50
 
 	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
@@ -703,7 +703,7 @@ func TestUpdatePrincipal(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges)()
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -736,7 +736,7 @@ func TestUpdatePrincipal(t *testing.T) {
 // Re-apply one of the conflicting changes to make sure that PutExistingRev() treats it as a no-op (SG Issue #3048)
 func TestRepeatedConflict(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -777,7 +777,7 @@ func TestConflicts(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1096,7 +1096,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 
 func TestSyncFnOnPush(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1134,7 +1134,7 @@ func TestSyncFnOnPush(t *testing.T) {
 
 func TestInvalidChannel(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1147,7 +1147,7 @@ func TestInvalidChannel(t *testing.T) {
 
 func TestAccessFunctionValidation(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1181,7 +1181,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 func TestAccessFunctionDb(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1226,7 +1226,7 @@ func TestAccessFunctionWithVbuckets(t *testing.T) {
 	//base.LogKeys["CRUD"] = true
 	//base.LogKeys["Access"] = true
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1284,7 +1284,7 @@ func TestDocIDs(t *testing.T) {
 
 func TestUpdateDesignDoc(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1320,7 +1320,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 
 func TestPostWithExistingId(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1356,7 +1356,7 @@ func TestPostWithExistingId(t *testing.T) {
 // Unit test for issue #507
 func TestPutWithUserSpecialProperty(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1373,7 +1373,7 @@ func TestPutWithUserSpecialProperty(t *testing.T) {
 // Unit test for issue #976
 func TestWithNullPropertyKey(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1389,7 +1389,7 @@ func TestWithNullPropertyKey(t *testing.T) {
 // Unit test for issue #507
 func TestPostWithUserSpecialProperty(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1424,7 +1424,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 
 func TestRecentSequenceHistory(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1487,7 +1487,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 func TestChannelView(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1528,7 +1528,7 @@ func TestConcurrentImport(t *testing.T) {
 		t.Skip("Test only works with a Couchbase server and XATTRS")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -1562,7 +1562,7 @@ func TestViewCustom(t *testing.T) {
 		t.Skip("This test may not pass under non-walrus, if views aren't enabled, as ViewAllDocs won't exist")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 

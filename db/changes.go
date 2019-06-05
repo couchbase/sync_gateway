@@ -923,7 +923,6 @@ func createChangesEntry(docid string, db *Database, options ChangesOptions) *Cha
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 
 	var removedChannels []string
-
 	if deleted, _ := body[BodyDeleted].(bool); deleted {
 		row.Deleted = true
 	}

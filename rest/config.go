@@ -177,40 +177,37 @@ func (c ClusterConfig) CBGTEnabled() bool {
 // JSON object that defines a database configuration within the ServerConfig.
 type DbConfig struct {
 	BucketConfig
-	Name               string                         `json:"name,omitempty"`                 // Database name in REST API (stored as key in JSON)
-	Sync               *string                        `json:"sync,omitempty"`                 // Sync function defines which users can see which data
-	Users              map[string]*db.PrincipalConfig `json:"users,omitempty"`                // Initial user accounts
-	Roles              map[string]*db.PrincipalConfig `json:"roles,omitempty"`                // Initial roles
-	RevsLimit          *uint32                        `json:"revs_limit,omitempty"`           // Max depth a document's revision tree can grow to
-	AutoImport         interface{}                    `json:"import_docs,omitempty"`          // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
-	ImportFilter       *string                        `json:"import_filter,omitempty"`        // Filter function (import)
-	ImportBackupOldRev bool                           `json:"import_backup_old_rev"`          // Whether import should attempt to create a temporary backup of the previous revision body, when available.
-	Shadow             *ShadowConfig                  `json:"shadow,omitempty"`               // This is where the ShadowConfig used to be.  If found, it should throw an error
-	EventHandlers      interface{}                    `json:"event_handlers,omitempty"`       // Event handlers (webhook)
-	FeedType           string                         `json:"feed_type,omitempty"`            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
-	AllowEmptyPassword bool                           `json:"allow_empty_password,omitempty"` // Allow empty passwords?  Defaults to false
-	CacheConfig        *CacheConfig                   `json:"cache,omitempty"`                // Cache settings
-	ChannelIndex       *ChannelIndexConfig            `json:"channel_index,omitempty"`        // Channel index settings
-	// ***************************************************************
-	//	Kept around for CBG-356 backwards compatability
-	// ***************************************************************
-	DeprecatedRevCacheSize    *uint32               `json:"rev_cache_size,omitempty"`               // Maximum number of revisions to store in the revision cache
-	StartOffline              bool                  `json:"offline,omitempty"`                      // start the DB in the offline state, defaults to false
-	Unsupported               db.UnsupportedOptions `json:"unsupported,omitempty"`                  // Config for unsupported features
-	Deprecated                DeprecatedOptions     `json:"deprecated,omitempty"`                   // Config for Deprecated features
-	OIDCConfig                *auth.OIDCOptions     `json:"oidc,omitempty"`                         // Config properties for OpenID Connect authentication
-	OldRevExpirySeconds       *uint32               `json:"old_rev_expiry_seconds,omitempty"`       // The number of seconds before old revs are removed from CBS bucket
-	ViewQueryTimeoutSecs      *uint32               `json:"view_query_timeout_secs,omitempty"`      // The view query timeout in seconds
-	LocalDocExpirySecs        *uint32               `json:"local_doc_expiry_secs,omitempty"`        // The _local doc expiry time in seconds
-	EnableXattrs              *bool                 `json:"enable_shared_bucket_access,omitempty"`  // Whether to use extended attributes to store _sync metadata
-	SessionCookieName         string                `json:"session_cookie_name"`                    // Custom per-database session cookie name
-	AllowConflicts            *bool                 `json:"allow_conflicts,omitempty"`              // False forbids creating conflicts
-	NumIndexReplicas          *uint                 `json:"num_index_replicas"`                     // Number of GSI index replicas used for core indexes
-	UseViews                  bool                  `json:"use_views"`                              // Force use of views instead of GSI
-	SendWWWAuthenticateHeader *bool                 `json:"send_www_authenticate_header,omitempty"` // If false, disables setting of 'WWW-Authenticate' header in 401 responses
-	BucketOpTimeoutMs         *uint32               `json:"bucket_op_timeout_ms,omitempty"`         // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
-	DeltaSync                 *DeltaSyncConfig      `json:"delta_sync,omitempty"`                   // Config for delta sync
-	CompactIntervalDays       *float32              `json:"compact_interval_days,omitempty"`        // Interval in days between compaction is automatically ran - 0 means don't run
+	Name                      string                         `json:"name,omitempty"`                         // Database name in REST API (stored as key in JSON)
+	Sync                      *string                        `json:"sync,omitempty"`                         // Sync function defines which users can see which data
+	Users                     map[string]*db.PrincipalConfig `json:"users,omitempty"`                        // Initial user accounts
+	Roles                     map[string]*db.PrincipalConfig `json:"roles,omitempty"`                        // Initial roles
+	RevsLimit                 *uint32                        `json:"revs_limit,omitempty"`                   // Max depth a document's revision tree can grow to
+	AutoImport                interface{}                    `json:"import_docs,omitempty"`                  // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
+	ImportFilter              *string                        `json:"import_filter,omitempty"`                // Filter function (import)
+	ImportBackupOldRev        bool                           `json:"import_backup_old_rev"`                  // Whether import should attempt to create a temporary backup of the previous revision body, when available.
+	Shadow                    *ShadowConfig                  `json:"shadow,omitempty"`                       // This is where the ShadowConfig used to be.  If found, it should throw an error
+	EventHandlers             interface{}                    `json:"event_handlers,omitempty"`               // Event handlers (webhook)
+	FeedType                  string                         `json:"feed_type,omitempty"`                    // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
+	AllowEmptyPassword        bool                           `json:"allow_empty_password,omitempty"`         // Allow empty passwords?  Defaults to false
+	CacheConfig               *CacheConfig                   `json:"cache,omitempty"`                        // Cache settings
+	ChannelIndex              *ChannelIndexConfig            `json:"channel_index,omitempty"`                // Channel index settings
+	DeprecatedRevCacheSize    *uint32                        `json:"rev_cache_size,omitempty"`               // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
+	StartOffline              bool                           `json:"offline,omitempty"`                      // start the DB in the offline state, defaults to false
+	Unsupported               db.UnsupportedOptions          `json:"unsupported,omitempty"`                  // Config for unsupported features
+	Deprecated                DeprecatedOptions              `json:"deprecated,omitempty"`                   // Config for Deprecated features
+	OIDCConfig                *auth.OIDCOptions              `json:"oidc,omitempty"`                         // Config properties for OpenID Connect authentication
+	OldRevExpirySeconds       *uint32                        `json:"old_rev_expiry_seconds,omitempty"`       // The number of seconds before old revs are removed from CBS bucket
+	ViewQueryTimeoutSecs      *uint32                        `json:"view_query_timeout_secs,omitempty"`      // The view query timeout in seconds
+	LocalDocExpirySecs        *uint32                        `json:"local_doc_expiry_secs,omitempty"`        // The _local doc expiry time in seconds
+	EnableXattrs              *bool                          `json:"enable_shared_bucket_access,omitempty"`  // Whether to use extended attributes to store _sync metadata
+	SessionCookieName         string                         `json:"session_cookie_name"`                    // Custom per-database session cookie name
+	AllowConflicts            *bool                          `json:"allow_conflicts,omitempty"`              // False forbids creating conflicts
+	NumIndexReplicas          *uint                          `json:"num_index_replicas"`                     // Number of GSI index replicas used for core indexes
+	UseViews                  bool                           `json:"use_views"`                              // Force use of views instead of GSI
+	SendWWWAuthenticateHeader *bool                          `json:"send_www_authenticate_header,omitempty"` // If false, disables setting of 'WWW-Authenticate' header in 401 responses
+	BucketOpTimeoutMs         *uint32                        `json:"bucket_op_timeout_ms,omitempty"`         // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+	DeltaSync                 *DeltaSyncConfig               `json:"delta_sync,omitempty"`                   // Config for delta sync
+	CompactIntervalDays       *float32                       `json:"compact_interval_days,omitempty"`        //Interval in days between compaction is automatically ran - 0 means don't run
 }
 
 type DeltaSyncConfig struct {
@@ -287,14 +284,16 @@ type RevCacheConfig struct {
 }
 
 type ChannelCacheConfig struct {
-	MaxNumber         *int    `json:"max_number,omitempty"`          // Maximum number of channel caches which will exist at any one point
-	MaxWaitPending    *uint32 `json:"max_wait_pending,omitempty"`    // Max wait for pending sequence before skipping
-	MaxNumPending     *int    `json:"max_num_pending,omitempty"`     // Max number of pending sequences before skipping
-	MaxWaitSkipped    *uint32 `json:"max_wait_skipped,omitempty"`    // Max wait for skipped sequence before abandoning
-	EnableStarChannel *bool   `json:"enable_star_channel,omitempty"` // Enable star channel
-	MaxLength         *int    `json:"max_length,omitempty"`          // Maximum number of entries maintained in cache per channel
-	MinLength         *int    `json:"min_length,omitempty"`          // Minimum number of entries maintained in cache per channel
-	ExpirySeconds     *int    `json:"expiry_seconds,omitempty"`      // Time (seconds) to keep entries in cache beyond the minimum retained
+	MaxNumber            *int    `json:"max_number,omitempty"`                 // Maximum number of channel caches which will exist at any one point
+	HighWatermarkPercent *int    `json:"compact_high_watermark_pct,omitempty"` // High watermark for channel cache eviction (percent)
+	LowWatermarkPercent  *int    `json:"compact_low_watermark_pct,omitempty"`  // High watermark for channel cache eviction (percent)
+	MaxWaitPending       *uint32 `json:"max_wait_pending,omitempty"`           // Max wait for pending sequence before skipping
+	MaxNumPending        *int    `json:"max_num_pending,omitempty"`            // Max number of pending sequences before skipping
+	MaxWaitSkipped       *uint32 `json:"max_wait_skipped,omitempty"`           // Max wait for skipped sequence before abandoning
+	EnableStarChannel    *bool   `json:"enable_star_channel,omitempty"`        // Enable star channel
+	MaxLength            *int    `json:"max_length,omitempty"`                 // Maximum number of entries maintained in cache per channel
+	MinLength            *int    `json:"min_length,omitempty"`                 // Minimum number of entries maintained in cache per channel
+	ExpirySeconds        *int    `json:"expiry_seconds,omitempty"`             // Time (seconds) to keep entries in cache beyond the minimum retained
 }
 
 type ChannelIndexConfig struct {
@@ -472,6 +471,26 @@ func (dbConfig DbConfig) validate() []error {
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber < 1 {
 				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_number is 1"))
 			}
+
+			// Compact watermark validation
+			hwm := db.DefaultCompactHighWatermarkPercent
+			lwm := db.DefaultCompactLowWatermarkPercent
+			if dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil {
+				if *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent < 1 || *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 100 {
+					errorMessages = append(errorMessages, fmt.Errorf("valid range for cache.channel_cache.compact_high_watermark_pct is 0-100"))
+				}
+				hwm = *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
+			}
+			if dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent != nil {
+				if *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent < 1 || *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent > 100 {
+					errorMessages = append(errorMessages, fmt.Errorf("valid range for cache.channel_cache.compact_low_watermark_pct is 0-100"))
+				}
+				lwm = *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent
+			}
+			if lwm >= hwm {
+				errorMessages = append(errorMessages, fmt.Errorf("cache.channel_cache.compact_high_watermark_pct (%v) must be greater than cache.channel_cache.compact_low_watermark_pct (%v)", hwm, lwm))
+			}
+
 		}
 
 		if dbConfig.CacheConfig.RevCacheConfig != nil {

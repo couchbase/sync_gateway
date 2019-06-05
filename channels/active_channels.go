@@ -20,8 +20,8 @@ type ActiveChannels struct {
 	countStat     *expvar.Int       // Channel count stat
 }
 
-func NewActiveChannels(activeChannelCountStat *expvar.Int) ActiveChannels {
-	return ActiveChannels{
+func NewActiveChannels(activeChannelCountStat *expvar.Int) *ActiveChannels {
+	return &ActiveChannels{
 		channelCounts: make(map[string]uint64),
 		countStat:     activeChannelCountStat,
 	}
@@ -59,11 +59,23 @@ func (ac *ActiveChannels) DecrChannels(chans TimedSet) {
 	ac.lock.Unlock()
 }
 
-func (ac *ActiveChannels) isActive(channelName string) bool {
+func (ac *ActiveChannels) IsActive(channelName string) bool {
 	ac.lock.RLock()
 	_, ok := ac.channelCounts[channelName]
 	ac.lock.RUnlock()
 	return ok
+}
+
+func (ac *ActiveChannels) IncrChannel(channelName string) {
+	ac.lock.Lock()
+	ac._incr(channelName)
+	ac.lock.Unlock()
+}
+
+func (ac *ActiveChannels) DecrChannel(channelName string) {
+	ac.lock.Lock()
+	ac._decr(channelName)
+	ac.lock.Unlock()
 }
 
 func (ac *ActiveChannels) _incr(channelName string) {

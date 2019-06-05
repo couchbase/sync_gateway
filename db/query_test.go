@@ -18,7 +18,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 		t.Skip("This test is walrus-only (requires views)")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -60,7 +60,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -182,7 +182,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -266,7 +266,7 @@ func TestCoveringQueries(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -313,7 +313,7 @@ func TestAllDocsQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -376,7 +376,7 @@ func TestAccessQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -427,7 +427,7 @@ func TestRoleAccessQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 

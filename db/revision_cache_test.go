@@ -164,7 +164,7 @@ func TestBackingStore(t *testing.T) {
 // Ensure internal properties aren't being incorrectly stored in revision cache
 func TestRevisionCacheInternalProperties(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -212,7 +212,7 @@ func TestBypassRevisionCache(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -273,7 +273,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
@@ -316,7 +316,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	db, testBucket := setupTestDBWithCacheOptions(t, CacheOptions{})
+	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 

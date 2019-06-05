@@ -1775,6 +1775,63 @@ func TestDcpBackfill(t *testing.T) {
 
 }
 
+// Validate SG behaviour if there's an unexpected body on a tombstone
+func TestUnexpectedBodyOnTombstone(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	rt.SendAdminRequest("PUT", "/_logging", `{"Import+":true, "CRUD+":true}`)
+
+	// 1. Create doc via the SDK
+	mobileKey := "TestTombstoneUpdate"
+	mobileBody := make(map[string]interface{})
+	mobileBody["channels"] = "ABC"
+	_, err := bucket.Add(mobileKey, 0, mobileBody)
+	assert.NoError(t, err, "Error writing SDK doc")
+
+	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
+	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	goassert.Equals(t, response.Code, 200)
+	// Extract rev from response for comparison with second GET below
+	var body db.Body
+	json.Unmarshal(response.Body.Bytes(), &body)
+	revId, ok := body[db.BodyRev].(string)
+	assert.True(t, ok, "No rev included in response")
+
+	// Delete the document via the SDK
+	getBody := make(map[string]interface{})
+	cas, err := bucket.Get(mobileKey, &getBody)
+
+	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import, tombstone creation
+	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	goassert.Equals(t, response.Code, 200)
+
+	// Modify the document via the SDK to add the body back
+	xattrVal := make(map[string]interface{})
+	xattrVal["actor"] = "not mobile"
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
+	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
+		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
+		Execute()
+	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
+
+	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
+	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	goassert.Equals(t, response.Code, 200)
+	json.Unmarshal(response.Body.Bytes(), &body)
+	newRevId := body[db.BodyRev].(string)
+	log.Printf("Retrieved via Sync Gateway after non-mobile update, revId:%v", newRevId)
+	goassert.Equals(t, newRevId, revId)
+}
+
 func assertDocProperty(t *testing.T, getDocResponse *TestResponse, propertyName string, expectedPropertyValue interface{}) {
 	var responseBody map[string]interface{}
 	err := json.Unmarshal(getDocResponse.Body.Bytes(), &responseBody)

@@ -24,11 +24,11 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	assert.False(t, ac.isActive("ABC"))
-	assert.False(t, ac.isActive("DEF"))
-	assert.True(t, ac.isActive("GHI"))
-	assert.True(t, ac.isActive("JKL"))
-	assert.True(t, ac.isActive("MNO"))
+	assert.False(t, ac.IsActive("ABC"))
+	assert.False(t, ac.IsActive("DEF"))
+	assert.True(t, ac.IsActive("GHI"))
+	assert.True(t, ac.IsActive("JKL"))
+	assert.True(t, ac.IsActive("MNO"))
 	assert.Equal(t, int64(3), activeChannelStat.Value())
 
 	// Concurrent UpdateChanged
@@ -43,11 +43,11 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	assert.True(t, ac.isActive("ABC"))
-	assert.False(t, ac.isActive("DEF"))
-	assert.False(t, ac.isActive("GHI"))
-	assert.True(t, ac.isActive("JKL"))
-	assert.True(t, ac.isActive("MNO"))
+	assert.True(t, ac.IsActive("ABC"))
+	assert.False(t, ac.IsActive("DEF"))
+	assert.False(t, ac.IsActive("GHI"))
+	assert.True(t, ac.IsActive("JKL"))
+	assert.True(t, ac.IsActive("MNO"))
 	assert.Equal(t, int64(3), activeChannelStat.Value())
 
 }
