@@ -257,7 +257,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.EventMgr = NewEventManager()
 
 	var err error
-	dbContext.sequences, err = newSequenceAllocator(bucket, dbStats)
+	dbContext.sequences, err = newSequenceAllocator(bucket, dbStats.StatsDatabase())
 	if err != nil {
 		return nil, err
 	}
