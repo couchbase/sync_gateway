@@ -205,8 +205,9 @@ const (
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
 func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement string, params interface{}, consistency gocb.ConsistencyMode, adhoc bool) (results gocb.QueryResults, err error) {
 
+	startTime := time.Now()
 	if base.SlowQueryWarningThreshold > 0 {
-		defer base.SlowQueryLog(time.Now(), "N1QL Query(%q)", queryName)
+		defer base.SlowQueryLog(startTime, "N1QL Query(%q)", queryName)
 	}
 
 	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
@@ -220,14 +221,16 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 	}
 
 	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, queryName), 1)
+	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyN1qlQueryTimeExpvarFormat, queryName), time.Since(startTime).Nanoseconds())
 	return results, err
 }
 
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
 func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
 
+	startTime := time.Now()
 	if base.SlowQueryWarningThreshold > 0 {
-		defer base.SlowQueryLog(time.Now(), "View Query (%s.%s)", ddoc, viewName)
+		defer base.SlowQueryLog(startTime, "View Query (%s.%s)", ddoc, viewName)
 	}
 
 	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
@@ -235,6 +238,8 @@ func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string,
 		context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyViewQueryErrorCountExpvarFormat, ddoc, viewName), 1)
 	}
 	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyViewQueryCountExpvarFormat, ddoc, viewName), 1)
+	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyViewQueryTimeExpvarFormat, ddoc, viewName), time.Since(startTime).Nanoseconds())
+
 	return results, err
 }
 

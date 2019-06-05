@@ -163,9 +163,11 @@ const (
 	// StatsGsiViews
 	// Gsi and View stat names are dynamically generated based on the following patterns
 	StatKeyN1qlQueryCountExpvarFormat      = "%s_count"          // Query name
-	StatKeyN1qlQueryErrorCountExpvarFormat = "%s_error_count"    // QueryName
+	StatKeyN1qlQueryErrorCountExpvarFormat = "%s_error_count"    // Query name
+	StatKeyN1qlQueryTimeExpvarFormat       = "%s_time"           // Query name
 	StatKeyViewQueryCountExpvarFormat      = "%s.%s_count"       // Design doc, view
 	StatKeyViewQueryErrorCountExpvarFormat = "%s.%s_error_count" // Design doc, view
+	StatKeyViewQueryTimeExpvarFormat       = "%s.%s_time"        // Design doc, view
 
 	// StatsReplication
 	StatKeySgrNumDocsPushed              = "sgr_num_docs_pushed"

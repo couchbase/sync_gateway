@@ -2,8 +2,9 @@ package db
 
 import (
 	"fmt"
-	"github.com/couchbase/sync_gateway/channels"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/channels"
 
 	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -31,25 +32,29 @@ func TestQueryChannelsStatsView(t *testing.T) {
 
 	// Check expvar prior to test
 	queryCountExpvar := fmt.Sprintf(base.StatKeyViewQueryCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
+	queryTimeExpvar := fmt.Sprintf(base.StatKeyViewQueryTimeExpvarFormat, DesignDocSyncGateway(), ViewChannels)
 	errorCountExpvar := fmt.Sprintf(base.StatKeyViewQueryErrorCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
 
 	channelQueryCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryTimeBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryTimeExpvar))
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
 	results, queryErr := db.QueryChannels("ABC", 0, 10, 100)
 	assert.NoError(t, queryErr, "Query error")
 
-	goassert.Equals(t, countQueryResults(results), 3)
+	assert.Equal(t, 3, countQueryResults(results))
 
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	channelQueryCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryTimeAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryTimeExpvar))
 	channelQueryErrorCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
-	goassert.Equals(t, channelQueryCountBefore+1, channelQueryCountAfter)
-	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
+	assert.Equal(t, channelQueryCountBefore+1, channelQueryCountAfter)
+	assert.True(t, channelQueryTimeAfter > channelQueryTimeBefore, "Channel query time stat didn't change")
+	assert.Equal(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
 
 }
 
@@ -73,25 +78,29 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 
 	// Check expvar prior to test
 	queryCountExpvar := fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, QueryTypeChannels)
+	queryTimeExpvar := fmt.Sprintf(base.StatKeyN1qlQueryTimeExpvarFormat, QueryTypeChannels)
 	errorCountExpvar := fmt.Sprintf(base.StatKeyN1qlQueryErrorCountExpvarFormat, QueryTypeChannels)
 
 	channelQueryCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryTimeBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryTimeExpvar))
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
 	results, queryErr := db.QueryChannels("ABC", 0, 10, 100)
 	assert.NoError(t, queryErr, "Query error")
 
-	goassert.Equals(t, countQueryResults(results), 3)
+	assert.Equal(t, 3, countQueryResults(results))
 
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	channelQueryCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
+	channelQueryTimeAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryTimeExpvar))
 	channelQueryErrorCountAfter := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
-	goassert.Equals(t, channelQueryCountBefore+1, channelQueryCountAfter)
-	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
+	assert.Equal(t, channelQueryCountBefore+1, channelQueryCountAfter)
+	assert.True(t, channelQueryTimeAfter > channelQueryTimeBefore, "Channel query time stat didn't change")
+	assert.Equal(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
 
 }
 
