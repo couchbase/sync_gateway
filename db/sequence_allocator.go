@@ -111,7 +111,10 @@ func (s *sequenceAllocator) releaseSequenceMonitor() {
 func (s *sequenceAllocator) releaseUnusedSequences() {
 	s.mutex.Lock()
 	if s.last < s.max {
-		s.releaseSequenceRange(s.last+1, s.max)
+		err := s.releaseSequenceRange(s.last+1, s.max)
+		if err != nil {
+			base.Warnf(base.KeyAll, "Error returned when releasing sequence range [%d-%d]. Falling back to skipped sequence handling.  Error:%v", s.last+1, s.max, err)
+		}
 	}
 	// Reduce batch size for next incr by the unused amount
 	unusedAmount := s.max - s.last
@@ -219,9 +222,12 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
 	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
+	if err != nil {
+		return err
+	}
 	s.dbStats.Add(base.StatKeySequenceReleasedCount, 1)
 	base.Debugf(base.KeyCRUD, "Released unused sequence #%d", sequence)
-	return err
+	return nil
 }
 
 // releaseSequenceRange writes a binary document with the key _sync:unusedSeqs:fromSeq:toSeq.
@@ -233,7 +239,10 @@ func (s *sequenceAllocator) releaseSequenceRange(fromSequence, toSequence uint64
 	binary.LittleEndian.PutUint64(body[:8], fromSequence)
 	binary.LittleEndian.PutUint64(body[8:16], toSequence)
 	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
+	if err != nil {
+		return err
+	}
 	s.dbStats.Add(base.StatKeySequenceReleasedCount, int64(toSequence-fromSequence+1))
 	base.Debugf(base.KeyCRUD, "Released unused sequences #%d-#%d", fromSequence, toSequence)
-	return err
+	return nil
 }
