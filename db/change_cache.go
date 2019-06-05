@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 )
@@ -334,6 +334,8 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	numRemoved := c.RemoveSkippedSequences(ctx, pendingRemovals)
 	c.context.DbStats.StatsCache().Add(base.StatKeyAbandonedSeqs, numRemoved)
 
+	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c.getMaxStableCached()))
+
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.context.Name))
 	return nil
 }
@@ -519,7 +521,15 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
 	}
-	base.Infof(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, int(feedLatency/time.Millisecond), base.UD(change.DocID), change.RevID)
+
+	millisecondLatency := int(feedLatency / time.Millisecond)
+
+	// If latency is larger than 1 minute or is negative there is likely an issue and this should be clear to the user
+	if millisecondLatency >= 60*1000 || millisecondLatency < 0 {
+		base.Infof(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
+	} else {
+		base.Debugf(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
+	}
 
 	changedChannels := c.processEntry(change)
 	changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
@@ -645,12 +655,14 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	}
 
 	sequence := change.Sequence
+	base.SetIfMax(c.context.DbStats.StatsDatabase(), base.StatKeyHighSeqFeed, int64(change.Sequence))
 
 	if _, found := c.receivedSeqs[sequence]; found {
 		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
 	c.receivedSeqs[sequence] = struct{}{}
+
 	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
 
 	var changedChannels base.Set
@@ -663,6 +675,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
+		c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(numPending))
 		base.Infof(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d) doc %q / %q",
 			sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1, base.UD(change.DocID), change.RevID)
 
@@ -713,7 +726,9 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
 	updatedChannels := c.channelCache.AddToCache(change)
-	base.Infof(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
+	base.Debugf(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
+
+	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c._getMaxStableCached()))
 
 	if !change.TimeReceived.IsZero() {
 		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingCount, 1)
@@ -743,6 +758,9 @@ func (c *changeCache) _addPendingLogs() base.Set {
 			break
 		}
 	}
+
+	c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(len(c.pendingLogs)))
+
 	return changedChannels
 }
 
@@ -827,12 +845,16 @@ func (h *LogPriorityQueue) Pop() interface{} {
 //////// SKIPPED SEQUENCE QUEUE
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
-	return c.skippedSeqs.Remove(x)
+	err := c.skippedSeqs.Remove(x)
+	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
+	return err
 }
 
 // Removes a set of sequences.  Logs warning on removal error, returns count of successfully removed.
 func (c *changeCache) RemoveSkippedSequences(ctx context.Context, sequences []uint64) (removedCount int64) {
-	return c.skippedSeqs.RemoveSequences(ctx, sequences)
+	numRemoved := c.skippedSeqs.RemoveSequences(ctx, sequences)
+	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
+	return numRemoved
 }
 
 func (c *changeCache) WasSkipped(x uint64) bool {
@@ -841,6 +863,7 @@ func (c *changeCache) WasSkipped(x uint64) bool {
 
 func (c *changeCache) PushSkipped(sequence uint64) {
 	c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
+	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
 }
 
 func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint64) {
@@ -864,7 +887,6 @@ func NewSkippedSequenceList() *SkippedSequenceList {
 
 // getOldest returns the sequence of the first element in the skippedSequenceList
 func (l *SkippedSequenceList) getOldest() (oldestSkippedSeq uint64) {
-
 	l.lock.RLock()
 	if firstElement := l.skippedList.Front(); firstElement != nil {
 		value := firstElement.Value.(*SkippedSequence)
@@ -959,4 +981,18 @@ func (l *SkippedSequenceList) getOlderThan(skippedExpiry time.Duration) []uint64
 	}
 	l.lock.RUnlock()
 	return oldSequences
+}
+
+func (c *changeCache) getMaxStableCached() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c._getMaxStableCached()
+}
+
+func (c *changeCache) _getMaxStableCached() uint64 {
+	oldestSkipped := c.getOldestSkippedSequence()
+	if oldestSkipped > 0 {
+		return oldestSkipped - 1
+	}
+	return c.nextSequence - 1
 }

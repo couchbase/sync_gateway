@@ -114,6 +114,7 @@ func (c *channelCacheImpl) updateHighCacheSequence(sequence uint64) {
 	c.cacheLock.Lock()
 	if sequence > c.highCacheSequence {
 		c.highCacheSequence = sequence
+		c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqCached, base.ExpvarUInt64Val(sequence))
 	}
 	c.cacheLock.Unlock()
 }

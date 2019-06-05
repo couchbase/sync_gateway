@@ -1280,7 +1280,7 @@ func (db *Database) updateAndReturnDoc(
 	}
 
 	// Now that the document has successfully been stored, we can make other db changes:
-	base.InfofCtx(db.Ctx, base.KeyCRUD, "Stored doc %q / %q as #%v", base.UD(docid), newRevID, doc.Sequence)
+	base.DebugfCtx(db.Ctx, base.KeyCRUD, "Stored doc %q / %q as #%v", base.UD(docid), newRevID, doc.Sequence)
 
 	// Remove any obsolete non-winning revision bodies
 	doc.deleteRemovedRevisionBodies(db.Bucket)
