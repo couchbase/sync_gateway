@@ -1009,7 +1009,10 @@ func (db *Database) updateAndReturnDoc(
 					if docSequence > doc.Sequence {
 						break
 					} else {
-						db.sequences.releaseSequence(docSequence)
+						releaseErr := db.sequences.releaseSequence(docSequence)
+						if releaseErr != nil {
+							base.Warnf(base.KeyCRUD, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
+						}
 					}
 					// Could add a db.Sequences.nextSequenceGreaterThan(doc.Sequence) to push the work down into the sequence allocator
 					//  - sequence allocator is responsible for releasing unused sequences, could optimize to do that in bulk if needed
