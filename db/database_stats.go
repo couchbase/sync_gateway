@@ -147,6 +147,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyNumReplicationsTotal, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumDocWrites, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDocWritesBytes, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyDocWritesXattrBytes, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumDocReadsRest, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumDocReadsBlip, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDocWritesBytesBlip, base.ExpvarIntVal(0))

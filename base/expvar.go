@@ -99,6 +99,7 @@ const (
 	StatKeyNumDocWrites            = "num_doc_writes"
 	StatKeyNumTombstonesCompacted  = "num_tombstones_compacted"
 	StatKeyDocWritesBytes          = "doc_writes_bytes"
+	StatKeyDocWritesXattrBytes     = "doc_writes_xattr_bytes"
 	StatKeyNumDocReadsRest         = "num_doc_reads_rest"
 	StatKeyNumDocReadsBlip         = "num_doc_reads_blip"
 	StatKeyDocWritesBytesBlip      = "doc_writes_bytes_blip"

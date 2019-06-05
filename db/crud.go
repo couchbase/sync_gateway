@@ -1139,7 +1139,8 @@ func (db *Database) updateAndReturnDoc(
 	// Update the document
 	inConflict := false
 	upgradeInProgress := false
-	docBytes := 0 // Track size of document written, for write stats
+	docBytes := 0   // Track size of document written, for write stats
+	xattrBytes := 0 // Track size of xattr written, for write stats
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
 		_, err = db.Bucket.WriteUpdate(key, expiry, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, syncFuncExpiry *uint32, err error) {
@@ -1198,7 +1199,7 @@ func (db *Database) updateAndReturnDoc(
 
 			// Warn when sync data is larger than a configured threshold
 			if xattrBytesThreshold := db.Options.UnsupportedOptions.WarningThresholds.XattrSize; xattrBytesThreshold != nil {
-				xattrBytes := len(rawXattr)
+				xattrBytes = len(rawXattr)
 				if uint32(xattrBytes) >= *xattrBytesThreshold {
 					db.DbStats.StatsDatabase().Add(base.StatKeyWarnXattrSizeCount, 1)
 					base.WarnfCtx(db.Ctx, base.KeyAll, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(docOut.ID), xattrBytes, *xattrBytesThreshold)
@@ -1246,6 +1247,7 @@ func (db *Database) updateAndReturnDoc(
 
 	db.DbStats.StatsDatabase().Add(base.StatKeyNumDocWrites, 1)
 	db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesBytes, int64(docBytes))
+	db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesXattrBytes, int64(xattrBytes))
 	if inConflict {
 		db.DbStats.StatsDatabase().Add(base.StatKeyConflictWriteCount, 1)
 	}
