@@ -307,6 +307,7 @@ func (c *channelCacheImpl) addChannelCache(channelName string) *singleChannelCac
 
 	if created {
 		c.statsMap.Add(base.StatKeyChannelCacheNumChannels, 1)
+		c.statsMap.Add(base.StatKeyChannelCacheChannelsAdded, 1)
 	}
 
 	return singleChannelCache
@@ -354,10 +355,15 @@ func (c *channelCacheImpl) startCacheCompaction() {
 func (c *channelCacheImpl) compactChannelCache() {
 	defer c.compactRunning.Set(false)
 
+	// Increment compact count on start, as timing is updated per loop iteration
+	c.statsMap.Add(base.StatKeyChannelCacheCompactCount, 1)
+
 	cacheSize := c.channelCaches.Length()
 	base.Infof(base.KeyCache, "Starting channel cache compaction, size %d", cacheSize)
 	for {
 		// channelCache close handling
+		compactIterationStart := time.Now()
+
 		select {
 		case <-c.terminator:
 			base.Debugf(base.KeyCache, "Channel cache compaction stopped due to cache close.")
@@ -418,13 +424,16 @@ func (c *channelCacheImpl) compactChannelCache() {
 
 		remainingToEvict := targetEvictCount
 
+		inactiveEvictCount := 0
 		// We only want to evict up to targetEvictCount, with priority for inactive channels
 		var evictionElements []*base.AppendOnlyListElement
 		if len(inactiveEvictionCandidates) > targetEvictCount {
 			evictionElements = inactiveEvictionCandidates[0:targetEvictCount]
+			inactiveEvictCount = targetEvictCount
 			remainingToEvict = 0
 		} else {
 			evictionElements = inactiveEvictionCandidates
+			inactiveEvictCount = len(inactiveEvictionCandidates)
 			remainingToEvict = remainingToEvict - len(inactiveEvictionCandidates)
 		}
 
@@ -439,8 +448,28 @@ func (c *channelCacheImpl) compactChannelCache() {
 		}
 
 		cacheSize = c.channelCaches.RemoveElements(evictionElements)
-		c.statsMap.Add(base.StatKeyChannelCacheNumChannels, -1*int64(len(evictionElements)))
+
+		// Update eviction stats
+		c.updateEvictionStats(inactiveEvictCount, len(evictionElements), compactIterationStart)
 
 		base.Tracef(base.KeyCache, "Compact iteration complete - eviction count: %d (lwm:%d)", len(evictionElements), c.compactLowWatermark)
 	}
+}
+
+// Updates cache stats
+func (c *channelCacheImpl) updateEvictionStats(inactiveEvicted int, totalEvicted int, startTime time.Time) {
+	// Eviction stats
+	if inactiveEvicted > 0 {
+		c.statsMap.Add(base.StatKeyChannelCacheChannelsEvictedInactive, int64(inactiveEvicted))
+	}
+	nruEvicted := totalEvicted - inactiveEvicted
+	if nruEvicted > 0 {
+		c.statsMap.Add(base.StatKeyChannelCacheChannelsEvictedNRU, int64(nruEvicted))
+	}
+
+	// Compaction time is updated on each iteration (to ensure stat is updated during long-running compact)
+	c.statsMap.Add(base.StatKeyChannelCacheCompactTime, time.Since(startTime).Nanoseconds())
+
+	// Update channel count
+	c.statsMap.Add(base.StatKeyChannelCacheNumChannels, -1*int64(totalEvicted))
 }

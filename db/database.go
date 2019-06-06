@@ -296,7 +296,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.mutationListener.Init(bucket.GetName())
 
 	// Initialize the active channel counter
-	dbContext.activeChannels = channels.NewActiveChannels(dbStats.StatsCache().Get(base.StatKeyChannelCacheActiveChannels).(*expvar.Int))
+	dbContext.activeChannels = channels.NewActiveChannels(dbStats.StatsCache().Get(base.StatKeyActiveChannels).(*expvar.Int))
 
 	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
 	feedMode := uint64(sgbucket.FeedNoBackfill)
