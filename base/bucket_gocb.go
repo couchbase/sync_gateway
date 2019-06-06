@@ -1760,7 +1760,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 			// Retry on cas failure
 		default:
 			// WriteWithXattr already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
-			Warnf(KeyCRUD, "Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), err)
+			Warnf(KeyCRUD, "Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), writeErr)
 			return emptyCas, writeErr
 		}
 
