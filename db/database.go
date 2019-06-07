@@ -440,7 +440,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				db := Database{DatabaseContext: dbContext}
 				NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
 					_, err := db.Compact()
-					base.WarnfCtx(ctx, base.KeyAll, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
+					if err != nil {
+						base.WarnfCtx(ctx, base.KeyAll, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
+					}
 					return nil
 				}, time.Duration(dbContext.Options.CompactInterval)*time.Second, dbContext.terminator)
 			} else {
