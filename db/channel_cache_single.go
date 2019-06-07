@@ -10,6 +10,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/google/uuid"
 )
 
 // Minimizes need to perform GSI/View queries to respond to the changes feed by keeping a per-channel
@@ -84,10 +85,11 @@ type singleChannelCache struct {
 	logs             LogEntries           // Log entries in sequence order
 	validFrom        uint64               // First sequence that logs is valid for, not necessarily the seq number of a change entry.
 	lock             sync.RWMutex         // Controls access to logs, validFrom
-	viewLock         sync.Mutex           // Ensures only one view query is made at a time
+	queryLock        sync.Mutex           // Ensures only one view query is made at a time
 	lateLogs         []*lateLogEntry      // Late arriving LogEntries, stored in the order they were received
 	lastLateSequence uint64               // Used for fast check of whether listener has the latest
 	lateLogLock      sync.RWMutex         // Controls access to lateLogs
+	lateSequenceUUID uuid.UUID            // UUID for late sequence consistency across cache compaction
 	options          *ChannelCacheOptions // Cache size/expiry settings
 	cachedDocIDs     map[string]struct{}  // Set of keys present in the cache.  Used for efficient check for previous revisions on append
 	recentlyUsed     base.AtomicBool      // Atomic recently used flag, used by cache compaction.
@@ -343,11 +345,11 @@ func (c *singleChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, er
 	}
 
 	// Nope, we're going to have to backfill from the view.
-	//** First acquire the _view_ lock (not the regular lock!)
+	//** First acquire the _query_ lock (not the regular lock!)
 	// Track pending queries via StatKeyChannelCachePendingQueries expvar
 	c.statsMap.Add(base.StatKeyChannelCachePendingQueries, 1)
-	c.viewLock.Lock()
-	defer c.viewLock.Unlock()
+	c.queryLock.Lock()
+	defer c.queryLock.Unlock()
 	c.statsMap.Add(base.StatKeyChannelCachePendingQueries, -1)
 
 	// Another goroutine might have gotten the lock first and already queried the view and updated
@@ -661,6 +663,7 @@ func (c *singleChannelCache) initializeLateLogs() {
 		listenerCount: 0,
 	}
 	c.lateLogs = append(c.lateLogs, lateEntry)
+	c.lateSequenceUUID = uuid.New()
 }
 
 // Retrieve late-arriving sequences that have arrived since the previous sequence.  Retrieves set of sequences, and the last

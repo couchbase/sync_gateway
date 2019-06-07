@@ -50,11 +50,6 @@ type ChannelCache interface {
 	// Returns the highest cached sequence, used for changes synchronization
 	GetHighCacheSequence() uint64
 
-	// Late sequence handling
-	GetLateSequencesSince(channelName string, sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error)
-	RegisterLateSequenceClient(channelName string) uint64
-	ReleaseLateSequenceClient(channelName string, currentSeq uint64) bool
-
 	// Access to individual channel cache, intended for testing
 	getSingleChannelCache(channelName string) *singleChannelCache
 }
@@ -223,6 +218,7 @@ func (c *channelCacheImpl) Remove(docIDs []string, startTime time.Time) (count i
 }
 
 func (c *channelCacheImpl) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
+
 	return c.getChannelCache(channelName).GetChanges(options)
 }
 
@@ -230,18 +226,6 @@ func (c *channelCacheImpl) GetCachedChanges(channelName string) []*LogEntry {
 	options := ChangesOptions{Since: SequenceID{Seq: 0}}
 	_, changes := c.getChannelCache(channelName).getCachedChanges(options)
 	return changes
-}
-
-func (c *channelCacheImpl) GetLateSequencesSince(channelName string, sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
-	return c.getChannelCache(channelName).GetLateSequencesSince(sinceSequence)
-}
-
-func (c *channelCacheImpl) RegisterLateSequenceClient(channelName string) uint64 {
-	return c.getChannelCache(channelName).RegisterLateSequenceClient()
-}
-
-func (c *channelCacheImpl) ReleaseLateSequenceClient(channelName string, currentSequence uint64) bool {
-	return c.getChannelCache(channelName).ReleaseLateSequenceClient(currentSequence)
 }
 
 // CleanAgedItems prunes the caches based on age of items. Error returned to fulfill BackgroundTaskFunc signature.
