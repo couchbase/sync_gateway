@@ -847,7 +847,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 //    2. Start a goroutine to issue a changes request
 //        - when view executes, will trigger callback handling above
 //    3. Start a second goroutine to issue another changes request.
-//        - will block waiting for viewLock, which increments StatKeyChannelCachePendingQueries stat
+//        - will block waiting for queryLock, which increments StatKeyChannelCachePendingQueries stat
 //    4. Wait until StatKeyChannelCachePendingQueries is incremented
 //    5. Terminate second changes request
 //    6. Unblock the initial view query

@@ -21,6 +21,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/google/uuid"
 )
 
 // Options for changes-feeds
@@ -171,10 +172,10 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) changesFeed(channel string, options ChangesOptions, to string) (<-chan *ChangeEntry, error) {
+func (db *Database) changesFeed(singleChannelCache *singleChannelCache, options ChangesOptions, to string) (<-chan *ChangeEntry, error) {
 	// TODO: pass db.Ctx down to changeCache?
-	log, err := db.changeCache.GetChanges(channel, options)
-	base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %s", len(log), base.UD(channel))
+	log, err := singleChannelCache.GetChanges(options)
+	base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %s", len(log), base.UD(singleChannelCache.channelName))
 	if err != nil {
 		return nil, err
 	}
@@ -207,9 +208,9 @@ func (db *Database) changesFeed(channel string, options ChangesOptions, to strin
 				TriggeredBy: options.Since.TriggeredBy,
 			}
 
-			change := makeChangeEntry(logEntry, seqID, channel)
+			change := makeChangeEntry(logEntry, seqID, singleChannelCache.channelName)
 
-			base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(channel), base.UD(to))
+			base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(singleChannelCache.channelName), base.UD(to))
 			select {
 			case <-options.Terminator:
 				base.DebugfCtx(db.Ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
@@ -461,8 +462,11 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 			deferredBackfill = false
 			for name, vbSeqAddedAt := range channelsSince {
-
 				chanOpts := options
+
+				// Obtain a singleChannelCache instance to use for both normal and late feeds.  Required to ensure consistency
+				// if cache is evicted during processing
+				singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(name)
 
 				// Set up late sequence handling first, as we need to roll back the regular feed on error
 				// Handles previously skipped sequences prior to options.Since that
@@ -471,11 +475,11 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				if options.Continuous {
 					lateSequenceFeedHandler := lateSequenceFeeds[name]
 					if lateSequenceFeedHandler != nil {
-						latefeed, err := db.getLateFeed(lateSequenceFeedHandler)
+						latefeed, err := db.getLateFeed(lateSequenceFeedHandler, singleChannelCache)
 						if err != nil {
 							base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel feed to low sequence.", base.UD(name))
 							chanOpts.Since.LowSeq = lowSequence
-							lateSequenceFeeds[name] = db.newLateSequenceFeed(name)
+							lateSequenceFeeds[name] = db.newLateSequenceFeed(singleChannelCache)
 						} else {
 							// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
 							// when the user loses channel access
@@ -485,7 +489,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 						}
 					} else {
 						// Initialize lateSequenceFeeds[name] for next iteration
-						lateSequenceFeeds[name] = db.newLateSequenceFeed(name)
+						// ****
+						lateSequenceFeeds[name] = db.newLateSequenceFeed(singleChannelCache)
 					}
 				}
 
@@ -529,7 +534,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy}
 				}
 
-				feed, err := db.changesFeed(name, chanOpts, to)
+				feed, err := db.changesFeed(singleChannelCache, chanOpts, to)
 				if err != nil {
 					base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading changes feed %q: %v", base.UD(name), err)
 					change := makeErrorEntry("Error reading changes feed - terminating changes feed")
@@ -674,7 +679,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				if deferredBackfill || postStableSeqsFound {
 					for retry := 0; retry <= 50; retry++ {
 						time.Sleep(100 * time.Millisecond)
-						if db.changeCache.GetStableSequence("").Seq != currentCachedSequence {
+						if db.changeCache.getChannelCache().GetHighCacheSequence() != currentCachedSequence {
 							break waitForChanges
 						}
 					}
@@ -704,7 +709,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 			}
 			// Update the current max cached sequence for the next changes iteration
-			currentCachedSequence = db.changeCache.GetStableSequence("").Seq
+			currentCachedSequence = db.changeCache.getChannelCache().GetHighCacheSequence()
 
 			// Check whether user channel access has changed while waiting:
 			var err error
@@ -792,31 +797,39 @@ func (context *DatabaseContext) WaitForPendingChanges(tb testing.TB) (err error)
 // Late Sequence Feed
 // Manages the changes feed interaction with a channels cache's set of late-arriving entries
 type lateSequenceFeed struct {
-	active       bool   // Whether the changes feed is still serving the channel this feed is associated with
-	lastSequence uint64 // Last late sequence processed on the feed
-	channelName  string // channelName
+	active           bool      // Whether the changes feed is still serving the channel this feed is associated with
+	lastSequence     uint64    // Last late sequence processed on the feed
+	channelName      string    // Channel Name
+	lateSequenceUUID uuid.UUID // Ensures cache doesn't change underneath us
 }
 
 // Returns a lateSequenceFeed for the channel, used to find late-arriving (previously
 // skipped) sequences that have been sent to the channel cache.  The lateSequenceFeed stores the last (late)
 // sequence seen by this particular _changes feed to support continuous changes.
-func (db *Database) newLateSequenceFeed(channelName string) *lateSequenceFeed {
+func (db *Database) newLateSequenceFeed(singleChannelCache *singleChannelCache) *lateSequenceFeed {
 
 	lsf := &lateSequenceFeed{
-		active:       true,
-		lastSequence: db.changeCache.getChannelCache().RegisterLateSequenceClient(channelName),
-		channelName:  channelName,
+		active:           true,
+		lateSequenceUUID: singleChannelCache.lateSequenceUUID,
+		channelName:      singleChannelCache.channelName,
+		lastSequence:     singleChannelCache.RegisterLateSequenceClient(),
 	}
 	return lsf
 }
 
 // Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.  Error indicates
 // previous position in late sequence feed isn't available, and caller should reset to low sequence.
-func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEntry, error) {
+func (db *Database) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCache *singleChannelCache) (<-chan *ChangeEntry, error) {
+
+	// If the associated cache instance for this feedHandler doesn't match singleChannelCache, it means the channel cache
+	// has been evicted/recreated, and the current feedHandler is no longer valid
+	if feedHandler.lateSequenceUUID != singleChannelCache.lateSequenceUUID {
+		return nil, errors.New("Cache/handler mismatch")
+	}
 
 	// Use LogPriorityQueue for late entries, to utilize the existing Len/Less/Swap methods on LogPriorityQueue for sort
 	var logs LogPriorityQueue
-	logs, lastSequence, err := db.changeCache.getChannelCache().GetLateSequencesSince(feedHandler.channelName, feedHandler.lastSequence)
+	logs, lastSequence, err := singleChannelCache.GetLateSequencesSince(feedHandler.lastSequence)
 	if err != nil {
 		return nil, err
 	}
@@ -842,7 +855,7 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 			seqID := SequenceID{
 				Seq: logEntry.Sequence,
 			}
-			change := makeChangeEntry(logEntry, seqID, feedHandler.channelName)
+			change := makeChangeEntry(logEntry, seqID, singleChannelCache.channelName)
 			feed <- &change
 		}
 	}()
@@ -853,7 +866,10 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed) (<-chan *ChangeEn
 
 // Closes a single late sequence feed.
 func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
-	db.changeCache.getChannelCache().ReleaseLateSequenceClient(feedHandler.channelName, feedHandler.lastSequence)
+	singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(feedHandler.channelName)
+	if singleChannelCache.lateSequenceUUID == feedHandler.lateSequenceUUID {
+		singleChannelCache.ReleaseLateSequenceClient(feedHandler.lastSequence)
+	}
 }
 
 // Closes set of feeds.  Invoked on changes termination

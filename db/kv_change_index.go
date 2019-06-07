@@ -229,21 +229,6 @@ func (k *kvChangeIndex) GetCachedChanges(channelName string, options ChangesOpti
 	return uint64(0), changes
 }
 
-func (k *kvChangeIndex) InitLateSequenceClient(channelName string) uint64 {
-	// no-op when not buffering sequences
-	return 0
-}
-
-func (k *kvChangeIndex) GetLateSequencesSince(channelName string, sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
-	// no-op when not buffering sequences
-	return entries, lastSequence, nil
-}
-
-func (k *kvChangeIndex) ReleaseLateSequenceClient(channelName string, sequence uint64) error {
-	// no-op when not buffering sequences
-	return nil
-}
-
 // Add late sequence information to channel cache
 func (k *kvChangeIndex) addLateSequence(channelName string, change *LogEntry) error {
 	// TODO: no-op for now
