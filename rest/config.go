@@ -24,6 +24,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -1223,11 +1224,7 @@ func PanicHandler() (panicHandler func()) {
 	return func() {
 		// Recover from any panics to allow for graceful shutdown.
 		if r := recover(); r != nil {
-			base.Errorf(base.KeyAll, "Handling panic: %v", r)
-			// Ensure log buffers are flushed before exiting.
-			base.FlushLogBuffers()
-
-			panic(r)
+			base.Fatalf(base.KeyAll, "Handling panic: %v\n%v", r, string(debug.Stack()))
 		}
 	}
 
