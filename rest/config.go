@@ -269,13 +269,13 @@ type CacheConfig struct {
 //	Kept around for CBG-356 backwards compatability
 // ***************************************************************
 type DeprecatedCacheConfig struct {
-	DeprecatedCachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"` // Max wait for pending sequence before skipping
-	DeprecatedCachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`  // Max number of pending sequences before skipping
-	DeprecatedCacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"` // Max wait for skipped sequence before abandoning
-	DeprecatedEnableStarChannel      *bool   `json:"enable_star_channel"`        // Enable star channel
-	DeprecatedChannelCacheMaxLength  *int    `json:"channel_cache_max_length"`   // Maximum number of entries maintained in cache per channel
-	DeprecatedChannelCacheMinLength  *int    `json:"channel_cache_min_length"`   // Minimum number of entries maintained in cache per channel
-	DeprecatedChannelCacheAge        *int    `json:"channel_cache_expiry"`       // Time (seconds) to keep entries in cache beyond the minimum retained
+	DeprecatedCachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"`         // Max wait for pending sequence before skipping
+	DeprecatedCachePendingSeqMaxNum  *int    `json:"max_num_pending,omitempty"`          // Max number of pending sequences before skipping
+	DeprecatedCacheSkippedSeqMaxWait *uint32 `json:"max_wait_skipped,omitempty"`         // Max wait for skipped sequence before abandoning
+	DeprecatedEnableStarChannel      *bool   `json:"enable_star_channel,omitempty"`      // Enable star channel
+	DeprecatedChannelCacheMaxLength  *int    `json:"channel_cache_max_length,omitempty"` // Maximum number of entries maintained in cache per channel
+	DeprecatedChannelCacheMinLength  *int    `json:"channel_cache_min_length,omitempty"` // Minimum number of entries maintained in cache per channel
+	DeprecatedChannelCacheAge        *int    `json:"channel_cache_expiry,omitempty"`     // Time (seconds) to keep entries in cache beyond the minimum retained
 }
 
 type RevCacheConfig struct {
