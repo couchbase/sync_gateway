@@ -51,7 +51,7 @@ type ChannelCache interface {
 	GetHighCacheSequence() uint64
 
 	// Access to individual channel cache, intended for testing
-	getSingleChannelCache(channelName string) *singleChannelCache
+	getSingleChannelCache(channelName string) SingleChannelCache
 }
 
 // ChannelQueryHandler interface is implemented by databaseContext.
@@ -62,7 +62,7 @@ type ChannelQueryHandler interface {
 type StableSequenceCallbackFunc func() uint64
 
 type channelCacheImpl struct {
-	queryHandler         ChannelQueryHandler       // Passed to singleChannelCache for view queries.
+	queryHandler         ChannelQueryHandler       // Passed to singleChannelCacheImpl for view queries.
 	channelCaches        *base.RangeSafeCollection // A collection of singleChannelCaches
 	terminator           chan bool                 // Signal terminator of background goroutines
 	options              ChannelCacheOptions       // Channel cache options
@@ -138,7 +138,7 @@ func (c *channelCacheImpl) updateHighCacheSequence(sequence uint64) {
 
 // GetSingleChannelCache will create the cache for the channel if it doesn't exist.  Intended for test
 // usage only - otherwise management of per-channel caches should be opaque to ChannelCache consumers.
-func (c *channelCacheImpl) getSingleChannelCache(channelName string) *singleChannelCache {
+func (c *channelCacheImpl) getSingleChannelCache(channelName string) SingleChannelCache {
 	return c.getChannelCache(channelName)
 }
 
@@ -244,7 +244,7 @@ func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 	return nil
 }
 
-func (c *channelCacheImpl) getChannelCache(channelName string) *singleChannelCache {
+func (c *channelCacheImpl) getChannelCache(channelName string) *singleChannelCacheImpl {
 
 	cacheValue, found := c.channelCaches.Get(channelName)
 	if found {
@@ -254,10 +254,10 @@ func (c *channelCacheImpl) getChannelCache(channelName string) *singleChannelCac
 	return c.addChannelCache(channelName)
 }
 
-// Converts an RangeSafeCollection value to a singleChannelCache.  On type
+// Converts an RangeSafeCollection value to a singleChannelCacheImpl.  On type
 // conversion error, logs a warning and returns nil.
-func AsSingleChannelCache(cacheValue interface{}) *singleChannelCache {
-	singleChannelCache, ok := cacheValue.(*singleChannelCache)
+func AsSingleChannelCache(cacheValue interface{}) *singleChannelCacheImpl {
+	singleChannelCache, ok := cacheValue.(*singleChannelCacheImpl)
 	if !ok {
 		base.Warnf(base.KeyCache, "Unexpected channel cache value type: %T", cacheValue)
 		return nil
@@ -272,7 +272,7 @@ func AsSingleChannelCache(cacheValue interface{}) *singleChannelCache {
 //	//     4. addChannelCache initializes cache with validFrom=10 and adds to c.channelCaches
 //	//  This scenario would result in sequence 11 missing from the cache.  Locking seqLock ensures that
 //	//  step 3 blocks until step 4 is complete (and so sees the channel as active)
-func (c *channelCacheImpl) addChannelCache(channelName string) *singleChannelCache {
+func (c *channelCacheImpl) addChannelCache(channelName string) *singleChannelCacheImpl {
 
 	c.seqLock.Lock()
 
@@ -297,7 +297,7 @@ func (c *channelCacheImpl) addChannelCache(channelName string) *singleChannelCac
 	return singleChannelCache
 }
 
-func (c *channelCacheImpl) getActiveChannelCache(channelName string) (*singleChannelCache, bool) {
+func (c *channelCacheImpl) getActiveChannelCache(channelName string) (*singleChannelCacheImpl, bool) {
 
 	cacheValue, found := c.channelCaches.Get(channelName)
 	if !found {
@@ -374,7 +374,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 		var elementCount int
 		compactCallback := func(elem *base.AppendOnlyListElement) bool {
 			elementCount++
-			singleChannelCache, ok := elem.Value.(*singleChannelCache)
+			singleChannelCache, ok := elem.Value.(*singleChannelCacheImpl)
 			if !ok {
 				base.Warnf(base.KeyCache, "Non-cache entry (%T) found in channel cache during compaction - ignoring", elem.Value)
 				return true

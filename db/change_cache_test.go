@@ -317,7 +317,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
 	// cache's lateLogs.  This will trigger an error on the next feed iteration, which should trigger
 	// rollback to resend all changes since low sequence (1)
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC")
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
 	abcCache.lateLogs[0].logEntry.Sequence = 1
 
 	// Write sequence 3.  Error should trigger rollback that resends everything since low sequence (1)
@@ -513,16 +513,16 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"CBS"}, 7)
 	db.changeCache.waitForSequenceID(SequenceID{Seq: 7}, base.DefaultWaitForSequenceTesting, t)
 	// verify insert at start (PBS)
-	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache("PBS")
+	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache("PBS").(*singleChannelCacheImpl)
 	goassert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC")
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
 	goassert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
-	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache("NBC")
+	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache("NBC").(*singleChannelCacheImpl)
 	goassert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
-	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache("TBS")
+	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache("TBS").(*singleChannelCacheImpl)
 	goassert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
@@ -1309,7 +1309,7 @@ func TestChannelCacheSize(t *testing.T) {
 	// Validate that cache stores the expected number of values
 	changeCache, ok := db.changeCache.(*changeCache)
 	assert.True(t, ok, "Testing skipped sequences without a change cache")
-	abcCache := changeCache.getChannelCache().getSingleChannelCache("ABC")
+	abcCache := changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
 	goassert.Equals(t, len(abcCache.logs), 600)
 }
 
@@ -1348,7 +1348,7 @@ func verifySkippedSequences(list *SkippedSequenceList, sequences []uint64) bool 
 	return true
 }
 
-func verifyCacheSequences(cache *singleChannelCache, sequences []uint64) bool {
+func verifyCacheSequences(cache *singleChannelCacheImpl, sequences []uint64) bool {
 	if len(cache.logs) != len(sequences) {
 
 		log.Printf("verifyCacheSequences: cache size (%v) not equals to sequences size (%v)",
