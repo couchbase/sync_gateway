@@ -90,6 +90,7 @@ func (r *Replicator) writeStats(repID string, replication sgreplicate.SGReplicat
 	statsExpvars.Set(StatKeySgrNumAttachmentsTransferred, ExpvarInt64Val(int64(stats.GetNumAttachmentsTransferred())))
 	statsExpvars.Set(StatKeySgrAttachmentBytesTransferred, ExpvarInt64Val(int64(stats.GetAttachmentBytesTransferred())))
 	statsExpvars.Set(StatKeySgrDocsCheckedSent, ExpvarInt64Val(int64(stats.GetDocsCheckedSent())))
+	statsExpvars.Set(StatKeySgrActive, NewAtomicBool(stats.GetActive()))
 }
 
 // StopReplications stops all active replications.
@@ -299,5 +300,6 @@ func NewReplicationStats() (expvarMap *expvar.Map) {
 	result.Set(StatKeySgrNumAttachmentsTransferred, ExpvarIntVal(0))
 	result.Set(StatKeySgrAttachmentBytesTransferred, ExpvarIntVal(0))
 	result.Set(StatKeySgrDocsCheckedSent, ExpvarIntVal(0))
+	result.Set(StatKeySgrActive, &AtomicBool{value: 1})
 	return result
 }

@@ -182,6 +182,7 @@ const (
 	StatKeySgrNumAttachmentsTransferred  = "sgr_num_attachments_transferred"
 	StatKeySgrAttachmentBytesTransferred = "sgr_num_attachment_bytes_transferred"
 	StatKeySgrDocsCheckedSent            = "sgr_docs_checked_sent"
+	StatKeySgrActive                     = "sgr_active"
 )
 
 const (
