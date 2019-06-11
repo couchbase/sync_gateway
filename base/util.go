@@ -1146,6 +1146,9 @@ func (ab *AtomicBool) IsTrue() bool {
 
 // String allows AtomicBool to satisfy the expvar.Var interface.
 func (ab *AtomicBool) String() string {
+	if ab == nil {
+		return "null"
+	}
 	return strconv.FormatBool(ab.IsTrue())
 }
 
