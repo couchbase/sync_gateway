@@ -243,8 +243,6 @@ func (r *Replicator) stopReplication(parameters sgreplicate.ReplicationParameter
 	delete(r.replications, repID)
 	delete(r.replicationParams, repID)
 
-	RemovePerReplicationStats(repID)
-
 	return taskForReplication(replication, parameters), nil
 }
 
