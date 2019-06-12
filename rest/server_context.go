@@ -1061,9 +1061,11 @@ func (sc *ServerContext) logStats() error {
 	wrapper := struct {
 		Stats                json.RawMessage `json:"stats"`
 		Unix_epoch_timestamp int64           `json:"unix_epoch_timestamp"`
+		RFC3339              string          `json:"RFC3339"`
 	}{
 		Stats:                []byte(base.Stats.String()),
 		Unix_epoch_timestamp: time.Now().Unix(),
+		RFC3339:              time.Now().Format(time.RFC3339),
 	}
 
 	marshalled, err := json.Marshal(wrapper)
