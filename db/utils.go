@@ -18,7 +18,6 @@ func NewBackgroundTask(taskName string, dbName string, task BackgroundTaskFunc, 
 			select {
 			case <-time.After(interval):
 				ctx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: base.NewTaskID(dbName, taskName)})
-				base.DebugfCtx(ctx, base.KeyAll, "Running background task")
 				if err := task(ctx); err != nil {
 					base.ErrorfCtx(ctx, base.KeyAll, "Background task returned error: %v", err)
 					return
