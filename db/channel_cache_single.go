@@ -858,9 +858,3 @@ func (b *bypassChannelCache) RegisterLateSequenceClient() (latestLateSeq uint64)
 func (b *bypassChannelCache) ReleaseLateSequenceClient(sequence uint64) (success bool) {
 	return false
 }
-
-// BypassQueryHandler limits the number of concurrent bypass queries being executed.  Calls
-// to getChangesInChannelFromQuery will block if the limit is exceeded, and will time out after
-// 30 seconds.
-type bypassQueryHandler struct {
-}
