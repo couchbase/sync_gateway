@@ -231,8 +231,6 @@ func (c *channelCacheImpl) GetCachedChanges(channelName string) []*LogEntry {
 // CleanAgedItems prunes the caches based on age of items. Error returned to fulfill BackgroundTaskFunc signature.
 func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 
-	base.InfofCtx(ctx, base.KeyCache, "Starting CleanAgedItems")
-
 	callback := func(v interface{}) bool {
 		channelCache := AsSingleChannelCache(v)
 		if channelCache == nil {
