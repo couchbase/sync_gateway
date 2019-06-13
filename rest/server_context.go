@@ -1058,14 +1058,15 @@ func (sc *ServerContext) logStats() error {
 
 	sc.updateCalculatedStats()
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
+	currentTime := time.Now()
 	wrapper := struct {
-		Stats                json.RawMessage `json:"stats"`
-		Unix_epoch_timestamp int64           `json:"unix_epoch_timestamp"`
-		RFC3339              string          `json:"RFC3339"`
+		Stats             json.RawMessage `json:"stats"`
+		UnixEpocTimestamp int64           `json:"unix_epoch_timestamp"`
+		RFC3339           string          `json:"rfc3339_timestamp"`
 	}{
-		Stats:                []byte(base.Stats.String()),
-		Unix_epoch_timestamp: time.Now().Unix(),
-		RFC3339:              time.Now().Format(time.RFC3339),
+		Stats:             []byte(base.Stats.String()),
+		UnixEpocTimestamp: currentTime.Unix(),
+		RFC3339:           currentTime.Format(time.RFC3339),
 	}
 
 	marshalled, err := json.Marshal(wrapper)
