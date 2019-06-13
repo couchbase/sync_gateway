@@ -5,6 +5,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -81,7 +82,9 @@ import (
 // the guarantees described above would possibly be discarded.
 type SingleChannelCache interface {
 	GetChanges(options ChangesOptions) ([]*LogEntry, error)
+	GetCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry)
 	ChannelName() string
+	SupportsLateFeed() bool
 	LateSequenceUUID() uuid.UUID
 	GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error)
 	RegisterLateSequenceClient() (latestLateSeq uint64)
@@ -163,6 +166,10 @@ func (c *singleChannelCacheImpl) ChannelName() string {
 
 func (c *singleChannelCacheImpl) LateSequenceUUID() uuid.UUID {
 	return c.lateSequenceUUID
+}
+
+func (c *singleChannelCacheImpl) SupportsLateFeed() bool {
+	return true
 }
 
 // Low-level method to add a LogEntry to a single channel's cache.
@@ -292,7 +299,7 @@ func (c *singleChannelCacheImpl) pruneCacheAge(ctx context.Context) {
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
-func (c *singleChannelCacheImpl) getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
+func (c *singleChannelCacheImpl) GetCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	c.recentlyUsed.Set(true)
@@ -344,15 +351,17 @@ func (c *singleChannelCacheImpl) _getCachedChanges(sinceSeq uint64, limit int) (
 // initialSequence is used only if the cache is empty: it gives the max sequence to which the
 // view should be queried, because we don't want the view query to outrun the chanceCache's
 // nextSequence.
+
 func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
+
 	// Use the cache, and return if it fulfilled the entire request:
-	cacheValidFrom, resultFromCache := c.getCachedChanges(options)
+	cacheValidFrom, resultFromCache := c.GetCachedChanges(options)
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 || resultFromCache == nil {
-		base.InfofCtx(options.Ctx, base.KeyCache, "getCachedChanges(%q, %s) --> %d changes valid from #%d",
+		base.InfofCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
 			base.UD(c.channelName), options.Since.String(), numFromCache, cacheValidFrom)
 	} else if resultFromCache == nil {
-		base.InfofCtx(options.Ctx, base.KeyCache, "getCachedChanges(%q, %s) --> nothing cached",
+		base.InfofCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
 			base.UD(c.channelName), options.Since.String())
 	}
 	startSeq := options.Since.SafeSequence() + 1
@@ -371,9 +380,9 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 
 	// Another goroutine might have gotten the lock first and already queried the view and updated
 	// the cache, so repeat the above:
-	cacheValidFrom, resultFromCache = c.getCachedChanges(options)
+	cacheValidFrom, resultFromCache = c.GetCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
-		base.InfofCtx(options.Ctx, base.KeyCache, "2nd getCachedChanges(%q, %s) got %d more, valid from #%d!",
+		base.InfofCtx(options.Ctx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
 			base.UD(c.channelName), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
@@ -394,7 +403,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// overlap, which helps confirm that we've got everything.
 	c.statsMap.Add(base.StatKeyChannelCacheMisses, 1)
 	endSeq := cacheValidFrom
-	resultFromView, err := c.queryHandler.getChangesInChannelFromQuery(c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -402,15 +411,15 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// Cache some of the query results, if there's room in the cache.  If query hit the limit,
 	// the query results are only valid for the range of sequences in the result set.
 	resultValidTo := endSeq
-	numResults := len(resultFromView)
+	numResults := len(resultFromQuery)
 	if options.Limit != 0 && numResults >= options.Limit {
-		resultValidTo = resultFromView[numResults-1].Sequence
+		resultValidTo = resultFromQuery[numResults-1].Sequence
 	}
 	if len(resultFromCache) < c.options.ChannelCacheMaxLength {
-		c.prependChanges(resultFromView, startSeq, resultValidTo)
+		c.prependChanges(resultFromQuery, startSeq, resultValidTo)
 	}
 
-	result := resultFromView
+	result := resultFromQuery
 	room := options.Limit - len(result)
 	if (options.Limit == 0 || room > 0) && len(resultFromCache) > 0 {
 		// Concatenate the view & cache results:
@@ -802,4 +811,56 @@ func (c *singleChannelCacheImpl) addDocIDs(changes LogEntries) {
 	for _, change := range changes {
 		c.cachedDocIDs[change.DocID] = struct{}{}
 	}
+}
+
+// A bypassChannelCache serves GetChanges requests directly via query
+type bypassChannelCache struct {
+	channelName  string
+	queryHandler ChannelQueryHandler
+}
+
+// Get Changes uses high sequence value (math.MaxUint64) as the upper bound.  Relies on changes processing
+// to apply HighCachedSequence filtering - same approach used by singleChannelCacheImpl.
+func (b *bypassChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
+	startSeq := options.Since.SafeSequence() + 1
+	endSeq := uint64(math.MaxUint64)
+	return b.queryHandler.getChangesInChannelFromQuery(b.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
+}
+
+// No cached changes for bypassChannelCache
+func (b *bypassChannelCache) GetCachedChanges(options ChangesOptions) (validFrom uint64, changes []*LogEntry) {
+	return math.MaxUint64, nil
+}
+
+func (b *bypassChannelCache) ChannelName() string {
+	return b.channelName
+}
+
+func (b *bypassChannelCache) SupportsLateFeed() bool {
+	return false
+}
+
+// Shouldn't be called - callers are expected to check SupportsLateFeed.
+// Returns a new UUID to ensure no matching (even with itself) for callers
+// that aren't properly checking SupportsLateFeed.
+func (b *bypassChannelCache) LateSequenceUUID() uuid.UUID {
+	return uuid.New()
+}
+
+func (b *bypassChannelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
+	return nil, 0, errors.New("GetLateSequencesSince not supported for bypassChannelCache")
+}
+
+func (b *bypassChannelCache) RegisterLateSequenceClient() (latestLateSeq uint64) {
+	return 0
+}
+
+func (b *bypassChannelCache) ReleaseLateSequenceClient(sequence uint64) (success bool) {
+	return false
+}
+
+// BypassQueryHandler limits the number of concurrent bypass queries being executed.  Calls
+// to getChangesInChannelFromQuery will block if the limit is exceeded, and will time out after
+// 30 seconds.
+type bypassQueryHandler struct {
 }

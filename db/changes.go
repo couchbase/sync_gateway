@@ -172,7 +172,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *documen
 
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options ChangesOptions, to string) (<-chan *ChangeEntry, error) {
+func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options ChangesOptions, currentCachedSequence uint64, to string) (<-chan *ChangeEntry, error) {
 	// TODO: pass db.Ctx down to changeCache?
 	log, err := singleChannelCache.GetChanges(options)
 	base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %s", len(log), base.UD(singleChannelCache.ChannelName()))
@@ -479,7 +479,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 						if err != nil {
 							base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel feed to low sequence.", base.UD(name))
 							chanOpts.Since.LowSeq = lowSequence
-							lateSequenceFeeds[name] = db.newLateSequenceFeed(singleChannelCache)
+							if lateFeed := db.newLateSequenceFeed(singleChannelCache); lateFeed != nil {
+								lateSequenceFeeds[name] = lateFeed
+							}
 						} else {
 							// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
 							// when the user loses channel access
@@ -489,8 +491,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 						}
 					} else {
 						// Initialize lateSequenceFeeds[name] for next iteration
-						// ****
-						lateSequenceFeeds[name] = db.newLateSequenceFeed(singleChannelCache)
+						if lateFeed := db.newLateSequenceFeed(singleChannelCache); lateFeed != nil {
+							lateSequenceFeeds[name] = lateFeed
+						}
 					}
 				}
 
@@ -534,7 +537,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy}
 				}
 
-				feed, err := db.changesFeed(singleChannelCache, chanOpts, to)
+				feed, err := db.changesFeed(singleChannelCache, chanOpts, currentCachedSequence, to)
 				if err != nil {
 					base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading changes feed %q: %v", base.UD(name), err)
 					change := makeErrorEntry("Error reading changes feed - terminating changes feed")
@@ -808,6 +811,10 @@ type lateSequenceFeed struct {
 // sequence seen by this particular _changes feed to support continuous changes.
 func (db *Database) newLateSequenceFeed(singleChannelCache SingleChannelCache) *lateSequenceFeed {
 
+	if !singleChannelCache.SupportsLateFeed() {
+		return nil
+	}
+
 	lsf := &lateSequenceFeed{
 		active:           true,
 		lateSequenceUUID: singleChannelCache.LateSequenceUUID(),
@@ -821,6 +828,9 @@ func (db *Database) newLateSequenceFeed(singleChannelCache SingleChannelCache) *
 // previous position in late sequence feed isn't available, and caller should reset to low sequence.
 func (db *Database) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCache SingleChannelCache) (<-chan *ChangeEntry, error) {
 
+	if !singleChannelCache.SupportsLateFeed() {
+		return nil, errors.New("Cache doesn't support late feeds")
+	}
 	// If the associated cache instance for this feedHandler doesn't match SingleChannelCache, it means the channel cache
 	// has been evicted/recreated, and the current feedHandler is no longer valid
 	if feedHandler.lateSequenceUUID != singleChannelCache.LateSequenceUUID() {
@@ -867,6 +877,9 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCach
 // Closes a single late sequence feed.
 func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
 	singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(feedHandler.channelName)
+	if !singleChannelCache.SupportsLateFeed() {
+		return
+	}
 	if singleChannelCache.LateSequenceUUID() == feedHandler.lateSequenceUUID {
 		singleChannelCache.ReleaseLateSequenceClient(feedHandler.lastSequence)
 	}

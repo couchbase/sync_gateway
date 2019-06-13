@@ -140,6 +140,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyChannelCacheChannelsEvictedNRU, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyChannelCacheCompactCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyChannelCacheCompactTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyChannelCacheBypassCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyActiveChannels, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumSkippedSeqs, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAbandonedSeqs, base.ExpvarIntVal(0))

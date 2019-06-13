@@ -84,6 +84,7 @@ const (
 	StatKeyChannelCacheChannelsEvictedNRU      = "chan_cache_channels_evicted_nru"
 	StatKeyChannelCacheCompactCount            = "chan_cache_compact_count"
 	StatKeyChannelCacheCompactTime             = "chan_cache_compact_time"
+	StatKeyChannelCacheBypassCount             = "chan_cache_bypass_count"
 	StatKeyActiveChannels                      = "num_active_channels"
 	StatKeyNumSkippedSeqs                      = "num_skipped_seqs"
 	StatKeyAbandonedSeqs                       = "abandoned_seqs"

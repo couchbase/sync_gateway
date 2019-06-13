@@ -4,6 +4,7 @@ import (
 	"expvar"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -219,7 +220,7 @@ func TestPrependChanges(t *testing.T) {
 	assert.Equal(t, 3, numPrepended)
 
 	// Validate cache
-	validFrom, cachedChanges := cache.getCachedChanges(ChangesOptions{})
+	validFrom, cachedChanges := cache.GetCachedChanges(ChangesOptions{})
 	assert.Equal(t, uint64(5), validFrom)
 	assert.Equal(t, 3, len(cachedChanges))
 
@@ -241,7 +242,7 @@ func TestPrependChanges(t *testing.T) {
 	assert.Equal(t, 2, numPrepended)
 
 	// Validate cache
-	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	validFrom, cachedChanges = cache.GetCachedChanges(ChangesOptions{})
 	assert.Equal(t, uint64(5), validFrom)
 	assert.Equal(t, 4, len(cachedChanges))
 	if len(cachedChanges) == 4 {
@@ -257,7 +258,7 @@ func TestPrependChanges(t *testing.T) {
 
 	// Write a new revision for a prepended doc to the cache, validate that old entry is removed
 	cache.addToCache(testLogEntry(24, "doc3", "3-a"), false)
-	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	validFrom, cachedChanges = cache.GetCachedChanges(ChangesOptions{})
 	assert.Equal(t, uint64(5), validFrom)
 	assert.Equal(t, 4, len(cachedChanges))
 	if len(cachedChanges) == 4 {
@@ -273,7 +274,7 @@ func TestPrependChanges(t *testing.T) {
 
 	// Prepend empty set, validate validFrom update
 	cache.prependChanges(LogEntries{}, 5, 14)
-	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	validFrom, cachedChanges = cache.GetCachedChanges(ChangesOptions{})
 	assert.Equal(t, uint64(5), validFrom)
 	assert.Equal(t, 4, len(cachedChanges))
 
@@ -298,7 +299,7 @@ func TestPrependChanges(t *testing.T) {
 	assert.Equal(t, 1, numPrepended)
 
 	// Validate cache
-	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	validFrom, cachedChanges = cache.GetCachedChanges(ChangesOptions{})
 	assert.Equal(t, uint64(10), validFrom)
 	assert.Equal(t, 5, len(cachedChanges))
 	if len(cachedChanges) == 5 {
@@ -330,7 +331,7 @@ func TestPrependChanges(t *testing.T) {
 	}
 	numPrepended = cache.prependChanges(changesToPrepend, 5, 14)
 	assert.Equal(t, 0, numPrepended)
-	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	validFrom, cachedChanges = cache.GetCachedChanges(ChangesOptions{})
 	assert.Equal(t, uint64(5), validFrom)
 	assert.Equal(t, 4, len(cachedChanges))
 	if len(cachedChanges) == 5 {
@@ -366,7 +367,7 @@ func TestPrependChanges(t *testing.T) {
 	assert.Equal(t, 0, numPrepended)
 
 	// Validate cache
-	validFrom, cachedChanges = cache.getCachedChanges(ChangesOptions{})
+	validFrom, cachedChanges = cache.GetCachedChanges(ChangesOptions{})
 	assert.Equal(t, uint64(13), validFrom)
 	assert.Equal(t, 5, len(cachedChanges))
 	if len(cachedChanges) == 5 {
@@ -585,6 +586,34 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	assert.Equal(t, 6, active)
 	assert.Equal(t, 6, tombstones)
 	assert.Equal(t, 3, removals)
+}
+
+func TestBypassSingleChannelCache(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+
+	terminator := make(chan bool)
+	defer close(terminator)
+
+	// Seed the query handler with 100 docs across 10 channels
+	queryHandler := &testQueryHandler{}
+	for seq := 1; seq <= 100; seq++ {
+		channelName := fmt.Sprintf("chan_%d", seq%10)
+		queryEntry := testLogEntryForChannels(seq, []string{channelName})
+		queryHandler.seedEntries(LogEntries{queryEntry})
+	}
+
+	bypassCache := &bypassChannelCache{
+		channelName:  "chan_1",
+		queryHandler: queryHandler,
+	}
+
+	entries, err := bypassCache.GetChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.NoError(t, err)
+	assert.Equal(t, 10, len(entries))
+
+	validFrom, cachedEntries := bypassCache.GetCachedChanges(ChangesOptions{Since: SequenceID{Seq: 0}})
+	assert.Equal(t, uint64(math.MaxUint64), validFrom)
+	assert.Equal(t, 0, len(cachedEntries))
 }
 
 func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {

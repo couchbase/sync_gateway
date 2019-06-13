@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestChannelCacheMaxSize(t *testing.T) {
@@ -341,7 +342,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	terminator := make(chan bool)
 	defer close(terminator)
 
-	// Define cache with max channels 20, watermarks 50/90
+	// Define cache with max channels 100, watermarks 90/70
 	options := DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 100
 	options.CompactHighWatermarkPercent = 90
@@ -399,6 +400,57 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	log.Printf("Query count: %d, Changes count:%d", queryHandler.queryCount, workerCount*getChangesCount)
 }
 
+// TestChannelCacheBypass validates that the bypass 'cache' is used when the cache max_num_channels is reached.
+// To force this scenario, HWM is set to 100%, which effectively disables compaction.
+func TestChannelCacheBypass(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
+
+	terminator := make(chan bool)
+	defer close(terminator)
+
+	// Define cache with max channels 20, watermarks 50/100
+	options := DefaultCacheOptions().ChannelCacheOptions
+	options.MaxNumChannels = 20
+	options.CompactHighWatermarkPercent = 100
+	options.CompactLowWatermarkPercent = 50
+
+	testStats := &expvar.Map{}
+	queryHandler := &testQueryHandler{}
+	activeChannelStat := &expvar.Int{}
+	activeChannels := channels.NewActiveChannels(activeChannelStat)
+	cache := newChannelCache("testDb", terminator, options, queryHandler, activeChannels, testStats)
+
+	channelCount := 100
+	// define channel set
+	channelNames := make([]string, 0)
+	for i := 1; i <= channelCount; i++ {
+		channelName := fmt.Sprintf("chan_%d", i)
+		channelNames = append(channelNames, channelName)
+	}
+
+	// Seed the query handler with a single doc that's in all the channels
+	queryEntry := testLogEntryForChannels(1, channelNames)
+	queryHandler.seedEntries(LogEntries{queryEntry})
+
+	// Send entry to the cache.  Don't reuse queryEntry here, as AddToCache strips out the channels property
+	logEntry := testLogEntryForChannels(1, channelNames)
+	cache.AddToCache(logEntry)
+
+	// Issue queries for all channels.  First 20 should end up in the cache, remaining 80 should trigger bypass
+	for c := 1; c <= channelCount; c++ {
+		channelName := fmt.Sprintf("chan_%d", c)
+		options := ChangesOptions{}
+		changes, err := cache.GetChanges(channelName, options)
+		assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %s", channelName))
+		assert.True(t, len(changes) == 1, "Expected one change per channel")
+	}
+
+	// check bypass count stat
+	bypassCountStat := testStats.Get(base.StatKeyChannelCacheBypassCount)
+	require.NotNil(t, bypassCountStat)
+	assert.Equal(t, "80", bypassCountStat.String())
+}
+
 func waitForCompaction(cache *channelCacheImpl) (compactionComplete bool) {
 	for i := 0; i <= 10; i++ {
 		if cache.compactRunning.IsTrue() {
@@ -429,7 +481,7 @@ func (qh *testQueryHandler) getChangesInChannelFromQuery(channelName string, sta
 				continue
 			}
 			queryEntries = append(queryEntries, entry)
-			if len(queryEntries) >= limit {
+			if limit > 0 && len(queryEntries) >= limit {
 				break
 			}
 		}

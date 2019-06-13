@@ -136,9 +136,10 @@ func (c *channelCacheImpl) updateHighCacheSequence(sequence uint64) {
 	c.seqLock.Unlock()
 }
 
-// GetSingleChannelCache will create the cache for the channel if it doesn't exist.  Intended for test
-// usage only - otherwise management of per-channel caches should be opaque to ChannelCache consumers.
+// GetSingleChannelCache will create the cache for the channel if it doesn't exist.  If the cache is at
+// capacity, will return a bypass channel cache.
 func (c *channelCacheImpl) getSingleChannelCache(channelName string) SingleChannelCache {
+
 	return c.getChannelCache(channelName)
 }
 
@@ -224,7 +225,7 @@ func (c *channelCacheImpl) GetChanges(channelName string, options ChangesOptions
 
 func (c *channelCacheImpl) GetCachedChanges(channelName string) []*LogEntry {
 	options := ChangesOptions{Since: SequenceID{Seq: 0}}
-	_, changes := c.getChannelCache(channelName).getCachedChanges(options)
+	_, changes := c.getChannelCache(channelName).GetCachedChanges(options)
 	return changes
 }
 
@@ -244,14 +245,26 @@ func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 	return nil
 }
 
-func (c *channelCacheImpl) getChannelCache(channelName string) *singleChannelCacheImpl {
+func (c *channelCacheImpl) getChannelCache(channelName string) SingleChannelCache {
 
 	cacheValue, found := c.channelCaches.Get(channelName)
 	if found {
 		return AsSingleChannelCache(cacheValue)
 	}
 
-	return c.addChannelCache(channelName)
+	// Attempt to add a singleChannelCache for the channel name.  If unsuccessful, return a bypass channel cache
+	singleChannelCache, ok := c.addChannelCache(channelName)
+	if ok {
+		return singleChannelCache
+	}
+
+	bypassChannelCache := &bypassChannelCache{
+		channelName:  channelName,
+		queryHandler: c.queryHandler,
+	}
+	c.statsMap.Add(base.StatKeyChannelCacheBypassCount, 1)
+	return bypassChannelCache
+
 }
 
 // Converts an RangeSafeCollection value to a singleChannelCacheImpl.  On type
@@ -272,7 +285,12 @@ func AsSingleChannelCache(cacheValue interface{}) *singleChannelCacheImpl {
 //	//     4. addChannelCache initializes cache with validFrom=10 and adds to c.channelCaches
 //	//  This scenario would result in sequence 11 missing from the cache.  Locking seqLock ensures that
 //	//  step 3 blocks until step 4 is complete (and so sees the channel as active)
-func (c *channelCacheImpl) addChannelCache(channelName string) *singleChannelCacheImpl {
+func (c *channelCacheImpl) addChannelCache(channelName string) (*singleChannelCacheImpl, bool) {
+
+	// Return nil if the cache at capacity.
+	if c.channelCaches.Length() >= c.maxChannels {
+		return nil, false
+	}
 
 	c.seqLock.Lock()
 
@@ -294,7 +312,7 @@ func (c *channelCacheImpl) addChannelCache(channelName string) *singleChannelCac
 		c.statsMap.Add(base.StatKeyChannelCacheChannelsAdded, 1)
 	}
 
-	return singleChannelCache
+	return singleChannelCache, true
 }
 
 func (c *channelCacheImpl) getActiveChannelCache(channelName string) (*singleChannelCacheImpl, bool) {
