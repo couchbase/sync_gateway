@@ -589,6 +589,7 @@ func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValid
 		copy(c.logs, changes)
 		base.Infof(base.KeyCache, "  Initialized cache of %q with %d entries from query (#%d--#%d)",
 			base.UD(c.channelName), len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
+		c.statsMap.Add(base.StatKeyChannelCacheRevsActive, int64(len(changes)))
 
 		c.validFrom = changesValidFrom
 		c.addDocIDs(changes)
