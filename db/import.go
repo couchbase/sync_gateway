@@ -208,7 +208,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		if err != nil {
 			return nil, nil, updatedExpiry, err
 		}
-		base.InfofCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(docid), newRev)
+		base.DebugfCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(docid), newRev)
 		body[BodyRev] = newRev
 		doc.History.addRevision(docid, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 
@@ -235,6 +235,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		docOut = alreadyImportedDoc
 	case nil:
 		db.DbStats.SharedBucketImport().Add(base.StatKeyImportCount, 1)
+		db.DbStats.SharedBucketImport().Set(base.StatKeyImportHighSeq, base.ExpvarUInt64Val(docOut.syncData.Sequence))
 		db.DbStats.SharedBucketImport().Add(base.StatKeyImportProcessingTime, time.Since(importStartTime).Nanoseconds())
 		base.Debugf(base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(docid), isDelete, newRev)
 	case base.ErrImportCancelled:

@@ -185,6 +185,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyImportCancelCAS, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyImportErrorCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyImportProcessingTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyImportHighSeq, base.ExpvarUInt64Val(0))
 		d.sharedBucketImportMap = result
 	case base.StatsGroupKeyCblReplicationPush:
 		result.Set(base.StatKeyDocPushCount, base.ExpvarIntVal(0))
