@@ -11,6 +11,10 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 )
 
+const (
+	MinimumChannelCacheMaxNumber = 100 // Minimum size for channel cache capacity
+)
+
 var (
 	DefaultChannelCacheMinLength       = 50               // Keep at least this many entries in cache
 	DefaultChannelCacheMaxLength       = 500              // Don't put more than this many entries in cache
