@@ -177,12 +177,12 @@ const (
 	StatKeyViewQueryTimeExpvarFormat       = "%s.%s_time"        // Design doc, view
 
 	// StatsReplication
+	StatKeySgrActive                     = "sgr_active"
 	StatKeySgrNumDocsPushed              = "sgr_num_docs_pushed"
 	StatKeySgrNumDocsFailedToPush        = "sgr_num_docs_failed_to_push"
 	StatKeySgrNumAttachmentsTransferred  = "sgr_num_attachments_transferred"
 	StatKeySgrAttachmentBytesTransferred = "sgr_num_attachment_bytes_transferred"
 	StatKeySgrDocsCheckedSent            = "sgr_docs_checked_sent"
-	StatKeySgrActive                     = "sgr_active"
 )
 
 const (
@@ -258,15 +258,6 @@ func NewStatsResourceUtilization() *expvar.Map {
 	stats.Set(StatKeyErrorCount, ExpvarIntVal(0))
 	stats.Set(StatKeyWarnCount, ExpvarIntVal(0))
 	return stats
-}
-
-// Removes the per-replication stats for this replication id by
-// regenerating a new expvar map without that particular replicationUuid
-func RemovePerReplicationStats(replicationUuid string) {
-
-	// Clear out the stats for this replication since they will no longer be updated.
-	PerReplicationStats.Set(replicationUuid, new(expvar.Map).Init())
-
 }
 
 // Removes the per-database stats for this database by
@@ -594,6 +585,7 @@ func NewIntRollingMeanVar(capacity int) IntRollingMeanVar {
 		entries:  make([]int64, 0, capacity),
 	}
 }
+
 func (v *IntRollingMeanVar) String() string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
@@ -610,6 +602,7 @@ func (v *IntRollingMeanVar) AddValue(value int64) {
 		v.replaceValue(value)
 	}
 }
+
 func (v *IntRollingMeanVar) AddSince(start time.Time) {
 	v.AddValue(time.Since(start).Nanoseconds())
 }

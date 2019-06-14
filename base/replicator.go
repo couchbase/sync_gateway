@@ -27,10 +27,10 @@ type Task struct {
 	Continuous       bool        `json:"continuous"`
 	Source           string      `json:"source"`
 	Target           string      `json:"target"`
-	DocsRead         uint32      `json:"docs_read"`
-	DocsWritten      uint32      `json:"docs_written"`
-	DocWriteFailures uint32      `json:"doc_write_failures"`
-	StartLastSeq     uint32      `json:"start_last_seq"`
+	DocsRead         int64       `json:"docs_read"`
+	DocsWritten      int64       `json:"docs_written"`
+	DocWriteFailures int64       `json:"doc_write_failures"`
+	StartLastSeq     int64       `json:"start_last_seq"`
 	EndLastSeq       interface{} `json:"end_last_seq"`
 }
 
@@ -66,33 +66,6 @@ func (r *Replicator) ActiveTasks() []Task {
 	return tasks
 }
 
-func (r *Replicator) SnapshotStats() {
-
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-
-	for repID, replication := range r.replications {
-		r.writeStats(repID, replication)
-	}
-
-}
-
-func (r *Replicator) writeStats(repID string, replication sgreplicate.SGReplication) {
-
-	stats := replication.GetStats()
-	statsExpvars, ok := PerReplicationStats.Get(repID).(*expvar.Map)
-	if !ok {
-		Warnf(KeyReplicate, "Error getting stats for replication %v.  Stats for this replication will not be updated.", repID)
-		return
-	}
-	statsExpvars.Set(StatKeySgrNumDocsPushed, ExpvarInt64Val(int64(stats.GetDocsWritten())))
-	statsExpvars.Set(StatKeySgrNumDocsFailedToPush, ExpvarInt64Val(int64(stats.GetDocWriteFailures())))
-	statsExpvars.Set(StatKeySgrNumAttachmentsTransferred, ExpvarInt64Val(int64(stats.GetNumAttachmentsTransferred())))
-	statsExpvars.Set(StatKeySgrAttachmentBytesTransferred, ExpvarInt64Val(int64(stats.GetAttachmentBytesTransferred())))
-	statsExpvars.Set(StatKeySgrDocsCheckedSent, ExpvarInt64Val(int64(stats.GetDocsCheckedSent())))
-	statsExpvars.Set(StatKeySgrActive, NewAtomicBool(stats.GetActive()))
-}
-
 // StopReplications stops all active replications.
 func (r *Replicator) StopReplications() error {
 	r.lock.Lock()
@@ -123,14 +96,12 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 
 	Infof(KeyReplicate, "Creating replication with parameters %s", UD(parameters))
 
-	// Create stats for this replication
-	replicationStats := NewReplicationStats()
-	PerReplicationStats.Set(parameters.ReplicationId, replicationStats)
-
 	var (
 		replication sgreplicate.SGReplication
 		err         error
 	)
+
+	parameters.Stats = ReplicationStats(parameters.ReplicationId)
 
 	switch parameters.Lifecycle {
 	case sgreplicate.ONE_SHOT:
@@ -146,6 +117,37 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 	}
 
 	return taskForReplication(replication, parameters), nil
+}
+
+// ReplicationStats returns replication stats for the given replication ID, or a new set if they do not already exist.
+func ReplicationStats(replicationID string) (stats *sgreplicate.ReplicationStats) {
+	stats = sgreplicate.NewReplicationStats()
+	if existingStats := PerReplicationStats.Get(replicationID); existingStats != nil {
+		existingStatsMap := existingStats.(*expvar.Map)
+		stats.Active = existingStatsMap.Get(StatKeySgrActive).(*sgreplicate.AtomicBool)
+		stats.DocsWritten = existingStatsMap.Get(StatKeySgrNumDocsPushed).(*expvar.Int)
+		stats.DocWriteFailures = existingStatsMap.Get(StatKeySgrNumDocsFailedToPush).(*expvar.Int)
+		stats.NumAttachmentsTransferred = existingStatsMap.Get(StatKeySgrNumAttachmentsTransferred).(*expvar.Int)
+		stats.AttachmentBytesTransferred = existingStatsMap.Get(StatKeySgrAttachmentBytesTransferred).(*expvar.Int)
+		stats.DocsCheckedSent = existingStatsMap.Get(StatKeySgrDocsCheckedSent).(*expvar.Int)
+	} else {
+		// Initialize replication stats
+		PerReplicationStats.Set(replicationID, ReplicationStatsMap(stats))
+	}
+
+	return
+}
+
+// ReplicationStatsMap returns an expvar.Map that contains references to stats in the given ReplicationStats
+func ReplicationStatsMap(s *sgreplicate.ReplicationStats) *expvar.Map {
+	m := expvar.Map{}
+	m.Set(StatKeySgrActive, s.Active)
+	m.Set(StatKeySgrNumDocsPushed, s.DocsWritten)
+	m.Set(StatKeySgrNumDocsFailedToPush, s.DocWriteFailures)
+	m.Set(StatKeySgrNumAttachmentsTransferred, s.NumAttachmentsTransferred)
+	m.Set(StatKeySgrAttachmentBytesTransferred, s.AttachmentBytesTransferred)
+	m.Set(StatKeySgrDocsCheckedSent, s.DocsCheckedSent)
+	return &m
 }
 
 func (r *Replicator) runOneShotReplication(parameters sgreplicate.ReplicationParameters) (sgreplicate.SGReplication, error) {
@@ -174,10 +176,6 @@ func (r *Replicator) runOneShotReplication(parameters sgreplicate.ReplicationPar
 	}
 
 	_, err := replication.WaitUntilDone()
-
-	// Write stats at the end of a one-shot replication, to ensure the final state is recorded before the replication is
-	// removed from the replication set.
-	r.writeStats(parameters.ReplicationId, replication)
 
 	r.removeReplication(parameters.ReplicationId)
 	return replication, err
@@ -246,7 +244,7 @@ func (r *Replicator) stopReplication(parameters sgreplicate.ReplicationParameter
 	return taskForReplication(replication, parameters), nil
 }
 
-// removeReplication removes the given replicaiton from the replicator maps.
+// removeReplication removes the given replication from the replicator maps.
 func (r *Replicator) removeReplication(repID string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -254,7 +252,7 @@ func (r *Replicator) removeReplication(repID string) {
 	delete(r.replicationParams, repID)
 }
 
-// _addReplication adds the given replicaiton to the replicator maps.
+// _addReplication adds the given replication to the replicator maps.
 func (r *Replicator) _addReplication(rep sgreplicate.SGReplication, parameters sgreplicate.ReplicationParameters) {
 	r.replications[parameters.ReplicationId] = rep
 	r.replicationParams[parameters.ReplicationId] = parameters
@@ -277,27 +275,22 @@ func (r *Replicator) _findReplication(queryParams sgreplicate.ReplicationParamet
 // taskForReplication returns the task for the given replication.
 func taskForReplication(replication sgreplicate.SGReplication, params sgreplicate.ReplicationParameters) *Task {
 	stats := replication.GetStats()
+
+	// inactive replications used to be removed - now we'll just exclude them from tasks
+	if !stats.Active.Get() {
+		return nil
+	}
+
 	return &Task{
 		TaskType:         "replication",
 		ReplicationID:    params.ReplicationId,
 		Source:           params.GetSourceDbUrl(),
 		Target:           params.GetTargetDbUrl(),
 		Continuous:       params.Lifecycle == sgreplicate.CONTINUOUS,
-		DocsRead:         stats.GetDocsRead(),
-		DocsWritten:      stats.GetDocsWritten(),
-		DocWriteFailures: stats.GetDocWriteFailures(),
-		StartLastSeq:     stats.GetStartLastSeq(),
-		EndLastSeq:       stats.GetEndLastSeq(),
+		DocsRead:         stats.DocsRead.Value(),
+		DocsWritten:      stats.DocsWritten.Value(),
+		DocWriteFailures: stats.DocWriteFailures.Value(),
+		StartLastSeq:     stats.StartLastSeq.Value(),
+		EndLastSeq:       stats.EndLastSeq.Value(),
 	}
-}
-
-func NewReplicationStats() (expvarMap *expvar.Map) {
-	result := new(expvar.Map).Init()
-	result.Set(StatKeySgrNumDocsPushed, ExpvarIntVal(0))
-	result.Set(StatKeySgrNumDocsFailedToPush, ExpvarIntVal(0))
-	result.Set(StatKeySgrNumAttachmentsTransferred, ExpvarIntVal(0))
-	result.Set(StatKeySgrAttachmentBytesTransferred, ExpvarIntVal(0))
-	result.Set(StatKeySgrDocsCheckedSent, ExpvarIntVal(0))
-	result.Set(StatKeySgrActive, &AtomicBool{value: 1})
-	return result
 }

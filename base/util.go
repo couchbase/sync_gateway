@@ -1119,17 +1119,9 @@ func ContainsString(s []string, e string) bool {
 	return false
 }
 
-// AtomicBool is a bool that can be set or read atomically, and also satisfies the expvar.Var interface.
+// AtomicBool is a bool that can be set or read atomically
 type AtomicBool struct {
 	value int32
-}
-
-// NewAtomicBool initializes a new AtomicBool with the given value.
-func NewAtomicBool(val bool) *AtomicBool {
-	if val {
-		return &AtomicBool{value: 1}
-	}
-	return &AtomicBool{value: 0}
 }
 
 func (ab *AtomicBool) Set(flag bool) {
@@ -1143,14 +1135,3 @@ func (ab *AtomicBool) Set(flag bool) {
 func (ab *AtomicBool) IsTrue() bool {
 	return atomic.LoadInt32(&ab.value) == 1
 }
-
-// String allows AtomicBool to satisfy the expvar.Var interface.
-func (ab *AtomicBool) String() string {
-	if ab == nil {
-		return "null"
-	}
-	return strconv.FormatBool(ab.IsTrue())
-}
-
-// compile-time interface check for expvar.Var
-var _ expvar.Var = &AtomicBool{}
