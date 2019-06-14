@@ -5,6 +5,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -79,7 +80,18 @@ import (
 // values would be _prepended_ to the front of the cache and the validFrom sequence would be lowered
 // to account for the fact that it's now valid from a lower sequence value.  Entries that violated
 // the guarantees described above would possibly be discarded.
-type singleChannelCache struct {
+type SingleChannelCache interface {
+	GetChanges(options ChangesOptions) ([]*LogEntry, error)
+	GetCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry)
+	ChannelName() string
+	SupportsLateFeed() bool
+	LateSequenceUUID() uuid.UUID
+	GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error)
+	RegisterLateSequenceClient() (latestLateSeq uint64)
+	ReleaseLateSequenceClient(sequence uint64) (success bool)
+}
+
+type singleChannelCacheImpl struct {
 	channelName      string               // The channel name, duh
 	queryHandler     ChannelQueryHandler  // Database connection (used for view queries)
 	logs             LogEntries           // Log entries in sequence order
@@ -96,8 +108,8 @@ type singleChannelCache struct {
 	statsMap         *expvar.Map          // Map used for cache stats
 }
 
-func newSingleChannelCache(queryHandler ChannelQueryHandler, channelName string, validFrom uint64, statsMap *expvar.Map) *singleChannelCache {
-	cache := &singleChannelCache{queryHandler: queryHandler, channelName: channelName, validFrom: validFrom}
+func newSingleChannelCache(queryHandler ChannelQueryHandler, channelName string, validFrom uint64, statsMap *expvar.Map) *singleChannelCacheImpl {
+	cache := &singleChannelCacheImpl{queryHandler: queryHandler, channelName: channelName, validFrom: validFrom}
 	cache.initializeLateLogs()
 	cache.cachedDocIDs = make(map[string]struct{})
 	cache.statsMap = statsMap
@@ -113,7 +125,7 @@ func newSingleChannelCache(queryHandler ChannelQueryHandler, channelName string,
 	return cache
 }
 
-func newChannelCacheWithOptions(queryHandler ChannelQueryHandler, channelName string, validFrom uint64, options ChannelCacheOptions, statsMap *expvar.Map) *singleChannelCache {
+func newChannelCacheWithOptions(queryHandler ChannelQueryHandler, channelName string, validFrom uint64, options ChannelCacheOptions, statsMap *expvar.Map) *singleChannelCacheImpl {
 	cache := newSingleChannelCache(queryHandler, channelName, validFrom, statsMap)
 
 	// Update cache options when present
@@ -148,8 +160,20 @@ type ChannelCacheOptions struct {
 	CompactLowWatermarkPercent  int           // Compact LWM (as percent of MaxNumChannels)
 }
 
+func (c *singleChannelCacheImpl) ChannelName() string {
+	return c.channelName
+}
+
+func (c *singleChannelCacheImpl) LateSequenceUUID() uuid.UUID {
+	return c.lateSequenceUUID
+}
+
+func (c *singleChannelCacheImpl) SupportsLateFeed() bool {
+	return true
+}
+
 // Low-level method to add a LogEntry to a single channel's cache.
-func (c *singleChannelCache) addToCache(change *LogEntry, isRemoval bool) {
+func (c *singleChannelCacheImpl) addToCache(change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -171,7 +195,7 @@ func (c *singleChannelCache) addToCache(change *LogEntry, isRemoval bool) {
 
 // If certain conditions are met, it's possible that this change will be added and then
 // immediately pruned, which causes the issues described in https://github.com/couchbase/sync_gateway/issues/2662
-func (c *singleChannelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
+func (c *singleChannelCacheImpl) wouldBeImmediatelyPruned(change *LogEntry) bool {
 
 	// This might not be the one that is going to be immediately pruned
 	if change.Sequence >= c.validFrom {
@@ -184,7 +208,7 @@ func (c *singleChannelCache) wouldBeImmediatelyPruned(change *LogEntry) bool {
 }
 
 // Remove purges the given doc IDs from the channel cache and returns the number of items removed.
-func (c *singleChannelCache) Remove(docIDs []string, startTime time.Time) (count int) {
+func (c *singleChannelCacheImpl) Remove(docIDs []string, startTime time.Time) (count int) {
 	// Exit early if there's no work to do
 	if len(docIDs) == 0 {
 		return 0
@@ -233,7 +257,7 @@ func (c *singleChannelCache) Remove(docIDs []string, startTime time.Time) (count
 }
 
 // Internal helper that prunes a single channel's cache. Caller MUST be holding the lock.
-func (c *singleChannelCache) _pruneCacheLength() (pruned int) {
+func (c *singleChannelCacheImpl) _pruneCacheLength() (pruned int) {
 	// If we are over max length, prune it down to max length
 	if len(c.logs) > c.options.ChannelCacheMaxLength {
 		pruned = len(c.logs) - c.options.ChannelCacheMaxLength
@@ -250,7 +274,7 @@ func (c *singleChannelCache) _pruneCacheLength() (pruned int) {
 	return pruned
 }
 
-func (c *singleChannelCache) pruneCacheAge(ctx context.Context) {
+func (c *singleChannelCacheImpl) pruneCacheAge(ctx context.Context) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -275,7 +299,7 @@ func (c *singleChannelCache) pruneCacheAge(ctx context.Context) {
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
 // Entries are returned in increasing-sequence order.
-func (c *singleChannelCache) getCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
+func (c *singleChannelCacheImpl) GetCachedChanges(options ChangesOptions) (validFrom uint64, result []*LogEntry) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	c.recentlyUsed.Set(true)
@@ -292,7 +316,7 @@ func (c *singleChannelCache) getCachedChanges(options ChangesOptions) (validFrom
 	return c._getCachedChanges(sinceSeq, limit)
 }
 
-func (c *singleChannelCache) _getCachedChanges(sinceSeq uint64, limit int) (validFrom uint64, result []*LogEntry) {
+func (c *singleChannelCacheImpl) _getCachedChanges(sinceSeq uint64, limit int) (validFrom uint64, result []*LogEntry) {
 	// Find the first entry in the log to return:
 	log := c.logs
 	if len(log) == 0 {
@@ -327,15 +351,17 @@ func (c *singleChannelCache) _getCachedChanges(sinceSeq uint64, limit int) (vali
 // initialSequence is used only if the cache is empty: it gives the max sequence to which the
 // view should be queried, because we don't want the view query to outrun the chanceCache's
 // nextSequence.
-func (c *singleChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
+
+func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
+
 	// Use the cache, and return if it fulfilled the entire request:
-	cacheValidFrom, resultFromCache := c.getCachedChanges(options)
+	cacheValidFrom, resultFromCache := c.GetCachedChanges(options)
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 || resultFromCache == nil {
-		base.InfofCtx(options.Ctx, base.KeyCache, "getCachedChanges(%q, %s) --> %d changes valid from #%d",
+		base.InfofCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
 			base.UD(c.channelName), options.Since.String(), numFromCache, cacheValidFrom)
 	} else if resultFromCache == nil {
-		base.InfofCtx(options.Ctx, base.KeyCache, "getCachedChanges(%q, %s) --> nothing cached",
+		base.InfofCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
 			base.UD(c.channelName), options.Since.String())
 	}
 	startSeq := options.Since.SafeSequence() + 1
@@ -354,9 +380,9 @@ func (c *singleChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, er
 
 	// Another goroutine might have gotten the lock first and already queried the view and updated
 	// the cache, so repeat the above:
-	cacheValidFrom, resultFromCache = c.getCachedChanges(options)
+	cacheValidFrom, resultFromCache = c.GetCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
-		base.InfofCtx(options.Ctx, base.KeyCache, "2nd getCachedChanges(%q, %s) got %d more, valid from #%d!",
+		base.InfofCtx(options.Ctx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
 			base.UD(c.channelName), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
@@ -377,7 +403,7 @@ func (c *singleChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, er
 	// overlap, which helps confirm that we've got everything.
 	c.statsMap.Add(base.StatKeyChannelCacheMisses, 1)
 	endSeq := cacheValidFrom
-	resultFromView, err := c.queryHandler.getChangesInChannelFromQuery(c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -385,15 +411,15 @@ func (c *singleChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, er
 	// Cache some of the query results, if there's room in the cache.  If query hit the limit,
 	// the query results are only valid for the range of sequences in the result set.
 	resultValidTo := endSeq
-	numResults := len(resultFromView)
+	numResults := len(resultFromQuery)
 	if options.Limit != 0 && numResults >= options.Limit {
-		resultValidTo = resultFromView[numResults-1].Sequence
+		resultValidTo = resultFromQuery[numResults-1].Sequence
 	}
 	if len(resultFromCache) < c.options.ChannelCacheMaxLength {
-		c.prependChanges(resultFromView, startSeq, resultValidTo)
+		c.prependChanges(resultFromQuery, startSeq, resultValidTo)
 	}
 
-	result := resultFromView
+	result := resultFromQuery
 	room := options.Limit - len(result)
 	if (options.Limit == 0 || room > 0) && len(resultFromCache) > 0 {
 		// Concatenate the view & cache results:
@@ -413,7 +439,7 @@ func (c *singleChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, er
 
 //////// LOGENTRIES:
 
-func (c *singleChannelCache) _adjustFirstSeq(change *LogEntry) {
+func (c *singleChannelCacheImpl) _adjustFirstSeq(change *LogEntry) {
 	if change.Sequence < c.validFrom {
 		c.validFrom = change.Sequence
 	}
@@ -421,7 +447,7 @@ func (c *singleChannelCache) _adjustFirstSeq(change *LogEntry) {
 
 // Adds an entry to the end of an array of LogEntries.
 // Any existing entry with the same DocID is removed.
-func (c *singleChannelCache) _appendChange(change *LogEntry) {
+func (c *singleChannelCacheImpl) _appendChange(change *LogEntry) {
 
 	log := c.logs
 	end := len(log) - 1
@@ -456,7 +482,7 @@ func (c *singleChannelCache) _appendChange(change *LogEntry) {
 }
 
 // Updates cache utilization.  Note that cache entries that are both removals and tombstones are counted as removals
-func (c *singleChannelCache) UpdateCacheUtilization(entry *LogEntry, delta int64) {
+func (c *singleChannelCacheImpl) UpdateCacheUtilization(entry *LogEntry, delta int64) {
 	if entry.IsRemoved() {
 		c.statsMap.Add(base.StatKeyChannelCacheRevsRemoval, delta)
 	} else if entry.IsDeleted() {
@@ -469,7 +495,7 @@ func (c *singleChannelCache) UpdateCacheUtilization(entry *LogEntry, delta int64
 // Insert out-of-sequence entry into the cache.  If the docId is already present in a later
 // sequence, we skip the insert.  If the docId is already present in an earlier sequence,
 // we remove the earlier sequence.
-func (c *singleChannelCache) insertChange(log *LogEntries, change *LogEntry) {
+func (c *singleChannelCacheImpl) insertChange(log *LogEntries, change *LogEntry) {
 
 	defer func() {
 		c.cachedDocIDs[change.DocID] = struct{}{}
@@ -534,7 +560,7 @@ func (c *singleChannelCache) insertChange(log *LogEntries, change *LogEntry) {
 // the cache.
 //
 // Returns the number of entries actually prepended.
-func (c *singleChannelCache) prependChanges(changes LogEntries, changesValidFrom uint64, changesValidTo uint64) int {
+func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValidFrom uint64, changesValidTo uint64) int {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -622,7 +648,7 @@ func (c *singleChannelCache) prependChanges(changes LogEntries, changesValidFrom
 
 }
 
-func (c *singleChannelCache) GetSize() int {
+func (c *singleChannelCacheImpl) GetSize() int {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return len(c.logs)
@@ -656,7 +682,7 @@ func (l *lateLogEntry) getListenerCount() (count uint64) {
 
 // Initialize the late-arriving log queue with a zero entry, used to track listeners.  This is needed
 // to support purging later entries once everyone has seen them.
-func (c *singleChannelCache) initializeLateLogs() {
+func (c *singleChannelCacheImpl) initializeLateLogs() {
 	log := &LogEntry{Sequence: 0}
 	lateEntry := &lateLogEntry{
 		logEntry:      log,
@@ -669,7 +695,7 @@ func (c *singleChannelCache) initializeLateLogs() {
 // Retrieve late-arriving sequences that have arrived since the previous sequence.  Retrieves set of sequences, and the last
 // sequence number in the list.  Note that lateLogs is sorted by arrival on feed, not sequence number. Error indicates
 // that sinceSequence isn't found in history, and caller should reset to low sequence.
-func (c *singleChannelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
+func (c *singleChannelCacheImpl) GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
 
 	c.lateLogLock.RLock()
 	defer c.lateLogLock.RUnlock()
@@ -715,7 +741,7 @@ func (c *singleChannelCache) GetLateSequencesSince(sinceSequence uint64) (entrie
 
 // Called on first call to the channel during changes processing, to get starting point for
 // subsequent checks for late arriving sequences.
-func (c *singleChannelCache) RegisterLateSequenceClient() (latestLateSeq uint64) {
+func (c *singleChannelCacheImpl) RegisterLateSequenceClient() (latestLateSeq uint64) {
 
 	c.lateLogLock.RLock()
 	latestLog := c._mostRecentLateLog()
@@ -726,7 +752,7 @@ func (c *singleChannelCache) RegisterLateSequenceClient() (latestLateSeq uint64)
 }
 
 // Called when a client (a continuous _changes feed) is no longer referencing the sequence number.
-func (c *singleChannelCache) ReleaseLateSequenceClient(sequence uint64) (success bool) {
+func (c *singleChannelCacheImpl) ReleaseLateSequenceClient(sequence uint64) (success bool) {
 	for _, log := range c.lateLogs {
 		if log.logEntry.Sequence == sequence {
 			log.removeListener()
@@ -737,7 +763,7 @@ func (c *singleChannelCache) ReleaseLateSequenceClient(sequence uint64) (success
 }
 
 // Receive new late sequence
-func (c *singleChannelCache) AddLateSequence(change *LogEntry) {
+func (c *singleChannelCacheImpl) AddLateSequence(change *LogEntry) {
 	// Add to lateLogs.
 	lateEntry := &lateLogEntry{
 		logEntry:      change,
@@ -758,7 +784,7 @@ func (c *singleChannelCache) AddLateSequence(change *LogEntry) {
 // Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients
 // will get these entries directly from the cache.  Always maintain
 // at least one entry in the list, to track new listeners.  Expects to have a lock on lateLogLock.
-func (c *singleChannelCache) _purgeLateLogEntries() {
+func (c *singleChannelCacheImpl) _purgeLateLogEntries() {
 	for len(c.lateLogs) > 1 && c.lateLogs[0].getListenerCount() == 0 {
 		c.lateLogs = c.lateLogs[1:]
 	}
@@ -767,22 +793,68 @@ func (c *singleChannelCache) _purgeLateLogEntries() {
 // Purge entries from the beginning of the list having no active listeners.  Any newly connecting clients
 // will get these entries directly from the cache.  Always maintain
 // at least one entry in the list, to track new listeners.
-func (c *singleChannelCache) purgeLateLogEntries() {
+func (c *singleChannelCacheImpl) purgeLateLogEntries() {
 	c.lateLogLock.Lock()
 	c._purgeLateLogEntries()
 	c.lateLogLock.Unlock()
 }
 
 // mostRecentLateLog assumes caller has at least read lock on c.lateLogLock
-func (c *singleChannelCache) _mostRecentLateLog() *lateLogEntry {
+func (c *singleChannelCacheImpl) _mostRecentLateLog() *lateLogEntry {
 	if len(c.lateLogs) > 0 {
 		return c.lateLogs[len(c.lateLogs)-1]
 	}
 	return nil
 }
 
-func (c *singleChannelCache) addDocIDs(changes LogEntries) {
+func (c *singleChannelCacheImpl) addDocIDs(changes LogEntries) {
 	for _, change := range changes {
 		c.cachedDocIDs[change.DocID] = struct{}{}
 	}
+}
+
+// A bypassChannelCache serves GetChanges requests directly via query
+type bypassChannelCache struct {
+	channelName  string
+	queryHandler ChannelQueryHandler
+}
+
+// Get Changes uses high sequence value (math.MaxUint64) as the upper bound.  Relies on changes processing
+// to apply HighCachedSequence filtering - same approach used by singleChannelCacheImpl.
+func (b *bypassChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
+	startSeq := options.Since.SafeSequence() + 1
+	endSeq := uint64(math.MaxUint64)
+	return b.queryHandler.getChangesInChannelFromQuery(b.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
+}
+
+// No cached changes for bypassChannelCache
+func (b *bypassChannelCache) GetCachedChanges(options ChangesOptions) (validFrom uint64, changes []*LogEntry) {
+	return math.MaxUint64, nil
+}
+
+func (b *bypassChannelCache) ChannelName() string {
+	return b.channelName
+}
+
+func (b *bypassChannelCache) SupportsLateFeed() bool {
+	return false
+}
+
+// Shouldn't be called - callers are expected to check SupportsLateFeed.
+// Returns a new UUID to ensure no matching (even with itself) for callers
+// that aren't properly checking SupportsLateFeed.
+func (b *bypassChannelCache) LateSequenceUUID() uuid.UUID {
+	return uuid.New()
+}
+
+func (b *bypassChannelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*LogEntry, lastSequence uint64, err error) {
+	return nil, 0, errors.New("GetLateSequencesSince not supported for bypassChannelCache")
+}
+
+func (b *bypassChannelCache) RegisterLateSequenceClient() (latestLateSeq uint64) {
+	return 0
+}
+
+func (b *bypassChannelCache) ReleaseLateSequenceClient(sequence uint64) (success bool) {
+	return false
 }
