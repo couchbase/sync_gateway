@@ -1016,6 +1016,12 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 
 //////// STATS LOGGING
 
+type statsWrapper struct {
+	Stats              json.RawMessage `json:"stats"`
+	UnixEpochTimestamp int64           `json:"unix_epoch_timestamp"`
+	RFC3339            string          `json:"rfc3339_timestamp"`
+}
+
 func (sc *ServerContext) startStatsLogger() {
 
 	statsLogFrequencySecs := DefaultStatsLogFrequencySecs
@@ -1059,14 +1065,10 @@ func (sc *ServerContext) logStats() error {
 	sc.updateCalculatedStats()
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
 	currentTime := time.Now()
-	wrapper := struct {
-		Stats             json.RawMessage `json:"stats"`
-		UnixEpocTimestamp int64           `json:"unix_epoch_timestamp"`
-		RFC3339           string          `json:"rfc3339_timestamp"`
-	}{
-		Stats:             []byte(base.Stats.String()),
-		UnixEpocTimestamp: currentTime.Unix(),
-		RFC3339:           currentTime.Format(time.RFC3339),
+	wrapper := statsWrapper{
+		Stats:              []byte(base.Stats.String()),
+		UnixEpochTimestamp: currentTime.Unix(),
+		RFC3339:            currentTime.Format(time.RFC3339),
 	}
 
 	marshalled, err := json.Marshal(wrapper)
