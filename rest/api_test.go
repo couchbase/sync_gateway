@@ -4098,7 +4098,13 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	response := rt.SendRequest("PUT", "/db/testdoc", `{"value":"a value", "channels":["a"]}`)
 	err := json.Unmarshal(response.Body.Bytes(), &responseBody)
 	assert.NoError(t, err)
-	rev := fmt.Sprint(responseBody["rev"])
+	rev1 := fmt.Sprint(responseBody["rev"])
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendRequest("PUT", "/db/testdoc2", `{"value":"a value", "channels":["a"]}`)
+	err = json.Unmarshal(response.Body.Bytes(), &responseBody)
+	assert.NoError(t, err)
+	rev2 := fmt.Sprint(responseBody["rev"])
 	assertStatus(t, response, http.StatusCreated)
 
 	err = rt.WaitForPendingChanges()
@@ -4107,7 +4113,10 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", "")
 	assertStatus(t, response, http.StatusOK)
 
-	response = rt.SendRequest("PUT", "/db/testdoc?new_edits=true&rev="+rev, `{"value":"a value", "channels":[]})`)
+	response = rt.SendRequest("PUT", "/db/testdoc?new_edits=true&rev="+rev1, `{"value":"a value", "channels":[]})`)
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendRequest("PUT", "/db/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]})`)
 	assertStatus(t, response, http.StatusCreated)
 
 	err = rt.WaitForPendingChanges()
