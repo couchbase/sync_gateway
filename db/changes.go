@@ -422,6 +422,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 		// Store incoming low sequence, for potential use by longpoll iterations
 		requestLowSeq := options.Since.LowSeq
+		// Last sent low sequence is needed for continuous replications that need to reset their late sequence feed (e.g.
+		// due to cache compaction)
+		lastSentLowSeq := options.Since.LowSeq
 
 		// This loop is used to re-run the fetch after every database change, in Wait mode
 	outer:
@@ -477,8 +480,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					if lateSequenceFeedHandler != nil {
 						latefeed, err := db.getLateFeed(lateSequenceFeedHandler, singleChannelCache)
 						if err != nil {
-							base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel feed to low sequence.", base.UD(name))
-							chanOpts.Since.LowSeq = lowSequence
+							base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel changes feed to last sent low sequence #%d.", base.UD(name), lastSentLowSeq)
+							chanOpts.Since.LowSeq = lastSentLowSeq
 							if lateFeed := db.newLateSequenceFeed(singleChannelCache); lateFeed != nil {
 								lateSequenceFeeds[name] = lateFeed
 							}
@@ -638,6 +641,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				// Update the low sequence on the entry we're going to send
 				// NOTE: if 0, the low seq part of compound sequence gets removed
 				minEntry.Seq.LowSeq = lowSequence
+				lastSentLowSeq = lowSequence
 
 				// Send the entry, and repeat the loop:
 				base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed sending %+v %s", base.UD(minEntry), base.UD(to))

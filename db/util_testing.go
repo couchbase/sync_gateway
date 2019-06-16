@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -116,4 +117,24 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime ti
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+func (db *DatabaseContext) CacheCompactActive() bool {
+	channelCache := db.changeCache.getChannelCache()
+	compactingCache, ok := channelCache.(*channelCacheImpl)
+	if !ok {
+		return false
+	}
+	return compactingCache.isCompactActive()
+}
+
+func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
+	for i := 0; i < 100; i++ {
+		caughtUpCount := base.ExpvarVar2Int(db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+		if caughtUpCount >= targetCount {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return errors.New("WaitForCaughtUp didn't catch up")
 }

@@ -269,7 +269,9 @@ func (c *singleChannelCacheImpl) _pruneCacheLength() (pruned int) {
 		c.logs = c.logs[pruned:]
 	}
 
-	base.Debugf(base.KeyCache, "Pruned %d entries from channel %q", pruned, base.UD(c.channelName))
+	if pruned > 0 {
+		base.Debugf(base.KeyCache, "Pruned %d entries from channel %q", pruned, base.UD(c.channelName))
+	}
 
 	return pruned
 }
