@@ -60,7 +60,9 @@ func (r *Replicator) ActiveTasks() []Task {
 	for repID, replication := range r.replications {
 		params := r.replicationParams[repID]
 		task := taskForReplication(replication, params)
-		tasks = append(tasks, *task)
+		if task != nil {
+			tasks = append(tasks, *task)
+		}
 	}
 
 	return tasks
