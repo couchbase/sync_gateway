@@ -61,7 +61,7 @@ func BenchmarkReadOps_Get(b *testing.B) {
 
 	rt := NewRestTester(b, nil)
 	defer rt.Close()
-	defer PurgeDoc(*rt, "doc1k")
+	defer PurgeDoc(rt, "doc1k")
 
 	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
 	response := rt.SendAdminRequest("PUT", "/db/doc1k", doc1k_putDoc)
@@ -112,7 +112,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 
 	rt := NewRestTester(b, nil)
 	defer rt.Close()
-	defer PurgeDoc(*rt, "doc1k")
+	defer PurgeDoc(rt, "doc1k")
 
 	// Get database handle
 	rtDatabase := rt.GetDatabase()
@@ -179,7 +179,7 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 
 	rt := NewRestTester(b, nil)
 	defer rt.Close()
-	defer PurgeDoc(*rt, "doc1k")
+	defer PurgeDoc(rt, "doc1k")
 
 	// Create user
 	username := "user1"
@@ -252,7 +252,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 
 	rt := NewRestTester(b, nil)
 	defer rt.Close()
-	defer PurgeDoc(*rt, "doc1k")
+	defer PurgeDoc(rt, "doc1k")
 
 	// Create target doc for revs_diff:
 	doc1k_bulkDocs_meta := `"_id":"doc1k", 
@@ -304,7 +304,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 
 }
 
-func PurgeDoc(rt RestTester, docid string) {
+func PurgeDoc(rt *RestTester, docid string) {
 	response := rt.SendAdminRequest("POST", "/db/_purge", fmt.Sprintf(`{"%s":["*"]}`, docid))
 	if response.Code != 200 {
 		log.Printf("Unexpected purge response: %d  %s", response.Code, response.Body.Bytes())
