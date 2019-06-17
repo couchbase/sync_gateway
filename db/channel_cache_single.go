@@ -589,10 +589,13 @@ func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValid
 		copy(c.logs, changes)
 		base.Infof(base.KeyCache, "  Initialized cache of %q with %d entries from query (#%d--#%d)",
 			base.UD(c.channelName), len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
-		c.statsMap.Add(base.StatKeyChannelCacheRevsActive, int64(len(changes)))
+
+		for _, change := range changes {
+			c.cachedDocIDs[change.DocID] = struct{}{}
+			c.UpdateCacheUtilization(change, 1)
+		}
 
 		c.validFrom = changesValidFrom
-		c.addDocIDs(changes)
 		return len(changes)
 
 	}
@@ -806,12 +809,6 @@ func (c *singleChannelCacheImpl) _mostRecentLateLog() *lateLogEntry {
 		return c.lateLogs[len(c.lateLogs)-1]
 	}
 	return nil
-}
-
-func (c *singleChannelCacheImpl) addDocIDs(changes LogEntries) {
-	for _, change := range changes {
-		c.cachedDocIDs[change.DocID] = struct{}{}
-	}
 }
 
 // A bypassChannelCache serves GetChanges requests directly via query
