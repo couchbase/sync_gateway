@@ -4087,6 +4087,45 @@ func TestNonImportedDuplicateID(t *testing.T) {
 	assertStatus(t, res, http.StatusConflict)
 }
 
+func TestChanCacheActiveRevsStat(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	responseBody := make(map[string]interface{})
+	response := rt.SendRequest("PUT", "/db/testdoc", `{"value":"a value", "channels":["a"]}`)
+	err := json.Unmarshal(response.Body.Bytes(), &responseBody)
+	assert.NoError(t, err)
+	rev1 := fmt.Sprint(responseBody["rev"])
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendRequest("PUT", "/db/testdoc2", `{"value":"a value", "channels":["a"]}`)
+	err = json.Unmarshal(response.Body.Bytes(), &responseBody)
+	assert.NoError(t, err)
+	rev2 := fmt.Sprint(responseBody["rev"])
+	assertStatus(t, response, http.StatusCreated)
+
+	err = rt.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	response = rt.SendAdminRequest("GET", "/db/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendRequest("PUT", "/db/testdoc?new_edits=true&rev="+rev1, `{"value":"a value", "channels":[]})`)
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendRequest("PUT", "/db/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]})`)
+	assertStatus(t, response, http.StatusCreated)
+
+	err = rt.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	assert.Equal(t, base.ExpvarIntVal(0), rt.GetDatabase().DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsActive))
+
+}
+
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	prt := NewRestTester(b, nil)
