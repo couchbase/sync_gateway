@@ -48,7 +48,9 @@ type RestTester struct {
 	RestTesterBucket        base.Bucket
 	RestTesterServerContext *ServerContext
 	AdminHandler            http.Handler
+	adminHandlerOnce        sync.Once
 	PublicHandler           http.Handler
+	publicHandlerOnce       sync.Once
 }
 
 func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
@@ -342,23 +344,20 @@ func (rt *RestTester) Send(request *http.Request) *TestResponse {
 
 func (rt *RestTester) TestAdminHandlerNoConflictsMode() http.Handler {
 	rt.EnableNoConflictsMode = true
-	if rt.AdminHandler == nil {
-		rt.AdminHandler = CreateAdminHandler(rt.ServerContext())
-	}
-	return rt.AdminHandler
+	return rt.TestAdminHandler()
 }
 
 func (rt *RestTester) TestAdminHandler() http.Handler {
-	if rt.AdminHandler == nil {
+	rt.adminHandlerOnce.Do(func() {
 		rt.AdminHandler = CreateAdminHandler(rt.ServerContext())
-	}
+	})
 	return rt.AdminHandler
 }
 
 func (rt *RestTester) TestPublicHandler() http.Handler {
-	if rt.PublicHandler == nil {
+	rt.publicHandlerOnce.Do(func() {
 		rt.PublicHandler = CreatePublicHandler(rt.ServerContext())
-	}
+	})
 	return rt.PublicHandler
 }
 
