@@ -33,7 +33,7 @@ type indexTester struct {
 	_indexBucket base.Bucket
 }
 
-func initRestTester(sequenceType db.SequenceType, syncFn string, testing testing.TB) indexTester {
+func initRestTester(sequenceType db.SequenceType, syncFn string, testing testing.TB) *indexTester {
 	if sequenceType == db.ClockSequenceType {
 		return initIndexTester(true, syncFn, testing)
 	} else {
@@ -41,11 +41,9 @@ func initRestTester(sequenceType db.SequenceType, syncFn string, testing testing
 	}
 }
 
-func initIndexTester(useBucketIndex bool, syncFn string, tb testing.TB) indexTester {
+func initIndexTester(useBucketIndex bool, syncFn string, tb testing.TB) *indexTester {
 
-	var rt = NewRestTester(tb, nil)
-
-	it := indexTester{RestTester: *rt}
+	it := &indexTester{RestTester: *NewRestTester(tb, nil)}
 	it.SyncFn = syncFn
 
 	it.RestTesterServerContext = NewServerContext(&ServerConfig{
@@ -282,7 +280,7 @@ func TestPostChangesInteger(t *testing.T) {
 	postChanges(t, it)
 }
 
-func postChanges(t *testing.T, it indexTester) {
+func postChanges(t *testing.T, it *indexTester) {
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
@@ -430,7 +428,7 @@ func TestPostChangesWithQueryString(t *testing.T) {
 }
 
 // Basic _changes test with since value
-func postChangesSince(t *testing.T, it indexTester) {
+func postChangesSince(t *testing.T, it *indexTester) {
 
 	// Create user
 	response := it.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@bb.com", "password":"letmein", "admin_channels":["PBS"]}`)
@@ -490,7 +488,7 @@ func TestPostChangesChannelFilterInteger(t *testing.T) {
 }
 
 // Test _changes with channel filter
-func postChangesChannelFilter(t *testing.T, it indexTester) {
+func postChangesChannelFilter(t *testing.T, it *indexTester) {
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
@@ -556,7 +554,7 @@ func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
 }
 
 // _changes with admin-based channel grant
-func postChangesAdminChannelGrant(t *testing.T, it indexTester) {
+func postChangesAdminChannelGrant(t *testing.T, it *indexTester) {
 
 	// Create user with access to channel ABC:
 	a := it.ServerContext().Database("db").Authenticator()
@@ -1475,7 +1473,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 }
 
-func updateTestDoc(rt RestTester, docid string, revid string, body string) (newRevId string, err error) {
+func updateTestDoc(rt *RestTester, docid string, revid string, body string) (newRevId string, err error) {
 	path := fmt.Sprintf("/db/%s", docid)
 	if revid != "" {
 		path = fmt.Sprintf("%s?rev=%s", path, revid)
@@ -1507,49 +1505,49 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 	//Create docs for each scenario
 	// Active
-	_, err := updateTestDoc(*rt, "doc_active", "", `{"type": "active", "channels":["alpha"]}`)
+	_, err := updateTestDoc(rt, "doc_active", "", `{"type": "active", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// Multi-revision
 	var revid string
-	revid, err = updateTestDoc(*rt, "doc_multi_rev", "", `{"type": "active", "channels":["alpha"], "v":1}`)
+	revid, err = updateTestDoc(rt, "doc_multi_rev", "", `{"type": "active", "channels":["alpha"], "v":1}`)
 	assert.NoError(t, err, "Error updating doc")
-	_, err = updateTestDoc(*rt, "doc_multi_rev", revid, `{"type": "active", "channels":["alpha"], "v":2}`)
+	_, err = updateTestDoc(rt, "doc_multi_rev", revid, `{"type": "active", "channels":["alpha"], "v":2}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// Tombstoned
-	revid, err = updateTestDoc(*rt, "doc_tombstone", "", `{"type": "tombstone", "channels":["alpha"]}`)
+	revid, err = updateTestDoc(rt, "doc_tombstone", "", `{"type": "tombstone", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/doc_tombstone?rev=%s", revid), "")
 	assertStatus(t, response, 200)
 
 	// Removed
-	revid, err = updateTestDoc(*rt, "doc_removed", "", `{"type": "removed", "channels":["alpha"]}`)
+	revid, err = updateTestDoc(rt, "doc_removed", "", `{"type": "removed", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
-	_, err = updateTestDoc(*rt, "doc_removed", revid, `{"type": "removed"}`)
+	_, err = updateTestDoc(rt, "doc_removed", revid, `{"type": "removed"}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// No access (no channels)
-	_, err = updateTestDoc(*rt, "doc_no_channels", "", `{"type": "no_channels", "channels":["gamma"]}`)
+	_, err = updateTestDoc(rt, "doc_no_channels", "", `{"type": "no_channels", "channels":["gamma"]}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// No access (other channels)
-	_, err = updateTestDoc(*rt, "doc_no_access", "", `{"type": "no_access", "channels":["gamma"]}`)
+	_, err = updateTestDoc(rt, "doc_no_access", "", `{"type": "no_access", "channels":["gamma"]}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// Removal, pruned from rev tree
 	var prunedRevId string
-	prunedRevId, err = updateTestDoc(*rt, "doc_pruned", "", `{"type": "pruned", "channels":["alpha"]}`)
+	prunedRevId, err = updateTestDoc(rt, "doc_pruned", "", `{"type": "pruned", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
 	// Generate more revs than revs_limit (3)
 	revid = prunedRevId
 	for i := 0; i < 5; i++ {
-		revid, err = updateTestDoc(*rt, "doc_pruned", revid, `{"type": "pruned", "channels":["gamma"]}`)
+		revid, err = updateTestDoc(rt, "doc_pruned", revid, `{"type": "pruned", "channels":["gamma"]}`)
 		assert.NoError(t, err, "Error updating doc")
 	}
 
 	// Doc w/ attachment
-	revid, err = updateTestDoc(*rt, "doc_attachment", "", `{"type": "attachments", "channels":["alpha"]}`)
+	revid, err = updateTestDoc(rt, "doc_attachment", "", `{"type": "attachments", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
 	attachmentBody := "this is the body of attachment"
 	attachmentContentType := "text/plain"
@@ -1560,20 +1558,20 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	// Doc w/ large numbers
-	_, err = updateTestDoc(*rt, "doc_large_numbers", "", `{"type": "large_numbers", "channels":["alpha"], "largeint":1234567890, "largefloat":1234567890.1234}`)
+	_, err = updateTestDoc(rt, "doc_large_numbers", "", `{"type": "large_numbers", "channels":["alpha"], "largeint":1234567890, "largefloat":1234567890.1234}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// Conflict
-	revid, err = updateTestDoc(*rt, "doc_conflict", "", `{"type": "conflict", "channels":["alpha"]}`)
-	_, err = updateTestDoc(*rt, "doc_conflict", revid, `{"type": "conflict", "channels":["alpha"]}`)
+	revid, err = updateTestDoc(rt, "doc_conflict", "", `{"type": "conflict", "channels":["alpha"]}`)
+	_, err = updateTestDoc(rt, "doc_conflict", revid, `{"type": "conflict", "channels":["alpha"]}`)
 	newEdits_conflict := `{"type": "conflict", "channels":["alpha"],
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "19a316235cdd9d695d73765dc527d903"]}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc_conflict?new_edits=false", newEdits_conflict)
 	assertStatus(t, response, 201)
 
 	// Resolved conflict
-	revid, err = updateTestDoc(*rt, "doc_resolved_conflict", "", `{"type": "resolved_conflict", "channels":["alpha"]}`)
-	_, err = updateTestDoc(*rt, "doc_resolved_conflict", revid, `{"type": "resolved_conflict", "channels":["alpha"]}`)
+	revid, err = updateTestDoc(rt, "doc_resolved_conflict", "", `{"type": "resolved_conflict", "channels":["alpha"]}`)
+	_, err = updateTestDoc(rt, "doc_resolved_conflict", revid, `{"type": "resolved_conflict", "channels":["alpha"]}`)
 	newEdits_conflict = `{"type": "resolved_conflict", "channels":["alpha"]},
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "4e123c0497a1a6975540977ec127c06c"]}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc_resolved_conflict?new_edits=false", newEdits_conflict)
@@ -1663,7 +1661,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 }
 
 // Test _changes with channel filter
-func changesActiveOnly(t *testing.T, it indexTester) {
+func changesActiveOnly(t *testing.T, it *indexTester) {
 
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()

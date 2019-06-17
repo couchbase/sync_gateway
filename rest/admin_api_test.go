@@ -1274,18 +1274,18 @@ func TestDBOnlineConcurrent(t *testing.T) {
 	wg.Add(2)
 
 	var goroutineresponse1 *TestResponse
-	go func(rt RestTester) {
+	go func(rt *RestTester) {
 		defer wg.Done()
 		goroutineresponse1 = rt.SendAdminRequest("POST", "/db/_online", "")
 		assertStatus(t, goroutineresponse1, 200)
-	}(*rt)
+	}(rt)
 
 	var goroutineresponse2 *TestResponse
-	go func(rt RestTester) {
+	go func(rt *RestTester) {
 		defer wg.Done()
 		goroutineresponse2 = rt.SendAdminRequest("POST", "/db/_online", "")
 		assertStatus(t, goroutineresponse2, 200)
-	}(*rt)
+	}(rt)
 
 	//This only waits until both _online requests have been posted
 	//They may not have been processed at this point
