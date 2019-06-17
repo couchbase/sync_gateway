@@ -3,6 +3,7 @@ package base
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	goassert "github.com/couchbaselabs/go.assert"
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
@@ -18,6 +19,7 @@ func TestReplicator(t *testing.T) {
 	}
 	_, err := r.Replicate(params, false)
 	goassert.Equals(t, err, nil)
+	time.Sleep(time.Millisecond * 100)
 	goassert.Equals(t, len(r.ActiveTasks()), 1)
 
 	params = sgreplicate.ReplicationParameters{
@@ -26,6 +28,7 @@ func TestReplicator(t *testing.T) {
 	}
 	_, err = r.Replicate(params, false)
 	goassert.Equals(t, err, nil)
+	time.Sleep(time.Millisecond * 100)
 	goassert.Equals(t, len(r.ActiveTasks()), 2)
 
 	// now stop it
