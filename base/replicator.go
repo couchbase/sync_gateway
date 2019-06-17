@@ -194,6 +194,19 @@ func (r *Replicator) runContinuousReplication(parameters sgreplicate.Replication
 
 	factory := func(parameters sgreplicate.ReplicationParameters, notificationChan chan sgreplicate.ReplicationNotification) sgreplicate.Runnable {
 		parameters.Lifecycle = sgreplicate.ONE_SHOT
+		stats := &sgreplicate.ReplicationStats{
+			DocsRead: parameters.Stats.DocsRead,
+			DocsWritten: parameters.Stats.DocsWritten,
+			DocWriteFailures: parameters.Stats.DocWriteFailures,
+			StartLastSeq: parameters.Stats.StartLastSeq,
+			NumAttachmentsTransferred: parameters.Stats.NumAttachmentsTransferred,
+			AttachmentBytesTransferred: parameters.Stats.AttachmentBytesTransferred,
+			DocsCheckedSent: parameters.Stats.DocsCheckedSent,
+			EndLastSeq: parameters.Stats.EndLastSeq,
+			// Set 'Active' to a new AtomicBool for the oneshot replication to have it's own active stat
+			Active: &sgreplicate.AtomicBool{},
+		}
+		parameters.Stats = stats
 		return sgreplicate.NewReplication(parameters, notificationChan)
 	}
 
