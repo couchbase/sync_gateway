@@ -56,6 +56,6 @@ See the [Extended Build Instructions](docs/BUILD.md) to build with dependency pi
 [CB_DOWNLOAD]: https://www.couchbase.com/downloads
 [CB_FORUM]: http://forums.couchbase.com
 [SG_REPO]: https://github.com/couchbase/sync_gateway
-[SG_DOCS]: https://developer.couchbase.com/documentation/mobile/current/guides/sync-gateway/index.html
+[SG_DOCS]: https://docs.couchbase.com/sync-gateway/current/getting-started.html
 [SG_ISSUES]: https://github.com/couchbase/sync_gateway/issues?q=is%3Aissue+is%3Aopen
 [MAILING_LIST]: https://groups.google.com/forum/?fromgroups#!forum/mobile-couchbase
