@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	// defaultRevisionCacheSize is the number of recently-accessed doc revisions to cache in RAM
-	defaultRevisionCacheSize = 5000
+	// DefaultRevisionCacheSize is the number of recently-accessed doc revisions to cache in RAM
+	DefaultRevisionCacheSize = 5000
 
-	// defaultRevisionCacheShardCount is the default number of shards to use for the revision cache
-	defaultRevisionCacheShardCount = 8
+	// DefaultRevisionCacheShardCount is the default number of shards to use for the revision cache
+	DefaultRevisionCacheShardCount = 8
 )
 
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
@@ -67,8 +67,8 @@ type RevisionCacheOptions struct {
 
 func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 	return &RevisionCacheOptions{
-		Size:       defaultRevisionCacheSize,
-		ShardCount: defaultRevisionCacheShardCount,
+		Size:       DefaultRevisionCacheSize,
+		ShardCount: DefaultRevisionCacheShardCount,
 	}
 }
 
