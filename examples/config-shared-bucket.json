@@ -1,9 +1,10 @@
 {
   "databases": {
     "db": {
-      "server": "http://localhost:8091",
-      "bucket": "default",
+      "server": "couchbase://localhost",
+      "username": "username",
       "password": "password",
+      "bucket": "default",
       "import_docs": true,
       "enable_shared_bucket_access":true,
       "allow_conflicts": false,

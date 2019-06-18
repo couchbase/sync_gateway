@@ -6,7 +6,10 @@
   },
   "databases": {
     "db": {
-      "server": "walrus:",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default",
       "users": {
         "pupshaw": {
           "admin_channels": ["*"],

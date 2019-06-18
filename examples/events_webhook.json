@@ -7,7 +7,10 @@
   },
   "databases": {
     "db": {
-      "server": "walrus:",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default",
       "event_handlers": {
         "max_processes": 500,
         "wait_for_process": "100",

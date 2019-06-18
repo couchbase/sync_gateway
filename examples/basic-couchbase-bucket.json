@@ -6,7 +6,9 @@
   },
   "databases": {
     "db": {
-      "server": "http://localhost:8091",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
       "bucket": "default",
       "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
       "allow_conflicts": false,

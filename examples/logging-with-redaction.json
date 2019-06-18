@@ -4,7 +4,9 @@
   },
   "databases": {
     "db": {
-      "server": "walrus:data",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
       "bucket": "default",
       "users": {"GUEST": {"disabled": false,"admin_channels": ["*"]}},
       "allow_conflicts": false,
