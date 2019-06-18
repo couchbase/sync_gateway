@@ -10,6 +10,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"expvar"
 	"fmt"
@@ -363,6 +364,123 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	nextEvents = nextFeedIteration()
 	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "9")
+
+}
+
+// Verify that a continuous changes that has an active late feed serves the expected results if the
+// channel cache associated with the late feed is compacted out of the cache
+func TestLateSequenceHandlingDuringCompact(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyChanges|base.KeyCache)()
+
+	cacheOptions := shortWaitCache()
+	cacheOptions.ChannelCacheOptions.MaxNumChannels = 100
+	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
+	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	caughtUpStart := base.ExpvarVar2Int(db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+
+	terminator := make(chan bool)
+	var changesFeedsWg sync.WaitGroup
+	var seq1Wg, seq2Wg, seq3Wg sync.WaitGroup
+	// Start 100 continuous changes feeds
+	for i := 0; i < 100; i++ {
+		changesFeedsWg.Add(1)
+		seq1Wg.Add(1)
+		seq2Wg.Add(1)
+		seq3Wg.Add(1)
+		go func(i int) {
+			defer changesFeedsWg.Done()
+			var options ChangesOptions
+			options.Since = SequenceID{Seq: 0}
+			options.Terminator = terminator
+			options.Continuous = true
+			options.Wait = true
+			channelName := fmt.Sprintf("chan_%d", i)
+			perRequestDb, err := CreateDatabase(db.DatabaseContext)
+			assert.NoError(t, err)
+			perRequestDb.Ctx = context.WithValue(context.Background(), base.LogContextKey{},
+				base.LogContext{CorrelationID: fmt.Sprintf("context_%s", channelName)},
+			)
+			feed, err := perRequestDb.MultiChangesFeed(base.SetOf(channelName), options)
+			require.NoError(t, err, "Feed initialization error")
+
+			// Process feed until closed by terminator in main goroutine
+			feedCount := 0
+			seqArrived := make([]bool, 4)
+			for event := range feed {
+
+				if event == nil {
+					continue
+				}
+				if event.Seq.Seq == 1 {
+					seq1Wg.Done()
+				} else if event.Seq.Seq == 2 {
+					seq2Wg.Done()
+				} else if event.Seq.Seq == 3 && seqArrived[3] == false {
+					// seq 3 may arrive twice for feeds that roll back their low sequence after eviction.  Check flag to
+					// only notify arrival the first time
+					seq3Wg.Done()
+				}
+				seqArrived[event.Seq.Seq] = true
+				log.Printf("Got feed event for %v: %v", channelName, event)
+				feedCount++
+			}
+			log.Printf("Feed closed for %s", channelName)
+			// Feeds that stay resident in the cache will get seqs 1, 3, 2
+			// Feeds that do not stay resident will get seq 3 twice (i.e. 1, 3, 2, 3) due to late sequence feed reset
+			assert.True(t, feedCount >= 3, "Expected at least three feed events")
+			assert.True(t, seqArrived[1])
+			assert.True(t, seqArrived[2])
+			assert.True(t, seqArrived[3])
+		}(i)
+	}
+
+	// Wait for everyone to be caught up
+	db.WaitForCaughtUp(caughtUpStart + int64(100))
+	log.Printf("Everyone is caught up")
+
+	// Write sequence 1 to all channels, wait for it on feed
+	channelSet := make([]string, 100)
+	for i := 0; i < 100; i++ {
+		channelSet[i] = fmt.Sprintf("chan_%d", i)
+	}
+	WriteDirect(db, channelSet, 1)
+	seq1Wg.Wait()
+	log.Printf("Everyone's seq 1 arrived")
+
+	// Wait for everyone to be caught up again
+	db.WaitForCaughtUp(caughtUpStart + int64(100))
+
+	// Write sequence 3 to all channels, wait for it on feed
+	WriteDirect(db, channelSet, 3)
+	seq3Wg.Wait()
+	log.Printf("Everyone's seq 3 arrived")
+
+	// Write the late (previously skipped) sequence 2
+	WriteDirect(db, channelSet, 2)
+	seq2Wg.Wait()
+	log.Printf("Everyone's seq 2 arrived")
+
+	// Wait for everyone to be caught up again
+	db.WaitForCaughtUp(caughtUpStart + int64(100))
+
+	// Close the terminator
+	close(terminator)
+
+	log.Printf("terminator is closed")
+
+	// Wake everyone up to detect termination
+	// TODO: why is this not automatic
+	WriteDirect(db, channelSet, 4)
+	changesFeedsWg.Wait()
 
 }
 

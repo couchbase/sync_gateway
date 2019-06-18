@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
-	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -281,6 +281,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		dbContext.mutationListener.Notify(changedChannels)
 	}
 
+	// Initialize the active channel counter
+	dbContext.activeChannels = channels.NewActiveChannels(dbStats.StatsCache().Get(base.StatKeyActiveChannels).(*expvar.Int))
+
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	dbContext.changeCache.Init(
 		dbContext,
@@ -294,9 +297,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Initialize the tap Listener for notify handling
 	dbContext.mutationListener.Init(bucket.GetName())
-
-	// Initialize the active channel counter
-	dbContext.activeChannels = channels.NewActiveChannels(dbStats.StatsCache().Get(base.StatKeyActiveChannels).(*expvar.Int))
 
 	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
 	feedMode := uint64(sgbucket.FeedNoBackfill)

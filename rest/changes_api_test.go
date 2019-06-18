@@ -339,6 +339,8 @@ func TestPostChangesUserTiming(t *testing.T) {
 	response = it.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
+	caughtUpCount := base.ExpvarVar2Int(it.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -362,7 +364,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 	}()
 
 	// Wait for changes feed to get into wait mode where it is blocked on the longpoll changes feed response
-	time.Sleep(5 * time.Second)
+	it.GetDatabase().WaitForCaughtUp(caughtUpCount + 1)
 
 	// Put a doc in channel bernard, that also grants bernard access to channel PBS
 	response = it.SendAdminRequest("PUT", "/db/grant1", `{"value":1, "accessUser":"bernard", "accessChannel":"PBS"}`)
@@ -1072,6 +1074,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	goassert.Equals(t, len(changes.Results), 2)
 	goassert.Equals(t, changes.Last_Seq, "5::12")
 
+	caughtUpCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
 	// Issue a longpoll changes request.  Will block.
 	var longpollWg sync.WaitGroup
 	longpollWg.Add(1)
@@ -1088,12 +1091,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	}()
 
 	// Wait for longpoll to get into wait mode
-	// TODO: Would be preferable to add an expvar tracking the number of changes feeds in wait mode, and use that to
-	//       detect when the longpoll changes goes into wait mode instead of a sleep.
-	//       Such an expvar would be useful for diagnostic purposes as well.
-	//       Deferring this change until post-2.1.1, due to potential performance implications.  Using sleep until that enhancement is
-	//       made.
-	time.Sleep(2 * time.Second)
+	rt.GetDatabase().WaitForCaughtUp(caughtUpCount + 1)
 
 	// Write the skipped doc, wait for longpoll to return
 	WriteDirect(testDb, []string{"PBS"}, 6)
@@ -3047,7 +3045,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 		goassert.Equals(t, len(changes.Results), 5)
 	}()
 
-	waitForCaughtUp(rt.GetDatabase(), caughtUpCount+1)
+	rt.GetDatabase().WaitForCaughtUp(caughtUpCount + 1)
 
 	// Update the user doc to grant access to PBS
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"admin_channels":["ABC", "PBS"]}`)
@@ -3056,6 +3054,82 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	// Wait for longpoll to return
 	longpollWg.Wait()
 
+}
+
+// Validate handling when a single channel cache is compacted while changes request is in wait mode
+func TestCacheCompactDuringChangesWait(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
+
+	numIndexReplicas := uint(0)
+	smallCacheSize := 100
+	minimumChannelCacheConfig := &DbConfig{
+		CacheConfig: &CacheConfig{
+			ChannelCacheConfig: &ChannelCacheConfig{
+				MaxNumber: &smallCacheSize,
+			},
+		},
+		NumIndexReplicas: &numIndexReplicas,
+	}
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`, DatabaseConfig: minimumChannelCacheConfig}
+
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	caughtUpCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+
+	// Get 100 changes requests into wait mode (each for a different channel)
+	changesURLPattern := "/db/_changes?filter=sync_gateway/bychannel&feed=longpoll&since=0&channels=%s"
+	var longpollWg sync.WaitGroup
+	queryCount := 100
+	for i := 0; i < queryCount; i++ {
+		longpollWg.Add(1)
+		go func(i int) {
+			defer longpollWg.Done()
+			var changes struct {
+				Results  []db.ChangeEntry
+				Last_Seq interface{}
+			}
+			channelName := fmt.Sprintf("chan_%d", i)
+			changesURL := fmt.Sprintf(changesURLPattern, channelName)
+			changesResponse := rt.SendAdminRequest("GET", changesURL, "")
+			json.Unmarshal(changesResponse.Body.Bytes(), &changes)
+			// Expect to get 1 doc
+			goassert.Equals(t, len(changes.Results), 1)
+		}(i)
+	}
+
+	// Wait for all goroutines to get into wait mode
+	caughtUpErr := rt.GetDatabase().WaitForCaughtUp(caughtUpCount + int64(queryCount))
+	assert.NoError(t, caughtUpErr)
+
+	// Wait for compaction to stop
+	compactErr := waitForCompactStopped(rt.GetDatabase())
+	assert.NoError(t, compactErr)
+
+	// Validate that cache has been compacted to LWM <= size <= HWM.  Actual size will vary, as
+	// channels may be added after initial compaction to LWM (but not enough to retrigger compaction).
+	cacheSize := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsCache().Get(base.StatKeyChannelCacheNumChannels))
+	log.Printf("Cache size after compaction: %v", cacheSize)
+	assert.True(t, cacheSize >= 60)
+	assert.True(t, cacheSize <= 80)
+
+	channelSet := make([]string, queryCount)
+	for i := 0; i < queryCount; i++ {
+		channelSet[i] = fmt.Sprintf("chan_%d", i)
+	}
+
+	// Write a single doc to all 100 channels, ensure everyone gets it
+	channelDocBody := make(map[string]interface{})
+	channelDocBody["channels"] = channelSet
+	bodyBytes, err := json.Marshal(channelDocBody)
+	assert.NoError(t, err, "Marshal error for 100 channel doc")
+
+	putResponse := rt.SendAdminRequest("PUT", "/db/100ChannelDoc", string(bodyBytes))
+	assertStatus(t, putResponse, 201)
+
+	// Wait for longpolls to return
+	longpollWg.Wait()
 }
 
 func TestTombstoneCompaction(t *testing.T) {
@@ -3115,15 +3189,15 @@ func TestTombstoneCompaction(t *testing.T) {
 	TestCompact(db.QueryTombstoneBatch + 20)
 }
 
-func waitForCaughtUp(dbc *db.DatabaseContext, targetCount int64) error {
+func waitForCompactStopped(dbc *db.DatabaseContext) error {
 	for i := 0; i < 100; i++ {
-		caughtUpCount := base.ExpvarVar2Int(dbc.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
-		if caughtUpCount >= targetCount {
+		compactRunning := dbc.CacheCompactActive()
+		if !compactRunning {
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return errors.New("WaitForCaughtUp didn't catch up")
+	return errors.New("waitForCompactStopped didn't stop")
 }
 
 //////// HELPERS:
