@@ -7,7 +7,9 @@
    },
    "databases": {
       "default": {
-        "server": "http://localhost:8091",
+        "server": "couchbase://localhost",
+        "username": "username",
+        "password": "password",
         "bucket": "default",
         "oidc": {
           "default_provider":"google",

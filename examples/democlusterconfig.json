@@ -11,7 +11,9 @@
   },
 	"databases": {
     "gaggle": {
-      "server":"http://172.23.121.38:8091",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
       "bucket":"gaggle",
       "users": {
         "GUEST": {"disabled": false, "admin_channels": ["*"]}
@@ -20,7 +22,9 @@
       "revs_limit": 20
     },
     "connect2014": {
-      "server":"http://172.23.121.38:8091",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
       "bucket":"connect2014",
       "users": {
         "GUEST": {"disabled": true}

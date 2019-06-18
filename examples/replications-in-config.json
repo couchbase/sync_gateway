@@ -6,22 +6,34 @@
   },
   "databases": {
     "db": {
-      "server": "walrus:",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default",
       "allow_conflicts": false,
       "revs_limit": 20
     },
     "db2": {
-      "server": "walrus:",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default1",
       "allow_conflicts": false,
       "revs_limit": 20
     },
     "db3": {
-      "server": "walrus:",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default2",
       "allow_conflicts": false,
       "revs_limit": 20
     },
     "db4": {
-      "server": "walrus:",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default3",
       "users": {
         "GUEST": {
           "disabled": false,
@@ -32,7 +44,10 @@
       "revs_limit": 20
     },
     "db5": {
-      "server": "walrus:",
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default4",
       "users": {
         "GUEST": {
           "disabled": false,
