@@ -470,9 +470,11 @@ func RecordStats(statsJson string) {
 	}
 }
 
+// logTo is the "core" logging function. All other logging functions (like Debugf(), WarnfCtx(), etc.) end up here.
+// The function will fan out the log to all of the various outputs for them to decide if they should log it or not.
 func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
 	// Defensive bounds-check for log level. All callers of this function should be within this range.
-	if logLevel <= LevelNone || logLevel >= levelCount {
+	if logLevel < LevelNone || logLevel >= levelCount {
 		return
 	}
 
@@ -491,7 +493,7 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	format = addPrefixes(format, ctx, logLevel, logKey)
 
 	// Warn and error logs also append caller name/line numbers.
-	if logLevel <= LevelWarn {
+	if logLevel <= LevelWarn && logLevel > LevelNone {
 		format += " -- " + GetCallersName(2, true)
 	}
 
