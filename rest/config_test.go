@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -128,6 +129,50 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 	} else {
 		assert.False(t, *config.Databases["db"].DeltaSync.Enabled)
 	}
+}
+
+func TestConfigValidationCache(t *testing.T) {
+	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
+
+	buf := bytes.NewBufferString(jsonConfig)
+	config, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+	assert.NoError(t, err)
+
+	errorMessages := config.setupAndValidateDatabases()
+	assert.Nil(t, errorMessages)
+
+	require.NotNil(t, config.Databases["db"])
+	require.NotNil(t, config.Databases["db"].CacheConfig)
+
+	expectedRevCacheSize := db.DefaultRevisionCacheSize
+	if base.IsEnterpriseEdition() {
+		expectedRevCacheSize = 0
+	}
+	require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig)
+	require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig.Size)
+	assert.Equal(t, expectedRevCacheSize, int(*config.Databases["db"].CacheConfig.RevCacheConfig.Size))
+
+	expectedChanCacheMaxNum := db.DefaultChannelCacheMaxNumber
+	if base.IsEnterpriseEdition() {
+		expectedChanCacheMaxNum = 100
+	}
+	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig)
+	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber)
+	assert.Equal(t, expectedChanCacheMaxNum, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber))
+
+	expectedChanCacheHWM := db.DefaultCompactHighWatermarkPercent
+	if base.IsEnterpriseEdition() {
+		expectedChanCacheHWM = 95
+	}
+	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent)
+	assert.Equal(t, expectedChanCacheHWM, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent))
+
+	expectedChanCacheLWM := db.DefaultCompactLowWatermarkPercent
+	if base.IsEnterpriseEdition() {
+		expectedChanCacheLWM = 25
+	}
+	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent)
+	assert.Equal(t, expectedChanCacheLWM, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent))
 }
 
 // TestLoadServerConfigExamples will run LoadServerConfig for configs found under the examples directory.
