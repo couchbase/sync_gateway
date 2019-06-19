@@ -1025,8 +1025,13 @@ type statsWrapper struct {
 func (sc *ServerContext) startStatsLogger() {
 
 	statsLogFrequencySecs := DefaultStatsLogFrequencySecs
-	if sc.config.Unsupported != nil && sc.config.Unsupported.StatsLogFrequencySecs > 0 {
-		statsLogFrequencySecs = sc.config.Unsupported.StatsLogFrequencySecs
+	if sc.config.Unsupported != nil && sc.config.Unsupported.StatsLogFrequencySecs != nil {
+		if *sc.config.Unsupported.StatsLogFrequencySecs == 0 {
+			// don't start the stats logger when explicitly zero
+			return
+		} else if *sc.config.Unsupported.StatsLogFrequencySecs > 0 {
+			statsLogFrequencySecs = *sc.config.Unsupported.StatsLogFrequencySecs
+		}
 	}
 
 	interval := time.Second * time.Duration(statsLogFrequencySecs)

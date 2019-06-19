@@ -317,7 +317,7 @@ type SequenceHashConfig struct {
 
 type UnsupportedServerConfig struct {
 	Http2Config           *Http2Config `json:"http2,omitempty"`               // Config settings for HTTP2
-	StatsLogFrequencySecs int          `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
+	StatsLogFrequencySecs *int         `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
 }
 
 type Http2Config struct {
@@ -811,6 +811,21 @@ func (config *ServerConfig) setupAndValidateDatabases() []error {
 	return nil
 }
 
+// validate validates the given server config and returns all invalid options as a slice of errors
+func (config *ServerConfig) validate() []error {
+	errorMessages := make([]error, 0)
+
+	if config.Unsupported != nil && config.Unsupported.StatsLogFrequencySecs != nil {
+		if *config.Unsupported.StatsLogFrequencySecs == 0 {
+			// explicitly disabled
+		} else if *config.Unsupported.StatsLogFrequencySecs < 10 {
+			errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "unsupported.stats_log_freq_secs", 10))
+		}
+	}
+
+	return errorMessages
+}
+
 // setupAndValidateLogging sets up and validates logging,
 // and returns a slice of defferred logs to execute later.
 func (config *ServerConfig) SetupAndValidateLogging() (warnings []base.DeferredLogFn, err error) {
@@ -1295,7 +1310,10 @@ func ServerMain(runMode SyncGatewayRunMode) {
 	}
 
 	// Validation
-	if errorMsgs := config.setupAndValidateDatabases(); errorMsgs != nil && len(errorMsgs) > 0 {
+	var errorMsgs = make([]error, 0)
+	errorMsgs = append(errorMsgs, config.validate()...)
+	errorMsgs = append(errorMsgs, config.setupAndValidateDatabases()...)
+	if len(errorMsgs) > 0 {
 		for _, err := range errorMsgs {
 			base.Errorf(base.KeyAll, "Error during config validation: %v", err)
 		}
