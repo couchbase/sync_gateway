@@ -19,8 +19,7 @@ func TestReplicator(t *testing.T) {
 	}
 	_, err := r.Replicate(params, false)
 	goassert.Equals(t, err, nil)
-	time.Sleep(time.Millisecond * 100)
-	goassert.Equals(t, len(r.ActiveTasks()), 1)
+	waitForActiveTasks(t, r, 1)
 
 	params = sgreplicate.ReplicationParameters{
 		ReplicationId: "rep1",
@@ -28,18 +27,29 @@ func TestReplicator(t *testing.T) {
 	}
 	_, err = r.Replicate(params, false)
 	goassert.Equals(t, err, nil)
-	time.Sleep(time.Millisecond * 100)
-	goassert.Equals(t, len(r.ActiveTasks()), 2)
+	waitForActiveTasks(t, r, 2)
 
 	// now stop it
 	_, err = r.Replicate(params, true)
 	goassert.Equals(t, err, nil)
-	goassert.Equals(t, len(r.ActiveTasks()), 1)
+	waitForActiveTasks(t, r, 1)
 
 	// stop all
 	err = r.StopReplications()
 	goassert.Equals(t, err, nil)
-	goassert.Equals(t, len(r.ActiveTasks()), 0)
+	waitForActiveTasks(t, r, 0)
+}
+
+func waitForActiveTasks(t *testing.T, r *Replicator, taskCount int) {
+	for i := 0; i < 20; i++ {
+		if i == 20 {
+			t.Fatalf("failed to find active task")
+		}
+		if len(r.ActiveTasks()) == taskCount {
+			break
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
 }
 
 func TestReplicatorDuplicateID(t *testing.T) {
