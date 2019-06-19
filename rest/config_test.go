@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -123,11 +122,12 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 
 	require.NotNil(t, config.Databases["db"])
 	require.NotNil(t, config.Databases["db"].DeltaSync)
-	require.NotNil(t, config.Databases["db"].DeltaSync.Enabled)
 	if base.IsEnterpriseEdition() {
+		require.NotNil(t, config.Databases["db"].DeltaSync.Enabled)
 		assert.True(t, *config.Databases["db"].DeltaSync.Enabled)
 	} else {
-		assert.False(t, *config.Databases["db"].DeltaSync.Enabled)
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].DeltaSync.Enabled)
 	}
 }
 
@@ -144,35 +144,39 @@ func TestConfigValidationCache(t *testing.T) {
 	require.NotNil(t, config.Databases["db"])
 	require.NotNil(t, config.Databases["db"].CacheConfig)
 
-	expectedRevCacheSize := db.DefaultRevisionCacheSize
-	if base.IsEnterpriseEdition() {
-		expectedRevCacheSize = 0
-	}
 	require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig)
-	require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig.Size)
-	assert.Equal(t, expectedRevCacheSize, int(*config.Databases["db"].CacheConfig.RevCacheConfig.Size))
-
-	expectedChanCacheMaxNum := db.DefaultChannelCacheMaxNumber
 	if base.IsEnterpriseEdition() {
-		expectedChanCacheMaxNum = 100
+		require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig.Size)
+		assert.Equal(t, 0, int(*config.Databases["db"].CacheConfig.RevCacheConfig.Size))
+	} else {
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].CacheConfig.RevCacheConfig.Size)
 	}
+
 	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig)
-	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber)
-	assert.Equal(t, expectedChanCacheMaxNum, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber))
-
-	expectedChanCacheHWM := db.DefaultCompactHighWatermarkPercent
 	if base.IsEnterpriseEdition() {
-		expectedChanCacheHWM = 95
+		require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber)
+		assert.Equal(t, 100, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber))
+	} else {
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber)
 	}
-	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent)
-	assert.Equal(t, expectedChanCacheHWM, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent))
 
-	expectedChanCacheLWM := db.DefaultCompactLowWatermarkPercent
 	if base.IsEnterpriseEdition() {
-		expectedChanCacheLWM = 25
+		require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent)
+		assert.Equal(t, 95, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent))
+	} else {
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent)
 	}
-	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent)
-	assert.Equal(t, expectedChanCacheLWM, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent))
+
+	if base.IsEnterpriseEdition() {
+		require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent)
+		assert.Equal(t, 25, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent))
+	} else {
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent)
+	}
 }
 
 // TestLoadServerConfigExamples will run LoadServerConfig for configs found under the examples directory.
