@@ -457,15 +457,15 @@ func (dbConfig DbConfig) validate() []error {
 			if !base.IsEnterpriseEdition() {
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber; val != nil {
 					base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
-					dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber = &db.DefaultChannelCacheMaxNumber
+					dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber = nil
 				}
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent; val != nil {
 					base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.channel_cache.compact_high_watermark_pct", *val, db.DefaultCompactHighWatermarkPercent)
-					dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent = &db.DefaultCompactHighWatermarkPercent
+					dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent = nil
 				}
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent; val != nil {
 					base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
-					dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent = &db.DefaultCompactLowWatermarkPercent
+					dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent = nil
 				}
 			}
 
@@ -517,7 +517,7 @@ func (dbConfig DbConfig) validate() []error {
 			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.Size
 			if !base.IsEnterpriseEdition() && revCacheSize != nil && *revCacheSize == 0 {
 				base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
-				dbConfig.CacheConfig.RevCacheConfig.Size = base.Uint32Ptr(db.DefaultRevisionCacheSize)
+				dbConfig.CacheConfig.RevCacheConfig.Size = nil
 			}
 
 			if dbConfig.CacheConfig.RevCacheConfig.ShardCount != nil {
@@ -539,7 +539,7 @@ func (dbConfig DbConfig) validate() []error {
 	// EE: delta sync
 	if !base.IsEnterpriseEdition() && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
 		base.Warnf(base.KeyAll, eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
-		dbConfig.DeltaSync.Enabled = base.BoolPtr(false)
+		dbConfig.DeltaSync.Enabled = nil
 	}
 
 	return errorMessages
