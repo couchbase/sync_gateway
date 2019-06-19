@@ -1024,7 +1024,7 @@ type statsWrapper struct {
 
 func (sc *ServerContext) startStatsLogger() {
 
-	statsLogFrequencySecs := DefaultStatsLogFrequencySecs
+	statsLogFrequencySecs := uint(DefaultStatsLogFrequencySecs)
 	if sc.config.Unsupported != nil && sc.config.Unsupported.StatsLogFrequencySecs != nil {
 		if *sc.config.Unsupported.StatsLogFrequencySecs == 0 {
 			// don't start the stats logger when explicitly zero

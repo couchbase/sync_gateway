@@ -317,7 +317,7 @@ type SequenceHashConfig struct {
 
 type UnsupportedServerConfig struct {
 	Http2Config           *Http2Config `json:"http2,omitempty"`               // Config settings for HTTP2
-	StatsLogFrequencySecs *int         `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
+	StatsLogFrequencySecs *uint        `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
 }
 
 type Http2Config struct {
