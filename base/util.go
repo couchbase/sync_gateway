@@ -1119,6 +1119,7 @@ func ContainsString(s []string, e string) bool {
 	return false
 }
 
+// AtomicBool is a bool that can be set or read atomically
 type AtomicBool struct {
 	value int32
 }

@@ -1065,8 +1065,6 @@ func (sc *ServerContext) logStats() error {
 		base.Warnf(base.KeyAll, "Error getting sigar based system resource stats: %v", err)
 	}
 
-	sc.replicator.SnapshotStats()
-
 	sc.updateCalculatedStats()
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
 	currentTime := time.Now()

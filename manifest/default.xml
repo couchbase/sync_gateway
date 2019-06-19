@@ -89,7 +89,7 @@
 
   <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="release-branch.go1.11"/>
 
-  <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="d73786b7838573ed290b4a64479579e76db04f03"/>
+  <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="d6eb45633e5784f5161973b04317e192931972a3"/>
 
   <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="dcae66272b24600ae0005fa06b511cfae8914d3d"/>
 
