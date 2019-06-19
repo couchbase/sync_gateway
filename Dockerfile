@@ -1,6 +1,6 @@
 
 # Stage to build Sync Gateway binary
-FROM golang:1.8-stretch as builder
+FROM golang:1.12-stretch as builder
 
 # Customize this with the commit hash or branch name you want to build
 ENV COMMIT master
