@@ -76,12 +76,12 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name:   "Compact Interval too low",
 			config: `{"databases": {"db":{"compact_interval_days": 0.039}}}`,
-			err:    "compact_interval_days cannot be lower than 0.04",
+			err:    "valid range for compact_interval_days is: 0.04-60",
 		},
 		{
 			name:   "Compact Interval too high",
 			config: `{"databases": {"db":{"compact_interval_days": 61}}}`,
-			err:    "compact_interval_days cannot be higher than 60",
+			err:    "valid range for compact_interval_days is: 0.04-60",
 		},
 		{
 			name:   "Compact Interval just right",
@@ -107,6 +107,75 @@ func TestConfigValidation(t *testing.T) {
 				assert.Nil(t, errorMessages)
 			}
 		})
+	}
+}
+
+func TestConfigValidationDeltaSync(t *testing.T) {
+	jsonConfig := `{"databases": {"db": {"delta_sync": {"enabled": true}}}}`
+
+	buf := bytes.NewBufferString(jsonConfig)
+	config, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+	assert.NoError(t, err)
+
+	errorMessages := config.setupAndValidateDatabases()
+	assert.Nil(t, errorMessages)
+
+	require.NotNil(t, config.Databases["db"])
+	require.NotNil(t, config.Databases["db"].DeltaSync)
+	if base.IsEnterpriseEdition() {
+		require.NotNil(t, config.Databases["db"].DeltaSync.Enabled)
+		assert.True(t, *config.Databases["db"].DeltaSync.Enabled)
+	} else {
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].DeltaSync.Enabled)
+	}
+}
+
+func TestConfigValidationCache(t *testing.T) {
+	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
+
+	buf := bytes.NewBufferString(jsonConfig)
+	config, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+	assert.NoError(t, err)
+
+	errorMessages := config.setupAndValidateDatabases()
+	assert.Nil(t, errorMessages)
+
+	require.NotNil(t, config.Databases["db"])
+	require.NotNil(t, config.Databases["db"].CacheConfig)
+
+	require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig)
+	if base.IsEnterpriseEdition() {
+		require.NotNil(t, config.Databases["db"].CacheConfig.RevCacheConfig.Size)
+		assert.Equal(t, 0, int(*config.Databases["db"].CacheConfig.RevCacheConfig.Size))
+	} else {
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].CacheConfig.RevCacheConfig.Size)
+	}
+
+	require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig)
+	if base.IsEnterpriseEdition() {
+		require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber)
+		assert.Equal(t, 100, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber))
+	} else {
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.MaxNumber)
+	}
+
+	if base.IsEnterpriseEdition() {
+		require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent)
+		assert.Equal(t, 95, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent))
+	} else {
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.HighWatermarkPercent)
+	}
+
+	if base.IsEnterpriseEdition() {
+		require.NotNil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent)
+		assert.Equal(t, 25, int(*config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent))
+	} else {
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].CacheConfig.ChannelCacheConfig.LowWatermarkPercent)
 	}
 }
 

@@ -412,11 +412,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 				cacheOptions.ChannelCacheAge = time.Duration(*config.CacheConfig.ChannelCacheConfig.ExpirySeconds) * time.Second
 			}
 			if config.CacheConfig.ChannelCacheConfig.MaxNumber != nil {
-				if *config.CacheConfig.ChannelCacheConfig.MaxNumber < db.MinimumChannelCacheMaxNumber {
-					base.Warnf(base.KeyAll, "Config value for channel_cache.max_number (%d) is lower than minimum allowed value (%d).  Reverting to default value (%d)", *config.CacheConfig.ChannelCacheConfig.MaxNumber, db.MinimumChannelCacheMaxNumber, cacheOptions.MaxNumChannels)
-				} else {
-					cacheOptions.MaxNumChannels = *config.CacheConfig.ChannelCacheConfig.MaxNumber
-				}
+				cacheOptions.MaxNumChannels = *config.CacheConfig.ChannelCacheConfig.MaxNumber
 			}
 			if config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil && *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 0 {
 				cacheOptions.CompactHighWatermarkPercent = *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent

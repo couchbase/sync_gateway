@@ -54,6 +54,10 @@ var (
 var config *ServerConfig
 
 const (
+	eeOnlyWarningMsg   = "EE only configuration option %s=%v - Reverting to default value for CE: %v"
+	minValueErrorMsg   = "minimum value for %s is: %v"
+	rangeValueErrorMsg = "valid range for %s is: %s"
+
 	DefaultMaxCouchbaseConnections         = 16
 	DefaultMaxCouchbaseOverflowConnections = 0
 
@@ -439,38 +443,52 @@ func (dbConfig DbConfig) validate() []error {
 		}
 	}
 
-	if dbConfig.CompactIntervalDays != nil {
-		if *dbConfig.CompactIntervalDays < db.CompactIntervalMinDays && *dbConfig.CompactIntervalDays != 0 {
-			errorMessages = append(errorMessages, fmt.Errorf("compact_interval_days cannot be lower than %g", db.CompactIntervalMinDays))
-		}
-		if *dbConfig.CompactIntervalDays > db.CompactIntervalMinDays && *dbConfig.CompactIntervalDays != 0 {
-			errorMessages = append(errorMessages, fmt.Errorf("compact_interval_days cannot be higher than %g", db.CompactIntervalMaxDays))
-		}
+	// Make sure a non-zero compact_interval_days config is within the valid range
+	if val := dbConfig.CompactIntervalDays; val != nil && *val != 0 &&
+		(*val < db.CompactIntervalMinDays || *val > db.CompactIntervalMaxDays) {
+		errorMessages = append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "compact_interval_days", fmt.Sprintf("%g-%g", db.CompactIntervalMinDays, db.CompactIntervalMaxDays)))
 	}
 
 	if dbConfig.CacheConfig != nil {
 
 		if dbConfig.CacheConfig.ChannelCacheConfig != nil {
+
+			// EE: channel cache
+			if !base.IsEnterpriseEdition() {
+				if val := dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber; val != nil {
+					base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
+					dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber = nil
+				}
+				if val := dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent; val != nil {
+					base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.channel_cache.compact_high_watermark_pct", *val, db.DefaultCompactHighWatermarkPercent)
+					dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent = nil
+				}
+				if val := dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent; val != nil {
+					base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
+					dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent = nil
+				}
+			}
+
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_num_pending is 1"))
+				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_num_pending", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_wait_pending is 1"))
+				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_wait_pending", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_wait_skipped is 1"))
+				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_wait_skipped", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxLength < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_length is 1"))
+				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_length", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MinLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MinLength < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.min_length is 1"))
+				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.min_length", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil && *dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.expiry_seconds is 1"))
+				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.expiry_seconds", 1))
 			}
-			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.channel_cache.max_number is 1"))
+			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber < db.MinimumChannelCacheMaxNumber {
+				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_number", db.MinimumChannelCacheMaxNumber))
 			}
 
 			// Compact watermark validation
@@ -478,13 +496,13 @@ func (dbConfig DbConfig) validate() []error {
 			lwm := db.DefaultCompactLowWatermarkPercent
 			if dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil {
 				if *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent < 1 || *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 100 {
-					errorMessages = append(errorMessages, fmt.Errorf("valid range for cache.channel_cache.compact_high_watermark_pct is 0-100"))
+					errorMessages = append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "cache.channel_cache.compact_high_watermark_pct", "0-100"))
 				}
 				hwm = *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent != nil {
 				if *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent < 1 || *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent > 100 {
-					errorMessages = append(errorMessages, fmt.Errorf("valid range for cache.channel_cache.compact_low_watermark_pct is 0-100"))
+					errorMessages = append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "cache.channel_cache.compact_low_watermark_pct", "0-100"))
 				}
 				lwm = *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent
 			}
@@ -495,10 +513,16 @@ func (dbConfig DbConfig) validate() []error {
 		}
 
 		if dbConfig.CacheConfig.RevCacheConfig != nil {
+			// EE: disable revcache
+			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.Size
+			if !base.IsEnterpriseEdition() && revCacheSize != nil && *revCacheSize == 0 {
+				base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
+				dbConfig.CacheConfig.RevCacheConfig.Size = nil
+			}
+
 			if dbConfig.CacheConfig.RevCacheConfig.ShardCount != nil {
 				if *dbConfig.CacheConfig.RevCacheConfig.ShardCount < 1 {
-					errorMessages = append(errorMessages, fmt.Errorf("minimum value for cache.rev_cache.shard_count is 1"))
-
+					errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.rev_cache.shard_count", 1))
 				}
 			}
 		}
@@ -512,12 +536,10 @@ func (dbConfig DbConfig) validate() []error {
 		}
 	}
 
-	// Error if Delta Sync is explicitly enabled in CE
-	if dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
-		if *dbConfig.DeltaSync.Enabled && !base.IsEnterpriseEdition() {
-			errorMessages = append(errorMessages, fmt.Errorf("Delta sync is not supported in CE"))
-
-		}
+	// EE: delta sync
+	if !base.IsEnterpriseEdition() && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
+		base.Warnf(base.KeyAll, eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
+		dbConfig.DeltaSync.Enabled = nil
 	}
 
 	return errorMessages
