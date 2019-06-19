@@ -108,7 +108,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			}
 			listener.Notify(base.SetOf(key))
 		} else if strings.HasPrefix(key, base.UnusedSeqPrefix) || strings.HasPrefix(key, base.UnusedSeqRangePrefix) { // SG unused sequence marker docs
-			if listener.OnDocChanged != nil {
+			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
 		} else if strings.HasPrefix(key, base.DCPCheckpointPrefix) { // SG DCP checkpoint docs
