@@ -545,6 +545,8 @@ func TestChannelIndexPartitionReadBulk(t *testing.T) {
 
 func TestVbucket(t *testing.T) {
 
+	t.Skip("Development-only test - skipping")
+
 	index := NewChannelIndex(1024, 0, "basicChannel", t)
 	defer index.indexBucket.Close()
 

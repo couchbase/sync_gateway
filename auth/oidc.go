@@ -29,6 +29,8 @@ const (
 	discoveryConfigPath = "/.well-known/openid-configuration"
 )
 
+var OIDCDiscoveryRetryWait = 500 * time.Millisecond
+
 // Options for OpenID Connect
 type OIDCOptions struct {
 	Providers       OIDCProviderMap `json:"providers,omitempty"`        // List of OIDC issuers
@@ -204,7 +206,7 @@ func (op *OIDCProvider) DiscoverConfig() (config *oidc.ProviderConfig, shouldSyn
 			}
 			base.Debugf(base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
 				base.UD(op.Issuer), i, maxRetryAttempts, err)
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(OIDCDiscoveryRetryWait)
 		}
 	}
 

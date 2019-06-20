@@ -918,10 +918,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
 	goassert.True(t, err == nil)
 
-	// Go-routine to work the feed channel and write to an array for use by assertions
 	var changes = make([]*ChangeEntry, 0, 50)
-
-	time.Sleep(500 * time.Millisecond)
 
 	// Validate the initial sequences arrive as expected
 	err = appendFromFeed(&changes, feed, 3, base.DefaultWaitForSequenceTesting)
@@ -940,10 +937,8 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
 	WriteDirect(db, []string{"PBS"}, 9)
-
 	db.changeCache.waitForSequence(9, base.DefaultWaitForSequenceTesting, t)
 
-	time.Sleep(500 * time.Millisecond)
 	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequenceTesting)
 	assert.NoError(t, err, "Expected more changes to be sent on feed, but never received")
 	goassert.Equals(t, len(changes), 7)
@@ -1383,7 +1378,7 @@ func TestStopChangeCache(t *testing.T) {
 	tearDownTestDB(t, db)
 
 	// Hang around a while to see if the housekeeping tasks fire and panic
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 }
 

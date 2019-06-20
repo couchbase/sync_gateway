@@ -406,7 +406,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	}
 
 	// Wait long enough to ensure the changes aren't being sent
-	expectedTimeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*3)
+	expectedTimeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*1)
 	if expectedTimeoutErr == nil {
 		t.Errorf("Received additional changes after one-shot should have been closed.")
 	}
@@ -530,11 +530,10 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 		assert.NoError(t, err, "Error unmarshalling response body")
 	}
 	receivedChangesWg.Add(len(docIDsExpected))
-	cacheWaiter.Add(len(docIDsExpected))
 
 	// Wait for documents to be processed and available for changes
 	// 105 docs +
-	cacheWaiter.Wait()
+	cacheWaiter.AddAndWait(len(docIDsExpected))
 
 	// TODO: Attempt a subChanges w/ continuous=true and docID filter
 

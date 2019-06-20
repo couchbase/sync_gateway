@@ -104,6 +104,8 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 
 	db := setupTestDBForShadowing(t)
 
+	cacheWaiter := db.NewDCPCachingCountWaiter(t)
+
 	//Create an event manager and start it
 	em := db.EventMgr
 	em.Start(0, -1)
@@ -144,7 +146,7 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 	})
 
 	// wait for Event Manager queue worker to process
-	time.Sleep(500 * time.Millisecond)
+	cacheWaiter.AddAndWait(4)
 
 	channelSize := len(resultChannel)
 

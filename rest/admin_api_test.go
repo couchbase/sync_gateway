@@ -827,16 +827,16 @@ func TestSessionExtension(t *testing.T) {
 
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_session", ""), 200)
 
-	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":10}`)
+	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":1}`)
 	assertStatus(t, response, 200)
 
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	sessionId := body["session_id"].(string)
 	sessionExpiration := body["expires"].(string)
-	goassert.True(t, sessionId != "")
-	goassert.True(t, sessionExpiration != "")
-	goassert.True(t, body["cookie_name"].(string) == "SyncGatewaySession")
+	assert.NotEmpty(t, sessionId)
+	assert.NotEmpty(t, sessionExpiration)
+	assert.True(t, body["cookie_name"].(string) == "SyncGatewaySession")
 
 	reqHeaders := map[string]string{
 		"Cookie": "SyncGatewaySession=" + body["session_id"].(string),
@@ -846,9 +846,9 @@ func TestSessionExtension(t *testing.T) {
 
 	goassert.True(t, response.Header().Get("Set-Cookie") == "")
 
-	//Sleep for 2 seconds, this will ensure 10% of the 100 seconds session ttl has elapsed and
+	//Sleep for 150ms seconds, this will ensure 10% of the 1 second session ttl has elapsed and
 	//should cause a new Cookie to be sent by the server with the same session ID and an extended expiration date
-	time.Sleep(2 * time.Second)
+	time.Sleep(150 * time.Millisecond)
 	response = rt.SendRequestWithHeaders("PUT", "/db/doc2", `{"hi": "there"}`, reqHeaders)
 	assertStatus(t, response, 201)
 
@@ -1300,6 +1300,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 // Test bring DB online with delay of 1 second
 func TestSingleDBOnlineWithDelay(t *testing.T) {
 
+	t.Skip("Use case covered by TestDBOnlineWithTwoDelays, skipping due to slow test")
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -1368,7 +1369,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	goassert.True(t, body["state"].(string) == "Offline")
 
 	//Bring DB online with delay of two seconds
-	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":2}")
+	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
 	assertStatus(t, response, 200)
 
 	// Bring DB online immediately
@@ -1385,7 +1386,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	goassert.True(t, body["state"].(string) == "Online")
 
 	// Wait until after the 2 second delay, since the online request explicitly asked for a delay
-	time.Sleep(2500 * time.Millisecond)
+	time.Sleep(1500 * time.Millisecond)
 
 	// Wait for DB to come online (retry loop)
 	errDbOnline = rt.WaitForDBOnline()

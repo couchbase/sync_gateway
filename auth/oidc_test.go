@@ -11,6 +11,7 @@ package auth
 
 import (
 	"testing"
+	"time"
 
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
@@ -231,6 +232,12 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 			ExpectOIDCClient: true,
 		},
 	}
+
+	defaultWait := OIDCDiscoveryRetryWait
+	OIDCDiscoveryRetryWait = 10 * time.Millisecond
+	defer func() {
+		OIDCDiscoveryRetryWait = defaultWait
+	}()
 
 	for _, test := range tests {
 		t.Run(test.Name, func(tt *testing.T) {

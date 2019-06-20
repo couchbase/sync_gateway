@@ -94,7 +94,7 @@ func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration
 			base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
 			return
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -116,7 +116,7 @@ func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime ti
 				return
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -164,8 +164,29 @@ func (db *DatabaseContext) NewDCPCachingCountWaiter(tb testing.TB) *StatWaiter {
 	return db.NewStatWaiter(stat, tb)
 }
 
+func (db *DatabaseContext) NewPullReplicationCaughtUpWaiter(tb testing.TB) *StatWaiter {
+	stat, ok := db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp).(*expvar.Int)
+	if !ok {
+		tb.Fatalf("Unable to retrieve StatKeyPullReplicationsCaughtUp during StatWaiter initialization ")
+	}
+	return db.NewStatWaiter(stat, tb)
+}
+
+func (db *DatabaseContext) NewCacheRevsActiveWaiter(tb testing.TB) *StatWaiter {
+	stat, ok := db.DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsActive).(*expvar.Int)
+	if !ok {
+		tb.Fatalf("Unable to retrieve StatKeyChannelCacheRevsActive during StatWaiter initialization ")
+	}
+	return db.NewStatWaiter(stat, tb)
+}
+
 func (sw *StatWaiter) Add(count int) {
 	sw.targetCount += int64(count)
+}
+
+func (sw *StatWaiter) AddAndWait(count int) {
+	sw.targetCount += int64(count)
+	sw.Wait()
 }
 
 // Wait uses backoff retry for up to ~27s

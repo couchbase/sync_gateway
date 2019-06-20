@@ -440,6 +440,8 @@ func postChangesSince(t *testing.T, it *indexTester) {
 	response := it.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@bb.com", "password":"letmein", "admin_channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
+	cacheWaiter := it.GetDatabase().NewDCPCachingCountWaiter(t)
+
 	// Put several documents
 	response = it.SendAdminRequest("PUT", "/db/pbs1-0000609", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -451,6 +453,7 @@ func postChangesSince(t *testing.T, it *indexTester) {
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/pbs3-0000609", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(5)
 
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -473,7 +476,8 @@ func postChangesSince(t *testing.T, it *indexTester) {
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/pbs4", `{"value":4, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	time.Sleep(1 * time.Second)
+	cacheWaiter.AddAndWait(4)
+
 	changesJSON = fmt.Sprintf(`{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"%s"}`, changes.Last_Seq)
 	changesResponse = it.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
@@ -502,6 +506,7 @@ func postChangesChannelFilter(t *testing.T, it *indexTester) {
 	assert.NoError(t, err)
 	a.Save(bernard)
 
+	cacheWaiter := it.GetDatabase().NewDCPCachingCountWaiter(t)
 	// Put several documents
 	response := it.SendAdminRequest("PUT", "/db/pbs1-0000609", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -513,6 +518,7 @@ func postChangesChannelFilter(t *testing.T, it *indexTester) {
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/pbs3-0000609", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(5)
 
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -535,7 +541,7 @@ func postChangesChannelFilter(t *testing.T, it *indexTester) {
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/pbs4", `{"value":4, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	time.Sleep(100 * time.Millisecond)
+	cacheWaiter.AddAndWait(4)
 	changesResponse = it.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = json.Unmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -568,6 +574,8 @@ func postChangesAdminChannelGrant(t *testing.T, it *indexTester) {
 	assert.NoError(t, err)
 	a.Save(bernard)
 
+	cacheWaiter := it.GetDatabase().NewDCPCachingCountWaiter(t)
+
 	// Put several documents in channel ABC and PBS
 	response := it.SendAdminRequest("PUT", "/db/pbs-1", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
@@ -579,6 +587,7 @@ func postChangesAdminChannelGrant(t *testing.T, it *indexTester) {
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/abc-1", `{"channel":["ABC"]}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(5)
 
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -619,7 +628,7 @@ func postChangesAdminChannelGrant(t *testing.T, it *indexTester) {
 	response = it.SendAdminRequest("PUT", "/db/abc-2", `{"channel":["ABC"]}`)
 	assertStatus(t, response, 201)
 
-	time.Sleep(500 * time.Millisecond)
+	cacheWaiter.AddAndWait(2)
 
 	// Issue another changes request - ensure we don't backfill again
 	changesResponse = it.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq),
@@ -1127,6 +1136,10 @@ func TestUnusedSequences(t *testing.T) {
 	}
 }
 
+func TestConcurrentDelete(t *testing.T) {
+	_testConcurrentDelete(t)
+}
+
 func _testConcurrentDelete(t *testing.T) {
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
@@ -1305,9 +1318,11 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	// Create user1
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
 	assertStatus(t, response, 201)
+
 	// Create user2
 	response = rt.SendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", "admin_channels":["beta"]}`)
 	assertStatus(t, response, 201)
+
 	// Create user3
 	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", "admin_channels":["alpha","beta"]}`)
 	assertStatus(t, response, 201)
@@ -1472,7 +1487,6 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.Equal(t, 4, len(changes.Results))
 	assert.Equal(t, "docC", changes.Results[3].ID)
 	assert.Equal(t, 2, len(changes.Results[3].Changes))
-
 }
 
 func updateTestDoc(rt *RestTester, docid string, revid string, body string) (newRevId string, err error) {
@@ -2135,8 +2149,7 @@ func TestChangesViewBackfill(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/doc3", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	cacheWaiter.Add(3)
-	cacheWaiter.Wait()
+	cacheWaiter.AddAndWait(3)
 
 	// Flush the channel cache
 	testDb.FlushChannelCache()
@@ -2148,8 +2161,7 @@ func TestChangesViewBackfill(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/doc5", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	cacheWaiter.Add(2)
-	cacheWaiter.Wait()
+	cacheWaiter.AddAndWait(2)
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
 	var changes struct {
@@ -2422,8 +2434,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
 	}
-	cacheWaiter.Add(8)
-	cacheWaiter.Wait()
+	cacheWaiter.AddAndWait(8)
 
 	// Pre-delete changes
 	changesJSON := `{"style":"all_docs"}`
@@ -2456,8 +2467,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	response = it.SendAdminRequest("PUT", "/db/activeDoc5", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	cacheWaiter.Add(8)
-	cacheWaiter.Wait()
+	cacheWaiter.AddAndWait(8)
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
@@ -2583,8 +2593,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 		Last_Seq interface{}
 	}
 
-	cacheWaiter.Add(8)
-	cacheWaiter.Wait()
+	cacheWaiter.AddAndWait(8)
 
 	// Get pre-delete changes
 	changesJSON := `{"style":"all_docs"}`
@@ -2617,8 +2626,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	response = it.SendAdminRequest("PUT", "/db/activeDoc5", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	cacheWaiter.Add(8)
-	cacheWaiter.Wait()
+	cacheWaiter.AddAndWait(8)
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
@@ -3004,8 +3012,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/doc3", `{"channels":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	cacheWaiter.Add(3)
-	cacheWaiter.Wait()
+	cacheWaiter.AddAndWait(3)
 
 	errorCountStart := base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String()
 	warnCountStart := base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String()

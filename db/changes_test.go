@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"log"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -43,10 +42,11 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
 	authenticator.Save(user)
 
+	cacheWaiter := db.NewDCPCachingCountWaiter(t)
+
 	// Create a doc on two channels (sequence 1):
 	revid, _ := db.Put("doc1", Body{"channels": []string{"ABC", "PBS"}})
-	db.changeCache.waitForSequence(1, base.DefaultWaitForSequenceTesting, t)
-	time.Sleep(100 * time.Millisecond)
+	cacheWaiter.AddAndWait(1)
 
 	// Modify user to have access to both channels (sequence 2):
 	userInfo, err := db.GetPrincipal("naomi", true)
@@ -56,9 +56,6 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
 	// Check the _changes feed:
-	db.changeCache.waitForSequence(1, base.DefaultWaitForSequenceTesting, t)
-	time.Sleep(100 * time.Millisecond)
-	db.Bucket.Dump()
 	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
 		changeCache.reader.indexReadBucket.Dump()
 	}
@@ -66,7 +63,6 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
-	time.Sleep(1000 * time.Millisecond)
 	goassert.Equals(t, len(changes), 3)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from ABC
 		Seq:     SequenceID{Seq: 1},
@@ -89,7 +85,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 2 (the user doc) and isn't stuck waiting for it.
-	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting, t)
+	cacheWaiter.AddAndWait(1)
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
@@ -151,10 +147,11 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
 	authenticator.Save(user)
 
+	cacheWaiter := db.NewDCPCachingCountWaiter(t)
+
 	// Create a doc on two channels (sequence 1):
 	revid, _ := db.Put("alpha", Body{"channels": []string{"A", "B"}})
-	db.changeCache.waitForSequence(1, base.DefaultWaitForSequenceTesting, t)
-	time.Sleep(100 * time.Millisecond)
+	cacheWaiter.AddAndWait(1)
 
 	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
 		changeCache.reader.indexReadBucket.Dump()
@@ -163,7 +160,6 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
-	time.Sleep(1000 * time.Millisecond)
 	goassert.Equals(t, len(changes), 1)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from A
 		Seq:     SequenceID{Seq: 1},
@@ -202,7 +198,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
-	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting, t)
+	cacheWaiter.AddAndWait(1)
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
@@ -239,10 +235,11 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
 	authenticator.Save(user)
 
+	cacheWaiter := db.NewDCPCachingCountWaiter(t)
+
 	// Create a doc on two channels (sequence 1):
 	revid, _ := db.Put("alpha", Body{"channels": []string{"A", "B"}})
-	db.changeCache.waitForSequence(1, base.DefaultWaitForSequenceTesting, t)
-	time.Sleep(100 * time.Millisecond)
+	cacheWaiter.AddAndWait(1)
 
 	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
 		changeCache.reader.indexReadBucket.Dump()
@@ -251,7 +248,6 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
-	time.Sleep(1000 * time.Millisecond)
 
 	goassert.Equals(t, len(changes), 1)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from A
@@ -288,7 +284,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 (the modified document) and isn't stuck waiting for it.
-	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting, t)
+	cacheWaiter.AddAndWait(1)
 
 	changes, err = db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
 
