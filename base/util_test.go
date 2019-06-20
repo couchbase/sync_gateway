@@ -320,19 +320,19 @@ func TestReflectExpiry(t *testing.T) {
 	goassert.Equals(t, expiry, (*uint32)(nil))
 
 	expiry, err = ReflectExpiry(int64(1234))
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, *expiry, uint32(1234))
 
 	expiry, err = ReflectExpiry(float64(1234))
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, *expiry, uint32(1234))
 
 	expiry, err = ReflectExpiry("1234")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, *expiry, uint32(1234))
 
 	expiry, err = ReflectExpiry(exp.Format(time.RFC3339))
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, *expiry, uint32(exp.Unix()))
 
 	expiry, err = ReflectExpiry("invalid")
@@ -340,7 +340,7 @@ func TestReflectExpiry(t *testing.T) {
 	goassert.Equals(t, expiry, (*uint32)(nil))
 
 	expiry, err = ReflectExpiry(nil)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, expiry, (*uint32)(nil))
 }
 

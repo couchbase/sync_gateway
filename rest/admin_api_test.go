@@ -384,7 +384,7 @@ function(doc, oldDoc) {
 			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
 
 			changes, err := readContinuousChanges(changesResponse)
-			goassert.Equals(t, err, nil)
+			assert.NoError(t, err)
 
 			changesAccumulated = append(changesAccumulated, changes...)
 
@@ -618,7 +618,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 			// case 2 - ensure no error processing the changes response.  The number of entries may vary, depending
 			// on whether the changes loop performed an additional iteration before catching the deleted user.
 			_, err := readContinuousChanges(changesResponse)
-			goassert.Equals(t, err, nil)
+			assert.NoError(t, err)
 		}
 	}()
 
@@ -754,13 +754,13 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	user, err = a.GetUser("")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.True(t, user.Disabled())
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
@@ -780,7 +780,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 	log.Printf("expires %s", body["expires"].(string))
 	expires, err := time.Parse(layout, body["expires"].(string)[:19])
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	//create a session with a ttl value one second greater thatn the max offset ttl 2592001 seconds
 	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592001}`)
@@ -790,7 +790,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	log.Printf("expires2 %s", body["expires"].(string))
 	expires2, err := time.Parse(layout, body["expires"].(string)[:19])
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	//Allow a ten second drift between the expires dates, to pass test on slow servers
 	acceptableTimeDelta := time.Duration(10) * time.Second
@@ -810,13 +810,13 @@ func TestSessionExtension(t *testing.T) {
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	user, err = a.GetUser("")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.True(t, user.Disabled())
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
@@ -1408,7 +1408,6 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
-	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)

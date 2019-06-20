@@ -3,10 +3,10 @@ package base
 import (
 	"net/http"
 	"testing"
-	"time"
 
 	goassert "github.com/couchbaselabs/go.assert"
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestReplicator(t *testing.T) {
@@ -18,38 +18,26 @@ func TestReplicator(t *testing.T) {
 		Lifecycle: sgreplicate.CONTINUOUS,
 	}
 	_, err := r.Replicate(params, false)
-	goassert.Equals(t, err, nil)
-	waitForActiveTasks(t, r, 1)
+	assert.NoError(t, err)
+	goassert.Equals(t, len(r.ActiveTasks()), 1)
 
 	params = sgreplicate.ReplicationParameters{
 		ReplicationId: "rep1",
 		Lifecycle:     sgreplicate.CONTINUOUS,
 	}
 	_, err = r.Replicate(params, false)
-	goassert.Equals(t, err, nil)
-	waitForActiveTasks(t, r, 2)
+	assert.NoError(t, err)
+	goassert.Equals(t, len(r.ActiveTasks()), 2)
 
 	// now stop it
 	_, err = r.Replicate(params, true)
-	goassert.Equals(t, err, nil)
-	waitForActiveTasks(t, r, 1)
+	assert.NoError(t, err)
+	goassert.Equals(t, len(r.ActiveTasks()), 1)
 
 	// stop all
 	err = r.StopReplications()
-	goassert.Equals(t, err, nil)
-	waitForActiveTasks(t, r, 0)
-}
-
-func waitForActiveTasks(t *testing.T, r *Replicator, taskCount int) {
-	for i := 0; i < 20; i++ {
-		if i == 20 {
-			t.Fatalf("failed to find active task")
-		}
-		if len(r.ActiveTasks()) == taskCount {
-			break
-		}
-		time.Sleep(time.Millisecond * 100)
-	}
+	assert.NoError(t, err)
+	goassert.Equals(t, len(r.ActiveTasks()), 0)
 }
 
 func TestReplicatorDuplicateID(t *testing.T) {
@@ -60,7 +48,7 @@ func TestReplicatorDuplicateID(t *testing.T) {
 		Lifecycle:     sgreplicate.CONTINUOUS,
 	}
 	_, err := r.Replicate(params, false)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	// Should get an error because ReplicationIDs are identical.
 	_, err = r.Replicate(params, false)
@@ -75,7 +63,7 @@ func TestReplicatorDuplicateParams(t *testing.T) {
 		Lifecycle: sgreplicate.CONTINUOUS,
 	}
 	_, err := r.Replicate(params, false)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	// Should get an error even if ReplicationIDs are different,
 	// as they both share the same parameters.

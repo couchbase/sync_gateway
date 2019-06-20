@@ -64,7 +64,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 		[]byte(`{"key": "val"}`),
 		blip.Properties{},
 	)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	_, err = revResponse.Body()
 	assert.NoError(t, err, "Error unmarshalling response body")
@@ -233,7 +233,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		goassert.Equals(t, err, nil)
+		assert.NoError(t, err)
 
 		_, err = revResponse.Body()
 		assert.NoError(t, err, "Error unmarshalling response body")
@@ -350,7 +350,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		goassert.Equals(t, err, nil)
+		assert.NoError(t, err)
 		_, err = revResponse.Body()
 		assert.NoError(t, err, "Error unmarshalling response body")
 		receivedChangesWg.Add(1)
@@ -399,7 +399,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		goassert.Equals(t, err, nil)
+		assert.NoError(t, err)
 		_, err = revResponse.Body()
 		assert.NoError(t, err, "Error unmarshalling response body")
 		receivedChangesWg.Add(1)
@@ -525,7 +525,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		goassert.Equals(t, err, nil)
+		assert.NoError(t, err)
 		_, err = revResponse.Body()
 		assert.NoError(t, err, "Error unmarshalling response body")
 	}
@@ -704,7 +704,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	// Send non-deleted rev
 	sent, _, resp, err := bt.SendRev("sendAndGetRev", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, resp.Properties["Error-Code"], "")
 
 	// Get non-deleted rev
@@ -719,7 +719,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	history := []string{"1-abc"}
 	sent, _, resp, err = bt.SendRevWithHistory("sendAndGetRev", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"deleted": "true"})
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, resp.Properties["Error-Code"], "")
 
 	// Get the tombstoned document
@@ -756,7 +756,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	// Send non-deleted rev
 	sent, _, resp, err := bt.SendRev("largeNumberRev", "1-abc", []byte(`{"key": "val", "largeNumber":9223372036854775807, "channels": ["user1"]}`), blip.Properties{})
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, resp.Properties["Error-Code"], "")
 
 	// Get non-deleted rev
@@ -818,7 +818,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	checkpointBody := []byte(`{"client_seq":"1000"}`)
 	sent, _, resp, err := bt.SetCheckpoint("testclient", "", checkpointBody)
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, resp.Properties["Error-Code"], "")
 
 	checkpointRev := resp.Rev()
@@ -835,7 +835,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	checkpointBody = []byte(`{"client_seq":"1005"}`)
 	sent, _, resp, err = bt.SetCheckpoint("testclient", checkpointRev, checkpointBody)
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, resp.Properties["Error-Code"], "")
 	checkpointRev = resp.Rev()
 	goassert.Equals(t, checkpointRev, "0-2")
@@ -893,7 +893,7 @@ func TestReloadUser(t *testing.T) {
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
 		blip.Properties{},
 	)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	// Make assertions on response to make sure the change was accepted
 	addRevResponseBody, err := addRevResponse.Body()
@@ -1341,7 +1341,7 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)                          // no error
+	assert.NoError(t, err)                                // no error
 	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
@@ -1369,12 +1369,12 @@ func TestPutRevConflictsMode(t *testing.T) {
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)                          // no error
+	assert.NoError(t, err)                                // no error
 	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)                          // no error
+	assert.NoError(t, err)                                // no error
 	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	sent, _, resp, err = bt.SendRev("foo", "1-ghi", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
@@ -1419,14 +1419,14 @@ func TestGetRemovedDoc(t *testing.T) {
 	// Add rev-1 in channel user1
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}"`), blip.Properties{})
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)                          // no error
+	assert.NoError(t, err)                                // no error
 	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	// Add rev-2 in channel user1
 	history := []string{"1-abc"}
 	sent, _, resp, err = bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}"`), blip.Properties{"noconflicts": "true"})
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)                          // no error
+	assert.NoError(t, err)                                // no error
 	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	// Try to get rev 2 via BLIP API and assert that _removed == false
@@ -1438,14 +1438,14 @@ func TestGetRemovedDoc(t *testing.T) {
 	history = []string{"2-bcd", "1-abc"}
 	sent, _, resp, err = bt.SendRevWithHistory("foo", "3-cde", history, []byte(`{"key": "val", "channels": ["another_channel"]}`), blip.Properties{"noconflicts": "true"})
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)                          // no error
+	assert.NoError(t, err)                                // no error
 	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	// Add rev-4, keeping it in channel another_channel
 	history = []string{"3-cde", "2-bcd", "1-abc"}
 	sent, _, resp, err = bt.SendRevWithHistory("foo", "4-def", history, []byte("{}"), blip.Properties{"noconflicts": "true", "deleted": "true"})
 	goassert.True(t, sent)
-	goassert.Equals(t, err, nil)                          // no error
+	assert.NoError(t, err)                                // no error
 	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)

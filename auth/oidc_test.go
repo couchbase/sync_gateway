@@ -16,6 +16,7 @@ import (
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
@@ -164,7 +165,7 @@ func TestOIDCUsername(t *testing.T) {
 	}
 
 	err := provider.InitUserPrefix()
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, provider.UserPrefix, "www.someprovider.com")
 
 	// test username suffix
@@ -181,14 +182,14 @@ func TestOIDCUsername(t *testing.T) {
 	provider.UserPrefix = ""
 	provider.Issuer = "http://www.someprovider.com/extra"
 	err = provider.InitUserPrefix()
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, provider.UserPrefix, "www.someprovider.com%2Fextra")
 
 	// test invalid URL
 	provider.UserPrefix = ""
 	provider.Issuer = "http//www.someprovider.com"
 	err = provider.InitUserPrefix()
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	// falls back to provider name:
 	goassert.Equals(t, provider.UserPrefix, "Some_Provider")
 

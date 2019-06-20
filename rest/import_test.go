@@ -30,15 +30,6 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 	}
 }
 
-type SimpleSync struct {
-	Channels map[string]interface{}
-	Rev      string
-}
-
-type RawResponse struct {
-	Sync SimpleSync `json:"_sync"`
-}
-
 func HasActiveChannel(channelSet map[string]interface{}, channelName string) bool {
 	if channelSet == nil {
 		return false

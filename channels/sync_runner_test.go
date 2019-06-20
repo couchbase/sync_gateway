@@ -5,12 +5,13 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRequireUser(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireUser(oldDoc._names) }`
 	runner, err := NewSyncRunner(funcSource)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	var result interface{}
 	result, _ = runner.Call(parse(`{}`), parse(`{"_names": "alpha"}`), parse(`{"name": "alpha"}`))
 	assertNotRejected(t, result)
@@ -23,7 +24,7 @@ func TestRequireUser(t *testing.T) {
 func TestRequireRole(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireRole(oldDoc._roles) }`
 	runner, err := NewSyncRunner(funcSource)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	var result interface{}
 	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["alpha"]}`), parse(`{"name": "", "roles": {"alpha":""}}`))
 	assertNotRejected(t, result)
@@ -36,7 +37,7 @@ func TestRequireRole(t *testing.T) {
 func TestRequireAccess(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireAccess(oldDoc._access) }`
 	runner, err := NewSyncRunner(funcSource)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	var result interface{}
 	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["alpha"]}`), parse(`{"name": "", "channels": ["alpha"]}`))
 	assertNotRejected(t, result)
@@ -49,7 +50,7 @@ func TestRequireAccess(t *testing.T) {
 func TestRequireAdmin(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireAdmin() }`
 	runner, err := NewSyncRunner(funcSource)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	var result interface{}
 	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{}`))
 	assertNotRejected(t, result)

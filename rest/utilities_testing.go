@@ -87,9 +87,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		return rt.RestTesterBucket
 	}
 
-	//TODO: Temporary fix until sequence allocation unit test enhancements - CBG-316
-	//db.MaxSequenceIncrFrequency = 0 * time.Millisecond
-
 	// Put this in a loop in case certain operations fail, like waiting for GSI indexes to be empty.
 	// Limit number of attempts to 2.
 	for i := 0; i < 2; i++ {
@@ -547,6 +544,27 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response
+}
+
+type SimpleSync struct {
+	Channels map[string]interface{}
+	Rev      string
+	Sequence uint64
+}
+
+type RawResponse struct {
+	Sync SimpleSync `json:"_sync"`
+}
+
+func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	if response.Code != 200 {
+		return 0
+	}
+
+	var rawResponse RawResponse
+	json.Unmarshal(response.Body.Bytes(), &rawResponse)
+	return rawResponse.Sync.Sequence
 }
 
 type TestResponse struct {

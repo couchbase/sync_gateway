@@ -5,6 +5,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -23,7 +24,7 @@ func TestUserAuthenticateDisabled(t *testing.T) {
 	// Create user
 	auth := NewAuthenticator(bucket, nil)
 	u, err := auth.NewUser(username, oldPassword, base.Set{})
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.NotEquals(t, u, nil)
 
 	goassert.False(t, u.Disabled())
@@ -62,7 +63,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 	// Create user
 	auth := NewAuthenticator(bucket, nil)
 	u, err := auth.NewUser(username, oldPassword, base.Set{})
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.NotEquals(t, u, nil)
 
 	user := u.(*userImpl)
@@ -70,7 +71,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 
 	// Make sure their password was hashed with the desired cost
 	cost, err := bcrypt.Cost(user.PasswordHash_)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, cost, bcryptDefaultCost)
 
 	// Try to auth with an incorrect password
@@ -89,12 +90,12 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 
 	// Check the cost is still the old value
 	cost, err = bcrypt.Cost(user.PasswordHash_)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, cost, bcryptDefaultCost)
 
 	// Now bump the global bcrypt cost
 	err = SetBcryptCost(newBcryptCost)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	// Authenticate incorrectly again
 	goassert.False(t, u.Authenticate("test"))
@@ -112,6 +113,6 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 
 	// Cost should now match newBcryptCost
 	cost, err = bcrypt.Cost(user.PasswordHash_)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, cost, newBcryptCost)
 }
