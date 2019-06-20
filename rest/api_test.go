@@ -37,6 +37,7 @@ import (
 	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -2553,18 +2554,21 @@ func TestRoleAccessChanges(t *testing.T) {
 	a.Save(hipster)
 
 	// Create some docs in the channels:
+	cacheWaiter := rt.ServerContext().Database("db").NewDCPCachingCountWaiter(t)
+	cacheWaiter.Add(1)
 	response := rt.Send(request("PUT", "/db/fashion",
-		`{"user":"alice","role":["role:hipster","role:bogus"]}`)) // seq=1
+		`{"user":"alice","role":["role:hipster","role:bogus"]}`))
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	goassert.Equals(t, body["ok"], true)
 	fashionRevID := body["rev"].(string)
 
-	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201) // seq=2
-	assertStatus(t, rt.Send(request("PUT", "/db/a1", `{"channel":"alpha"}`)), 201) // seq=3
-	assertStatus(t, rt.Send(request("PUT", "/db/b1", `{"channel":"beta"}`)), 201)  // seq=4
-	assertStatus(t, rt.Send(request("PUT", "/db/d1", `{"channel":"delta"}`)), 201) // seq=5
+	cacheWaiter.Add(4)
+	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201)
+	assertStatus(t, rt.Send(request("PUT", "/db/a1", `{"channel":"alpha"}`)), 201)
+	assertStatus(t, rt.Send(request("PUT", "/db/b1", `{"channel":"beta"}`)), 201)
+	assertStatus(t, rt.Send(request("PUT", "/db/d1", `{"channel":"delta"}`)), 201)
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
@@ -2598,25 +2602,24 @@ func TestRoleAccessChanges(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
 	}
-	expectedSeq := uint64(3)
-	rt.WaitForSequence(expectedSeq)
+
+	cacheWaiter.Wait()
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
 	log.Printf("1st _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	goassert.Equals(t, len(changes.Results), 2)
-	since := changes.Last_Seq
-	goassert.Equals(t, since, fmt.Sprintf("%d", expectedSeq))
+	require.Equal(t, 2, len(changes.Results))
+	assert.Equal(t, "g1", changes.Results[0].ID)
+	assert.Equal(t, "a1", changes.Results[1].ID)
 
-	expectedSeq = uint64(4)
-	rt.WaitForSequence(expectedSeq)
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("2nd _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	goassert.Equals(t, len(changes.Results), 1)
-	since = changes.Last_Seq
-	goassert.Equals(t, since, fmt.Sprintf("%d", expectedSeq))
+	require.Equal(t, 1, len(changes.Results))
+	assert.Equal(t, "b1", changes.Results[0].ID)
+	lastSeqPreGrant := changes.Last_Seq
 
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
+	cacheWaiter.Add(1)
 	str := fmt.Sprintf(`{"user":"zegpold", "role":"role:hipster", "_rev":%q}`, fashionRevID)
 	assertStatus(t, rt.Send(request("PUT", "/db/fashion", str)), 201) // seq=6
 
@@ -2640,26 +2643,24 @@ func TestRoleAccessChanges(t *testing.T) {
 	)
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
+	cacheWaiter.Wait()
 	changes.Results = nil
-	expectedSeq = uint64(6)
-	rt.WaitForSequence(expectedSeq)
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	log.Printf("3rd _changes looks like: %s", response.Body.Bytes())
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	goassert.Equals(t, len(changes.Results), 2)
 	log.Printf("changes: %+v", changes.Results)
-	goassert.Equals(t, changes.Last_Seq, "6:2") // Test sporadically failing here.  See https://github.com/couchbase/sync_gateway/issues/3095
-	goassert.Equals(t, changes.Results[0].ID, "b1")
-	goassert.Equals(t, changes.Results[1].ID, "g1")
+	require.Equal(t, len(changes.Results), 2)
+	assert.Equal(t, "b1", changes.Results[0].ID)
+	assert.Equal(t, "g1", changes.Results[1].ID)
 
 	// Changes feed with since=4 would ordinarily be empty, but zegpold got access to channel
 	// gamma after sequence 4, so the pre-existing docs in that channel are included:
-	response = rt.Send(requestByUser("GET", "/db/_changes?since=4", "", "zegpold"))
+	response = rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%v", lastSeqPreGrant), "", "zegpold"))
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	goassert.Equals(t, len(changes.Results), 1)
-	goassert.Equals(t, changes.Results[0].ID, "g1")
+	require.Equal(t, 1, len(changes.Results))
+	assert.Equal(t, "g1", changes.Results[0].ID)
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {

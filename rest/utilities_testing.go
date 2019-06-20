@@ -88,7 +88,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	//TODO: Temporary fix until sequence allocation unit test enhancements - CBG-316
-	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
+	//db.MaxSequenceIncrFrequency = 0 * time.Millisecond
 
 	// Put this in a loop in case certain operations fail, like waiting for GSI indexes to be empty.
 	// Limit number of attempts to 2.
@@ -687,6 +687,15 @@ type BlipTester struct {
 // Close the bliptester
 func (bt BlipTester) Close() {
 	bt.restTester.Close()
+}
+
+// Returns database context for blipTester (assumes underlying rest tester is based on a single db - returns first it finds)
+func (bt BlipTester) DatabaseContext() *db.DatabaseContext {
+	dbs := bt.restTester.ServerContext().AllDatabases()
+	for _, database := range dbs {
+		return database
+	}
+	return nil
 }
 
 // Create a BlipTester using the default spec
