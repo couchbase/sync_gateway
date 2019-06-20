@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/bash
 
 # This script builds sync gateway using pinned dependencies via the repo tool
 #
