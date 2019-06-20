@@ -23,6 +23,8 @@ RUN wget https://raw.githubusercontent.com/couchbase/sync_gateway/$COMMIT/bootst
     chmod +x bootstrap.sh && \
     ./bootstrap.sh -c $COMMIT -p sg
 
+ARG SG_EDITION=CE
+
 # Build the Sync Gateway binary
 RUN ./build.sh -v
 
@@ -30,6 +32,8 @@ RUN ./build.sh -v
 # Stage to run the SG binary from the previous stage
 FROM ubuntu:latest as runner
 
-COPY --from=builder /go/godeps/bin/sync_gateway .
+ARG SG_FILENAME=sync_gateway_ce
+
+COPY --from=builder /go/godeps/bin/$SG_FILENAME /sync_gateway
 
 ENTRYPOINT ["/sync_gateway"]
