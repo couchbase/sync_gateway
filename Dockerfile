@@ -34,6 +34,6 @@ FROM ubuntu:latest as runner
 
 ARG SG_FILENAME=sync_gateway_ce
 
-COPY --from=builder /go/godeps/bin/$SG_FILENAME .
+COPY --from=builder /go/godeps/bin/$SG_FILENAME /sync_gateway
 
 ENTRYPOINT ["/sync_gateway"]
