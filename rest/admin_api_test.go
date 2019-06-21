@@ -1385,7 +1385,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	goassert.True(t, body["state"].(string) == "Online")
 
-	// Wait until after the 2 second delay, since the online request explicitly asked for a delay
+	// Wait until after the 1 second delay, since the online request explicitly asked for a delay
 	time.Sleep(1500 * time.Millisecond)
 
 	// Wait for DB to come online (retry loop)
