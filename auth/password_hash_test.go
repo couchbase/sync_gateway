@@ -7,6 +7,7 @@ import (
 
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -39,7 +40,7 @@ func TestBcryptDefaultCostTime(t *testing.T) {
 	duration := time.Since(startTime)
 
 	t.Logf("bcrypt.GenerateFromPassword with cost %d took: %v", bcryptDefaultCost, duration)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.True(t, minimumDuration < duration)
 }
 
@@ -50,17 +51,17 @@ func TestSetBcryptCost(t *testing.T) {
 	goassert.False(t, bcryptCostChanged)
 
 	err = SetBcryptCost(0) // use default value
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, bcryptCost, bcryptDefaultCost)
 	goassert.False(t, bcryptCostChanged) // Not explicitly changed
 
 	err = SetBcryptCost(bcryptDefaultCost + 1) // use increased value
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, bcryptCost, bcryptDefaultCost+1)
 	goassert.True(t, bcryptCostChanged)
 
 	err = SetBcryptCost(bcryptDefaultCost) // back to explicit default value, check changed is still true
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, bcryptCost, bcryptDefaultCost)
 	goassert.True(t, bcryptCostChanged)
 }

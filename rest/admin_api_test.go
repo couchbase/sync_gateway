@@ -384,7 +384,7 @@ function(doc, oldDoc) {
 			changesResponse := rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
 
 			changes, err := readContinuousChanges(changesResponse)
-			goassert.Equals(t, err, nil)
+			assert.NoError(t, err)
 
 			changesAccumulated = append(changesAccumulated, changes...)
 
@@ -618,7 +618,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 			// case 2 - ensure no error processing the changes response.  The number of entries may vary, depending
 			// on whether the changes loop performed an additional iteration before catching the deleted user.
 			_, err := readContinuousChanges(changesResponse)
-			goassert.Equals(t, err, nil)
+			assert.NoError(t, err)
 		}
 	}()
 
@@ -754,13 +754,13 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	user, err = a.GetUser("")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.True(t, user.Disabled())
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
@@ -780,7 +780,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 	log.Printf("expires %s", body["expires"].(string))
 	expires, err := time.Parse(layout, body["expires"].(string)[:19])
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	//create a session with a ttl value one second greater thatn the max offset ttl 2592001 seconds
 	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592001}`)
@@ -790,7 +790,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	log.Printf("expires2 %s", body["expires"].(string))
 	expires2, err := time.Parse(layout, body["expires"].(string)[:19])
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	//Allow a ten second drift between the expires dates, to pass test on slow servers
 	acceptableTimeDelta := time.Duration(10) * time.Second
@@ -810,13 +810,13 @@ func TestSessionExtension(t *testing.T) {
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
 	user, err := a.GetUser("")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	user, err = a.GetUser("")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.True(t, user.Disabled())
 
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
@@ -827,16 +827,16 @@ func TestSessionExtension(t *testing.T) {
 
 	assertStatus(t, rt.SendAdminRequest("GET", "/db/_session", ""), 200)
 
-	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":10}`)
+	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":1}`)
 	assertStatus(t, response, 200)
 
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	sessionId := body["session_id"].(string)
 	sessionExpiration := body["expires"].(string)
-	goassert.True(t, sessionId != "")
-	goassert.True(t, sessionExpiration != "")
-	goassert.True(t, body["cookie_name"].(string) == "SyncGatewaySession")
+	assert.NotEmpty(t, sessionId)
+	assert.NotEmpty(t, sessionExpiration)
+	assert.True(t, body["cookie_name"].(string) == "SyncGatewaySession")
 
 	reqHeaders := map[string]string{
 		"Cookie": "SyncGatewaySession=" + body["session_id"].(string),
@@ -846,9 +846,9 @@ func TestSessionExtension(t *testing.T) {
 
 	goassert.True(t, response.Header().Get("Set-Cookie") == "")
 
-	//Sleep for 2 seconds, this will ensure 10% of the 100 seconds session ttl has elapsed and
+	//Sleep for 150ms seconds, this will ensure 10% of the 1 second session ttl has elapsed and
 	//should cause a new Cookie to be sent by the server with the same session ID and an extended expiration date
-	time.Sleep(2 * time.Second)
+	time.Sleep(150 * time.Millisecond)
 	response = rt.SendRequestWithHeaders("PUT", "/db/doc2", `{"hi": "there"}`, reqHeaders)
 	assertStatus(t, response, 201)
 
@@ -1300,6 +1300,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 // Test bring DB online with delay of 1 second
 func TestSingleDBOnlineWithDelay(t *testing.T) {
 
+	t.Skip("Use case covered by TestDBOnlineWithTwoDelays, skipping due to slow test")
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -1368,7 +1369,7 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	goassert.True(t, body["state"].(string) == "Offline")
 
 	//Bring DB online with delay of two seconds
-	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":2}")
+	rt.SendAdminRequest("POST", "/db/_online", "{\"delay\":1}")
 	assertStatus(t, response, 200)
 
 	// Bring DB online immediately
@@ -1384,8 +1385,8 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	json.Unmarshal(response.Body.Bytes(), &body)
 	goassert.True(t, body["state"].(string) == "Online")
 
-	// Wait until after the 2 second delay, since the online request explicitly asked for a delay
-	time.Sleep(2500 * time.Millisecond)
+	// Wait until after the 1 second delay, since the online request explicitly asked for a delay
+	time.Sleep(1500 * time.Millisecond)
 
 	// Wait for DB to come online (retry loop)
 	errDbOnline = rt.WaitForDBOnline()
@@ -1407,7 +1408,6 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
-	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)

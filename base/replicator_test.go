@@ -5,20 +5,20 @@ import (
 	"testing"
 	"time"
 
-	goassert "github.com/couchbaselabs/go.assert"
-	sgreplicate "github.com/couchbaselabs/sg-replicate"
+	"github.com/couchbaselabs/sg-replicate"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestReplicator(t *testing.T) {
 	r := NewReplicator()
-	goassert.Equals(t, len(r.ActiveTasks()), 0)
+	assert.Equal(t, 0, len(r.ActiveTasks()))
 
 	params := sgreplicate.ReplicationParameters{
 		SourceDb:  "db1",
 		Lifecycle: sgreplicate.CONTINUOUS,
 	}
 	_, err := r.Replicate(params, false)
-	goassert.Equals(t, err, nil)
+	assert.Equal(t, nil, err)
 	waitForActiveTasks(t, r, 1)
 
 	params = sgreplicate.ReplicationParameters{
@@ -26,17 +26,17 @@ func TestReplicator(t *testing.T) {
 		Lifecycle:     sgreplicate.CONTINUOUS,
 	}
 	_, err = r.Replicate(params, false)
-	goassert.Equals(t, err, nil)
+	assert.Equal(t, nil, err)
 	waitForActiveTasks(t, r, 2)
 
 	// now stop it
 	_, err = r.Replicate(params, true)
-	goassert.Equals(t, err, nil)
+	assert.Equal(t, nil, err)
 	waitForActiveTasks(t, r, 1)
 
 	// stop all
 	err = r.StopReplications()
-	goassert.Equals(t, err, nil)
+	assert.Equal(t, nil, err)
 	waitForActiveTasks(t, r, 0)
 }
 
@@ -60,7 +60,7 @@ func TestReplicatorDuplicateID(t *testing.T) {
 		Lifecycle:     sgreplicate.CONTINUOUS,
 	}
 	_, err := r.Replicate(params, false)
-	goassert.Equals(t, err, nil)
+	assert.Equal(t, nil, err)
 
 	// Should get an error because ReplicationIDs are identical.
 	_, err = r.Replicate(params, false)
@@ -75,7 +75,7 @@ func TestReplicatorDuplicateParams(t *testing.T) {
 		Lifecycle: sgreplicate.CONTINUOUS,
 	}
 	_, err := r.Replicate(params, false)
-	goassert.Equals(t, err, nil)
+	assert.Equal(t, nil, err)
 
 	// Should get an error even if ReplicationIDs are different,
 	// as they both share the same parameters.
@@ -85,8 +85,8 @@ func TestReplicatorDuplicateParams(t *testing.T) {
 
 func assertHTTPError(t *testing.T, err error, status int) {
 	if httpErr, ok := err.(*HTTPError); !ok {
-		goassert.Errorf(t, "assertHTTPError: Expected an HTTP %d; got error %T %v", status, err, err)
+		assert.Fail(t, "assertHTTPError: Expected an HTTP %d; got error %T %v", status, err, err)
 	} else {
-		goassert.Equals(t, httpErr.Status, status)
+		assert.Equal(t, status, httpErr.Status)
 	}
 }

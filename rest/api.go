@@ -188,7 +188,7 @@ func (h *handler) instanceStartTime() int64 {
 type DatabaseRoot struct {
 	DBName                        string `json:"db_name"`
 	SequenceNumber                uint64 `json:"update_seq"`
-	CommittedUpdateSequenceNumber uint64 `json:"committed_update_seq"`
+	CommittedUpdateSequenceNumber uint64 `json:"committed_update_seq"` // Used by perf tests, shouldn't be removed
 	InstanceStartTime             int64  `json:"instance_start_time"`
 	CompactRunning                bool   `json:"compact_running"`
 	PurgeSequenceNumber           uint64 `json:"purge_seq"`

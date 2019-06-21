@@ -51,8 +51,10 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 		session.Ttl = kDefaultSessionTTL
 	}
 	duration := session.Ttl
-	sessionTimeElapsed := int((time.Now().Add(duration).Sub(session.Expiration)).Seconds())
-	tenPercentOfTtl := int(duration.Seconds()) / 10
+
+	// SessionTimeElapsed and tenPercentOfTtl use Nanoseconds for more precision when converting to int
+	sessionTimeElapsed := int((time.Now().Add(duration).Sub(session.Expiration)).Nanoseconds())
+	tenPercentOfTtl := int(duration.Nanoseconds()) / 10
 	if sessionTimeElapsed > tenPercentOfTtl {
 		session.Expiration = time.Now().Add(duration)
 		if err = auth.bucket.Set(docIDForSession(session.ID), base.DurationToCbsExpiry(duration), session); err != nil {

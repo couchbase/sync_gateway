@@ -125,9 +125,6 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 
 func testBucket(tester testing.TB) base.TestBucket {
 
-	//TODO: Temporary fix until sequence allocation unit test enhancements - CBG-316
-	MaxSequenceIncrFrequency = 0 * time.Millisecond
-
 	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
 	for i := 0; i < 2; i++ {
 
@@ -786,11 +783,14 @@ func TestConflicts(t *testing.T) {
 	// Instantiate channel cache for channel 'all'
 	db.changeCache.getChannelCache().getSingleChannelCache("all")
 
+	cacheWaiter := db.NewDCPCachingCountWaiter(t)
+
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
 	assert.NoError(t, db.PutExistingRev("doc", body, []string{"1-a"}, false), "add 1-a")
 
-	time.Sleep(time.Second) // Wait for tap feed to catch up
+	// Wait for rev to be cached
+	cacheWaiter.AddAndWait(1)
 
 	changeLog := db.GetChangeLog("all", 0)
 	goassert.Equals(t, len(changeLog), 1)
@@ -803,7 +803,7 @@ func TestConflicts(t *testing.T) {
 	body["channels"] = []string{"all", "2a"}
 	assert.NoError(t, db.PutExistingRev("doc", body, []string{"2-a", "1-a"}, false), "add 2-a")
 
-	time.Sleep(time.Second) // Wait for tap feed to catch up
+	cacheWaiter.Add(2)
 
 	rawBody, _, _ := db.Bucket.GetRaw("doc")
 
@@ -823,7 +823,7 @@ func TestConflicts(t *testing.T) {
 		"channels": []string{"all", "2a"}})
 
 	// Verify the change-log of the "all" channel:
-	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting, t)
+	cacheWaiter.Wait()
 	changeLog = db.GetChangeLog("all", 0)
 	goassert.Equals(t, len(changeLog), 1)
 	goassert.Equals(t, changeLog[0].Sequence, uint64(3))
@@ -862,8 +862,10 @@ func TestConflicts(t *testing.T) {
 	goassert.True(t, chan2a == nil)             // currently in 2a
 	goassert.True(t, doc.Channels["2b"] != nil) // has been removed from 2b
 
+	// Wait for delete mutation to arrive over feed
+	cacheWaiter.AddAndWait(1)
+
 	// Verify the _changes feed:
-	db.changeCache.waitForSequence(4, base.DefaultWaitForSequenceTesting, t)
 	changes, err = db.GetChanges(channels.SetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	goassert.Equals(t, len(changes), 1)
@@ -1574,24 +1576,29 @@ func TestViewCustom(t *testing.T) {
 	}
 	assert.True(t, err == nil)
 
-	// Workaround race condition where queryAllDocs doesn't return the doc we just added
-	// TODO: stale=false will guarantee no race when using a couchbase bucket, but this test
-	// may hit something related to https://github.com/couchbaselabs/walrus/issues/18.  Can remove sleep when
-	// that gets fixed
-	time.Sleep(time.Second * 1)
-
 	// query all docs using ViewCustom query.
 	opts := Body{"stale": false, "reduce": false}
 	viewResult := sgbucket.ViewResult{}
-	errViewCustom := db.Bucket.ViewCustom(DesignDocSyncHousekeeping(), ViewAllDocs, opts, &viewResult)
-	assert.True(t, errViewCustom == nil)
 
-	// assert that the doc added earlier is in the results
+	// Add retry to avoid race condition where queryAllDocs doesn't return the doc we just added
+	// TODO: stale=false guarantees no race when using a couchbase bucket, but this test
+	//	may be hitting something related to https://github.com/couchbaselabs/walrus/issues/18.  Can remove sleep when
+	// that gets fixed
 	foundDoc := false
-	for _, viewRow := range viewResult.Rows {
-		if viewRow.ID == docId {
-			foundDoc = true
+	for i := 0; i < 10; i++ {
+		errViewCustom := db.Bucket.ViewCustom(DesignDocSyncHousekeeping(), ViewAllDocs, opts, &viewResult)
+		assert.True(t, errViewCustom == nil)
+
+		// assert that the doc added earlier is in the results
+		for _, viewRow := range viewResult.Rows {
+			if viewRow.ID == docId {
+				foundDoc = true
+			}
 		}
+		if foundDoc {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	assert.True(t, foundDoc)
 

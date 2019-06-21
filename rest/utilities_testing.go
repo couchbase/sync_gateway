@@ -87,9 +87,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		return rt.RestTesterBucket
 	}
 
-	//TODO: Temporary fix until sequence allocation unit test enhancements - CBG-316
-	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
-
 	// Put this in a loop in case certain operations fail, like waiting for GSI indexes to be empty.
 	// Limit number of attempts to 2.
 	for i := 0; i < 2; i++ {
@@ -549,6 +546,29 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 	return response
 }
 
+type SimpleSync struct {
+	Channels map[string]interface{}
+	Rev      string
+	Sequence uint64
+}
+
+type RawResponse struct {
+	Sync SimpleSync `json:"_sync"`
+}
+
+// GetDocumentSequence looks up the sequence for a document using the _raw endpoint.
+// Used by tests that need to validate sequences (for grants, etc)
+func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	if response.Code != 200 {
+		return 0
+	}
+
+	var rawResponse RawResponse
+	json.Unmarshal(response.Body.Bytes(), &rawResponse)
+	return rawResponse.Sync.Sequence
+}
+
 type TestResponse struct {
 	*httptest.ResponseRecorder
 	Req *http.Request
@@ -687,6 +707,15 @@ type BlipTester struct {
 // Close the bliptester
 func (bt BlipTester) Close() {
 	bt.restTester.Close()
+}
+
+// Returns database context for blipTester (assumes underlying rest tester is based on a single db - returns first it finds)
+func (bt BlipTester) DatabaseContext() *db.DatabaseContext {
+	dbs := bt.restTester.ServerContext().AllDatabases()
+	for _, database := range dbs {
+		return database
+	}
+	return nil
 }
 
 // Create a BlipTester using the default spec

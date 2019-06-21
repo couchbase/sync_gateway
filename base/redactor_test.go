@@ -60,32 +60,32 @@ func TestRedactionLevelMarshalText(t *testing.T) {
 	var level RedactionLevel
 	level = RedactNone
 	text, err := level.MarshalText()
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, string(text), "none")
 
 	level = RedactPartial
 	text, err = level.MarshalText()
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, string(text), "partial")
 
 	level = RedactFull
 	text, err = level.MarshalText()
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, string(text), "full")
 }
 
 func TestRedactionLevelUnmarshalText(t *testing.T) {
 	var level RedactionLevel
 	err := level.UnmarshalText([]byte("none"))
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, level, RedactNone)
 
 	err = level.UnmarshalText([]byte("partial"))
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, level, RedactPartial)
 
 	err = level.UnmarshalText([]byte("full"))
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, level, RedactFull)
 
 	err = level.UnmarshalText([]byte("asdf"))

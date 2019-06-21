@@ -41,12 +41,12 @@ func TestTranscoder(t *testing.T) {
 	resultBytes, flags, err := transcoder.Encode([]byte(jsonBody))
 	goassert.Equals(t, bytes.Compare(resultBytes, jsonBytes), 0)
 	goassert.Equals(t, flags, jsonFlags)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 
 	resultBytes, flags, err = transcoder.Encode(BinaryDocument(jsonBody))
 	goassert.Equals(t, bytes.Compare(resultBytes, jsonBytes), 0)
 	goassert.Equals(t, flags, binaryFlags)
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 }
 
 func TestSetGetRaw(t *testing.T) {

@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -53,6 +52,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	response = it.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
+	caughtUpWaiter := it.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
 	// Start longpoll changes request
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -68,8 +68,8 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 		goassert.Equals(t, len(changes.Results), 3)
 	}()
 
-	// Wait for changes to start.
-	time.Sleep(1 * time.Second)
+	// Wait for changes to get into wait mode
+	caughtUpWaiter.AddAndWait(1)
 
 	// Put document that triggers access grant for user, PBS
 	response = it.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"bernard", "accessChannel":["PBS"]}`)
@@ -136,6 +136,8 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	lastSeq := initialChanges.Last_Seq.String()
 	goassert.Equals(t, lastSeq, "1")
 
+	caughtUpWaiter := it.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
+	caughtUpWaiter.Add(1)
 	// Start longpoll changes request, requesting (unavailable) channel PBS.  Should block.
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -151,8 +153,8 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		goassert.Equals(t, len(changes.Results), 1)
 	}()
 
-	// Wait to see if the longpoll will terminate before a document shows up on the channel
-	time.Sleep(1 * time.Second)
+	// Wait to see if the longpoll will terminate on wait before a document shows up on the channel
+	caughtUpWaiter.Wait()
 
 	// Put public document that triggers termination of the longpoll
 	response = it.SendAdminRequest("PUT", "/db/abc1", `{"value":3, "channel":["ABC"]}`)

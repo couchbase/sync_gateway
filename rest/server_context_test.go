@@ -41,11 +41,11 @@ func TestConfigServer(t *testing.T) {
 	sc.config.ConfigServer = &fakeConfigURL
 
 	dbc, err := sc.GetDatabase("db")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, dbc.Name, "db")
 
 	dbc, err = sc.GetDatabase("db2")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, dbc.Name, "db2")
 	goassert.Equals(t, dbc.Bucket.GetName(), "fivez")
 
@@ -93,11 +93,11 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 	sc.config.ConfigServer = &fakeConfigURL
 
 	dbc, err := sc.GetDatabase("db")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, dbc.Name, "db")
 
 	dbc, err = sc.GetDatabase("db2")
-	goassert.Equals(t, err, nil)
+	assert.NoError(t, err)
 	goassert.Equals(t, dbc.Name, "db2")
 	goassert.Equals(t, dbc.Bucket.GetName(), "fivez")
 
