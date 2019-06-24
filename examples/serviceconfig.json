@@ -3,10 +3,7 @@
   "interface": "0.0.0.0:4984",
   "databases": {
     "db": {
-      "server": "couchbase://localhost",
-      "username": "username",
-      "password": "password",
-      "bucket": "default",
+      "server": "walrus:data",
       "users": {
         "GUEST": {"disabled": false, "admin_channels": ["*"] }
       },
