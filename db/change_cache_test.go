@@ -1716,6 +1716,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
+	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 	docCount := 0
 	// Write docs to non-queried channel first, to increase cache.nextSequence
 	for i := 0; i < 10; i++ {
@@ -1743,8 +1744,8 @@ func TestInitializeEmptyCache(t *testing.T) {
 		docCount++
 	}
 
-	// Wait for writes to complete, then getChanges again
-	db.changeCache.waitForSequence(uint64(docCount), base.DefaultWaitForSequenceTesting, t)
+	cacheWaiter.Add(docCount)
+	cacheWaiter.Wait()
 
 	changes, err = db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{})
 	assert.NoError(t, err, "Couldn't GetChanges")
@@ -1773,9 +1774,9 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	docCount := 1000
 	inProgressCount := 100
 
-	var writesDone sync.WaitGroup
+	cacheWaiter := db.NewDCPCachingCountWaiter(t)
+	cacheWaiter.Add(docCount)
 	var writesInProgress sync.WaitGroup
-	writesDone.Add(docCount)
 	writesInProgress.Add(inProgressCount)
 
 	// Start writing docs
@@ -1789,7 +1790,6 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 			if i < inProgressCount {
 				writesInProgress.Done()
 			}
-			writesDone.Done()
 		}
 	}()
 
@@ -1803,9 +1803,8 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 		lastSeq = changes[len(changes)-1].Seq
 	}
 
-	// Wait for writes to complete, then getChanges again
-	writesDone.Wait()
-	db.changeCache.waitForSequence(uint64(docCount), base.DefaultWaitForSequenceTesting, t)
+	// Wait for all writes to be cached, then getChanges again
+	cacheWaiter.Wait()
 
 	changes, err = db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{Since: lastSeq})
 	assert.NoError(t, err, "Couldn't GetChanges")
