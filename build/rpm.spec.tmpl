@@ -57,11 +57,6 @@ if test X"$RPM_INSTALL_PREFIX0" = X"" ; then
   RPM_INSTALL_PREFIX0=@@PREFIX@@
 fi
 
-echo "prefix: @@PREFIX@@"
-echo "mkdir -p $RPM_INSTALL_PREFIX0"
-mkdir -p "$RPM_INSTALL_PREFIX0"
-echo $?
-
 getent group @@PRODUCT_BASE@@ >/dev/null || \
    groupadd -r @@PRODUCT_BASE@@ || exit 1
 getent passwd @@PRODUCT_BASE@@ >/dev/null || \
@@ -86,14 +81,6 @@ fi
 # create user if it does not exist
 if [ -z `id -u @@PRODUCT_EXEC@@ 2>/dev/null` ]; then
   useradd @@PRODUCT_EXEC@@
-fi
-
-echo "in post - RPM_INSTALL_PREFIX0 = $RPM_INSTALL_PREFIX0"
-# create home dir if it does not exist (maybe it has been deleted upon uninstall)
-if [ ! -d "$RPM_INSTALL_PREFIX0" ]; then
-  echo "mkdir -p $RPM_INSTALL_PREFIX0"
-  mkdir -p "$RPM_INSTALL_PREFIX0"
-  chown @@PRODUCT_BASE@@:@@PRODUCT_BASE@@ $RPM_INSTALL_PREFIX0
 fi
 
 cd @@PREFIX@@/service

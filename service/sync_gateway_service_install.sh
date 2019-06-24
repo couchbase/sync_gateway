@@ -83,6 +83,8 @@ pre_install_actions() {
     exit 1
   fi
 
+  setup_output_dirs
+
   # Check that the runtime base directory exists
   if [ ! -d "$RUNBASE_TEMPLATE_VAR" ]; then
     echo "The runtime base directory does not exist \"$RUNBASE_TEMPLATE_VAR\"." >/dev/stderr
@@ -118,8 +120,6 @@ pre_install_actions() {
     cp $SRCCFGDIR/$SRCCFG $CONFIG_TEMPLATE_VAR
     chown ${RUNAS_TEMPLATE_VAR}:${RUNAS_TEMPLATE_VAR} ${CONFIG_TEMPLATE_VAR}
   fi
-
-  setup_output_dirs
 }
 
 #
