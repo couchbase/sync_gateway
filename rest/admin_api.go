@@ -317,10 +317,27 @@ func (h *handler) handleActiveTasks() error {
 func (h *handler) handleGetRawDoc() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
+	includeDoc := h.getBoolQuery("include_doc")
+	redact := h.getOptBoolQuery("redact", true)
+	salt := h.getQuery("salt")
 	doc, err := h.db.GetDocument(docid, db.DocUnmarshalAll)
-	if doc != nil {
-		h.writeJSON(doc)
+
+	h.setHeader("Content-Type", "application/json")
+
+	if redact {
+		h.response.Write([]byte(`{"sync":` + doc.SyncData.HashRedact(salt)))
+	} else {
+		h.response.Write([]byte(`{"sync":`))
+		h.addJSON(doc.SyncData)
 	}
+
+	if includeDoc {
+		h.response.Write([]byte(`, "doc":`))
+		h.addJSON(doc.Body())
+	}
+
+	h.response.Write([]byte(`}`))
+
 	return err
 }
 

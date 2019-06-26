@@ -45,7 +45,7 @@ type UserAccessMap map[string]channels.TimedSet
 type AttachmentsMeta map[string]interface{} // AttachmentsMeta metadata as included in sync metadata
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
-type syncData struct {
+type SyncData struct {
 	CurrentRev      string              `json:"rev"`
 	NewestRev       string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
 	Flags           uint8               `json:"flags,omitempty"`
@@ -76,12 +76,61 @@ type syncData struct {
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
 }
 
+func (doc *SyncData) HashRedact(salt string) string {
+
+	syncData := SyncData{
+		CurrentRev:      doc.CurrentRev,
+		NewestRev:       doc.NewestRev,
+		Flags:           doc.Flags,
+		Sequence:        doc.Sequence,
+		UnusedSequences: doc.UnusedSequences,
+		RecentSequences: doc.RecentSequences,
+		History:         RevTree{},
+		Channels:        channels.ChannelMap{},
+		Access:          UserAccessMap{},
+		RoleAccess:      UserAccessMap{},
+		Expiry:          doc.Expiry,
+		Cas:             doc.Cas,
+		Crc32c:          doc.Crc32c,
+		TombstonedAt:    doc.TombstonedAt,
+		Attachments:     doc.Attachments,
+	}
+
+	for k, v := range doc.Channels {
+		syncData.Channels[base.Sha1HashString(k, salt)] = v
+	}
+
+	for k, v := range doc.History {
+		revInfo := *v
+
+		if revInfo.Channels != nil {
+			revInfo.Channels = base.Set{}
+			for existingChanKey := range v.Channels {
+				revInfo.Channels.Add(base.Sha1HashString(existingChanKey, salt))
+			}
+		}
+
+		syncData.History.addRevision(k, revInfo)
+	}
+
+	for k, v := range doc.Access {
+		syncData.Access[base.Sha1HashString(k, salt)] = v
+	}
+
+	for k, v := range doc.RoleAccess {
+		syncData.RoleAccess[base.Sha1HashString(k, salt)] = v
+	}
+
+	json, _ := json.Marshal(syncData)
+	return string(json)
+}
+
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
-// In its JSON form, the body's properties are at top-level while the syncData is in a special
+// In its JSON form, the body's properties are at top-level while the SyncData is in a special
 // "_sync" property.
 // Document doesn't do any locking - document instances aren't intended to be shared across multiple goroutines.
 type document struct {
-	syncData        // Sync metadata
+	SyncData        // Sync metadata
 	_body    Body   // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
 	rawBody  []byte // Raw document body, as retrieved from the bucket
 	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
@@ -99,7 +148,7 @@ type casOnlySyncData struct {
 
 // Returns a new empty document.
 func newDocument(docid string) *document {
-	return &document{ID: docid, syncData: syncData{History: make(RevTree)}}
+	return &document{ID: docid, SyncData: SyncData{History: make(RevTree)}}
 }
 
 // Accessors for document properties.  To support lazy unmarshalling of document contents, all access should be done through accessors
@@ -165,10 +214,10 @@ func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, cas
 
 // Unmarshals just a document's sync metadata from JSON data.
 // (This is somewhat faster, if all you need is the sync data without the doc body.)
-func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error) {
+func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error) {
 	var root documentRoot
 	if needHistory {
-		root.SyncData = &syncData{History: make(RevTree)}
+		root.SyncData = &SyncData{History: make(RevTree)}
 	}
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
@@ -185,7 +234,7 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*syncData, error)
 // Returns the raw body, in case it's needed for import.
 
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
-func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory bool) (result *syncData, rawBody []byte, rawXattr []byte, err error) {
+func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory bool) (result *SyncData, rawBody []byte, rawXattr []byte, err error) {
 
 	var body []byte
 
@@ -198,9 +247,9 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 			return nil, nil, nil, err
 		}
 
-		// If the sync xattr is present, use that to build syncData
+		// If the sync xattr is present, use that to build SyncData
 		if syncXattr != nil && len(syncXattr) > 0 {
-			result = &syncData{}
+			result = &SyncData{}
 			if needHistory {
 				result.History = make(RevTree)
 			}
@@ -284,14 +333,14 @@ func parseXattrStreamData(xattrName string, data []byte) (body []byte, xattr []b
 	return body, xattr, nil
 }
 
-func (doc *syncData) HasValidSyncData(requireSequence bool) bool {
+func (doc *SyncData) HasValidSyncData(requireSequence bool) bool {
 
 	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0 || !requireSequence)
 	return valid
 }
 
 // Converts the string hex encoding that's stored in the sync metadata to a uint64 cas value
-func (s *syncData) GetSyncCas() uint64 {
+func (s *SyncData) GetSyncCas() uint64 {
 
 	if s.Cas == "" {
 		return 0
@@ -300,8 +349,8 @@ func (s *syncData) GetSyncCas() uint64 {
 	return base.HexCasToUint64(s.Cas)
 }
 
-// syncData.IsSGWrite - used during feed-based import
-func (s *syncData) IsSGWrite(cas uint64, rawBody []byte) (isSGWrite bool, crc32Match bool) {
+// SyncData.IsSGWrite - used during feed-based import
+func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte) (isSGWrite bool, crc32Match bool) {
 
 	// If cas matches, it was a SG write
 	if cas == s.GetSyncCas() {
@@ -316,16 +365,16 @@ func (s *syncData) IsSGWrite(cas uint64, rawBody []byte) (isSGWrite bool, crc32M
 	return false, false
 }
 
-// doc.IsSGWrite - used during on-demand import.  Doesn't invoke syncData.IsSGWrite so that we
+// doc.IsSGWrite - used during on-demand import.  Doesn't invoke SyncData.IsSGWrite so that we
 // can complete the inexpensive cas check before the (potential) doc marshalling.
 func (doc *document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool) {
 
-	// If the raw body is available, use syncData.IsSGWrite
+	// If the raw body is available, use SyncData.IsSGWrite
 	if rawBody != nil && len(rawBody) > 0 {
 
-		isSgWriteFeed, crc32MatchFeed := doc.syncData.IsSGWrite(doc.Cas, rawBody)
+		isSgWriteFeed, crc32MatchFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody)
 		if !isSgWriteFeed {
-			base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.syncData.Cas)
+			base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
 		}
 
 		return isSgWriteFeed, crc32MatchFeed
@@ -333,7 +382,7 @@ func (doc *document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 	}
 
 	// If raw body isn't available, first do the inexpensive cas check
-	if doc.Cas == doc.syncData.GetSyncCas() {
+	if doc.Cas == doc.SyncData.GetSyncCas() {
 		return true, false
 	}
 
@@ -343,11 +392,11 @@ func (doc *document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 		base.Warnf(base.KeyAll, "Unable to marshal doc body during SG write check for doc %s.  Error: %v", base.UD(doc.ID), err)
 		return false, false
 	}
-	if base.Crc32cHashString(docBody) == doc.syncData.Crc32c {
+	if base.Crc32cHashString(docBody) == doc.SyncData.Crc32c {
 		return true, true
 	}
 
-	base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.syncData.Cas)
+	base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
 	return false, false
 }
 
@@ -685,21 +734,21 @@ func (accessMap *UserAccessMap) updateAccess(doc *document, newAccess channels.A
 //////// MARSHALING ////////
 
 type documentRoot struct {
-	SyncData *syncData `json:"_sync"`
+	SyncData *SyncData `json:"_sync"`
 }
 
 func (doc *document) UnmarshalJSON(data []byte) error {
 	if doc.ID == "" {
 		panic("Doc was unmarshaled without ID set")
 	}
-	root := documentRoot{SyncData: &syncData{History: make(RevTree)}}
+	root := documentRoot{SyncData: &SyncData{History: make(RevTree)}}
 	err := json.Unmarshal([]byte(data), &root)
 	if err != nil {
 		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
 	if root.SyncData != nil {
-		doc.syncData = *root.SyncData
+		doc.SyncData = *root.SyncData
 	}
 
 	if err := doc._body.Unmarshal(data); err != nil {
@@ -715,7 +764,7 @@ func (doc *document) MarshalJSON() ([]byte, error) {
 	if body == nil {
 		body = Body{}
 	}
-	body[base.SyncXattrName] = &doc.syncData
+	body[base.SyncXattrName] = &doc.SyncData
 	data, err := json.Marshal(body)
 	delete(body, base.SyncXattrName)
 	if err != nil {
@@ -737,8 +786,8 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 	switch unmarshalLevel {
 	case DocUnmarshalAll, DocUnmarshalSync:
 		// Unmarshal full document and/or sync metadata
-		doc.syncData = syncData{History: make(RevTree)}
-		unmarshalErr := json.Unmarshal(xdata, &doc.syncData)
+		doc.SyncData = SyncData{History: make(RevTree)}
+		unmarshalErr := json.Unmarshal(xdata, &doc.SyncData)
 		if unmarshalErr != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
@@ -751,8 +800,8 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 
 	case DocUnmarshalNoHistory:
 		// Unmarshal sync metadata only, excluding history
-		doc.syncData = syncData{}
-		unmarshalErr := json.Unmarshal(xdata, &doc.syncData)
+		doc.SyncData = SyncData{}
+		unmarshalErr := json.Unmarshal(xdata, &doc.SyncData)
 		if unmarshalErr != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
@@ -764,7 +813,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		if unmarshalErr != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalRev).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
-		doc.syncData = syncData{
+		doc.SyncData = SyncData{
 			CurrentRev: revOnlyMeta.CurrentRev,
 			Cas:        revOnlyMeta.Cas,
 		}
@@ -776,7 +825,7 @@ func (doc *document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		if unmarshalErr != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalCAS).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
-		doc.syncData = syncData{
+		doc.SyncData = SyncData{
 			Cas: casOnlyMeta.Cas,
 		}
 		doc.rawBody = data
@@ -804,10 +853,14 @@ func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 		}
 	}
 
-	xdata, err = json.Marshal(doc.syncData)
+	xdata, err = json.Marshal(doc.SyncData)
 	if err != nil {
-		return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc syncData with id: %s.  Error: %v", base.UD(doc.ID), err))
+		return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 
 	return data, xdata, nil
+}
+
+func (doc *document) GetSyncData() SyncData {
+	return doc.SyncData
 }

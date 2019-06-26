@@ -340,7 +340,7 @@ func checkExistingDDocs(bucket base.Bucket) bool {
 
 func installViews(bucket base.Bucket) error {
 
-	// syncData specifies the path to Sync Gateway sync metadata used in the map function -
+	// SyncData specifies the path to Sync Gateway sync metadata used in the map function -
 	// in the document body when xattrs available, in the mobile xattr when xattrs enabled.
 	syncData := fmt.Sprintf(`var sync
 							if (meta.xattrs === undefined || meta.xattrs.%s === undefined) {

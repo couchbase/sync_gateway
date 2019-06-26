@@ -510,7 +510,7 @@ func WriteDirectWithKey(db *Database, key string, channelArray []string, sequenc
 		chanMap[channel] = nil
 	}
 
-	syncData := &syncData{
+	syncData := &SyncData{
 		CurrentRev: rev,
 		Sequence:   sequence,
 		Channels:   chanMap,
@@ -540,7 +540,7 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 	channelTimedSet := channels.AtSequence(base.SetFromArray(channelGrantArray), sequence)
 	accessMap[username] = channelTimedSet
 
-	syncData := &syncData{
+	syncData := &SyncData{
 		CurrentRev: rev,
 		Sequence:   sequence,
 		Channels:   chanMap,
@@ -1651,7 +1651,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	doc1 := document{
 		ID: doc1Id,
 	}
-	doc1.syncData = syncData{
+	doc1.SyncData = SyncData{
 		UnusedSequences: []uint64{
 			1,
 		},
@@ -1669,7 +1669,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	channelMap := channels.ChannelMap{
 		"ABC": nil,
 	}
-	doc2.syncData = syncData{
+	doc2.SyncData = SyncData{
 		CurrentRev: "1-cde",
 		Sequence:   2,
 		Channels:   channelMap,
