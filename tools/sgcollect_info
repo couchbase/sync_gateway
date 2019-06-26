@@ -15,6 +15,8 @@ import uuid
 
 from sys import platform as _platform
 
+from botocore.vendored import requests
+
 from tasks import CbcollectInfoOptions
 from tasks import dump_utilities
 from tasks import generate_upload_url
@@ -231,13 +233,16 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt):
         R'C:\Program Files\Couchbase\Sync Gateway\var\lib\couchbase\logs'               # Windows (Post-2.1) sync gateway
     ]
     # Try to find user-specified log path
-    config_url = "{0}/_config".format(sg_url)
-    try:
-        response = urllib2.urlopen(config_url)
-    except urllib2.URLError:
-        config_str = ""
+    if sg_url:
+        config_url = "{0}/_config".format(sg_url)
+        try:
+            response = urllib2.urlopen(config_url)
+        except urllib2.URLError:
+            config_str = ""
+        else:
+            config_str = str(response.read())
     else:
-        config_str = str(response.read())
+        config_str = ""
 
     # Find log file path from old style top level config
     guessed_log_path = extract_element_from_config('LogFilePath', config_str)
@@ -428,11 +433,12 @@ def get_paths_from_expvars(sg_url):
     sg_config_path = None
 
     # get content and parse into json
-    try:
-        response = urllib2.urlopen(expvar_url(sg_url))
-        data = json.load(response)
-    except urllib2.URLError as e:
-        print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
+    if sg_url:
+        try:
+            response = urllib2.urlopen(expvar_url(sg_url))
+            data = json.load(response)
+        except urllib2.URLError as e:
+            print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
 
     if data is not None and "cmdline" in data:
         cmdline_args = data["cmdline"]
@@ -571,11 +577,35 @@ def main():
     if options.watch_stdin:
         setup_stdin_watcher()
 
-    # Get the sg url the user passed in, or use the default
     sg_url = options.sync_gateway_url
-    if sg_url is None:
-        sg_url = "http://127.0.0.1:4985"
-    print("Using Sync Gateway URL: {0}".format(sg_url))
+
+    if sg_url and "://" in sg_url:
+        pass
+    else:
+        if not sg_url:
+            root_url = "127.0.0.1:4985"
+        else:
+            root_url = sg_url
+        sg_url_tmp = "http://" + root_url
+        print("Trying Sync Gateway URL: {0}".format(sg_url_tmp))
+
+        try:
+            requests.get(sg_url_tmp)
+        except requests.ConnectionError, e:
+            print("Failed to communicate with: {} {}".format(sg_url_tmp, e))
+            sg_url_tmp = "https://" + root_url
+            print("Trying Sync Gateway URL: {0}".format(sg_url_tmp))
+            try:
+                requests.get(sg_url_tmp)
+            except requests.ConnectionError, e:
+                print("Failed to communicate with: {} {}".format(sg_url_tmp, e))
+                print("Failed to communcate with Sync Gateway using default "
+                      "url. Use --sync-gateway-url flag to specify url. Will "
+                      "attempt to continue anyway.")
+            else:
+                sg_url = sg_url_tmp
+        else:
+            sg_url = sg_url_tmp
 
     # Build path to zip directory, make sure it exists
     zip_filename = args[0]
