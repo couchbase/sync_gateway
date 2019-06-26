@@ -34,9 +34,9 @@ import (
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gomemcached"
-	"github.com/couchbaselabs/gocbconnstr"
 	"github.com/gorilla/mux"
 	pkgerrors "github.com/pkg/errors"
+	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 const (
