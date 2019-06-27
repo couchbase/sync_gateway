@@ -579,33 +579,30 @@ def main():
 
     sg_url = options.sync_gateway_url
 
-    if sg_url and "://" in sg_url:
-        pass
-    else:
+    if not sg_url or "://" not in sg_url:
         if not sg_url:
             root_url = "127.0.0.1:4985"
         else:
             root_url = sg_url
-        sg_url_tmp = "http://" + root_url
-        print("Trying Sync Gateway URL: {0}".format(sg_url_tmp))
+        sg_url_http = "http://" + root_url
+        print("Trying Sync Gateway URL: {0}".format(sg_url_http))
 
         try:
-            requests.get(sg_url_tmp)
+            requests.get(sg_url_http)
         except requests.ConnectionError, e:
-            print("Failed to communicate with: {} {}".format(sg_url_tmp, e))
-            sg_url_tmp = "https://" + root_url
-            print("Trying Sync Gateway URL: {0}".format(sg_url_tmp))
+            print("Failed to communicate with: {} {}".format(sg_url_http, e))
+            sg_url_https = "https://" + root_url
+            print("Trying Sync Gateway URL: {0}".format(sg_url_https))
             try:
-                requests.get(sg_url_tmp)
+                requests.get(sg_url_https)
             except requests.ConnectionError, e:
-                print("Failed to communicate with: {} {}".format(sg_url_tmp, e))
                 print("Failed to communcate with Sync Gateway using default "
-                      "url. Use --sync-gateway-url flag to specify url. Will "
-                      "attempt to continue anyway.")
+                      "url {}. Use --sync-gateway-url flag to specify url. "
+                      "Will attempt to continue anyway.".format(e))
             else:
-                sg_url = sg_url_tmp
+                sg_url = sg_url_https
         else:
-            sg_url = sg_url_tmp
+            sg_url = sg_url_http
 
     # Build path to zip directory, make sure it exists
     zip_filename = args[0]
