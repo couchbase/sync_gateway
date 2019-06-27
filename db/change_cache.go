@@ -392,7 +392,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 		if syncData == nil || !isSGWrite {
 			if c.context.autoImport {
-				// If SyncData is nil, or if this was not an SG write, attempt to import
+				// If syncData is nil, or if this was not an SG write, attempt to import
 				isDelete := event.Opcode == sgbucket.FeedOpDeletion
 				if isDelete {
 					rawBody = nil

@@ -76,7 +76,7 @@ type SyncData struct {
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
 }
 
-func (doc *SyncData) HashRedact(salt string) string {
+func (doc *SyncData) HashRedact(salt string) SyncData {
 
 	syncData := SyncData{
 		CurrentRev:      doc.CurrentRev,
@@ -121,8 +121,7 @@ func (doc *SyncData) HashRedact(salt string) string {
 		syncData.RoleAccess[base.Sha1HashString(k, salt)] = v
 	}
 
-	json, _ := json.Marshal(syncData)
-	return string(json)
+	return syncData
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.

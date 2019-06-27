@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -320,24 +321,33 @@ func (h *handler) handleGetRawDoc() error {
 	includeDoc := h.getBoolQuery("include_doc")
 	redact := h.getOptBoolQuery("redact", true)
 	salt := h.getQuery("salt")
+	if salt == "" {
+		salt = uuid.New().String()
+	}
+
+	if redact && includeDoc {
+		return base.HTTPErrorf(http.StatusBadRequest, "redact and include_doc cannot be true at the same time. "+
+			"If you want to include_doc you must add redact=false")
+
+	}
+
 	doc, err := h.db.GetDocument(docid, db.DocUnmarshalAll)
 
 	h.setHeader("Content-Type", "application/json")
 
-	if redact {
-		h.response.Write([]byte(`{"_sync":` + doc.SyncData.HashRedact(salt)))
-	} else {
-		h.response.Write([]byte(`{"_sync":`))
-		h.addJSON(doc.SyncData)
-	}
+	response := map[string]interface{}{}
 
 	if includeDoc {
-		h.response.Write([]byte(`, "doc":`))
-		h.addJSON(doc.Body())
+		response = doc.Body().Copy(db.BodyDeepCopy)
 	}
 
-	h.response.Write([]byte(`}`))
+	if redact {
+		response["_sync"] = doc.SyncData.HashRedact(salt)
+	} else {
+		response["_sync"] = doc.SyncData
+	}
 
+	h.writeJSON(response)
 	return err
 }
 
