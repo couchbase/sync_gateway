@@ -325,9 +325,9 @@ func (h *handler) handleGetRawDoc() error {
 	h.setHeader("Content-Type", "application/json")
 
 	if redact {
-		h.response.Write([]byte(`{"sync":` + doc.SyncData.HashRedact(salt)))
+		h.response.Write([]byte(`{"_sync":` + doc.SyncData.HashRedact(salt)))
 	} else {
-		h.response.Write([]byte(`{"sync":`))
+		h.response.Write([]byte(`{"_sync":`))
 		h.addJSON(doc.SyncData)
 	}
 
