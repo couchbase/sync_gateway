@@ -321,9 +321,6 @@ func (h *handler) handleGetRawDoc() error {
 	includeDoc := h.getBoolQuery("include_doc")
 	redact := h.getOptBoolQuery("redact", true)
 	salt := h.getQuery("salt")
-	if salt == "" {
-		salt = uuid.New().String()
-	}
 
 	if redact && includeDoc {
 		return base.HTTPErrorf(http.StatusBadRequest, "redact and include_doc cannot be true at the same time. "+
@@ -331,9 +328,7 @@ func (h *handler) handleGetRawDoc() error {
 
 	}
 
-	doc, err := h.db.GetDocument(docid, db.DocUnmarshalAll)
-
-	h.setHeader("Content-Type", "application/json")
+	doc, err := h.db.GetDocument(docid, db.DocUnmarshalSync)
 
 	response := map[string]interface{}{}
 
@@ -342,6 +337,9 @@ func (h *handler) handleGetRawDoc() error {
 	}
 
 	if redact {
+		if salt == "" {
+			salt = uuid.New().String()
+		}
 		response["_sync"] = doc.SyncData.HashRedact(salt)
 	} else {
 		response["_sync"] = doc.SyncData

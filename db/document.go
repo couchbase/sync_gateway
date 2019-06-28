@@ -93,7 +93,7 @@ func (doc *SyncData) HashRedact(salt string) SyncData {
 		Cas:             doc.Cas,
 		Crc32c:          doc.Crc32c,
 		TombstonedAt:    doc.TombstonedAt,
-		Attachments:     doc.Attachments,
+		Attachments:     AttachmentsMeta{},
 	}
 
 	for k, v := range doc.Channels {
@@ -119,6 +119,10 @@ func (doc *SyncData) HashRedact(salt string) SyncData {
 
 	for k, v := range doc.RoleAccess {
 		syncData.RoleAccess[base.Sha1HashString(k, salt)] = v
+	}
+
+	for k, v := range doc.Attachments {
+		syncData.Attachments[base.Sha1HashString(k, salt)] = v
 	}
 
 	return syncData
