@@ -81,7 +81,7 @@ func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration
 
 	worker := func() (bool, error, interface{}) {
 		if c.getNextSequence() >= sequence+1 {
-			base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
+			base.Debugf(base.KeyCache, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
 			return false, nil, nil
 		}
 		// retry
@@ -103,7 +103,7 @@ func (c *changeCache) waitForSequenceNotSkipped(sequence uint64, maxWaitTime tim
 		if c.getNextSequence() >= sequence+1 {
 			foundInMissing := c.skippedSeqs.Contains(sequence)
 			if !foundInMissing {
-				base.Infof(base.KeyAll, "waitForSequenceNotSkipped(%d) took %v", sequence, time.Since(startTime))
+				base.Debugf(base.KeyCache, "waitForSequenceNotSkipped(%d) took %v", sequence, time.Since(startTime))
 				return false, nil, nil
 			}
 		}
