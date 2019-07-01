@@ -62,7 +62,7 @@ type ChangeIndex interface {
 	getOldestSkippedSequence() uint64
 	getChannelCache() ChannelCache
 
-	// waitFor
+	// These methods should block up until maxWaitTime, or until the given sequence has been received by the change cache.
 	waitForSequence(sequence uint64, maxWaitTime time.Duration) error
 	waitForSequenceNotSkipped(sequence uint64, maxWaitTime time.Duration) error
 }

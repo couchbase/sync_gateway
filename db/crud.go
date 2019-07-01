@@ -721,7 +721,7 @@ func (db *Database) PutRoundTrip(docid string, body Body, roundTrip bool) (newRe
 	}
 
 	if roundTrip {
-		if err := db.WaitForSequence(doc.Sequence); err != nil {
+		if err := db.WaitForSequenceNotSkipped(doc.Sequence); err != nil {
 			return "", err
 		}
 	}
@@ -835,7 +835,7 @@ func (db *Database) PutExistingRevRoundTrip(docid string, body Body, docHistory 
 	}
 
 	if roundTrip {
-		if err := db.WaitForSequence(doc.Sequence); err != nil {
+		if err := db.WaitForSequenceNotSkipped(doc.Sequence); err != nil {
 			return err
 		}
 	}
