@@ -89,7 +89,7 @@ func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration
 	}
 
 	ctx, cancel := context.WithDeadline(context.Background(), startTime.Add(maxWaitTime))
-	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(300, 1, 100), ctx)
+	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 100), ctx)
 	err, _ := base.RetryLoop(fmt.Sprintf("waitForSequence(%d)", sequence), worker, sleeper)
 	cancel()
 	return err
@@ -112,7 +112,7 @@ func (c *changeCache) waitForSequenceNotSkipped(sequence uint64, maxWaitTime tim
 	}
 
 	ctx, cancel := context.WithDeadline(context.Background(), startTime.Add(maxWaitTime))
-	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(300, 1, 100), ctx)
+	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 100), ctx)
 	err, _ := base.RetryLoop(fmt.Sprintf("waitForSequenceNotSkipped(%d)", sequence), worker, sleeper)
 	cancel()
 	return err

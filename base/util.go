@@ -25,8 +25,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -341,8 +339,6 @@ type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
 // even if it returns shouldRetry = true.
 type RetryWorker func() (shouldRetry bool, err error, value interface{})
 
-type TimeoutWorker func()
-
 func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
 
 	numAttempts := 1
@@ -368,83 +364,6 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 		<-time.After(time.Millisecond * time.Duration(sleepMs))
 
 		numAttempts += 1
-
-	}
-}
-
-type WorkerResult struct {
-	ShouldRetry bool
-	Error       error
-	Value       interface{}
-}
-
-func (w WorkerResult) Unwrap() (ShouldRetry bool, Error error, Value interface{}) {
-	return w.ShouldRetry, w.Error, w.Value
-}
-
-func WrapRetryWorkerTimeout(worker RetryWorker) (timeoutWorker TimeoutWorker, resultChan chan WorkerResult) {
-
-	resultChan = make(chan WorkerResult)
-
-	timeoutWorker = func() {
-
-		shouldRetry, err, value := worker()
-
-		result := WorkerResult{
-			ShouldRetry: shouldRetry,
-			Error:       err,
-			Value:       value,
-		}
-		resultChan <- result
-
-	}
-
-	return timeoutWorker, resultChan
-
-}
-
-func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleeper, timeoutPerInvocation time.Duration) (error, interface{}) {
-
-	numAttempts := 1
-
-	for {
-
-		// Wrap the retry worker into a "timeout worker" function that can be run async and will write it's
-		// result to a channel
-		timeoutWorker, chWorkerResult := WrapRetryWorkerTimeout(worker)
-
-		// Kick off the timeout worker in it's own goroutine
-		go timeoutWorker()
-
-		// Wait for either the timeout worker to send it's result on the channel, or for the timeout to expire
-		select {
-
-		case workerResult := <-chWorkerResult:
-			shouldRetry, err, value := workerResult.Unwrap()
-
-			if !shouldRetry {
-				if err != nil {
-					return err, nil
-				}
-				return nil, value
-			}
-			shouldContinue, sleepMs := sleeper(numAttempts)
-			if !shouldContinue {
-				if err == nil {
-					err = fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
-				}
-				Warnf(KeyAll, "RetryLoop for %v giving up after %v attempts", description, numAttempts)
-				return err, value
-			}
-			Debugf(KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
-
-			<-time.After(time.Millisecond * time.Duration(sleepMs))
-
-			numAttempts += 1
-
-		case <-time.After(timeoutPerInvocation):
-			return fmt.Errorf("Invocation timeout after waiting %v for worker to complete", timeoutPerInvocation), nil
-		}
 
 	}
 }
@@ -586,39 +505,6 @@ func ValueToStringArray(value interface{}) []string {
 	default:
 		return nil
 	}
-}
-
-// Validates path argument is a path to a writable file
-func IsFilePathWritable(fp string) (bool, error) {
-	//Get the containing directory for the file
-	containingDir := filepath.Dir(fp)
-
-	//Check that containing dir exists
-	_, err := os.Stat(containingDir)
-	if err != nil {
-		return false, pkgerrors.WithStack(RedactErrorf("Error checking if %s is not writable.  Error: %v", UD(fp), err))
-	}
-
-	//Check that the filePath points to a file not a directory
-	fi, err := os.Stat(fp)
-	if err == nil || !os.IsNotExist(err) {
-		Warnf(KeyAll, "filePath exists")
-		if fi.Mode().IsDir() {
-			return false, RedactErrorf("IsFilePathWritable() called but %s is a directory rather than a file", UD(fp))
-		}
-	}
-
-	//Now validate that the logfile is writable
-	file, err := os.OpenFile(fp, os.O_WRONLY, 0666)
-	defer file.Close()
-	if err == nil {
-		return true, nil
-	}
-	if os.IsPermission(err) {
-		return false, pkgerrors.WithStack(RedactErrorf("Error checking if %s is not writable.  Error: %v", UD(fp), err))
-	}
-
-	return true, nil
 }
 
 // SanitizeRequestURL will return a sanitised string of the URL by:
