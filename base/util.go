@@ -339,6 +339,22 @@ type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
 // even if it returns shouldRetry = true.
 type RetryWorker func() (shouldRetry bool, err error, value interface{})
 
+type RetryTimeoutError struct {
+	description string
+	attempts    int
+}
+
+func NewRetryTimeoutError(description string, attempts int) *RetryTimeoutError {
+	return &RetryTimeoutError{
+		description: description,
+		attempts:    attempts,
+	}
+}
+
+func (r *RetryTimeoutError) Error() string {
+	return fmt.Sprintf("RetryLoop for %v giving up after %v attempts", r.description, r.attempts)
+}
+
 func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
 
 	numAttempts := 1
@@ -354,7 +370,7 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 		shouldContinue, sleepMs := sleeper(numAttempts)
 		if !shouldContinue {
 			if err == nil {
-				err = fmt.Errorf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+				err = NewRetryTimeoutError(description, numAttempts)
 			}
 			Warnf(KeyAll, "RetryLoop for %v giving up after %v attempts", description, numAttempts)
 			return err, value
