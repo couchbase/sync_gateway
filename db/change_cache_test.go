@@ -614,7 +614,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
 	// Test that retrieval isn't blocked by skipped sequences
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 6}, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(6, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.NoError(t, err, "Couldn't GetChanges")
@@ -629,7 +629,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// Validate insert to various cache states
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"CBS"}, 7)
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 7}, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(7, base.DefaultWaitForSequence))
 	// verify insert at start (PBS)
 	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache("PBS").(*singleChannelCacheImpl)
 	goassert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
@@ -698,14 +698,14 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	// Write some more docs
 	WriteDirect(db, []string{"CBS"}, 3)
 	WriteDirect(db, []string{"PBS"}, 12)
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 12}, base.DefaultWaitForSequenceTesting, t)
+	db.changeCache.waitForSequence(12, base.DefaultWaitForSequence)
 
 	// Test multiple backfill in single changes loop iteration
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 4)
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 7)
 	WriteDirect(db, []string{"ABC", "PBS"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 13)
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 13}, base.DefaultWaitForSequenceTesting, t)
+	db.changeCache.waitForSequence(13, base.DefaultWaitForSequence)
 	time.Sleep(50 * time.Millisecond)
 
 	// We can't guarantee how compound sequences will be generated in a multi-core test - will
@@ -783,7 +783,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 6}, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(6, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -848,7 +848,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	WriteDirect(db, []string{"PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	db.changeCache.waitForSequence(6, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(6, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -905,7 +905,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	WriteDirect(db, []string{"PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	db.changeCache.waitForSequence(6, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(6, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -921,7 +921,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	var changes = make([]*ChangeEntry, 0, 50)
 
 	// Validate the initial sequences arrive as expected
-	err = appendFromFeed(&changes, feed, 3, base.DefaultWaitForSequenceTesting)
+	err = appendFromFeed(&changes, feed, 3, base.DefaultWaitForSequence)
 	goassert.True(t, err == nil)
 	goassert.Equals(t, len(changes), 3)
 	goassert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
@@ -937,9 +937,9 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
 	WriteDirect(db, []string{"PBS"}, 9)
-	db.changeCache.waitForSequence(9, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(9, base.DefaultWaitForSequence))
 
-	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequenceTesting)
+	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequence)
 	assert.NoError(t, err, "Expected more changes to be sent on feed, but never received")
 	goassert.Equals(t, len(changes), 7)
 	goassert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"}))
@@ -1009,7 +1009,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	assert.NoError(t, err, "Put failed with error: %v", err)
 	_, err = db.Put("key4", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
-	db.changeCache.waitForSequence(4, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(4, base.DefaultWaitForSequence))
 
 	// Flush the cache, to ensure view query on subsequent changes requests
 	db.FlushChannelCache()
@@ -1108,7 +1108,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 6}, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(6, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -1125,7 +1125,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	// Array to read changes from feed to support assertions
 	var changes = make([]*ChangeEntry, 0, 50)
 
-	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequenceTesting)
+	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequence)
 
 	// Validate the initial sequences arrive as expected
 	goassert.True(t, err == nil)
@@ -1139,9 +1139,9 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"ABC", "PBS"}, 4)
 
-	db.changeCache.waitForSequenceWithMissing(4, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequenceNotSkipped(4, base.DefaultWaitForSequence))
 
-	err = appendFromFeed(&changes, feed, 2, base.DefaultWaitForSequenceTesting)
+	err = appendFromFeed(&changes, feed, 2, base.DefaultWaitForSequence)
 	goassert.True(t, err == nil)
 	goassert.Equals(t, len(changes), 6)
 	goassert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4}))
@@ -1149,8 +1149,8 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 7)
 	WriteDirect(db, []string{"ABC", "NBC"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
-	db.changeCache.waitForSequence(9, base.DefaultWaitForSequenceTesting, t)
-	appendFromFeed(&changes, feed, 5, base.DefaultWaitForSequenceTesting)
+	require.NoError(t, db.changeCache.waitForSequence(9, base.DefaultWaitForSequence))
+	appendFromFeed(&changes, feed, 5, base.DefaultWaitForSequence)
 	goassert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 
 }
@@ -1198,7 +1198,7 @@ func TestChannelRace(t *testing.T) {
 	WriteDirect(db, []string{"Even"}, 2)
 	WriteDirect(db, []string{"Odd"}, 3)
 
-	db.changeCache.waitForSequence(3, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(3, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -1322,7 +1322,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	assert.NoError(t, cleanErr, "CleanSkippedSequenceQueue returned error")
 
 	// Validate expected entries
-	db.changeCache.waitForSequenceID(SequenceID{Seq: 15}, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(15, base.DefaultWaitForSequence))
 	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
 	assert.NoError(t, err, "Get Changes returned error")
 	goassert.Equals(t, len(entries), 6)
@@ -1413,7 +1413,7 @@ func TestChannelCacheSize(t *testing.T) {
 	}
 
 	// Validate that retrieval returns expected sequences
-	db.changeCache.waitForSequence(750, base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(750, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(base.SetOf("ABC"), ChangesOptions{Since: SequenceID{Seq: 0}})
 	assert.NoError(t, err, "Couldn't GetChanges")
@@ -1539,7 +1539,7 @@ func verifySequencesInFeed(feed <-chan (*ChangeEntry), sequences []uint64) ([]*C
 	var changes = make([]*ChangeEntry, 0, 50)
 	for {
 		// Attempt to read at one entry from feed
-		err := appendFromFeed(&changes, feed, 1, base.DefaultWaitForSequenceTesting)
+		err := appendFromFeed(&changes, feed, 1, base.DefaultWaitForSequence)
 		if err != nil {
 			return nil, err
 		}
@@ -1744,7 +1744,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	}
 
 	// Wait for writes to complete, then getChanges again
-	db.changeCache.waitForSequence(uint64(docCount), base.DefaultWaitForSequenceTesting, t)
+	db.changeCache.waitForSequence(uint64(docCount), base.DefaultWaitForSequence)
 
 	changes, err = db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{})
 	assert.NoError(t, err, "Couldn't GetChanges")
@@ -1805,7 +1805,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	// Wait for writes to complete, then getChanges again
 	writesDone.Wait()
-	db.changeCache.waitForSequence(uint64(docCount), base.DefaultWaitForSequenceTesting, t)
+	require.NoError(t, db.changeCache.waitForSequence(uint64(docCount), base.DefaultWaitForSequence))
 
 	changes, err = db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{Since: lastSeq})
 	assert.NoError(t, err, "Couldn't GetChanges")

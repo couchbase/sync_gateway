@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"expvar"
 	"fmt"
@@ -74,50 +75,47 @@ func ResultsEmpty(results gocb.QueryResults) (resultsEmpty bool) {
 
 }
 
-// FOR TESTS ONLY: Blocks until the given sequence has been received.
-func (c *changeCache) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration, tb testing.TB) {
-	c.waitForSequence(sequence.Seq, maxWaitTime, tb)
-}
-
-// FOR TESTS ONLY
-func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration, tb testing.TB) {
-
+// waitForSequence blocks up to maxWaitTime until the given sequence has been received.
+func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration) error {
 	startTime := time.Now()
 
-	for {
-
-		if time.Since(startTime) >= maxWaitTime {
-			tb.Fatalf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime))
-		}
-
+	worker := func() (bool, error, interface{}) {
 		if c.getNextSequence() >= sequence+1 {
 			base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
-			return
+			return false, nil, nil
 		}
-		time.Sleep(10 * time.Millisecond)
+		// retry
+		return true, nil, nil
 	}
+
+	ctx, cancel := context.WithDeadline(context.Background(), startTime.Add(maxWaitTime))
+	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(300, 1, 100), ctx)
+	err, _ := base.RetryLoop(fmt.Sprintf("waitForSequence(%d)", sequence), worker, sleeper)
+	cancel()
+	return err
 }
 
-// FOR TESTS ONLY: Blocks until the given sequence has been received.
-func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration, tb testing.TB) {
-
+// waitForSequenceNotSkipped blocks up to maxWaitTime until the given sequence has been received or skipped.
+func (c *changeCache) waitForSequenceNotSkipped(sequence uint64, maxWaitTime time.Duration) error {
 	startTime := time.Now()
 
-	for {
-
-		if time.Since(startTime) >= maxWaitTime {
-			tb.Fatalf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime))
-		}
-
+	worker := func() (bool, error, interface{}) {
 		if c.getNextSequence() >= sequence+1 {
 			foundInMissing := c.skippedSeqs.Contains(sequence)
 			if !foundInMissing {
-				base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
-				return
+				base.Infof(base.KeyAll, "waitForSequenceNotSkipped(%d) took %v", sequence, time.Since(startTime))
+				return false, nil, nil
 			}
 		}
-		time.Sleep(10 * time.Millisecond)
+		// retry
+		return true, nil, nil
 	}
+
+	ctx, cancel := context.WithDeadline(context.Background(), startTime.Add(maxWaitTime))
+	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(300, 1, 100), ctx)
+	err, _ := base.RetryLoop(fmt.Sprintf("waitForSequenceNotSkipped(%d)", sequence), worker, sleeper)
+	cancel()
+	return err
 }
 
 func (db *DatabaseContext) CacheCompactActive() bool {

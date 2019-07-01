@@ -107,7 +107,7 @@ func (s *Shadower) pullDocument(key string, value []byte, isDeletion bool, cas u
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}
 
-	_, err = db.updateDoc(key, false, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	_, _, err = db.updateAndReturnDoc(key, false, expiry, nil, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		if doc.UpstreamCAS != nil && *doc.UpstreamCAS == cas {
 			return nil, nil, nil, base.ErrUpdateCancel // we already have this doc revision

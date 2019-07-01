@@ -2288,7 +2288,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Must wait for sequence to arrive in cache, since the cache processor will be paused when UpdateSyncFun() is called
 	// below, which could lead to a data race if the cache processor is paused while it's processing a change
-	rt.ServerContext().Database("db").WaitForSequence(uint64(10), t)
+	require.NoError(t, rt.ServerContext().Database("db").WaitForSequence(uint64(10)))
 
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
@@ -3892,7 +3892,7 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevID2, `{"channels": ["B"]}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
-	rt.ServerContext().Database("db").WaitForPendingChanges(t)
+	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
 
 	//Changes call
 	request, _ := http.NewRequest("GET", "/db/_changes", nil)

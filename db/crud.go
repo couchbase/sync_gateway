@@ -629,9 +629,14 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *document, body Bod
 	return nil
 }
 
+func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
+	return db.PutRoundTrip(docid, body, false)
+}
+
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
-func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
+// If roundTrip is true, this function blocks until the write has been cached.
+func (db *Database) PutRoundTrip(docid string, body Body, roundTrip bool) (newRevID string, err error) {
 	// Get the revision ID to match, and the new generation number:
 	matchRev, _ := body[BodyRev].(string)
 	generation, _ := ParseRevID(matchRev)
@@ -648,7 +653,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 	allowImport := db.UseXattrs()
 
-	return db.updateDoc(docid, allowImport, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err := db.updateAndReturnDoc(docid, allowImport, expiry, nil, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		var isSgWrite bool
 		var crc32Match bool
@@ -710,6 +715,18 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 		return body, newAttachments, nil, nil
 	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if roundTrip {
+		if err := db.WaitForSequence(doc.Sequence); err != nil {
+			return "", err
+		}
+	}
+
+	return newRevID, nil
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
@@ -725,6 +742,10 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 // and the new revision being added is "3-cde", then docHistory passed in should be ["2-bcd", "1-abc"].
 //
 func (db *Database) PutExistingRev(docid string, body Body, docHistory []string, noConflicts bool) error {
+	return db.PutExistingRevRoundTrip(docid, body, docHistory, noConflicts, false)
+}
+
+func (db *Database) PutExistingRevRoundTrip(docid string, body Body, docHistory []string, noConflicts bool, roundTrip bool) error {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
@@ -738,7 +759,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 	}
 
 	allowImport := db.UseXattrs()
-	_, err = db.updateDoc(docid, allowImport, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	doc, _, err := db.updateAndReturnDoc(docid, allowImport, expiry, nil, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -808,7 +829,18 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 		body[BodyRev] = newRev
 		return body, newAttachments, nil, nil
 	})
-	return err
+
+	if err != nil {
+		return err
+	}
+
+	if roundTrip {
+		if err := db.WaitForSequence(doc.Sequence); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // IsIllegalConflict returns true if the given operation is forbidden due to conflicts.
@@ -849,13 +881,6 @@ func (db *Database) IsIllegalConflict(doc *document, parentRevID string, deleted
 	// If we haven't found a valid conflict scenario by this point, flag as invalid
 	base.DebugfCtx(db.Ctx, base.KeyCRUD, "Conflict - tombstone updates to non-leaf or already tombstoned revisions aren't valid when allow_conflicts=false")
 	return true
-}
-
-// Common subroutine of Put and PutExistingRev: a shell that loads the document, lets the caller
-// make changes to it in a callback and supply a new body, then saves the body and document.
-func (db *Database) updateDoc(docid string, allowImport bool, expiry uint32, callback updateAndReturnDocCallback) (newRevID string, err error) {
-	_, newRevID, err = db.updateAndReturnDoc(docid, allowImport, expiry, nil, callback)
-	return newRevID, err
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -1371,8 +1396,12 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 
 }
 
-// Creates a new document, assigning it a random doc ID.
 func (db *Database) Post(body Body) (string, string, error) {
+	return db.PostRoundTrip(body, false)
+}
+
+// Creates a new document, assigning it a random doc ID.
+func (db *Database) PostRoundTrip(body Body, roundTrip bool) (string, string, error) {
 	if body[BodyRev] != nil {
 		return "", "", base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
 	}
@@ -1383,7 +1412,7 @@ func (db *Database) Post(body Body) (string, string, error) {
 		docid = base.CreateUUID()
 	}
 
-	rev, err := db.Put(docid, body)
+	rev, err := db.PutRoundTrip(docid, body, roundTrip)
 	if err != nil {
 		docid = ""
 	}

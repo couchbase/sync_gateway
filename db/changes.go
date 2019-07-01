@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sort"
-	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -779,26 +778,23 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (entries [
 	return db.changeCache.getChannelCache().GetCachedChanges(channelName)
 }
 
-// TEST ONLY.  Wait until the change-cache has caught up with the latest writes to the database.
-func (context *DatabaseContext) WaitForSequence(sequence uint64, tb testing.TB) (err error) {
+// WaitForSequenceNotSkipped blocks until the given sequence has been received or skipped by the change cache.
+func (context *DatabaseContext) WaitForSequence(sequence uint64) (err error) {
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
-	context.changeCache.waitForSequenceID(SequenceID{Seq: sequence}, base.DefaultWaitForSequenceTesting, tb)
-	return
+	return context.changeCache.waitForSequence(sequence, base.DefaultWaitForSequence)
 }
 
-// TEST ONLY.  Wait until the change-cache has caught up with the latest writes to the database.
-func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64, tb testing.TB) (err error) {
+// WaitForSequenceNotSkipped blocks until the given sequence has been received by the change cache without being skipped.
+func (context *DatabaseContext) WaitForSequenceNotSkipped(sequence uint64) (err error) {
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
-	context.changeCache.waitForSequenceWithMissing(sequence, base.DefaultWaitForSequenceTesting, tb)
-	return
+	return context.changeCache.waitForSequenceNotSkipped(sequence, base.DefaultWaitForSequence)
 }
 
-// TEST ONLY.  Wait until the change-cache has caught up with the latest writes to the database.
-func (context *DatabaseContext) WaitForPendingChanges(tb testing.TB) (err error) {
+// WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
+func (context *DatabaseContext) WaitForPendingChanges() (err error) {
 	lastSequence, err := context.LastSequence()
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", lastSequence)
-	context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence}, base.DefaultWaitForSequenceTesting, tb)
-	return
+	return context.changeCache.waitForSequence(lastSequence, base.DefaultWaitForSequence)
 }
 
 // Late Sequence Feed

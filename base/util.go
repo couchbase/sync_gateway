@@ -11,6 +11,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/binary"
@@ -445,6 +446,16 @@ func RetryLoopTimeout(description string, worker RetryWorker, sleeper RetrySleep
 			return fmt.Errorf("Invocation timeout after waiting %v for worker to complete", timeoutPerInvocation), nil
 		}
 
+	}
+}
+
+// SleeperFuncCtx wraps the given RetrySleeper with a context, so it can be cancelled, or have a deadline.
+func SleeperFuncCtx(sleeperFunc RetrySleeper, ctx context.Context) RetrySleeper {
+	return func(retryCount int) (bool, int) {
+		if err := ctx.Err(); err != nil {
+			return false, -1
+		}
+		return sleeperFunc(retryCount)
 	}
 }
 

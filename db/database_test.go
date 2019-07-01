@@ -653,7 +653,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	db.changeCache.waitForSequence(101, base.DefaultWaitForSequenceTesting, t)
+	db.changeCache.waitForSequence(101, base.DefaultWaitForSequence)
 	changeLog := db.GetChangeLog("all", 0)
 	assert.Equal(t, 50, len(changeLog))
 	assert.Equal(t, 52, int(changeLog[0].Sequence))
@@ -1458,7 +1458,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Recent sequence pruning only prunes entries older than what's been seen over DCP
 	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
 	// for caching before attempting to trigger pruning.
-	db.changeCache.waitForSequence(seqTracker, base.DefaultWaitForSequenceTesting, t)
+	db.changeCache.waitForSequence(seqTracker, base.DefaultWaitForSequence)
 
 	// Add another sequence to validate pruning when past max (20)
 	revid, err = db.Put("doc1", body)
@@ -1477,7 +1477,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		seqTracker++
 	}
 
-	db.changeCache.waitForSequence(seqTracker, base.DefaultWaitForSequenceTesting, t) //
+	db.changeCache.waitForSequence(seqTracker, base.DefaultWaitForSequence) //
 	revid, err = db.Put("doc1", body)
 	seqTracker++
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)

@@ -277,6 +277,8 @@ func (h *handler) handlePutDoc() error {
 	var newRev string
 	var ok bool
 
+	roundTrip := h.getBoolQuery("roundtrip")
+
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
 		if oldRev := h.getQuery("rev"); oldRev != "" {
@@ -284,7 +286,7 @@ func (h *handler) handlePutDoc() error {
 		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
 			body[db.BodyRev] = ifMatch
 		}
-		newRev, err = h.db.Put(docid, body)
+		newRev, err = h.db.PutRoundTrip(docid, body, roundTrip)
 		if err != nil {
 			return err
 		}
@@ -295,7 +297,7 @@ func (h *handler) handlePutDoc() error {
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		err = h.db.PutExistingRev(docid, body, revisions, false)
+		err = h.db.PutExistingRevRoundTrip(docid, body, revisions, false, roundTrip)
 		if err != nil {
 			return err
 		}
@@ -312,11 +314,12 @@ func (h *handler) handlePutDoc() error {
 
 // HTTP handler for a POST to a database (creating a document)
 func (h *handler) handlePostDoc() error {
+	roundTrip := h.getBoolQuery("roundtrip")
 	body, err := h.readDocument()
 	if err != nil {
 		return err
 	}
-	docid, newRev, err := h.db.Post(body)
+	docid, newRev, err := h.db.PostRoundTrip(body, roundTrip)
 	if err != nil {
 		return err
 	}
