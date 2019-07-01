@@ -1104,7 +1104,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	}()
 
 	// Wait for longpoll to get into wait mode
-	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount + 1))
+	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 
 	// Write the skipped doc, wait for longpoll to return
 	WriteDirect(testDb, []string{"PBS"}, 6)
