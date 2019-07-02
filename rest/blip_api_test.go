@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1083,12 +1084,16 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
+	attachmentBody := "attach"
+	digest := db.Sha1DigestKey([]byte(attachmentBody))
+
 	input := SendRevWithAttachmentInput{
 		docId:            "doc",
 		revId:            "1-rev1",
 		attachmentName:   "myAttachment",
-		attachmentBody:   "attach",
-		attachmentDigest: "fakedigest",
+		attachmentLength: len(attachmentBody),
+		attachmentBody:   attachmentBody,
+		attachmentDigest: digest,
 	}
 	bt.SendRevWithAttachment(input)
 
@@ -1127,7 +1132,6 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	defer bt.Close()
 
 	attachmentBody := "attach"
-
 	digest := db.Sha1DigestKey([]byte(attachmentBody))
 
 	// Send revision with attachment
@@ -1135,6 +1139,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 		docId:            "doc",
 		revId:            "1-rev1",
 		attachmentName:   "myAttachment",
+		attachmentLength: len(attachmentBody),
 		attachmentBody:   attachmentBody,
 		attachmentDigest: digest,
 	}
@@ -1161,6 +1166,81 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	goassert.Equals(t, retrievedAttachment.Length, len(attachmentBody))
 	goassert.Equals(t, input.attachmentDigest, retrievedAttachment.Digest)
 
+}
+
+// Reproduces the issue seen in https://github.com/couchbase/couchbase-lite-core/issues/790
+// Makes sure that Sync Gateway rejects attachments sent to it that does not match the given digest and/or length
+func TestPutInvalidAttachment(t *testing.T) {
+
+	tests := []struct {
+		name                  string
+		correctAttachmentBody string
+		invalidAttachmentBody string
+		expectedType          blip.MessageType
+		expectedErrorCode     string
+	}{
+		{
+			name:                  "truncated",
+			correctAttachmentBody: "attach",
+			invalidAttachmentBody: "att", // truncate so length and digest are incorrect
+			expectedType:          blip.ErrorType,
+			expectedErrorCode:     strconv.Itoa(http.StatusBadRequest),
+		},
+		{
+			name:                  "malformed",
+			correctAttachmentBody: "attach",
+			invalidAttachmentBody: "attahc", // swap two chars so only digest doesn't match
+			expectedType:          blip.ErrorType,
+			expectedErrorCode:     strconv.Itoa(http.StatusBadRequest),
+		},
+		{
+			name:                  "correct",
+			correctAttachmentBody: "attach",
+			invalidAttachmentBody: "attach",
+			expectedType:          blip.ResponseType,
+			expectedErrorCode:     "",
+		},
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noAdminParty:                true,
+		connectingUsername:          "user1",
+		connectingPassword:          "1234",
+		connectingUserChannelGrants: []string{"*"}, // All channels
+	})
+	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			digest := db.Sha1DigestKey([]byte(test.correctAttachmentBody))
+
+			// Send revision with attachment
+			input := SendRevWithAttachmentInput{
+				docId:            test.name,
+				revId:            "1-rev1",
+				attachmentName:   "myAttachment",
+				attachmentLength: len(test.correctAttachmentBody),
+				attachmentBody:   test.invalidAttachmentBody,
+				attachmentDigest: digest,
+			}
+			sent, _, resp := bt.SendRevWithAttachment(input)
+			assert.True(t, sent)
+
+			// Make sure we get the expected response back
+			assert.Equal(t, test.expectedType, resp.Type())
+			if test.expectedErrorCode != "" {
+				assert.Equal(t, test.expectedErrorCode, resp.Properties["Error-Code"])
+			}
+
+			respBody, err := resp.Body()
+			assert.NoError(t, err)
+			t.Logf("resp.Body: %v", string(respBody))
+		})
+	}
 }
 
 // Put a revision that is rejected by the sync function and assert that Sync Gateway

@@ -972,6 +972,7 @@ type SendRevWithAttachmentInput struct {
 	docId            string
 	revId            string
 	attachmentName   string
+	attachmentLength int
 	attachmentBody   string
 	attachmentDigest string
 }
@@ -988,7 +989,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 	myAttachment := db.DocAttachment{
 		ContentType: "application/json",
 		Digest:      input.attachmentDigest,
-		Length:      6,
+		Length:      input.attachmentLength,
 		Revpos:      1,
 		Stub:        true,
 	}
@@ -1017,15 +1018,12 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 	// Push a rev with an attachment.
 	getAttachmentWg.Add(1)
-	sent, req, res, err = bt.SendRev(
+	sent, req, res, _ = bt.SendRev(
 		input.docId,
 		input.revId,
 		docBody,
 		blip.Properties{},
 	)
-	if err != nil {
-		panic(fmt.Sprintf("Error sending rev: %v", err))
-	}
 
 	// Expect a callback to the getAttachment endpoint
 	getAttachmentWg.Wait()
