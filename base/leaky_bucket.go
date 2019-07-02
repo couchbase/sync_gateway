@@ -18,7 +18,7 @@ type LeakyBucket struct {
 // The config object that controls the LeakyBucket behavior
 type LeakyBucketConfig struct {
 
-	// Incr() fails 3 times before finally succeeding
+	// Incr() fails N times before finally succeeding
 	IncrTemporaryFailCount uint16
 
 	// Emulate TAP/DCP feed de-dupliation behavior, such that within a
