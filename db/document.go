@@ -76,31 +76,35 @@ type SyncData struct {
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
 }
 
-func (doc *SyncData) HashRedact(salt string) SyncData {
+func (sd *SyncData) HashRedact(salt string) SyncData {
 
+	// Creating a new SyncData with the redacted info. We copy all the information which stays the same and create new
+	// items for the redacted data. The data to be redacted is populated below.
 	syncData := SyncData{
-		CurrentRev:      doc.CurrentRev,
-		NewestRev:       doc.NewestRev,
-		Flags:           doc.Flags,
-		Sequence:        doc.Sequence,
-		UnusedSequences: doc.UnusedSequences,
-		RecentSequences: doc.RecentSequences,
+		CurrentRev:      sd.CurrentRev,
+		NewestRev:       sd.NewestRev,
+		Flags:           sd.Flags,
+		Sequence:        sd.Sequence,
+		UnusedSequences: sd.UnusedSequences,
+		RecentSequences: sd.RecentSequences,
 		History:         RevTree{},
 		Channels:        channels.ChannelMap{},
 		Access:          UserAccessMap{},
 		RoleAccess:      UserAccessMap{},
-		Expiry:          doc.Expiry,
-		Cas:             doc.Cas,
-		Crc32c:          doc.Crc32c,
-		TombstonedAt:    doc.TombstonedAt,
+		Expiry:          sd.Expiry,
+		Cas:             sd.Cas,
+		Crc32c:          sd.Crc32c,
+		TombstonedAt:    sd.TombstonedAt,
 		Attachments:     AttachmentsMeta{},
 	}
 
-	for k, v := range doc.Channels {
+	// Populate and redact channels
+	for k, v := range sd.Channels {
 		syncData.Channels[base.Sha1HashString(k, salt)] = v
 	}
 
-	for k, v := range doc.History {
+	// Populate and redact history. This is done as it also includes channel names
+	for k, v := range sd.History {
 		revInfo := *v
 
 		if revInfo.Channels != nil {
@@ -113,15 +117,26 @@ func (doc *SyncData) HashRedact(salt string) SyncData {
 		syncData.History.addRevision(k, revInfo)
 	}
 
-	for k, v := range doc.Access {
-		syncData.Access[base.Sha1HashString(k, salt)] = v
+	// Populate and redact user access
+	for k, v := range sd.Access {
+		accessTimerSet := map[string]channels.VbSequence{}
+		for channelName, vbStats := range v {
+			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
+		}
+		syncData.Access[base.Sha1HashString(k, salt)] = accessTimerSet
 	}
 
-	for k, v := range doc.RoleAccess {
-		syncData.RoleAccess[base.Sha1HashString(k, salt)] = v
+	// Populate and redact user role access
+	for k, v := range sd.RoleAccess {
+		accessTimerSet := map[string]channels.VbSequence{}
+		for channelName, vbStats := range v {
+			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
+		}
+		syncData.RoleAccess[base.Sha1HashString(k, salt)] = accessTimerSet
 	}
 
-	for k, v := range doc.Attachments {
+	// Populate and redact attachment names
+	for k, v := range sd.Attachments {
 		syncData.Attachments[base.Sha1HashString(k, salt)] = v
 	}
 
@@ -862,8 +877,4 @@ func (doc *document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	}
 
 	return data, xdata, nil
-}
-
-func (doc *document) GetSyncData() SyncData {
-	return doc.SyncData
 }
