@@ -85,6 +85,7 @@ type Receiver interface {
 // cbdatasource BucketDataSource.  See go-couchbase/cbdatasource for
 // additional details
 type DCPReceiver struct {
+	dbStatsExpvars         *expvar.Map
 	m                      sync.Mutex
 	bucket                 Bucket                         // For metadata persistence/retrieval
 	maxVbNo                uint16                         // Number of vbuckets being used for this feed
@@ -96,12 +97,14 @@ type DCPReceiver struct {
 	lastCheckpointTime     []time.Time                    // Time of last checkpoint persistence, per vbucket.  Used to manage checkpoint persistence volume
 	notify                 sgbucket.BucketNotifyFn        // Function to callback when we lose our dcp feed
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
-	backfill               backfillStatus                 // Backfill state and stats
+	backfill               *backfillStatus                // Backfill state and stats
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool) Receiver {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map) Receiver {
+	newBackfillStatus := backfillStatus{}
 
 	r := &DCPReceiver{
+		dbStatsExpvars:         dbStats,
 		bucket:                 bucket,
 		maxVbNo:                maxVbNo,
 		persistCheckpoints:     persistCheckpoints,
@@ -111,6 +114,7 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 		updatesSinceCheckpoint: make([]uint64, maxVbNo),
 		callback:               callback,
 		lastCheckpointTime:     make([]time.Time, maxVbNo),
+		backfill:               &newBackfillStatus,
 	}
 
 	if LogDebugEnabled(KeyDCP) {
@@ -279,10 +283,7 @@ func (r *DCPReceiver) GetMetaData(vbucketId uint16) (
 // it's called, logs warning and does a hard reset on metadata for the vbucket
 func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 	Warnf(KeyAll, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
-
-	// TODO: move to per-db stats, or if that's too difficult due to package dependencies, then at least under Global stats
-	dcpExpvars.Add("rollback_count", 1)
-
+	r.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	r.updateSeq(vbucketId, 0, false)
 	r.SetMetaData(vbucketId, nil)
 
@@ -292,9 +293,7 @@ func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 // RollbackEx includes the vbucketUUID needed to reset the metadata correctly
 func (r *DCPReceiver) RollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64) error {
 	Warnf(KeyAll, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
-
-	dcpExpvars.Add("rollback_count", 1)
-
+	r.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	r.updateSeq(vbucketId, rollbackSeq, false)
 	r.SetMetaData(vbucketId, makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq))
 	return nil
@@ -467,7 +466,7 @@ func (r *DCPReceiver) initFeed(backfillType uint64) error {
 		// For resume case, load previously persisted checkpoints from bucket
 		r.initMetadata(r.maxVbNo)
 		// Track backfill (from persisted checkpoints to current high seqno)
-		r.backfill.init(r.seqs, highSeqnos, r.maxVbNo)
+		r.backfill.init(r.seqs, highSeqnos, r.maxVbNo, r)
 		Debugf(KeyDCP, "Initializing DCP feed based on persisted checkpoints")
 	default:
 		// Otherwise, start feed from zero
@@ -475,7 +474,7 @@ func (r *DCPReceiver) initFeed(backfillType uint64) error {
 		vbuuids := make(map[uint16]uint64, r.maxVbNo)
 		r.SeedSeqnos(vbuuids, startSeqnos)
 		// Track backfill (from zero to current high seqno)
-		r.backfill.init(r.seqs, highSeqnos, r.maxVbNo)
+		r.backfill.init(r.seqs, highSeqnos, r.maxVbNo, r)
 		Debugf(KeyDCP, "Initializing DCP feed to start from zero")
 	}
 	return nil
@@ -562,7 +561,7 @@ func (nph NoPasswordAuthHandler) GetCredentials() (username string, password str
 
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
-func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 
 	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
 	// reusing the bucket connection we've already established.
@@ -589,7 +588,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		persistCheckpoints = true
 	}
 
-	dcpReceiver := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints)
+	dcpReceiver := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats)
 	dcpReceiver.SetBucketNotifyFn(args.Notify)
 
 	// Initialize the feed based on the backfill type
@@ -696,13 +695,15 @@ type backfillStatus struct {
 	snapStart         []uint64  // Start sequence of current backfill snapshot
 	snapEnd           []uint64  // End sequence of current backfill snapshot
 	lastPersistTime   time.Time // The last time backfill stats were emitted (log, expvar)
+	dcpReceiver       *DCPReceiver
 }
 
-func (b *backfillStatus) init(start []uint64, end map[uint16]uint64, maxVbNo uint16) {
+func (b *backfillStatus) init(start []uint64, end map[uint16]uint64, maxVbNo uint16, dcpReceiver *DCPReceiver) {
 	b.vbActive = make([]bool, maxVbNo)
 	b.snapStart = make([]uint64, maxVbNo)
 	b.snapEnd = make([]uint64, maxVbNo)
 	b.endSeqs = make([]uint64, maxVbNo)
+	b.dcpReceiver = dcpReceiver
 
 	// Calculate total sequences in backfill
 	b.expectedSequences = 0
