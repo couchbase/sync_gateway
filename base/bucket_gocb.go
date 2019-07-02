@@ -1487,8 +1487,8 @@ func (bucket *CouchbaseBucketGoCB) deleteDocBodyOnly(k string, xattrKey string, 
 
 func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
 
+	retryAttempts := 0
 	for {
-
 		var value []byte
 		var err error
 		var callbackExpiry *uint32
@@ -1537,18 +1537,23 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 		if pkgerrors.Cause(err) == gocb.ErrKeyExists {
 			// retry on cas failure
 		} else if isRecoverableGoCBError(err) {
-			// retry on recoverable failure
+			// retry on recoverable failure, up to MaxNumRetries
+			if retryAttempts >= bucket.spec.MaxNumRetries {
+				return 0, pkgerrors.Wrapf(err, "Update retry loop aborted after %d attempts", retryAttempts)
+			}
 		} else {
 			// err will be nil if successful
 			return uint64(casGoCB), err
 		}
 
+		retryAttempts++
 	}
 
 }
 
 func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
 
+	retryAttempts := 0
 	for {
 		var value []byte
 		var err error
@@ -1615,11 +1620,16 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 		if pkgerrors.Cause(err) == gocb.ErrKeyExists {
 			// retry on cas failure
 		} else if isRecoverableGoCBError(err) {
-			// retry on recoverable failure
+			// retry on recoverable failure, up to MaxNumRetries
+			if retryAttempts >= bucket.spec.MaxNumRetries {
+				return 0, pkgerrors.Wrapf(err, "WriteUpdate retry loop aborted after %d attempts", retryAttempts)
+			}
 		} else {
 			// err will be nil if successful
 			return uint64(casGoCB), err
 		}
+
+		retryAttempts++
 	}
 }
 
