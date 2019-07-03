@@ -54,7 +54,7 @@ func TestShadowerPull(t *testing.T) {
 	db := setupTestDBForShadowing(t)
 	defer tearDownTestDB(t, db)
 
-	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
+	shadower, err := NewShadower(db.DatabaseContext, bucket, nil, db.DbStats.statsDatabaseMap)
 	assert.NoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
@@ -117,7 +117,7 @@ func TestShadowerPullWithNotifications(t *testing.T) {
 
 	defer tearDownTestDB(t, db)
 
-	shadower, err := NewShadower(db.DatabaseContext, bucket, nil)
+	shadower, err := NewShadower(db.DatabaseContext, bucket, nil, db.DbStats.statsDatabaseMap)
 	assert.NoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
@@ -173,7 +173,7 @@ func TestShadowerPush(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	var err error
-	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
+	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil, db.DbStats.statsDatabaseMap)
 	assert.NoError(t, err, "NewShadower")
 
 	key1rev1, err := db.Put("key1", Body{"aaa": "bbb"})
@@ -223,7 +223,7 @@ func TestShadowerPushEchoCancellation(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	var err error
-	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
+	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil, db.DbStats.statsDatabaseMap)
 	assert.NoError(t, err, "NewShadower")
 
 	// Push an existing doc revision (the way a client's push replicator would)
@@ -257,7 +257,7 @@ func TestShadowerPullRevisionWithMissingParentRev(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	var err error
-	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
+	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil, db.DbStats.statsDatabaseMap)
 	assert.NoError(t, err, "NewShadower")
 
 	// Push an existing doc revision (the way a client's push replicator would)
@@ -319,7 +319,7 @@ func TestShadowerPattern(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	pattern, _ := regexp.Compile(`key\d+`)
-	shadower, err := NewShadower(db.DatabaseContext, bucket, pattern)
+	shadower, err := NewShadower(db.DatabaseContext, bucket, pattern, db.DbStats.statsDatabaseMap)
 	assert.NoError(t, err, "NewShadower")
 	defer shadower.Stop()
 
