@@ -15,8 +15,6 @@ import uuid
 
 from sys import platform as _platform
 
-from botocore.vendored import requests
-
 from tasks import CbcollectInfoOptions
 from tasks import dump_utilities
 from tasks import generate_upload_url
@@ -588,14 +586,16 @@ def main():
         print("Trying Sync Gateway URL: {0}".format(sg_url_http))
 
         try:
-            requests.get(sg_url_http)
-        except requests.ConnectionError, e:
+            response = urllib2.urlopen(sg_url_http)
+            json.load(response)
+        except Exception, e:
             print("Failed to communicate with: {} {}".format(sg_url_http, e))
             sg_url_https = "https://" + root_url
             print("Trying Sync Gateway URL: {0}".format(sg_url_https))
             try:
-                requests.get(sg_url_https)
-            except requests.ConnectionError, e:
+                response = urllib2.urlopen(sg_url_https)
+                json.load(response)
+            except Exception, e:
                 print("Failed to communcate with Sync Gateway using default "
                       "url {}. Use --sync-gateway-url flag to specify url. "
                       "Will attempt to continue anyway.".format(e))
