@@ -596,8 +596,8 @@ def main():
                 response = urllib2.urlopen(sg_url_https)
                 json.load(response)
             except Exception, e:
-                print("Failed to communcate with Sync Gateway using default "
-                      "url {}. Use --sync-gateway-url flag to specify url. "
+                print("Failed to communicate with Sync Gateway using url {}. "
+                      "Check that Sync Gateway is running and reachable. "
                       "Will attempt to continue anyway.".format(e))
             else:
                 sg_url = sg_url_https
