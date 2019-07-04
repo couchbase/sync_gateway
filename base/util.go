@@ -12,6 +12,7 @@ package base
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -1134,4 +1135,11 @@ func (ab *AtomicBool) Set(flag bool) {
 
 func (ab *AtomicBool) IsTrue() bool {
 	return atomic.LoadInt32(&ab.value) == 1
+}
+
+func Sha1HashString(str string, salt string) string {
+	h := sha1.New()
+	h.Write([]byte(salt + str))
+	hashedKey := h.Sum(nil)
+	return fmt.Sprintf("%x", hashedKey)
 }

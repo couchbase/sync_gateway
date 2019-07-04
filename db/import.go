@@ -235,7 +235,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		docOut = alreadyImportedDoc
 	case nil:
 		db.DbStats.SharedBucketImport().Add(base.StatKeyImportCount, 1)
-		db.DbStats.SharedBucketImport().Set(base.StatKeyImportHighSeq, base.ExpvarInt64Val(int64(docOut.syncData.Sequence)))
+		db.DbStats.SharedBucketImport().Set(base.StatKeyImportHighSeq, base.ExpvarInt64Val(int64(docOut.SyncData.Sequence)))
 		db.DbStats.SharedBucketImport().Add(base.StatKeyImportProcessingTime, time.Since(importStartTime).Nanoseconds())
 		base.Debugf(base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(docid), isDelete, newRev)
 	case base.ErrImportCancelled:

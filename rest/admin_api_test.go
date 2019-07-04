@@ -1703,3 +1703,45 @@ func TestDocumentChangeReplicate(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 404)
 
 }
+
+func TestRawRedaction(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	res := rt.SendAdminRequest("PUT", "/db/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
+	assertStatus(t, res, http.StatusCreated)
+
+	// Test redact being disabled
+	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?redact=false", ``)
+	var body map[string]interface{}
+	err := json.Unmarshal(res.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	syncData := body["_sync"]
+	assert.Equal(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
+	assert.Equal(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+
+	// Test redacted
+	body = map[string]interface{}{}
+	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc", ``)
+	err = json.Unmarshal(res.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	syncData = body["_sync"]
+	assert.NotEqual(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
+	assert.NotEqual(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+
+	// Test include doc returns doc
+	body = map[string]interface{}{}
+	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=true&redact=false", ``)
+	err = json.Unmarshal(res.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.Equal(t, "bar", body["foo"])
+
+	// Test no doc is returned by default
+	body = map[string]interface{}{}
+	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc", ``)
+	assert.NotContains(t, res.Body.String(), "foo")
+
+	// Test that you can't use include_doc and redact at the same time
+	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=true", ``)
+	assertStatus(t, res, http.StatusBadRequest)
+}
