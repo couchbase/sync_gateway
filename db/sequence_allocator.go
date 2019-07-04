@@ -27,7 +27,7 @@ const (
 	defaultReleaseSequenceWait = 1500 * time.Millisecond
 
 	// Maximum batch size
-	maxBatchSize = 100000
+	maxBatchSize = 10
 
 	// Factor by which to grow the sequence batch size
 	sequenceBatchMultiplier = 2
