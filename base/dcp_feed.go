@@ -25,12 +25,6 @@ import (
 	pkgerrors "github.com/pkg/errors"
 )
 
-var dcpExpvars *expvar.Map
-
-func init() {
-	dcpExpvars = expvar.NewMap("syncGateway_dcp")
-}
-
 // Memcached binary protocol datatype bit flags (https://github.com/couchbase/memcached/blob/master/docs/BinaryProtocol.md#data-types),
 // used in MCRequest.DataType
 const (
@@ -723,8 +717,8 @@ func (b *backfillStatus) init(start []uint64, end map[uint16]uint64, maxVbNo uin
 	completedVar := &expvar.Int{}
 	totalVar.Set(int64(b.expectedSequences))
 	completedVar.Set(0)
-	dcpExpvars.Set("backfill_expected", totalVar)
-	dcpExpvars.Set("backfill_completed", completedVar)
+	b.dcpReceiver.dbStatsExpvars.Set("dcp_backfill_expected", totalVar)
+	b.dcpReceiver.dbStatsExpvars.Set("dcp_backfill_completed", completedVar)
 
 }
 
@@ -760,7 +754,7 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 	b.receivedSequences += backfillDelta
 
 	// NOTE: this is a legacy stat, but cannot be removed b/c there are unit tests that depend on these stats
-	dcpExpvars.Add("backfill_completed", int64(backfillDelta))
+	b.dcpReceiver.dbStatsExpvars.Add("dcp_backfill_completed", int64(backfillDelta))
 
 	// Check if it's time to persist and log backfill progress
 	if time.Since(b.lastPersistTime) > kBackfillPersistInterval {
