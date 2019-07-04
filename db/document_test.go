@@ -224,7 +224,7 @@ func TestParseXattr(t *testing.T) {
 }
 
 func TestParseDocumentCas(t *testing.T) {
-	syncData := &syncData{}
+	syncData := &SyncData{}
 	syncData.Cas = "0x00002ade734fb714"
 
 	casInt := syncData.GetSyncCas()

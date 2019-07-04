@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -317,10 +318,34 @@ func (h *handler) handleActiveTasks() error {
 func (h *handler) handleGetRawDoc() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
-	doc, err := h.db.GetDocument(docid, db.DocUnmarshalAll)
-	if doc != nil {
-		h.writeJSON(doc)
+	includeDoc := h.getBoolQuery("include_doc")
+	redact := h.getOptBoolQuery("redact", true)
+	salt := h.getQuery("salt")
+
+	if redact && includeDoc {
+		return base.HTTPErrorf(http.StatusBadRequest, "redact and include_doc cannot be true at the same time. "+
+			"If you want to include_doc you must add redact=false")
+
 	}
+
+	doc, err := h.db.GetDocument(docid, db.DocUnmarshalSync)
+
+	response := map[string]interface{}{}
+
+	if includeDoc {
+		response = doc.Body().Copy(db.BodyDeepCopy)
+	}
+
+	if redact {
+		if salt == "" {
+			salt = uuid.New().String()
+		}
+		response["_sync"] = doc.SyncData.HashRedact(salt)
+	} else {
+		response["_sync"] = doc.SyncData
+	}
+
+	h.writeJSON(response)
 	return err
 }
 

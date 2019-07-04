@@ -114,7 +114,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		// Load doc metadata only
 		doc := &document{}
 		var err error
-		doc.syncData, err = db.GetDocSyncData(entry.ID)
+		doc.SyncData, err = db.GetDocSyncData(entry.ID)
 		if err != nil {
 			base.WarnfCtx(db.Ctx, base.KeyAll, "Changes feed: error getting doc sync data %q: %v", base.UD(entry.ID), err)
 			return

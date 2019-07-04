@@ -115,9 +115,9 @@ func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUn
 }
 
 // This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency reasons.
-func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
+func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 
-	emptySyncData := syncData{}
+	emptySyncData := SyncData{}
 	key := realDocID(docid)
 	if key == "" {
 		return emptySyncData, base.HTTPErrorf(400, "Invalid doc ID")
@@ -153,7 +153,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 			}
 		}
 
-		return doc.syncData, nil
+		return doc.SyncData, nil
 
 	} else {
 		// Non-xattr.  Retrieve doc from bucket, unmarshal metadata only.
@@ -163,7 +163,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (syncData, error) {
 		}
 
 		docRoot := documentRoot{
-			SyncData: &syncData{History: make(RevTree)},
+			SyncData: &SyncData{History: make(RevTree)},
 		}
 		if err := json.Unmarshal(rawDocBytes, &docRoot); err != nil {
 			return emptySyncData, err
@@ -648,7 +648,7 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *document, body Bod
 
 	if importErr == base.ErrImportCancelledFilter {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
-		doc.syncData = syncData{History: make(RevTree)}
+		doc.SyncData = SyncData{History: make(RevTree)}
 	} else if importErr != nil {
 		return importErr
 	} else {
@@ -733,7 +733,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		}
 
 		// move _attachment metadata to syncdata of doc after rev-id generation
-		doc.syncData.Attachments = GetBodyAttachments(body)
+		doc.SyncData.Attachments = GetBodyAttachments(body)
 		delete(body, BodyAttachments)
 
 		return body, newAttachments, nil, nil
@@ -830,7 +830,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 			return nil, nil, nil, err
 		}
 		// move _attachment metadata to syncdata of doc
-		doc.syncData.Attachments = GetBodyAttachments(body)
+		doc.SyncData.Attachments = GetBodyAttachments(body)
 		delete(body, BodyAttachments)
 
 		body[BodyRev] = newRev
@@ -957,9 +957,9 @@ func (db *Database) updateAndReturnDoc(
 
 		// If tombstone, write tombstone time
 		if doc.hasFlag(channels.Deleted) {
-			doc.syncData.TombstonedAt = time.Now().Unix()
+			doc.SyncData.TombstonedAt = time.Now().Unix()
 		} else {
-			doc.syncData.TombstonedAt = 0
+			doc.SyncData.TombstonedAt = 0
 		}
 
 		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.Body() != nil {

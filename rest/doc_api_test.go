@@ -106,7 +106,7 @@ func TestDocumentNumbers(t *testing.T) {
 			}
 
 			// Check channel assignment
-			getRawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", test.name), "")
+			getRawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s?redact=false", test.name), "")
 			var rawResponse RawResponse
 			json.Unmarshal(getRawResponse.Body.Bytes(), &rawResponse)
 			log.Printf("raw response: %s", getRawResponse.Body.Bytes())
