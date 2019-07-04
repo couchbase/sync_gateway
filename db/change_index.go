@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -63,8 +64,8 @@ type ChangeIndex interface {
 	getChannelCache() ChannelCache
 
 	// These methods should block up until maxWaitTime, or until the given sequence has been received by the change cache.
-	waitForSequence(sequence uint64, maxWaitTime time.Duration) error
-	waitForSequenceNotSkipped(sequence uint64, maxWaitTime time.Duration) error
+	waitForSequence(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error
+	waitForSequenceNotSkipped(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error
 }
 
 // Index type

@@ -11,6 +11,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -222,7 +223,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	response := rt.Send(request("PUT", "/db/alpha", `{"channel":"zero"}`))
 
 	// Check the _changes feed:
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 	var changes struct {
 		Results []db.ChangeEntry
 	}
@@ -685,7 +686,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 2)
 	WriteDirect(testDb, []string{"PBS"}, 5)
 	WriteDirect(testDb, []string{"PBS"}, 6)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(6))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 6))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -710,7 +711,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	// Send a missing doc - low sequence should move to 3
 	WriteDirect(testDb, []string{"PBS"}, 3)
-	require.NoError(t, testDb.WaitForSequence(3))
+	require.NoError(t, rt.WaitForSequence(3))
 
 	// WaitForSequence doesn't wait for low sequence to be updated on each channel - additional delay to ensure
 	// low is updated before making the next changes request.
@@ -724,7 +725,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
 	WriteDirect(testDb, []string{"PBS"}, 7)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(7))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 7))
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -777,7 +778,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(5))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -797,7 +798,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(10))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -811,7 +812,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(12))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -825,7 +826,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
 	WriteDirect(testDb, []string{"PBS"}, 13)
 	WriteDirect(testDb, []string{"PBS"}, 6)
-	require.NoError(t, testDb.WaitForSequence(13))
+	require.NoError(t, rt.WaitForSequence(13))
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
@@ -907,7 +908,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(5))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -927,7 +928,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(10))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -941,7 +942,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(12))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -955,7 +956,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
 	WriteDirect(testDb, []string{"PBS"}, 13)
 	WriteDirect(testDb, []string{"PBS"}, 6)
-	require.NoError(t, testDb.WaitForSequence(13))
+	require.NoError(t, rt.WaitForSequence(13))
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
@@ -1042,7 +1043,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 3)
 	WriteDirect(testDb, []string{"PBS"}, 4)
 	WriteDirect(testDb, []string{"PBS"}, 5)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(5))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1062,7 +1063,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	WriteDirect(testDb, []string{"PBS"}, 8)
 	WriteDirect(testDb, []string{"PBS"}, 9)
 	WriteDirect(testDb, []string{"PBS"}, 10)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(10))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1076,7 +1077,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Write a few more docs
 	WriteDirect(testDb, []string{"PBS"}, 11)
 	WriteDirect(testDb, []string{"PBS"}, 12)
-	require.NoError(t, testDb.WaitForSequenceNotSkipped(12))
+	require.NoError(t, testDb.WaitForSequenceNotSkipped(context.TODO(), 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1169,13 +1170,13 @@ func _testConcurrentDelete(t *testing.T) {
 	wg.Wait()
 
 	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channel":"PBS"}`)
 	assertStatus(t, response, 201)
 
 	// Wait for writes to be processed and indexed
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 
 }
 
@@ -1208,13 +1209,13 @@ func _testConcurrentPutAsDelete(t *testing.T) {
 	wg.Wait()
 
 	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Write another doc, to validate sequences restart
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channel":"PBS"}`)
 	assertStatus(t, response, 201)
 
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 }
 
 func _testConcurrentUpdate(t *testing.T) {
@@ -1246,13 +1247,13 @@ func _testConcurrentUpdate(t *testing.T) {
 	wg.Wait()
 
 	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Write another doc, to validate sequences restart
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channel":"PBS"}`)
 	assertStatus(t, response, 201)
 
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 }
 
 func _testConcurrentNewEditsFalseDelete(t *testing.T) {
@@ -1286,12 +1287,12 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 	wg.Wait()
 
 	// WaitForPendingChanges waits up to 2 seconds for all allocated sequences to be cached, panics on timeout
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Write another doc, to see where sequences are at
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channel":"PBS"}`)
 	assertStatus(t, response, 201)
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 
 }
 
@@ -2924,7 +2925,7 @@ func TestChangesIncludeConflicts(t *testing.T) {
 	}
 
 	// Get changes
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?style=all_docs", "")
 	err := json.Unmarshal(changesResponse.Body.Bytes(), &changes)
@@ -2964,7 +2965,7 @@ func TestChangesLargeSequences(t *testing.T) {
 	}
 
 	// Get changes
-	require.NoError(t, rt.ServerContext().Database("db").WaitForPendingChanges())
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?since=9223372036854775800", "")
 	err := json.Unmarshal(changesResponse.Body.Bytes(), &changes)

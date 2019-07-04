@@ -276,7 +276,7 @@ func (rt *RestTester) WaitForSequence(seq uint64) error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForSequence(seq)
+	return database.WaitForSequence(context.TODO(), seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
@@ -284,7 +284,7 @@ func (rt *RestTester) WaitForPendingChanges() error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForPendingChanges()
+	return database.WaitForPendingChanges(context.TODO())
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) {

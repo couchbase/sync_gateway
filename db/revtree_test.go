@@ -916,7 +916,7 @@ func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody [
 
 }
 
-func getHistoryWithTimeout(rawDoc *document, revId string, timeout time.Duration) (history []string, err error) {
+func getHistoryWithTimeout(rawDoc *Document, revId string, timeout time.Duration) (history []string, err error) {
 
 	historyChannel := make(chan []string)
 	errChannel := make(chan error)

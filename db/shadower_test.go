@@ -59,7 +59,7 @@ func TestShadowerPull(t *testing.T) {
 	defer shadower.Stop()
 
 	t.Logf("Waiting for shadower to catch up...")
-	var doc1, doc2 *document
+	var doc1, doc2 *Document
 	waitFor(t, func() bool {
 		seq, _ := db.LastSequence()
 		return seq >= 2
@@ -176,9 +176,9 @@ func TestShadowerPush(t *testing.T) {
 	db.Shadower, err = NewShadower(db.DatabaseContext, bucket, nil)
 	assert.NoError(t, err, "NewShadower")
 
-	key1rev1, err := db.Put("key1", Body{"aaa": "bbb"})
+	key1rev1, _, err := db.Put("key1", Body{"aaa": "bbb"})
 	assert.NoError(t, err, "Put")
-	_, err = db.Put("key2", Body{"ccc": "ddd"})
+	_, _, err = db.Put("key2", Body{"ccc": "ddd"})
 	assert.NoError(t, err, "Put")
 
 	t.Log("Waiting for shadower to catch up...")

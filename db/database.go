@@ -1030,7 +1030,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 		key := realDocID(docid)
 
 		docCount++
-		documentUpdateFunc := func(doc *document) (updatedDoc *document, shouldUpdate bool, updatedExpiry *uint32, err error) {
+		documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
 			imported := false
 			if !doc.HasValidSyncData(db.writeSequences()) {
 				// This is a document not known to the sync gateway. Ignore it:

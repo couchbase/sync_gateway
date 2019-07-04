@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"expvar"
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -850,6 +852,63 @@ func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint
 	return c.skippedSeqs.getOlderThan(c.options.CacheSkippedSeqMaxWait)
 }
 
+// waitForSequence blocks up to maxWaitTime until the given sequence has been received.
+func (c *changeCache) waitForSequence(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
+	startTime := time.Now()
+
+	worker := func() (bool, error, interface{}) {
+		if c.getNextSequence() >= sequence+1 {
+			base.Debugf(base.KeyCache, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
+			return false, nil, nil
+		}
+		// retry
+		return true, nil, nil
+	}
+
+	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
+	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 100), ctx)
+	err, _ := base.RetryLoop(fmt.Sprintf("waitForSequence(%d)", sequence), worker, sleeper)
+	cancel()
+	return err
+}
+
+// waitForSequenceNotSkipped blocks up to maxWaitTime until the given sequence has been received or skipped.
+func (c *changeCache) waitForSequenceNotSkipped(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
+	startTime := time.Now()
+
+	worker := func() (bool, error, interface{}) {
+		if c.getNextSequence() >= sequence+1 {
+			foundInMissing := c.skippedSeqs.Contains(sequence)
+			if !foundInMissing {
+				base.Debugf(base.KeyCache, "waitForSequenceNotSkipped(%d) took %v", sequence, time.Since(startTime))
+				return false, nil, nil
+			}
+		}
+		// retry
+		return true, nil, nil
+	}
+
+	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
+	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 100), ctx)
+	err, _ := base.RetryLoop(fmt.Sprintf("waitForSequenceNotSkipped(%d)", sequence), worker, sleeper)
+	cancel()
+	return err
+}
+
+func (c *changeCache) getMaxStableCached() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c._getMaxStableCached()
+}
+
+func (c *changeCache) _getMaxStableCached() uint64 {
+	oldestSkipped := c.getOldestSkippedSequence()
+	if oldestSkipped > 0 {
+		return oldestSkipped - 1
+	}
+	return c.nextSequence - 1
+}
+
 // SkippedSequenceList stores the set of skipped sequences as an ordered list of *SkippedSequence with an associated map
 // for sequence-based lookup.
 type SkippedSequenceList struct {
@@ -961,18 +1020,4 @@ func (l *SkippedSequenceList) getOlderThan(skippedExpiry time.Duration) []uint64
 	}
 	l.lock.RUnlock()
 	return oldSequences
-}
-
-func (c *changeCache) getMaxStableCached() uint64 {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	return c._getMaxStableCached()
-}
-
-func (c *changeCache) _getMaxStableCached() uint64 {
-	oldestSkipped := c.getOldestSkippedSequence()
-	if oldestSkipped > 0 {
-		return oldestSkipped - 1
-	}
-	return c.nextSequence - 1
 }

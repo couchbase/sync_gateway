@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Unit test for bug #314
@@ -45,7 +46,8 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _ := db.Put("doc1", Body{"channels": []string{"ABC", "PBS"}})
+	revid, _, err := db.Put("doc1", Body{"channels": []string{"ABC", "PBS"}})
+	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
 	// Modify user to have access to both channels (sequence 2):
@@ -81,7 +83,8 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
-	revid, _ = db.Put("doc2", Body{"channels": []string{"PBS"}})
+	revid, _, err = db.Put("doc2", Body{"channels": []string{"PBS"}})
+	require.NoError(t, err)
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 2 (the user doc) and isn't stuck waiting for it.
@@ -150,7 +153,8 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _ := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	revid, _, err := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
 	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
@@ -238,7 +242,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _ := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	revid, _, err := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
 	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
@@ -332,21 +337,21 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 		// Create the parent rev
 		docid := base.CreateUUID()
 		docBody := createDoc(numKeys, valSizeBytes)
-		revId, err := db.Put(docid, docBody)
+		revId, _, err := db.Put(docid, docBody)
 		if err != nil {
 			b.Fatalf("Error creating doc: %v", err)
 		}
 
 		// Create child rev 1
 		docBody["child"] = "A"
-		err = db.PutExistingRev(docid, docBody, []string{"2-A", revId}, false)
+		_, err = db.PutExistingRev(docid, docBody, []string{"2-A", revId}, false)
 		if err != nil {
 			b.Fatalf("Error creating child1 rev: %v", err)
 		}
 
 		// Create child rev 2
 		docBody["child"] = "B"
-		err = db.PutExistingRev(docid, docBody, []string{"2-B", revId}, false)
+		_, err = db.PutExistingRev(docid, docBody, []string{"2-B", revId}, false)
 		if err != nil {
 			b.Fatalf("Error creating child2 rev: %v", err)
 		}

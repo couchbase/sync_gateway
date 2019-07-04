@@ -111,7 +111,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 
 	} else if includeConflicts {
 		// Load doc metadata only
-		doc := &document{}
+		doc := &Document{}
 		var err error
 		doc.SyncData, err = db.GetDocSyncData(entry.ID)
 		if err != nil {
@@ -138,7 +138,7 @@ func (db *Database) AddDocToChangeEntryUsingRevCache(entry *ChangeEntry, revID s
 }
 
 // Adds a document body and/or its conflicts to a ChangeEntry
-func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *document, options ChangesOptions) {
+func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Document, options ChangesOptions) {
 
 	includeConflicts := options.Conflicts && entry.branched
 
@@ -779,22 +779,22 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (entries [
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received or skipped by the change cache.
-func (context *DatabaseContext) WaitForSequence(sequence uint64) (err error) {
+func (dbc *DatabaseContext) WaitForSequence(ctx context.Context, sequence uint64) (err error) {
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
-	return context.changeCache.waitForSequence(sequence, base.DefaultWaitForSequence)
+	return dbc.changeCache.waitForSequence(ctx, sequence, base.DefaultWaitForSequence)
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received by the change cache without being skipped.
-func (context *DatabaseContext) WaitForSequenceNotSkipped(sequence uint64) (err error) {
+func (dbc *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, sequence uint64) (err error) {
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
-	return context.changeCache.waitForSequenceNotSkipped(sequence, base.DefaultWaitForSequence)
+	return dbc.changeCache.waitForSequenceNotSkipped(ctx, sequence, base.DefaultWaitForSequence)
 }
 
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
-func (context *DatabaseContext) WaitForPendingChanges() (err error) {
-	lastSequence, err := context.LastSequence()
+func (dbc *DatabaseContext) WaitForPendingChanges(ctx context.Context) (err error) {
+	lastSequence, err := dbc.LastSequence()
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", lastSequence)
-	return context.changeCache.waitForSequence(lastSequence, base.DefaultWaitForSequence)
+	return dbc.changeCache.waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
 }
 
 // Late Sequence Feed

@@ -11,6 +11,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -197,11 +198,11 @@ func (k *kvChangeIndex) Remove(docIDs []string, startTime time.Time) int {
 }
 
 // TODO: refactor waitForSequence to accept either vbNo or clock
-func (k *kvChangeIndex) waitForSequence(sequence uint64, maxWaitTime time.Duration) error {
+func (k *kvChangeIndex) waitForSequence(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
 	// no-op
 	return nil
 }
-func (k *kvChangeIndex) waitForSequenceNotSkipped(sequence uint64, maxWaitTime time.Duration) error {
+func (k *kvChangeIndex) waitForSequenceNotSkipped(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error {
 	// no-op
 	return nil
 }
