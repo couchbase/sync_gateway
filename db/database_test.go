@@ -323,7 +323,7 @@ func TestGetDeleted(t *testing.T) {
 	// Get the raw doc and make sure the sync data has the current revision
 	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Err getting doc")
-	goassert.Equals(t, doc.syncData.CurrentRev, rev2id)
+	goassert.Equals(t, doc.SyncData.CurrentRev, rev2id)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
@@ -1548,7 +1548,7 @@ func TestConcurrentImport(t *testing.T) {
 			doc, err := db.GetDocument("directWrite", DocUnmarshalAll)
 			assert.True(t, doc != nil)
 			assert.NoError(t, err, "Document retrieval error")
-			assert.Equal(t, "1-36fa688dc2a2c39a952ddce46ab53d12", doc.syncData.CurrentRev)
+			assert.Equal(t, "1-36fa688dc2a2c39a952ddce46ab53d12", doc.SyncData.CurrentRev)
 		}()
 	}
 	wg.Wait()

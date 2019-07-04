@@ -39,7 +39,7 @@ func (rc *BypassRevisionCache) GetActive(docID string, copyType BodyCopyType) (d
 	}
 
 	docRev.RevID = doc.CurrentRev
-	docRev.Body, docRev.History, docRev.Channels, docRev.Attachments, docRev.Expiry, err = revCacheLoaderForDocument(rc.backingStore, doc, doc.syncData.CurrentRev)
+	docRev.Body, docRev.History, docRev.Channels, docRev.Attachments, docRev.Expiry, err = revCacheLoaderForDocument(rc.backingStore, doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
