@@ -492,9 +492,9 @@ func (h *handler) handleBulkDocs() error {
 		var revid string
 		if newEdits {
 			if docid != "" {
-				revid, err = h.db.Put(docid, doc)
+				revid, _, err = h.db.Put(docid, doc)
 			} else {
-				docid, revid, err = h.db.Post(doc)
+				docid, revid, _, err = h.db.Post(doc)
 			}
 		} else {
 			revisions := db.ParseRevisions(doc)
@@ -502,7 +502,7 @@ func (h *handler) handleBulkDocs() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
 				revid = revisions[0]
-				err = h.db.PutExistingRev(docid, doc, revisions, false)
+				_, err = h.db.PutExistingRev(docid, doc, revisions, false)
 			}
 		}
 

@@ -66,7 +66,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev1Body Body
 	rev1Data := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	require.NoError(t, json.Unmarshal([]byte(rev1Data), &rev1Body))
-	rev1ID, err := db.Put(docID, rev1Body)
+	rev1ID, _, err := db.Put(docID, rev1Body)
 	require.NoError(t, err)
 	assert.Equal(t, "1-6e5a9ed9e2e8637d495ac5dd2fa90479", rev1ID)
 
@@ -84,7 +84,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
 	require.NoError(t, json.Unmarshal([]byte(rev2Data), &rev2Body))
-	err = db.PutExistingRev(docID, rev2Body, []string{"2-abc", rev1ID}, true)
+	_, err = db.PutExistingRev(docID, rev2Body, []string{"2-abc", rev1ID}, true)
 	require.NoError(t, err)
 	rev2ID := "2-abc"
 
@@ -123,7 +123,7 @@ func TestAttachments(t *testing.T) {
                                     "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
 	var body Body
 	json.Unmarshal([]byte(rev1input), &body)
-	revid, err := db.Put("doc1", unjson(rev1input))
+	revid, _, err := db.Put("doc1", unjson(rev1input))
 	rev1id := revid
 	assert.NoError(t, err, "Couldn't create document")
 
@@ -138,7 +138,7 @@ func TestAttachments(t *testing.T) {
 	var body2 Body
 	json.Unmarshal([]byte(rev2str), &body2)
 	body2[BodyRev] = revid
-	revid, err = db.Put("doc1", body2)
+	revid, _, err = db.Put("doc1", body2)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.Equal(t, "2-08b42c51334c0469bd060e6d9e6d797b", revid)
 
@@ -159,7 +159,7 @@ func TestAttachments(t *testing.T) {
 	var body3 Body
 	json.Unmarshal([]byte(rev3str), &body3)
 	body3[BodyRev] = revid
-	revid, err = db.Put("doc1", body3)
+	revid, _, err = db.Put("doc1", body3)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.Equal(t, "3-252b9fa1f306930bffc07e7d75b77faf", revid)
 
@@ -176,7 +176,7 @@ func TestAttachments(t *testing.T) {
 	var body2B Body
 	err = json.Unmarshal([]byte(rev2Bstr), &body2B)
 	assert.NoError(t, err, "bad JSON")
-	err = db.PutExistingRev("doc1", body2B, []string{"2-f000", rev1id}, false)
+	_, err = db.PutExistingRev("doc1", body2B, []string{"2-f000", rev1id}, false)
 	assert.NoError(t, err, "Couldn't update document")
 }
 
@@ -199,7 +199,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
 	json.Unmarshal([]byte(docBody), &body)
-	_, err = db.Put("doc1", unjson(docBody))
+	_, _, err = db.Put("doc1", unjson(docBody))
 	log.Printf("Got error on put doc:%v", err)
 	db.Bucket.Dump()
 
@@ -225,7 +225,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	// Test creating & updating a document:
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
                                     "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
-	_, err = db.Put("doc1", unjson(rev1input))
+	_, _, err = db.Put("doc1", unjson(rev1input))
 	assert.NoError(t, err, "Couldn't create document")
 
 	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")

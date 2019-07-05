@@ -21,7 +21,7 @@ const (
 )
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *document, err error) {
+func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
 	var body Body
 	if isDelete {
@@ -61,7 +61,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 }
 
 // Import a document, given the existing state of the doc in *document format.
-func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool, expiry *uint32, mode ImportMode) (docOut *document, err error) {
+func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
 	if existingDoc == nil {
 		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
@@ -93,7 +93,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *document, isDelete bool
 	return db.importDoc(docid, existingDoc.Body(), isDelete, existingBucketDoc, mode)
 }
 
-func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *document, err error) {
+func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
 	base.Debugf(base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
 	importStartTime := time.Now()
@@ -105,8 +105,8 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	}
 
 	var newRev string
-	var alreadyImportedDoc *document
-	docOut, _, err = db.updateAndReturnDoc(docid, true, existingDoc.Expiry, existingDoc, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	var alreadyImportedDoc *Document
+	docOut, _, err = db.updateAndReturnDoc(docid, true, existingDoc.Expiry, existingDoc, func(doc *Document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
@@ -262,7 +262,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 // Migrates document metadata from document body to system xattr.  On CAS failure, retrieves current doc body and retries
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
-func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *document, requiresImport bool, err error) {
+func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *Document, requiresImport bool, err error) {
 
 	// Unmarshal the existing doc in legacy SG format
 	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)

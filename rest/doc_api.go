@@ -248,7 +248,7 @@ func (h *handler) handlePutAttachment() error {
 	attachments[attachmentName] = attachment
 	body[db.BodyAttachments] = attachments
 
-	newRev, err := h.db.Put(docid, body)
+	newRev, _, err := h.db.Put(docid, body)
 	if err != nil {
 		return err
 	}
@@ -274,8 +274,12 @@ func (h *handler) handlePutDoc() error {
 	if body == nil {
 		return base.ErrEmptyDocument
 	}
+
 	var newRev string
+	var doc *db.Document
 	var ok bool
+
+	roundTrip := h.getBoolQuery("roundtrip")
 
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
@@ -284,7 +288,7 @@ func (h *handler) handlePutDoc() error {
 		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
 			body[db.BodyRev] = ifMatch
 		}
-		newRev, err = h.db.Put(docid, body)
+		newRev, doc, err = h.db.Put(docid, body)
 		if err != nil {
 			return err
 		}
@@ -295,7 +299,7 @@ func (h *handler) handlePutDoc() error {
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		err = h.db.PutExistingRev(docid, body, revisions, false)
+		doc, err = h.db.PutExistingRev(docid, body, revisions, false)
 		if err != nil {
 			return err
 		}
@@ -306,20 +310,37 @@ func (h *handler) handlePutDoc() error {
 		}
 
 	}
+
+	if doc != nil && roundTrip {
+		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence); err != nil {
+			return err
+		}
+	}
+
 	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
 }
 
 // HTTP handler for a POST to a database (creating a document)
 func (h *handler) handlePostDoc() error {
+	roundTrip := h.getBoolQuery("roundtrip")
 	body, err := h.readDocument()
 	if err != nil {
 		return err
 	}
-	docid, newRev, err := h.db.Post(body)
+
+	docid, newRev, doc, err := h.db.Post(body)
 	if err != nil {
 		return err
 	}
+
+	if doc != nil && roundTrip {
+		err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence)
+		if err != nil {
+			return err
+		}
+	}
+
 	h.setHeader("Location", docid)
 	h.setHeader("Etag", strconv.Quote(newRev))
 	h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})

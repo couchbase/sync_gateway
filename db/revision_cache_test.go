@@ -21,7 +21,7 @@ type testBackingStore struct {
 	getRevisionCounter *expvar.Int
 }
 
-func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
+func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	t.getDocumentCounter.Add(1)
 
 	for _, d := range t.notFoundDocIDs {
@@ -30,7 +30,7 @@ func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnma
 		}
 	}
 
-	doc = newDocument(docid)
+	doc = NewDocument(docid)
 	doc._body = Body{
 		"testing": true,
 	}
@@ -43,7 +43,7 @@ func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnma
 	return doc, nil
 }
 
-func (t *testBackingStore) getRevision(doc *document, revid string) (Body, error) {
+func (t *testBackingStore) getRevision(doc *Document, revid string) (Body, error) {
 	t.getRevisionCounter.Add(1)
 
 	return Body{
@@ -56,11 +56,11 @@ func (t *testBackingStore) getRevision(doc *document, revid string) (Body, error
 
 type noopBackingStore struct{}
 
-func (*noopBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error) {
+func (*noopBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	return nil, nil
 }
 
-func (*noopBackingStore) getRevision(doc *document, revid string) (Body, error) {
+func (*noopBackingStore) getRevision(doc *Document, revid string) (Body, error) {
 	return nil, nil
 }
 
@@ -173,7 +173,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 		"value":       1234,
 		BodyRevisions: "unexpected data",
 	}
-	rev1id, err := db.Put("doc1", rev1body)
+	rev1id, _, err := db.Put("doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
@@ -220,12 +220,12 @@ func TestBypassRevisionCache(t *testing.T) {
 		"value": 1234,
 	}
 	key := "doc1"
-	rev1, err := db.Put(key, docBody)
+	rev1, _, err := db.Put(key, docBody)
 	assert.NoError(t, err)
 
 	docBody["_rev"] = rev1
 	docBody["value"] = 5678
-	rev2, err := db.Put(key, docBody)
+	rev2, _, err := db.Put(key, docBody)
 	assert.NoError(t, err)
 
 	bypassStat := expvar.Int{}
@@ -282,7 +282,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
 	rev1key := "doc1"
-	rev1id, err := db.Put(rev1key, rev1body)
+	rev1id, _, err := db.Put(rev1key, rev1body)
 	assert.NoError(t, err, "Unexpected error calling db.Put")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
@@ -324,7 +324,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	rev1body := Body{
 		"value": 1234,
 	}
-	rev1id, err := db.Put(docKey, rev1body)
+	rev1id, _, err := db.Put(docKey, rev1body)
 	assert.NoError(t, err, "Unexpected error calling db.Put")
 
 	rev2id := "2-xxx"
@@ -332,7 +332,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 		"value":         1235,
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
-	err = db.PutExistingRev(docKey, rev2body, []string{rev2id, rev1id}, false)
+	_, err = db.PutExistingRev(docKey, rev2body, []string{rev2id, rev1id}, false)
 	assert.NoError(t, err, "Unexpected error calling db.PutExistingRev")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found

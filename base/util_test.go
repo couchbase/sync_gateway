@@ -161,59 +161,6 @@ func TestRetryLoop(t *testing.T) {
 
 }
 
-// Make sure that the RetryLoopTimeout doesn't break existing RetryLoop functionality
-func TestRetryLoopTimeoutSafe(t *testing.T) {
-
-	numTimesInvoked := 0
-	worker := func() (shouldRetry bool, err error, value interface{}) {
-		log.Printf("Worker invoked")
-		numTimesInvoked += 1
-		if numTimesInvoked <= 3 {
-			log.Printf("Worker returning shouldRetry true, fake error")
-			return true, fmt.Errorf("Fake error"), nil
-		}
-		return false, nil, "result"
-	}
-
-	sleeper := func(numAttempts int) (bool, int) {
-		if numAttempts > 10 {
-			return false, -1
-		}
-		return true, 0
-	}
-
-	// Kick off retry loop
-	description := fmt.Sprintf("TestRetryLoop")
-	err, result := RetryLoopTimeout(description, worker, sleeper, time.Hour)
-
-	// We shouldn't get an error, because it will retry a few times and then succeed
-	goassert.True(t, err == nil)
-	goassert.Equals(t, result, "result")
-	goassert.True(t, numTimesInvoked == 4)
-
-}
-
-// Make sure that the RetryLoopTimeout enforces timeout on worker functions that block for too long
-func TestRetryLoopTimeoutEffective(t *testing.T) {
-
-	worker := func() (shouldRetry bool, err error, value interface{}) {
-		// The laziest worker ever .. sleeps for a week before returning a value
-		time.Sleep(time.Hour * 24 * 7)
-		return false, nil, "result"
-	}
-
-	sleeper := CreateDoublingSleeperFunc(10, 100)
-
-	// Kick off timeout loop that expects lazy worker to return in 100 ms, even though it takes a week
-	description := fmt.Sprintf("TestRetryLoop")
-	err, _ := RetryLoopTimeout(description, worker, sleeper, time.Millisecond*100)
-
-	// We should get a timeout error
-	goassert.True(t, err != nil)
-	goassert.True(t, strings.Contains(err.Error(), "timeout"))
-
-}
-
 func TestSyncSourceFromURL(t *testing.T) {
 	u, err := url.Parse("http://www.test.com:4985/mydb")
 	goassert.True(t, err == nil)
