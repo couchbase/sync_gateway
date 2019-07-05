@@ -1,6 +1,7 @@
 package db
 
 import (
+	"expvar"
 	"math"
 	"strings"
 	"sync"
@@ -41,7 +42,7 @@ func (listener *changeListener) Init(name string) {
 
 // Starts a changeListener on a given Bucket.
 
-func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, bucketStateNotify sgbucket.BucketNotifyFn) error {
+func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, bucketStateNotify sgbucket.BucketNotifyFn, dbStats *expvar.Map) error {
 
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
@@ -57,10 +58,10 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfi
 		listener.trackDocs = true
 	}
 
-	return listener.StartMutationFeed(bucket)
+	return listener.StartMutationFeed(bucket, dbStats)
 }
 
-func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
+func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *expvar.Map) error {
 
 	// Uses DCP by default, unless TAP is explicitly specified
 	feedType := base.GetFeedType(bucket)
@@ -70,7 +71,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 		//    TAP feed is a go-channel of Tap events served by the bucket.  Start the feed, then
 		//    start a goroutine to work the event channel, calling ProcessEvent for each event
 		var err error
-		listener.tapFeed, err = bucket.StartTapFeed(listener.FeedArgs)
+		listener.tapFeed, err = bucket.StartTapFeed(listener.FeedArgs, dbStats)
 		if err != nil {
 			return err
 		}
@@ -91,7 +92,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket) error {
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
 		base.Infof(base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.UD(bucket.GetName()))
-		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent)
+		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
 	}
 }
 
