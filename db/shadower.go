@@ -1,6 +1,7 @@
 package db
 
 import (
+	"expvar"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -25,11 +26,11 @@ type Shadower struct {
 }
 
 // Creates a new Shadower.
-func NewShadower(context *DatabaseContext, bucket base.Bucket, docIDPattern *regexp.Regexp) (*Shadower, error) {
+func NewShadower(context *DatabaseContext, bucket base.Bucket, docIDPattern *regexp.Regexp, dbStats *expvar.Map) (*Shadower, error) {
 
 	tapFeed, err := bucket.StartTapFeed(sgbucket.FeedArguments{Backfill: 0, Notify: func(bucket string, err error) {
 		context.TakeDbOffline("Lost shadower TAP Feed")
-	}})
+	}}, dbStats)
 	if err != nil {
 		return nil, err
 	}

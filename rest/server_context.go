@@ -895,7 +895,7 @@ func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *S
 			"Unable to connect to shadow bucket: %s", err)
 		return err
 	}
-	shadower, err := db.NewShadower(dbcontext, bucket, pattern)
+	shadower, err := db.NewShadower(dbcontext, bucket, pattern, dbcontext.DbStats.StatsDatabase())
 	if err != nil {
 		bucket.Close()
 		return err

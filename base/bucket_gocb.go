@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"expvar"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -2242,7 +2243,7 @@ func (bucket *CouchbaseBucketGoCB) Refresh() error {
 }
 
 // GoCB (and Server 5.0.0) don't support the TapFeed. For legacy support (bucket shadowing), start a DCP feed and stream over a single channel
-func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
+func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 
 	Infof(KeyDCP, "Using DCP to generate TAP-like stream")
 	// Create the feed channel that will be passed back to the caller
@@ -2262,12 +2263,12 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments) (sg
 		return false
 	}
 
-	err := bucket.StartDCPFeed(args, callback)
+	err := bucket.StartDCPFeed(args, callback, dbStats)
 	return feed, err
 }
 
-func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
-	return StartDCPFeed(bucket, bucket.spec, args, callback)
+func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	return StartDCPFeed(bucket, bucket.spec, args, callback, dbStats)
 }
 
 func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {

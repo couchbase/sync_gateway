@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -356,7 +356,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 			// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
 
-		})
+		}, dbContext.DbStats.statsDatabaseMap)
 
 		// Check if there is an error starting the DCP feed
 		if err != nil {
@@ -582,8 +582,7 @@ func (context *DatabaseContext) RestartListener() error {
 	if context.UseXattrs() && context.autoImport {
 		feedMode = sgbucket.FeedResume
 	}
-
-	if err := context.mutationListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil); err != nil {
+	if err := context.mutationListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil, context.DbStats.statsDatabaseMap); err != nil {
 		return err
 	}
 	return nil

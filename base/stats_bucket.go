@@ -2,6 +2,7 @@ package base
 
 import (
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"sync/atomic"
 
@@ -235,12 +236,12 @@ func (b *StatsBucket) Refresh() error {
 	return b.bucket.Refresh()
 }
 
-func (b *StatsBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
-	return b.bucket.StartTapFeed(args)
+func (b *StatsBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+	return b.bucket.StartTapFeed(args, dbStats)
 }
 
-func (b *StatsBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
-	return b.bucket.StartDCPFeed(args, callback)
+func (b *StatsBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	return b.bucket.StartDCPFeed(args, callback, dbStats)
 }
 
 func (b *StatsBucket) Close() {
