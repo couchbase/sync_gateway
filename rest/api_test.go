@@ -3905,7 +3905,7 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevID2, `{"channels": ["B"]}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
-	rt.ServerContext().Database("db").WaitForPendingChanges(t)
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	//Changes call
 	request, _ := http.NewRequest("GET", "/db/_changes", nil)

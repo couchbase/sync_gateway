@@ -130,6 +130,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		}
 	case *json.SyntaxError, *json.UnmarshalTypeError:
 		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", unwrappedErr)
+	case *RetryTimeoutError:
+		return http.StatusGatewayTimeout, unwrappedErr.Error()
 	}
 	return http.StatusInternalServerError, fmt.Sprintf("Internal error: %v", unwrappedErr)
 }

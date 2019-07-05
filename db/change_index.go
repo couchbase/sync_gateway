@@ -1,7 +1,7 @@
 package db
 
 import (
-	"testing"
+	"context"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -58,17 +58,14 @@ type ChangeIndex interface {
 	// Remove purges the given doc IDs and returns the number of items removed
 	Remove(docIDs []string, startTime time.Time) (count int)
 
-	// Utility functions for unit testing
-	waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration, tb testing.TB)
-
 	// Handling specific to change_cache.go's sequence handling.  Ideally should refactor usage in changes.go to push
 	// down into internal change_cache.go handling, but it's non-trivial refactoring
 	getOldestSkippedSequence() uint64
 	getChannelCache() ChannelCache
 
-	// Unit test support
-	waitForSequence(sequence uint64, maxWaitTime time.Duration, tb testing.TB)
-	waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration, tb testing.TB)
+	// These methods should block up until maxWaitTime, or until the given sequence has been received by the change cache.
+	waitForSequence(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error
+	waitForSequenceNotSkipped(ctx context.Context, sequence uint64, maxWaitTime time.Duration) error
 }
 
 // Index type
