@@ -1748,9 +1748,9 @@ func TestDcpBackfill(t *testing.T) {
 
 	backfillComplete := false
 	var expectedBackfill, completedBackfill int
-	for i := 0; i < 10; i++ {
-		expectedBackfill, _ = base.GetExpvarAsInt("syncGateway_dcp", "backfill_expected")
-		completedBackfill, _ = base.GetExpvarAsInt("syncGateway_dcp", "backfill_completed")
+	for i := 0; i < 20; i++ {
+		expectedBackfill, _ := strconv.Atoi(newRt.GetDatabase().DbStats.StatsDatabase().Get("dcp_backfill_expected").String())
+		completedBackfill, _ := strconv.Atoi(newRt.GetDatabase().DbStats.StatsDatabase().Get("dcp_backfill_completed").String())
 		if expectedBackfill > 0 && completedBackfill >= expectedBackfill {
 			log.Printf("backfill complete: %d/%d", completedBackfill, expectedBackfill)
 			backfillComplete = true
