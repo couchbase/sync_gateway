@@ -56,7 +56,7 @@ type DocAttachment struct {
 // Given a CouchDB document body about to be stored in the database, goes through the _attachments
 // dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
 // the bodies with the 'digest' attributes which are the keys to retrieving them.
-func (db *Database) storeAttachments(doc *document, body Body, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
+func (db *Database) storeAttachments(doc *Document, body Body, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
 	var parentAttachments map[string]interface{}
 	newAttachmentData := make(AttachmentData, 0)
 	atts := GetBodyAttachments(body)
@@ -125,7 +125,7 @@ func (db *Database) storeAttachments(doc *document, body Body, generation int, p
 // Attempts to retrieve ancestor attachments for a document.  First attempts to find and use a non-pruned ancestor.
 // If no non-pruned ancestor is available, checks whether the currently active doc has a common ancestor with the new revision.
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
-func (db *Database) retrieveAncestorAttachments(doc *document, parentRev string, docHistory []string) map[string]interface{} {
+func (db *Database) retrieveAncestorAttachments(doc *Document, parentRev string, docHistory []string) map[string]interface{} {
 
 	var parentAttachments map[string]interface{}
 	// Attempt to find a non-pruned parent or ancestor

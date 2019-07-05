@@ -74,52 +74,6 @@ func ResultsEmpty(results gocb.QueryResults) (resultsEmpty bool) {
 
 }
 
-// FOR TESTS ONLY: Blocks until the given sequence has been received.
-func (c *changeCache) waitForSequenceID(sequence SequenceID, maxWaitTime time.Duration, tb testing.TB) {
-	c.waitForSequence(sequence.Seq, maxWaitTime, tb)
-}
-
-// FOR TESTS ONLY
-func (c *changeCache) waitForSequence(sequence uint64, maxWaitTime time.Duration, tb testing.TB) {
-
-	startTime := time.Now()
-
-	for {
-
-		if time.Since(startTime) >= maxWaitTime {
-			tb.Fatalf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime))
-		}
-
-		if c.getNextSequence() >= sequence+1 {
-			base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
-// FOR TESTS ONLY: Blocks until the given sequence has been received.
-func (c *changeCache) waitForSequenceWithMissing(sequence uint64, maxWaitTime time.Duration, tb testing.TB) {
-
-	startTime := time.Now()
-
-	for {
-
-		if time.Since(startTime) >= maxWaitTime {
-			tb.Fatalf("changeCache: Sequence %d did not show up after waiting %v", sequence, time.Since(startTime))
-		}
-
-		if c.getNextSequence() >= sequence+1 {
-			foundInMissing := c.skippedSeqs.Contains(sequence)
-			if !foundInMissing {
-				base.Infof(base.KeyAll, "waitForSequence(%d) took %v", sequence, time.Since(startTime))
-				return
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
 func (db *DatabaseContext) CacheCompactActive() bool {
 	channelCache := db.changeCache.getChannelCache()
 	compactingCache, ok := channelCache.(*channelCacheImpl)

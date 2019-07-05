@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sort"
-	"testing"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -112,7 +111,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 
 	} else if includeConflicts {
 		// Load doc metadata only
-		doc := &document{}
+		doc := &Document{}
 		var err error
 		doc.SyncData, err = db.GetDocSyncData(entry.ID)
 		if err != nil {
@@ -139,7 +138,7 @@ func (db *Database) AddDocToChangeEntryUsingRevCache(entry *ChangeEntry, revID s
 }
 
 // Adds a document body and/or its conflicts to a ChangeEntry
-func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *document, options ChangesOptions) {
+func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Document, options ChangesOptions) {
 
 	includeConflicts := options.Conflicts && entry.branched
 
@@ -779,26 +778,23 @@ func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (entries [
 	return db.changeCache.getChannelCache().GetCachedChanges(channelName)
 }
 
-// TEST ONLY.  Wait until the change-cache has caught up with the latest writes to the database.
-func (context *DatabaseContext) WaitForSequence(sequence uint64, tb testing.TB) (err error) {
+// WaitForSequenceNotSkipped blocks until the given sequence has been received or skipped by the change cache.
+func (dbc *DatabaseContext) WaitForSequence(ctx context.Context, sequence uint64) (err error) {
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
-	context.changeCache.waitForSequenceID(SequenceID{Seq: sequence}, base.DefaultWaitForSequenceTesting, tb)
-	return
+	return dbc.changeCache.waitForSequence(ctx, sequence, base.DefaultWaitForSequence)
 }
 
-// TEST ONLY.  Wait until the change-cache has caught up with the latest writes to the database.
-func (context *DatabaseContext) WaitForSequenceWithMissing(sequence uint64, tb testing.TB) (err error) {
+// WaitForSequenceNotSkipped blocks until the given sequence has been received by the change cache without being skipped.
+func (dbc *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, sequence uint64) (err error) {
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", sequence)
-	context.changeCache.waitForSequenceWithMissing(sequence, base.DefaultWaitForSequenceTesting, tb)
-	return
+	return dbc.changeCache.waitForSequenceNotSkipped(ctx, sequence, base.DefaultWaitForSequence)
 }
 
-// TEST ONLY.  Wait until the change-cache has caught up with the latest writes to the database.
-func (context *DatabaseContext) WaitForPendingChanges(tb testing.TB) (err error) {
-	lastSequence, err := context.LastSequence()
+// WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
+func (dbc *DatabaseContext) WaitForPendingChanges(ctx context.Context) (err error) {
+	lastSequence, err := dbc.LastSequence()
 	base.Debugf(base.KeyChanges, "Waiting for sequence: %d", lastSequence)
-	context.changeCache.waitForSequenceID(SequenceID{Seq: lastSequence}, base.DefaultWaitForSequenceTesting, tb)
-	return
+	return dbc.changeCache.waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
 }
 
 // Late Sequence Feed

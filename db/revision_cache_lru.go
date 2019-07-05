@@ -254,7 +254,7 @@ func (value *revCacheValue) _asDocumentRevision(copyType BodyCopyType) (Document
 
 // Retrieves the body etc. out of a revCacheValue.  If they aren't already present, loads into the cache value using
 // the provided document.
-func (value *revCacheValue) loadForDoc(backingStore RevisionCacheBackingStore, doc *document, copyType BodyCopyType) (docRev DocumentRevision, cacheHit bool, err error) {
+func (value *revCacheValue) loadForDoc(backingStore RevisionCacheBackingStore, doc *Document, copyType BodyCopyType) (docRev DocumentRevision, cacheHit bool, err error) {
 
 	value.lock.RLock()
 	if value.body != nil || value.err != nil {

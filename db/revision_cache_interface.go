@@ -74,8 +74,8 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 
 // RevisionCacheBackingStore is the inteface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.
 type RevisionCacheBackingStore interface {
-	GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *document, err error)
-	getRevision(doc *document, revid string) (Body, error)
+	GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
+	getRevision(doc *Document, revid string) (Body, error)
 }
 
 // Revision information as returned by the rev cache
@@ -114,7 +114,7 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
 func revCacheLoader(backingStore RevisionCacheBackingStore, id IDAndRev) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
-	var doc *document
+	var doc *Document
 	if doc, err = backingStore.GetDocument(id.DocID, DocUnmarshalAll); doc == nil {
 		return body, history, channels, attachments, expiry, err
 	}
@@ -123,7 +123,7 @@ func revCacheLoader(backingStore RevisionCacheBackingStore, id IDAndRev) (body B
 }
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
-func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *document, revid string) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
+func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Document, revid string) (body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, expiry *time.Time, err error) {
 
 	if body, err = backingStore.getRevision(doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
