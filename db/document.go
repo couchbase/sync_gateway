@@ -165,7 +165,7 @@ type casOnlySyncData struct {
 }
 
 // Returns a new empty document.
-func newDocument(docid string) *Document {
+func NewDocument(docid string) *Document {
 	return &Document{ID: docid, SyncData: SyncData{History: make(RevTree)}}
 }
 
