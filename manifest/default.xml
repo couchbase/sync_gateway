@@ -21,7 +21,7 @@
 
   
   <!-- Sync Gateway -->
-  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="CBG-375"/>
+  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" />
 
   
   <!-- Sync Gateway Accel-->
