@@ -1,6 +1,7 @@
 package base
 
 import (
+	"expvar"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -177,16 +178,16 @@ func (b *LoggingBucket) Refresh() error {
 	return b.bucket.Refresh()
 }
 
-func (b *LoggingBucket) StartTapFeed(args sgbucket.FeedArguments) (sgbucket.MutationFeed, error) {
+func (b *LoggingBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	start := time.Now()
 	defer func() { Tracef(KeyBucket, "StartTapFeed(...) [%v]", time.Since(start)) }()
-	return b.bucket.StartTapFeed(args)
+	return b.bucket.StartTapFeed(args, dbStats)
 }
 
-func (b *LoggingBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc) error {
+func (b *LoggingBucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	start := time.Now()
 	defer func() { Tracef(KeyBucket, "StartDcpFeed(...) [%v]", time.Since(start)) }()
-	return b.bucket.StartDCPFeed(args, callback)
+	return b.bucket.StartDCPFeed(args, callback, dbStats)
 }
 
 func (b *LoggingBucket) Close() {
