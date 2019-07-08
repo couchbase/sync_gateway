@@ -148,43 +148,27 @@ func (h *handler) handleReplicate() error {
 	}
 
 	params, cancel, _, err := h.readReplicationParametersFromJSON(body)
-
 	if err != nil {
 		return err
 	}
 
-	client := &http.Client{}
-	targetRequest, err := http.NewRequest("GET", params.GetTargetDbUrl(), nil)
-
+	response, err := h.server.HTTPClient.Get(params.GetTargetDbUrl())
 	if err != nil {
 		return err
 	}
-
-	sourceRequest, err := http.NewRequest("GET", params.GetSourceDbUrl(), nil)
-
-	if err != nil {
-		return err
-	}
-
-	response, err := client.Do(targetRequest)
-
-	if err != nil {
-		return err
-	}
-
-	if response.StatusCode != http.StatusOK {
+	if response.StatusCode >= 400 {
 		return base.HTTPErrorf(response.StatusCode, "Unable to start replication target db not reachable")
 	}
+	response.Body.Close()
 
-	response, err = client.Do(sourceRequest)
-
+	response, err = h.server.HTTPClient.Get(params.GetSourceDbUrl())
 	if err != nil {
 		return err
 	}
-
-	if response.StatusCode != http.StatusOK {
+	if response.StatusCode >= 400 {
 		return base.HTTPErrorf(response.StatusCode, "Unable to start replication source db not reachable")
 	}
+	response.Body.Close()
 
 	replication, err := h.server.replicator.Replicate(params, cancel)
 
