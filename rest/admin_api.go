@@ -156,19 +156,19 @@ func (h *handler) handleReplicate() error {
 	if err != nil {
 		return err
 	}
+	defer response.Body.Close()
 	if response.StatusCode >= 400 {
 		return base.HTTPErrorf(response.StatusCode, "Unable to start replication target db not reachable")
 	}
-	response.Body.Close()
 
 	response, err = h.server.HTTPClient.Get(params.GetSourceDbUrl())
 	if err != nil {
 		return err
 	}
+	defer response.Body.Close()
 	if response.StatusCode >= 400 {
 		return base.HTTPErrorf(response.StatusCode, "Unable to start replication source db not reachable")
 	}
-	response.Body.Close()
 
 	replication, err := h.server.replicator.Replicate(params, cancel)
 
