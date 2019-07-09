@@ -12,6 +12,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -158,7 +159,16 @@ func (h *handler) handleReplicate() error {
 	}
 	defer response.Body.Close()
 	if response.StatusCode >= 400 {
-		return base.HTTPErrorf(response.StatusCode, "Unable to start replication target db not reachable")
+		b, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			return err
+		}
+		var body db.Body
+		err = json.Unmarshal(b, &body)
+		if err != nil {
+			return err
+		}
+		return base.HTTPErrorf(response.StatusCode, "Unable to start replication to target db: %s", body["reason"])
 	}
 
 	response, err = h.server.HTTPClient.Get(params.GetSourceDbUrl())
@@ -167,7 +177,16 @@ func (h *handler) handleReplicate() error {
 	}
 	defer response.Body.Close()
 	if response.StatusCode >= 400 {
-		return base.HTTPErrorf(response.StatusCode, "Unable to start replication source db not reachable")
+		b, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			return err
+		}
+		var body db.Body
+		err = json.Unmarshal(b, &body)
+		if err != nil {
+			return err
+		}
+		return base.HTTPErrorf(response.StatusCode, "Unable to start replication from source db: %s", body["reason"])
 	}
 
 	replication, err := h.server.replicator.Replicate(params, cancel)
