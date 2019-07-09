@@ -1669,6 +1669,17 @@ func TestDocumentChangeReplicate(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close() // Close RestTester, which closes ServerContext, which stops all replications
 
+	mockClient := NewMockClient()
+	fakeConfigURL := "http://myhost:4985"
+	mockClient.RespondToGET(fakeConfigURL+"/db", MakeResponse(200, nil, ``))
+	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil, ``))
+	mockClient.RespondToGET(fakeConfigURL+"/db3", MakeResponse(200, nil, ``))
+	mockClient.RespondToGET(fakeConfigURL+"/db4", MakeResponse(200, nil, ``))
+	mockClient.RespondToGET(fakeConfigURL+"/mysourcedb", MakeResponse(200, nil, ``))
+	mockClient.RespondToGET(fakeConfigURL+"/mytargetdb", MakeResponse(200, nil, ``))
+	sc := rt.ServerContext()
+	sc.HTTPClient = mockClient.Client
+
 	//Initiate synchronous one shot replication
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db", "target":"http://myhost:4985/db"}`), 500)
 
