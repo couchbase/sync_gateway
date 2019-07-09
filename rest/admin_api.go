@@ -12,6 +12,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -148,9 +149,48 @@ func (h *handler) handleReplicate() error {
 	}
 
 	params, cancel, _, err := h.readReplicationParametersFromJSON(body)
-
 	if err != nil {
 		return err
+	}
+
+	if !cancel {
+		response, err := h.server.HTTPClient.Get(params.GetTargetDbUrl())
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close()
+		if response.StatusCode >= 400 {
+			b, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(b))
+			var body db.Body
+			err = json.Unmarshal(b, &body)
+			if err != nil {
+				return err
+			}
+			return base.HTTPErrorf(response.StatusCode, "Unable to start replication to target db: %s", body["reason"])
+		}
+
+		response, err = h.server.HTTPClient.Get(params.GetSourceDbUrl())
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close()
+		if response.StatusCode >= 400 {
+			b, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(b))
+			var body db.Body
+			err = json.Unmarshal(b, &body)
+			if err != nil {
+				return err
+			}
+			return base.HTTPErrorf(response.StatusCode, "Unable to start replication from source db: %s", body["reason"])
+		}
 	}
 
 	replication, err := h.server.replicator.Replicate(params, cancel)
