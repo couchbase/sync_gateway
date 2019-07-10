@@ -234,7 +234,7 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 //   delta=true && shared_bucket_access=false
 //      - old revision stored, with expiry rev_max_age_seconds
 // Ignores
-func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody Body, oldBody []byte) {
+func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody Body, oldBody []byte, newAtts AttachmentsMeta) {
 
 	if !db.DeltaSyncEnabled() || db.Options.DeltaSyncOptions.RevMaxAgeSeconds == 0 {
 		_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.OldRevExpirySeconds)
@@ -242,7 +242,10 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 	}
 
 	if db.UseXattrs() {
-		newBodyBytes, marshalErr := json.Marshal(newBody)
+		newBodyCopy := newBody.ShallowCopy()
+		newBodyCopy[BodyAttachments] = newAtts
+
+		newBodyBytes, marshalErr := json.Marshal(newBodyCopy)
 		if marshalErr != nil {
 			base.Warnf(base.KeyAll, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, marshalErr)
 			return
