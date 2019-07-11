@@ -16,9 +16,15 @@ import (
 	"github.com/google/uuid"
 )
 
+type BlipTesterClientOpts struct {
+	ClientDeltas bool // Support deltas on the client side
+	Username     string
+	Channels     []string
+}
+
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
 type BlipTesterClient struct {
-	ClientDeltas bool // Support deltas on the client side
+	BlipTesterClientOpts
 
 	rt *RestTester
 
@@ -338,7 +344,12 @@ func (btc *BlipTesterClient) getLastReplicatedRev(docID string) (revID string, o
 }
 
 func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient) (*BlipTesterReplicator, error) {
-	bt, err := NewBlipTesterFromSpec(tb, BlipTesterSpec{restTester: btc.rt})
+	bt, err := NewBlipTesterFromSpec(tb, BlipTesterSpec{
+		restTester:                  btc.rt,
+		connectingPassword:          "test",
+		connectingUsername:          btc.Username,
+		connectingUserChannelGrants: btc.Channels,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -354,13 +365,17 @@ func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient) (
 	return r, nil
 }
 
-// NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
-func NewBlipTesterClient(tb testing.TB, rt *RestTester) (client *BlipTesterClient, err error) {
+func NewBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
+	if opts == nil {
+		opts = &BlipTesterClientOpts{}
+	}
+
 	btc := BlipTesterClient{
-		rt:                rt,
-		docs:              make(map[string]map[string][]byte),
-		attachments:       make(map[string][]byte),
-		lastReplicatedRev: make(map[string]string),
+		BlipTesterClientOpts: *opts,
+		rt:                   rt,
+		docs:                 make(map[string]map[string][]byte),
+		attachments:          make(map[string][]byte),
+		lastReplicatedRev:    make(map[string]string),
 	}
 
 	id, err := uuid.NewRandom()
@@ -376,6 +391,11 @@ func NewBlipTesterClient(tb testing.TB, rt *RestTester) (client *BlipTesterClien
 	}
 
 	return &btc, nil
+}
+
+// NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
+func NewBlipTesterClient(tb testing.TB, rt *RestTester) (client *BlipTesterClient, err error) {
+	return NewBlipTesterClientOpts(tb, rt, nil)
 }
 
 // StartPull will begin a continuous pull replication since 0 between the client and server

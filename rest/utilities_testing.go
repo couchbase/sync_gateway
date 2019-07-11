@@ -769,14 +769,11 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 		log.Printf("Creating user: %v", userDocBody)
 
 		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
-		response := bt.restTester.SendAdminRequest(
+		_ = bt.restTester.SendAdminRequest(
 			"POST",
 			"/db/_user/",
 			userDocBody,
 		)
-		if response.Code != 201 {
-			return nil, fmt.Errorf("Expected 201 response.  Got: %v", response.Code)
-		}
 	}
 
 	// Create a _temporary_ test server bound to an actual port that is used to make the blip connection.
