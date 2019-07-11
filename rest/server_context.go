@@ -34,7 +34,7 @@ const kStatsReportURL = "http://localhost:9999/stats"
 const kStatsReportInterval = time.Hour
 const kDefaultSlowQueryWarningThreshold = 500 // ms
 const KDefaultNumShards = 16
-const DefaultStatsLogFrequencySecs = 60
+const DefaultStatsLogFrequencySecs = 5
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
 // the configuration settings so handlers can refer to them.
