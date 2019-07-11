@@ -10,7 +10,9 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/elastic/gosigar"
+	"github.com/shirou/gopsutil/cpu"
 	gopsutilnet "github.com/shirou/gopsutil/net"
+	process2 "github.com/shirou/gopsutil/process"
 )
 
 // Group the stats related context that is associated w/ a ServerContext into a struct
@@ -21,43 +23,31 @@ type statsContext struct {
 
 // A snapshot of the cpu stats that are used for stats calculation
 type cpuStatsSnapshot struct {
-
-	// The cumulative CPU time that's been used in various categories, in units of jiffies (clock ticks).
-	// This spans all processes on the system.
-	totalTimeJiffies uint64
-
-	// CPU time spent in user code, measured in clock ticks.  Only applies to this process.
-	procUserTimeJiffies uint64
-
-	// CPU time spent in kernel code, measured in clock ticks.  Only applies to this process.
-	procSystemTimeJiffies uint64
+	process  *process2.Process
+	cpuTimes *cpu.TimesStat
+	cpuTime  time.Time
 }
 
 // Create a new cpu stats snapshot based on calling gosigar
 func newCpuStatsSnapshot() (snapshot *cpuStatsSnapshot, err error) {
-
 	snapshot = &cpuStatsSnapshot{}
 
-	// Get the PID of this process
 	pid := os.Getpid()
 
-	// Find the total CPU time in jiffies for the machine
-	cpu := gosigar.Cpu{}
-	if err := cpu.Get(); err != nil {
+	process, err := process2.NewProcess(int32(pid))
+	if err != nil {
 		return nil, err
 	}
-	snapshot.totalTimeJiffies = cpu.Total()
+	snapshot.process = process
 
-	// Find the per-process CPU stats: user time and system time
-	procTime := gosigar.ProcTime{}
-	if err := procTime.Get(pid); err != nil {
+	cpuTimes, err := process.Times()
+	if err != nil {
 		return nil, err
 	}
-	snapshot.procUserTimeJiffies = procTime.User
-	snapshot.procSystemTimeJiffies = procTime.Sys
+	snapshot.cpuTimes = cpuTimes
 
+	snapshot.cpuTime = time.Now()
 	return snapshot, nil
-
 }
 
 // Calculate the percentage of CPU used by this process over the sampling time specified in statsLogFrequencySecs
@@ -76,37 +66,24 @@ func newCpuStatsSnapshot() (snapshot *cpuStatsSnapshot, err error) {
 // won't be a previous value and so it will record 0.0 as the cpu percentage in that case.
 func (statsContext *statsContext) calculateProcessCpuPercentage() (cpuPercentUtilization float64, err error) {
 
-	// Get current value
 	currentSnapshot, err := newCpuStatsSnapshot()
 	if err != nil {
 		return 0, err
 	}
 
-	// Is there a previous value?  If not, store current value as previous value and don't log a stat
 	if statsContext.cpuStatsSnapshot == nil {
 		statsContext.cpuStatsSnapshot = currentSnapshot
 		return 0, nil
 	}
 
-	// Otherwise calculate the cpu percentage based on current vs previous
-	prevSnapshot := statsContext.cpuStatsSnapshot
+	numCpu := runtime.NumCPU()
+	prevCpuTimes := statsContext.cpuStatsSnapshot.cpuTimes
+	prevCpuTime := statsContext.cpuStatsSnapshot.cpuTime
 
-	// The delta in user time for the process
-	deltaUserTimeJiffies := float64(currentSnapshot.procUserTimeJiffies - prevSnapshot.procUserTimeJiffies)
+	timeDelta := currentSnapshot.cpuTime.Sub(prevCpuTime).Seconds() * float64(numCpu)
+	procDelta := currentSnapshot.cpuTimes.Total() - prevCpuTimes.Total()
 
-	// The delta in system time for the process
-	deltaSystemTimeJiffies := float64(currentSnapshot.procSystemTimeJiffies - prevSnapshot.procSystemTimeJiffies)
-
-	// The combined delta of user + system time for the process
-	deltaSgProcessTimeJiffies := deltaUserTimeJiffies + deltaSystemTimeJiffies
-
-	// The delta in total time for the machine
-	deltaTotalTimeJiffies := float64(currentSnapshot.totalTimeJiffies - prevSnapshot.totalTimeJiffies)
-
-	// Calculate the CPU usage percentage for the SG process
-	cpuPercentUtilization = 100 * deltaSgProcessTimeJiffies / deltaTotalTimeJiffies
-
-	// Store the current values as the previous values for the next time this function is called
+	cpuPercentUtilization = ((procDelta / timeDelta) * 100) * float64(numCpu)
 	statsContext.cpuStatsSnapshot = currentSnapshot
 
 	return cpuPercentUtilization, nil
