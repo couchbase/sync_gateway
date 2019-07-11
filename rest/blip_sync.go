@@ -677,10 +677,16 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, seq db.SequenceID, do
 
 	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
 
-	revDelta, err := bh.db.GetDelta(docID, deltaSrcRevID, revID)
-	if err != nil {
+	revDelta, redactedBody, err := bh.db.GetDelta(docID, deltaSrcRevID, revID)
+	if err == db.ErrForbidden {
+		return err
+	} else if err != nil {
 		bh.Logf(base.LevelInfo, base.KeySync, "DELTA: error generating delta from %s to %s for key %s; falling back to full body replication.  err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 		return bh.sendRevOrNorev(sender, seq, docID, revID, knownRevs, maxHistory)
+	}
+
+	if redactedBody != nil {
+		return bh.sendRevision(redactedBody, sender, seq, docID, revID, knownRevs, maxHistory)
 	}
 
 	if revDelta == nil {
