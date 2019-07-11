@@ -115,6 +115,7 @@ type RevisionDelta struct {
 	ToRevID           string   // Target revID for the delta
 	DeltaBytes        []byte   // The actual delta
 	AttachmentDigests []string // Digests for all attachments present on ToRevID
+	ToChannels        base.Set // Full list of channels for the to revision
 	RevisionHistory   []string // Revision history from parent of ToRevID to source revID, in descending order
 }
 
@@ -124,6 +125,7 @@ func NewRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 		ToRevID:           toRevision.RevID,
 		DeltaBytes:        deltaBytes,
 		AttachmentDigests: AttachmentDigests(toRevision.Attachments), // Flatten the AttachmentsMeta into a list of digests
+		ToChannels:        toRevision.Channels,
 		RevisionHistory:   toRevision.History.parseAncestorRevisions(fromRevID),
 	}
 
