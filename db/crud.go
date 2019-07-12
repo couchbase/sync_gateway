@@ -29,6 +29,10 @@ const (
 	kMaxRecentSequences = 20 // Maximum number of sequences stored in RecentSequences before pruning is triggered
 )
 
+// ErrForbidden is returned when the user requests a document without a revision that they do not have access to.
+// this is different from a client specifically requesting a revision they know about, which are treated as a _removal.
+var ErrForbidden = base.HTTPErrorf(403, "forbidden")
+
 //////// READING DOCUMENTS:
 
 func realDocID(docid string) string {
@@ -277,20 +281,16 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool, copyType BodyCopyType) (Body, error) {
 	var err error
 	var revision DocumentRevision
-	revIDGiven := (revid != "")
-	if revIDGiven {
+	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
 		revision, err = db.revisionCache.GetWithCopy(docid, revid, copyType)
 	} else {
 		// No rev ID given, so load active revision
 		revision, err = db.revisionCache.GetActive(docid, db.DatabaseContext)
-		if revision.Body != nil {
-			revid = revision.RevID
-		}
 	}
 
-	if revision.Body == nil {
+	if err != nil || revision.Body == nil {
 		if err == nil {
 			err = base.HTTPErrorf(404, "missing")
 		}
@@ -307,30 +307,16 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		_, requestedHistory = trimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
 	}
 
-	// Authorize the access:
-	if db.user != nil {
-		if err := db.user.AuthorizeAnyChannel(revision.Channels); err != nil {
-			if !revIDGiven {
-				return nil, base.HTTPErrorf(403, "forbidden")
-			}
-			// On access failure, return (only) the doc history and deletion/removal
-			// status instead of returning an error. For justification see the comment in
-			// the getRevFromDoc method, below
-			deleted, _ := revision.Body[BodyDeleted].(bool)
-			redactedBody := Body{BodyId: docid, BodyRev: revid}
-			if deleted {
-				redactedBody[BodyDeleted] = true
-			} else {
-				redactedBody["_removed"] = true
-			}
-			if requestedHistory != nil {
-				redactedBody[BodyRevisions] = requestedHistory
-			}
-			return redactedBody, nil
+	deleted, _ := revision.Body[BodyDeleted].(bool)
+	isAuthorized, redactedBody := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, deleted, requestedHistory)
+	if !isAuthorized {
+		if revid == "" {
+			return nil, ErrForbidden
 		}
+		return redactedBody, nil
 	}
 
-	if !revIDGiven {
+	if revid == "" {
 		if deleted, _ := revision.Body[BodyDeleted].(bool); deleted {
 			return nil, base.HTTPErrorf(404, "deleted")
 		}
@@ -371,25 +357,31 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
-func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionDelta, err error) {
+func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedBody Body, err error) {
 
 	if docID == "" || fromRevID == "" || toRevID == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	fromRevision, err := db.revisionCache.GetWithCopy(docID, fromRevID, BodyNoCopy)
 
-	// If neither body nor delta is available for fromRevId, the delta can't be generated
+	// If both body and delta are not available for fromRevId, the delta can't be generated
 	if fromRevision.Body == nil && fromRevision.Delta == nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// If delta is found, check whether it is a delta for the toRevID we want
 	if fromRevision.Delta != nil {
 		if fromRevision.Delta.ToRevID == toRevID {
+
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, false, encodeRevisions(fromRevision.Delta.RevisionHistory))
+			if !isAuthorized {
+				return nil, redactedBody, nil
+			}
+
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
 			db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
-			return fromRevision.Delta, nil
+			return fromRevision.Delta, nil, nil
 		} else {
 			// TODO: Recurse and merge deltas when gen(revCacheDelta.toRevID) < gen(toRevId)
 			// until then, fall through to generating delta for given rev pair
@@ -400,10 +392,16 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	if fromRevision.Body != nil {
 
 		db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
-		toBody, err := db.revisionCache.GetWithCopy(docID, toRevID, BodyDeepCopy)
+		toRevision, err := db.revisionCache.GetWithCopy(docID, toRevID, BodyDeepCopy)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, toRevision.Channels, false, toRevision.History)
+		if !isAuthorized {
+			return nil, redactedBody, nil
+		}
+
 		// We didn't copy fromBody earlier (in case we could get by with just the delta), so need do it now
 		fromBodyCopy := fromRevision.Body.DeepCopy()
 
@@ -414,22 +412,44 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 			// so we need the map[string]interface{} type conversion here
 			fromBodyCopy[BodyAttachments] = map[string]interface{}(fromRevision.Attachments)
 		}
-		if toBody.Attachments != nil {
-			toBody.Body[BodyAttachments] = map[string]interface{}(toBody.Attachments)
+		if toRevision.Attachments != nil {
+			toRevision.Body[BodyAttachments] = map[string]interface{}(toRevision.Attachments)
 		}
 
-		deltaBytes, err := base.Diff(fromBodyCopy, toBody.Body)
+		deltaBytes, err := base.Diff(fromBodyCopy, toRevision.Body)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		revCacheDelta := NewRevCacheDelta(deltaBytes, fromRevID, toBody)
+		revCacheDelta := NewRevCacheDelta(deltaBytes, fromRevID, toRevision)
 
 		// Write the newly calculated delta back into the cache before returning
 		db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)
-		return revCacheDelta, nil
+		return revCacheDelta, nil, nil
 	}
 
-	return nil, nil
+	return nil, nil, nil
+}
+
+func (db *Database) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedBody Body) {
+	if db.user != nil {
+		if err := db.user.AuthorizeAnyChannel(channels); err != nil {
+			// On access failure, return (only) the doc history and deletion/removal
+			// status instead of returning an error. For justification see the comment in
+			// the getRevFromDoc method, below
+			redactedBody := Body{BodyId: docID, BodyRev: revID}
+			if isDeleted {
+				redactedBody[BodyDeleted] = true
+			} else {
+				redactedBody["_removed"] = true
+			}
+			if history != nil {
+				redactedBody[BodyRevisions] = history
+			}
+			return false, redactedBody
+		}
+	}
+
+	return true, nil
 }
 
 // Returns the body of the active revision of a document, as well as the document's current channels

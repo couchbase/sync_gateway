@@ -1664,6 +1664,50 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	}
 }
 
+// TestBlipDeltaSyncPullRemoved tests a simple pull replication that drops a document out of the user's channel.
+func TestBlipDeltaSyncPullRemoved(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	sgUseDeltas := base.IsEnterpriseEdition()
+	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	client, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
+		Username:     "alice",
+		Channels:     []string{"public"},
+		ClientDeltas: true,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	err = client.StartPull()
+	assert.NoError(t, err)
+
+	// create doc1 rev 1-1513b53e2738671e634d9dd111f48de0
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok := client.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
+	assert.True(t, ok)
+	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
+
+	// create doc1 rev 2-ff91e11bc1fd12bbb4815a06571859a9
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", `{"channels": ["private"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	data, ok = client.WaitForRev("doc1", "2-ff91e11bc1fd12bbb4815a06571859a9")
+	assert.True(t, ok)
+	assert.Equal(t, `{"_removed":true}`, string(data))
+
+	msg, ok := client.pullReplication.WaitForMessage(5)
+	assert.True(t, ok)
+	msgBody, err := msg.Body()
+	assert.NoError(t, err)
+	assert.Equal(t, `{"_removed":true}`, string(msgBody))
+}
+
 // TestBlipPullRevMessageHistory tests that a simple pull replication contains history in the rev message.
 func TestBlipPullRevMessageHistory(t *testing.T) {
 
