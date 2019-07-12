@@ -63,20 +63,21 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
-	goassert.Equals(t, len(changes), 3)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{ // Seq 1, from ABC
-		Seq:     SequenceID{Seq: 1},
-		ID:      "doc1",
-		Changes: []ChangeRev{{"rev": revid}}})
-	goassert.DeepEquals(t, changes[1], &ChangeEntry{ // Seq 1, from PBS backfill
-		Seq:     SequenceID{Seq: 1, TriggeredBy: 2},
-		ID:      "doc1",
-		Changes: []ChangeRev{{"rev": revid}}})
-	goassert.DeepEquals(t, changes[2], &ChangeEntry{ // Seq 2, from ABC and PBS
-		Seq:          SequenceID{Seq: 2},
-		ID:           "_user/naomi",
-		Changes:      []ChangeRev{},
-		principalDoc: true})
+	assert.Equal(t, 3, len(changes))
+
+	// doc1, from ABC
+	assert.Equal(t, "doc1", changes[0].ID)
+	assert.True(t, changes[0].Seq.TriggeredBy == 0)
+
+	// doc1, from PBS backfill
+	assert.Equal(t, "doc1", changes[1].ID)
+	assert.True(t, changes[1].Seq.TriggeredBy > 0)
+	assert.True(t, changes[0].Seq.Seq == changes[1].Seq.Seq)
+
+	// User doc
+	assert.Equal(t, "_user/naomi", changes[2].ID)
+	assert.True(t, changes[2].principalDoc)
+
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
@@ -90,11 +91,9 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
-	goassert.Equals(t, len(changes), 1)
-	goassert.DeepEquals(t, changes[0], &ChangeEntry{
-		Seq:     SequenceID{Seq: 3},
-		ID:      "doc2",
-		Changes: []ChangeRev{{"rev": revid}}})
+	assert.Equal(t, 1, len(changes))
+	assert.Equal(t, "doc2", changes[0].ID)
+	assert.Equal(t, []ChangeRev{{"rev": revid}}, changes[0].Changes)
 
 	// validate from zero
 	changes, err = db.GetChanges(base.SetOf("*"), getZeroSequence(db))
