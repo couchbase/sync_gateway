@@ -41,7 +41,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	deltasEnabled := base.IsEnterpriseEdition()
 	xattrsEnabled := base.TestUseXattrs()
 
-	testBucket := base.GetTestBucket(t)
+	testBucket := base.GetTestBucketOrPanic()
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
