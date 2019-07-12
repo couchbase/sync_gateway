@@ -233,27 +233,74 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 //      - new revision stored (as duplicate), with expiry rev_max_age_seconds
 //   delta=true && shared_bucket_access=false
 //      - old revision stored, with expiry rev_max_age_seconds
-// Ignores
-func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody Body, oldBody []byte) {
+func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody Body, oldBody []byte, newAtts AttachmentsMeta) {
 
+	// Without delta sync, store the old rev for in-flight replication purposes
 	if !db.DeltaSyncEnabled() || db.Options.DeltaSyncOptions.RevMaxAgeSeconds == 0 {
 		_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.OldRevExpirySeconds)
 		return
 	}
 
+	// Otherwise, store the revs for delta generation purposes, with a longer expiry
+
+	// Special handling for Xattrs so that SG still has revisions that were updated by an SDK write
 	if db.UseXattrs() {
-		newBodyBytes, marshalErr := json.Marshal(newBody)
-		if marshalErr != nil {
-			base.Warnf(base.KeyAll, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, marshalErr)
+		// Backup the current revision
+		newBodyBytes, err := bodyBytesFromBodyAttachmentsMeta(newBody, newAtts)
+		if err != nil {
+			base.Warnf(base.KeyAll, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, err)
 			return
 		}
 		_ = db.setOldRevisionJSON(docId, newRevId, newBodyBytes, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
 
 		// Refresh the expiry on the previous revision backup
 		_ = db.refreshPreviousRevisionBackup(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
-	} else {
-		_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
+		return
 	}
+
+	// Non-xattr only need to store the previous revision, as all writes come through SG
+	_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
+}
+
+// We need to include attachments in body when we store a backup
+// but don't want it in there when it gets put in the revcache... but we also don't want the cost of copying doc body
+// so this function marshals body with atts included, and then removes it again
+func bodyBytesFromBodyAttachmentsMeta(body Body, atts AttachmentsMeta) ([]byte, error) {
+	if len(atts) == 0 {
+		return json.Marshal(body)
+	}
+
+	origAtts, haveOrigAtts := body[BodyAttachments]
+	if haveOrigAtts {
+		origAttsMeta, _ := origAtts.(AttachmentsMeta)
+		if len(origAttsMeta) > 0 {
+			// Found existing _attachments, need to merge and restore original when done
+			attsCopy := make(AttachmentsMeta, len(origAttsMeta)+len(atts))
+			for k, v := range origAttsMeta {
+				attsCopy[k] = v
+			}
+			for k, v := range atts {
+				attsCopy[k] = v
+			}
+			body[BodyAttachments] = attsCopy
+		} else {
+			body[BodyAttachments] = atts
+			haveOrigAtts = false
+		}
+	} else {
+		body[BodyAttachments] = atts
+	}
+
+	newBodyBytes, err := json.Marshal(body)
+
+	if haveOrigAtts {
+		// Restore original attachments field
+		body[BodyAttachments] = origAtts
+	} else {
+		delete(body, BodyAttachments)
+	}
+
+	return newBodyBytes, err
 }
 
 func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte, expiry uint32) error {
