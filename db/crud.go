@@ -603,7 +603,7 @@ func (db *Database) backupAncestorRevs(doc *document, newRevId string, newBody B
 	for {
 		if ancestorRevId = doc.History.getParent(ancestorRevId); ancestorRevId == "" {
 			// No ancestors with JSON found.  Check if we need to back up current rev for delta sync, then return
-			db.backupRevisionJSON(doc.ID, newRevId, "", newBody, nil)
+			db.backupRevisionJSON(doc.ID, newRevId, "", newBody, nil, doc.Attachments)
 			return
 		} else if json = doc.getRevisionBodyJSON(ancestorRevId, db.RevisionBodyLoader); json != nil {
 			break
@@ -611,7 +611,7 @@ func (db *Database) backupAncestorRevs(doc *document, newRevId string, newBody B
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(doc.ID, newRevId, ancestorRevId, newBody, json)
+	db.backupRevisionJSON(doc.ID, newRevId, ancestorRevId, newBody, json, doc.Attachments)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.CurrentRev {
