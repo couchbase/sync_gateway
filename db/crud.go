@@ -281,8 +281,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool, copyType BodyCopyType) (Body, error) {
 	var err error
 	var revision DocumentRevision
-	revIDGiven := revid != ""
-	if revIDGiven {
+	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
 		revision, err = db.revisionCache.GetWithCopy(docid, revid, copyType)
@@ -291,7 +290,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		revision, err = db.revisionCache.GetActive(docid, db.DatabaseContext)
 	}
 
-	if revision.Body == nil {
+	if err != nil || revision.Body == nil {
 		if err == nil {
 			err = base.HTTPErrorf(404, "missing")
 		}
@@ -309,15 +308,15 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 	}
 
 	deleted, _ := revision.Body[BodyDeleted].(bool)
-	isAuthorized, redactedBody := db.authorizeUserForChannels(docid, revid, revision.Channels, deleted, requestedHistory)
+	isAuthorized, redactedBody := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, deleted, requestedHistory)
 	if !isAuthorized {
-		if !revIDGiven {
+		if revid == "" {
 			return nil, ErrForbidden
 		}
 		return redactedBody, nil
 	}
 
-	if !revIDGiven {
+	if revid == "" {
 		if deleted, _ := revision.Body[BodyDeleted].(bool); deleted {
 			return nil, base.HTTPErrorf(404, "deleted")
 		}
