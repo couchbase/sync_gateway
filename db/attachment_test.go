@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func unjson(j string) Body {
@@ -32,6 +33,76 @@ func unjson(j string) Body {
 func tojson(obj interface{}) string {
 	j, _ := json.Marshal(obj)
 	return string(j)
+}
+
+func TestBackupOldRevisionWithAttachments(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	deltasEnabled := base.IsEnterpriseEdition()
+	xattrsEnabled := base.TestUseXattrs()
+
+	testBucket := base.GetTestBucketOrPanic()
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext(
+		"db",
+		bucket,
+		false,
+		DatabaseContextOptions{
+			EnableXattr: xattrsEnabled,
+			DeltaSyncOptions: DeltaSyncOptions{
+				Enabled:          deltasEnabled,
+				RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+			},
+		},
+	)
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	docID := "doc1"
+	var rev1Body Body
+	rev1Data := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	require.NoError(t, json.Unmarshal([]byte(rev1Data), &rev1Body))
+	rev1ID, err := db.Put(docID, rev1Body)
+	require.NoError(t, err)
+	assert.Equal(t, "1-6e5a9ed9e2e8637d495ac5dd2fa90479", rev1ID)
+
+	rev1OldBody, err := db.getOldRevisionJSON(docID, rev1ID)
+	if deltasEnabled && xattrsEnabled {
+		require.NoError(t, err)
+		assert.Contains(t, string(rev1OldBody), "hello.txt")
+	} else {
+		// current revs aren't backed up unless both xattrs and deltas are enabled
+		require.Error(t, err)
+		assert.Equal(t, "404 missing", err.Error())
+	}
+
+	// create rev 2 and check backups for both revs
+	var rev2Body Body
+	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
+	require.NoError(t, json.Unmarshal([]byte(rev2Data), &rev2Body))
+	err = db.PutExistingRev(docID, rev2Body, []string{"2-abc", rev1ID}, true)
+	require.NoError(t, err)
+	rev2ID := "2-abc"
+
+	// now in any case - we'll have rev 1 backed up
+	rev1OldBody, err = db.getOldRevisionJSON(docID, rev1ID)
+	require.NoError(t, err)
+	assert.Contains(t, string(rev1OldBody), "hello.txt")
+
+	// and rev 2 should be present only for the xattrs and deltas case
+	rev2OldBody, err := db.getOldRevisionJSON(docID, rev2ID)
+	if deltasEnabled && xattrsEnabled {
+		require.NoError(t, err)
+		assert.Contains(t, string(rev2OldBody), "hello.txt")
+	} else {
+		// current revs aren't backed up unless both xattrs and deltas are enabled
+		require.Error(t, err)
+		assert.Equal(t, "404 missing", err.Error())
+	}
 }
 
 func TestAttachments(t *testing.T) {
