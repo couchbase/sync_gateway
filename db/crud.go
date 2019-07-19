@@ -842,6 +842,239 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 	return doc, err
 }
 
+func (db *Database) validateDocForUpdate(doc *Document, importAllowed, docExists bool, callback updateAndReturnDocCallback) (Body, AttachmentData, *uint32, error) {
+	if !importAllowed && docExists && !doc.HasValidSyncData(db.writeSequences()) {
+		return nil, nil, nil, base.HTTPErrorf(409, "Not imported")
+	}
+
+	// Invoke the callback to update the document and return a new revision body:
+	body, newAttachments, updatedExpiry, err := callback(doc)
+	if err != nil {
+		return body, nil, nil, err
+	}
+
+	// Reject a body that contains the "_removed" property, this means that the user
+	// is trying to update a document they do not have read access to.
+	if body["_removed"] != nil {
+		err = base.HTTPErrorf(http.StatusNotFound, "Document revision is not accessible")
+		return body, nil, nil, err
+	}
+
+	// Reject bodies containing user special properties for compatibility with CouchDB
+	if containsUserSpecialProperties(body) {
+		return body, nil, nil, base.HTTPErrorf(400, "user defined top level properties beginning with '_' are not allowed in document body")
+	}
+
+	return body, newAttachments, updatedExpiry, nil
+}
+
+func (db *Database) getWinningRevAndSetDocFlags(newRevID string, doc *Document) (prevCurrentRev string) {
+	prevCurrentRev = doc.CurrentRev
+	var branched, inConflict bool
+	doc.CurrentRev, branched, inConflict = doc.History.winningRevision()
+	doc.setFlag(channels.Deleted, doc.History[doc.CurrentRev].Deleted)
+	doc.setFlag(channels.Conflict, inConflict)
+	doc.setFlag(channels.Branched, branched)
+	return prevCurrentRev
+}
+
+func (db *Database) setTombstoneTimeIfRequired(doc *Document) {
+	if doc.hasFlag(channels.Deleted) {
+		doc.SyncData.TombstonedAt = time.Now().Unix()
+	} else {
+		doc.SyncData.TombstonedAt = 0
+	}
+}
+
+func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCurrentRev string, newRevID string, body Body) Body {
+	if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.Body() != nil {
+		// Store the doc's previous body into the revision tree:
+		bodyJSON, marshalErr := doc.MarshalBody()
+		if marshalErr != nil {
+			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body for storage in rev tree: %v", marshalErr)
+		}
+		doc.setNonWinningRevisionBody(prevCurrentRev, bodyJSON, db.AllowExternalRevBodyStorage())
+	}
+	// Store the new revision body into the doc:
+	storedBody := doc.setRevisionBody(newRevID, body, db.AllowExternalRevBodyStorage())
+
+	if doc.CurrentRev == newRevID {
+		doc.NewestRev = ""
+		doc.setFlag(channels.Hidden, false)
+	} else {
+		doc.NewestRev = newRevID
+		doc.setFlag(channels.Hidden, true)
+		if doc.CurrentRev != prevCurrentRev {
+			doc.promoteNonWinningRevisionBody(doc.CurrentRev, db.RevisionBodyLoader)
+		}
+	}
+	return storedBody
+}
+
+func (db *Database) runSyncFn(doc *Document, body Body, newRevId string, docid string) (Body, *uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+	body[BodyId] = doc.ID
+	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(doc, body, newRevId)
+	if err != nil {
+		return nil, nil, ``, nil, nil, nil, err
+	}
+	db.checkDocChannelsAndGrantsLimits(docid, channelSet, access, roles)
+
+	return body, syncExpiry, oldBody, channelSet, access, roles, nil
+}
+
+func (db *Database) addAttachments(newAttachments AttachmentData) error {
+	// Need to check and add attachments here to ensure the attachment is within size constraints
+	err := db.setAttachments(newAttachments)
+	if err != nil {
+		if err.Error() == "document value was too large" {
+			err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
+		} else {
+			err = errors.Wrap(err, "Error adding attachment")
+		}
+	}
+	return err
+}
+
+// Sequence processing
+func (db *Database) handleSequences(docSequence uint64, doc *Document, docid string, unusedSequences []uint64) ([]uint64, uint64, error) {
+	var err error
+	if db.writeSequences() {
+		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
+		// But be careful not to request a second sequence # on a retry if we don't need one.
+		if docSequence <= doc.Sequence {
+			if docSequence > 0 {
+				// Oops: we're on our second iteration thanks to a conflict, but the sequence
+				// we previously allocated is unusable now. We have to allocate a new sequence
+				// instead, but we add the unused one(s) to the document so when the changeCache
+				// reads the doc it won't freak out over the break in the sequence numbering.
+				base.InfofCtx(db.Ctx, base.KeyCache, "updateDoc %q: Unused sequence #%d", base.UD(docid), docSequence)
+				unusedSequences = append(unusedSequences, docSequence)
+			}
+
+			for {
+				if docSequence, err = db.sequences.nextSequence(); err != nil {
+					return unusedSequences, docSequence, err
+				}
+
+				if docSequence > doc.Sequence {
+					break
+				} else {
+					releaseErr := db.sequences.releaseSequence(docSequence)
+					if releaseErr != nil {
+						base.Warnf(base.KeyCRUD, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
+					}
+				}
+			}
+			// Could add a db.Sequences.nextSequenceGreaterThan(doc.Sequence) to push the work down into the sequence allocator
+			//  - sequence allocator is responsible for releasing unused sequences, could optimize to do that in bulk if needed
+		}
+	}
+	doc.Sequence = docSequence
+	doc.UnusedSequences = unusedSequences
+
+	// The server TAP/DCP feed will deduplicate multiple revisions for the same doc if they occur in
+	// the same mutation queue processing window. This results in missing sequences on the change listener.
+	// To account for this, we track the recent sequence numbers for the document.
+	if doc.RecentSequences == nil {
+		doc.RecentSequences = make([]uint64, 0, 1+len(unusedSequences))
+	}
+
+	if len(doc.RecentSequences) >= kMaxRecentSequences {
+		// Prune recent sequences that are earlier than the nextSequence.  The dedup window
+		// on the feed is small - sub-second, so we usually shouldn't care about more than
+		// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
+		// so we're allowing more 'recent sequences' on the doc (20) before attempting pruning
+		stableSequence := db.changeCache.GetStableSequence(docid).Seq
+		count := 0
+		for _, seq := range doc.RecentSequences {
+			// Only remove sequences if they are higher than a sequence that's been seen on the
+			// feed. This is valid across SG nodes (which could each have a different nextSequence),
+			// as the mutations that this node used to rev nextSequence will at some point be delivered
+			// to each node.
+			if seq < stableSequence {
+				count++
+			} else {
+				break
+			}
+		}
+		if count > 0 {
+			doc.RecentSequences = doc.RecentSequences[count:]
+		}
+	}
+
+	// Append current sequence and unused sequences to recent sequence history
+	doc.RecentSequences = append(doc.RecentSequences, unusedSequences...)
+	doc.RecentSequences = append(doc.RecentSequences, docSequence)
+
+	return unusedSequences, docSequence, nil
+}
+
+// Bool is for bail out
+func (db *Database) updateRevTree(doc *Document, prevCurrentRev, newRevID, docid string, changedPrincipals []string,
+	changedUsers []string, access channels.AccessMap, roles channels.AccessMap, channelSet base.Set, syncExpiry *uint32,
+	oldBody string) (
+	retChannelSet base.Set, retAccess channels.AccessMap, retRoles channels.AccessMap, retSyncExpiry *uint32,
+	retOldBodyJSON string, retChangedPrincipals []string, retChangedRoleUsers []string, retReturnEarly bool,
+	retErr error) {
+	var err error
+	if doc.CurrentRev != prevCurrentRev {
+		// Most of the time this update will change the doc's current rev. (The exception is
+		// if the new rev is a conflict that doesn't win the revid comparison.) If so, we
+		// need to update the doc's top-level Channels and Access properties to correspond
+		// to the current rev's state.
+		if newRevID != doc.CurrentRev {
+			// In some cases an older revision might become the current one. If so, get its
+			// channels & access, for purposes of updating the doc:
+			var curBody Body
+			if curBody, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
+				base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
+					base.UD(docid), newRevID, doc.CurrentRev)
+				channelSet, access, roles, syncExpiry, oldBody, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
+				if err != nil {
+					return channelSet, access, roles, syncExpiry, oldBody, changedPrincipals, changedUsers, false, err
+				}
+			} else {
+				// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
+				base.WarnfCtx(db.Ctx, base.KeyAll, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
+					"on it (err=%v)", base.UD(docid), doc.CurrentRev, err)
+				channelSet = nil
+				access = nil
+				roles = nil
+			}
+		}
+
+		// Update the document struct's channel assignment and user access.
+		// (This uses the new sequence # so has to be done after updating doc.Sequence)
+		_, err := doc.updateChannels(channelSet) // FIX: Incorrect if new rev is not current!
+		if err != nil {
+			return channelSet, access, roles, syncExpiry, oldBody, changedPrincipals, changedUsers, true, err
+		}
+		changedPrincipals = doc.Access.updateAccess(doc, access)
+		changedUsers = doc.RoleAccess.updateAccess(doc, roles)
+	} else {
+		base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Rev %q leaves %q still current",
+			base.UD(docid), newRevID, prevCurrentRev)
+	}
+
+	// Prune old revision history to limit the number of revisions:
+	if pruned := doc.pruneRevisions(db.RevsLimit, doc.CurrentRev); pruned > 0 {
+		base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Pruned %d old revisions", base.UD(docid), pruned)
+	}
+
+	return channelSet, access, roles, syncExpiry, oldBody, changedPrincipals, changedUsers, false, err
+}
+
+func (db *Database) updateExpiryAndTimeSaved(doc *Document, syncExpiry, updatedExpiry *uint32, expiry uint32) *uint32 {
+	doc.TimeSaved = time.Now()
+	if syncExpiry != nil {
+		updatedExpiry = syncExpiry
+		doc.UpdateExpiry(*updatedExpiry)
+	} else {
+		doc.UpdateExpiry(expiry)
+	}
+	return updatedExpiry
+}
+
 // IsIllegalConflict returns true if the given operation is forbidden due to conflicts.
 // AllowConflicts is whether or not the database allows conflicts,
 // and 'noConflicts' is whether or not the request should allow conflicts to occurr.
@@ -882,6 +1115,55 @@ func (db *Database) IsIllegalConflict(doc *Document, parentRevID string, deleted
 	return true
 }
 
+func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImport bool, storedBody Body, docid string, docSequence uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32, syncFunctionExpiry *uint32) (retDoc *Document, retSyncFuncExpiry *uint32, body Body, retNewRevID string, retStoredBody Body, retOldBodyJSON string, retDocSequence uint64, retUnusedSequences []uint64, changedPrincipals []string, changedRoleUsers []string, err error) {
+	body, newAttachments, updatedExpiry, err := db.validateDocForUpdate(doc, allowImport, docExists, callback)
+	if err != nil {
+		return doc, syncFunctionExpiry, body, ``, storedBody, ``, docSequence, unusedSequences, changedPrincipals, changedRoleUsers, err
+	}
+	newRevID := body[BodyRev].(string)
+	prevCurrentRev := db.getWinningRevAndSetDocFlags(newRevID, doc)
+	db.setTombstoneTimeIfRequired(doc)
+	storedBody = db.storeOldBodyInRevTreeAndUpdateCurrent(doc, prevCurrentRev, newRevID, body)
+
+	body, syncExiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, body, newRevID, docid)
+	if err != nil {
+		return doc, syncFunctionExpiry, body, newRevID, storedBody, oldBodyJSON, docSequence, unusedSequences, changedPrincipals, changedRoleUsers, err
+	}
+
+	if len(channelSet) > 0 {
+		doc.History[newRevID].Channels = channelSet
+	}
+
+	err = db.addAttachments(newAttachments)
+	if err != nil {
+		return doc, syncFunctionExpiry, body, newRevID, storedBody, oldBodyJSON, docSequence, unusedSequences, changedPrincipals, changedRoleUsers, err
+	}
+
+	db.backupAncestorRevs(doc, newRevID, storedBody)
+
+	unusedSequences, docSequence, err = db.handleSequences(docSequence, doc, docid, unusedSequences)
+	if err != nil {
+		return doc, syncFunctionExpiry, body, newRevID, storedBody, oldBodyJSON, docSequence, unusedSequences, changedPrincipals, changedRoleUsers, err
+	}
+
+	var returnEarly bool
+	channelSet, access, roles, syncExiry, oldBodyJSON, changedPrincipals, changedRoleUsers, returnEarly, err = db.updateRevTree(doc, prevCurrentRev, newRevID, docid, changedPrincipals, changedRoleUsers, access, roles, channelSet, syncExiry, oldBodyJSON)
+	if !returnEarly {
+		if err != nil {
+			return doc, syncFunctionExpiry, body, newRevID, storedBody, oldBodyJSON, docSequence, unusedSequences, changedPrincipals, changedRoleUsers, err
+		}
+
+		updatedExpiry = db.updateExpiryAndTimeSaved(doc, syncExiry, updatedExpiry, expiry)
+
+		err = doc.persistModifiedRevisionBodies(db.Bucket)
+		if err != nil {
+			return doc, syncFunctionExpiry, body, newRevID, storedBody, oldBodyJSON, docSequence, unusedSequences, changedPrincipals, changedRoleUsers, err
+		}
+	}
+
+	return doc, updatedExpiry, body, newRevID, storedBody, oldBodyJSON, docSequence, unusedSequences, changedPrincipals, changedRoleUsers, err
+}
+
 // Function type for the callback passed into updateAndReturnDoc
 type updateAndReturnDocCallback func(*Document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error)
 
@@ -889,270 +1171,20 @@ type updateAndReturnDocCallback func(*Document) (resultBody Body, resultAttachme
 //   1. Receive the updated document body in the response
 //   2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //      On cas failure, the document will still be reloaded from the bucket as usual.
-func (db *Database) updateAndReturnDoc(
-	docid string,
-	allowImport bool,
-	expiry uint32,
-	existingDoc *sgbucket.BucketDocument, // If existing is present, passes these to WriteUpdateWithXattr to allow bypass of initial GET
-	callback updateAndReturnDocCallback) (docOut *Document, newRevID string, err error) {
+func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry uint32, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (docOut *Document, newRevID string, err error) {
+
 	key := realDocID(docid)
 	if key == "" {
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
-	// Added annotation to the following variable declarations for reference during future refactoring of documentUpdateFunc into a standalone function
-	var doc *Document                                // Passed to documentUpdateFunc as pointer, may be possible to define in documentUpdateFunc
-	var body Body                                    // Could be returned by documentUpdateFunc
+	var doc *Document                                // Passed to documentUpdateFunc as pointer
+	var body Body                                    // Returned by documentUpdateFunc
 	var storedBody Body                              // Persisted revision body, used to update rev cache
-	var changedPrincipals, changedRoleUsers []string // Could be returned by documentUpdateFunc
+	var changedPrincipals, changedRoleUsers []string // Returned by documentUpdateFunc
 	var docSequence uint64                           // Must be scoped outside callback, used over multiple iterations
 	var unusedSequences []uint64                     // Must be scoped outside callback, used over multiple iterations
-	var oldBodyJSON string                           // Could be returned by documentUpdateFunc.  Stores previous revision body for use by DocumentChangeEvent
-
-	// documentUpdateFunc applies the changes to the document.  Called by either WriteUpdate or WriteUpdateWithXATTR below.
-	documentUpdateFunc := func(doc *Document, docExists bool, importAllowed bool) (updatedDoc *Document, writeOpts sgbucket.WriteOptions, updatedExpiry *uint32, err error) {
-
-		var newAttachments AttachmentData
-		// Be careful: this block can be invoked multiple times if there are races!
-		if !importAllowed && docExists && !doc.HasValidSyncData(db.writeSequences()) {
-			err = base.HTTPErrorf(409, "Not imported")
-			return
-		}
-
-		// Invoke the callback to update the document and return a new revision body:
-		body, newAttachments, updatedExpiry, err = callback(doc)
-		if err != nil {
-			return
-		}
-
-		//Reject a body that contains the "_removed" property, this means that the user
-		//is trying to update a document they do not have read access to.
-		if body["_removed"] != nil {
-			err = base.HTTPErrorf(http.StatusNotFound, "Document revision is not accessible")
-			return
-		}
-
-		//Reject bodies containing user special properties for compatibility with CouchDB
-		if containsUserSpecialProperties(body) {
-			err = base.HTTPErrorf(400, "user defined top level properties beginning with '_' are not allowed in document body")
-			return
-		}
-
-		// Determine which is the current "winning" revision (it's not necessarily the new one):
-		newRevID = body[BodyRev].(string)
-		prevCurrentRev := doc.CurrentRev
-		var branched, inConflict bool
-		doc.CurrentRev, branched, inConflict = doc.History.winningRevision()
-		doc.setFlag(channels.Deleted, doc.History[doc.CurrentRev].Deleted)
-		doc.setFlag(channels.Conflict, inConflict)
-		doc.setFlag(channels.Branched, branched)
-
-		// If tombstone, write tombstone time
-		if doc.hasFlag(channels.Deleted) {
-			doc.SyncData.TombstonedAt = time.Now().Unix()
-		} else {
-			doc.SyncData.TombstonedAt = 0
-		}
-
-		if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.Body() != nil {
-			// Store the doc's previous body into the revision tree:
-			bodyJSON, marshalErr := doc.MarshalBody()
-			if marshalErr != nil {
-				base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body for storage in rev tree: %v", marshalErr)
-			}
-			doc.setNonWinningRevisionBody(prevCurrentRev, bodyJSON, db.AllowExternalRevBodyStorage())
-		}
-
-		// Store the new revision body into the doc:
-		storedBody = doc.setRevisionBody(newRevID, body, db.AllowExternalRevBodyStorage())
-
-		if doc.CurrentRev == newRevID {
-			doc.NewestRev = ""
-			doc.setFlag(channels.Hidden, false)
-		} else {
-			doc.NewestRev = newRevID
-			doc.setFlag(channels.Hidden, true)
-			if doc.CurrentRev != prevCurrentRev {
-				doc.promoteNonWinningRevisionBody(doc.CurrentRev, db.RevisionBodyLoader)
-			}
-		}
-
-		// Run the sync function, to validate the update and compute its channels/access:
-		body[BodyId] = doc.ID
-		channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(doc, body, newRevID)
-		if err != nil {
-			return
-		}
-		db.checkDocChannelsAndGrantsLimits(docid, channelSet, access, roles)
-
-		//Assign old revision body to variable in method scope
-		oldBodyJSON = oldBody
-
-		if len(channelSet) > 0 {
-			doc.History[newRevID].Channels = channelSet
-		}
-
-		//Need to check and add attachments here to ensure the attachment is within size constraints
-		attachmentErr := db.setAttachments(newAttachments)
-		if attachmentErr != nil {
-
-			if attachmentErr.Error() == "document value was too large" {
-				err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
-			} else {
-				err = errors.Wrap(attachmentErr, "Error adding attachment")
-			}
-			return
-		}
-
-		// Move the body of the replaced revision out of the document so it can be compacted later.
-		db.backupAncestorRevs(doc, newRevID, storedBody)
-
-		// Sequence processing
-		if db.writeSequences() {
-			// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
-			// But be careful not to request a second sequence # on a retry if we don't need one.
-			if docSequence <= doc.Sequence {
-				if docSequence > 0 {
-					// Oops: we're on our second iteration thanks to a conflict, but the sequence
-					// we previously allocated is unusable now. We have to allocate a new sequence
-					// instead, but we add the unused one(s) to the document so when the changeCache
-					// reads the doc it won't freak out over the break in the sequence numbering.
-					base.InfofCtx(db.Ctx, base.KeyCache, "updateDoc %q: Unused sequence #%d", base.UD(docid), docSequence)
-					unusedSequences = append(unusedSequences, docSequence)
-				}
-
-				for {
-					if docSequence, err = db.sequences.nextSequence(); err != nil {
-						return
-					}
-
-					if docSequence > doc.Sequence {
-						break
-					} else {
-						releaseErr := db.sequences.releaseSequence(docSequence)
-						if releaseErr != nil {
-							base.Warnf(base.KeyCRUD, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
-						}
-					}
-					// Could add a db.Sequences.nextSequenceGreaterThan(doc.Sequence) to push the work down into the sequence allocator
-					//  - sequence allocator is responsible for releasing unused sequences, could optimize to do that in bulk if needed
-
-				}
-			}
-			doc.Sequence = docSequence
-			doc.UnusedSequences = unusedSequences
-
-			// The server TAP/DCP feed will deduplicate multiple revisions for the same doc if they occur in
-			// the same mutation queue processing window. This results in missing sequences on the change listener.
-			// To account for this, we track the recent sequence numbers for the document.
-			if doc.RecentSequences == nil {
-				doc.RecentSequences = make([]uint64, 0, 1+len(unusedSequences))
-			}
-
-			if len(doc.RecentSequences) >= kMaxRecentSequences {
-				// Prune recent sequences that are earlier than the nextSequence.  The dedup window
-				// on the feed is small - sub-second, so we usually shouldn't care about more than
-				// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
-				// so we're allowing more 'recent sequences' on the doc (20) before attempting pruning
-				stableSequence := db.changeCache.GetStableSequence(docid).Seq
-				count := 0
-				for _, seq := range doc.RecentSequences {
-					// Only remove sequences if they are higher than a sequence that's been seen on the
-					// feed. This is valid across SG nodes (which could each have a different nextSequence),
-					// as the mutations that this node used to rev nextSequence will at some point be delivered
-					// to each node.
-					if seq < stableSequence {
-						count++
-					} else {
-						break
-					}
-				}
-				if count > 0 {
-					doc.RecentSequences = doc.RecentSequences[count:]
-				}
-			}
-
-			// Append current sequence and unused sequences to recent sequence history
-			doc.RecentSequences = append(doc.RecentSequences, unusedSequences...)
-			doc.RecentSequences = append(doc.RecentSequences, docSequence)
-		}
-
-		if doc.CurrentRev != prevCurrentRev {
-			// Most of the time this update will change the doc's current rev. (The exception is
-			// if the new rev is a conflict that doesn't win the revid comparison.) If so, we
-			// need to update the doc's top-level Channels and Access properties to correspond
-			// to the current rev's state.
-			if newRevID != doc.CurrentRev {
-				// In some cases an older revision might become the current one. If so, get its
-				// channels & access, for purposes of updating the doc:
-				var curBody Body
-				if curBody, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
-					base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
-						base.UD(docid), newRevID, doc.CurrentRev)
-					channelSet, access, roles, syncExpiry, oldBody, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
-
-					//Assign old revision body to variable in method scope
-					oldBodyJSON = oldBody
-					if err != nil {
-						return
-					}
-				} else {
-					// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
-					base.WarnfCtx(db.Ctx, base.KeyAll, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
-						"on it (err=%v)", base.UD(docid), doc.CurrentRev, err)
-					channelSet = nil
-					access = nil
-					roles = nil
-				}
-			}
-
-			// Update the document struct's channel assignment and user access.
-			// (This uses the new sequence # so has to be done after updating doc.Sequence)
-			_, err := doc.updateChannels(channelSet) //FIX: Incorrect if new rev is not current!
-			if err != nil {
-				return doc, writeOpts, updatedExpiry, err
-			}
-			changedPrincipals = doc.Access.updateAccess(doc, access)
-			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
-
-			if len(changedPrincipals) > 0 || len(changedRoleUsers) > 0 {
-				major, _, _ := db.Bucket.CouchbaseServerVersion()
-				if major < 3 {
-					// If the couchbase server version is less than 3, then do an indexable write.
-					// Prior to couchbase 3, a stale=false query required an indexable write (due to race).
-					// If this update affects user/role access privileges, make sure the write blocks till
-					// the new value is indexable, otherwise when a User/Role updates (using a view) it
-					// might not incorporate the effects of this change.
-					writeOpts |= sgbucket.Indexable
-				}
-			}
-
-		} else {
-			base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Rev %q leaves %q still current",
-				base.UD(docid), newRevID, prevCurrentRev)
-		}
-
-		// Prune old revision history to limit the number of revisions:
-		if pruned := doc.pruneRevisions(db.RevsLimit, doc.CurrentRev); pruned > 0 {
-			base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Pruned %d old revisions", base.UD(docid), pruned)
-		}
-
-		doc.TimeSaved = time.Now()
-		if syncExpiry != nil {
-			updatedExpiry = syncExpiry
-			doc.UpdateExpiry(*updatedExpiry)
-		} else {
-			doc.UpdateExpiry(expiry)
-		}
-
-		// Now that the document has been successfully validated, we can update externally stored revision bodies
-		revisionBodyError := doc.persistModifiedRevisionBodies(db.Bucket)
-		if revisionBodyError != nil {
-			return doc, writeOpts, updatedExpiry, revisionBodyError
-		}
-
-		return doc, writeOpts, updatedExpiry, err
-	}
+	var oldBodyJSON string                           // Stores previous revision body for use by DocumentChangeEvent
 
 	// Update the document
 	inConflict := false
@@ -1166,7 +1198,8 @@ func (db *Database) updateAndReturnDoc(
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
 			}
-			docOut, writeOpts, syncFuncExpiry, err = documentUpdateFunc(doc, currentValue != nil, allowImport)
+			docExists := currentValue != nil
+			docOut, syncFuncExpiry, body, newRevID, storedBody, oldBodyJSON, docSequence, unusedSequences, changedPrincipals, changedRoleUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, storedBody, docid, docSequence, unusedSequences, callback, expiry, syncFuncExpiry)
 			if err != nil {
 				return
 			}
@@ -1196,8 +1229,8 @@ func (db *Database) updateAndReturnDoc(
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll); err != nil {
 				return
 			}
-
-			docOut, _, syncFuncExpiry, err = documentUpdateFunc(doc, currentValue != nil, true)
+			docExists := currentValue != nil
+			docOut, syncFuncExpiry, body, newRevID, storedBody, oldBodyJSON, docSequence, unusedSequences, changedPrincipals, changedRoleUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, storedBody, docid, docSequence, unusedSequences, callback, expiry, syncFuncExpiry)
 			if err != nil {
 				return
 			}
