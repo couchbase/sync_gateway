@@ -73,7 +73,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
-	response := rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
+	response := rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete?redact=false", "")
 	goassert.Equals(t, response.Code, 200)
 	var rawInsertResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawInsertResponse)
@@ -92,7 +92,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	assert.NoError(t, err, "Unable to update doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
-	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
+	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete?redact=false", "")
 	goassert.Equals(t, response.Code, 200)
 	var rawUpdateResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawUpdateResponse)
@@ -110,7 +110,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	err = bucket.Delete(key)
 	assert.NoError(t, err, "Unable to delete doc TestImportDelete")
 
-	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete", "")
+	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete?redact=false", "")
 	goassert.Equals(t, response.Code, 200)
 	var rawDeleteResponse RawResponse
 	err = json.Unmarshal(response.Body.Bytes(), &rawDeleteResponse)
@@ -301,7 +301,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	assert.NoError(t, err, "Unable to insert doc TestResurrectViaSDK")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
-	rawPath := fmt.Sprintf("/db/_raw/%s", key)
+	rawPath := fmt.Sprintf("/db/_raw/%s?redact=false", key)
 	response := rt.SendAdminRequest("GET", rawPath, "")
 	goassert.Equals(t, response.Code, 200)
 	var rawInsertResponse RawResponse
@@ -966,7 +966,7 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	goassert.Equals(t, response.Code, 200)
 
 	// Get raw to retrieve metadata, and validate bodies have been moved to xattr
-	rawResponse := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
+	rawResponse := rt.SendAdminRequest("GET", "/db/_raw/"+key+"?redact=false", "")
 	goassert.Equals(t, rawResponse.Code, 200)
 	var doc treeDoc
 	err = json.Unmarshal(rawResponse.Body.Bytes(), &doc)
