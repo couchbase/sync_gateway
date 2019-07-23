@@ -101,7 +101,7 @@ type RevisionDelta struct {
 	AttachmentDigests []string // Digests for all attachments present on ToRevID
 	ToChannels        base.Set // Full list of channels for the to revision
 	RevisionHistory   []string // Revision history from parent of ToRevID to source revID, in descending order
-	ToDeleted         bool
+	ToDeleted         bool     // Flag if ToRevID is a tombstone
 }
 
 func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool) *RevisionDelta {

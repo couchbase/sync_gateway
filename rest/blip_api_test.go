@@ -1747,7 +1747,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	assert.Equal(t, "1", msg.Properties[revMessageDeleted])
 }
 
-// TestBlipDeltaSyncPullTombstonedStarChan tests a simple pull replication that deletes a document in the star channel.
+// TestBlipDeltaSyncPullTombstonedStarChan tests a simple pull replication that deletes a document when the user has access to the star channel.
 func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
