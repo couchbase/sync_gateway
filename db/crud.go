@@ -332,7 +332,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	if fromRevision.Delta != nil {
 		if fromRevision.Delta.ToRevID == toRevID {
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, false, encodeRevisions(fromRevision.Delta.RevisionHistory))
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, redactedBody, nil
 			}
@@ -361,6 +361,13 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 			return nil, redactedBody, nil
 		}
 
+		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
+		if deleted {
+			revCacheDelta := newRevCacheDelta([]byte(`{}`), fromRevID, toRevision, deleted)
+			db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)
+			return revCacheDelta, nil, nil
+		}
+
 		// We didn't copy fromBody earlier (in case we could get by with just the delta), so need do it now
 		fromBodyCopy := fromRevision.Body.DeepCopy()
 
@@ -379,7 +386,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		if err != nil {
 			return nil, nil, err
 		}
-		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision)
+		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted)
 
 		// Write the newly calculated delta back into the cache before returning
 		db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)
