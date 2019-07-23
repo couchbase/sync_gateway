@@ -21,7 +21,7 @@
 
   
   <!-- Sync Gateway -->
-  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" />
+  <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="toy/syncrunner_pool_size"/>
 
   
   <!-- Sync Gateway Accel-->

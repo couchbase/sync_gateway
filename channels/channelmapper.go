@@ -35,7 +35,7 @@ type ChannelMapper struct {
 type AccessMap map[string]base.Set
 
 // Number of SyncRunner tasks (and Otto contexts) to cache
-const kTaskCacheSize = 4
+const kTaskCacheSize = 16 // Should be greater than sequence allocation batch size
 
 func NewChannelMapper(fnSource string) *ChannelMapper {
 	return &ChannelMapper{
