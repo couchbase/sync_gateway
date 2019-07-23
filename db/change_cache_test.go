@@ -1861,3 +1861,19 @@ func logChangesResponse(changes []*ChangeEntry) {
 	}
 
 }
+
+func TestMaxChannelCacheConfig(t *testing.T) {
+	channelCacheMaxChannels := []int{10, 50000, 100000}
+
+	for _, val := range channelCacheMaxChannels {
+		options := CacheOptions{
+			ChannelCacheOptions: ChannelCacheOptions{
+				MaxNumChannels: val,
+			},
+		}
+		db, testBucket := setupTestDBWithCacheOptions(t, options)
+		testBucket.Close()
+		tearDownTestDB(t, db)
+		assert.Equal(t, val, db.DatabaseContext.Options.CacheOptions.MaxNumChannels)
+	}
+}
