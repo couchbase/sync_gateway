@@ -355,7 +355,8 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 			return nil, nil, err
 		}
 
-		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, toRevision.Channels, false, toRevision.History)
+		deleted, _ := toRevision.Body[BodyDeleted].(bool)
+		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, toRevision.Channels, deleted, toRevision.History)
 		if !isAuthorized {
 			return nil, redactedBody, nil
 		}
