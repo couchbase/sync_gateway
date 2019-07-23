@@ -1872,8 +1872,8 @@ func TestMaxChannelCacheConfig(t *testing.T) {
 			},
 		}
 		db, testBucket := setupTestDBWithCacheOptions(t, options)
+		assert.Equal(t, val, db.DatabaseContext.Options.CacheOptions.MaxNumChannels)
 		testBucket.Close()
 		tearDownTestDB(t, db)
-		assert.Equal(t, val, db.DatabaseContext.Options.CacheOptions.MaxNumChannels)
 	}
 }
