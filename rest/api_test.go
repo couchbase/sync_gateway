@@ -2175,21 +2175,21 @@ func TestChannelAccessChanges(t *testing.T) {
 	a.Save(zegpold)
 
 	// Create some docs that give users access:
-	response := rt.Send(request("PUT", "/db/alpha", `{"owner":"alice"}`)) // seq=1
+	response := rt.Send(request("PUT", "/db/alpha", `{"owner":"alice"}`))
 	assertStatus(t, response, 201)
 	var body db.Body
 	json.Unmarshal(response.Body.Bytes(), &body)
 	goassert.Equals(t, body["ok"], true)
 	alphaRevID := body["rev"].(string)
 
-	assertStatus(t, rt.Send(request("PUT", "/db/beta", `{"owner":"boadecia"}`)), 201) // seq=2
-	assertStatus(t, rt.Send(request("PUT", "/db/delta", `{"owner":"alice"}`)), 201)   // seq=3
-	assertStatus(t, rt.Send(request("PUT", "/db/gamma", `{"owner":"zegpold"}`)), 201) // seq=4
+	assertStatus(t, rt.Send(request("PUT", "/db/beta", `{"owner":"boadecia"}`)), 201)
+	assertStatus(t, rt.Send(request("PUT", "/db/delta", `{"owner":"alice"}`)), 201)
+	assertStatus(t, rt.Send(request("PUT", "/db/gamma", `{"owner":"zegpold"}`)), 201)
 
-	assertStatus(t, rt.Send(request("PUT", "/db/a1", `{"channel":"alpha"}`)), 201) // seq=5
-	assertStatus(t, rt.Send(request("PUT", "/db/b1", `{"channel":"beta"}`)), 201)  // seq=6
-	assertStatus(t, rt.Send(request("PUT", "/db/d1", `{"channel":"delta"}`)), 201) // seq=7
-	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201) // seq=8
+	assertStatus(t, rt.Send(request("PUT", "/db/a1", `{"channel":"alpha"}`)), 201)
+	assertStatus(t, rt.Send(request("PUT", "/db/b1", `{"channel":"beta"}`)), 201)
+	assertStatus(t, rt.Send(request("PUT", "/db/d1", `{"channel":"delta"}`)), 201)
+	assertStatus(t, rt.Send(request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201)
 
 	rt.MustWaitForDoc("g1", t)
 
@@ -2200,8 +2200,19 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.NoError(t, err)
 	goassert.Equals(t, len(changes.Results), 1)
 	since := changes.Results[0].Seq
-	goassert.Equals(t, changes.Results[0].ID, "g1")
-	goassert.Equals(t, since.Seq, uint64(8))
+	assert.Equal(t, "g1", changes.Results[0].ID)
+
+	// Look up sequences for created docs
+	deltaGrantDocSeq, err := rt.SequenceForDoc("delta")
+	assert.NoError(t, err, "Error retrieving document sequence")
+	gammaGrantDocSeq, err := rt.SequenceForDoc("gamma")
+	assert.NoError(t, err, "Error retrieving document sequence")
+
+	alphaDocSeq, err := rt.SequenceForDoc("a1")
+	assert.NoError(t, err, "Error retrieving document sequence")
+	gammaDocSeq, err := rt.SequenceForDoc("g1")
+	assert.NoError(t, err, "Error retrieving document sequence")
+
 
 	// Check user access:
 	alice, _ = a.GetUser("alice")
@@ -2212,7 +2223,7 @@ func TestChannelAccessChanges(t *testing.T) {
 			"!":     channels.NewVbSimpleSequence(uint64(1)),
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
 			"alpha": channels.NewVbSimpleSequence(uint64(1)),
-			"delta": channels.NewVbSimpleSequence(uint64(3)),
+			"delta": channels.NewVbSimpleSequence(deltaGrantDocSeq),
 		})
 
 	zegpold, _ = a.GetUser("zegpold")
@@ -2222,12 +2233,18 @@ func TestChannelAccessChanges(t *testing.T) {
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(uint64(1)),
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
-			"gamma": channels.NewVbSimpleSequence(uint64(4)),
+			"gamma": channels.NewVbSimpleSequence(gammaGrantDocSeq),
 		})
 
 	// Update a document to revoke access to alice and grant it to zegpold:
 	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
-	assertStatus(t, rt.Send(request("PUT", "/db/alpha", str)), 201) // seq=9
+	assertStatus(t, rt.Send(request("PUT", "/db/alpha", str)), 201)
+
+
+	alphaGrantDocSeq, err := rt.SequenceForDoc("alpha")
+	assert.NoError(t, err, "Error retrieving document sequence")
+
+
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
@@ -2237,7 +2254,7 @@ func TestChannelAccessChanges(t *testing.T) {
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(uint64(1)),
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
-			"delta": channels.NewVbSimpleSequence(uint64(3)),
+			"delta": channels.NewVbSimpleSequence(deltaGrantDocSeq),
 		})
 
 	zegpold, _ = a.GetUser("zegpold")
@@ -2247,8 +2264,8 @@ func TestChannelAccessChanges(t *testing.T) {
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(uint64(1)),
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
-			"alpha": channels.NewVbSimpleSequence(uint64(9)),
-			"gamma": channels.NewVbSimpleSequence(uint64(4)),
+			"alpha": channels.NewVbSimpleSequence(alphaGrantDocSeq),
+			"gamma": channels.NewVbSimpleSequence(gammaGrantDocSeq),
 		})
 
 	rt.MustWaitForDoc("alpha", t)
@@ -2257,21 +2274,21 @@ func TestChannelAccessChanges(t *testing.T) {
 	changes = changesResults{}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	goassert.Equals(t, len(changes.Results), 1)
+	assert.Equal(t, 1,  len(changes.Results))
 	assert.NoError(t, err)
-	goassert.Equals(t, changes.Results[0].ID, "d1")
+	assert.Equal(t, "d1", changes.Results[0].ID)
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
 	changes = changesResults{}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	json.Unmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 2)
-	goassert.Equals(t, changes.Results[0].ID, "g1")
-	goassert.Equals(t, changes.Results[0].Seq.Seq, uint64(8))
-	goassert.Equals(t, changes.Results[1].ID, "a1")
-	goassert.Equals(t, changes.Results[1].Seq.Seq, uint64(5))
-	goassert.Equals(t, changes.Results[1].Seq.TriggeredBy, uint64(9))
+	assert.Equal(t, 2, len(changes.Results))
+	assert.Equal(t, "g1", changes.Results[0].ID)
+	assert.Equal(t, gammaDocSeq, changes.Results[0].Seq.Seq)
+	assert.Equal(t, "a1", changes.Results[1].ID)
+	assert.Equal(t, alphaDocSeq, changes.Results[1].Seq.Seq)
+	assert.Equal(t, alphaGrantDocSeq, changes.Results[1].Seq.TriggeredBy)
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
@@ -2280,15 +2297,15 @@ func TestChannelAccessChanges(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	goassert.Equals(t, len(changes.Results), 1)
-	goassert.Equals(t, changes.Results[0].ID, "a1")
+	assert.Equal(t, 1,  len(changes.Results))
+	assert.Equal(t, "a1", changes.Results[0].ID)
 
 	// What happens if we call access() with a nonexistent username?
 	assertStatus(t, rt.Send(request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201) // seq 10
 
 	// Must wait for sequence to arrive in cache, since the cache processor will be paused when UpdateSyncFun() is called
 	// below, which could lead to a data race if the cache processor is paused while it's processing a change
-	rt.ServerContext().Database("db").WaitForSequence(uint64(10), t)
+	rt.MustWaitForDoc("epsilon", t)
 
 	// Finally, throw a wrench in the works by changing the sync fn. Note that normally this wouldn't
 	// be changed while the database is in use (only when it's re-opened) but for testing purposes
@@ -2298,22 +2315,22 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	changed, err := database.UpdateSyncFun(`function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
-	goassert.True(t, changed)
+	assert.True(t, changed)
 	changeCount, err := database.UpdateAllDocChannels()
 	assert.NoError(t, err)
-	goassert.Equals(t, changeCount, 9)
+	assert.Equal(t, 9, changeCount)
 
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
 	changes, err = rt.WaitForChanges(len(expectedIDs), "/db/_changes", "alice", false)
 	assert.NoError(t, err, "Unexpected error")
 	log.Printf("_changes looks like: %+v", changes)
-	goassert.Equals(t, len(changes.Results), len(expectedIDs))
+	assert.Equal(t, len(expectedIDs), len(changes.Results))
 
 	for i, expectedID := range expectedIDs {
 		if changes.Results[i].ID != expectedID {
 			log.Printf("changes.Results[i].ID != expectedID.  changes.Results: %+v, expectedIDs: %v", changes.Results, expectedIDs)
 		}
-		goassert.Equals(t, changes.Results[i].ID, expectedID)
+		assert.Equal(t, expectedID, changes.Results[i].ID)
 	}
 
 }
