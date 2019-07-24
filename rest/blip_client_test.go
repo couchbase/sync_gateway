@@ -148,6 +148,23 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			panic(err)
 		}
 
+		if msg.Properties[revMessageDeleted] == "1" {
+			btc.docsLock.Lock()
+			if _, ok := btc.docs[docID]; ok {
+				btc.docs[docID][revID] = body
+			} else {
+				btc.docs[docID] = map[string][]byte{revID: body}
+			}
+			btc.updateLastReplicatedRev(docID, revID)
+			btc.docsLock.Unlock()
+
+			if !msg.NoReply() {
+				response := msg.Response()
+				response.SetBody([]byte(`[]`))
+			}
+			return
+		}
+
 		// bodyJSON is unmarshalled into when required (e.g. Delta patching, or attachment processing)
 		// Before being marshalled back into bytes for storage in the test client
 		var bodyJSON db.Body
