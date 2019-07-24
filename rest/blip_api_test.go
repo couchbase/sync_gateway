@@ -1703,6 +1703,15 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 }
 
 // TestBlipDeltaSyncPullTombstoned tests a simple pull replication that deletes a document.
+//
+// Sync Gateway: creates rev-1 and then tombstones it in rev-2
+// Client:       continuously pulls, pulling rev-1 as normal, and then rev-2 which should be a tombstone, even though a delta was requested
+// ┌──────────────┐ ┌─────────┐            ┌─────────┐
+// │ Sync Gateway ├─┤ + rev-1 ├────────────┤ - rev-2 ├────■
+// └──────────────┘ └─────────┤            └─────────┤
+// ┌──────────────┐ ┌─────────┼──────────────────────┼──┐
+// │     Client 1 ├─┤         ▼      continuous      ▼  ├─■
+// └──────────────┘ └───────────────────────────────────┘
 func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
@@ -1711,6 +1720,11 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+
+	deltaCacheHitsStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
+	deltaCacheMissesStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheMisses))
+	deltasRequestedStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasRequested))
+	deltasSentStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent))
 
 	client, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
 		Username:     "alice",
@@ -1745,9 +1759,38 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, `{}`, string(msgBody))
 	assert.Equal(t, "1", msg.Properties[revMessageDeleted])
+
+	deltaCacheHitsEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
+	deltaCacheMissesEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheMisses))
+	deltasRequestedEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasRequested))
+	deltasSentEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent))
+	if sgUseDeltas {
+		assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
+		assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
+		assert.Equal(t, deltasRequestedStart+1, deltasRequestedEnd)
+		assert.Equal(t, deltasSentStart, deltasSentEnd) // "_removed" docs are not counted as a delta
+	} else {
+		assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
+		assert.Equal(t, deltaCacheMissesStart, deltaCacheMissesEnd)
+		assert.Equal(t, deltasRequestedStart, deltasRequestedEnd)
+		assert.Equal(t, deltasSentStart, deltasSentEnd)
+	}
 }
 
-// TestBlipDeltaSyncPullTombstonedStarChan tests a simple pull replication that deletes a document when the user has access to the star channel.
+// TestBlipDeltaSyncPullTombstonedStarChan tests two clients can perform a simple pull replication that deletes a document when the user has access to the star channel.
+//
+// Sync Gateway: creates rev-1 and then tombstones it in rev-2
+// Client 1:     continuously pulls, and causes the tombstone delta for rev-2 to be cached
+// Client 2:     runs two one-shots, once initially to pull rev-1, and finally for rev-2 after the tombstone delta has been cached
+// ┌──────────────┐ ┌─────────┐            ┌─────────┐
+// │ Sync Gateway ├─┤ + rev-1 ├─┬──────────┤ - rev-2 ├─┬───────────■
+// └──────────────┘ └─────────┤ │          └─────────┤ │
+// ┌──────────────┐ ┌─────────┼─┼────────────────────┼─┼─────────┐
+// │     Client 1 ├─┤         ▼ │    continuous      ▼ │         ├─■
+// └──────────────┘ └───────────┼──────────────────────┼─────────┘
+// ┌──────────────┐           ┌─┼─────────┐          ┌─┼─────────┐
+// │     Client 2 ├───────────┤ ▼ oneshot ├──────────┤ ▼ oneshot ├─■
+// └──────────────┘           └───────────┘          └───────────┘
 func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
@@ -1757,22 +1800,42 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	client, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
-		Username:     "alice",
+	deltaCacheHitsStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
+	deltaCacheMissesStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheMisses))
+	deltasRequestedStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasRequested))
+	deltasSentStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent))
+
+	client1, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
+		Username:     "client1",
 		Channels:     []string{"*"},
 		ClientDeltas: true,
 	})
 	assert.NoError(t, err)
-	defer client.Close()
+	defer client1.Close()
 
-	err = client.StartPull()
+	client2, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
+		Username:     "client2",
+		Channels:     []string{"*"},
+		ClientDeltas: true,
+	})
+	assert.NoError(t, err)
+	defer client2.Close()
+
+	err = client1.StartPull()
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok := client.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
+	data, ok := client1.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
+	assert.True(t, ok)
+	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
+
+	// Have client2 get only rev-1 and then stop replicating
+	err = client2.StartOneshotPull()
+	assert.NoError(t, err)
+	data, ok = client2.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
 	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
 
@@ -1780,16 +1843,47 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", `{"test": true"`)
 	assert.Equal(t, http.StatusOK, resp.Code)
 
-	data, ok = client.WaitForRev("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
+	data, ok = client1.WaitForRev("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
-	msg, ok := client.pullReplication.WaitForMessage(5)
+	msg, ok := client1.pullReplication.WaitForMessage(5)
 	assert.True(t, ok)
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
 	assert.Equal(t, `{}`, string(msgBody))
 	assert.Equal(t, "1", msg.Properties[revMessageDeleted])
+
+	// Sync Gateway will have cached the tombstone delta, so client 2 should be able to retrieve it from the cache
+	err = client2.StartOneshotPull()
+	assert.NoError(t, err)
+
+	data, ok = client2.WaitForRev("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
+	assert.True(t, ok)
+	assert.Equal(t, `{}`, string(data))
+
+	msg, ok = client2.pullReplication.WaitForMessage(6)
+	assert.True(t, ok)
+	msgBody, err = msg.Body()
+	assert.NoError(t, err)
+	assert.Equal(t, `{}`, string(msgBody))
+	assert.Equal(t, "1", msg.Properties[revMessageDeleted])
+
+	deltaCacheHitsEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
+	deltaCacheMissesEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheMisses))
+	deltasRequestedEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasRequested))
+	deltasSentEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent))
+	if sgUseDeltas {
+		assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
+		assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)
+		assert.Equal(t, deltasRequestedStart+2, deltasRequestedEnd)
+		assert.Equal(t, deltasSentStart+2, deltasSentEnd)
+	} else {
+		assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
+		assert.Equal(t, deltaCacheMissesStart, deltaCacheMissesEnd)
+		assert.Equal(t, deltasRequestedStart, deltasRequestedEnd)
+		assert.Equal(t, deltasSentStart, deltasSentEnd)
+	}
 }
 
 // TestBlipPullRevMessageHistory tests that a simple pull replication contains history in the rev message.
