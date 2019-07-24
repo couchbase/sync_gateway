@@ -128,9 +128,6 @@ func (h *handler) invoke(method handlerMethod) error {
 	}
 
 	h.logRequestLine()
-	if base.EnableLogHTTPBodies {
-		h.logRequestBody()
-	}
 
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
@@ -142,6 +139,10 @@ func (h *handler) invoke(method handlerMethod) error {
 		h.rq.Header.Del("Content-Encoding") // to prevent double decoding later on
 	default:
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
+	}
+
+	if base.EnableLogHTTPBodies {
+		h.logRequestBody()
 	}
 
 	h.setHeader("Server", base.VersionString)
