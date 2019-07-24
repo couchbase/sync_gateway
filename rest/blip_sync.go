@@ -714,8 +714,16 @@ func (bh *blipHandler) sendDelta(deltaSrcRevID string, sender *blip.Sender, seq 
 		return bh.sendNoRev(err, sender, seq, docID, revDelta.ToRevID)
 	}
 
+	properties := blip.Properties{
+		revMessageDeltaSrc: deltaSrcRevID,
+	}
+
+	if revDelta.ToDeleted {
+		properties[revMessageDeleted] = "1"
+	}
+
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s  User:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID, base.UD(bh.effectiveUsername))
-	return bh.sendRevisionWithProperties(body, sender, seq, docID, revDelta.ToRevID, revDelta.RevisionHistory, revDelta.AttachmentDigests, blip.Properties{revMessageDeltaSrc: deltaSrcRevID})
+	return bh.sendRevisionWithProperties(body, sender, seq, docID, revDelta.ToRevID, revDelta.RevisionHistory, revDelta.AttachmentDigests, properties)
 }
 
 func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, seq db.SequenceID, docID string, revID string, knownRevs map[string]bool, maxHistory int) error {
