@@ -2213,7 +2213,6 @@ func TestChannelAccessChanges(t *testing.T) {
 	gammaDocSeq, err := rt.SequenceForDoc("g1")
 	assert.NoError(t, err, "Error retrieving document sequence")
 
-
 	// Check user access:
 	alice, _ = a.GetUser("alice")
 	goassert.DeepEquals(
@@ -2240,11 +2239,8 @@ func TestChannelAccessChanges(t *testing.T) {
 	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
 	assertStatus(t, rt.Send(request("PUT", "/db/alpha", str)), 201)
 
-
 	alphaGrantDocSeq, err := rt.SequenceForDoc("alpha")
 	assert.NoError(t, err, "Error retrieving document sequence")
-
-
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
@@ -2274,7 +2270,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	changes = changesResults{}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equal(t, 1,  len(changes.Results))
+	assert.Equal(t, 1, len(changes.Results))
 	assert.NoError(t, err)
 	assert.Equal(t, "d1", changes.Results[0].ID)
 
@@ -2297,7 +2293,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	json.Unmarshal(response.Body.Bytes(), &changes)
-	assert.Equal(t, 1,  len(changes.Results))
+	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, "a1", changes.Results[0].ID)
 
 	// What happens if we call access() with a nonexistent username?
