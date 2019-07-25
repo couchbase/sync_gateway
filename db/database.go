@@ -83,7 +83,6 @@ type DatabaseContext struct {
 	StartTime          time.Time                // Timestamp when context was instantiated
 	RevsLimit          uint32                   // Max depth a document's revision tree can grow to
 	autoImport         bool                     // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	Shadower           *Shadower                // Tracks an external Couchbase bucket
 	revisionCache      RevisionCache            // Cache of recently-accessed doc revisions
 	changeCache        ChangeIndex              //
 	EventMgr           *EventManager            // Manages notification events
@@ -111,7 +110,7 @@ type DatabaseContextOptions struct {
 	OldRevExpirySeconds       uint32
 	AdminInterface            *string
 	UnsupportedOptions        UnsupportedOptions
-	TrackDocs                 bool // Whether doc tracking channel should be created (used for autoImport, shadowing)
+	TrackDocs                 bool // Whether doc tracking channel should be created (used for autoImport)
 	OIDCOptions               *auth.OIDCOptions
 	DBOnlineCallback          DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions             ImportOptions
@@ -306,7 +305,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// If not using channel index or using channel index and tracking docs, start the tap feed
 	if options.IndexOptions == nil || options.TrackDocs {
-		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import/bucketshadow)", base.MD(bucket.GetName()))
+		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
 
 		err = dbContext.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
 
@@ -418,10 +417,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	}
 
-	// watchDocChanges is used for bucket shadowing
-	if !dbContext.UseXattrs() {
-		go dbContext.watchDocChanges()
-	} else {
+	if dbContext.UseXattrs() {
 		// Set the purge interval for tombstone compaction
 		dbContext.PurgeInterval = DefaultPurgeInterval
 		gocbBucket, ok := base.AsGoCBBucket(bucket)
@@ -558,7 +554,6 @@ func (context *DatabaseContext) Close() {
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
-	context.Shadower.Stop()
 	context.Bucket.Close()
 	context.Bucket = nil
 

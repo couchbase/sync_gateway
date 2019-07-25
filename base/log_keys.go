@@ -35,7 +35,6 @@ const (
 	KeyMigrate
 	KeyQuery
 	KeyReplicate
-	KeyShadow
 	KeySync
 	KeySyncMsg
 	KeyWebSocket
@@ -64,7 +63,6 @@ var (
 		KeyMigrate:        "Migrate",
 		KeyQuery:          "Query",
 		KeyReplicate:      "Replicate",
-		KeyShadow:         "Shadow",
 		KeySync:           "Sync",
 		KeySyncMsg:        "SyncMsg",
 		KeyWebSocket:      "WS",

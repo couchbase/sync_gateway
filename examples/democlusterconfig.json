@@ -2,7 +2,7 @@
   "logging": {
     "console": {
       "log_level": "debug",
-      "log_keys": ["REST", "Shadow", "CRUD", "HTTP","Access", "Changes", "Auth", "SSL"]
+      "log_keys": ["REST", "CRUD", "HTTP","Access", "Changes", "Auth", "SSL"]
     }
   },
   "maxFileDescriptors": 50000,

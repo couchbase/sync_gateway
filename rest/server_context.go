@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -563,11 +562,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		channelIndexOptions = nil
 	}
 
-	// Enable doc tracking if needed for autoImport or shadowing.  Only supported for non-xattr configurations
-	trackDocs := false
-	if !config.UseXattrs() {
-		trackDocs = autoImport || config.Deprecated.Shadow != nil
-	}
+	trackDocs := !config.UseXattrs() && autoImport
 
 	// Create a callback function that will be invoked if the database goes offline and comes
 	// back online again
@@ -704,14 +699,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Note: disabling access-related warnings, because they potentially block startup during view reindexing trying to query the principals view, which outweighs the usability benefit
 	//emitAccessRelatedWarnings(config, dbcontext)
-
-	// Install bucket-shadower if any:
-	if shadow := config.Deprecated.Shadow; shadow != nil {
-		if err := sc.startShadowing(dbcontext, shadow); err != nil {
-			base.Warnf(base.KeyAll, "Database %q: unable to connect to external bucket for shadowing: %v",
-				base.MD(dbName), err)
-		}
-	}
 
 	// Initialize event handlers
 	if err := sc.initEventHandlers(dbcontext, config); err != nil {
@@ -855,58 +842,6 @@ func (sc *ServerContext) applySyncFunction(dbcontext *db.DatabaseContext, syncFn
 	}
 	// Sync function has changed:
 	base.Infof(base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbcontext.Name))
-	return nil
-}
-
-func (sc *ServerContext) startShadowing(dbcontext *db.DatabaseContext, shadow *ShadowConfig) error {
-
-	base.Warnf(base.KeyAll, "Bucket Shadowing feature comes with a number of limitations and caveats. See https://github.com/couchbase/sync_gateway/issues/1363 for more details.")
-
-	var pattern *regexp.Regexp
-	if shadow.Doc_id_regex != nil {
-		var err error
-		pattern, err = regexp.Compile(*shadow.Doc_id_regex)
-		if err != nil {
-			base.Warnf(base.KeyAll, "Invalid shadow doc_id_regex: %s", base.UD(*shadow.Doc_id_regex))
-			return err
-		}
-	}
-
-	shadowBucketCouchbaseDriver := base.ChooseCouchbaseDriver(base.DataBucket)
-
-	spec := base.BucketSpec{
-		Server:          *shadow.Server,
-		PoolName:        "default",
-		BucketName:      *shadow.Bucket,
-		CouchbaseDriver: shadowBucketCouchbaseDriver,
-		FeedType:        shadow.FeedType,
-	}
-	if shadow.Pool != nil {
-		spec.PoolName = *shadow.Pool
-	}
-	if shadow.Username != "" {
-		spec.Auth = shadow
-	}
-
-	bucket, err := base.GetBucket(spec, nil)
-
-	if err != nil {
-		err = base.HTTPErrorf(http.StatusBadGateway,
-			"Unable to connect to shadow bucket: %s", err)
-		return err
-	}
-	shadower, err := db.NewShadower(dbcontext, bucket, pattern, dbcontext.DbStats.StatsDatabase())
-	if err != nil {
-		bucket.Close()
-		return err
-	}
-	dbcontext.Shadower = shadower
-
-	//Remove credentials from server URL before logging
-	url, err := couchbase.ParseURL(spec.Server)
-	if err == nil {
-		base.Infof(base.KeyAll, "Database %q shadowing remote bucket %q, pool %q, server <%s:%s/%s>", base.MD(dbcontext.Name), base.MD(spec.BucketName), base.SD(spec.PoolName), url.Scheme, base.SD(url.Host), url.Path)
-	}
 	return nil
 }
 

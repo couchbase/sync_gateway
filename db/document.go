@@ -62,10 +62,6 @@ type SyncData struct {
 	TombstonedAt    int64               `json:"tombstoned_at,omitempty"` // Time the document was tombstoned.  Used for view compaction
 	Attachments     AttachmentsMeta     `json:"attachments,omitempty"`
 
-	// Fields used by bucket-shadowing:
-	UpstreamCAS *uint64 `json:"upstream_cas,omitempty"` // CAS value of remote doc
-	UpstreamRev string  `json:"upstream_rev,omitempty"` // Rev ID remote doc was saved as
-
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
 

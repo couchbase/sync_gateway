@@ -87,11 +87,6 @@ func TestConfigValidation(t *testing.T) {
 			name:   "Compact Interval just right",
 			config: `{"databases": {"db":{"compact_interval_days": 0.04}}}`,
 		},
-		{
-			name:   "db deprecated shadow",
-			config: "{\"databases\": {\"db\": {\"shadow\": {}}}}",
-			err:    "Bucket shadowing configuration has been moved to the 'deprecated' section of the config.  Please update your config and retry",
-		},
 	}
 
 	for _, test := range tests {

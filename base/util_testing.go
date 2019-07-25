@@ -51,22 +51,14 @@ func GetTestIndexBucket(tester testing.TB) TestBucket {
 	return GetBucketCommon(IndexBucket, tester)
 }
 
-func GetTestShadowBucket(tester testing.TB) TestBucket {
-	return GetBucketCommon(ShadowBucket, tester)
-}
-
 func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 
 	bucketName := DefaultTestBucketname
 	username := DefaultTestUsername
 	password := DefaultTestPassword
 
-	// Use a different bucket name for index buckets or shadow buckets to avoid interference
+	// Use a different bucket name for index buckets to avoid interference
 	switch bucketType {
-	case ShadowBucket:
-		bucketName = DefaultTestShadowBucketname
-		username = DefaultTestShadowUsername
-		password = DefaultTestShadowPassword
 	case IndexBucket:
 		bucketName = DefaultTestIndexBucketname
 		username = DefaultTestIndexUsername
