@@ -127,6 +127,8 @@ func (h *handler) invoke(method handlerMethod) error {
 		}
 	}
 
+	h.logRequestLine()
+
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
 		h.requestBody = h.rq.Body
@@ -139,13 +141,16 @@ func (h *handler) invoke(method handlerMethod) error {
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 
+	if base.EnableLogHTTPBodies {
+		h.logRequestBody()
+	}
+
 	h.setHeader("Server", base.VersionString)
 
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
 	if dbname := h.PathVar("db"); dbname != "" {
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
-			h.logRequestLine()
 			return err
 		}
 	}
@@ -178,15 +183,8 @@ func (h *handler) invoke(method handlerMethod) error {
 	// Authenticate, if not on admin port:
 	if h.privs != adminPrivs {
 		if err = h.checkAuth(dbContext); err != nil {
-			h.logRequestLine()
 			return err
 		}
-	}
-
-	h.logRequestLine()
-
-	if base.EnableLogHTTPBodies {
-		h.logRequestBody()
 	}
 
 	// Now set the request's Database (i.e. context + user)
@@ -689,9 +687,9 @@ func (h *handler) writeError(err error) {
 		if status >= 500 {
 			// Log additional context when the handler has a database reference
 			if h.db != nil {
-				base.ErrorfCtx(h.db.Ctx, base.KeyAll, "%v", err)
+				base.ErrorfCtx(h.db.Ctx, base.KeyHTTP, "%s: %v", h.formatSerialNumber(), err)
 			} else {
-				base.Errorf(base.KeyAll, "%v", err)
+				base.Errorf(base.KeyHTTP, "%s: %v", h.formatSerialNumber(), err)
 			}
 		}
 	}
