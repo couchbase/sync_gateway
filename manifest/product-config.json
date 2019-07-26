@@ -2,7 +2,7 @@
     "product": "sync_gateway",
     "manifests": {
         "manifest/default.xml": {
-            "release": "2.6.0",
+            "release": "2.7.0",
             "release_name": "Couchbase Sync Gateway",
             "production": true,
             "interval": 30,
@@ -128,6 +128,14 @@
             "interval": 120,
             "go_version": "1.11.5",
             "start_build": 270
+        },
+        "manifest/2.6.xml": {
+            "release": "2.6.0",
+            "release_name": "Couchbase Sync Gateway 2.6.0",
+            "production": true,
+            "interval": 120,
+            "go_version": "1.11.5",
+            "start_build": 128
         },
         "manifest/dev.xml": {
             "release": "dev",
