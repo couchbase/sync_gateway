@@ -198,6 +198,7 @@ type DbConfig struct {
 	DeprecatedRevCacheSize    *uint32                        `json:"rev_cache_size,omitempty"`               // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
 	StartOffline              bool                           `json:"offline,omitempty"`                      // start the DB in the offline state, defaults to false
 	Unsupported               db.UnsupportedOptions          `json:"unsupported,omitempty"`                  // Config for unsupported features
+	Deprecated                DeprecatedOptions              `json:"deprecated,omitempty"`                   // Config for Deprecated features
 	OIDCConfig                *auth.OIDCOptions              `json:"oidc,omitempty"`                         // Config properties for OpenID Connect authentication
 	OldRevExpirySeconds       *uint32                        `json:"old_rev_expiry_seconds,omitempty"`       // The number of seconds before old revs are removed from CBS bucket
 	ViewQueryTimeoutSecs      *uint32                        `json:"view_query_timeout_secs,omitempty"`      // The view query timeout in seconds
@@ -216,6 +217,9 @@ type DbConfig struct {
 type DeltaSyncConfig struct {
 	Enabled          *bool   `json:"enabled,omitempty"`             // Whether delta sync is enabled (requires EE)
 	RevMaxAgeSeconds *uint32 `json:"rev_max_age_seconds,omitempty"` // The number of seconds deltas for old revs are available for
+}
+
+type DeprecatedOptions struct {
 }
 
 type DbConfigMap map[string]*DbConfig
