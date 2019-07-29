@@ -910,7 +910,7 @@ func (db *Database) updateAndReturnDoc(
 	var oldBodyJSON string                           // Could be returned by documentUpdateFunc.  Stores previous revision body for use by DocumentChangeEvent
 
 	// documentUpdateFunc applies the changes to the document.  Called by either WriteUpdate or WriteUpdateWithXATTR below.
-	documentUpdateFunc := func(doc *Document, docExists bool, importAllowed bool) (updatedDoc *Document, writeOpts sgbucket.WriteOptions, shadowerEcho bool, updatedExpiry *uint32, err error) {
+	documentUpdateFunc := func(doc *Document, docExists bool, importAllowed bool) (updatedDoc *Document, writeOpts sgbucket.WriteOptions, updatedExpiry *uint32, err error) {
 
 		var newAttachments AttachmentData
 		// Be careful: this block can be invoked multiple times if there are races!
@@ -924,10 +924,6 @@ func (db *Database) updateAndReturnDoc(
 		if err != nil {
 			return
 		}
-
-		//Test for shadower echo here before UpstreamRev gets set to CurrentRev
-		//Ignore new docs (doc.CurrentRev == "")
-		shadowerEcho = doc.CurrentRev != "" && doc.CurrentRev == doc.UpstreamRev
 
 		//Reject a body that contains the "_removed" property, this means that the user
 		//is trying to update a document they do not have read access to.
@@ -1114,7 +1110,7 @@ func (db *Database) updateAndReturnDoc(
 			// (This uses the new sequence # so has to be done after updating doc.Sequence)
 			_, err := doc.updateChannels(channelSet) //FIX: Incorrect if new rev is not current!
 			if err != nil {
-				return doc, writeOpts, shadowerEcho, updatedExpiry, err
+				return doc, writeOpts, updatedExpiry, err
 			}
 			changedPrincipals = doc.Access.updateAccess(doc, access)
 			changedRoleUsers = doc.RoleAccess.updateAccess(doc, roles)
@@ -1152,13 +1148,11 @@ func (db *Database) updateAndReturnDoc(
 		// Now that the document has been successfully validated, we can update externally stored revision bodies
 		revisionBodyError := doc.persistModifiedRevisionBodies(db.Bucket)
 		if revisionBodyError != nil {
-			return doc, writeOpts, shadowerEcho, updatedExpiry, revisionBodyError
+			return doc, writeOpts, updatedExpiry, revisionBodyError
 		}
 
-		return doc, writeOpts, shadowerEcho, updatedExpiry, err
+		return doc, writeOpts, updatedExpiry, err
 	}
-
-	var shadowerEcho bool
 
 	// Update the document
 	inConflict := false
@@ -1172,7 +1166,7 @@ func (db *Database) updateAndReturnDoc(
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
 			}
-			docOut, writeOpts, shadowerEcho, syncFuncExpiry, err = documentUpdateFunc(doc, currentValue != nil, allowImport)
+			docOut, writeOpts, syncFuncExpiry, err = documentUpdateFunc(doc, currentValue != nil, allowImport)
 			if err != nil {
 				return
 			}
@@ -1203,7 +1197,7 @@ func (db *Database) updateAndReturnDoc(
 				return
 			}
 
-			docOut, _, _, syncFuncExpiry, err = documentUpdateFunc(doc, currentValue != nil, true)
+			docOut, _, syncFuncExpiry, err = documentUpdateFunc(doc, currentValue != nil, true)
 			if err != nil {
 				return
 			}
@@ -1296,12 +1290,8 @@ func (db *Database) updateAndReturnDoc(
 			Expiry:      doc.Expiry,
 		}
 		db.revisionCache.Put(doc.ID, documentRevision)
-
-		// Raise event if this is not an echo from a shadow bucket
-		if !shadowerEcho {
-			if db.EventMgr.HasHandlerForEvent(DocumentChange) {
-				db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
-			}
+		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
+			db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
 		}
 	} else {
 		//Revision has been pruned away so won't be added to cache

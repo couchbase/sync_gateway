@@ -14,7 +14,7 @@ fi
 CB_ADMIN_USERNAME="Administrator"
 CB_ADMIN_PASSWORD="password"
 
-SG_TEST_BUCKETS=("test_data_bucket" "test_shadowbucket" "test_indexbucket")
+SG_TEST_BUCKETS=("test_data_bucket" "test_indexbucket")
 SG_TEST_BUCKET_RAMSIZE=1000 # MB
 
 SG_TEST_BUCKET_PASSWORD="password"

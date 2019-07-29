@@ -53,21 +53,6 @@ func testLeakyBucket(config base.LeakyBucketConfig, tester testing.TB) base.Buck
 	return leakyBucket
 }
 
-func setupTestDBForShadowing(t *testing.T) *Database {
-	dbcOptions := DatabaseContextOptions{
-		TrackDocs: true,
-	}
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := testBucket(t)
-	// Since the handle to the test bucket is getting lost, immediately decrement to disable open bucket counting
-	base.DecrNumOpenBuckets(tBucket.Bucket.GetName())
-	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	db, err := CreateDatabase(context)
-	assert.NoError(t, err, "Couldn't create database 'db'")
-	return db
-}
-
 // Its important to call tearDownTestDB() on the database and .Close() on the TestBucket that is returned by this helper.
 // For example, if .Close() is not called on the TestBucket before the test is finished, it will be detected and
 // the next test will fail.

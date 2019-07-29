@@ -2242,7 +2242,7 @@ func (bucket *CouchbaseBucketGoCB) Refresh() error {
 
 }
 
-// GoCB (and Server 5.0.0) don't support the TapFeed. For legacy support (bucket shadowing), start a DCP feed and stream over a single channel
+// GoCB (and Server 5.0.0) don't support the TapFeed. For legacy support, start a DCP feed and stream over a single channel
 func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 
 	Infof(KeyDCP, "Using DCP to generate TAP-like stream")

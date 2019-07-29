@@ -20,7 +20,7 @@ const (
 	DefaultCouchbasePassword      = "password"
 
 	// Couchbase 5.x notes:
-	// For every bucket that the tests will create (DefaultTestBucketname, DefaultTestShadowBucketname, DefaultTestIndexBucketname):
+	// For every bucket that the tests will create (DefaultTestBucketname, DefaultTestIndexBucketname):
 	//   1. Create an RBAC user with username equal to the bucket name
 	//   2. Set the password to DefaultTestPassword
 	//   3. Give "Admin" RBAC rights
@@ -28,10 +28,6 @@ const (
 	DefaultTestBucketname = "test_data_bucket"
 	DefaultTestUsername   = DefaultTestBucketname
 	DefaultTestPassword   = "password"
-
-	DefaultTestShadowBucketname = "test_shadowbucket"
-	DefaultTestShadowUsername   = DefaultTestShadowBucketname
-	DefaultTestShadowPassword   = DefaultTestPassword
 
 	DefaultTestIndexBucketname = "test_indexbucket"
 	DefaultTestIndexUsername   = DefaultTestIndexBucketname
