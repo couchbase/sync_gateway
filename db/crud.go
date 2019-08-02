@@ -947,7 +947,10 @@ func (db *Database) addAttachments(newAttachments AttachmentData) error {
 	return err
 }
 
-// Sequence processing
+// Sequence processing :
+// Assigns provided sequence to the document
+// Update unusedSequences in the event that there is a conflict and we have to provide a new sequence number
+// Update and prune RecentSequences
 func (db *Database) handleSequences(docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
 	var err error
 	if db.writeSequences() {
