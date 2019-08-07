@@ -26,3 +26,8 @@ func Diff(old, new map[string]interface{}) (delta []byte, err error) {
 func Patch(old *map[string]interface{}, delta []byte) (err error) {
 	return fleecedelta.PatchJSON(old, delta)
 }
+
+// PatchJSONWithMap attempts to path old with the given delta passed as a map[string]interface{}
+func PatchMap(old *map[string]interface{}, delta map[string]interface{}) (err error) {
+	return fleecedelta.PatchJSONWithMap(old, delta)
+}

@@ -871,11 +871,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
 		}
 
-		delta, err := rq.Body()
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Error getting delta body: %s", err)
-		}
-
 		//  TODO: Doing a GetRevCopy here duplicates some rev cache retrieval effort, since deltaRevSrc is always
 		//        going to be the current rev (no conflicts), and PutExistingRev will need to retrieve the
 		//        current rev over again.  Should push this handling down PutExistingRev and use the version
@@ -901,7 +896,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		err = base.Patch(&deltaSrcMap, delta)
+		err = base.PatchMap(&deltaSrcMap, body)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
