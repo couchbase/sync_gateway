@@ -186,7 +186,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			}
 
 			var oldMap = map[string]interface{}(old)
-			if err := base.Patch(&oldMap, body); err != nil {
+			if err := base.Patch(&oldMap, delta); err != nil {
 				panic(err)
 			}
 

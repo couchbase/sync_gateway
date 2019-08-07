@@ -896,7 +896,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		err = base.PatchMap(&deltaSrcMap, body)
+		err = base.Patch(&deltaSrcMap, body)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
