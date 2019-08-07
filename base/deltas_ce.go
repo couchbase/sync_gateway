@@ -15,6 +15,6 @@ func Diff(old, new map[string]interface{}) (delta []byte, err error) {
 }
 
 // Patch is only implemented in EE, the CE stub always returns an error.
-func Patch(old *map[string]interface{}, delta []byte) (err error) {
+func Patch(old *map[string]interface{}, delta map[string]interface{}) (err error) {
 	return ErrDeltasNotSupported
 }

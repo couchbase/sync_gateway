@@ -22,7 +22,7 @@ func Diff(old, new map[string]interface{}) (delta []byte, err error) {
 	return fleecedelta.DiffJSON(old, new)
 }
 
-// Patch will patch old with the given delta.
-func Patch(old *map[string]interface{}, delta []byte) (err error) {
-	return fleecedelta.PatchJSON(old, delta)
+// Patch attempts to patch old with the given delta passed as a map[string]interface{}
+func Patch(old *map[string]interface{}, delta map[string]interface{}) (err error) {
+	return fleecedelta.PatchJSONWithUnmarshalledDelta(old, delta)
 }
