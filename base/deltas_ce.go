@@ -14,7 +14,7 @@ func Diff(old, new map[string]interface{}) (delta []byte, err error) {
 	return nil, ErrDeltasNotSupported
 }
 
-// PatchJSONWithMap attempts to patch old with the given delta passed as a map[string]interface{}
+// Patch attempts to patch old with the given delta passed as a map[string]interface{}
 func Patch(old *map[string]interface{}, delta map[string]interface{}) (err error) {
 	return ErrDeltasNotSupported
 }
