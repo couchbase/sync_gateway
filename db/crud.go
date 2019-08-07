@@ -849,7 +849,7 @@ func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists 
 	return nil
 }
 
-func (db *Database) validateNewBody(body Body) error {
+func validateNewBody(body Body) error {
 	// Reject a body that contains the "_removed" property, this means that the user
 	// is trying to update a document they do not have read access to.
 	if body["_removed"] != nil {
@@ -863,7 +863,7 @@ func (db *Database) validateNewBody(body Body) error {
 	return nil
 }
 
-func (doc *Document) updateWinningRevAndSetDocFlags() (prevCurrentRev string) {
+func (doc *Document) updateWinningRevAndSetDocFlags() {
 	var branched, inConflict bool
 	doc.CurrentRev, branched, inConflict = doc.History.winningRevision()
 	doc.setFlag(channels.Deleted, doc.History[doc.CurrentRev].Deleted)
@@ -874,7 +874,6 @@ func (doc *Document) updateWinningRevAndSetDocFlags() (prevCurrentRev string) {
 	} else {
 		doc.SyncData.TombstonedAt = 0
 	}
-	return prevCurrentRev
 }
 
 func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCurrentRev string, newRevID string, body Body) Body {
@@ -1024,7 +1023,7 @@ func (db *Database) handleSequences(docSequence uint64, doc *Document, unusedSeq
 	return unusedSequences, nil
 }
 
-func (db *Database) updateExpiryAndTimeSaved(doc *Document, syncExpiry, updatedExpiry *uint32, expiry uint32) (finalExp *uint32) {
+func (doc *Document) updateExpiryAndTimeSaved(syncExpiry, updatedExpiry *uint32, expiry uint32) (finalExp *uint32) {
 	doc.TimeSaved = time.Now()
 	if syncExpiry != nil {
 		finalExp = syncExpiry
@@ -1095,7 +1094,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	err = db.validateNewBody(body)
+	err = validateNewBody(body)
 	if err != nil {
 		return
 	}
@@ -1151,7 +1150,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Pruned %d old revisions", base.UD(doc.ID), pruned)
 	}
 
-	updatedExpiry = db.updateExpiryAndTimeSaved(doc, syncExpiry, updatedExpiry, expiry)
+	updatedExpiry = doc.updateExpiryAndTimeSaved(syncExpiry, updatedExpiry, expiry)
 	err = doc.persistModifiedRevisionBodies(db.Bucket)
 	if err != nil {
 		return
