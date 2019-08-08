@@ -135,7 +135,7 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 		{
 			// Check that the default upload host is set
 			options:      &sgCollectOptions{Upload: true, Customer: "alice"},
-			expectedArgs: []string{"--upload-host", "https://s3.amazonaws.com/cb-customers", "--customer", "alice"},
+			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--customer", "alice"},
 		},
 		{
 			options:      &sgCollectOptions{Upload: true, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
