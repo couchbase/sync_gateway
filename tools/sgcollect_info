@@ -90,7 +90,7 @@ def create_option_parser():
                       help=optparse.SUPPRESS_HELP)
     parser.add_option("--upload-host", dest="upload_host",
                       help="if specified, gathers diagnotics and uploads it to the specified host,"
-                           " e.g 'https://s3.amazonaws.com/cb-customers'")
+                           " e.g 'https://uploads.couchbase.com'")
     parser.add_option("--customer", dest="upload_customer",
                       help="used in conjunction with '--upload-host' and '--ticket', "
                            "specifies the customer name for the upload")
