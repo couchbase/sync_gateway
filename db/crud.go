@@ -879,7 +879,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags() {
 func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCurrentRev string, newRevID string, body Body) Body {
 	if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.Body() != nil {
 		// Store the doc's previous body into the revision tree:
-		bodyJSON, marshalErr := doc.MarshalBody()
+		bodyJSON, marshalErr := doc.BodyBytes()
 		if marshalErr != nil {
 			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body for storage in rev tree: %v", marshalErr)
 		}
