@@ -545,8 +545,7 @@ func SetUpTestLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
 // DisableTestLogging is an alias for SetUpTestLogging(LevelNone, KeyNone)
 // This function will panic if called multiple times without running the teardownFn.
 func DisableTestLogging() (teardownFn func()) {
-	caller := GetCallersName(1, false)
-	Infof(KeyAll, "%s: Disabling logging", caller)
+	caller := ""
 	return setTestLogging(LevelNone, KeyNone, caller)
 }
 
@@ -567,7 +566,9 @@ func setTestLogging(logLevel LogLevel, logKeys LogKey, caller string) (teardownF
 		// Return logging to a default state
 		consoleLogger.LogLevel.Set(initialLogLevel)
 		consoleLogger.LogKey.Set(initialLogKey)
-		Infof(KeyAll, "%v: Reset logging", caller)
+		if caller != "" {
+			Infof(KeyAll, "%v: Reset logging", caller)
+		}
 	}
 }
 
