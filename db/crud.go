@@ -950,7 +950,7 @@ func (db *Database) addAttachments(newAttachments AttachmentData) error {
 // Assigns provided sequence to the document
 // Update unusedSequences in the event that there is a conflict and we have to provide a new sequence number
 // Update and prune RecentSequences
-func (db *Database) handleSequences(docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+func (db *Database) assignSequence(docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
 	var err error
 	if db.writeSequences() {
 		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
@@ -1023,8 +1023,7 @@ func (db *Database) handleSequences(docSequence uint64, doc *Document, unusedSeq
 	return unusedSequences, nil
 }
 
-func (doc *Document) updateExpiryAndTimeSaved(syncExpiry, updatedExpiry *uint32, expiry uint32) (finalExp *uint32) {
-	doc.TimeSaved = time.Now()
+func (doc *Document) updateExpiry(syncExpiry, updatedExpiry *uint32, expiry uint32) (finalExp *uint32) {
 	if syncExpiry != nil {
 		finalExp = syncExpiry
 	} else if updatedExpiry != nil {
@@ -1121,7 +1120,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 
 	db.backupAncestorRevs(doc, newRevID, storedBody)
 
-	unusedSequences, err = db.handleSequences(previousDocSequenceIn, doc, unusedSequences)
+	unusedSequences, err = db.assignSequence(previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
 		return
 	}
@@ -1150,12 +1149,13 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Pruned %d old revisions", base.UD(doc.ID), pruned)
 	}
 
-	updatedExpiry = doc.updateExpiryAndTimeSaved(syncExpiry, updatedExpiry, expiry)
+	updatedExpiry = doc.updateExpiry(syncExpiry, updatedExpiry, expiry)
 	err = doc.persistModifiedRevisionBodies(db.Bucket)
 	if err != nil {
 		return
 	}
 
+	doc.TimeSaved = time.Now()
 	return doc, updatedExpiry, body, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err
 }
 
