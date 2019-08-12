@@ -146,7 +146,7 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 type Document struct {
 	SyncData        // Sync metadata
 	_body    Body   // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
-	rawBody  []byte // Raw document body, as retrieved from the bucket
+	_rawBody []byte // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
 	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas      uint64 // Document cas
 }
@@ -167,29 +167,30 @@ func NewDocument(docid string) *Document {
 
 // Accessors for document properties.  To support lazy unmarshalling of document contents, all access should be done through accessors
 func (doc *Document) Body() Body {
-	if doc._body == nil && doc.rawBody != nil {
-		err := doc._body.Unmarshal(doc.rawBody)
+	if doc._body == nil && doc._rawBody != nil {
+		err := doc._body.Unmarshal(doc._rawBody)
 		if err != nil {
 			base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
 			return nil
 		}
-		doc.rawBody = nil
 	}
 	return doc._body
 }
 
 func (doc *Document) RemoveBody() {
 	doc._body = nil
-	doc.rawBody = nil
+	doc._rawBody = nil
 }
 
-// TODO: review whether this can just return raw body when available
-func (doc *Document) MarshalBody() ([]byte, error) {
-	marshalled, err := json.Marshal(doc.Body())
-	if err != nil {
-		return []byte{}, pkgerrors.Wrapf(err, "Error marshalling JSON")
+func (doc *Document) BodyBytes() ([]byte, error) {
+	if doc._rawBody == nil && doc._body != nil {
+		bodyBytes, err := json.Marshal(doc._body)
+		if err != nil {
+			return nil, pkgerrors.Wrapf(err, "Error marshalling document body")
+		}
+		doc._rawBody = bodyBytes
 	}
-	return marshalled, err
+	return doc._rawBody, nil
 }
 
 // Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
@@ -401,12 +402,12 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 	}
 
 	// Since raw body isn't available, marshal from the document to perform body hash comparison
-	docBody, err := doc.MarshalBody()
+	bodyBytes, err := doc.BodyBytes()
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to marshal doc body during SG write check for doc %s.  Error: %v", base.UD(doc.ID), err)
+		base.Warnf(base.KeyAll, "Unable to marshal doc body during SG write check for doc %s. Error: %v", base.UD(doc.ID), err)
 		return false, false
 	}
-	if base.Crc32cHashString(docBody) == doc.SyncData.Crc32c {
+	if base.Crc32cHashString(bodyBytes) == doc.SyncData.Crc32c {
 		return true, true
 	}
 
@@ -809,7 +810,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
 			return doc._body.Unmarshal(data)
 		} else {
-			doc.rawBody = data
+			doc._rawBody = data
 		}
 
 	case DocUnmarshalNoHistory:
@@ -819,7 +820,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		if unmarshalErr != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
-		doc.rawBody = data
+		doc._rawBody = data
 	case DocUnmarshalRev:
 		// Unmarshal only rev and cas from sync metadata
 		var revOnlyMeta revOnlySyncData
@@ -831,7 +832,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 			CurrentRev: revOnlyMeta.CurrentRev,
 			Cas:        revOnlyMeta.Cas,
 		}
-		doc.rawBody = data
+		doc._rawBody = data
 	case DocUnmarshalCAS:
 		// Unmarshal only cas from sync metadata
 		var casOnlyMeta casOnlySyncData
@@ -842,7 +843,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		doc.SyncData = SyncData{
 			Cas: casOnlyMeta.Cas,
 		}
-		doc.rawBody = data
+		doc._rawBody = data
 	}
 
 	// If there's no body, but there is an xattr, set body as {"_deleted":true} to align with non-xattr handling
