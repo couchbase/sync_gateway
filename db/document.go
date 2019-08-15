@@ -149,6 +149,11 @@ type Document struct {
 	_rawBody []byte // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
 	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas      uint64 // Document cas
+
+	Deleted        bool
+	DocExpiry      uint32
+	RevID          string
+	DocAttachments AttachmentsMeta
 }
 
 type revOnlySyncData struct {
@@ -158,6 +163,40 @@ type revOnlySyncData struct {
 
 type casOnlySyncData struct {
 	Cas string `json:"cas"`
+}
+
+func (doc *Document) UpdateBodyBytes(bodyBytes []byte) {
+	doc._rawBody = bodyBytes
+	doc._body = nil
+}
+
+func (doc *Document) UpdateBody(body Body) {
+	doc._body = body
+	doc._rawBody = nil
+}
+
+func (doc *Document) MarshallBodyAndSync() (retBytes []byte, err error) {
+	bodyBytes, err := doc.BodyBytes()
+	if err != nil {
+		return nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalBodyAndSync() doc with id: %s. Error %v", base.UD(doc.ID), err))
+	}
+	syncData, err := json.Marshal(doc.SyncData)
+	if err != nil {
+		return nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalBodyAndSync() doc with id: %s. Error %v", base.UD(doc.ID), err))
+	}
+
+	syncKey := "_sync"
+
+	rawJSON := make([]byte, 0, len(bodyBytes)+len(syncData)+len(syncKey)+4)
+	rawJSON = append(rawJSON, bodyBytes[0:1]...)
+	rawJSON = append(rawJSON, []byte(`"`+syncKey+`":`)...)
+	rawJSON = append(rawJSON, syncData...)
+	if !bytes.Equal(bodyBytes, []byte("{}")) {
+		rawJSON = append(rawJSON, []byte(",")...)
+	}
+	rawJSON = append(rawJSON, bodyBytes[1:]...)
+
+	return rawJSON, nil
 }
 
 // Returns a new empty document.
@@ -514,18 +553,14 @@ func (doc *Document) pruneRevisions(maxDepth uint32, keepRev string) int {
 }
 
 // Adds a revision body (as Body) to a document.  Removes special properties first.
-func (doc *Document) setRevisionBody(revid string, body Body, storeInline bool) (revisionBody Body) {
-	strippedBody := stripSpecialProperties(body)
+func (doc *Document) setRevisionBody(revid string, newDoc *Document, storeInline bool) {
 	if revid == doc.CurrentRev {
-		doc._body = strippedBody
+		doc._body = newDoc._body
+		doc._rawBody = newDoc._rawBody
 	} else {
-		var asJson []byte
-		if len(body) > 0 {
-			asJson, _ = json.Marshal(strippedBody)
-		}
-		doc.setNonWinningRevisionBody(revid, asJson, storeInline)
+		bodyBytes, _ := newDoc.BodyBytes()
+		doc.setNonWinningRevisionBody(revid, bodyBytes, storeInline)
 	}
-	return strippedBody
 }
 
 // Adds a revision body (as []byte) to a document.  Flags for external storage when appropriate

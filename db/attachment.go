@@ -57,12 +57,17 @@ type DocAttachment struct {
 // dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
 // the bodies with the 'digest' attributes which are the keys to retrieving them.
 func (db *Database) storeAttachments(doc *Document, body Body, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
-	var parentAttachments map[string]interface{}
-	newAttachmentData := make(AttachmentData, 0)
-	atts := GetBodyAttachments(body)
-	if atts == nil && body[BodyAttachments] != nil {
+	newAttachmentsMeta := GetBodyAttachments(body)
+	if newAttachmentsMeta == nil && body[BodyAttachments] != nil {
 		return nil, base.HTTPErrorf(400, "Invalid _attachments")
 	}
+	return db.storeAttachmentsDoc(doc, newAttachmentsMeta, generation, parentRev, docHistory)
+}
+
+func (db *Database) storeAttachmentsDoc(doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
+	var parentAttachments map[string]interface{}
+	newAttachmentData := make(AttachmentData, 0)
+	atts := newAttachmentsMeta
 	for name, value := range atts {
 		meta, ok := value.(map[string]interface{})
 		if !ok {
