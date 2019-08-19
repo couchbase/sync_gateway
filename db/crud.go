@@ -679,6 +679,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 	// Pull out attachments
 	newDoc.DocAttachments = GetBodyAttachments(body)
 	delete(body, BodyAttachments)
+	delete(body, BodyRevisions)
 
 	newDoc.UpdateBody(body)
 
@@ -728,15 +729,8 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 			return nil, nil, nil, err
 		}
 
-		// FIXME: Test to put attachments back in :/
-		tempBody := newDoc.Body()
-		if newDoc.DocAttachments != nil {
-
-			tempBody[BodyAttachments] = newDoc.DocAttachments
-		}
-
 		// Make up a new _rev, and add it to the history:
-		newRev, err := createRevID(generation, matchRev, tempBody)
+		newRev, err := createRevID(generation, matchRev, newDoc.Body())
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -754,18 +748,21 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		return newDoc, newAttachments, nil, nil
 	})
 
+	body[BodyId] = docid
+	body[BodyRev] = newRevID
+
 	return newRevID, doc, err
 }
 
-func (db *Database) PutExistingRevBlip(newDoc *Document, docHistory []string, noConflicts bool) (doc *Document, err error) {
+func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConflicts bool) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
+		return nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 
 	allowImport := db.UseXattrs()
-	_, _, err = db.updateAndReturnDoc(newDoc.ID, allowImport, newDoc.DocExpiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(newDoc.ID, allowImport, newDoc.DocExpiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -835,7 +832,7 @@ func (db *Database) PutExistingRevBlip(newDoc *Document, docHistory []string, no
 		return newDoc, newAttachments, nil, nil
 	})
 
-	return doc, err
+	return doc, newRev, err
 }
 
 func (db *Database) PutExistingRevREST(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, err error) {
@@ -856,112 +853,27 @@ func (db *Database) PutExistingRevREST(docid string, body Body, docHistory []str
 	delete(body, BodyId)
 	delete(body, BodyRev)
 	delete(body, BodyDeleted)
+	delete(body, BodyRevisions)
 
 	newDoc.DocAttachments = GetBodyAttachments(body)
 	delete(body, BodyAttachments)
 	newDoc.UpdateBody(body)
 
-	return db.PutExistingRevBlip(newDoc, docHistory, noConflicts)
-}
+	doc, newRevID, err := db.PutExistingRev(newDoc, docHistory, noConflicts)
 
-// Adds an existing revision to a document along with its history (list of rev IDs.)
-// This is equivalent to the "new_edits":false mode of CouchDB.
-//
-// The docHistory should be a list of previous revisions in reverse order, not including the revision itself.
-// For example, if the rev tree is currently:
-//
-// 1-abc
-//  |
-// 2-bcd
-//
-// and the new revision being added is "3-cde", then docHistory passed in should be ["2-bcd", "1-abc"].
-//
-func (db *Database) PutExistingRev(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, err error) {
-	newRev := docHistory[0]
-	generation, _ := ParseRevID(newRev)
-	if generation < 0 {
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
+	body[BodyId] = docid
+	body[BodyRev] = newRevID
+
+	if deleted {
+		body[BodyDeleted] = deleted
 	}
-	deleted, _ := body[BodyDeleted].(bool)
 
-	expiry, err := body.ExtractExpiry()
 	if err != nil {
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+		return nil, err
 	}
-
-	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(docid, allowImport, expiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
-		// (Be careful: this block can be invoked multiple times if there are races!)
-
-		var isSgWrite bool
-		var crc32Match bool
-
-		// Is this doc an sgWrite?
-		if doc != nil {
-			isSgWrite, crc32Match = doc.IsSGWrite(nil)
-			if crc32Match {
-				db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
-			}
-		}
-
-		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !isSgWrite && db.UseXattrs() {
-			err := db.OnDemandImportForWrite(docid, doc, deleted)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-		}
-
-		// Find the point where this doc's history branches from the current rev:
-		currentRevIndex := len(docHistory)
-		parent := ""
-		for i, revid := range docHistory {
-			if doc.History.contains(revid) {
-				currentRevIndex = i
-				parent = revid
-				break
-			}
-		}
-		if currentRevIndex == 0 {
-			base.DebugfCtx(db.Ctx, base.KeyCRUD, "PutExistingRev(%q): No new revisions to add", base.UD(docid))
-			body[BodyRev] = newRev                     // The _rev field is expected by some callers.  If missing, may cause problems for callers.
-			return nil, nil, nil, base.ErrUpdateCancel // No new revisions to add
-		}
-
-		// Conflict-free mode check
-		if db.IsIllegalConflict(doc, parent, deleted, noConflicts) {
-			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
-		}
-
-		// Add all the new-to-me revisions to the rev tree:
-		for i := currentRevIndex - 1; i >= 0; i-- {
-			err := doc.History.addRevision(docid,
-				RevInfo{
-					ID:      docHistory[i],
-					Parent:  parent,
-					Deleted: (i == 0 && deleted)})
-
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			parent = docHistory[i]
-		}
-
-		// Process the attachments, replacing bodies with digests.
-		parentRevID := doc.History[newRev].Parent
-		newAttachments, err := db.storeAttachments(doc, body, generation, parentRevID, docHistory)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		// move _attachment metadata to syncdata of doc
-		doc.SyncData.Attachments = GetBodyAttachments(body)
-		delete(body, BodyAttachments)
-
-		body[BodyRev] = newRev
-		return nil, newAttachments, nil, nil
-	})
 
 	return doc, err
+
 }
 
 func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists bool) error {
@@ -1199,7 +1111,7 @@ func (db *Database) IsIllegalConflict(doc *Document, parentRevID string, deleted
 	return true
 }
 
-func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retBody Body, retNewRevID string, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, err error) {
+func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retBody Body, retNewRevID string, retStoredBody Body, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, err error) {
 
 	err = db.validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
@@ -1213,6 +1125,11 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	}
 
 	body := newDoc.Body()
+	storedBody := body
+	if newDoc.Deleted {
+		storedBody[BodyDeleted] = true
+	}
+	storedBody = stripSpecialProperties(storedBody)
 
 	err = validateNewBody(body)
 	if err != nil {
@@ -1230,10 +1147,8 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	if err != nil {
 		return
 	}
-
-	// FIXME Rev Cache uses this for now
-	// delete(body, BodyId)
-	// delete(body, BodyRev)
+	delete(body, BodyId)
+	delete(body, BodyRev)
 
 	if len(channelSet) > 0 {
 		doc.History[newRevID].Channels = channelSet
@@ -1244,7 +1159,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	db.backupAncestorRevs(doc, newRevID, body)
+	db.backupAncestorRevs(doc, newRevID, storedBody)
 
 	unusedSequences, err = db.assignSequence(previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
@@ -1282,7 +1197,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	}
 
 	doc.TimeSaved = time.Now()
-	return updatedExpiry, body, newRevID, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err
+	return updatedExpiry, body, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -1299,6 +1214,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
+	var storedBody Body
 	var changedAccessPrincipals, changedRoleAccessUsers []string // Returned by documentUpdateFunc
 	var docSequence uint64                                       // Must be scoped outside callback, used over multiple iterations
 	var unusedSequences []uint64                                 // Must be scoped outside callback, used over multiple iterations
@@ -1317,10 +1233,11 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				return
 			}
 			docExists := currentValue != nil
-			syncFuncExpiry, _, newRevID, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			syncFuncExpiry, _, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
+
 			docSequence = doc.Sequence
 			inConflict = doc.hasFlag(channels.Conflict)
 			// Return the new raw document value for the bucket to store.
@@ -1349,7 +1266,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				return
 			}
 			docExists := currentValue != nil
-			syncFuncExpiry, _, newRevID, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			syncFuncExpiry, _, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -1435,10 +1352,12 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			body[BodyDeleted] = true
 
 		}
+
+		// FIXME: Currently returning storedBody - Should revisit this
 		revChannels := doc.History[newRevID].Channels
 		documentRevision := DocumentRevision{
 			RevID:       newRevID,
-			Body:        body,
+			Body:        storedBody,
 			History:     encodeRevisions(history),
 			Channels:    revChannels,
 			Attachments: doc.Attachments,

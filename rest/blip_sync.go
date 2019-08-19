@@ -963,7 +963,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	// Finally, save the revision (with the new attachments inline)
 	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyDocPushCount, 1)
 
-	_, err = bh.db.PutExistingRevBlip(newDoc, history, noConflicts)
+	_, _, err = bh.db.PutExistingRev(newDoc, history, noConflicts)
 
 	return err
 }

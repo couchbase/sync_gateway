@@ -982,27 +982,27 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
 	body := Body{"n": 1}
-	_, err := db.PutExistingRevREST("doc1", body, []string{"1-a"}, false)
+	doc, err := db.PutExistingRevREST("doc1", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
-	_, err = db.PutExistingRevREST("doc2", body, []string{"1-a"}, false)
+	doc, err = db.PutExistingRevREST("doc2", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
-	_, err = db.PutExistingRevREST("doc3", body, []string{"1-a"}, false)
+	doc, err = db.PutExistingRevREST("doc3", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create two conflicting changes:
 	body["n"] = 2
-	_, err = db.PutExistingRevREST("doc1", body, []string{"2-b", "1-a"}, false)
+	doc, err = db.PutExistingRevREST("doc1", body, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-	_, err = db.PutExistingRevREST("doc2", body, []string{"2-b", "1-a"}, false)
+	doc, err = db.PutExistingRevREST("doc2", body, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-	_, err = db.PutExistingRevREST("doc3", body, []string{"2-b", "1-a"}, false)
+	doc, err = db.PutExistingRevREST("doc3", body, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
 	body["n"] = 3
-	_, err = db.PutExistingRevREST("doc1", body, []string{"2-a", "1-a"}, false)
+	doc, err = db.PutExistingRevREST("doc1", body, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
-	_, err = db.PutExistingRevREST("doc2", body, []string{"2-a", "1-a"}, false)
+	doc, err = db.PutExistingRevREST("doc2", body, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
-	_, err = db.PutExistingRevREST("doc3", body, []string{"2-a", "1-a"}, false)
+	doc, err = db.PutExistingRevREST("doc3", body, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
@@ -1018,7 +1018,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	body[BodyRev] = "2-a"
 	tombstoneRev, _, putErr := db.Put("doc1", body)
 	assert.NoError(t, putErr, "tombstone 2-a")
-	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
 	goassert.Equals(t, doc.CurrentRev, "2-b")
 

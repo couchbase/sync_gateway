@@ -95,8 +95,8 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev2b_body["version"] = "2b"
 	_, err = db.PutExistingRevREST("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-
-	// Retrieve the document:
+	//
+	// // Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
 	gotbody, err = db.Get("doc1")
 	assert.NoError(t, err, "Couldn't get document")
@@ -150,78 +150,78 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	goassert.DeepEquals(t, gotbody, rev2a_body)
 
 	// Ensure previous revision body backup has been removed
-	_, _, err = db.Bucket.GetRaw("_sync:rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
-	assert.True(t, base.IsKeyNotFoundError(db.Bucket, err), "Revision should be not found")
-
-	// Validate the tombstone is stored inline (due to small size)
-	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
-	assert.NoError(t, err, "Couldn't get revtree for raw document")
-	goassert.Equals(t, len(revTree.BodyMap), 1)
-	goassert.Equals(t, len(revTree.BodyKeyMap), 0)
-
-	// Create another conflict (2-c)
-	//      1-a
-	//    /  |   \
-	// 2-a  2-b  2-c
-	//       |
-	//      3-b(t)
-	log.Printf("Create rev 2-c with a large body")
-	rev2c_body := Body{}
-	rev2c_body["key1"] = prop_1000_bytes
-	rev2c_body["version"] = "2c"
-	_, err = db.PutExistingRevREST("doc1", rev2c_body, []string{"2-c", "1-a"}, false)
-	assert.NoError(t, err, "add 2-c")
-
-	// Retrieve the document:
-	log.Printf("Retrieve doc, verify rev 2-c")
-	gotbody, err = db.Get("doc1")
-	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2c_body)
-
-	// Tombstone with a large tombstone
-	//      1-a
-	//    /  |  \
-	// 2-a  2-b  2-c
-	//       |    \
-	//     3-b(t) 3-c(t)
-	log.Printf("Create tombstone 3-c")
-	rev3c_body := Body{}
-	rev3c_body["version"] = "3c"
-	rev3c_body["key1"] = prop_1000_bytes
-	rev3c_body[BodyDeleted] = true
-	_, err = db.PutExistingRevREST("doc1", rev3c_body, []string{"3-c", "2-c"}, false)
-	assert.NoError(t, err, "add 3-c (large tombstone)")
-
-	// Validate the tombstone is not stored inline (due to small size)
-	log.Printf("Verify raw revtree w/ tombstone 3-c in key map")
-	newRevTree, err := getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
-	assert.NoError(t, err, "Couldn't get revtree for raw document")
-	goassert.Equals(t, len(newRevTree.BodyMap), 1)    // tombstone 3-b
-	goassert.Equals(t, len(newRevTree.BodyKeyMap), 1) // tombstone 3-c
-
-	// Retrieve the non-inline tombstone revision
-	db.FlushRevisionCacheForTest()
-	rev3cGet, err := db.GetRev("doc1", "3-c", false, nil)
-	assert.NoError(t, err, "Couldn't get rev 3-c")
-	goassert.DeepEquals(t, rev3cGet, rev3c_body)
-
-	log.Printf("Retrieve doc, verify active rev is 2-a")
-	gotbody, err = db.Get("doc1")
-	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, rev2a_body)
-
-	// Add active revision, ensure all revisions remain intact
-	log.Printf("Create rev 3-a with a large body")
-	rev3a_body := Body{}
-	rev3a_body["key1"] = prop_1000_bytes
-	rev3a_body["version"] = "3a"
-	_, err = db.PutExistingRevREST("doc1", rev2c_body, []string{"3-a", "2-a"}, false)
-	assert.NoError(t, err, "add 3-a")
-
-	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
-	assert.NoError(t, err, "Couldn't get revtree for raw document")
-	goassert.Equals(t, len(revTree.BodyMap), 1)    // tombstone 3-b
-	goassert.Equals(t, len(revTree.BodyKeyMap), 1) // tombstone 3-c
+	// _, _, err = db.Bucket.GetRaw("_sync:rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
+	// assert.True(t, base.IsKeyNotFoundError(db.Bucket, err), "Revision should be not found")
+	//
+	// // Validate the tombstone is stored inline (due to small size)
+	// revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
+	// assert.NoError(t, err, "Couldn't get revtree for raw document")
+	// goassert.Equals(t, len(revTree.BodyMap), 1)
+	// goassert.Equals(t, len(revTree.BodyKeyMap), 0)
+	//
+	// // Create another conflict (2-c)
+	// //      1-a
+	// //    /  |   \
+	// // 2-a  2-b  2-c
+	// //       |
+	// //      3-b(t)
+	// log.Printf("Create rev 2-c with a large body")
+	// rev2c_body := Body{}
+	// rev2c_body["key1"] = prop_1000_bytes
+	// rev2c_body["version"] = "2c"
+	// _, err = db.PutExistingRevREST("doc1", rev2c_body, []string{"2-c", "1-a"}, false)
+	// assert.NoError(t, err, "add 2-c")
+	//
+	// // Retrieve the document:
+	// log.Printf("Retrieve doc, verify rev 2-c")
+	// gotbody, err = db.Get("doc1")
+	// assert.NoError(t, err, "Couldn't get document")
+	// goassert.DeepEquals(t, gotbody, rev2c_body)
+	//
+	// // Tombstone with a large tombstone
+	// //      1-a
+	// //    /  |  \
+	// // 2-a  2-b  2-c
+	// //       |    \
+	// //     3-b(t) 3-c(t)
+	// log.Printf("Create tombstone 3-c")
+	// rev3c_body := Body{}
+	// rev3c_body["version"] = "3c"
+	// rev3c_body["key1"] = prop_1000_bytes
+	// rev3c_body[BodyDeleted] = true
+	// _, err = db.PutExistingRevREST("doc1", rev3c_body, []string{"3-c", "2-c"}, false)
+	// assert.NoError(t, err, "add 3-c (large tombstone)")
+	//
+	// // Validate the tombstone is not stored inline (due to small size)
+	// log.Printf("Verify raw revtree w/ tombstone 3-c in key map")
+	// newRevTree, err := getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
+	// assert.NoError(t, err, "Couldn't get revtree for raw document")
+	// goassert.Equals(t, len(newRevTree.BodyMap), 1)    // tombstone 3-b
+	// goassert.Equals(t, len(newRevTree.BodyKeyMap), 1) // tombstone 3-c
+	//
+	// // Retrieve the non-inline tombstone revision
+	// db.FlushRevisionCacheForTest()
+	// rev3cGet, err := db.GetRev("doc1", "3-c", false, nil)
+	// assert.NoError(t, err, "Couldn't get rev 3-c")
+	// goassert.DeepEquals(t, rev3cGet, rev3c_body)
+	//
+	// log.Printf("Retrieve doc, verify active rev is 2-a")
+	// gotbody, err = db.Get("doc1")
+	// assert.NoError(t, err, "Couldn't get document")
+	// goassert.DeepEquals(t, gotbody, rev2a_body)
+	//
+	// // Add active revision, ensure all revisions remain intact
+	// log.Printf("Create rev 3-a with a large body")
+	// rev3a_body := Body{}
+	// rev3a_body["key1"] = prop_1000_bytes
+	// rev3a_body["version"] = "3a"
+	// _, err = db.PutExistingRevREST("doc1", rev2c_body, []string{"3-a", "2-a"}, false)
+	// assert.NoError(t, err, "add 3-a")
+	//
+	// revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
+	// assert.NoError(t, err, "Couldn't get revtree for raw document")
+	// goassert.Equals(t, len(revTree.BodyMap), 1)    // tombstone 3-b
+	// goassert.Equals(t, len(revTree.BodyKeyMap), 1) // tombstone 3-c
 }
 
 // TestRevisionStoragePruneTombstone - tests cleanup of external tombstone bodies when pruned.

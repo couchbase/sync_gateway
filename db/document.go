@@ -537,7 +537,7 @@ func (doc *Document) removeRevisionBody(revID string) {
 func (doc *Document) promoteNonWinningRevisionBody(revid string, loader RevLoaderFunc) {
 	// If the new revision is not current, transfer the current revision's
 	// body to the top level doc._body:
-	doc._body = doc.getNonWinningRevisionBody(revid, loader)
+	doc.UpdateBody(doc.getNonWinningRevisionBody(revid, loader))
 	doc.removeRevisionBody(revid)
 }
 

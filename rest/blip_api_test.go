@@ -2153,12 +2153,12 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
-	// create doc1 rev 2-04f16608671387d26f9f3ecd2c68d9a2 on SG with the first attachment
+	// create doc1 rev 2-10000d5ec533b29b117e60274b1e3653 on SG with the first attachment
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 	fmt.Println(resp.Body.String())
 
-	data, ok = client.WaitForRev("doc1", "2-04f16608671387d26f9f3ecd2c68d9a2")
+	data, ok = client.WaitForRev("doc1", "2-10000d5ec533b29b117e60274b1e3653")
 	assert.True(t, ok)
 	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
@@ -2188,7 +2188,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(msgBody))
 	}
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-04f16608671387d26f9f3ecd2c68d9a2", "")
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-10000d5ec533b29b117e60274b1e3653", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-04f16608671387d26f9f3ecd2c68d9a2","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
+	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-10000d5ec533b29b117e60274b1e3653","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
 }
