@@ -180,15 +180,11 @@ pipeline {
                                 withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     // Build CE coverprofiles
                                     sh '2>&1 go test -timeout=20m -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ce.out -race -count=1 -v github.com/couchbase/sync_gateway/... > verbose_ce.out || true'
-                                    //sh 'cat verbose_ce.out'
 
                                     // Print total coverage stats
                                     sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
 
                                     sh 'mkdir -p reports'
-
-                                    // Generate HTML coverage report
-                                    sh 'go tool cover -html=cover_ce.out -o reports/coverage-ce.html'
 
                                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
                                     sh 'gocov convert cover_ce.out | gocov-xml > reports/coverage-ce.xml'
@@ -211,13 +207,10 @@ pipeline {
                                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                                     // Build EE coverprofiles
                                     sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ee.out -race -count=1 -v github.com/couchbase/sync_gateway/... > verbose_ee.out || true"
-                                    //sh 'cat verbose_ce.out'
 
                                     sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
                                     sh 'mkdir -p reports'
-
-                                    sh 'go tool cover -html=cover_ee.out -o reports/coverage-ee.html'
 
                                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
                                     sh 'gocov convert cover_ee.out | gocov-xml > reports/coverage-ee.xml'
@@ -291,9 +284,6 @@ pipeline {
 
     post {
         always {
-            // Publish the HTML test coverage reports we generated
-            publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, includes: 'coverage-*.html', keepAll: false, reportDir: 'reports', reportFiles: '*.html', reportName: 'Code Coverage', reportTitles: ''])
-
             // Publish the cobertura formatted test coverage reports into Jenkins
             cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
 
