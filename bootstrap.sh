@@ -18,10 +18,6 @@
 
 # Default to SG product 
 PRODUCT="sg"
-
-# Even when we build sg-accel, we want to grab the sync_gateway
-# repo since it includes sg-accel in it's manifest and will
-# build *both* sync gateway and sg-accel
 TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
 
 # By default, will run "repo init" followed by "repo sync".
@@ -62,9 +58,6 @@ parseOptions () {
 		    sg)
 			PRODUCT="sg"
 			;;
-		    sg-accel)
-			PRODUCT="sg-accel"
-			;;		
 		    *)
 			echo "Unknown product"
 			exit 1
@@ -151,10 +144,6 @@ repoInit () {
     case $PRODUCT in
 	sg)
 	    repo init -u "$TARGET_REPO" -m manifest/default.xml
-	    ;;
-	sg-accel)
-	    # Use -g all to pull in sg-accel deps as well
-	    repo init -u "$TARGET_REPO" -m manifest/default.xml -g all
 	    ;;
 	*)
 	    echo "Unknown product: $PRODUCT (Aborting)"

@@ -367,7 +367,7 @@ func makeVbucketMetadataForSequence(vbucketUUID uint64, sequence uint64) []byte 
 // TODO: Convert checkpoint persistence to an asynchronous batched process, since
 //       restarting w/ an older checkpoint:
 //         - Would only result in some repeated entry processing, which is already handled by the indexer
-//         - Is a relatively infrequent operation (occurs when vbuckets are initially assigned to an accel node)
+//         - Is a relatively infrequent operation
 func (r *DCPReceiver) persistCheckpoint(vbNo uint16, value []byte) error {
 	Tracef(KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
 	return r.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo), 0, value)

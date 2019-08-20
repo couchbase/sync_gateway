@@ -81,7 +81,6 @@ func TestSubChangesSince(t *testing.T) {
 	goassert.True(t, err == nil)
 
 	seqId := subChangesParams.since()
-	goassert.True(t, seqId.SeqType == db.IntSequenceType)
 	goassert.True(t, seqId.Seq == 1)
 
 }

@@ -34,7 +34,6 @@ type Authenticator struct {
 type ChannelComputer interface {
 	ComputeChannelsForPrincipal(Principal) (ch.TimedSet, error)
 	ComputeRolesForUser(User) (ch.TimedSet, error)
-	UseGlobalSequence() bool
 }
 
 type userByEmailInfo struct {
@@ -263,9 +262,6 @@ func (auth *Authenticator) InvalidateChannels(p Principal) error {
 		}
 
 		base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(p.Name()))
-		if auth.channelComputer != nil && !auth.channelComputer.UseGlobalSequence() {
-			p.SetPreviousChannels(p.Channels())
-		}
 		p.setChannels(nil)
 		return p, nil
 	}

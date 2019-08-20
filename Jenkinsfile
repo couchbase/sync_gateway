@@ -40,7 +40,7 @@ pipeline {
                         echo "Bootstrapping commit ${SG_COMMIT}"
                         sh 'cp .scm-checkout/bootstrap.sh .'
                         sh 'chmod +x bootstrap.sh'
-                        sh "./bootstrap.sh -p sg-accel -c ${SG_COMMIT}"
+                        sh "./bootstrap.sh -p sg -c ${SG_COMMIT}"
                     }
                 }
 

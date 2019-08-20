@@ -1250,7 +1250,6 @@ func TestAccessFunctionWithVbuckets(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	db.SequenceType = ClockSequenceType
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 

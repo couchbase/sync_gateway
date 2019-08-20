@@ -71,7 +71,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 				return nil, importErr
 			}
 		}
-		if !doc.HasValidSyncData(db.writeSequences()) {
+		if !doc.HasValidSyncData() {
 			return nil, base.HTTPErrorf(404, "Not imported")
 		}
 	} else {
@@ -85,7 +85,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 			return nil, err
 		}
 
-		if !doc.HasValidSyncData(db.writeSequences()) {
+		if !doc.HasValidSyncData() {
 			// Check whether doc has been upgraded to use xattrs
 			upgradeDoc, _ := db.checkForUpgrade(docid, unmarshalLevel)
 			if upgradeDoc == nil {
@@ -623,9 +623,8 @@ func (db *Database) initializeSyncData(doc *Document) (err error) {
 	if err = doc.History.addRevision(doc.ID, RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false}); err != nil {
 		return err
 	}
-	if db.writeSequences() {
-		doc.Sequence, err = db.sequences.nextSequence()
-	}
+	doc.Sequence, err = db.sequences.nextSequence()
+
 	return
 }
 
@@ -843,7 +842,7 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 }
 
 func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists bool) error {
-	if !importAllowed && docExists && !doc.HasValidSyncData(db.writeSequences()) {
+	if !importAllowed && docExists && !doc.HasValidSyncData() {
 		return base.HTTPErrorf(409, "Not imported")
 	}
 	return nil
@@ -952,9 +951,9 @@ func (db *Database) addAttachments(newAttachments AttachmentData) error {
 // Update and prune RecentSequences
 func (db *Database) assignSequence(docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
 	var err error
-	if db.writeSequences() {
-		// Now that we know doc is valid, assign it the next sequence number, for _changes feed.
-		// But be careful not to request a second sequence # on a retry if we don't need one.
+
+		// Assign the next sequence number, for _changes feed.
+		// Be careful not to request a second sequence # on a retry if we don't need one.
 		if docSequence <= doc.Sequence {
 			if docSequence > 0 {
 				// Oops: we're on our second iteration thanks to a conflict, but the sequence
@@ -982,7 +981,7 @@ func (db *Database) assignSequence(docSequence uint64, doc *Document, unusedSequ
 			// Could add a db.Sequences.nextSequenceGreaterThan(doc.Sequence) to push the work down into the sequence allocator
 			//  - sequence allocator is responsible for releasing unused sequences, could optimize to do that in bulk if needed
 		}
-	}
+
 	doc.Sequence = docSequence
 	doc.UnusedSequences = unusedSequences
 
@@ -1269,7 +1268,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	}
 
 	// If the WriteUpdate didn't succeed, check whether there are unused, allocated sequences that need to be accounted for
-	if err != nil && db.writeSequences() {
+	if err != nil {
 		if docSequence > 0 {
 			if seqErr := db.sequences.releaseSequence(docSequence); seqErr != nil {
 				base.WarnfCtx(db.Ctx, base.KeyAll, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
@@ -1560,12 +1559,7 @@ func isAccessError(err error) bool {
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
-
-	if context.UseGlobalSequence() {
-		return context.ComputeSequenceChannelsForPrincipal(princ)
-	} else {
-		return context.ComputeVbSequenceChannelsForPrincipal(princ)
-	}
+	return context.ComputeSequenceChannelsForPrincipal(princ)
 }
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
@@ -1626,11 +1620,7 @@ func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.TimedSet, error) {
-	if context.UseGlobalSequence() {
-		return context.ComputeSequenceRolesForUser(user)
-	} else {
-		return context.ComputeVbSequenceRolesForUser(user)
-	}
+	return context.ComputeSequenceRolesForUser(user)
 }
 
 // Recomputes the set of roles a User has been granted access to by sync() functions.
@@ -1684,7 +1674,7 @@ func (context *DatabaseContext) checkForUpgrade(key string, unmarshalLevel Docum
 	}
 
 	doc, rawDocument, err := context.GetDocWithXattr(key, unmarshalLevel)
-	if err != nil || doc == nil || !doc.HasValidSyncData(context.writeSequences()) {
+	if err != nil || doc == nil || !doc.HasValidSyncData() {
 		return nil, nil
 	}
 	return doc, rawDocument

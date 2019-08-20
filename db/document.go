@@ -348,9 +348,9 @@ func parseXattrStreamData(xattrName string, data []byte) (body []byte, xattr []b
 	return body, xattr, nil
 }
 
-func (doc *SyncData) HasValidSyncData(requireSequence bool) bool {
+func (doc *SyncData) HasValidSyncData() bool {
 
-	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0 || !requireSequence)
+	valid := doc != nil && doc.CurrentRev != "" && (doc.Sequence > 0)
 	return valid
 }
 

@@ -57,7 +57,7 @@ func TestReadServerConfig(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
 			buf := bytes.NewBufferString(test.config)
-			_, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+			_, err := readServerConfig(buf)
 			if test.err == "" {
 				assert.NoError(tt, err, "unexpected error for test config")
 			} else {
@@ -92,7 +92,7 @@ func TestConfigValidation(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
 			buf := bytes.NewBufferString(test.config)
-			config, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+			config, err := readServerConfig(buf)
 			assert.NoError(tt, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
@@ -109,7 +109,7 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 	jsonConfig := `{"databases": {"db": {"delta_sync": {"enabled": true}}}}`
 
 	buf := bytes.NewBufferString(jsonConfig)
-	config, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+	config, err := readServerConfig(buf)
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
@@ -130,7 +130,7 @@ func TestConfigValidationCache(t *testing.T) {
 	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
 
 	buf := bytes.NewBufferString(jsonConfig)
-	config, err := readServerConfig(SyncGatewayRunModeNormal, buf)
+	config, err := readServerConfig(buf)
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
@@ -180,12 +180,9 @@ func TestLoadServerConfigExamples(t *testing.T) {
 	const configSuffix = ".json"
 
 	const enterpriseConfigPrefix = "ee_"
-	const accelConfigPrefix = "accel_"
 
 	err := filepath.Walk(exampleLogDirectory, func(configPath string, file os.FileInfo, err error) error {
 		assert.NoError(t, err)
-
-		runMode := SyncGatewayRunModeNormal
 
 		// Skip directories or files that aren't configs
 		if file.IsDir() || !strings.HasSuffix(file.Name(), configSuffix) {
@@ -197,13 +194,8 @@ func TestLoadServerConfigExamples(t *testing.T) {
 			return nil
 		}
 
-		// Set the accel run mode for accel configs
-		if strings.HasPrefix(file.Name(), accelConfigPrefix) {
-			runMode = SyncGatewayRunModeAccel
-		}
-
 		t.Run(configPath, func(tt *testing.T) {
-			_, err := LoadServerConfig(runMode, configPath)
+			_, err := LoadServerConfig(configPath)
 			assert.NoError(tt, err, "unexpected error validating example config")
 		})
 

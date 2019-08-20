@@ -270,12 +270,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
-	dbr.Handle("/_index",
-		makeHandler(sc, adminPrivs, (*handler).handleIndex)).Methods("GET")
-	dbr.Handle("/_index/channel/{channel}",
-		makeHandler(sc, adminPrivs, (*handler).handleIndexChannel)).Methods("GET")
-	dbr.Handle("/_index/channels",
-		makeHandler(sc, adminPrivs, (*handler).handleIndexAllChannels)).Methods("GET")
 	dbr.Handle("/_repair",
 		makeHandler(sc, adminPrivs, (*handler).handleRepair)).Methods("POST")
 

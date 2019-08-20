@@ -84,11 +84,9 @@ type DatabaseContext struct {
 	RevsLimit          uint32                   // Max depth a document's revision tree can grow to
 	autoImport         bool                     // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
 	revisionCache      RevisionCache            // Cache of recently-accessed doc revisions
-	changeCache        ChangeIndex              //
+	changeCache        *changeCache              // Cache of recently-access channels
 	EventMgr           *EventManager            // Manages notification events
 	AllowEmptyPassword bool                     // Allow empty passwords?  Defaults to false
-	SequenceHasher     *sequenceHasher          // Used to generate and resolve hash values for vector clock sequences
-	SequenceType       SequenceType             // Type of sequences used for this DB (integer or vector clock)
 	Options            DatabaseContextOptions   // Database Context Options
 	AccessLock         sync.RWMutex             // Allows DB offline to block until synchronous calls have completed
 	State              uint32                   // The runtime state of the DB from a service perspective
@@ -105,12 +103,9 @@ type DatabaseContext struct {
 type DatabaseContextOptions struct {
 	CacheOptions              *CacheOptions
 	RevisionCacheOptions      *RevisionCacheOptions
-	IndexOptions              *ChannelIndexOptions
-	SequenceHashOptions       *SequenceHashOptions
 	OldRevExpirySeconds       uint32
 	AdminInterface            *string
 	UnsupportedOptions        UnsupportedOptions
-	TrackDocs                 bool // Whether doc tracking channel should be created (used for autoImport)
 	OIDCOptions               *auth.OIDCOptions
 	DBOnlineCallback          DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions             ImportOptions
@@ -261,19 +256,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	if options.IndexOptions == nil {
-		// In-memory channel cache
-		dbContext.SequenceType = IntSequenceType
-		dbContext.changeCache = &changeCache{}
-	} else {
-		// KV channel index
-		dbContext.SequenceType = ClockSequenceType
-		dbContext.changeCache = &kvChangeIndex{}
-		dbContext.SequenceHasher, err = NewSequenceHasher(options.SequenceHashOptions)
-		if err != nil {
-			return nil, err
-		}
-	}
+	// In-memory channel cache
+	dbContext.changeCache = &changeCache{}
+
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
 	notifyChange := func(changedChannels base.Set) {
@@ -288,7 +273,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		dbContext,
 		notifyChange,
 		options.CacheOptions,
-		options.IndexOptions,
 	)
 
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
@@ -303,72 +287,69 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		feedMode = sgbucket.FeedResume
 	}
 
-	// If not using channel index or using channel index and tracking docs, start the tap feed
-	if options.IndexOptions == nil || options.TrackDocs {
-		base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
+	// Start DCP feed
+	base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
 
-		err = dbContext.mutationListener.Start(bucket, options.TrackDocs, feedMode, func(bucket string, err error) {
+	err = dbContext.mutationListener.Start(bucket, feedMode, func(bucket string, err error) {
 
-			msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
-			base.Warnf(base.KeyAll, msgFormat, base.UD(bucket), err)
-			errTakeDbOffline := dbContext.TakeDbOffline(fmt.Sprintf(msgFormat, bucket, err))
-			if errTakeDbOffline == nil {
+		msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
+		base.Warnf(base.KeyAll, msgFormat, base.UD(bucket), err)
+		errTakeDbOffline := dbContext.TakeDbOffline(fmt.Sprintf(msgFormat, bucket, err))
+		if errTakeDbOffline == nil {
 
-				//start a retry loop to pick up tap feed again backing off double the delay each time
-				worker := func() (shouldRetry bool, err error, value interface{}) {
-					//If DB is going online via an admin request Bucket will be nil
-					if dbContext.Bucket != nil {
-						err = dbContext.Bucket.Refresh()
-					} else {
-						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is not available", dbName)
-						return false, err, nil
-					}
-					return err != nil, err, nil
+			//start a retry loop to pick up tap feed again backing off double the delay each time
+			worker := func() (shouldRetry bool, err error, value interface{}) {
+				//If DB is going online via an admin request Bucket will be nil
+				if dbContext.Bucket != nil {
+					err = dbContext.Bucket.Refresh()
+				} else {
+					err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is not available", dbName)
+					return false, err, nil
 				}
-
-				sleeper := base.CreateDoublingSleeperFunc(
-					20, //MaxNumRetries
-					5,  //InitialRetrySleepTimeMS
-				)
-
-				description := fmt.Sprintf("Attempt reconnect to lost Mutation (TAP/DCP) Feed for : %v", dbContext.Name)
-				err, _ := base.RetryLoop(description, worker, sleeper)
-
-				if err == nil {
-					base.Infof(base.KeyCRUD, "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(dbContext.Name))
-
-					// The 10 second wait was introduced because the bucket was not fully initialised
-					// after the return of the retry loop.
-					timer := time.NewTimer(time.Duration(10) * time.Second)
-					<-timer.C
-
-					if options.DBOnlineCallback != nil {
-						options.DBOnlineCallback(dbContext)
-					}
-				}
+				return err != nil, err, nil
 			}
 
-			// If errTakeDbOffline is non-nil, it can be safely ignored because:
-			// - The only known error state for dbContext.TakeDbOffline is if the current db state wasn't online
-			// - That code would hit an error if the dropped tap feed triggered TakeDbOffline, but the db was already non-online
-			// - In that case (some other event, potentially an admin action, took the DB offline), and so there is no reason to do the auto-reconnect processing
+			sleeper := base.CreateDoublingSleeperFunc(
+				20, //MaxNumRetries
+				5,  //InitialRetrySleepTimeMS
+			)
 
-			// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
+			description := fmt.Sprintf("Attempt reconnect to lost Mutation (TAP/DCP) Feed for : %v", dbContext.Name)
+			err, _ := base.RetryLoop(description, worker, sleeper)
 
-		}, dbContext.DbStats.statsDatabaseMap)
+			if err == nil {
+				base.Infof(base.KeyCRUD, "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(dbContext.Name))
 
-		// Check if there is an error starting the DCP feed
-		if err != nil {
-			dbContext.changeCache = nil
-			return nil, err
+				// The 10 second wait was introduced because the bucket was not fully initialised
+				// after the return of the retry loop.
+				timer := time.NewTimer(time.Duration(10) * time.Second)
+				<-timer.C
+
+				if options.DBOnlineCallback != nil {
+					options.DBOnlineCallback(dbContext)
+				}
+			}
 		}
 
-		// Unlock change cache
-		err := dbContext.changeCache.Start()
-		if err != nil {
-			return nil, err
-		}
+		// If errTakeDbOffline is non-nil, it can be safely ignored because:
+		// - The only known error state for dbContext.TakeDbOffline is if the current db state wasn't online
+		// - That code would hit an error if the dropped tap feed triggered TakeDbOffline, but the db was already non-online
+		// - In that case (some other event, potentially an admin action, took the DB offline), and so there is no reason to do the auto-reconnect processing
 
+		// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
+
+	}, dbContext.DbStats.statsDatabaseMap)
+
+	// Check if there is an error starting the DCP feed
+	if err != nil {
+		dbContext.changeCache = nil
+		return nil, err
+	}
+
+	// Unlock change cache
+	err = dbContext.changeCache.Start()
+	if err != nil {
+		return nil, err
 	}
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
@@ -485,22 +466,11 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 // Create a zero'd out since value (eg, initial since value) based on the sequence type
 // of the database (int or vector clock)
 func (context *DatabaseContext) CreateZeroSinceValue() SequenceID {
-	since := SequenceID{}
-	since.SeqType = context.SequenceType
-	since.SequenceHasher = context.SequenceHasher
-	if context.SequenceType == ClockSequenceType {
-		since.Clock = base.NewSequenceClockImpl()
-	}
-	return since
+	return SequenceID{}
 }
 
 func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
 	context.mutationListener.OnDocChanged = callback
-}
-
-func (context *DatabaseContext) GetStableClock() (clock base.SequenceClock, err error) {
-	staleOk := false
-	return context.changeCache.GetStableClock(staleOk)
 }
 
 func (context *DatabaseContext) GetServerUUID() string {
@@ -530,16 +500,8 @@ func (context *DatabaseContext) GetServerUUID() string {
 }
 
 // Utility function to support cache testing from outside db package
-func (context *DatabaseContext) GetChangeIndex() ChangeIndex {
+func (context *DatabaseContext) GetChangeCache() *changeCache {
 	return context.changeCache
-}
-
-func (context *DatabaseContext) writeSequences() bool {
-	return context.UseGlobalSequence()
-}
-
-func (context *DatabaseContext) UseGlobalSequence() bool {
-	return context.SequenceType != ClockSequenceType
 }
 
 func (context *DatabaseContext) TapListener() changeListener {
@@ -577,7 +539,7 @@ func (context *DatabaseContext) RestartListener() error {
 	if context.UseXattrs() && context.autoImport {
 		feedMode = sgbucket.FeedResume
 	}
-	if err := context.mutationListener.Start(context.Bucket, context.Options.TrackDocs, feedMode, nil, context.DbStats.statsDatabaseMap); err != nil {
+	if err := context.mutationListener.Start(context.Bucket, feedMode, nil, context.DbStats.statsDatabaseMap); err != nil {
 		return err
 	}
 	return nil
@@ -1026,7 +988,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 		docCount++
 		documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
 			imported := false
-			if !doc.HasValidSyncData(db.writeSequences()) {
+			if !doc.HasValidSyncData() {
 				// This is a document not known to the sync gateway. Ignore it:
 				return nil, false, nil, base.ErrUpdateCancel
 			} else {
@@ -1183,15 +1145,6 @@ func (db *Database) invalUserOrRoleChannels(name string) {
 		db.invalRoleChannels(principalName)
 	} else {
 		db.invalUserChannels(principalName)
-	}
-}
-
-// Helper method for API unit test retrieval of index bucket
-func (context *DatabaseContext) GetIndexBucket() base.Bucket {
-	if kvChangeIndex, ok := context.changeCache.(*kvChangeIndex); ok {
-		return kvChangeIndex.reader.indexReadBucket
-	} else {
-		return nil
 	}
 }
 

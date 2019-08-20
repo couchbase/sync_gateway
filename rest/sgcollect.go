@@ -310,9 +310,6 @@ func sgcollectFilename() string {
 
 	// use a shortened product name
 	name := "sg"
-	if base.ProductName == "Couchbase SG Accel" {
-		name = "sga"
-	}
 
 	// get primary IP address
 	ip, err := base.FindPrimaryAddr()

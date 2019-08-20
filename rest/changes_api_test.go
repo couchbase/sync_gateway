@@ -35,15 +35,11 @@ type indexTester struct {
 	_indexBucket base.Bucket
 }
 
-func initRestTester(sequenceType db.SequenceType, syncFn string, testing testing.TB) *indexTester {
-	if sequenceType == db.ClockSequenceType {
-		return initIndexTester(true, syncFn, testing)
-	} else {
-		return initIndexTester(false, syncFn, testing)
-	}
+func initRestTester(syncFn string, testing testing.TB) *indexTester {
+	return initIndexTester(syncFn, testing)
 }
 
-func initIndexTester(useBucketIndex bool, syncFn string, tb testing.TB) *indexTester {
+func initIndexTester(syncFn string, tb testing.TB) *indexTester {
 
 	it := &indexTester{RestTester: *NewRestTester(tb, nil)}
 	it.SyncFn = syncFn
@@ -63,12 +59,8 @@ func initIndexTester(useBucketIndex bool, syncFn string, tb testing.TB) *indexTe
 	serverName := "walrus:"
 	//serverName := "http://localhost:8091"
 	bucketName := "sg_bucket"
-	indexBucketName := "sg_index_bucket"
 
 	feedType := "tap"
-	if useBucketIndex {
-		feedType = "dcp"
-	}
 
 	dbConfig := &DbConfig{
 		BucketConfig: BucketConfig{
@@ -80,34 +72,13 @@ func initIndexTester(useBucketIndex bool, syncFn string, tb testing.TB) *indexTe
 		UseViews: true, // walrus only supports views
 	}
 
-	if useBucketIndex {
-		channelIndexConfig := &ChannelIndexConfig{
-			BucketConfig: BucketConfig{
-				Server: &serverName,
-				Bucket: &indexBucketName,
-			},
-		}
-		dbConfig.ChannelIndex = channelIndexConfig
-	}
-
-	dbContext, err := it.RestTesterServerContext.AddDatabaseFromConfig(dbConfig)
-
-	if useBucketIndex {
-		_, err := base.SeedTestPartitionMap(dbContext.GetIndexBucket(), 64)
-		if err != nil {
-			panic(fmt.Sprintf("Error from seed partition map: %v", err))
-		}
-	}
-
+	_, err := it.RestTesterServerContext.AddDatabaseFromConfig(dbConfig)
 	if err != nil {
 		panic(fmt.Sprintf("Error from AddDatabaseFromConfig: %v", err))
 	}
 
 	it.RestTesterBucket = it.RestTesterServerContext.Database("db").Bucket
 
-	if useBucketIndex {
-		it._indexBucket = it.RestTesterServerContext.Database("db").GetIndexBucket()
-	}
 
 	return it
 }
@@ -277,9 +248,9 @@ func TestDocDeletionFromChannel(t *testing.T) {
 
 func TestPostChangesInteger(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel);}`, t)
 	defer it.Close()
 
 	postChanges(t, it)
@@ -323,9 +294,9 @@ func TestPostChangesUserTiming(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel)}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel)}`, t)
 	defer it.Close()
 
 	// Create user:
@@ -386,14 +357,14 @@ func TestPostChangesSinceInteger(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel);}`, t)
 	defer it.Close()
 
 	postChangesSince(t, it)
 }
 
 func TestPostChangesWithQueryString(t *testing.T) {
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel);}`, t)
 	defer it.Close()
 
 	// Put several documents
@@ -490,9 +461,9 @@ func postChangesSince(t *testing.T, it *indexTester) {
 
 func TestPostChangesChannelFilterInteger(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel);}`, t)
 	defer it.Close()
 
 	postChangesChannelFilter(t, it)
@@ -559,9 +530,9 @@ func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel);}`, t)
 	defer it.Close()
 	postChangesAdminChannelGrant(t, it)
 }
@@ -1299,7 +1270,7 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 func TestChangesActiveOnlyInteger(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel);}`, t)
 	defer it.Close()
 	changesActiveOnly(t, it)
 }
@@ -2387,7 +2358,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel);}`, t)
 	defer it.Close()
 
 	testDb := it.ServerContext().Database("db")
@@ -2548,7 +2519,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyChanges|base.KeyCache)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel);}`, t)
 	defer it.Close()
 
 	// Create user:
@@ -3052,7 +3023,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 // Validate that an admin channel grant wakes up a waiting changes request
 func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

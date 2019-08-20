@@ -22,5 +22,5 @@ func init() {
 
 // Simple Sync Gateway launcher tool.
 func main() {
-	rest.ServerMain(rest.SyncGatewayRunModeNormal)
+	rest.ServerMain()
 }

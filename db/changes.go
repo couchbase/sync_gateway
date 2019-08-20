@@ -282,13 +282,9 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	if (options.Continuous || options.Wait) && options.Terminator == nil {
 		base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed: Terminator missing for Continuous/Wait mode")
 	}
-	if db.SequenceType == IntSequenceType {
-		base.DebugfCtx(db.Ctx, base.KeyChanges, "Int sequence multi changes feed...")
-		return db.SimpleMultiChangesFeed(chans, options)
-	} else {
-		base.DebugfCtx(db.Ctx, base.KeyChanges, "Vector multi changes feed...")
-		return db.VectorMultiChangesFeed(chans, options)
-	}
+	base.DebugfCtx(db.Ctx, base.KeyChanges, "Int sequence multi changes feed...")
+	return db.SimpleMultiChangesFeed(chans, options)
+
 }
 
 func (db *Database) startChangeWaiter(chans base.Set) *changeWaiter {

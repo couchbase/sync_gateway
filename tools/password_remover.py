@@ -318,10 +318,7 @@ class TestRemovePasswords(unittest.TestCase):
           "log": ["*"],
           "databases": {
             "db2": {
-                "server": "http://bucket-1:foobar@localhost:8091",
-                "channel_index": {
-                    "server": "http://bucket3:foobar@localhost:8091"
-                }
+                "server": "http://bucket-1:foobar@localhost:8091"
             },
             "db": {
               "server": "http://bucket4:foobar@localhost:8091",
@@ -370,10 +367,7 @@ class TestRemovePasswords(unittest.TestCase):
             "bucket": "bucket1",
             "server": "http://localhost:8091",
             "password": "foobar",
-            "pool": "default",
-            "channel_index": {
-                "server": "http://bucket3:foobar@localhost:8091"
-            }
+            "pool": "default"
         }
         """
         with_passwords_removed = remove_passwords(db_config)
@@ -389,10 +383,7 @@ class TestRemovePasswords(unittest.TestCase):
           "log": ["*"],
           "databases": {
             "db2": {
-                "server": "http://bucket-1:foobar@localhost:8091",
-                "channel_index": {
-                    "server": "http://bucket3:foobar@localhost:8091"
-                }
+                "server": "http://bucket-1:foobar@localhost:8091"
             },
             "db": {
               "server": "http://localhost:8091",

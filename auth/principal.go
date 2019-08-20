@@ -45,14 +45,6 @@ type Principal interface {
 	// access was granted; else returns zero.
 	CanSeeChannelSince(channel string) uint64
 
-	// If the Principal has access to the given channel, returns the vb and sequence number at which
-	// access was granted; else returns zero.
-	CanSeeChannelSinceVbSeq(channel string, hashFunction VBHashFunction) (base.VbSeq, bool)
-
-	// Validate that the specified vbSeq has a non-zero sequence, and populate the vbucket for
-	// admin grants.
-	ValidateGrant(vbseq *ch.VbSequence, hashFunction VBHashFunction) bool
-
 	// Returns an error if the Principal does not have access to all the channels in the set.
 	AuthorizeAllChannels(channels base.Set) error
 
@@ -120,19 +112,6 @@ type User interface {
 	// Returns a TimedSet containing only the channels from the input set that the user has access
 	// to, annotated with the sequence number at which access was granted.
 	FilterToAvailableChannels(channels base.Set) ch.TimedSet
-
-	// Every channel the user has access to, including those inherited from Roles.
-	InheritedChannelsForClock(since base.SequenceClock) (channels ch.TimedSet, secondaryTriggers ch.TimedSet)
-
-	// If the input set contains the wildcard "*" channel, returns the user's InheritedChannels, restricted
-	// by the since value;
-	// else returns the input channel list unaltered.
-	ExpandWildCardChannelSince(channels base.Set, since base.SequenceClock) base.Set
-
-	// Returns a TimedSet containing only the channels from the input set that the user has access
-	// to, annotated with the sequence number at which access was granted.  When there are multiple grants
-	// to the same channel, priority is given to values prior to the specified since.
-	FilterToAvailableChannelsForSince(channels base.Set, since base.SequenceClock) (ch.TimedSet, ch.TimedSet)
 
 	setRolesSince(ch.TimedSet)
 }

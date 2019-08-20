@@ -19,6 +19,9 @@ type statsContext struct {
 	cpuStatsSnapshot   *cpuStatsSnapshot
 }
 
+// The peak number of goroutines observed during lifetime of program
+var MaxGoroutinesSeen uint64
+
 // A snapshot of the cpu stats that are used for stats calculation
 type cpuStatsSnapshot struct {
 
@@ -238,12 +241,12 @@ func AddGoRuntimeStats() {
 // Record Goroutines high watermark into expvars
 func goroutineHighwaterMark(numGoroutines uint64) (maxGoroutinesSeen uint64) {
 
-	maxGoroutinesSeen = atomic.LoadUint64(&base.MaxGoroutinesSeen)
+	maxGoroutinesSeen = atomic.LoadUint64(&MaxGoroutinesSeen)
 
 	if numGoroutines > maxGoroutinesSeen {
 
 		// Clobber existing values rather than attempt a CAS loop. This stat can be considered a "best effort".
-		atomic.StoreUint64(&base.MaxGoroutinesSeen, numGoroutines)
+		atomic.StoreUint64(&MaxGoroutinesSeen, numGoroutines)
 
 		return numGoroutines
 	}

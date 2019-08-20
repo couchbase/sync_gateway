@@ -34,7 +34,6 @@ import (
 const (
 	TapFeedType      = "tap"
 	DcpFeedType      = "dcp"
-	DcpShardFeedType = "dcpshard"
 )
 
 const (

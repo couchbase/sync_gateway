@@ -272,7 +272,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	doc.Cas = existingDoc.Cas
 
 	// If no sync metadata is present, return for import handling
-	if !doc.HasValidSyncData(false) {
+	if !doc.HasValidSyncData() {
 		base.Infof(base.KeyMigrate, "During migrate, doc %q doesn't have valid sync data.  Falling back to import handling.  (cas=%d)", base.UD(docid), doc.Cas)
 		return doc, true, nil
 	}

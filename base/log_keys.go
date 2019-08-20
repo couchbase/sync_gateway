@@ -18,7 +18,6 @@ const (
 	KeyAll LogKey = 1 << iota
 
 	KeyAdmin
-	KeyAccel
 	KeyAccess
 	KeyAuth
 	KeyBucket
@@ -46,7 +45,6 @@ var (
 		KeyNone:           "",
 		KeyAll:            "*",
 		KeyAdmin:          "Admin",
-		KeyAccel:          "Accel",
 		KeyAccess:         "Access",
 		KeyAuth:           "Auth",
 		KeyBucket:         "Bucket",

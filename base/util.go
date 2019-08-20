@@ -202,9 +202,6 @@ func CouchbaseUrlWithAuth(serverUrl, username, password, bucketname string) (str
 
 }
 
-// Callback function to return the stable sequence
-type StableSequenceFunc func() (clock SequenceClock, err error)
-
 // This transforms raw input bucket credentials (for example, from config), to input
 // credentials expected by Couchbase server, based on a few rules
 func TransformBucketCredentials(inputUsername, inputPassword, inputBucketname string) (username, password, bucketname string) {
@@ -645,46 +642,6 @@ func sanitizeRequestURLQueryParams(urlStr string, values url.Values) string {
 	}
 
 	return urlStr
-}
-
-// Convert a map of vbno->seq high sequences (as returned by couchbasebucket.GetStatsVbSeqno()) to a SequenceClock
-func HighSeqNosToSequenceClock(highSeqs map[uint16]uint64) (*SequenceClockImpl, error) {
-
-	seqClock := NewSequenceClockImpl()
-	for vbNo, vbSequence := range highSeqs {
-		seqClock.SetSequence(vbNo, vbSequence)
-	}
-
-	return seqClock, nil
-
-}
-
-// Make sure that the index bucket and data bucket have correct sequence parity
-// See https://github.com/couchbase/sync_gateway/issues/1133 for more details
-func VerifyBucketSequenceParity(indexBucketStableClock SequenceClock, bucket Bucket) error {
-
-	maxVbNo, err := bucket.GetMaxVbno()
-	if err != nil {
-		return err
-	}
-	_, highSeqnos, err := bucket.GetStatsVbSeqno(maxVbNo, false)
-	if err != nil {
-		return err
-	}
-	dataBucketClock, err := HighSeqNosToSequenceClock(highSeqnos)
-	if err != nil {
-		return err
-	}
-
-	// The index bucket stable clock should be before or equal to the data bucket clock,
-	// otherwise it could indicate that the data bucket has been _reset_ to empty or to
-	// a value, which would render the index bucket incorrect
-	if !indexBucketStableClock.AllBefore(dataBucketClock) {
-		return fmt.Errorf("IndexBucketStable clock is not AllBefore the data bucket clock")
-	}
-
-	return nil
-
 }
 
 func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB, err error) {
