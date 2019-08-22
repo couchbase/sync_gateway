@@ -17,6 +17,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
 	"hash/crc32"
@@ -1055,4 +1056,71 @@ func Sha1HashString(str string, salt string) string {
 	h.Write([]byte(salt + str))
 	hashedKey := h.Sum(nil)
 	return fmt.Sprintf("%x", hashedKey)
+}
+
+// InjectJSONProperty takes the given JSON byte slice, marshals val, and inserts under the given key, and returns the result.
+func InjectJSONProperty(b []byte, key string, val interface{}) (new []byte, err error) {
+	bIsJSONObject, bIsEmpty := isJSONObject(b)
+	if !bIsJSONObject {
+		return nil, errors.New("b is not a JSON object")
+	}
+
+	valBytes, err := json.Marshal(val)
+	if err != nil {
+		return nil, err
+	}
+
+	return injectJSONPropertyFromBytes(b, bIsEmpty, key, valBytes), nil
+}
+
+// InjectJSONPropertyFromBytes takes the given JSON byte slice, and inserts val under the given key, and returns the result.
+func InjectJSONPropertyFromBytes(b []byte, key string, val []byte) (new []byte, err error) {
+	bIsJSONObject, bIsEmpty := isJSONObject(b)
+	if !bIsJSONObject {
+		return nil, errors.New("b is not a JSON object")
+	}
+
+	return injectJSONPropertyFromBytes(b, bIsEmpty, key, val), nil
+}
+
+// isJSONObject checks if the given bytes are a JSON object,
+// and also whether it's an empty object or not.
+func isJSONObject(b []byte) (isJSONObject, isEmpty bool) {
+
+	// Check if the byte slice starts with { and ends with }
+	if b[0] != 0x7b || b[len(b)-1] != 0x7d {
+		return false, false
+	}
+
+	return true, len(b) == 2
+}
+
+// injectJSONPropertyFromBytes injects val under the given key into b, assuming b is a JSON object.
+func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, key string, val []byte) (new []byte) {
+
+	// the overhead of wrapping key in quotes, a colon, and a comma if body is not empty
+	jsonOverhead := 4
+	if bIsEmpty {
+		jsonOverhead = 3
+	}
+
+	// Create the new byte slice with the required capacity
+	new = make([]byte, 0, len(b)+len(val)+len(key)+jsonOverhead)
+
+	// copy almost all of b, except the last closing brace
+	new = append(new, b[0:len(b)-1]...)
+
+	// if the body isn't empty, append a comma before we insert our property
+	if !bIsEmpty {
+		new = append(new, []byte(",")...)
+	}
+
+	// inject valBytes as the last property
+	new = append(new, []byte(`"`+key+`":`)...)
+	new = append(new, val...)
+
+	// copy the last closing brace of b
+	new = append(new, b[len(b)-1:]...)
+
+	return new
 }
