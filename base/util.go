@@ -1096,7 +1096,7 @@ func isJSONObject(b []byte) (isJSONObject, isEmpty bool) {
 }
 
 // injectJSONPropertyFromBytes injects val under the given key into b, assuming b is a JSON object.
-func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, key string, val []byte) (new []byte) {
+func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, key string, val []byte) (newJSON []byte) {
 
 	// the overhead of wrapping key in quotes, a colon, and a comma if body is not empty
 	jsonOverhead := 4
@@ -1105,22 +1105,22 @@ func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, key string, val []byte
 	}
 
 	// Create the new byte slice with the required capacity
-	new = make([]byte, 0, len(b)+len(val)+len(key)+jsonOverhead)
+	newJSON = make([]byte, len(b)+len(val)+len(key)+jsonOverhead)
 
 	// copy almost all of b, except the last closing brace
-	new = append(new, b[0:len(b)-1]...)
+	offset := copy(newJSON, b[0:len(b)-1])
 
 	// if the body isn't empty, append a comma before we insert our property
 	if !bIsEmpty {
-		new = append(new, []byte(",")...)
+		offset += copy(newJSON[offset:], ",")
 	}
 
 	// inject valBytes as the last property
-	new = append(new, []byte(`"`+key+`":`)...)
-	new = append(new, val...)
+	offset += copy(newJSON[offset:], `"`+key+`":`)
+	offset += copy(newJSON[offset:], val)
 
 	// copy the last closing brace of b
-	new = append(new, b[len(b)-1:]...)
+	_ = copy(newJSON[offset:], b[len(b)-1:])
 
-	return new
+	return newJSON
 }
