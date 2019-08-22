@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
@@ -672,11 +674,10 @@ func TestInjectJSONProperty(t *testing.T) {
 		t.Run(test.input, func(tt *testing.T) {
 			output, err := InjectJSONProperty([]byte(test.input), newValKey, newVal)
 			if test.expectedErr != "" {
-				assert.Errorf(tt, err, test.expectedErr, "expected error did not match")
+				require.Errorf(tt, err, test.expectedErr, "expected error did not match")
 				return
 			} else {
-				assert.NoError(tt, err, "unexpected error")
-				return
+				require.NoError(tt, err, "unexpected error")
 			}
 
 			assert.Equal(tt, test.expectedOutput, string(output))
@@ -723,11 +724,10 @@ func TestInjectJSONPropertyFromBytes(t *testing.T) {
 		t.Run(test.input, func(tt *testing.T) {
 			output, err := InjectJSONPropertyFromBytes([]byte(test.input), newValKey, newValBytes)
 			if test.expectedErr != "" {
-				assert.Errorf(tt, err, test.expectedErr, "expected error did not match")
+				require.Errorf(tt, err, test.expectedErr, "expected error did not match")
 				return
 			} else {
-				assert.NoError(tt, err, "unexpected error")
-				return
+				require.NoError(tt, err, "unexpected error")
 			}
 
 			assert.Equal(tt, test.expectedOutput, string(output))
