@@ -1063,6 +1063,8 @@ func Sha1HashString(str string, salt string) string {
 // This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
 // usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
 func InjectJSONProperty(b []byte, key string, val interface{}) (new []byte, err error) {
+	b = bytes.TrimSpace(b)
+
 	bIsJSONObject, bIsEmpty := isJSONObject(b)
 	if !bIsJSONObject {
 		return nil, errors.New("b is not a JSON object")
@@ -1081,6 +1083,8 @@ func InjectJSONProperty(b []byte, key string, val interface{}) (new []byte, err 
 // This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
 // usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
 func InjectJSONPropertyFromBytes(b []byte, key string, val []byte) (new []byte, err error) {
+	b = bytes.TrimSpace(b)
+
 	bIsJSONObject, bIsEmpty := isJSONObject(b)
 	if !bIsJSONObject {
 		return nil, errors.New("b is not a JSON object")

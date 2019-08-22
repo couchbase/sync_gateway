@@ -672,6 +672,10 @@ func TestInjectJSONProperty(t *testing.T) {
 			input:          `{"newval":"old"}`,
 			expectedOutput: `{"newval":"old","newval":123}`,
 		},
+		{
+			input:          `    {"key":"val"}  `,
+			expectedOutput: `{"key":"val","newval":123}`,
+		},
 	}
 
 	for _, test := range tests {
@@ -725,6 +729,10 @@ func TestInjectJSONPropertyFromBytes(t *testing.T) {
 		{
 			input:          `{"newval":"old"}`,
 			expectedOutput: `{"newval":"old","newval":{"abc":123,"nums":["one","two","three"],"test":true}}`,
+		},
+		{
+			input:          `    {"key":"val"}  `,
+			expectedOutput: `{"key":"val","newval":{"abc":123,"nums":["one","two","three"],"test":true}}`,
 		},
 	}
 
