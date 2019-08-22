@@ -765,3 +765,30 @@ func BenchmarkInjectJSONPropertyFromBytes(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkInjectJSONProperty(b *testing.B) {
+	newValKey := "newval"
+	newVal := 123
+
+	tests := []struct {
+		input string
+	}{
+		{
+			input: `null`,
+		},
+		{
+			input: "{}",
+		},
+		{
+			input: `{"key":"val"}`,
+		},
+	}
+
+	for _, test := range tests {
+		b.Run(test.input, func(bb *testing.B) {
+			for i := 0; i < bb.N; i++ {
+				_, _ = InjectJSONProperty([]byte(test.input), newValKey, newVal)
+			}
+		})
+	}
+}
