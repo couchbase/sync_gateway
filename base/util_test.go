@@ -637,6 +637,57 @@ func TestDefaultHTTPTransport(t *testing.T) {
 	})
 }
 
+func TestInjectJSONProperty(t *testing.T) {
+	newValKey := "newval"
+	newVal := 123
+
+	tests := []struct {
+		input          string
+		expectedOutput string
+		expectedErr    string
+	}{
+		{
+			input:       `null`,
+			expectedErr: `not a JSON object`,
+		},
+		{
+			input:       "123",
+			expectedErr: `not a JSON object`,
+		},
+		{
+			input:          "{}",
+			expectedOutput: `{"newval":123}`,
+		},
+		{
+			input:          `{"key":"val"}`,
+			expectedOutput: `{"key":"val","newval":123}`,
+		},
+		{
+			input:          `{"newval":"old"}`,
+			expectedOutput: `{"newval":"old","newval":123}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(tt *testing.T) {
+			output, err := InjectJSONProperty([]byte(test.input), newValKey, newVal)
+			if test.expectedErr != "" {
+				assert.Errorf(tt, err, test.expectedErr, "expected error did not match")
+				return
+			} else {
+				assert.NoError(tt, err, "unexpected error")
+				return
+			}
+
+			assert.Equal(tt, test.expectedOutput, string(output))
+
+			var m map[string]interface{}
+			err = json.Unmarshal(output, &m)
+			assert.NoError(tt, err, "produced invalid JSON")
+		})
+	}
+}
+
 func TestInjectJSONPropertyFromBytes(t *testing.T) {
 	newValKey := "newval"
 	newValBytes := []byte(`{"abc":123,"nums":["one","two","three"],"test":true}`)
@@ -688,53 +739,29 @@ func TestInjectJSONPropertyFromBytes(t *testing.T) {
 	}
 }
 
-func TestInjectJSONProperty(t *testing.T) {
+func BenchmarkInjectJSONPropertyFromBytes(b *testing.B) {
 	newValKey := "newval"
-	newVal := 123
+	newValBytes := []byte(`{"abc":123,"nums":["one","two","three"],"test":true}`)
 
 	tests := []struct {
-		input          string
-		expectedOutput string
-		expectedErr    string
+		input string
 	}{
 		{
-			input:       `null`,
-			expectedErr: `not a JSON object`,
+			input: `null`,
 		},
 		{
-			input:       "123",
-			expectedErr: `not a JSON object`,
+			input: "{}",
 		},
 		{
-			input:          "{}",
-			expectedOutput: `{"newval":123}`,
-		},
-		{
-			input:          `{"key":"val"}`,
-			expectedOutput: `{"key":"val","newval":123}`,
-		},
-		{
-			input:          `{"newval":"old"}`,
-			expectedOutput: `{"newval":"old","newval":123}`,
+			input: `{"key":"val"}`,
 		},
 	}
 
 	for _, test := range tests {
-		t.Run(test.input, func(tt *testing.T) {
-			output, err := InjectJSONProperty([]byte(test.input), newValKey, newVal)
-			if test.expectedErr != "" {
-				assert.Errorf(tt, err, test.expectedErr, "expected error did not match")
-				return
-			} else {
-				assert.NoError(tt, err, "unexpected error")
-				return
+		b.Run(test.input, func(bb *testing.B) {
+			for i := 0; i < bb.N; i++ {
+				_, _ = InjectJSONPropertyFromBytes([]byte(test.input), newValKey, newValBytes)
 			}
-
-			assert.Equal(tt, test.expectedOutput, string(output))
-
-			var m map[string]interface{}
-			err = json.Unmarshal(output, &m)
-			assert.NoError(tt, err, "produced invalid JSON")
 		})
 	}
 }
