@@ -1236,62 +1236,6 @@ func TestAccessFunctionDb(t *testing.T) {
 	goassert.DeepEquals(t, user.InheritedChannels(), expected)
 }
 
-// Disabled until https://github.com/couchbase/sync_gateway/issues/3413 is fixed
-func TestAccessFunctionWithVbuckets(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test only works with a Couchbase server")
-	}
-
-	//base.LogKeys["CRUD"] = true
-	//base.LogKeys["Access"] = true
-
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
-
-
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
-
-	var err error
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
-
-	user, _ := authenticator.NewUser("bernard", "letmein", channels.SetOf(t, "Netflix"))
-	assert.NoError(t, authenticator.Save(user), "Save")
-
-	body := Body{"users": []string{"bernard"}, "userChannels": []string{"ABC"}}
-	_, _, err = db.Put("doc1", body)
-	assert.NoError(t, err, "")
-	time.Sleep(100 * time.Millisecond)
-
-	user, err = authenticator.GetUser("bernard")
-	assert.NoError(t, err, "GetUser")
-	expected := channels.TimedSetFromString(fmt.Sprintf("ABC:%d.1,Netflix:1,!:1", testBucket.VBHash("doc1")))
-	goassert.DeepEquals(t, user.Channels(), expected)
-
-	body = Body{"users": []string{"bernard"}, "userChannels": []string{"NBC"}}
-	_, _, err = db.Put("doc2", body)
-	assert.NoError(t, err, "")
-	time.Sleep(100 * time.Millisecond)
-
-	user, err = authenticator.GetUser("bernard")
-	assert.NoError(t, err, "GetUser")
-	expected = channels.TimedSetFromString(fmt.Sprintf("ABC:%d.1,NBC:%d.1,Netflix:1,!:1", testBucket.VBHash("doc1"), testBucket.VBHash("doc2")))
-	goassert.DeepEquals(t, user.Channels(), expected)
-
-	// Have another doc assign a new channel, and one of the previously present channels
-	body = Body{"users": []string{"bernard"}, "userChannels": []string{"ABC", "PBS"}}
-	_, _, err = db.Put("doc3", body)
-	assert.NoError(t, err, "")
-	time.Sleep(100 * time.Millisecond)
-
-	user, err = authenticator.GetUser("bernard")
-	assert.NoError(t, err, "GetUser")
-	expected = channels.TimedSetFromString(fmt.Sprintf("ABC:%d.1,NBC:%d.1,PBS:%d.1,Netflix:1,!:1", testBucket.VBHash("doc1"), testBucket.VBHash("doc2"), testBucket.VBHash("doc3")))
-	goassert.DeepEquals(t, user.Channels(), expected)
-
-}
-
 func TestDocIDs(t *testing.T) {
 	goassert.Equals(t, realDocID(""), "")
 	goassert.Equals(t, realDocID("_"), "")
