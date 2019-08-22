@@ -1059,6 +1059,9 @@ func Sha1HashString(str string, salt string) string {
 }
 
 // InjectJSONProperty takes the given JSON byte slice, marshals val, and inserts under the given key, and returns the result.
+//
+// This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
+// usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
 func InjectJSONProperty(b []byte, key string, val interface{}) (new []byte, err error) {
 	bIsJSONObject, bIsEmpty := isJSONObject(b)
 	if !bIsJSONObject {
@@ -1074,6 +1077,9 @@ func InjectJSONProperty(b []byte, key string, val interface{}) (new []byte, err 
 }
 
 // InjectJSONPropertyFromBytes takes the given JSON byte slice, and inserts val under the given key, and returns the result.
+//
+// This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
+// usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
 func InjectJSONPropertyFromBytes(b []byte, key string, val []byte) (new []byte, err error) {
 	bIsJSONObject, bIsEmpty := isJSONObject(b)
 	if !bIsJSONObject {
@@ -1095,7 +1101,7 @@ func isJSONObject(b []byte) (isJSONObject, isEmpty bool) {
 	return true, len(b) == 2
 }
 
-// injectJSONPropertyFromBytes injects val under the given key into b, assuming b is a JSON object.
+// injectJSONPropertyFromBytes injects val under the given key into b.
 func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, key string, val []byte) (newJSON []byte) {
 
 	// the overhead of wrapping key in quotes, a colon, and a comma if body is not empty
@@ -1119,8 +1125,8 @@ func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, key string, val []byte
 	offset += copy(newJSON[offset:], `"`+key+`":`)
 	offset += copy(newJSON[offset:], val)
 
-	// copy the last closing brace of b
-	_ = copy(newJSON[offset:], b[len(b)-1:])
+	// closing brace
+	_ = copy(newJSON[offset:], "}")
 
 	return newJSON
 }
