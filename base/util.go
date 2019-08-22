@@ -1088,7 +1088,7 @@ func InjectJSONPropertyFromBytes(b []byte, key string, val []byte) (new []byte, 
 func isJSONObject(b []byte) (isJSONObject, isEmpty bool) {
 
 	// Check if the byte slice starts with { and ends with }
-	if b[0] != 0x7b || b[len(b)-1] != 0x7d {
+	if len(b) < 2 || b[0] != 0x7b || b[len(b)-1] != 0x7d {
 		return false, false
 	}
 

@@ -649,6 +649,10 @@ func TestInjectJSONProperty(t *testing.T) {
 		expectedErr    string
 	}{
 		{
+			input:       ``,
+			expectedErr: `not a JSON object`,
+		},
+		{
 			input:       `null`,
 			expectedErr: `not a JSON object`,
 		},
@@ -698,6 +702,10 @@ func TestInjectJSONPropertyFromBytes(t *testing.T) {
 		expectedOutput string
 		expectedErr    string
 	}{
+		{
+			input:       ``,
+			expectedErr: `not a JSON object`,
+		},
 		{
 			input:       `null`,
 			expectedErr: `not a JSON object`,
