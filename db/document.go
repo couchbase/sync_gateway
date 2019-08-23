@@ -76,7 +76,7 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 
 	// Creating a new SyncData with the redacted info. We copy all the information which stays the same and create new
 	// items for the redacted data. The data to be redacted is populated below.
-	syncData := SyncData{
+	redactedSyncData := SyncData{
 		CurrentRev:      sd.CurrentRev,
 		NewestRev:       sd.NewestRev,
 		Flags:           sd.Flags,
@@ -96,21 +96,21 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 
 	// Populate and redact channels
 	for k, v := range sd.Channels {
-		syncData.Channels[base.Sha1HashString(k, salt)] = v
+		redactedSyncData.Channels[base.Sha1HashString(k, salt)] = v
 	}
 
 	// Populate and redact history. This is done as it also includes channel names
-	for k, v := range sd.History {
-		revInfo := *v
+	for k, revInfo := range sd.History {
 
 		if revInfo.Channels != nil {
-			revInfo.Channels = base.Set{}
-			for existingChanKey := range v.Channels {
-				revInfo.Channels.Add(base.Sha1HashString(existingChanKey, salt))
+			redactedChannels := base.Set{}
+			for existingChanKey := range revInfo.Channels {
+				redactedChannels.Add(base.Sha1HashString(existingChanKey, salt))
 			}
+			revInfo.Channels = redactedChannels
 		}
 
-		syncData.History.addRevision(k, revInfo)
+		redactedSyncData.History[k] = revInfo
 	}
 
 	// Populate and redact user access
@@ -119,7 +119,7 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 		for channelName, vbStats := range v {
 			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
 		}
-		syncData.Access[base.Sha1HashString(k, salt)] = accessTimerSet
+		redactedSyncData.Access[base.Sha1HashString(k, salt)] = accessTimerSet
 	}
 
 	// Populate and redact user role access
@@ -128,15 +128,15 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 		for channelName, vbStats := range v {
 			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
 		}
-		syncData.RoleAccess[base.Sha1HashString(k, salt)] = accessTimerSet
+		redactedSyncData.RoleAccess[base.Sha1HashString(k, salt)] = accessTimerSet
 	}
 
 	// Populate and redact attachment names
 	for k, v := range sd.Attachments {
-		syncData.Attachments[base.Sha1HashString(k, salt)] = v
+		redactedSyncData.Attachments[base.Sha1HashString(k, salt)] = v
 	}
 
-	return syncData
+	return redactedSyncData
 }
 
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
