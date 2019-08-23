@@ -8,42 +8,44 @@ pipeline {
         GVM = "/root/.gvm/bin/gvm"
         GO = "/root/.gvm/gos/${GO_VERSION}/bin"
         GOPATH = "${WORKSPACE}/godeps"
-        GOCACHE = "off"
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
         EE_BUILD_TAG = "cb_sg_enterprise"
+        SGW_REPO = "github.com/couchbase/sync_gateway"
     }
 
     stages {
+        stage('SCM') {
+            steps {
+                sh "git rev-parse HEAD > .git/commit-id"
+                script {
+                    env.SG_COMMIT = readFile '.git/commit-id'
+                    // Set BRANCH variable to target branch if this build is a PR
+                    if (env.CHANGE_TARGET) {
+                        env.BRANCH = env.CHANGE_TARGET
+                    }
+                }
+
+                // Make a hidden directory to move scm
+                // checkout into, we'll need a bit for later,
+                // but mostly rely on bootstrap.sh to get our code.
+                //
+                // TODO: We could probably change the implicit checkout
+                // to clone directly into a subdirectory instead?
+                sh 'mkdir .scm-checkout'
+                sh 'mv * .scm-checkout/'
+            }
+        }
         stage('Setup') {
             parallel {
                 stage('Bootstrap') {
                     steps {
-                        sh "git rev-parse HEAD > .git/commit-id"
-                        script {
-                            env.SG_COMMIT = readFile '.git/commit-id'
-                            // Set BRANCH variable to target branch if this build is a PR
-                            if (env.CHANGE_TARGET) {
-                                env.BRANCH = env.CHANGE_TARGET
-                            }
-                        }
-
-                        // Make a hidden directory to move scm
-                        // checkout into, we'll need a bit for later,
-                        // but mostly rely on bootstrap.sh to get our code.
-                        //
-                        // TODO: We could probably change the implicit checkout
-                        // to clone directly into a subdirectory instead?
-                        sh 'mkdir .scm-checkout'
-                        sh 'mv * .scm-checkout/'
-
                         echo "Bootstrapping commit ${SG_COMMIT}"
                         sh 'cp .scm-checkout/bootstrap.sh .'
                         sh 'chmod +x bootstrap.sh'
                         sh "./bootstrap.sh -e ee -c ${SG_COMMIT}"
                     }
                 }
-
                 stage('Go') {
                     stages {
                         stage('Install') {
@@ -61,6 +63,8 @@ pipeline {
                             steps {
                                 withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
                                     sh "go version"
+                                    // unhandled error checker
+                                    sh 'go get -v -u github.com/kisielk/errcheck'
                                     // cover is used for building HTML reports of coverprofiles
                                     sh 'go get -v -u golang.org/x/tools/cmd/cover'
                                     // goveralls is used to send coverprofiles to coveralls.io
@@ -83,14 +87,14 @@ pipeline {
                 stage('CE Linux') {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                            sh "GOOS=linux go build -o sync_gateway_ce-linux -v github.com/couchbase/sync_gateway"
+                            sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
                         }
                     }
                 }
                 stage('EE Linux') {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                            sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v github.com/couchbase/sync_gateway"
+                            sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                         }
                     }
                 }
@@ -100,7 +104,7 @@ pipeline {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                             echo 'TODO: figure out why build issues are caused by gosigar'
-                            sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v github.com/couchbase/sync_gateway"
+                            sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v ${SGW_REPO}"
                         }
                     }
                 }
@@ -110,28 +114,28 @@ pipeline {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                             echo 'TODO: figure out why build issues are caused by gosigar'
-                            sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v github.com/couchbase/sync_gateway"
+                            sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                         }
                     }
                 }
                 stage('CE Windows') {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                            sh "GOOS=windows go build -o sync_gateway_ce-windows -v github.com/couchbase/sync_gateway"
+                            sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
                         }
                     }
                 }
                 stage('EE Windows') {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                            sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v github.com/couchbase/sync_gateway"
+                            sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                         }
                     }
                 }
                 stage('Windows Service') {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                            sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v github.com/couchbase/sync_gateway/service/sg-windows/sg-service"
+                            sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
                         }
                     }
                 }
@@ -143,8 +147,20 @@ pipeline {
                 stage('gofmt') {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                            warnError(message: "gofmt failed") {
-                                sh "test -z \"\$(gofmt -d -e ${GOPATH}/src/github.com/couchbase/sync_gateway)\""
+                            script {
+                                try {
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
+                                    sh "gofmt -d -e ${GOPATH}/src/${SGW_REPO} | tee gofmt.out"
+                                    sh "test -z \"\$(cat gofmt.out)\""
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
+                                } catch (Exception e) {
+                                    sh "wc -l < gofmt.out | awk '{printf \$1}' > gofmt.count"
+                                    script {
+                                        env.GOFMT_COUNT = readFile 'gofmt.count'
+                                    }
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
+                                    unstable("gofmt failed")
+                                }
                             }
                         }
                     }
@@ -153,7 +169,7 @@ pipeline {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                             warnError(message: "go vet failed") {
-                                sh "go vet github.com/couchbase/sync_gateway/..."
+                                sh "go vet ${SGW_REPO}/..."
                             }
                         }
                     }
@@ -162,7 +178,29 @@ pipeline {
                     steps {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                             warnError(message: "go fix failed") {
-                                sh "test -z \"\$(go tool fix -diff ${GOPATH}/src/github.com/couchbase/sync_gateway)\""
+                                sh "go tool fix -diff ${GOPATH}/src/${SGW_REPO} | tee gofix.out"
+                                sh "test -z \"\$(cat gofix.out)\""
+                            }
+                        }
+                    }
+                }
+                stage('errcheck') {
+                    steps {
+                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                            script {
+                                try {
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
+                                    sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
+                                    sh "test -z \"\$(cat errcheck.out)\""
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
+                                } catch (Exception e) {
+                                    sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
+                                    script {
+                                        env.ERRCHECK_COUNT = readFile 'errcheck.count'
+                                    }
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
+                                    unstable("errcheck failed")
+                                }
                             }
                         }
                     }
@@ -178,8 +216,10 @@ pipeline {
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
                                 withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
+
                                     // Build CE coverprofiles
-                                    sh '2>&1 go test -timeout=20m -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ce.out -race -count=1 -v github.com/couchbase/sync_gateway/... > verbose_ce.out || true'
+                                    sh '2>&1 go test -timeout=20m -coverpkg=${SGW_REPO}/... -coverprofile=cover_ce.out -race -count=1 -v ${SGW_REPO}/... > verbose_ce.out || true'
 
                                     // Print total coverage stats
                                     sh 'go tool cover -func=cover_ce.out | awk \'END{print "Total SG CE Coverage: " $3}\''
@@ -189,9 +229,27 @@ pipeline {
                                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
                                     sh 'gocov convert cover_ce.out | gocov-xml > reports/coverage-ce.xml'
 
+                                    // Grab test fail/total counts so we can print them later
+                                    sh "grep '\\-\\-\\- PASS: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-pass.count"
+                                    sh "grep '\\-\\-\\- FAIL: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-fail.count"
+                                    sh "grep '\\-\\-\\- SKIP: ' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-skip.count"
+                                    sh "grep '=== RUN' verbose_ce.out | wc -l | awk '{printf \$1}' > test-ce-total.count"
+                                    script {
+                                        env.TEST_CE_PASS = readFile 'test-ce-pass.count'
+                                        env.TEST_CE_FAIL = readFile 'test-ce-fail.count'
+                                        env.TEST_CE_SKIP = readFile 'test-ce-skip.count'
+                                        env.TEST_CE_TOTAL = readFile 'test-ce-total.count'
+                                    }
+
                                     // Generate junit-formatted test report
-                                    warnError(message: "At least one CE unit test failed") {
-                                        sh 'go2xunit -fail -suite-name-prefix="CE-" -input verbose_ce.out -output reports/test-ce.xml'
+                                    script {
+                                        try {
+                                            sh 'go2xunit -fail -suite-name-prefix="CE-" -input verbose_ce.out -output reports/test-ce.xml'
+                                            githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
+                                        } catch (Exception e) {
+                                            githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
+                                            unstable("At least one CE unit test failed")
+                                        }
                                     }
 
                                     // Publish CE coverage to coveralls.io
@@ -205,8 +263,10 @@ pipeline {
                         stage('EE') {
                             steps {
                                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
+
                                     // Build EE coverprofiles
-                                    sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=github.com/couchbase/sync_gateway/... -coverprofile=cover_ee.out -race -count=1 -v github.com/couchbase/sync_gateway/... > verbose_ee.out || true"
+                                    sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=${SGW_REPO}/... -coverprofile=cover_ee.out -race -count=1 -v ${SGW_REPO}/... > verbose_ee.out || true"
 
                                     sh 'go tool cover -func=cover_ee.out | awk \'END{print "Total SG EE Coverage: " $3}\''
 
@@ -215,9 +275,27 @@ pipeline {
                                     // Generate Cobertura XML report that can be parsed by the Jenkins Cobertura Plugin
                                     sh 'gocov convert cover_ee.out | gocov-xml > reports/coverage-ee.xml'
 
+                                    // Grab test fail/total counts so we can print them later
+                                    sh "grep '\\-\\-\\- PASS: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-pass.count"
+                                    sh "grep '\\-\\-\\- FAIL: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-fail.count"
+                                    sh "grep '\\-\\-\\- SKIP: ' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-skip.count"
+                                    sh "grep '=== RUN' verbose_ee.out | wc -l | awk '{printf \$1}' > test-ee-total.count"
+                                    script {
+                                        env.TEST_EE_PASS = readFile 'test-ee-pass.count'
+                                        env.TEST_EE_FAIL = readFile 'test-ee-fail.count'
+                                        env.TEST_EE_SKIP = readFile 'test-ee-skip.count'
+                                        env.TEST_EE_TOTAL = readFile 'test-ee-total.count'
+                                    }
+
                                     // Generate junit-formatted test report
-                                    warnError(message: "At least one EE unit test failed") {
-                                        sh 'go2xunit -fail -suite-name-prefix="EE-" -input verbose_ee.out -output reports/test-ee.xml'
+                                    script {
+                                        try {
+                                            sh 'go2xunit -fail -suite-name-prefix="EE-" -input verbose_ee.out -output reports/test-ee.xml'
+                                            githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
+                                        } catch (Exception e) {
+                                            githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
+                                            unstable("At least one EE unit test failed")
+                                        }
                                     }
                                 }
                             }
@@ -292,6 +370,10 @@ pipeline {
 
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
+
+            withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
+                sh "go clean -cache"
+            }
         }
     }
 }
