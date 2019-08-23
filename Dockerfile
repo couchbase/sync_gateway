@@ -21,7 +21,7 @@ RUN git config --global color.ui false
 RUN wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh && \
     cat bootstrap.sh && \
     chmod +x bootstrap.sh && \
-    ./bootstrap.sh -c $COMMIT -p sg
+    ./bootstrap.sh -c $COMMIT -e ce
 
 ARG SG_EDITION=CE
 

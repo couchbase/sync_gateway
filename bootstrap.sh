@@ -16,8 +16,8 @@
 # -------------------------------- Functions ---------------------------------------
 
 
-# Default to SG product 
-PRODUCT="sg"
+# Default to CE
+EDITION="ce"
 TARGET_REPO="https://github.com/couchbase/sync_gateway.git"
 
 # By default, will run "repo init" followed by "repo sync".
@@ -27,9 +27,7 @@ INIT_ONLY=0
 # Parse the options and save into variables
 parseOptions () {
 
-    local product_arg_specified=0
-    
-    while getopts "p:c:u:t:ihd" opt; do
+    while getopts "e:c:u:t:ihd" opt; do
 	case $opt in
 	    i)
 		# If the -i option is set, skip the "repo sync".
@@ -46,20 +44,23 @@ parseOptions () {
 		echo "Running in debug mode"
 		;;
 	    h)
-		echo "./bootstrap.sh -p sg -c y0pl33g0r425 -i"
-		echo "-p <product> to choose which product to bootstrap"
+		echo "./bootstrap.sh -e ce -c y0pl33g0r425 -i"
+		echo "-e <edition> to choose which edition to bootstrap"
 		echo "-c <commit> to start with a particular commit"
 		echo "-i to only run repo init and skip repo sync"
 		echo "-d to run in debug mode"
 		exit 0
 		;;
-	    p)
+	    e)
 		case $OPTARG in
-		    sg)
-			PRODUCT="sg"
+		    ce)
+			EDITION="ce"
+			;;
+		    ee)
+			EDITION="ee"
 			;;
 		    *)
-			echo "Unknown product"
+			echo "Unknown edition"
 			exit 1
 			;;
 		esac
@@ -141,12 +142,15 @@ downloadHelperScripts () {
 
 repoInit () {
 
-    case $PRODUCT in
-	sg)
+    case $EDITION in
+	ce)
 	    repo init -u "$TARGET_REPO" -m manifest/default.xml
 	    ;;
+	ee)
+	    repo init -u "$TARGET_REPO" -m manifest/default.xml -g all
+	    ;;
 	*)
-	    echo "Unknown product: $PRODUCT (Aborting)"
+	    echo "Unknown edition: $EDITION (Aborting)"
 	    exit 1
 	    ;;
     esac
