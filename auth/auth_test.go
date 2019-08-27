@@ -468,13 +468,11 @@ func TestRegisterUser(t *testing.T) {
 	assert.Equal(t, nil, user)
 
 	// Try to register a user based on invalid email
-	user, err = auth.RegisterNewUser("bar", "bar")
-	require.Error(t, err)
-	require.Nil(t, user)
-	// Make sure we didn't save the user
-	user, err = auth.GetUser("bar")
+	user, err = auth.RegisterNewUser("foo", "bar")
 	require.NoError(t, err)
-	require.Nil(t, user)
+	assert.Equal(t, "foo", user.Name())
+	assert.Equal(t, "", user.Email()) // skipped due to invalid email
+
 }
 
 func TestConcurrentUserWrites(t *testing.T) {
