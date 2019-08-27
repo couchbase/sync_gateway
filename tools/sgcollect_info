@@ -214,20 +214,14 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt):
         "sg_stats.log": "sg_stats.log",
         "sync_gateway_access.log": "sync_gateway_access.log",
         "sync_gateway_error.log": "sync_gateway_error.log",
-        "sg_accel_access.log": "sg_accel_access.log",
-        "sg_accel_error.log": "sg_accel_error.log",
     }
 
     os_home_dirs = [
-        "/home/sg_accel/logs",
         "/home/sync_gateway/logs",
-        "/var/log/sg_accel",
         "/var/log/sync_gateway",
         "/Users/sync_gateway/logs",                                                     # OSX sync gateway
-        "/Users/sg_accel/logs",                                                         # OSX sg accel
         R'C:\Program Files (x86)\Couchbase\var\lib\couchbase\logs',                     # Windows (Pre-2.0)
         R'C:\Program Files\Couchbase\var\lib\couchbase\logs',                           # Windows (Post-2.0)
-        R'C:\Program Files\Couchbase\Sync Gateway Accelerator\var\lib\couchbase\logs',  # Windows (Post-2.1) sg accel
         R'C:\Program Files\Couchbase\Sync Gateway\var\lib\couchbase\logs'               # Windows (Post-2.1) sync gateway
     ]
     # Try to find user-specified log path
@@ -247,7 +241,7 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt):
     if guessed_log_path:
         # Add the directory where the log file is so that it will be searched
         os_home_dirs.append(os.path.dirname(guessed_log_path))
-        # Add the filename, in case it's different than sg_accel_error.log
+        # Add the filename, in case it's different
         sg_log_files[os.path.basename(guessed_log_path)] = os.path.basename(guessed_log_path)
 
     # Keep a dictionary of log file paths we've added, to avoid adding duplicates
@@ -369,16 +363,10 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact):
 
     # Here are the "usual suspects" to probe for finding the static config
     sg_config_files = [
-        "/home/sg_accel/sg_accel.json",                                  # linux sg accel
         "/home/sync_gateway/sync_gateway.json",                          # linux sync gateway
         "/opt/sync_gateway/etc/sync_gateway.json",                       # amazon linux AMI sync gateway
-        "/opt/sg_accel/etc/sg_accel.json",                               # amazon linux AMI sg accel
-        "/Users/sync_gateway/sg_accel.json",                             # OSX sg accel old
         "/Users/sync_gateway/sync_gateway.json"                          # OSX sync gateway
-        "/Users/sg_accel/sg_accel.json",                                 # OSX sg accel
-        R'C:\Program Files (x86)\Couchbase\basic_sg_accel_config.json',  # Windows (Pre-2.0) sg accel
         R'C:\Program Files (x86)\Couchbase\serviceconfig.json'           # Windows (Pre-2.0) sync gateway
-        R'C:\Program Files\Couchbase\Sync Gateway Accelerator\basic_sg_accel_config.json',  # Windows (Post-2.0) sg accel
         R'C:\Program Files\Couchbase\Sync Gateway\serviceconfig.json'    # Windows (Post-2.0) sync gateway
     ]
     sg_config_files = [x for x in sg_config_files if os.path.exists(x)]
@@ -530,11 +518,8 @@ def discover_sg_binary_path(options, sg_url):
 
     sg_bin_dirs = [
         "/opt/couchbase-sync-gateway/bin/sync_gateway",                      # Linux + OSX
-        "/opt/couchbase-sg-accel/bin/sg_accel",                              # Linux + OSX
         R'C:\Program Files (x86)\Couchbase\sync_gateway.exe',                # Windows (Pre-2.0)
-        R'C:\Program Files (x86)\Couchbase\sg_accel.exe',                    # Windows (Pre-2.0)
         R'C:\Program Files\Couchbase\Sync Gateway\sync_gateway.exe',         # Windows (Post-2.0)
-        R'C:\Program Files\Couchbase\Sync Gateway Accelerator\sg_accel.exe', # Windows (Post-2.0)
     ]
 
     for sg_binary_path_candidate in sg_bin_dirs:

@@ -17,17 +17,15 @@ import (
 // changes.
 type changeListener struct {
 	bucket                base.Bucket
-	bucketName            string                  // Used for logging
-	tapFeed               base.TapFeed            // Observes changes to bucket
-	tapNotifier           *sync.Cond              // Posts notifications when documents are updated
-	FeedArgs              sgbucket.FeedArguments  // The Tap Args (backfill, etc)
-	counter               uint64                  // Event counter; increments on every doc update
-	terminateCheckCounter uint64                  // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts             map[string]uint64       // Latest count at which each doc key was updated
-	DocChannel            chan sgbucket.FeedEvent // Passthru channel for doc mutations
-	OnDocChanged          DocChangedFunc          // Called when change arrives on feed
-	trackDocs             bool                    // Whether events should be routed to DocChannel passthru
-	terminator            chan bool               // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	bucketName            string                 // Used for logging
+	tapFeed               base.TapFeed           // Observes changes to bucket
+	tapNotifier           *sync.Cond             // Posts notifications when documents are updated
+	FeedArgs              sgbucket.FeedArguments // The Tap Args (backfill, etc)
+	counter               uint64                 // Event counter; increments on every doc update
+	terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
+	OnDocChanged          DocChangedFunc         // Called when change arrives on feed
+	terminator            chan bool              // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
@@ -42,7 +40,7 @@ func (listener *changeListener) Init(name string) {
 
 // Starts a changeListener on a given Bucket.
 
-func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfillMode uint64, bucketStateNotify sgbucket.BucketNotifyFn, dbStats *expvar.Map) error {
+func (listener *changeListener) Start(bucket base.Bucket, backfillMode uint64, bucketStateNotify sgbucket.BucketNotifyFn, dbStats *expvar.Map) error {
 
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
@@ -51,11 +49,6 @@ func (listener *changeListener) Start(bucket base.Bucket, trackDocs bool, backfi
 		Backfill:   backfillMode,
 		Notify:     bucketStateNotify,
 		Terminator: listener.terminator,
-	}
-
-	if trackDocs {
-		listener.DocChannel = make(chan sgbucket.FeedEvent, 100)
-		listener.trackDocs = true
 	}
 
 	return listener.StartMutationFeed(bucket, dbStats)
@@ -78,9 +71,6 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 		go func() {
 			defer func() {
 				listener.notifyStopping()
-				if listener.DocChannel != nil {
-					close(listener.DocChannel)
-				}
 			}()
 			for event := range listener.tapFeed.Events() {
 				event.TimeReceived = time.Now()
@@ -116,14 +106,10 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
 			// we'll end up in a feedback loop for their vbucket
 			requiresCheckpointPersistence = false
-		} else if !strings.HasPrefix(key, base.SyncPrefix) && !strings.HasPrefix(key, base.KIndexPrefix) { // Non-SG docs
+		} else if !strings.HasPrefix(key, base.SyncPrefix) { // Non-SG docs
 			if listener.OnDocChanged != nil {
 				listener.OnDocChanged(event)
 			}
-			if listener.trackDocs {
-				listener.DocChannel <- event
-			}
-
 		}
 	}
 	return requiresCheckpointPersistence

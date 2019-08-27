@@ -56,7 +56,6 @@ Make sure the `repo status` doesn't show any uncommitted changes.  For example i
 $ repo status
 project godeps/src/github.com/couchbase/sync_gateway/ branch feature/fix_snap_manifest_rebased
  -m     docs/BUILD.md
-project godeps/src/github.com/couchbaselabs/sync-gateway-accel/ branch master
 project godeps/src/github.com/couchbaselabs/walrus/ branch feature/sg_2418_sgbucket_interface
 ```
 

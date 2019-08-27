@@ -189,31 +189,6 @@ func TestValueToStringArray(t *testing.T) {
 	goassert.DeepEquals(t, result, []string{"foobar"})
 }
 
-func TestHighSeqNosToSequenceClock(t *testing.T) {
-
-	highSeqs := map[uint16]uint64{}
-	highSeqs[0] = 568
-	highSeqs[1] = 98798
-	highSeqs[2] = 100
-	highSeqs[3] = 2
-	// leave a gap and don't specify a high seq for vbno 4
-	highSeqs[5] = 250
-
-	var seqClock SequenceClock
-	var err error
-
-	seqClock, err = HighSeqNosToSequenceClock(highSeqs)
-
-	assert.NoError(t, err, "Unexpected error")
-
-	goassert.True(t, seqClock.GetSequence(0) == 568)
-	goassert.True(t, seqClock.GetSequence(1) == 98798)
-	goassert.True(t, seqClock.GetSequence(2) == 100)
-	goassert.True(t, seqClock.GetSequence(3) == 2)
-	goassert.True(t, seqClock.GetSequence(5) == 250)
-
-}
-
 func TestCouchbaseURIToHttpURL(t *testing.T) {
 
 	inputsAndExpected := []struct {

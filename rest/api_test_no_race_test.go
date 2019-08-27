@@ -33,9 +33,9 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP|base.KeyAccel)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`, t)
 	defer it.Close()
 
 	// Create user:
@@ -90,7 +90,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
 
-	it := initIndexTester(false, `function(doc) {channel(doc.channel);}`, t)
+	it := initIndexTester(`function(doc) {channel(doc.channel);}`, t)
 	defer it.Close()
 
 	// Create user:

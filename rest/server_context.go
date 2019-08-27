@@ -218,31 +218,6 @@ func (sc *ServerContext) AllDatabases() map[string]*db.DatabaseContext {
 	return databases
 }
 
-// Make sure that for all nodes that are feedtype=DCPSHARD, either all of them
-// are IndexWriters, or none of them are IndexWriters, otherwise return false.
-func (sc *ServerContext) numIndexWriters() (numIndexWriters, numIndexNonWriters int) {
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-	for _, dbContext := range sc.databases_ {
-		if strings.ToLower(dbContext.BucketSpec.FeedType) != base.DcpShardFeedType {
-			continue
-		}
-		if dbContext.Options.IndexOptions.Writer {
-			numIndexWriters += 1
-		} else {
-			numIndexNonWriters += 1
-		}
-	}
-
-	return numIndexWriters, numIndexNonWriters
-
-}
-
-func (sc *ServerContext) HasIndexWriters() bool {
-	numIndexWriters, _ := sc.numIndexWriters()
-	return numIndexWriters > 0
-}
-
 type PostUpgradeResult map[string]PostUpgradeDatabaseResult
 
 type PostUpgradeDatabaseResult struct {
@@ -486,12 +461,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		useViews = true
 	}
 
-	// If using accel, force use of views
-	if !useViews && config.ChannelIndex != nil {
-		base.Warnf(base.KeyAll, "Using GSI is not supported when using Sync Gateway Accelerator - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
-		useViews = true
-	}
-
 	// Initialize Views or GSI indexes
 	if !useViews {
 
@@ -516,53 +485,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			return nil, viewErr
 		}
 	}
-
-	// Channel index definition, if present
-	channelIndexOptions := &db.ChannelIndexOptions{}
-	sequenceHashOptions := &db.SequenceHashOptions{}
-	if config.ChannelIndex != nil {
-
-		// Index buckets always use DCP feed type
-		couchbaseDriverIndexBucket := base.ChooseCouchbaseDriver(base.IndexBucket)
-
-		indexSpec := config.ChannelIndex.MakeBucketSpec()
-		indexSpec.CouchbaseDriver = couchbaseDriverIndexBucket
-
-		if config.ChannelIndex.NumShards != 0 {
-			channelIndexOptions.NumShards = config.ChannelIndex.NumShards
-		} else {
-			channelIndexOptions.NumShards = KDefaultNumShards
-		}
-
-		channelIndexOptions.ValidateOrPanic()
-
-		channelIndexOptions.Spec = indexSpec
-		channelIndexOptions.Writer = config.ChannelIndex.IndexWriter
-		channelIndexOptions.TombstoneCompactFrequency = config.ChannelIndex.TombstoneCompactFrequency
-
-		// Hash bucket defaults to index bucket, but can be customized.
-		sequenceHashOptions.Size = 32
-		sequenceHashBucketSpec := indexSpec
-		hashConfig := config.ChannelIndex.SequenceHashConfig
-		if hashConfig != nil {
-			sequenceHashBucketSpec = config.ChannelIndex.SequenceHashConfig.MakeBucketSpec()
-			sequenceHashBucketSpec.CouchbaseDriver = couchbaseDriverIndexBucket
-			sequenceHashOptions.Expiry = hashConfig.Expiry
-			sequenceHashOptions.HashFrequency = hashConfig.Frequency
-		}
-
-		sequenceHashOptions.Bucket, err = base.GetBucket(sequenceHashBucketSpec, nil)
-		if err != nil {
-			base.Warnf(base.KeyAll, "Error opening sequence hash bucket %q, pool %q, server <%s>",
-				base.MD(sequenceHashBucketSpec.BucketName), base.SD(sequenceHashBucketSpec.PoolName), base.SD(sequenceHashBucketSpec.Server))
-			return nil, err
-		}
-
-	} else {
-		channelIndexOptions = nil
-	}
-
-	trackDocs := !config.UseXattrs() && autoImport
 
 	// Create a callback function that will be invoked if the database goes offline and comes
 	// back online again
@@ -633,13 +555,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		RevisionCacheOptions:      revCacheOptions,
-		IndexOptions:              channelIndexOptions,
-		SequenceHashOptions:       sequenceHashOptions,
 		OldRevExpirySeconds:       oldRevExpirySeconds,
 		LocalDocExpirySecs:        localDocExpirySecs,
 		AdminInterface:            sc.config.AdminInterface,
 		UnsupportedOptions:        config.Unsupported,
-		TrackDocs:                 trackDocs,
 		OIDCOptions:               config.OIDCConfig,
 		DBOnlineCallback:          dbOnlineCallback,
 		ImportOptions:             importOptions,

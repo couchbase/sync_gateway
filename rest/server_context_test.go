@@ -17,7 +17,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
@@ -108,7 +107,7 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 func TestRecordGoroutineHighwaterMark(t *testing.T) {
 
 	// Reset this to 0
-	atomic.StoreUint64(&base.MaxGoroutinesSeen, 0)
+	atomic.StoreUint64(&MaxGoroutinesSeen, 0)
 
 	assert.Equal(t, uint64(1000), goroutineHighwaterMark(1000))
 	assert.Equal(t, uint64(1000), goroutineHighwaterMark(500))

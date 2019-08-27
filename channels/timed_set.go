@@ -68,30 +68,6 @@ func (vbs VbSequence) Equals(other VbSequence) bool {
 	}
 }
 
-func (vbs VbSequence) AsVbSeq() base.VbSeq {
-	if vbs.VbNo == nil {
-		return base.VbSeq{}
-	}
-	return base.VbSeq{Vb: *vbs.VbNo, Seq: vbs.Sequence}
-}
-
-// Compares to other VbSequence.  If EITHER vbNo is nil, does a sequence-only
-// comparison
-func (v VbSequence) CompareTo(other VbSequence) base.CompareResult {
-	if v.VbNo == nil || other.VbNo == nil {
-		return base.CompareVbAndSequence(0, v.Sequence, 0, other.Sequence)
-	}
-	return base.CompareVbAndSequence(*v.VbNo, v.Sequence, *other.VbNo, other.Sequence)
-}
-
-// Is sequence less than or equal to corresponding clock entry
-func (v VbSequence) IsLTEClock(clock base.SequenceClock) bool {
-	if v.VbNo == nil {
-		return false
-	}
-	return v.Sequence <= clock.GetSequence(*v.VbNo)
-}
-
 // A mutable mapping from channel names to sequence numbers (interpreted as the sequence when
 // the channel was added.)
 type TimedSet map[string]VbSequence

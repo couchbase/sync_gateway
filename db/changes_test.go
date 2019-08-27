@@ -58,11 +58,8 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
 	// Check the _changes feed:
-	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
-		changeCache.reader.indexReadBucket.Dump()
-	}
 	db.user, _ = authenticator.GetUser("naomi")
-	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
+	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	assert.Equal(t, 3, len(changes))
@@ -99,7 +96,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.Equal(t, []ChangeRev{{"rev": revid}}, changes[0].Changes)
 
 	// validate from zero
-	changes, err = db.GetChanges(base.SetOf("*"), getZeroSequence(db))
+	changes, err = db.GetChanges(base.SetOf("*"), getZeroSequence())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 
@@ -118,12 +115,8 @@ func getLastSeq(changes []*ChangeEntry) SequenceID {
 	return SequenceID{}
 }
 
-func getZeroSequence(db *Database) ChangesOptions {
-	if db.SequenceType == IntSequenceType {
-		return ChangesOptions{Since: SequenceID{Seq: 0}}
-	} else {
-		return ChangesOptions{Since: SequenceID{Clock: base.NewSequenceClockImpl()}}
-	}
+func getZeroSequence() ChangesOptions {
+	return ChangesOptions{Since: SequenceID{Seq: 0}}
 }
 
 func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
@@ -156,11 +149,8 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
-	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
-		changeCache.reader.indexReadBucket.Dump()
-	}
 	db.user, _ = authenticator.GetUser("alice")
-	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
+	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	goassert.Equals(t, len(changes), 1)
@@ -245,11 +235,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
-	if changeCache, ok := db.changeCache.(*kvChangeIndex); ok {
-		changeCache.reader.indexReadBucket.Dump()
-	}
 	db.user, _ = authenticator.GetUser("alice")
-	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence(db))
+	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 

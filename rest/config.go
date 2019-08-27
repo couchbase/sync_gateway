@@ -71,50 +71,41 @@ const (
 	DefaultNumIndexReplicas = uint(1)
 )
 
-type SyncGatewayRunMode uint8
-
-const (
-	SyncGatewayRunModeNormal SyncGatewayRunMode = iota
-	SyncGatewayRunModeAccel
-)
-
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	TLSMinVersion              *string                  `json:"tls_minimum_version,omitempty"`     // Set TLS Version
-	Interface                  *string                  `json:",omitempty"`                        // Interface to bind REST API to, default ":4984"
-	SSLCert                    *string                  `json:",omitempty"`                        // Path to SSL cert file, or nil
-	SSLKey                     *string                  `json:",omitempty"`                        // Path to SSL private key file, or nil
-	ServerReadTimeout          *int                     `json:",omitempty"`                        // maximum duration.Second before timing out read of the HTTP(S) request
-	ServerWriteTimeout         *int                     `json:",omitempty"`                        // maximum duration.Second before timing out write of the HTTP(S) response
-	AdminInterface             *string                  `json:",omitempty"`                        // Interface to bind admin API to, default "localhost:4985"
-	AdminUI                    *string                  `json:",omitempty"`                        // Path to Admin HTML page, if omitted uses bundled HTML
-	ProfileInterface           *string                  `json:",omitempty"`                        // Interface to bind Go profile API to (no default)
-	ConfigServer               *string                  `json:",omitempty"`                        // URL of config server (for dynamic db discovery)
-	Facebook                   *FacebookConfig          `json:",omitempty"`                        // Configuration for Facebook validation
-	Google                     *GoogleConfig            `json:",omitempty"`                        // Configuration for Google validation
-	CORS                       *CORSConfig              `json:",omitempty"`                        // Configuration for allowing CORS
-	DeprecatedLog              []string                 `json:"log,omitempty"`                     // Log keywords to enable
-	DeprecatedLogFilePath      *string                  `json:"logFilePath,omitempty"`             // Path to log file, if missing write to stderr
-	Logging                    *base.LoggingConfig      `json:",omitempty"`                        // Configuration for logging with optional log file rotation
-	Pretty                     bool                     `json:",omitempty"`                        // Pretty-print JSON responses?
-	DeploymentID               *string                  `json:",omitempty"`                        // Optional customer/deployment ID for stats reporting
-	StatsReportInterval        *float64                 `json:",omitempty"`                        // Optional stats report interval (0 to disable)
-	MaxCouchbaseConnections    *int                     `json:",omitempty"`                        // Max # of sockets to open to a Couchbase Server node
-	MaxCouchbaseOverflow       *int                     `json:",omitempty"`                        // Max # of overflow sockets to open
-	CouchbaseKeepaliveInterval *int                     `json:",omitempty"`                        // TCP keep-alive interval between SG and Couchbase server
-	SlowQueryWarningThreshold  *int                     `json:",omitempty"`                        // Log warnings if N1QL queries take this many ms
-	MaxIncomingConnections     *int                     `json:",omitempty"`                        // Max # of incoming HTTP connections to accept
-	MaxFileDescriptors         *uint64                  `json:",omitempty"`                        // Max # of open file descriptors (RLIMIT_NOFILE)
-	CompressResponses          *bool                    `json:",omitempty"`                        // If false, disables compression of HTTP responses
-	Databases                  DbConfigMap              `json:",omitempty"`                        // Pre-configured databases, mapped by name
-	Replications               []*ReplicationConfig     `json:",omitempty"`                        // sg-replicate replication definitions
-	MaxHeartbeat               uint64                   `json:",omitempty"`                        // Max heartbeat value for _changes request (seconds)
-	ClusterConfig              *ClusterConfig           `json:"cluster_config,omitempty"`          // Bucket and other config related to CBGT
-	SkipRunmodeValidation      bool                     `json:"skip_runmode_validation,omitempty"` // If this is true, skips any config validation regarding accel vs normal mode
-	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`             // Config for unsupported features
-	RunMode                    SyncGatewayRunMode       `json:"runmode,omitempty"`                 // Whether this is an SG reader or an SG Accelerator
-	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"`  // BLIP data compression level (0-9)
-	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`             // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
+	TLSMinVersion              *string                  `json:"tls_minimum_version,omitempty"`    // Set TLS Version
+	Interface                  *string                  `json:",omitempty"`                       // Interface to bind REST API to, default ":4984"
+	SSLCert                    *string                  `json:",omitempty"`                       // Path to SSL cert file, or nil
+	SSLKey                     *string                  `json:",omitempty"`                       // Path to SSL private key file, or nil
+	ServerReadTimeout          *int                     `json:",omitempty"`                       // maximum duration.Second before timing out read of the HTTP(S) request
+	ServerWriteTimeout         *int                     `json:",omitempty"`                       // maximum duration.Second before timing out write of the HTTP(S) response
+	AdminInterface             *string                  `json:",omitempty"`                       // Interface to bind admin API to, default "localhost:4985"
+	AdminUI                    *string                  `json:",omitempty"`                       // Path to Admin HTML page, if omitted uses bundled HTML
+	ProfileInterface           *string                  `json:",omitempty"`                       // Interface to bind Go profile API to (no default)
+	ConfigServer               *string                  `json:",omitempty"`                       // URL of config server (for dynamic db discovery)
+	Facebook                   *FacebookConfig          `json:",omitempty"`                       // Configuration for Facebook validation
+	Google                     *GoogleConfig            `json:",omitempty"`                       // Configuration for Google validation
+	CORS                       *CORSConfig              `json:",omitempty"`                       // Configuration for allowing CORS
+	DeprecatedLog              []string                 `json:"log,omitempty"`                    // Log keywords to enable
+	DeprecatedLogFilePath      *string                  `json:"logFilePath,omitempty"`            // Path to log file, if missing write to stderr
+	Logging                    *base.LoggingConfig      `json:",omitempty"`                       // Configuration for logging with optional log file rotation
+	Pretty                     bool                     `json:",omitempty"`                       // Pretty-print JSON responses?
+	DeploymentID               *string                  `json:",omitempty"`                       // Optional customer/deployment ID for stats reporting
+	StatsReportInterval        *float64                 `json:",omitempty"`                       // Optional stats report interval (0 to disable)
+	MaxCouchbaseConnections    *int                     `json:",omitempty"`                       // Max # of sockets to open to a Couchbase Server node
+	MaxCouchbaseOverflow       *int                     `json:",omitempty"`                       // Max # of overflow sockets to open
+	CouchbaseKeepaliveInterval *int                     `json:",omitempty"`                       // TCP keep-alive interval between SG and Couchbase server
+	SlowQueryWarningThreshold  *int                     `json:",omitempty"`                       // Log warnings if N1QL queries take this many ms
+	MaxIncomingConnections     *int                     `json:",omitempty"`                       // Max # of incoming HTTP connections to accept
+	MaxFileDescriptors         *uint64                  `json:",omitempty"`                       // Max # of open file descriptors (RLIMIT_NOFILE)
+	CompressResponses          *bool                    `json:",omitempty"`                       // If false, disables compression of HTTP responses
+	Databases                  DbConfigMap              `json:",omitempty"`                       // Pre-configured databases, mapped by name
+	Replications               []*ReplicationConfig     `json:",omitempty"`                       // sg-replicate replication definitions
+	MaxHeartbeat               uint64                   `json:",omitempty"`                       // Max heartbeat value for _changes request (seconds)
+	ClusterConfig              *ClusterConfig           `json:"cluster_config,omitempty"`         // Bucket and other config related to CBGT
+	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`            // Config for unsupported features
+	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
+	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
 }
 
 // Bucket configuration elements - used by db, index
@@ -194,7 +185,6 @@ type DbConfig struct {
 	FeedType                  string                         `json:"feed_type,omitempty"`                    // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword        bool                           `json:"allow_empty_password,omitempty"`         // Allow empty passwords?  Defaults to false
 	CacheConfig               *CacheConfig                   `json:"cache,omitempty"`                        // Cache settings
-	ChannelIndex              *ChannelIndexConfig            `json:"channel_index,omitempty"`                // Channel index settings
 	DeprecatedRevCacheSize    *uint32                        `json:"rev_cache_size,omitempty"`               // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
 	StartOffline              bool                           `json:"offline,omitempty"`                      // start the DB in the offline state, defaults to false
 	Unsupported               db.UnsupportedOptions          `json:"unsupported,omitempty"`                  // Config for unsupported features
@@ -293,20 +283,6 @@ type ChannelCacheConfig struct {
 	ExpirySeconds        *int    `json:"expiry_seconds,omitempty"`             // Time (seconds) to keep entries in cache beyond the minimum retained
 }
 
-type ChannelIndexConfig struct {
-	BucketConfig
-	IndexWriter               bool                `json:"writer,omitempty"`       // Whether SG node is a channel index writer
-	NumShards                 uint16              `json:"num_shards,omitempty"`   // Number of partitions in the channel index
-	SequenceHashConfig        *SequenceHashConfig `json:"seq_hashing,omitempty"`  // Sequence hash configuration
-	TombstoneCompactFrequency *int                `json:"tombstone_compact_freq"` // How often sg-accel attempts to compact purged tombstones
-}
-
-type SequenceHashConfig struct {
-	BucketConfig         // Bucket used for Sequence hashing
-	Expiry       *uint32 `json:"expiry,omitempty"`         // Expiry set for hash values on latest use
-	Frequency    *int    `json:"hash_frequency,omitempty"` // Frequency of sequence hashing in changes feeds
-}
-
 type UnsupportedServerConfig struct {
 	Http2Config           *Http2Config `json:"http2,omitempty"`               // Config settings for HTTP2
 	StatsLogFrequencySecs *uint        `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
@@ -361,24 +337,6 @@ func (dbConfig *DbConfig) setup(name string) error {
 		dbConfig.Server = &urlStr
 	}
 
-	if dbConfig.ChannelIndex != nil {
-		url, err = url.Parse(*dbConfig.ChannelIndex.Server)
-		if err == nil && url.User != nil {
-			// Remove credentials from channel index URL and put them into the DbConfig.ChannelIndex.Username and .Password:
-			if dbConfig.ChannelIndex.Username == "" {
-				dbConfig.ChannelIndex.Username = url.User.Username()
-			}
-			if dbConfig.ChannelIndex.Password == "" {
-				if password, exists := url.User.Password(); exists {
-					dbConfig.ChannelIndex.Password = password
-				}
-			}
-			url.User = nil
-			urlStr := url.String()
-			dbConfig.ChannelIndex.Server = &urlStr
-		}
-	}
-
 	return err
 }
 
@@ -403,15 +361,6 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 func (dbConfig DbConfig) validate() []error {
 
 	errorMessages := make([]error, 0)
-
-	// if there is a ChannelIndex being used, then the only valid feed type is DCPSHARD
-	if dbConfig.ChannelIndex != nil {
-		if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
-			msg := "ChannelIndex declared in config, but the FeedType is %v " +
-				"rather than expected value of DCPSHARD"
-			errorMessages = append(errorMessages, fmt.Errorf(msg, dbConfig.FeedType))
-		}
-	}
 
 	// Make sure a non-zero compact_interval_days config is within the valid range
 	if val := dbConfig.CompactIntervalDays; val != nil && *val != 0 &&
@@ -498,14 +447,6 @@ func (dbConfig DbConfig) validate() []error {
 		}
 	}
 
-	// if the feed type is DCPSHARD, then there must be a ChannelIndex
-	if strings.ToLower(dbConfig.FeedType) == strings.ToLower(base.DcpShardFeedType) {
-		if dbConfig.ChannelIndex == nil {
-			msg := "FeedType is DCPSHARD, but no ChannelIndex declared in config"
-			errorMessages = append(errorMessages, fmt.Errorf(msg))
-		}
-	}
-
 	// EE: delta sync
 	if !base.IsEnterpriseEdition() && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
 		base.Warnf(base.KeyAll, eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
@@ -522,10 +463,6 @@ func (dbConfig *DbConfig) validateSgDbConfig() []error {
 
 	if err := dbConfig.validate(); err != nil {
 		errorMessages = append(errorMessages, err...)
-	}
-
-	if dbConfig.ChannelIndex != nil && dbConfig.ChannelIndex.IndexWriter == true {
-		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw.  Must not be configured as an IndexWriter"))
 	}
 
 	autoImportEnabled, err := dbConfig.AutoImportEnabled()
@@ -621,40 +558,6 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 
 }
 
-func (dbConfig *DbConfig) validateSgAccelDbConfig() []error {
-
-	errorMessages := make([]error, 0)
-
-	if err := dbConfig.validate(); err != nil {
-		errorMessages = append(errorMessages, err...)
-	}
-
-	if dbConfig.ChannelIndex == nil {
-		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must have a ChannelIndex defined"))
-	}
-
-	if dbConfig.ChannelIndex.IndexWriter == false {
-		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured as an IndexWriter"))
-	}
-
-	if strings.ToLower(dbConfig.FeedType) != strings.ToLower(base.DcpShardFeedType) {
-		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw Accel.  Must be configured for DCPSHARD feedtype"))
-	}
-
-	return errorMessages
-
-}
-
-func (dbConfig *DbConfig) modifyConfig() {
-	if dbConfig.ChannelIndex != nil {
-		// if there is NO feed type, set to DCPSHARD, since that's the only
-		// valid config when a Channel Index is specified
-		if dbConfig.FeedType == "" {
-			dbConfig.FeedType = base.DcpShardFeedType
-		}
-	}
-}
-
 // Implementation of AuthHandler interface for DbConfig
 func (dbConfig *DbConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(dbConfig.Username, dbConfig.Password, *dbConfig.Bucket)
@@ -693,7 +596,7 @@ func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 }
 
 // LoadServerConfig loads a ServerConfig from either a JSON file or from a URL
-func LoadServerConfig(runMode SyncGatewayRunMode, path string) (config *ServerConfig, err error) {
+func LoadServerConfig(path string) (config *ServerConfig, err error) {
 	var dataReadCloser io.ReadCloser
 
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
@@ -712,15 +615,12 @@ func LoadServerConfig(runMode SyncGatewayRunMode, path string) (config *ServerCo
 	}
 
 	defer dataReadCloser.Close()
-	return readServerConfig(runMode, dataReadCloser)
+	return readServerConfig(dataReadCloser)
 }
 
 // readServerConfig returns a validated ServerConfig from an io.Reader
-func readServerConfig(runMode SyncGatewayRunMode, r io.Reader) (config *ServerConfig, err error) {
+func readServerConfig(r io.Reader) (config *ServerConfig, err error) {
 	err = decodeAndSanitiseConfig(r, &config)
-	if config != nil {
-		config.RunMode = runMode
-	}
 	return config, err
 }
 
@@ -756,7 +656,7 @@ func (config *ServerConfig) setupAndValidateDatabases() []error {
 			return []error{err}
 		}
 
-		if err := config.validateDbConfig(dbConfig); err != nil && len(err) > 0 {
+		if err := dbConfig.validateSgDbConfig(); err != nil && len(err) > 0 {
 			return err
 		}
 	}
@@ -857,27 +757,6 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 	return warnings
 }
 
-func (config *ServerConfig) validateDbConfig(dbConfig *DbConfig) []error {
-
-	dbConfig.modifyConfig()
-
-	switch config.RunMode {
-	case SyncGatewayRunModeNormal:
-		if !config.SkipRunmodeValidation && config.HasAnyIndexWriterConfiguredDatabases() {
-			base.Panicf(base.KeyAll, "SG is running in normal mode but there are databases configured as index writers")
-		}
-		return dbConfig.validateSgDbConfig()
-	case SyncGatewayRunModeAccel:
-		if !config.SkipRunmodeValidation && config.HasAnyIndexReaderConfiguredDatabases() {
-			base.Panicf(base.KeyAll, "SG is running in sg-accelerator mode but there are databases configured as index readers")
-		}
-		return dbConfig.validateSgAccelDbConfig()
-	}
-
-	return []error{fmt.Errorf("Unexpected RunMode: %v", config.RunMode)}
-
-}
-
 func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.Interface == nil {
 		self.Interface = other.Interface
@@ -916,7 +795,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 }
 
 // Reads the command line flags and the optional config file.
-func ParseCommandLine(runMode SyncGatewayRunMode) (err error) {
+func ParseCommandLine() (err error) {
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
@@ -930,7 +809,6 @@ func ParseCommandLine(runMode SyncGatewayRunMode) (err error) {
 	verbose := flag.Bool("verbose", false, "Log more info about requests")
 	logKeys := flag.String("log", "", "Log keys, comma separated")
 	logFilePath := flag.String("logFilePath", "", "Path to log files")
-	skipRunModeValidation := flag.Bool("skipRunModeValidation", false, "Skip config validation for runmode (accel vs normal sg)")
 	certpath := flag.String("certpath", "", "Client certificate path")
 	cacertpath := flag.String("cacertpath", "", "Root CA certificate path")
 	keypath := flag.String("keypath", "", "Client certificate key path")
@@ -945,7 +823,7 @@ func ParseCommandLine(runMode SyncGatewayRunMode) (err error) {
 		for i := 0; i < flag.NArg(); i++ {
 			filename := flag.Arg(i)
 
-			newConfig, newConfigErr := LoadServerConfig(runMode, filename)
+			newConfig, newConfigErr := LoadServerConfig(filename)
 			if errors.Cause(newConfigErr) == ErrUnknownField {
 				// Delay returning this error so we can continue with other setup
 				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
@@ -997,10 +875,6 @@ func ParseCommandLine(runMode SyncGatewayRunMode) (err error) {
 
 		if *logKeys != "" {
 			config.Logging.Console.LogKeys = strings.Split(*logKeys, ",")
-		}
-
-		if *skipRunModeValidation == true {
-			config.SkipRunmodeValidation = *skipRunModeValidation
 		}
 
 		if defaultLogFilePathFlag != nil {
@@ -1097,39 +971,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 	}
 }
 
-func (config *ServerConfig) HasAnyIndexReaderConfiguredDatabases() bool {
-	numIndexReaders := config.NumIndexReaders()
-	return numIndexReaders > 0
-}
-
-func (config *ServerConfig) HasAnyIndexWriterConfiguredDatabases() bool {
-	numIndexWriters := config.NumIndexWriters()
-	return numIndexWriters > 0
-}
-
-func (config *ServerConfig) NumIndexReaders() int {
-	n := 0
-	for _, dbConfig := range config.Databases {
-		if dbConfig.ChannelIndex == nil || dbConfig.ChannelIndex.IndexWriter == false {
-			n += 1
-		}
-	}
-	return n
-}
-
-func (config *ServerConfig) NumIndexWriters() int {
-	n := 0
-	for _, dbConfig := range config.Databases {
-		if dbConfig.ChannelIndex != nil && dbConfig.ChannelIndex.IndexWriter == true {
-			n += 1
-		}
-	}
-	return n
-}
-
 // Starts and runs the server given its configuration. (This function never returns.)
-//
-// Note: Changes in here probably need to be made in the corresponding sg-accel ServerMain!
 func RunServer(config *ServerConfig) {
 	PrettyPrint = config.Pretty
 
@@ -1221,14 +1063,12 @@ func PanicHandler() (panicHandler func()) {
 
 // Main entry point for a simple server; you can have your main() function just call this.
 // It parses command-line flags, reads the optional configuration file, then starts the server.
-//
-// Note: Changes in here probably need to be made in the corresponding sg-accel ServerMain!
-func ServerMain(runMode SyncGatewayRunMode) {
+func ServerMain() {
 	RegisterSignalHandler()
 	defer PanicHandler()()
 
 	var unknownFieldsErr error
-	err := ParseCommandLine(runMode)
+	err := ParseCommandLine()
 	if errors.Cause(err) == ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {

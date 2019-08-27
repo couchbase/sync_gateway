@@ -24,8 +24,7 @@ import subprocess
 #
 ignored_repos = [
     "build",
-    "sync_gateway",
-    "sync-gateway-accel"
+    "sync_gateway"
 ]
 
 def parse_args():

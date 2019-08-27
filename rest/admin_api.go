@@ -732,49 +732,6 @@ func (h *handler) getRoles() error {
 	return err
 }
 
-// HTTP handler for /index
-func (h *handler) handleIndex() error {
-	base.Infof(base.KeyHTTP, "Index")
-
-	indexStats, err := h.db.IndexStats()
-
-	if err != nil {
-		return err
-	}
-	bytes, err := json.Marshal(indexStats)
-	h.response.Write(bytes)
-	return err
-}
-
-// HTTP handler for /index/channel
-func (h *handler) handleIndexChannel() error {
-	channelName := h.PathVar("channel")
-	base.Infof(base.KeyHTTP, "Index channel %q", base.UD(channelName))
-
-	channelStats, err := h.db.IndexChannelStats(channelName)
-
-	if err != nil {
-		return err
-	}
-	bytes, err := json.Marshal(channelStats)
-	h.response.Write(bytes)
-	return err
-}
-
-// HTTP handler for /index/channels
-func (h *handler) handleIndexAllChannels() error {
-	base.Infof(base.KeyHTTP, "Index channels")
-
-	channelStats, err := h.db.IndexAllChannelStats()
-
-	if err != nil {
-		return err
-	}
-	bytes, err := json.Marshal(channelStats)
-	h.response.Write(bytes)
-	return err
-}
-
 func (h *handler) handlePurge() error {
 	h.assertAdminOnly()
 
@@ -839,7 +796,7 @@ func (h *handler) handlePurge() error {
 	}
 
 	if len(docIDs) > 0 {
-		count := h.db.GetChangeIndex().Remove(docIDs, startTime)
+		count := h.db.GetChangeCache().Remove(docIDs, startTime)
 		base.Debugf(base.KeyCache, "Purged %d items from caches", count)
 	}
 

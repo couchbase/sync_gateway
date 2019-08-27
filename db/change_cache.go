@@ -63,12 +63,31 @@ type changeCache struct {
 	channelCache    ChannelCache         // Underlying channel cache
 }
 
-// TODO: remove options, just pass down to NewChannelCacheForContext
-
 type LogEntry channels.LogEntry
 
 func (l LogEntry) String() string {
 	return channels.LogEntry(l).String()
+}
+
+func (entry *LogEntry) IsRemoved() bool {
+	return entry.Flags&channels.Removed != 0
+}
+
+func (entry *LogEntry) IsDeleted() bool {
+	return entry.Flags&channels.Deleted != 0
+}
+
+// Returns false if the entry is either a removal or a delete
+func (entry *LogEntry) IsActive() bool {
+	return !entry.IsRemoved() && !entry.IsDeleted()
+}
+
+func (entry *LogEntry) SetRemoved() {
+	entry.Flags |= channels.Removed
+}
+
+func (entry *LogEntry) SetDeleted() {
+	entry.Flags |= channels.Deleted
 }
 
 type LogEntries []*LogEntry
@@ -111,7 +130,7 @@ func DefaultCacheOptions() CacheOptions {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions, indexOptions *ChannelIndexOptions) error {
+func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions) error {
 	c.context = dbcontext
 
 	c.notifyChange = notifyChange
@@ -129,11 +148,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 
 	c.channelCache = NewChannelCacheForContext(c.terminator, c.options.ChannelCacheOptions, c.context)
 
-	base.Infof(base.KeyCache, "Initializing changes cache with options %+v", c.options)
-
-	if dbcontext.UseGlobalSequence() {
-		base.Infof(base.KeyAll, "Initializing changes cache for database %s", base.UD(dbcontext.Name))
-	}
+	base.Infof(base.KeyCache, "Initializing changes cache for database %s with options %+v", base.UD(dbcontext.Name), c.options)
 
 	heap.Init(&c.pendingLogs)
 
@@ -416,7 +431,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		}
 	}
 
-	if !c.context.UseXattrs() && !syncData.HasValidSyncData(c.context.writeSequences()) {
+	if !c.context.UseXattrs() && !syncData.HasValidSyncData() {
 		// No sync metadata found - check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
 		migratedDoc, _ := c.context.checkForUpgrade(docID, DocUnmarshalNoHistory)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
@@ -749,10 +764,6 @@ func (c *changeCache) _addPendingLogs() base.Set {
 func (c *changeCache) GetStableSequence(docID string) SequenceID {
 	// Stable sequence is independent of docID in changeCache
 	return SequenceID{Seq: c.LastSequence()}
-}
-
-func (c *changeCache) GetStableClock(stale bool) (clock base.SequenceClock, err error) {
-	return nil, errors.New("Change cache doesn't use vector clocks")
 }
 
 func (c *changeCache) getChannelCache() ChannelCache {

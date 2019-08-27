@@ -1304,8 +1304,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 15)
 
 	//db.Options.UnsupportedOptions.DisableCleanSkippedQuery = true
-	changeCache, ok := db.changeCache.(*changeCache)
-	assert.True(t, ok, "Testing skipped sequences without a change cache")
+	changeCache := db.changeCache
 
 	// Artificially add skipped sequences to queue, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
 	// Sequences '3', '7', '10', '13' and '14' exist, should be found.
@@ -1368,11 +1367,8 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 2)
 	WriteDirect(db, []string{"ABC"}, 3)
 
-	changeCache, ok := db.changeCache.(*changeCache)
-	assert.True(t, ok, "Testing skipped sequences without a change cache")
-
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
 	tearDownTestDB(t, db)
@@ -1420,9 +1416,7 @@ func TestChannelCacheSize(t *testing.T) {
 	goassert.Equals(t, len(changes), 750)
 
 	// Validate that cache stores the expected number of values
-	changeCache, ok := db.changeCache.(*changeCache)
-	assert.True(t, ok, "Testing skipped sequences without a change cache")
-	abcCache := changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
 	goassert.Equals(t, len(abcCache.logs), 600)
 }
 
@@ -1628,13 +1622,10 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 	// -------- Setup notifyChange callback ----------------
 
-	// type assert this from ChangeIndex interface -> concrete changeCache implementation
-	changeCacheImpl := db.changeCache.(*changeCache)
-
 	//  Detect whether the 2nd was ignored using an notifyChange listener callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
-	changeCacheImpl.notifyChange = func(channels base.Set) {
+	db.changeCache.notifyChange = func(channels base.Set) {
 		// defer waitForOnChangeCallback.Done()
 		log.Printf("channelsChanged: %v", channels)
 		// goassert.True(t, channels.Contains("ABC"))
@@ -1824,10 +1815,9 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	defer testBucket.Close()
 
 	// -------- Setup notifyChange callback ----------------
-	changeCacheImpl := db.changeCache.(*changeCache)
 
 	notifyChannel := make(chan struct{})
-	changeCacheImpl.notifyChange = func(channels base.Set) {
+	db.changeCache.notifyChange = func(channels base.Set) {
 		log.Printf("channelsChanged: %v", channels)
 		if channels.Contains("zero") {
 			notifyChannel <- struct{}{}
