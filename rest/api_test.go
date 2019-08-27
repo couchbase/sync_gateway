@@ -1929,7 +1929,6 @@ func TestAllDocsAccessControl(t *testing.T) {
 	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc2")
 }
 
-
 func TestChannelAccessChanges(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD)()

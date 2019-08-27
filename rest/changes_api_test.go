@@ -79,7 +79,6 @@ func initIndexTester(syncFn string, tb testing.TB) *indexTester {
 
 	it.RestTesterBucket = it.RestTesterServerContext.Database("db").Bucket
 
-
 	return it
 }
 

@@ -952,35 +952,35 @@ func (db *Database) addAttachments(newAttachments AttachmentData) error {
 func (db *Database) assignSequence(docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
 	var err error
 
-		// Assign the next sequence number, for _changes feed.
-		// Be careful not to request a second sequence # on a retry if we don't need one.
-		if docSequence <= doc.Sequence {
-			if docSequence > 0 {
-				// Oops: we're on our second iteration thanks to a conflict, but the sequence
-				// we previously allocated is unusable now. We have to allocate a new sequence
-				// instead, but we add the unused one(s) to the document so when the changeCache
-				// reads the doc it won't freak out over the break in the sequence numbering.
-				base.InfofCtx(db.Ctx, base.KeyCache, "updateDoc %q: Unused sequence #%d", base.UD(doc.ID), docSequence)
-				unusedSequences = append(unusedSequences, docSequence)
-			}
-
-			for {
-				if docSequence, err = db.sequences.nextSequence(); err != nil {
-					return unusedSequences, err
-				}
-
-				if docSequence > doc.Sequence {
-					break
-				} else {
-					releaseErr := db.sequences.releaseSequence(docSequence)
-					if releaseErr != nil {
-						base.Warnf(base.KeyCRUD, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
-					}
-				}
-			}
-			// Could add a db.Sequences.nextSequenceGreaterThan(doc.Sequence) to push the work down into the sequence allocator
-			//  - sequence allocator is responsible for releasing unused sequences, could optimize to do that in bulk if needed
+	// Assign the next sequence number, for _changes feed.
+	// Be careful not to request a second sequence # on a retry if we don't need one.
+	if docSequence <= doc.Sequence {
+		if docSequence > 0 {
+			// Oops: we're on our second iteration thanks to a conflict, but the sequence
+			// we previously allocated is unusable now. We have to allocate a new sequence
+			// instead, but we add the unused one(s) to the document so when the changeCache
+			// reads the doc it won't freak out over the break in the sequence numbering.
+			base.InfofCtx(db.Ctx, base.KeyCache, "updateDoc %q: Unused sequence #%d", base.UD(doc.ID), docSequence)
+			unusedSequences = append(unusedSequences, docSequence)
 		}
+
+		for {
+			if docSequence, err = db.sequences.nextSequence(); err != nil {
+				return unusedSequences, err
+			}
+
+			if docSequence > doc.Sequence {
+				break
+			} else {
+				releaseErr := db.sequences.releaseSequence(docSequence)
+				if releaseErr != nil {
+					base.Warnf(base.KeyCRUD, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
+				}
+			}
+		}
+		// Could add a db.Sequences.nextSequenceGreaterThan(doc.Sequence) to push the work down into the sequence allocator
+		//  - sequence allocator is responsible for releasing unused sequences, could optimize to do that in bulk if needed
+	}
 
 	doc.Sequence = docSequence
 	doc.UnusedSequences = unusedSequences

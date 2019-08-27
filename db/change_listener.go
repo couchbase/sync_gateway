@@ -17,15 +17,15 @@ import (
 // changes.
 type changeListener struct {
 	bucket                base.Bucket
-	bucketName            string                  // Used for logging
-	tapFeed               base.TapFeed            // Observes changes to bucket
-	tapNotifier           *sync.Cond              // Posts notifications when documents are updated
-	FeedArgs              sgbucket.FeedArguments  // The Tap Args (backfill, etc)
-	counter               uint64                  // Event counter; increments on every doc update
-	terminateCheckCounter uint64                  // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts             map[string]uint64       // Latest count at which each doc key was updated
-	OnDocChanged          DocChangedFunc          // Called when change arrives on feed
-	terminator            chan bool               // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	bucketName            string                 // Used for logging
+	tapFeed               base.TapFeed           // Observes changes to bucket
+	tapNotifier           *sync.Cond             // Posts notifications when documents are updated
+	FeedArgs              sgbucket.FeedArguments // The Tap Args (backfill, etc)
+	counter               uint64                 // Event counter; increments on every doc update
+	terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
+	OnDocChanged          DocChangedFunc         // Called when change arrives on feed
+	terminator            chan bool              // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)

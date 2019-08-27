@@ -84,7 +84,7 @@ type DatabaseContext struct {
 	RevsLimit          uint32                   // Max depth a document's revision tree can grow to
 	autoImport         bool                     // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
 	revisionCache      RevisionCache            // Cache of recently-accessed doc revisions
-	changeCache        *changeCache              // Cache of recently-access channels
+	changeCache        *changeCache             // Cache of recently-access channels
 	EventMgr           *EventManager            // Manages notification events
 	AllowEmptyPassword bool                     // Allow empty passwords?  Defaults to false
 	Options            DatabaseContextOptions   // Database Context Options
@@ -258,7 +258,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// In-memory channel cache
 	dbContext.changeCache = &changeCache{}
-
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
 	notifyChange := func(changedChannels base.Set) {

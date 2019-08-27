@@ -15,7 +15,7 @@ func TestParseSequenceID(t *testing.T) {
 
 	s, err = parseIntegerSequenceID("5678:1234")
 	assert.NoError(t, err, "parseIntegerSequenceID")
-	goassert.Equals(t, s, SequenceID{Seq: 1234, TriggeredBy: 5678,})
+	goassert.Equals(t, s, SequenceID{Seq: 1234, TriggeredBy: 5678})
 
 	s, err = parseIntegerSequenceID("")
 	assert.NoError(t, err, "parseIntegerSequenceID")

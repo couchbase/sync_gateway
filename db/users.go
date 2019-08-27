@@ -180,7 +180,6 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		}
 		princ.SetSequence(nextSeq)
 
-
 		// Now update the Principal object from the properties in the request, first the channels:
 		if updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, nextSeq) {
 			princ.SetExplicitChannels(updatedChannels)

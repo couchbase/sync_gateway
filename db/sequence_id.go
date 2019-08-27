@@ -20,13 +20,13 @@ import (
 // SequenceID doesn't do any clock hash management - it's expected that hashing has already been done (if required)
 // when the clock is set.
 type SequenceID struct {
-	TriggeredBy      uint64             // Int sequence: The sequence # that triggered this (0 if none)
-	LowSeq           uint64             // Int sequence: Lowest contiguous sequence seen on the feed
-	Seq              uint64             // Int sequence: The actual internal sequence
+	TriggeredBy uint64 // Int sequence: The sequence # that triggered this (0 if none)
+	LowSeq      uint64 // Int sequence: Lowest contiguous sequence seen on the feed
+	Seq         uint64 // Int sequence: The actual internal sequence
 }
 
 var MaxSequenceID = SequenceID{
-	Seq:  math.MaxUint64,
+	Seq: math.MaxUint64,
 }
 
 // Format sequence ID to send to clients.  Sequence IDs can be in one of the following formats:
@@ -109,11 +109,11 @@ func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error
 
 func (s SequenceID) MarshalJSON() ([]byte, error) {
 
-		if s.TriggeredBy > 0 || s.LowSeq > 0 {
-			return []byte(fmt.Sprintf("\"%s\"", s.String())), nil
-		} else {
-			return []byte(strconv.FormatUint(s.Seq, 10)), nil
-		}
+	if s.TriggeredBy > 0 || s.LowSeq > 0 {
+		return []byte(fmt.Sprintf("\"%s\"", s.String())), nil
+	} else {
+		return []byte(strconv.FormatUint(s.Seq, 10)), nil
+	}
 
 }
 
@@ -154,11 +154,10 @@ func (s SequenceID) intEquals(s2 SequenceID) bool {
 	return s.SafeSequence() == s2.SafeSequence() && s.TriggeredBy == s2.TriggeredBy
 }
 
-
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
 // The tricky part is that "n" sorts after "n:m" for any nonzero m
 func (s SequenceID) Before(s2 SequenceID) bool {
-		return s.intBefore(s2)
+	return s.intBefore(s2)
 }
 
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
