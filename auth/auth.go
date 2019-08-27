@@ -533,7 +533,9 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 	}
 
 	if len(email) > 0 {
-		user.SetEmail(email)
+		if err := user.SetEmail(email); err != nil {
+			return nil, err
+		}
 	}
 
 	err = auth.Save(user)
