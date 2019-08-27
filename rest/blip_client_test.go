@@ -621,9 +621,13 @@ func (btc *BlipTesterClient) GetRev(docID, revID string) (data []byte, found boo
 
 // WaitForRev blocks until the given doc ID and rev ID have been stored by the client, and returns the data when found.
 func (btc *BlipTesterClient) WaitForRev(docID, revID string) (data []byte, found bool) {
-	ticker := time.NewTicker(time.Millisecond * 50)
+	ticker := time.NewTicker(50 * time.Millisecond)
+	timeout := time.After(10 * time.Second)
 	for {
 		select {
+		case <-timeout:
+			btc.rt.tb.Fatalf("BlipTesterClient timed out waiting for doc ID: %v rev ID: %v", docID, revID)
+			return nil, false
 		case <-ticker.C:
 			if data, found := btc.GetRev(docID, revID); found {
 				return data, found
@@ -646,9 +650,13 @@ func (btr *BlipTesterReplicator) GetMessage(serialNumber blip.MessageNumber) (ms
 
 // WaitForMessage blocks until the given message serial number has been stored by the replicator, and returns the message when found.
 func (btr *BlipTesterReplicator) WaitForMessage(serialNumber blip.MessageNumber) (msg *blip.Message, found bool) {
-	ticker := time.NewTicker(time.Millisecond * 50)
+	ticker := time.NewTicker(50 * time.Millisecond)
+	timeout := time.After(10 * time.Second)
 	for {
 		select {
+		case <-timeout:
+			btr.bt.restTester.tb.Fatalf("BlipTesterReplicator timed out waiting for BLIP message: %v", serialNumber)
+			return nil, false
 		case <-ticker.C:
 			if msg, ok := btr.GetMessage(serialNumber); ok {
 				return msg, ok
