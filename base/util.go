@@ -1058,31 +1058,17 @@ func Sha1HashString(str string, salt string) string {
 	return fmt.Sprintf("%x", hashedKey)
 }
 
-// InjectJSONProperty takes the given JSON byte slice, marshals val, and inserts under the given key, and returns the result.
-//
-// This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
-// usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
-func InjectJSONProperty(b []byte, key string, val interface{}) (new []byte, err error) {
-	b = bytes.TrimSpace(b)
-
-	bIsJSONObject, bIsEmpty := isJSONObject(b)
-	if !bIsJSONObject {
-		return nil, errors.New("b is not a JSON object")
-	}
-
-	valBytes, err := json.Marshal(val)
-	if err != nil {
-		return nil, err
-	}
-
-	return injectJSONPropertyFromBytes(b, bIsEmpty, key, valBytes), nil
+// KVPair represents a single KV pair to be used in InjectJSONProperties
+type KVPair struct {
+	Key string
+	Val interface{}
 }
 
-// InjectJSONPropertyFromBytes takes the given JSON byte slice, and inserts val under the given key, and returns the result.
+// InjectJSONProperties takes the given JSON byte slice, and for each KV pair, marshals the value and inserts into b under the given key.
 //
 // This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
 // usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
-func InjectJSONPropertyFromBytes(b []byte, key string, val []byte) (new []byte, err error) {
+func InjectJSONProperties(b []byte, kvPairs ...KVPair) (new []byte, err error) {
 	b = bytes.TrimSpace(b)
 
 	bIsJSONObject, bIsEmpty := isJSONObject(b)
@@ -1090,7 +1076,45 @@ func InjectJSONPropertyFromBytes(b []byte, key string, val []byte) (new []byte, 
 		return nil, errors.New("b is not a JSON object")
 	}
 
-	return injectJSONPropertyFromBytes(b, bIsEmpty, key, val), nil
+	if len(kvPairs) < 1 {
+		return nil, errors.New("kvPairs was empty")
+	}
+
+	kvPairsBytes := make([]KVPairBytes, len(kvPairs))
+	for i, kv := range kvPairs {
+		valBytes, err := json.Marshal(kv.Val)
+		if err != nil {
+			return nil, err
+		}
+		kvPairsBytes[i] = KVPairBytes{Key: kv.Key, Val: valBytes}
+	}
+
+	return injectJSONPropertyFromBytes(b, bIsEmpty, kvPairsBytes), nil
+}
+
+// KVPairBytes represents a single KV pair to be used in InjectJSONPropertiesFromBytes
+type KVPairBytes struct {
+	Key string
+	Val []byte
+}
+
+// InjectJSONPropertiesFromBytes takes the given JSON byte slice, and for each KV pair, inserts into b under the given key.
+//
+// This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
+// usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
+func InjectJSONPropertiesFromBytes(b []byte, kvPairs ...KVPairBytes) (new []byte, err error) {
+	b = bytes.TrimSpace(b)
+
+	bIsJSONObject, bIsEmpty := isJSONObject(b)
+	if !bIsJSONObject {
+		return nil, errors.New("b is not a JSON object")
+	}
+
+	if len(kvPairs) < 1 {
+		return nil, errors.New("kvPairs was empty")
+	}
+
+	return injectJSONPropertyFromBytes(b, bIsEmpty, kvPairs), nil
 }
 
 // isJSONObject checks if the given bytes are a JSON object,
@@ -1106,28 +1130,33 @@ func isJSONObject(b []byte) (isJSONObject, isEmpty bool) {
 }
 
 // injectJSONPropertyFromBytes injects val under the given key into b.
-func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, key string, val []byte) (newJSON []byte) {
+func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, kvPairs []KVPairBytes) (newJSON []byte) {
 
-	// the overhead of wrapping key in quotes, a colon, and a comma if body is not empty
-	jsonOverhead := 4
+	newJSONLength := len(b)
+	for _, kv := range kvPairs {
+		newJSONLength += len(kv.Key) + len(kv.Val) + 4 // json overhead for comma, quoted key, and colon
+	}
 	if bIsEmpty {
-		jsonOverhead = 3
+		// Take off the length of a comma when the starting body is empty
+		newJSONLength--
 	}
 
 	// Create the new byte slice with the required capacity
-	newJSON = make([]byte, len(b)+len(val)+len(key)+jsonOverhead)
+	newJSON = make([]byte, newJSONLength)
 
 	// copy almost all of b, except the last closing brace
 	offset := copy(newJSON, b[0:len(b)-1])
 
-	// if the body isn't empty, append a comma before we insert our property
-	if !bIsEmpty {
-		offset += copy(newJSON[offset:], ",")
-	}
+	for i, kv := range kvPairs {
+		// if the body isn't empty, or we're not on our first value, prepend a comma before our property
+		if i > 0 || !bIsEmpty {
+			offset += copy(newJSON[offset:], ",")
+		}
 
-	// inject valBytes as the last property
-	offset += copy(newJSON[offset:], `"`+key+`":`)
-	offset += copy(newJSON[offset:], val)
+		// inject valBytes as the last property
+		offset += copy(newJSON[offset:], `"`+kv.Key+`":`)
+		offset += copy(newJSON[offset:], kv.Val)
+	}
 
 	// closing brace
 	_ = copy(newJSON[offset:], "}")

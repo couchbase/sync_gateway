@@ -639,9 +639,11 @@ func TestDefaultHTTPTransport(t *testing.T) {
 	})
 }
 
-func TestInjectJSONProperty(t *testing.T) {
-	newValKey := "newval"
-	newVal := 123
+func TestInjectJSONProperties(t *testing.T) {
+	newKV := KVPair{
+		Key: "newval",
+		Val: 123,
+	}
 
 	tests := []struct {
 		input          string
@@ -680,7 +682,7 @@ func TestInjectJSONProperty(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.input, func(tt *testing.T) {
-			output, err := InjectJSONProperty([]byte(test.input), newValKey, newVal)
+			output, err := InjectJSONProperties([]byte(test.input), newKV)
 			if test.expectedErr != "" {
 				require.Errorf(tt, err, test.expectedErr, "expected error did not match")
 				return
@@ -697,9 +699,81 @@ func TestInjectJSONProperty(t *testing.T) {
 	}
 }
 
-func TestInjectJSONPropertyFromBytes(t *testing.T) {
-	newValKey := "newval"
-	newValBytes := []byte(`{"abc":123,"nums":["one","two","three"],"test":true}`)
+func TestInjectJSONProperties_Multiple(t *testing.T) {
+	newKVs := []KVPair{
+		{
+			Key: "newval",
+			Val: 123,
+		},
+		{
+			Key: "test",
+			Val: true,
+		},
+		{
+			Key: "asdf",
+			Val: "qwerty",
+		},
+	}
+
+	tests := []struct {
+		input          string
+		expectedOutput string
+		expectedErr    string
+	}{
+		{
+			input:       ``,
+			expectedErr: `not a JSON object`,
+		},
+		{
+			input:       `null`,
+			expectedErr: `not a JSON object`,
+		},
+		{
+			input:       "123",
+			expectedErr: `not a JSON object`,
+		},
+		{
+			input:          "{}",
+			expectedOutput: `{"newval":123,"test":true,"asdf":"qwerty"}`,
+		},
+		{
+			input:          `{"key":"val"}`,
+			expectedOutput: `{"key":"val","newval":123,"test":true,"asdf":"qwerty"}`,
+		},
+		{
+			input:          `{"newval":"old"}`,
+			expectedOutput: `{"newval":"old","newval":123,"test":true,"asdf":"qwerty"}`,
+		},
+		{
+			input:          `    {"key":"val"}  `,
+			expectedOutput: `{"key":"val","newval":123,"test":true,"asdf":"qwerty"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(tt *testing.T) {
+			output, err := InjectJSONProperties([]byte(test.input), newKVs...)
+			if test.expectedErr != "" {
+				require.Errorf(tt, err, test.expectedErr, "expected error did not match")
+				return
+			} else {
+				require.NoError(tt, err, "unexpected error")
+			}
+
+			assert.Equal(tt, test.expectedOutput, string(output))
+
+			var m map[string]interface{}
+			err = json.Unmarshal(output, &m)
+			assert.NoError(tt, err, "produced invalid JSON")
+		})
+	}
+}
+
+func TestInjectJSONPropertiesFromBytes(t *testing.T) {
+	newKVBytes := KVPairBytes{
+		Key: "newval",
+		Val: []byte(`{"abc":123,"nums":["one","two","three"],"test":true}`),
+	}
 
 	tests := []struct {
 		input          string
@@ -738,7 +812,7 @@ func TestInjectJSONPropertyFromBytes(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.input, func(tt *testing.T) {
-			output, err := InjectJSONPropertyFromBytes([]byte(test.input), newValKey, newValBytes)
+			output, err := InjectJSONPropertiesFromBytes([]byte(test.input), newKVBytes)
 			if test.expectedErr != "" {
 				require.Errorf(tt, err, test.expectedErr, "expected error did not match")
 				return
@@ -755,9 +829,91 @@ func TestInjectJSONPropertyFromBytes(t *testing.T) {
 	}
 }
 
-func BenchmarkInjectJSONPropertyFromBytes(b *testing.B) {
-	newValKey := "newval"
-	newValBytes := []byte(`{"abc":123,"nums":["one","two","three"],"test":true}`)
+func TestInjectJSONPropertiesFromBytes_Multiple(t *testing.T) {
+	newKVBytes := []KVPairBytes{
+		{
+			Key: "newval",
+			Val: []byte(`{"abc":123,"nums":["one","two","three"],"test":true}`),
+		},
+		{
+			Key: "test",
+			Val: []byte(`true`),
+		},
+		{
+			Key: "asdf",
+			Val: []byte(`"qwerty"`),
+		},
+	}
+
+	tests := []struct {
+		input          string
+		expectedOutput string
+		expectedErr    string
+	}{
+		{
+			input:       ``,
+			expectedErr: `not a JSON object`,
+		},
+		{
+			input:       `null`,
+			expectedErr: `not a JSON object`,
+		},
+		{
+			input:       "123",
+			expectedErr: `not a JSON object`,
+		},
+		{
+			input:          "{}",
+			expectedOutput: `{"newval":{"abc":123,"nums":["one","two","three"],"test":true},"test":true,"asdf":"qwerty"}`,
+		},
+		{
+			input:          `{"key":"val"}`,
+			expectedOutput: `{"key":"val","newval":{"abc":123,"nums":["one","two","three"],"test":true},"test":true,"asdf":"qwerty"}`,
+		},
+		{
+			input:          `{"newval":"old"}`,
+			expectedOutput: `{"newval":"old","newval":{"abc":123,"nums":["one","two","three"],"test":true},"test":true,"asdf":"qwerty"}`,
+		},
+		{
+			input:          `    {"key":"val"}  `,
+			expectedOutput: `{"key":"val","newval":{"abc":123,"nums":["one","two","three"],"test":true},"test":true,"asdf":"qwerty"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.input, func(tt *testing.T) {
+			output, err := InjectJSONPropertiesFromBytes([]byte(test.input), newKVBytes...)
+			if test.expectedErr != "" {
+				require.Errorf(tt, err, test.expectedErr, "expected error did not match")
+				return
+			} else {
+				require.NoError(tt, err, "unexpected error")
+			}
+
+			assert.Equal(tt, test.expectedOutput, string(output))
+
+			var m map[string]interface{}
+			err = json.Unmarshal(output, &m)
+			assert.NoError(tt, err, "produced invalid JSON")
+		})
+	}
+}
+
+func BenchmarkInjectJSONPropertiesFromBytes(b *testing.B) {
+	newKVBytes := []KVPairBytes{
+		{
+			Key: "newval",
+			Val: []byte(`{"abc":123,"nums":["one","two","three"],"test":true}`),
+		},
+		{
+			Key: "test",
+			Val: []byte(`true`),
+		},
+		{
+			Key: "asdf",
+			Val: []byte(`"qwerty"`),
+		},
+	}
 
 	tests := []struct {
 		input string
@@ -776,15 +932,17 @@ func BenchmarkInjectJSONPropertyFromBytes(b *testing.B) {
 	for _, test := range tests {
 		b.Run(test.input, func(bb *testing.B) {
 			for i := 0; i < bb.N; i++ {
-				_, _ = InjectJSONPropertyFromBytes([]byte(test.input), newValKey, newValBytes)
+				_, _ = InjectJSONPropertiesFromBytes([]byte(test.input), newKVBytes...)
 			}
 		})
 	}
 }
 
-func BenchmarkInjectJSONProperty(b *testing.B) {
-	newValKey := "newval"
-	newVal := 123
+func BenchmarkInjectJSONPropertiesFromBytes_Multiple(b *testing.B) {
+	newKVBytes := KVPairBytes{
+		Key: "newval",
+		Val: []byte(`{"abc":123,"nums":["one","two","three"],"test":true}`),
+	}
 
 	tests := []struct {
 		input string
@@ -803,7 +961,75 @@ func BenchmarkInjectJSONProperty(b *testing.B) {
 	for _, test := range tests {
 		b.Run(test.input, func(bb *testing.B) {
 			for i := 0; i < bb.N; i++ {
-				_, _ = InjectJSONProperty([]byte(test.input), newValKey, newVal)
+				_, _ = InjectJSONPropertiesFromBytes([]byte(test.input), newKVBytes)
+			}
+		})
+	}
+}
+
+func BenchmarkInjectJSONProperties(b *testing.B) {
+	newKV := KVPair{
+		Key: "newval",
+		Val: 123,
+	}
+
+	tests := []struct {
+		input string
+	}{
+		{
+			input: `null`,
+		},
+		{
+			input: "{}",
+		},
+		{
+			input: `{"key":"val"}`,
+		},
+	}
+
+	for _, test := range tests {
+		b.Run(test.input, func(bb *testing.B) {
+			for i := 0; i < bb.N; i++ {
+				_, _ = InjectJSONProperties([]byte(test.input), newKV)
+			}
+		})
+	}
+}
+
+func BenchmarkInjectJSONProperties_Multiple(b *testing.B) {
+	newKVs := []KVPair{
+		{
+			Key: "newval",
+			Val: 123,
+		},
+		{
+			Key: "test",
+			Val: true,
+		},
+		{
+			Key: "asdf",
+			Val: "qwerty",
+		},
+	}
+
+	tests := []struct {
+		input string
+	}{
+		{
+			input: `null`,
+		},
+		{
+			input: "{}",
+		},
+		{
+			input: `{"key":"val"}`,
+		},
+	}
+
+	for _, test := range tests {
+		b.Run(test.input, func(bb *testing.B) {
+			for i := 0; i < bb.N; i++ {
+				_, _ = InjectJSONProperties([]byte(test.input), newKVs...)
 			}
 		})
 	}
