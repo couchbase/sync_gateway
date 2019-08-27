@@ -146,7 +146,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		if isUser {
 			if newInfo.Email != user.Email() {
 				if err := user.SetEmail(newInfo.Email); err != nil {
-					return false, err
+					base.Warnf(base.KeyAll, "Invalid email %q for user %q", newInfo.Email, *newInfo.Name)
 				}
 				changed = true
 			}

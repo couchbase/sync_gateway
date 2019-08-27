@@ -534,7 +534,7 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 
 	if len(email) > 0 {
 		if err := user.SetEmail(email); err != nil {
-			return nil, err
+			base.Warnf(base.KeyAll, "Invalid email %q for user %q", email, username)
 		}
 	}
 
