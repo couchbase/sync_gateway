@@ -8,7 +8,6 @@ pipeline {
         GVM = "/root/.gvm/bin/gvm"
         GO = "/root/.gvm/gos/${GO_VERSION}/bin"
         GOPATH = "${WORKSPACE}/godeps"
-        GOCACHE = "off"
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
         EE_BUILD_TAG = "cb_sg_enterprise"
@@ -292,6 +291,10 @@ pipeline {
 
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
+
+            withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
+                sh "go clean -cache"
+            }
         }
     }
 }
