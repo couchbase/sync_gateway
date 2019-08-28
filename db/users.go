@@ -145,7 +145,9 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		// Then the user-specific fields like roles:
 		if isUser {
 			if newInfo.Email != user.Email() {
-				user.SetEmail(newInfo.Email)
+				if err := user.SetEmail(newInfo.Email); err != nil {
+					base.Warnf(base.KeyAll, "Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(*newInfo.Name), base.UD(newInfo.Email))
+				}
 				changed = true
 			}
 			if newInfo.Password != nil {

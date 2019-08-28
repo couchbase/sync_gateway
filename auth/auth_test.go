@@ -16,12 +16,12 @@ import (
 	"sync"
 	"testing"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func canSeeAllChannels(princ Principal, channels base.Set) bool {
@@ -122,7 +122,7 @@ func TestSerializeUser(t *testing.T) {
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	user, _ := auth.NewUser("me", "letmein", ch.SetOf(t, "me", "public"))
-	user.SetEmail("foo@example.com")
+	require.NoError(t, user.SetEmail("foo@example.com"))
 	encoded, _ := json.Marshal(user)
 	assert.True(t, encoded != nil)
 	log.Printf("Marshaled User as: %s", encoded)
@@ -403,7 +403,7 @@ func TestRoleInheritance(t *testing.T) {
 	user, _ := auth.NewUser("arthur", "password", ch.SetOf(t, "britain"))
 	user.(*userImpl).setRolesSince(ch.TimedSet{"square": ch.NewVbSimpleSequence(0x3), "nonexistent": ch.NewVbSimpleSequence(0x42), "frood": ch.NewVbSimpleSequence(0x4)})
 	goassert.DeepEquals(t, user.RoleNames(), ch.TimedSet{"square": ch.NewVbSimpleSequence(0x3), "nonexistent": ch.NewVbSimpleSequence(0x42), "frood": ch.NewVbSimpleSequence(0x4)})
-	auth.Save(user)
+	require.NoError(t, auth.Save(user))
 
 	user2, err := auth.GetUser("arthur")
 	assert.Equal(t, nil, err)
@@ -424,48 +424,55 @@ func TestRegisterUser(t *testing.T) {
 	// Register user based on name, email
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	user, err := auth.RegisterNewUser("ValidName", "foo@example.com")
+	require.NoError(t, err)
 	assert.Equal(t, "ValidName", user.Name())
 	assert.Equal(t, "foo@example.com", user.Email())
-	assert.Equal(t, nil, err)
 
 	// verify retrieval by username
 	user, err = auth.GetUser("ValidName")
+	require.NoError(t, err)
 	assert.Equal(t, "ValidName", user.Name())
-	assert.Equal(t, nil, err)
 
 	// verify retrieval by email
 	user, err = auth.GetUserByEmail("foo@example.com")
+	require.NoError(t, err)
 	assert.Equal(t, "ValidName", user.Name())
-	assert.Equal(t, nil, err)
 
 	// Register user based on email, retrieve based on username, email
 	user, err = auth.RegisterNewUser("bar@example.com", "bar@example.com")
+	require.NoError(t, err)
 	assert.Equal(t, "bar@example.com", user.Name())
 	assert.Equal(t, "bar@example.com", user.Email())
-	assert.Equal(t, nil, err)
 
 	user, err = auth.GetUser("UnknownName")
+	require.NoError(t, err)
 	assert.Equal(t, nil, user)
-	assert.Equal(t, nil, err)
 
 	user, err = auth.GetUserByEmail("bar@example.com")
+	require.NoError(t, err)
 	assert.Equal(t, "bar@example.com", user.Name())
-	assert.Equal(t, nil, err)
 
 	// Register user without an email address
 	user, err = auth.RegisterNewUser("01234567890", "")
+	require.NoError(t, err)
 	assert.Equal(t, "01234567890", user.Name())
 	assert.Equal(t, "", user.Email())
-	assert.Equal(t, nil, err)
 	// Get above user by username.
 	user, err = auth.GetUser("01234567890")
+	require.NoError(t, err)
 	assert.Equal(t, "01234567890", user.Name())
 	assert.Equal(t, "", user.Email())
-	assert.Equal(t, nil, err)
 	// Make sure we can't retrieve 01234567890 by supplying empty email.
 	user, err = auth.GetUserByEmail("")
+	require.NoError(t, err)
 	assert.Equal(t, nil, user)
-	assert.Equal(t, nil, err)
+
+	// Try to register a user based on invalid email
+	user, err = auth.RegisterNewUser("foo", "bar")
+	require.NoError(t, err)
+	assert.Equal(t, "foo", user.Name())
+	assert.Equal(t, "", user.Email()) // skipped due to invalid email
+
 }
 
 func TestConcurrentUserWrites(t *testing.T) {

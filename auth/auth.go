@@ -533,7 +533,9 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 	}
 
 	if len(email) > 0 {
-		user.SetEmail(email)
+		if err := user.SetEmail(email); err != nil {
+			base.Warnf(base.KeyAll, "Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(username), base.UD(email))
+		}
 	}
 
 	err = auth.Save(user)
