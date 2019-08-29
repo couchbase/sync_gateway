@@ -161,7 +161,7 @@ func (h *handler) handleBLIPSync() error {
 	server.Handler = func(conn *websocket.Conn) {
 		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol%s", blipContext.ID, h.formattedEffectiveUserName()))
 		defer func() {
-			conn.Close() // in case it wasn't closed already
+			_ = conn.Close() // in case it wasn't closed already
 			ctx.Logf(base.LevelInfo, base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
 		}()
 		defaultHandler(conn)
@@ -264,7 +264,8 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	response.Properties[getCheckpointResponseRev] = value[db.BodyRev].(string)
 	delete(value, db.BodyRev)
 	delete(value, db.BodyId)
-	response.SetJSONBody(value)
+	// TODO: Marshaling here when we could use raw bytes all the way from the bucket
+	_ = response.SetJSONBody(value)
 	return nil
 }
 
