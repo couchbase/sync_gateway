@@ -135,15 +135,15 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 	}
 
 	keyPrefix := "TestAddRawTimeout"
-	largeDoc := make([]byte,1000000)
+	largeDoc := make([]byte, 1000000)
 	rand.Read(largeDoc)
 
 	var wg sync.WaitGroup
-	for i:=0; i<100; i++ {
+	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			key := fmt.Sprintf("%s_%d", keyPrefix,i)
+			key := fmt.Sprintf("%s_%d", keyPrefix, i)
 			added, err := bucket.AddRaw(key, 0, largeDoc)
 			if err != nil {
 				if pkgerrors.Cause(err) != gocb.ErrTimeout {
@@ -158,7 +158,6 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 	wg.Wait()
 
 }
-
 
 func TestBulkGetRaw(t *testing.T) {
 

@@ -781,7 +781,6 @@ func createBatchesKeys(batchSize uint, keys []string) [][]string {
 // on the next call.  Only useful for unit tests.
 var doSingleFakeRecoverableGOCBError = false
 
-
 // Recoverable errors or timeouts trigger retry for gocb read operations
 func isRecoverableReadError(err error) bool {
 
