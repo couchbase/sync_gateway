@@ -718,16 +718,11 @@ func (bh *blipHandler) sendDelta(sender *blip.Sender, docID, deltaSrcRevID strin
 		return bh.sendNoRev(sender, docID, revDelta.ToRevID, err)
 	}
 
-	properties := blip.Properties{
-		revMessageDeltaSrc: deltaSrcRevID,
-	}
-
-	if revDelta.ToDeleted {
-		properties[revMessageDeleted] = "1"
-	}
+	properties := blipMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
+	properties[revMessageDeltaSrc] = deltaSrcRevID
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
-	return bh.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, body, seq, revDelta.RevisionHistory, revDelta.AttachmentDigests, properties)
+	return bh.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, body, revDelta.AttachmentDigests, properties)
 }
 
 func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, docID, revID string, seq db.SequenceID, knownRevs map[string]bool, maxHistory int) error {
@@ -780,20 +775,37 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, bo
 
 	// extract attachments from body for sendRevisionWithProperties
 	attDigests := db.AttachmentDigests(db.GetBodyAttachments(body))
-	return bh.sendRevisionWithProperties(sender, docID, revID, body, seq, history, attDigests, nil)
+
+	deleted, _ := body[db.BodyDeleted].(bool)
+	properties := blipMessageProperties(history, deleted, seq)
+	return bh.sendRevisionWithProperties(sender, docID, revID, body, attDigests, properties)
+}
+
+// blipMessageProperties returns a set of BLIP message properties for the given parameters.
+func blipMessageProperties(revisionHistory []string, deleted bool, seq db.SequenceID) blip.Properties {
+	properties := make(blip.Properties)
+
+	// TODO: Assert? db.SequenceID.MarshalJSON can never error
+	seqJSON, _ := json.Marshal(seq)
+	properties[revMessageSequence] = string(seqJSON)
+
+	if len(revisionHistory) > 0 {
+		properties[revMessageHistory] = strings.Join(revisionHistory, ",")
+	}
+
+	if deleted {
+		properties[revMessageDeleted] = "1"
+	}
+
+	return properties
 }
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, body db.Body, seq db.SequenceID, revisionHistory []string, attDigests []string, properties blip.Properties) error {
+func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, body db.Body, attDigests []string, properties blip.Properties) error {
 
 	outrq := NewRevMessage()
 	outrq.setId(docID)
 	outrq.setRev(revID)
-	if del, _ := body[db.BodyDeleted].(bool); del {
-		outrq.setDeleted(del)
-	}
-	outrq.setSequence(seq)
-	outrq.setHistory(revisionHistory)
 
 	// add additional properties passed through
 	outrq.setProperties(properties)
