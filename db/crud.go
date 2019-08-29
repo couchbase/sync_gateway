@@ -854,9 +854,9 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 	delete(body, BodyAttachments)
 	newDoc.UpdateBody(body)
 
-	doc, newRevID, err := db.PutExistingRev(newDoc, docHistory, noConflicts)
+	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts)
 
-	// Callers expect the below properties to be in the body
+	// Callers expect the below properties to be in the body even if PutExistingRev returns error
 	body[BodyId] = docid
 	body[BodyRev] = newRevID
 
@@ -864,8 +864,8 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 		body[BodyDeleted] = deleted
 	}
 
-	if err != nil {
-		return nil, err
+	if putExistingRevErr != nil {
+		return nil, putExistingRevErr
 	}
 
 	return doc, err
