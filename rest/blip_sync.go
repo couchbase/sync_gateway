@@ -378,15 +378,11 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		}
 	}()
 
-	// Don't send conflicting rev tree branches, just send the winning revision + history, since
-	// CBL 2.0 (and blip_sync) don't support branched revision trees.  See LiteCore #437.
-	sendConflicts := false
-
 	bh.Logf(base.LevelInfo, base.KeySync, "Sending changes since %v", params.since())
 
 	options := db.ChangesOptions{
 		Since:      params.since(),
-		Conflicts:  sendConflicts,
+		Conflicts:  false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
 		Continuous: bh.continuous,
 		ActiveOnly: bh.activeOnly,
 		Terminator: bh.blipSyncContext.terminator,
@@ -772,7 +768,7 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, bo
 
 	// Get the revision's history as a descending array of ancestor revIDs:
 	history := db.ParseRevisions(body)[1:]
-	delete(body, "_revisions")
+	delete(body, db.BodyRevisions)
 	for i, rev := range history {
 		if knownRevs[rev] || (maxHistory > 0 && i+1 >= maxHistory) {
 			history = history[0 : i+1]
@@ -915,8 +911,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 
-		newDoc.UpdateBody(db.Body(deltaSrcMap))
-		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(newDoc.Body()))
+		newDoc.UpdateBody(deltaSrcMap)
+		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
 		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 	}
 
