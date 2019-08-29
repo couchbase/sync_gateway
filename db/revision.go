@@ -30,6 +30,7 @@ const (
 	BodyRevisions   = "_revisions"
 	BodyAttachments = "_attachments"
 	BodyPurged      = "_purged"
+	BodyExpiry      = "_exp"
 )
 
 // A revisions property found within a Body.  Expected to be of the form:
@@ -180,7 +181,7 @@ func copyMap(sourceMap map[string]interface{}) map[string]interface{} {
 }
 
 // Returns the expiry as uint32 (using getExpiry), and removes the _exp property from the body
-func (body Body) extractExpiry() (uint32, error) {
+func (body Body) ExtractExpiry() (uint32, error) {
 
 	exp, present, err := body.getExpiry()
 	if !present || err != nil {
@@ -189,6 +190,18 @@ func (body Body) extractExpiry() (uint32, error) {
 	delete(body, "_exp")
 
 	return exp, nil
+}
+
+func (body Body) ExtractDeleted() bool {
+	deleted, _ := body[BodyDeleted].(bool)
+	delete(body, BodyDeleted)
+	return deleted
+}
+
+func (body Body) ExtractRev() string {
+	revid, _ := body[BodyRev].(string)
+	delete(body, BodyRev)
+	return revid
 }
 
 // Looks up the _exp property in the document, and turns it into a Couchbase Server expiry value, as:

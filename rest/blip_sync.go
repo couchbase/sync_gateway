@@ -850,14 +850,12 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
 	bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
 
-	var body db.Body
-	if err := rq.ReadJSONBody(&body); err != nil {
+	bodyBytes, err := rq.Body()
+	if err != nil {
 		return err
 	}
 
-	if bodyBytes, err := rq.Body(); err == nil {
-		bh.db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesBytesBlip, int64(len(bodyBytes)))
-	}
+	bh.db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesBytesBlip, int64(len(bodyBytes)))
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
 	docID, found := revMessage.id()
@@ -865,6 +863,12 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	if !found || !rfound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
+
+	newDoc := &db.Document{
+		ID:    docID,
+		RevID: revID,
+	}
+	newDoc.UpdateBodyBytes(bodyBytes)
 
 	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
@@ -896,19 +900,28 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		err = base.Patch(&deltaSrcMap, body)
+		err = base.Patch(&deltaSrcMap, newDoc.Body())
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 
-		body = db.Body(deltaSrcMap)
-		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(body))
+		newDoc.UpdateBody(db.Body(deltaSrcMap))
+		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(newDoc.Body()))
 		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 	}
 
-	if revMessage.deleted() {
-		body[db.BodyDeleted] = true
+	// Handle and pull out expiry
+	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
+		body := newDoc.Body()
+		expiry, err := body.ExtractExpiry()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+		}
+		newDoc.DocExpiry = expiry
+		newDoc.UpdateBody(body)
 	}
+
+	newDoc.Deleted = revMessage.deleted()
 
 	// noconflicts flag from LiteCore
 	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev
@@ -933,14 +946,25 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		minRevpos++
 	}
 
-	// Check for any attachments I don't have yet, and request them:
-	if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos); err != nil {
-		return err
+	// Pull out attachments
+	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
+		body := newDoc.Body()
+
+		// Check for any attachments I don't have yet, and request them:
+		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos); err != nil {
+			return err
+		}
+
+		newDoc.DocAttachments = db.GetBodyAttachments(body)
+		delete(body, db.BodyAttachments)
+		newDoc.UpdateBody(body)
 	}
 
 	// Finally, save the revision (with the new attachments inline)
 	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyDocPushCount, 1)
-	_, err := bh.db.PutExistingRev(docID, body, history, noConflicts)
+
+	_, _, err = bh.db.PutExistingRev(newDoc, history, noConflicts)
+
 	return err
 }
 

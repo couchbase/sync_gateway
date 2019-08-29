@@ -842,7 +842,7 @@ func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []
 
 }
 
-// The docHistory should be in the same format as expected by db.PutExistingRev(), or empty if this is the first revision
+// The docHistory should be in the same format as expected by db.PutExistingRevWithBody(), or empty if this is the first revision
 func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory []string, body []byte, properties blip.Properties) (sent bool, req, res *blip.Message, err error) {
 
 	revRequest := blip.NewRequest()

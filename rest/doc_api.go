@@ -299,7 +299,7 @@ func (h *handler) handlePutDoc() error {
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		doc, err = h.db.PutExistingRev(docid, body, revisions, false)
+		doc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
 		if err != nil {
 			return err
 		}

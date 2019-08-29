@@ -1320,7 +1320,8 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 	// Since doc is rejected by sync function, expect a 403 error
 	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
 	goassert.True(t, hasErrorCode)
-	goassert.Equals(t, errorCode, "500")
+	// FIXME: This used to check for error 500 -- No longer does readJSON in handleRev so fails at different point
+	goassert.Equals(t, errorCode, "400")
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
@@ -1417,14 +1418,14 @@ func TestGetRemovedDoc(t *testing.T) {
 	defer bt.Close()
 
 	// Add rev-1 in channel user1
-	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}"`), blip.Properties{})
+	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
 	goassert.True(t, sent)
 	assert.NoError(t, err)                                // no error
 	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
 
 	// Add rev-2 in channel user1
 	history := []string{"1-abc"}
-	sent, _, resp, err = bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}"`), blip.Properties{"noconflicts": "true"})
+	sent, _, resp, err = bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"noconflicts": "true"})
 	goassert.True(t, sent)
 	assert.NoError(t, err)                                // no error
 	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
@@ -2152,11 +2153,12 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
-	// create doc1 rev 2-04f16608671387d26f9f3ecd2c68d9a2 on SG with the first attachment
+	// create doc1 rev 2-10000d5ec533b29b117e60274b1e3653 on SG with the first attachment
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
+	fmt.Println(resp.Body.String())
 
-	data, ok = client.WaitForRev("doc1", "2-04f16608671387d26f9f3ecd2c68d9a2")
+	data, ok = client.WaitForRev("doc1", "2-10000d5ec533b29b117e60274b1e3653")
 	assert.True(t, ok)
 	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
@@ -2186,7 +2188,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(msgBody))
 	}
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-04f16608671387d26f9f3ecd2c68d9a2", "")
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-10000d5ec533b29b117e60274b1e3653", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-04f16608671387d26f9f3ecd2c68d9a2","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
+	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-10000d5ec533b29b117e60274b1e3653","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
 }
