@@ -836,12 +836,9 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 }
 
 func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, err error) {
-
-	// Blip pulls out revid, id, attachments, expiry
-
 	expiry, _ := body.ExtractExpiry()
-	deleted, _ := body[BodyDeleted].(bool)
-	revid, _ := body[BodyRev].(string)
+	deleted := body.ExtractDeleted()
+	revid := body.ExtractRev()
 
 	newDoc := &Document{
 		ID:        docid,
@@ -851,8 +848,6 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 	}
 
 	delete(body, BodyId)
-	delete(body, BodyRev)
-	delete(body, BodyDeleted)
 	delete(body, BodyRevisions)
 
 	newDoc.DocAttachments = GetBodyAttachments(body)
@@ -861,6 +856,7 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 
 	doc, newRevID, err := db.PutExistingRev(newDoc, docHistory, noConflicts)
 
+	// Callers expect the below properties to be in the body
 	body[BodyId] = docid
 	body[BodyRev] = newRevID
 

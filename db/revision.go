@@ -192,6 +192,18 @@ func (body Body) ExtractExpiry() (uint32, error) {
 	return exp, nil
 }
 
+func (body Body) ExtractDeleted() bool {
+	deleted, _ := body[BodyDeleted].(bool)
+	delete(body, BodyDeleted)
+	return deleted
+}
+
+func (body Body) ExtractRev() string {
+	revid, _ := body[BodyRev].(string)
+	delete(body, BodyRev)
+	return revid
+}
+
 // Looks up the _exp property in the document, and turns it into a Couchbase Server expiry value, as:
 func (body Body) getExpiry() (uint32, bool, error) {
 	rawExpiry, ok := body["_exp"]
