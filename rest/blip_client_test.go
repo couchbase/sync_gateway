@@ -606,7 +606,7 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 	return newRevID, nil
 }
 
-// GetRev returns the data stored in the Client under the given docID and revID
+// GetRev1xBody returns the data stored in the Client under the given docID and revID
 func (btc *BlipTesterClient) GetRev(docID, revID string) (data []byte, found bool) {
 	btc.docsLock.RLock()
 	defer btc.docsLock.RUnlock()

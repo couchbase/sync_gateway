@@ -30,7 +30,8 @@ const (
 	BodyRevisions   = "_revisions"
 	BodyAttachments = "_attachments"
 	BodyPurged      = "_purged"
-	BodyExpiry      = "_exp"
+	BodyRemoved     = "_removed"
+	BodyExp         = "_exp"
 )
 
 // A revisions property found within a Body.  Expected to be of the form:
@@ -54,6 +55,7 @@ const (
 )
 
 func (b *Body) Unmarshal(data []byte) error {
+	base.Infof(base.KeyAll, "UNMARSHAL BODY: %v", string(data))
 
 	if len(data) == 0 {
 		return errors.New("Unexpected empty JSON input to body.Unmarshal")
@@ -247,6 +249,14 @@ func (db *DatabaseContext) getOldRevisionJSON(docid string, revid string) ([]byt
 //   delta=true && shared_bucket_access=false
 //      - old revision stored, with expiry rev_max_age_seconds
 func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody Body, oldBody []byte, newAtts AttachmentsMeta) {
+
+	if oldBody != nil && len(newAtts) > 0 {
+		var err error
+		oldBody, err = base.InjectJSONProperties(oldBody, base.KVPair{Key: BodyAttachments, Val: newAtts})
+		if err != nil {
+			base.Warnf(base.KeyAll, "Unable to inject _attachments into old revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, err)
+		}
+	}
 
 	// Without delta sync, store the old rev for in-flight replication purposes
 	if !db.DeltaSyncEnabled() || db.Options.DeltaSyncOptions.RevMaxAgeSeconds == 0 {

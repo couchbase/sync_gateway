@@ -150,7 +150,7 @@ func (h *handler) handleGetAttachment() error {
 	docid := h.PathVar("docid")
 	attachmentName := h.PathVar("attach")
 	revid := h.getQuery("rev")
-	body, err := h.db.GetRev(docid, revid, false, nil)
+	body, err := h.db.GetRev1xBody(docid, revid, false, nil)
 	if err != nil {
 		return err
 	}
@@ -221,7 +221,7 @@ func (h *handler) handlePutAttachment() error {
 		return err
 	}
 
-	body, err := h.db.GetRev(docid, revid, false, nil)
+	body, err := h.db.GetRev1xBody(docid, revid, false, nil)
 	if err != nil && base.IsDocNotFoundError(err) {
 		// couchdb creates empty body on attachment PUT
 		// for non-existant doc id

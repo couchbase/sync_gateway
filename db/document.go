@@ -696,7 +696,7 @@ func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.
 
 // Determine whether the specified revision was a channel removal, based on doc.Channels.  If so, construct the standard document body for a
 // removal notification (_removed=true)
-func (doc *Document) IsChannelRemoval(revID string) (body Body, history Revisions, channels base.Set, isRemoval bool, err error) {
+func (doc *Document) IsChannelRemoval(revID string) (removalBody []byte, history Revisions, channels base.Set, isRemoval bool, err error) {
 
 	channels = make(base.Set)
 
@@ -716,7 +716,7 @@ func (doc *Document) IsChannelRemoval(revID string) (body Body, history Revision
 	}
 
 	// Construct removal body
-	body = Body{
+	body := Body{
 		BodyId:     doc.ID,
 		BodyRev:    revID,
 		"_removed": true,
@@ -736,8 +736,12 @@ func (doc *Document) IsChannelRemoval(revID string) (body Body, history Revision
 		revHistory = []string{revID}
 	}
 	history = encodeRevisions(revHistory)
+	removalBody, err = json.Marshal(body)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
 
-	return body, history, channels, true, nil
+	return removalBody, history, channels, true, nil
 }
 
 // Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.
@@ -779,6 +783,7 @@ type documentRoot struct {
 }
 
 func (doc *Document) UnmarshalJSON(data []byte) error {
+	base.Infof(base.KeyAll, "UNMARSHAL DOCUMENT: %v %v", doc.ID, string(data))
 	if doc.ID == "" {
 		panic("Doc was unmarshaled without ID set")
 	}
@@ -811,6 +816,7 @@ func (doc *Document) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		err = pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
+	base.Infof(base.KeyAll, "  MARSHAL DOCUMENT: %v %v", doc.ID, string(data))
 	return data, err
 }
 

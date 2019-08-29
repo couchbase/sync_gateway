@@ -128,7 +128,7 @@ func (db *Database) retrieveAncestorAttachments(doc *Document, parentRev string,
 	// Attempt to find a non-pruned parent or ancestor
 	parent, _ := db.getAvailableRev(doc, parentRev)
 	if parent != nil {
-		parentAttachments = GetBodyAttachments(parent)
+		parentAttachments = parent.Attachments
 	} else {
 		// No non-pruned ancestor is available
 		commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory)

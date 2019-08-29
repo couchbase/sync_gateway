@@ -44,7 +44,9 @@ func init() {
 }
 
 // IsEnterpriseEdition returns true if this Sync Gateway node is enterprise edition. This can be used to restrict config options, etc. at runtime.
-// This should not be used as a condtional around private/EE-only code, as CE builds will fail to compile. Use the build tag for conditional compilation instead.
+//
+// This should not be used as a conditional around private/EE-only code, as CE builds will fail to compile.
+// Use the cb_sg_enterprise build tag for conditional compilation instead in these scenarios.
 func IsEnterpriseEdition() bool {
 	return productEditionEnterprise == true
 }

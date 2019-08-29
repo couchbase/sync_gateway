@@ -2059,7 +2059,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 
 		// Validate that generation of a delta didn't mutate the revision body in the revision cache
-		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.BodyShallowCopy)
+		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
 		assert.NoError(t, cacheErr)
 		marshalledBody, _ := json.Marshal(docRev.Body)
 		assert.Equal(t, []byte(`{"_id":"doc1","_rev":"1-0335a345b6ffed05707ccc4cbc1b67f4","greetings":[{"hello":"world!"},{"hi":"alice"}]}`), marshalledBody)

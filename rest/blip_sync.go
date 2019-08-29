@@ -727,7 +727,7 @@ func (bh *blipHandler) sendDelta(sender *blip.Sender, docID, deltaSrcRevID strin
 
 func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, docID, revID string, seq db.SequenceID, knownRevs map[string]bool, maxHistory int) error {
 
-	body, err := bh.db.GetRev(docID, revID, true, nil)
+	body, err := bh.db.GetRev1xBody(docID, revID, true, nil)
 	if err != nil {
 		return bh.sendNoRev(sender, docID, revID, err)
 	}
@@ -758,7 +758,7 @@ func (bh *blipHandler) sendNoRev(sender *blip.Sender, docID, revID string, err e
 }
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, body db.Body, seq db.SequenceID, knownRevs map[string]bool, maxHistory int) error {
+func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, bodyBytes []byte, seq db.SequenceID, knownRevs map[string]bool, maxHistory int, deleted bool) error {
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known", base.UD(docID), revID, len(knownRevs))
 
 	// Get the revision's history as a descending array of ancestor revIDs:
@@ -801,7 +801,7 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq db.Seq
 }
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, body db.Body, attDigests []string, properties blip.Properties) error {
+func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, bodyBytes []byte, attDigests []string, properties blip.Properties) error {
 
 	outrq := NewRevMessage()
 	outrq.setId(docID)
@@ -903,10 +903,12 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		//       while retrieving deltaSrcRevID.  Couchbase Lite replication guarantees client has access to deltaSrcRevID,
 		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
-		deltaSrcBody, err := bh.db.GetRevCopy(docID, deltaSrcRevID, false, nil, db.BodyDeepCopy)
+		deltaSrcRev, err := bh.db.GetRev(docID, deltaSrcRevID, false, nil)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
+
+		deltaSrcBody, err := deltaSrcRev.MutableBody()
 
 		// Strip out _id, _rev properties inserted by GetRevCopy
 		delete(deltaSrcBody, db.BodyId)
@@ -929,7 +931,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
+	if bytes.Contains(bodyBytes, []byte(db.BodyExp)) {
 		body := newDoc.Body()
 		expiry, err := body.ExtractExpiry()
 		if err != nil {
