@@ -23,15 +23,29 @@ import (
 )
 
 const (
-
 	// Blip default vals
 	BlipDefaultBatchSize = uint64(200)
-
 	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
 
 	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
 	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
 	BlipCBMobileReplication = "CBMobile_2"
+)
+
+var (
+	// kCompressedTypes are MIME types that explicitly indicate they're compressed:
+	kCompressedTypes = regexp.MustCompile(`(?i)\bg?zip\b`)
+
+	// kGoodTypes are MIME types that are compressible:
+	kGoodTypes = regexp.MustCompile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
+
+	// kBadTypes are MIME types that are generally incompressible:
+	kBadTypes = regexp.MustCompile(`(?i)^(audio|image|video)/`)
+	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
+	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
+
+	// kBadFilenames are filename extensions of incompressible types:
+	kBadFilenames = regexp.MustCompile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
 )
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
@@ -1118,39 +1132,6 @@ func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	ctx.useDeltas = false
 }
 
-// NOTE: This code is taken from db/attachments.go in the feature/deltas branch, as of commit
-// 540b1c8. Once that branch is merged it can be replaced by a call to Attachment.Compressible().
-
-var kCompressedTypes, kGoodTypes, kBadTypes, kBadFilenames *regexp.Regexp
-
-func init() {
-	// MIME types that explicitly indicate they're compressed:
-	kCompressedTypes, _ = regexp.Compile(`(?i)\bg?zip\b`)
-	// MIME types that are compressible:
-	kGoodTypes, _ = regexp.Compile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
-	// ... or generally uncompressible:
-	kBadTypes, _ = regexp.Compile(`(?i)^(audio|image|video)/`)
-	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
-	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
-
-	// Filename extensions of uncompressible types:
-	kBadFilenames, _ = regexp.Compile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
-}
-
-// Returns true if this attachment is worth trying to compress.
-func isCompressible(filename string, meta map[string]interface{}) bool {
-	if meta["encoding"] != nil {
-		return false
-	} else if kBadFilenames.MatchString(filename) {
-		return false
-	} else if mimeType, ok := meta["content_type"].(string); ok && mimeType != "" {
-		return !kCompressedTypes.MatchString(mimeType) &&
-			(kGoodTypes.MatchString(mimeType) ||
-				!kBadTypes.MatchString(mimeType))
-	}
-	return true // be optimistic by default
-}
-
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
 	bh.Logf(base.LevelInfo, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, profile, endpoint)
 }
@@ -1166,4 +1147,18 @@ func DefaultBlipLogger(ctx context.Context) blip.LogFn {
 			base.InfofCtx(ctx, base.KeyWebSocket, format, params...)
 		}
 	}
+}
+
+// Returns true if this attachment is worth trying to compress.
+func isCompressible(filename string, meta map[string]interface{}) bool {
+	if meta["encoding"] != nil {
+		return false
+	} else if kBadFilenames.MatchString(filename) {
+		return false
+	} else if mimeType, ok := meta["content_type"].(string); ok && mimeType != "" {
+		return !kCompressedTypes.MatchString(mimeType) &&
+			(kGoodTypes.MatchString(mimeType) ||
+				!kBadTypes.MatchString(mimeType))
+	}
+	return true // be optimistic by default
 }
