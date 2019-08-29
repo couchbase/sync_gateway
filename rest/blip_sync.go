@@ -102,8 +102,8 @@ func userBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	}
 }
 
-// kHandlerRoutes defines the profile (verb) of an incoming request to the method that handles it.
-var kHandlerRoutes = map[string]blipHandlerFunc{
+// kHandlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
+var kHandlersByProfile = map[string]blipHandlerFunc{
 	messageGetCheckpoint:  (*blipHandler).handleGetCheckpoint,
 	messageSetCheckpoint:  (*blipHandler).handleSetCheckpoint,
 	messageSubChanges:     userBlipHandler((*blipHandler).handleSubChanges),
@@ -147,7 +147,7 @@ func (h *handler) handleBLIPSync() error {
 	ctx.sgCanUseDeltas = ctx.db.DeltaSyncEnabled()
 
 	blipContext.DefaultHandler = ctx.notFound
-	for profile, handlerFn := range kHandlerRoutes {
+	for profile, handlerFn := range kHandlersByProfile {
 		ctx.register(profile, handlerFn)
 	}
 
@@ -718,7 +718,7 @@ func (bh *blipHandler) sendDelta(sender *blip.Sender, docID, deltaSrcRevID strin
 		return bh.sendNoRev(sender, docID, revDelta.ToRevID, err)
 	}
 
-	properties := blipMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
+	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
 	properties[revMessageDeltaSrc] = deltaSrcRevID
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
@@ -777,12 +777,12 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, bo
 	attDigests := db.AttachmentDigests(db.GetBodyAttachments(body))
 
 	deleted, _ := body[db.BodyDeleted].(bool)
-	properties := blipMessageProperties(history, deleted, seq)
+	properties := blipRevMessageProperties(history, deleted, seq)
 	return bh.sendRevisionWithProperties(sender, docID, revID, body, attDigests, properties)
 }
 
-// blipMessageProperties returns a set of BLIP message properties for the given parameters.
-func blipMessageProperties(revisionHistory []string, deleted bool, seq db.SequenceID) blip.Properties {
+// blipRevMessageProperties returns a set of BLIP message properties for the given parameters.
+func blipRevMessageProperties(revisionHistory []string, deleted bool, seq db.SequenceID) blip.Properties {
 	properties := make(blip.Properties)
 
 	// TODO: Assert? db.SequenceID.MarshalJSON can never error
