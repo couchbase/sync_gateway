@@ -663,7 +663,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
-
 	deleted, _ := body[BodyDeleted].(bool)
 
 	expiry, err := body.ExtractExpiry()
@@ -724,7 +723,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 
 		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
-		newAttachments, err := db.storeAttachmentsDoc(doc, newDoc.DocAttachments, generation, matchRev, nil)
+		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, matchRev, nil)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -754,6 +753,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 	return newRevID, doc, err
 }
 
+// Adds an existing revision to a document along with its history (list of rev IDs.)
 func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConflicts bool) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
@@ -795,7 +795,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 			}
 		}
 		if currentRevIndex == 0 {
-			base.DebugfCtx(db.Ctx, base.KeyCRUD, "PutExistingRevREST(%q): No new revisions to add", base.UD(newDoc.ID))
+			base.DebugfCtx(db.Ctx, base.KeyCRUD, "PutExistingRevWithBody(%q): No new revisions to add", base.UD(newDoc.ID))
 			newDoc.RevID = newRev
 			return nil, nil, nil, base.ErrUpdateCancel // No new revisions to add
 		}
@@ -821,7 +821,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 
 		// Process the attachments, replacing bodies with digests.
 		parentRevID := doc.History[newRev].Parent
-		newAttachments, err := db.storeAttachmentsDoc(doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
+		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -835,7 +835,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 	return doc, newRev, err
 }
 
-func (db *Database) PutExistingRevREST(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, err error) {
+func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, err error) {
 
 	// Blip pulls out revid, id, attachments, expiry
 
@@ -934,13 +934,20 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 	}
 }
 
+// Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
+// the sync function.
 func (db *Database) runSyncFn(doc *Document, body Body, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+	body[BodyId] = doc.ID
+	body[BodyRev] = newRevId
+
 	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(doc, body, newRevId)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
 	}
 	db.checkDocChannelsAndGrantsLimits(doc.ID, channelSet, access, roles)
 
+	delete(body, BodyId)
+	delete(body, BodyRev)
 	return syncExpiry, oldBody, channelSet, access, roles, nil
 }
 
@@ -1111,7 +1118,7 @@ func (db *Database) IsIllegalConflict(doc *Document, parentRevID string, deleted
 	return true
 }
 
-func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retBody Body, retNewRevID string, retStoredBody Body, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, err error) {
+func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredBody Body, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, err error) {
 
 	err = db.validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
@@ -1124,6 +1131,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
+	// FIXME: This stored body stuff can be changed with the upcoming revcache work
 	body := newDoc.Body()
 	storedBody := body
 	if newDoc.Deleted {
@@ -1141,14 +1149,10 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	doc.updateWinningRevAndSetDocFlags()
 	db.storeOldBodyInRevTreeAndUpdateCurrent(doc, prevCurrentRev, newRevID, newDoc)
 
-	body[BodyId] = doc.ID
-	body[BodyRev] = newRevID
 	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, body, newRevID)
 	if err != nil {
 		return
 	}
-	delete(body, BodyId)
-	delete(body, BodyRev)
 
 	if len(channelSet) > 0 {
 		doc.History[newRevID].Channels = channelSet
@@ -1197,7 +1201,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	}
 
 	doc.TimeSaved = time.Now()
-	return updatedExpiry, body, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err
+	return updatedExpiry, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -1233,7 +1237,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				return
 			}
 			docExists := currentValue != nil
-			syncFuncExpiry, _, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			syncFuncExpiry, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -1241,7 +1245,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			docSequence = doc.Sequence
 			inConflict = doc.hasFlag(channels.Conflict)
 			// Return the new raw document value for the bucket to store.
-			raw, err = doc.MarshallBodyAndSync()
+			raw, err = doc.MarshalBodyAndSync()
 			base.DebugfCtx(db.Ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
 			docBytes = len(raw)
 			return raw, writeOpts, syncFuncExpiry, err
@@ -1266,7 +1270,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				return
 			}
 			docExists := currentValue != nil
-			syncFuncExpiry, _, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			syncFuncExpiry, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -1353,7 +1357,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 
 		}
 
-		// FIXME: Currently returning storedBody - Should revisit this
+		// FIXME: Currently returning storedBody - Should change this with revcache work
 		revChannels := doc.History[newRevID].Channels
 		documentRevision := DocumentRevision{
 			RevID:       newRevID,

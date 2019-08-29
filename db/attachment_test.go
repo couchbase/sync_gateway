@@ -84,7 +84,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
 	require.NoError(t, json.Unmarshal([]byte(rev2Data), &rev2Body))
-	_, err = db.PutExistingRevREST(docID, rev2Body, []string{"2-abc", rev1ID}, true)
+	_, err = db.PutExistingRevWithBody(docID, rev2Body, []string{"2-abc", rev1ID}, true)
 	require.NoError(t, err)
 	rev2ID := "2-abc"
 
@@ -176,7 +176,7 @@ func TestAttachments(t *testing.T) {
 	var body2B Body
 	err = json.Unmarshal([]byte(rev2Bstr), &body2B)
 	assert.NoError(t, err, "bad JSON")
-	_, err = db.PutExistingRevREST("doc1", body2B, []string{"2-f000", rev1id}, false)
+	_, err = db.PutExistingRevWithBody("doc1", body2B, []string{"2-f000", rev1id}, false)
 	assert.NoError(t, err, "Couldn't update document")
 }
 

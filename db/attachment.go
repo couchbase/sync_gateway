@@ -53,18 +53,10 @@ type DocAttachment struct {
 	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
 }
 
-// Given a CouchDB document body about to be stored in the database, goes through the _attachments
-// dict, finds attachments with inline bodies, copies the bodies into the Couchbase db, and replaces
-// the bodies with the 'digest' attributes which are the keys to retrieving them.
-func (db *Database) storeAttachments(doc *Document, body Body, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
-	newAttachmentsMeta := GetBodyAttachments(body)
-	if newAttachmentsMeta == nil && body[BodyAttachments] != nil {
-		return nil, base.HTTPErrorf(400, "Invalid _attachments")
-	}
-	return db.storeAttachmentsDoc(doc, newAttachmentsMeta, generation, parentRev, docHistory)
-}
-
-func (db *Database) storeAttachmentsDoc(doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
+// Given Attachments Meta to be stored in the database, storeAttachments goes through the map, finds attachments with
+// inline bodies, copies the bodies into the Couchbase db, and replaces the bodies with the 'digest' attributes which
+// are the keys to retrieving them.
+func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
 	var parentAttachments map[string]interface{}
 	newAttachmentData := make(AttachmentData, 0)
 	atts := newAttachmentsMeta

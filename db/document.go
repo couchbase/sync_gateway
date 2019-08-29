@@ -175,28 +175,19 @@ func (doc *Document) UpdateBody(body Body) {
 	doc._rawBody = nil
 }
 
-func (doc *Document) MarshallBodyAndSync() (retBytes []byte, err error) {
-	bodyBytes, err := doc.BodyBytes()
-	if err != nil {
-		return nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalBodyAndSync() doc with id: %s. Error %v", base.UD(doc.ID), err))
+// Marshals both the body and sync data for a given document. If there is no rawbody already available then we will
+// marshall it all in one go. Otherwise we will reduce marshalling as much as possible by only marshalling the sync data
+// and injecting it into the existing raw body.
+func (doc *Document) MarshalBodyAndSync() (retBytes []byte, err error) {
+	if doc._rawBody != nil {
+		bodyBytes, err := doc.BodyBytes()
+		if err != nil {
+			return nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalBodyAndSync() doc with id: %s. Error %v", base.UD(doc.ID), err))
+		}
+		return base.InjectJSONProperties(bodyBytes, base.KVPair{Key: base.SyncXattrName, Val: doc.SyncData})
+	} else {
+		return json.Marshal(doc)
 	}
-	syncData, err := json.Marshal(doc.SyncData)
-	if err != nil {
-		return nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalBodyAndSync() doc with id: %s. Error %v", base.UD(doc.ID), err))
-	}
-
-	syncKey := "_sync"
-
-	rawJSON := make([]byte, 0, len(bodyBytes)+len(syncData)+len(syncKey)+4)
-	rawJSON = append(rawJSON, bodyBytes[0:1]...)
-	rawJSON = append(rawJSON, []byte(`"`+syncKey+`":`)...)
-	rawJSON = append(rawJSON, syncData...)
-	if !bytes.Equal(bodyBytes, []byte("{}")) {
-		rawJSON = append(rawJSON, []byte(",")...)
-	}
-	rawJSON = append(rawJSON, bodyBytes[1:]...)
-
-	return rawJSON, nil
 }
 
 // Returns a new empty document.
