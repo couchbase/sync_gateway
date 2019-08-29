@@ -68,7 +68,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 		}
 
 		// Timeout error - return named error
-		if isGoCBTimeoutError(queryErr) {
+		if isGoCBQueryTimeoutError(queryErr) {
 			return queryResults, ErrViewTimeoutError
 		}
 

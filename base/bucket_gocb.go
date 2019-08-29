@@ -51,7 +51,6 @@ const (
 )
 
 var recoverableGoCBErrors = map[string]struct{}{
-	gocbcore.ErrTimeout.Error():  {},
 	gocbcore.ErrOverload.Error(): {},
 	gocbcore.ErrBusy.Error():     {},
 	gocbcore.ErrTmpFail.Error():  {},
@@ -349,7 +348,7 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 	}()
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		casGoCB, err := bucket.Bucket.Get(k, rv)
-		shouldRetry = isRecoverableGoCBError(err)
+		shouldRetry = isRecoverableReadError(err)
 		return shouldRetry, err, uint64(casGoCB)
 	}
 
@@ -465,13 +464,13 @@ func (bucket *CouchbaseBucketGoCB) processBulkSetEntriesBatch(entries []*sgbucke
 		case *gocb.InsertOp:
 			entry.Cas = uint64(item.Cas)
 			entry.Error = item.Err
-			if item.Err != nil && isRecoverableGoCBError(item.Err) {
+			if isRecoverableWriteError(item.Err) {
 				retryEntries = append(retryEntries, entry)
 			}
 		case *gocb.ReplaceOp:
 			entry.Cas = uint64(item.Cas)
 			entry.Error = item.Err
-			if item.Err != nil && isRecoverableGoCBError(item.Err) {
+			if isRecoverableWriteError(item.Err) {
 				retryEntries = append(retryEntries, entry)
 			}
 		}
@@ -661,7 +660,7 @@ func (bucket *CouchbaseBucketGoCB) processGetRawBatch(keys []string, resultAccum
 			}
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
-			if isRecoverableGoCBError(getOp.Err) {
+			if isRecoverableReadError(getOp.Err) {
 				retryKeys = append(retryKeys, getOp.Key)
 			}
 		}
@@ -701,7 +700,7 @@ func (bucket *CouchbaseBucketGoCB) processGetCountersBatch(keys []string, result
 			}
 		} else {
 			// if it's a recoverable error, then throw it in retry collection.
-			if isRecoverableGoCBError(getOp.Err) {
+			if isRecoverableReadError(getOp.Err) {
 				retryKeys = append(retryKeys, getOp.Key)
 			}
 		}
@@ -782,15 +781,25 @@ func createBatchesKeys(batchSize uint, keys []string) [][]string {
 // on the next call.  Only useful for unit tests.
 var doSingleFakeRecoverableGOCBError = false
 
-// There are several errors from GoCB that are known to happen when it becomes overloaded:
-//
-// 1) WARNING: WriteCasRaw got error when calling GetRaw:%!(EXTRA gocb.timeoutError=The operation has timed out.) -- db.writeCasRaw() at crud.go:958
-// 2) WARNING: WriteCasRaw got error when calling GetRaw:%!(EXTRA gocbcore.overloadError=Queue overflow.) -- db.writeCasRaw() at crud.go:958
-//
-// Other errors, such as "key not found" errors, which happen on CAS update failures and other
-// situations, should not be treated as recoverable
-//
-func isRecoverableGoCBError(err error) bool {
+
+// Recoverable errors or timeouts trigger retry for gocb read operations
+func isRecoverableReadError(err error) bool {
+
+	if err == nil {
+		return false
+	}
+
+	if isGoCBTimeoutError(err) {
+		return true
+	}
+
+	_, ok := recoverableGoCBErrors[pkgerrors.Cause(err).Error()]
+
+	return ok
+}
+
+// Recoverable errors trigger retry for gocb write operations
+func isRecoverableWriteError(err error) bool {
 
 	if err == nil {
 		return false
@@ -801,12 +810,16 @@ func isRecoverableGoCBError(err error) bool {
 	return ok
 }
 
+func isGoCBTimeoutError(err error) bool {
+	return pkgerrors.Cause(err) == gocb.ErrTimeout
+}
+
 // If the error is a net/url.Error and the error message is:
 // 		net/http: request canceled while waiting for connection
 // Then it means that the view request timed out, most likely due to the fact that it's a stale=false query and
 // it's rebuilding the index.  In that case, it's desirable to return a more informative error than the
 // underlying net/url.Error. See https://github.com/couchbase/sync_gateway/issues/2639
-func isGoCBTimeoutError(err error) bool {
+func isGoCBQueryTimeoutError(err error) bool {
 
 	if err == nil {
 		return false
@@ -847,7 +860,7 @@ func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []by
 	var returnVal []byte
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		casGoCB, err := bucket.Bucket.GetAndTouch(k, exp, &returnVal)
-		shouldRetry = isRecoverableGoCBError(err)
+		shouldRetry = isRecoverableReadError(err)
 		return shouldRetry, err, uint64(casGoCB)
 
 	}
@@ -885,7 +898,7 @@ func (bucket *CouchbaseBucketGoCB) Touch(k string, exp uint32) (cas uint64, err 
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		casGoCB, err := bucket.Bucket.Touch(k, 0, exp)
-		shouldRetry = isRecoverableGoCBError(err)
+		shouldRetry = isRecoverableWriteError(err)
 		return shouldRetry, err, uint64(casGoCB)
 
 	}
@@ -918,7 +931,7 @@ func (bucket *CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (add
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		_, err = bucket.Bucket.Insert(k, v, exp)
-		if isRecoverableGoCBError(err) {
+		if isRecoverableWriteError(err) {
 			return true, err, nil
 		}
 
@@ -946,7 +959,7 @@ func (bucket *CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		_, err = bucket.Bucket.Insert(k, bucket.FormatBinaryDocument(v), exp)
-		if isRecoverableGoCBError(err) {
+		if isRecoverableWriteError(err) {
 			return true, err, nil
 		}
 
@@ -981,7 +994,7 @@ func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) erro
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		_, err = bucket.Bucket.Upsert(k, v, exp)
-		if isRecoverableGoCBError(err) {
+		if isRecoverableWriteError(err) {
 			return true, err, nil
 		}
 
@@ -1006,7 +1019,7 @@ func (bucket *CouchbaseBucketGoCB) SetRaw(k string, exp uint32, v []byte) error 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		_, err = bucket.Bucket.Upsert(k, bucket.FormatBinaryDocument(v), exp)
-		if isRecoverableGoCBError(err) {
+		if isRecoverableWriteError(err) {
 			return true, err, nil
 		}
 
@@ -1023,7 +1036,7 @@ func (bucket *CouchbaseBucketGoCB) Delete(k string) error {
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		_, err = bucket.Remove(k, 0)
-		if isRecoverableGoCBError(err) {
+		if isRecoverableWriteError(err) {
 			return true, err, nil
 		}
 
@@ -1046,7 +1059,7 @@ func (bucket *CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		newCas, errRemove := bucket.Bucket.Remove(k, gocb.Cas(cas))
-		if isRecoverableGoCBError(errRemove) {
+		if isRecoverableWriteError(errRemove) {
 			return true, errRemove, newCas
 		}
 
@@ -1093,13 +1106,13 @@ func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas
 		if cas == 0 {
 			// Try to insert the value into the bucket
 			newCas, err := bucket.Bucket.Insert(k, v, exp)
-			shouldRetry = isRecoverableGoCBError(err)
+			shouldRetry = isRecoverableWriteError(err)
 			return shouldRetry, err, uint64(newCas)
 		}
 
 		// Otherwise, replace existing value
 		newCas, err := bucket.Bucket.Replace(k, v, gocb.Cas(cas), exp)
-		shouldRetry = isRecoverableGoCBError(err)
+		shouldRetry = isRecoverableWriteError(err)
 		return shouldRetry, err, uint64(newCas)
 
 	}
@@ -1157,7 +1170,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 			docFragment, err := mutateInBuilder.Execute()
 
 			if err != nil {
-				shouldRetry = isRecoverableGoCBError(err)
+				shouldRetry = isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
 			}
 			return false, nil, uint64(docFragment.Cas())
@@ -1177,7 +1190,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 			docFragment, err := mutateInBuilder.Execute()
 
 			if err != nil {
-				shouldRetry = isRecoverableGoCBError(err)
+				shouldRetry = isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
 			}
 			casOut = uint64(docFragment.Cas())
@@ -1192,7 +1205,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 			docFragment, err := mutateInBuilder.Execute()
 
 			if err != nil {
-				shouldRetry = isRecoverableGoCBError(err)
+				shouldRetry = isRecoverableWriteError(err)
 				return shouldRetry, err, uint64(0)
 			}
 			casOut = uint64(docFragment.Cas())
@@ -1259,7 +1272,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		docFragment, removeErr := builder.Execute()
 
 		if removeErr != nil {
-			shouldRetry = isRecoverableGoCBError(removeErr)
+			shouldRetry = isRecoverableWriteError(removeErr)
 			return shouldRetry, removeErr, uint64(0)
 		}
 		return false, nil, uint64(docFragment.Cas())
@@ -1333,7 +1346,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 			return false, nil, cas
 
 		default:
-			shouldRetry = isRecoverableGoCBError(lookupErr)
+			shouldRetry = isRecoverableReadError(lookupErr)
 			return shouldRetry, lookupErr, uint64(0)
 		}
 
@@ -1404,7 +1417,7 @@ func (bucket *CouchbaseBucketGoCB) GetXattr(k string, xattrKey string, xv interf
 			cas := uint64(res.Cas())
 			return false, nil, cas
 		default:
-			shouldRetry = isRecoverableGoCBError(lookupErr)
+			shouldRetry = isRecoverableReadError(lookupErr)
 			return shouldRetry, lookupErr, uint64(0)
 		}
 
@@ -1600,7 +1613,7 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 
 		if pkgerrors.Cause(err) == gocb.ErrKeyExists {
 			// retry on cas failure
-		} else if isRecoverableGoCBError(err) {
+		} else if isRecoverableWriteError(err) {
 			// retry on recoverable failure, up to MaxNumRetries
 			if retryAttempts >= bucket.spec.MaxNumRetries {
 				return 0, pkgerrors.Wrapf(err, "Update retry loop aborted after %d attempts", retryAttempts)
@@ -1683,7 +1696,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 
 		if pkgerrors.Cause(err) == gocb.ErrKeyExists {
 			// retry on cas failure
-		} else if isRecoverableGoCBError(err) {
+		} else if isRecoverableWriteError(err) {
 			// retry on recoverable failure, up to MaxNumRetries
 			if retryAttempts >= bucket.spec.MaxNumRetries {
 				return 0, pkgerrors.Wrapf(err, "WriteUpdate retry loop aborted after %d attempts", retryAttempts)
@@ -1800,7 +1813,7 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		result, _, err := bucket.Counter(k, int64(amt), int64(def), exp)
-		shouldRetry = isRecoverableGoCBError(err)
+		shouldRetry = isRecoverableWriteError(err)
 		return shouldRetry, err, result
 
 	}
@@ -2037,7 +2050,7 @@ func (bucket *CouchbaseBucketGoCB) View(ddoc, name string, params map[string]int
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
 
 	// If it's a view timeout error, return an error message specific to that.
-	if isGoCBTimeoutError(err) {
+	if isGoCBQueryTimeoutError(err) {
 		return viewResult, ErrViewTimeoutError
 	}
 
@@ -2110,7 +2123,7 @@ func (bucket *CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[stri
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
 
 	// If it's a view timeout error, return an error message specific to that.
-	if isGoCBTimeoutError(err) {
+	if isGoCBQueryTimeoutError(err) {
 		return ErrViewTimeoutError
 	}
 
@@ -2203,7 +2216,7 @@ func (bucket CouchbaseBucketGoCB) ViewQuery(ddoc, name string, params map[string
 	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
 
 	// If it's a view timeout error, return an error message specific to that.
-	if isGoCBTimeoutError(err) {
+	if isGoCBQueryTimeoutError(err) {
 		return nil, ErrViewTimeoutError
 	}
 
@@ -2275,7 +2288,7 @@ func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeq
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		stats, err := bucket.Stats("vbucket-seqno")
-		shouldRetry = (err != nil && isRecoverableGoCBError(err))
+		shouldRetry = isRecoverableReadError(err)
 		return shouldRetry, err, stats
 	}
 
@@ -2455,7 +2468,7 @@ func (bucket *CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaEr
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		expirySingleAttempt, err := bucket.getExpirySingleAttempt(k)
-		shouldRetry = (err != nil && isRecoverableGoCBError(err))
+		shouldRetry = isRecoverableReadError(err)
 		return shouldRetry, err, uint32(expirySingleAttempt)
 	}
 
