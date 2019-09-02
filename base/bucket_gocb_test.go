@@ -14,8 +14,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"reflect"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -114,6 +117,45 @@ func TestAddRaw(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error removing key from bucket")
 	}
+
+}
+
+// TestAddRawTimeout attempts to fill up the gocbpipeline by writing large documents concurrently with a small timeout,
+// to verify that timeout errors are returned, and the operation isn't retried (which would return a cas error).
+//   (see CBG-463)
+func TestAddRawTimeoutRetry(t *testing.T) {
+
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	gocbBucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	if ok {
+		gocbBucket.Bucket.SetOperationTimeout(100 * time.Millisecond)
+	}
+
+	keyPrefix := "TestAddRawTimeout"
+	largeDoc := make([]byte, 1000000)
+	rand.Read(largeDoc)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			key := fmt.Sprintf("%s_%d", keyPrefix, i)
+			added, err := bucket.AddRaw(key, 0, largeDoc)
+			if err != nil {
+				if pkgerrors.Cause(err) != gocb.ErrTimeout {
+					t.Errorf("Unexpected error calling AddRaw(): %v", err)
+				}
+			} else {
+				assert.True(t, added, fmt.Sprintf("AddRaw returned added=false, expected true for key %v", key))
+			}
+		}(i)
+
+	}
+	wg.Wait()
 
 }
 
