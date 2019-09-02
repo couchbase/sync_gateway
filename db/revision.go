@@ -126,8 +126,8 @@ func (revisions Revisions) findAncestor(ancestors []string) (revId string) {
 	return ""
 }
 
-// Returns revisions as a slice of revids.
-func (revisions Revisions) parseRevisions() []string {
+// ParseRevisions returns revisions as a slice of revids.
+func (revisions Revisions) ParseRevisions() []string {
 	start, ids := splitRevisionList(revisions)
 	if ids == nil {
 		return nil

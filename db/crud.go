@@ -291,16 +291,12 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		_, requestedHistory = trimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
 	}
 
-	isAuthorized, redactedBody := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
+	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
 		if revid == "" {
 			return nil, ErrForbidden
 		}
-		return &DocumentRevision{
-			DocID: docid,
-			RevID: revid,
-			Body:  redactedBody,
-		}, nil
+		return redactedRev, nil
 	}
 
 	if revid == "" && revision.Deleted {
@@ -312,7 +308,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
-func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedBody []byte, err error) {
+func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
 
 	if docID == "" || fromRevID == "" || toRevID == "" {
 		return nil, nil, nil
@@ -332,9 +328,9 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	if fromRevision.Delta != nil {
 		if fromRevision.Delta.ToRevID == toRevID {
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(fromRevision.Delta.RevisionHistory))
+			isAuthorized, redactedRev := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
-				return nil, redactedBody, nil
+				return nil, redactedRev, nil
 			}
 
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
@@ -403,7 +399,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	return nil, nil, nil
 }
 
-func (db *Database) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedBody []byte) {
+func (db *Database) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev *DocumentRevision) {
 	if db.user != nil {
 		if err := db.user.AuthorizeAnyChannel(channels); err != nil {
 			// On access failure, return (only) the doc history and deletion/removal
@@ -428,7 +424,11 @@ func (db *Database) authorizeUserForChannels(docID, revID string, channels base.
 				return false, nil
 			}
 
-			return false, redactedBody
+			return false, &DocumentRevision{
+				DocID: docID,
+				RevID: revID,
+				Body:  redactedBody,
+			}
 		}
 	}
 
