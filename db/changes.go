@@ -132,8 +132,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 }
 
 func (db *Database) AddDocToChangeEntryUsingRevCache(entry *ChangeEntry, revID string) (err error) {
-	// GetRevWithHistory for (doc, rev, no max history, no history from, no attachments, no _exp)
-	entry.Doc, err = db.GetRevWithHistory(entry.ID, revID, 0, nil, nil, false)
+	entry.Doc, err = db.GetRev1xBody(entry.ID, revID, false, nil)
 	return err
 }
 

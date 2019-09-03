@@ -192,7 +192,7 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 
 // Returns the body of the current revision of a document
 func (db *Database) Get(docid string) (Body, error) {
-	return db.GetRevWithHistory(docid, "", 0, nil, nil, false)
+	return db.GetRev1xBody(docid, "", false, nil)
 }
 
 // Get Rev with all-or-none history based on specified 'history' flag
@@ -202,7 +202,12 @@ func (db *Database) GetRev1xBody(docid, revid string, history bool, attachmentsS
 		maxHistory = math.MaxInt32
 	}
 
-	rev, redactedRev, err := db.getRev(docid, revid, maxHistory, nil, attachmentsSince, false)
+	return db.GetRevWithHistory(docid, revid, maxHistory, nil, attachmentsSince, false)
+}
+
+// Retrieves rev with request history specified as collection of revids (historyFrom)
+func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
+	rev, redactedRev, err := db.getRev(docid, revid, maxHistory, historyFrom, attachmentsSince, showExp)
 	if err != nil {
 		return nil, err
 	}
@@ -218,10 +223,10 @@ func (db *Database) GetRev1xBody(docid, revid string, history bool, attachmentsS
 		requestedHistory = nil
 	}
 	if requestedHistory != nil {
-		_, requestedHistory = trimEncodedRevisionsToAncestor(requestedHistory, nil, maxHistory)
+		_, requestedHistory = trimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
 	}
 
-	return rev.Mutable1xBody(db, requestedHistory, attachmentsSince, false)
+	return rev.Mutable1xBody(db, requestedHistory, attachmentsSince, showExp)
 }
 
 func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince []string) (rev *DocumentRevision, redactedRev *DocumentRevision, err error) {
@@ -240,30 +245,6 @@ func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince [
 	}
 
 	return rev, nil, nil
-}
-
-// Retrieves rev with request history specified as collection of revids (historyFrom)
-func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
-	rev, redactedRev, err := db.getRev(docid, revid, maxHistory, historyFrom, attachmentsSince, showExp)
-	if err != nil {
-		return nil, err
-	}
-
-	if redactedRev != nil {
-		return redactedRev.Mutable1xBody(db, nil, nil, false)
-	}
-
-	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
-	// during attachment processing below
-	requestedHistory := rev.History
-	if maxHistory == 0 {
-		requestedHistory = nil
-	}
-	if requestedHistory != nil {
-		_, requestedHistory = trimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
-	}
-
-	return rev.Mutable1xBody(db, requestedHistory, attachmentsSince, showExp)
 }
 
 // Underlying revision retrieval used by GetRev1xBody, GetRevWithHistory, GetRevCopy.
@@ -416,8 +397,6 @@ func (db *Database) authorizeUserForChannels(docID, revID string, channels base.
 			// On access failure, return (only) the doc history and deletion/removal
 			// status instead of returning an error. For justification see the comment in
 			// the getRevFromDoc method, below
-
-			// FIXME: Check REST vs. BLIP behaviour here for _ properties on a redacted body
 			redactedRev = &DocumentRevision{
 				DocID:   docID,
 				RevID:   revID,

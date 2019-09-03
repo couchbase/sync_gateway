@@ -150,6 +150,7 @@ func (h *handler) handleGetAttachment() error {
 	docid := h.PathVar("docid")
 	attachmentName := h.PathVar("attach")
 	revid := h.getQuery("rev")
+	// FIXME: ignored redactedRev
 	rev, _, err := h.db.GetRev(docid, revid, false, nil)
 	if err != nil {
 		return err
