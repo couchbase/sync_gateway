@@ -551,7 +551,7 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 		if dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds == nil {
 			dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds = dbConfig.CacheConfig.DeprecatedChannelCacheAge
 		}
-		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "channel_cache_expiry", "cache.channel_cache.expiry"))
+		warnings = append(warnings, fmt.Sprintf(warningMsgFmt, "channel_cache_expiry", "cache.channel_cache.expiry_seconds"))
 	}
 
 	return warnings
