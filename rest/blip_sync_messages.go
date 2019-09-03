@@ -325,36 +325,11 @@ func (rm *revMessage) setRev(rev string) {
 	rm.Properties[revMessageRev] = rev
 }
 
-func (rm *revMessage) setDeleted(deleted bool) {
-	if deleted {
-		rm.Properties[revMessageDeleted] = "1"
-	} else {
-		delete(rm.Properties, revMessageDeleted)
-	}
-}
-
 // setProperties will add the given properties to the blip message, overwriting any that already exist.
 func (rm *revMessage) setProperties(properties blip.Properties) {
 	for k, v := range properties {
 		rm.Properties[k] = v
 	}
-}
-
-func (rm *revMessage) setHistory(history []string) {
-	if len(history) > 0 {
-		rm.Properties[revMessageHistory] = strings.Join(history, ",")
-	} else {
-		delete(rm.Properties, revMessageHistory)
-	}
-}
-
-func (rm *revMessage) setSequence(seq db.SequenceID) error {
-	seqJSON, marshalErr := json.Marshal(seq)
-	if marshalErr != nil {
-		return marshalErr
-	}
-	rm.Properties[revMessageSequence] = string(seqJSON)
-	return nil
 }
 
 func (rm *revMessage) String() string {

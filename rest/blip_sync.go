@@ -23,15 +23,29 @@ import (
 )
 
 const (
-
 	// Blip default vals
 	BlipDefaultBatchSize = uint64(200)
-
 	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
 
 	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
 	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
 	BlipCBMobileReplication = "CBMobile_2"
+)
+
+var (
+	// kCompressedTypes are MIME types that explicitly indicate they're compressed:
+	kCompressedTypes = regexp.MustCompile(`(?i)\bg?zip\b`)
+
+	// kGoodTypes are MIME types that are compressible:
+	kGoodTypes = regexp.MustCompile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
+
+	// kBadTypes are MIME types that are generally incompressible:
+	kBadTypes = regexp.MustCompile(`(?i)^(audio|image|video)/`)
+	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
+	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
+
+	// kBadFilenames are filename extensions of incompressible types:
+	kBadFilenames = regexp.MustCompile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
 )
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
@@ -62,14 +76,12 @@ type blipHandler struct {
 	serialNumber uint64 // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
-type blipHandlerMethod func(*blipHandler, *blip.Message) error
+type blipHandlerFunc func(*blipHandler, *blip.Message) error
 
-// Wrap blip handler with code that reloads the user object to make sure that
+// userBlipHandler wraps another blip handler with code that reloads the user object to make sure that
 // it has the latest channel access grants.
-func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
-
-	wrappedBlipHandler := func(bh *blipHandler, bm *blip.Message) error {
-
+func userBlipHandler(next blipHandlerFunc) blipHandlerFunc {
+	return func(bh *blipHandler, bm *blip.Message) error {
 		// Create a user-scoped database on each blip request (otherwise runs into SG issue #2717)
 		if oldUser := bh.db.User(); oldUser != nil {
 			newUser, err := bh.db.Authenticator().GetUser(oldUser.Name())
@@ -85,16 +97,13 @@ func userBlipHandler(underlyingMethod blipHandlerMethod) blipHandlerMethod {
 			bh.db = newDatabase
 		}
 
-		// Call down to underlying method and return it's value
-		return underlyingMethod(bh, bm)
+		// Call down to the underlying handler and return it's value
+		return next(bh, bm)
 	}
-
-	return wrappedBlipHandler
-
 }
 
-// Maps the profile (verb) of an incoming request to the method that handles it.
-var kHandlersByProfile = map[string]blipHandlerMethod{
+// kHandlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
+var kHandlersByProfile = map[string]blipHandlerFunc{
 	messageGetCheckpoint:  (*blipHandler).handleGetCheckpoint,
 	messageSetCheckpoint:  (*blipHandler).handleSetCheckpoint,
 	messageSubChanges:     userBlipHandler((*blipHandler).handleSubChanges),
@@ -152,7 +161,7 @@ func (h *handler) handleBLIPSync() error {
 	server.Handler = func(conn *websocket.Conn) {
 		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol%s", blipContext.ID, h.formattedEffectiveUserName()))
 		defer func() {
-			conn.Close() // in case it wasn't closed already
+			_ = conn.Close() // in case it wasn't closed already
 			ctx.Logf(base.LevelInfo, base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
 		}()
 		defaultHandler(conn)
@@ -255,7 +264,8 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	response.Properties[getCheckpointResponseRev] = value[db.BodyRev].(string)
 	delete(value, db.BodyRev)
 	delete(value, db.BodyId)
-	response.SetJSONBody(value)
+	// TODO: Marshaling here when we could use raw bytes all the way from the bucket
+	_ = response.SetJSONBody(value)
 	return nil
 }
 
@@ -368,15 +378,11 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		}
 	}()
 
-	// Don't send conflicting rev tree branches, just send the winning revision + history, since
-	// CBL 2.0 (and blip_sync) don't support branched revision trees.  See LiteCore #437.
-	sendConflicts := false
-
 	bh.Logf(base.LevelInfo, base.KeySync, "Sending changes since %v", params.since())
 
 	options := db.ChangesOptions{
 		Since:      params.since(),
-		Conflicts:  sendConflicts,
+		Conflicts:  false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
 		Continuous: bh.continuous,
 		ActiveOnly: bh.activeOnly,
 		Terminator: bh.blipSyncContext.terminator,
@@ -712,16 +718,11 @@ func (bh *blipHandler) sendDelta(sender *blip.Sender, docID, deltaSrcRevID strin
 		return bh.sendNoRev(sender, docID, revDelta.ToRevID, err)
 	}
 
-	properties := blip.Properties{
-		revMessageDeltaSrc: deltaSrcRevID,
-	}
-
-	if revDelta.ToDeleted {
-		properties[revMessageDeleted] = "1"
-	}
+	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
+	properties[revMessageDeltaSrc] = deltaSrcRevID
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
-	return bh.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, body, seq, revDelta.RevisionHistory, revDelta.AttachmentDigests, properties)
+	return bh.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, body, revDelta.AttachmentDigests, properties)
 }
 
 func (bh *blipHandler) sendRevOrNorev(sender *blip.Sender, docID, revID string, seq db.SequenceID, knownRevs map[string]bool, maxHistory int) error {
@@ -762,7 +763,7 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, bo
 
 	// Get the revision's history as a descending array of ancestor revIDs:
 	history := db.ParseRevisions(body)[1:]
-	delete(body, "_revisions")
+	delete(body, db.BodyRevisions)
 	for i, rev := range history {
 		if knownRevs[rev] || (maxHistory > 0 && i+1 >= maxHistory) {
 			history = history[0 : i+1]
@@ -774,20 +775,37 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, bo
 
 	// extract attachments from body for sendRevisionWithProperties
 	attDigests := db.AttachmentDigests(db.GetBodyAttachments(body))
-	return bh.sendRevisionWithProperties(sender, docID, revID, body, seq, history, attDigests, nil)
+
+	deleted, _ := body[db.BodyDeleted].(bool)
+	properties := blipRevMessageProperties(history, deleted, seq)
+	return bh.sendRevisionWithProperties(sender, docID, revID, body, attDigests, properties)
+}
+
+// blipRevMessageProperties returns a set of BLIP message properties for the given parameters.
+func blipRevMessageProperties(revisionHistory []string, deleted bool, seq db.SequenceID) blip.Properties {
+	properties := make(blip.Properties)
+
+	// TODO: Assert? db.SequenceID.MarshalJSON can never error
+	seqJSON, _ := json.Marshal(seq)
+	properties[revMessageSequence] = string(seqJSON)
+
+	if len(revisionHistory) > 0 {
+		properties[revMessageHistory] = strings.Join(revisionHistory, ",")
+	}
+
+	if deleted {
+		properties[revMessageDeleted] = "1"
+	}
+
+	return properties
 }
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, body db.Body, seq db.SequenceID, revisionHistory []string, attDigests []string, properties blip.Properties) error {
+func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, body db.Body, attDigests []string, properties blip.Properties) error {
 
 	outrq := NewRevMessage()
 	outrq.setId(docID)
 	outrq.setRev(revID)
-	if del, _ := body[db.BodyDeleted].(bool); del {
-		outrq.setDeleted(del)
-	}
-	outrq.setSequence(seq)
-	outrq.setHistory(revisionHistory)
 
 	// add additional properties passed through
 	outrq.setProperties(properties)
@@ -905,8 +923,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 
-		newDoc.UpdateBody(db.Body(deltaSrcMap))
-		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(newDoc.Body()))
+		newDoc.UpdateBody(deltaSrcMap)
+		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
 		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 	}
 
@@ -1118,39 +1136,6 @@ func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	ctx.useDeltas = false
 }
 
-// NOTE: This code is taken from db/attachments.go in the feature/deltas branch, as of commit
-// 540b1c8. Once that branch is merged it can be replaced by a call to Attachment.Compressible().
-
-var kCompressedTypes, kGoodTypes, kBadTypes, kBadFilenames *regexp.Regexp
-
-func init() {
-	// MIME types that explicitly indicate they're compressed:
-	kCompressedTypes, _ = regexp.Compile(`(?i)\bg?zip\b`)
-	// MIME types that are compressible:
-	kGoodTypes, _ = regexp.Compile(`(?i)(^text)|(xml\b)|(\b(html|json|yaml)\b)`)
-	// ... or generally uncompressible:
-	kBadTypes, _ = regexp.Compile(`(?i)^(audio|image|video)/`)
-	// An interesting type is SVG (image/svg+xml) which matches _both_! (It's compressible.)
-	// See <http://www.iana.org/assignments/media-types/media-types.xhtml>
-
-	// Filename extensions of uncompressible types:
-	kBadFilenames, _ = regexp.Compile(`(?i)\.(zip|t?gz|rar|7z|jpe?g|png|gif|svgz|mp3|m4a|ogg|wav|aiff|mp4|mov|avi|theora)$`)
-}
-
-// Returns true if this attachment is worth trying to compress.
-func isCompressible(filename string, meta map[string]interface{}) bool {
-	if meta["encoding"] != nil {
-		return false
-	} else if kBadFilenames.MatchString(filename) {
-		return false
-	} else if mimeType, ok := meta["content_type"].(string); ok && mimeType != "" {
-		return !kCompressedTypes.MatchString(mimeType) &&
-			(kGoodTypes.MatchString(mimeType) ||
-				!kBadTypes.MatchString(mimeType))
-	}
-	return true // be optimistic by default
-}
-
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
 	bh.Logf(base.LevelInfo, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, profile, endpoint)
 }
@@ -1166,4 +1151,18 @@ func DefaultBlipLogger(ctx context.Context) blip.LogFn {
 			base.InfofCtx(ctx, base.KeyWebSocket, format, params...)
 		}
 	}
+}
+
+// Returns true if this attachment is worth trying to compress.
+func isCompressible(filename string, meta map[string]interface{}) bool {
+	if meta["encoding"] != nil {
+		return false
+	} else if kBadFilenames.MatchString(filename) {
+		return false
+	} else if mimeType, ok := meta["content_type"].(string); ok && mimeType != "" {
+		return !kCompressedTypes.MatchString(mimeType) &&
+			(kGoodTypes.MatchString(mimeType) ||
+				!kBadTypes.MatchString(mimeType))
+	}
+	return true // be optimistic by default
 }
