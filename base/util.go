@@ -85,8 +85,14 @@ func CreateUUID() string {
 // to a special number type that preserves the exact formatting.
 func FixJSONNumbers(value interface{}) interface{} {
 	switch value := value.(type) {
+	case json.Number:
+		asInt, errInt := value.Int64()
+		asFloat, errFloat := value.Float64()
+		if errInt == nil && errFloat == nil && float64(asInt) == asFloat {
+			return asInt
+		}
 	case float64:
-		var asInt int64 = int64(value)
+		asInt := int64(value)
 		if float64(asInt) == value {
 			return asInt // Representable as int, so return it as such
 		}

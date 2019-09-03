@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -1304,8 +1306,7 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
-	// Add a doc that will be rejected by sync function, since user
-	// does not have access to the CNN channel
+	// Add a doc that will be rejected by sync function, because the body is malformed JSON
 	revRequest := blip.NewRequest()
 	revRequest.SetCompressed(false)
 	revRequest.SetProfile("rev")
@@ -1313,19 +1314,18 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 	revRequest.SetBody([]byte(`{"key": "val", "channels": [" MALFORMED JSON DOC`))
 
 	sent := bt.sender.Send(revRequest)
-	goassert.True(t, sent)
+	assert.True(t, sent)
 
 	revResponse := revRequest.Response()
 
-	// Since doc is rejected by sync function, expect a 403 error
+	// Since doc is rejected by sync function, expect a 400 error
 	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
-	goassert.True(t, hasErrorCode)
-	// FIXME: This used to check for error 500 -- No longer does readJSON in handleRev so fails at different point
-	goassert.Equals(t, errorCode, "400")
+	assert.True(t, hasErrorCode)
+	assert.Equal(t, strconv.FormatInt(http.StatusBadRequest, 10), errorCode)
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
-	goassert.Equals(t, len(changes), 0)
+	assert.Equal(t, 0, len(changes))
 
 }
 
@@ -2060,9 +2060,8 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 		// Validate that generation of a delta didn't mutate the revision body in the revision cache
 		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
-		assert.NoError(t, cacheErr)
-		marshalledBody, _ := json.Marshal(docRev.Body)
-		assert.Equal(t, []byte(`{"_id":"doc1","_rev":"1-0335a345b6ffed05707ccc4cbc1b67f4","greetings":[{"hello":"world!"},{"hi":"alice"}]}`), marshalledBody)
+		require.NoError(t, cacheErr)
+		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(docRev.Body))
 
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
@@ -2185,7 +2184,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
 		assert.NotEqual(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}]}`, string(msgBody))
-		assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(msgBody))
+		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}],"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}}`, string(msgBody))
 	}
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-10000d5ec533b29b117e60274b1e3653", "")

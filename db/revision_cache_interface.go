@@ -127,6 +127,10 @@ func (rev *DocumentRevision) Mutable1xBody(db *Database, requestedHistory Revisi
 		b[BodyAttachments] = rev.Attachments
 	}
 
+	if rev.Deleted {
+		b[BodyDeleted] = true
+	}
+
 	// Add attachment bodies if requested:
 	if attachmentsSince != nil && len(rev.Attachments) > 0 {
 		minRevpos := 1

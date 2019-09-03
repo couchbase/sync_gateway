@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
@@ -8,9 +9,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
 )
+
+// AssertEqualBodies compares the bodies of a and b after they've been marshaled into bytes.
+func AssertEqualBodies(t *testing.T, expected, actual Body) bool {
+	expectedBytes, err := json.Marshal(expected)
+	if err != nil {
+		t.Fatalf("Error unmarshaling expected: %v", err)
+	}
+
+	actualBytes, err := json.Marshal(actual)
+	if err != nil {
+		t.Fatalf("Error unmarshaling actual: %v", err)
+	}
+
+	return assert.Equal(t, string(expectedBytes), string(actualBytes))
+}
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
 // Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)

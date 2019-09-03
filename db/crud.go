@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -203,9 +202,13 @@ func (db *Database) GetRev1xBody(docid, revid string, history bool, attachmentsS
 		maxHistory = math.MaxInt32
 	}
 
-	rev, err := db.getRev(docid, revid, maxHistory, nil, attachmentsSince, false)
+	rev, redactedRev, err := db.getRev(docid, revid, maxHistory, nil, attachmentsSince, false)
 	if err != nil {
 		return nil, err
+	}
+
+	if redactedRev != nil {
+		rev = redactedRev
 	}
 
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
@@ -221,25 +224,33 @@ func (db *Database) GetRev1xBody(docid, revid string, history bool, attachmentsS
 	return rev.Mutable1xBody(db, requestedHistory, attachmentsSince, false)
 }
 
-func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince []string) (*DocumentRevision, error) {
+func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince []string) (rev *DocumentRevision, redactedRev *DocumentRevision, err error) {
 	maxHistory := 0
 	if history {
 		maxHistory = math.MaxInt32
 	}
 
-	rev, err := db.getRev(docid, revid, maxHistory, nil, attachmentsSince, false)
+	rev, redactedRev, err = db.getRev(docid, revid, maxHistory, nil, attachmentsSince, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return rev, nil
+	if redactedRev != nil {
+		return nil, redactedRev, err
+	}
+
+	return rev, nil, nil
 }
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
 func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
-	rev, err := db.getRev(docid, revid, maxHistory, historyFrom, attachmentsSince, showExp)
+	rev, redactedRev, err := db.getRev(docid, revid, maxHistory, historyFrom, attachmentsSince, showExp)
 	if err != nil {
 		return nil, err
+	}
+
+	if redactedRev != nil {
+		return redactedRev.Mutable1xBody(db, nil, nil, false)
 	}
 
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
@@ -264,7 +275,7 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 // * attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //   revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //   that hasn't changed since one of those revisions will be returned as a stub.
-func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (revision *DocumentRevision, err error) {
+func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (revision *DocumentRevision, redactedRev *DocumentRevision, err error) {
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
@@ -278,7 +289,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		if err == nil {
 			err = base.HTTPErrorf(404, "missing")
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
@@ -294,16 +305,16 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
 		if revid == "" {
-			return nil, ErrForbidden
+			return nil, nil, ErrForbidden
 		}
-		return redactedRev, nil
+		return nil, redactedRev, nil
 	}
 
 	if revid == "" && revision.Deleted {
-		return nil, base.HTTPErrorf(404, "deleted")
+		return nil, nil, base.HTTPErrorf(404, "deleted")
 	}
 
-	return revision, nil
+	return revision, nil, nil
 }
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
@@ -405,30 +416,24 @@ func (db *Database) authorizeUserForChannels(docID, revID string, channels base.
 			// On access failure, return (only) the doc history and deletion/removal
 			// status instead of returning an error. For justification see the comment in
 			// the getRevFromDoc method, below
-			redactedBody := []byte(fmt.Sprintf(`{"%s":"%s","%s":"%s"}`, BodyId, docID, BodyRev, revID))
 
-			var kvPairs []base.KVPair
+			// FIXME: Check REST vs. BLIP behaviour here for _ properties on a redacted body
+			redactedRev = &DocumentRevision{
+				DocID:   docID,
+				RevID:   revID,
+				History: history,
+				Deleted: isDeleted,
+			}
+
 			if isDeleted {
-				kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
+				// Deletions are denoted by the deleted message property during 2.x replication
+				redactedRev.Body = []byte(`{}`)
 			} else {
-				kvPairs = append(kvPairs, base.KVPair{Key: BodyRemoved, Val: true})
+				// ... but removals are still denoted by the _removed property in the body, even for 2.x replication
+				redactedRev.Body = []byte(`{"` + BodyRemoved + `":true}`)
 			}
 
-			if history != nil {
-				kvPairs = append(kvPairs, base.KVPair{Key: BodyRevisions, Val: history})
-			}
-
-			redactedBody, err = base.InjectJSONProperties(redactedBody, kvPairs...)
-			if err != nil {
-				// FIXME
-				return false, nil
-			}
-
-			return false, &DocumentRevision{
-				DocID: docID,
-				RevID: revID,
-				Body:  redactedBody,
-			}
+			return false, redactedRev
 		}
 	}
 
@@ -875,7 +880,6 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 	}
 
 	return doc, err
-
 }
 
 func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists bool) error {
@@ -1360,7 +1364,6 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		body := doc.Body()
 		if doc.History[newRevID].Deleted {
 			body[BodyDeleted] = true
-
 		}
 
 		// FIXME: Currently returning storedBody - Should change this with revcache work
@@ -1370,6 +1373,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		if err != nil {
 			return nil, "", err
 		}
+
 		documentRevision := DocumentRevision{
 			DocID:       doc.ID,
 			RevID:       newRevID,
@@ -1378,10 +1382,11 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			Channels:    revChannels,
 			Attachments: doc.Attachments,
 			Expiry:      doc.Expiry,
+			Deleted:     doc.History[newRevID].Deleted,
 		}
 		db.revisionCache.Put(documentRevision)
 		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
-			db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
+			_ = db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
 		}
 	} else {
 		//Revision has been pruned away so won't be added to cache

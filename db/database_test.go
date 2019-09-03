@@ -11,13 +11,17 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -218,17 +222,17 @@ func TestDatabase(t *testing.T) {
 	log.Printf("Retrieve doc...")
 	gotbody, err := db.Get("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	assert.Equal(t, body, gotbody)
+	AssertEqualBodies(t, body, gotbody)
 
 	log.Printf("Retrieve rev 1...")
 	gotbody, err = db.GetRev1xBody("doc1", rev1id, false, nil)
 	assert.NoError(t, err, "Couldn't get document with rev 1")
-	assert.Equal(t, Body{"key1": "value1", "key2": 1234, BodyId: "doc1", BodyRev: rev1id}, gotbody)
+	AssertEqualBodies(t, Body{"key1": "value1", "key2": 1234, BodyId: "doc1", BodyRev: rev1id}, gotbody)
 
 	log.Printf("Retrieve rev 2...")
 	gotbody, err = db.GetRev1xBody("doc1", rev2id, false, nil)
 	assert.NoError(t, err, "Couldn't get document with rev")
-	assert.Equal(t, body, gotbody)
+	AssertEqualBodies(t, body, gotbody)
 
 	gotbody, err = db.GetRev1xBody("doc1", "bogusrev", false, nil)
 	status, _ := base.ErrorAsHTTPStatus(err)
@@ -278,7 +282,7 @@ func TestDatabase(t *testing.T) {
 	log.Printf("Check Get...")
 	gotbody, err = db.Get("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	assert.Equal(t, body, gotbody)
+	AssertEqualBodies(t, body, gotbody)
 
 }
 
@@ -367,7 +371,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		BodyId:  "doc1",
 		BodyRev: rev2id,
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	AssertEqualBodies(t, expectedResult, body)
 
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
@@ -452,7 +456,7 @@ func TestGetRemoved(t *testing.T) {
 		BodyId:  "doc1",
 		BodyRev: rev2id,
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	AssertEqualBodies(t, expectedResult, body)
 
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
@@ -473,7 +477,7 @@ func TestGetRemoved(t *testing.T) {
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	AssertEqualBodies(t, body, expectedResult)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	err = db.purgeOldRevisionJSON("doc1", rev1id)
@@ -528,7 +532,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		BodyId:  "doc1",
 		BodyRev: rev2id,
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	AssertEqualBodies(t, expectedResult, body)
 
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
@@ -544,13 +548,13 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	expectedResult = Body{
 		BodyId:      "doc1",
 		BodyRev:     rev2id,
-		"_removed":  true,
+		BodyRemoved: true,
 		BodyDeleted: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	AssertEqualBodies(t, expectedResult, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	err = db.purgeOldRevisionJSON("doc1", rev1id)
@@ -669,15 +673,13 @@ func TestAllDocsOnly(t *testing.T) {
 	options.IncludeDocs = true
 	changes, err = db.GetChanges(channels.SetOf(t, "KFJC"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
-	goassert.Equals(t, len(changes), 10)
+	assert.Equal(t, 10, len(changes))
 	for i, change := range changes {
-		goassert.Equals(t, change.Seq, SequenceID{Seq: uint64(10*i + 1)})
-		goassert.Equals(t, change.ID, ids[10*i].DocID)
-		goassert.Equals(t, change.Deleted, false)
-		goassert.DeepEquals(t, change.Removed, base.Set(nil))
-		// Note: When changes uses the rev cache, this test doesn't trigger FixJSONNumbers (since it writes docs as Body, not raw JSON,
-		//       and doesn't require a read from DB)
-		goassert.Equals(t, change.Doc["serialnumber"], int64(10*i))
+		assert.Equal(t, SequenceID{Seq: uint64(10*i + 1)}, change.Seq)
+		assert.Equal(t, ids[10*i].DocID, change.ID)
+		assert.Equal(t, false, change.Deleted)
+		assert.Equal(t, base.Set(nil), change.Removed)
+		assert.Equal(t, json.Number(strconv.FormatInt(int64(10*i), 10)), change.Doc["serialnumber"])
 	}
 }
 
@@ -793,7 +795,7 @@ func TestConflicts(t *testing.T) {
 	body["n"] = 3
 	body["channels"] = []string{"all", "2a"}
 	_, err = db.PutExistingRevWithBody("doc", body, []string{"2-a", "1-a"}, false)
-	assert.NoError(t, err, "add 2-a")
+	require.NoError(t, err, "add 2-a")
 
 	cacheWaiter.Add(2)
 
@@ -803,16 +805,19 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change with the higher revid won:
 	gotBody, err := db.Get("doc")
-	goassert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-b", "n": 2,
-		"channels": []string{"all", "2b"}})
+	require.NoError(t, err)
+	AssertEqualBodies(t, Body{BodyId: "doc", BodyRev: "2-b", "n": 2,
+		"channels": []string{"all", "2b"}}, gotBody)
 
 	// Verify we can still get the other two revisions:
 	gotBody, err = db.GetRev1xBody("doc", "1-a", false, nil)
-	goassert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "1-a", "n": 1,
-		"channels": []string{"all", "1"}})
+	require.NoError(t, err)
+	AssertEqualBodies(t, Body{BodyId: "doc", BodyRev: "1-a", "n": 1,
+		"channels": []string{"all", "1"}}, gotBody)
 	gotBody, err = db.GetRev1xBody("doc", "2-a", false, nil)
-	goassert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-a", "n": 3,
-		"channels": []string{"all", "2a"}})
+	require.NoError(t, err)
+	AssertEqualBodies(t, Body{BodyId: "doc", BodyRev: "2-a", "n": 3,
+		"channels": []string{"all", "2a"}}, gotBody)
 
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
@@ -828,7 +833,7 @@ func TestConflicts(t *testing.T) {
 		Conflicts: true,
 	}
 	changes, err := db.GetChanges(channels.SetOf(t, "all"), options)
-	assert.NoError(t, err, "Couldn't GetChanges")
+	require.NoError(t, err, "Couldn't GetChanges")
 	goassert.Equals(t, len(changes), 1)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:      SequenceID{Seq: 3},
@@ -844,11 +849,13 @@ func TestConflicts(t *testing.T) {
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
 	gotBody, err = db.Get("doc")
-	goassert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-a", "n": 3,
-		"channels": []string{"all", "2a"}})
+	require.NoError(t, err)
+	AssertEqualBodies(t, Body{BodyId: "doc", BodyRev: "2-a", "n": 3,
+		"channels": []string{"all", "2a"}}, gotBody)
 
 	// Verify channel assignments are correct for channels defined by 2-a:
-	doc, _ := db.GetDocument("doc", DocUnmarshalAll)
+	doc, err := db.GetDocument("doc", DocUnmarshalAll)
+	require.NoError(t, err)
 	chan2a, found := doc.Channels["2a"]
 	goassert.True(t, found)
 	goassert.True(t, chan2a == nil)             // currently in 2a
@@ -859,7 +866,7 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the _changes feed:
 	changes, err = db.GetChanges(channels.SetOf(t, "all"), options)
-	assert.NoError(t, err, "Couldn't GetChanges")
+	require.NoError(t, err, "Couldn't GetChanges")
 	goassert.Equals(t, len(changes), 1)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:      SequenceID{Seq: 4},

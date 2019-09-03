@@ -743,9 +743,13 @@ func (bh *blipHandler) sendNoRev(sender *blip.Sender, docID, revID string, err e
 
 // Pushes a revision body to the client
 func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, seq db.SequenceID, knownRevs map[string]bool, maxHistory int) error {
-	rev, err := bh.db.GetRev(docID, revID, true, nil)
+	rev, redactedRev, err := bh.db.GetRev(docID, revID, true, nil)
 	if err != nil {
 		return bh.sendNoRev(sender, docID, revID, err)
+	}
+
+	if redactedRev != nil {
+		return bh.sendRedactedRev(sender, redactedRev)
 	}
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known", base.UD(docID), revID, len(knownRevs))
@@ -764,7 +768,17 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, se
 	attDigests := db.AttachmentDigests(rev.Attachments)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
 
-	return bh.sendRevisionWithProperties(sender, docID, revID, rev.Body, attDigests, properties)
+	body := rev.Body
+
+	// TODO: Remove injection of _attachments for CBG-451
+	if rev.Attachments != nil {
+		body, err = base.InjectJSONProperties(rev.Body, base.KVPair{Key: db.BodyAttachments, Val: rev.Attachments})
+		if err != nil {
+			return bh.sendNoRev(sender, docID, revID, err)
+		}
+	}
+
+	return bh.sendRevisionWithProperties(sender, docID, revID, body, attDigests, properties)
 }
 
 // blipRevMessageProperties returns a set of BLIP message properties for the given parameters.
@@ -798,6 +812,10 @@ func (bh *blipHandler) sendRedactedRev(sender *blip.Sender, redactedRev *db.Docu
 	// TODO: Revisions???
 
 	outrq.SetJSONBodyAsBytes(redactedRev.Body)
+
+	if !sender.Send(outrq.Message) {
+		return ErrClosedBLIPSender
+	}
 
 	if response := outrq.Response(); response != nil {
 		if response.Type() == blip.ErrorType {
@@ -908,9 +926,13 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		//       while retrieving deltaSrcRevID.  Couchbase Lite replication guarantees client has access to deltaSrcRevID,
 		//       due to no-conflict write restriction, but we still need to enforce security here to prevent leaking data about previous
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
-		deltaSrcRev, err := bh.db.GetRev(docID, deltaSrcRevID, false, nil)
+		deltaSrcRev, redactedRev, err := bh.db.GetRev(docID, deltaSrcRevID, false, nil)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc for deltaSrc=%s %v", deltaSrcRevID, err)
+		}
+
+		if redactedRev != nil {
+			return base.HTTPErrorf(http.StatusForbidden, "Requested deltaSrc=%s was redacted", deltaSrcRevID)
 		}
 
 		deltaSrcBody, err := deltaSrcRev.MutableBody()
