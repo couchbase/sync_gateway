@@ -1036,7 +1036,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.
 				if body, err := outrq.Response().Body(); err != nil {
 					return nil, err
 				} else if string(body) != proof {
-					bh.Logf(base.LevelWarn, base.KeySync, "Error: Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, base.MD(nonce), base.MD(proof), base.MD(string(body)))
+					bh.Logf(base.LevelWarn, base.KeySync, "Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, base.MD(nonce), base.MD(proof), base.MD(string(body)))
 					return nil, base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
 				}
 				return nil, nil
