@@ -77,7 +77,8 @@ type DatabaseContext struct {
 	Bucket             base.Bucket              // Storage
 	BucketSpec         base.BucketSpec          // The BucketSpec
 	BucketLock         sync.RWMutex             // Control Access to the underlying bucket object
-	mutationListener   changeListener           // Listens on server mutation feed (TAP or DCP)
+	mutationListener   changeListener           // Caching feed listener
+	importListener     *importListener          // Import feed listener
 	sequences          *sequenceAllocator       // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper  // Runs JS 'sync' function
 	StartTime          time.Time                // Timestamp when context was instantiated
@@ -280,23 +281,26 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize the tap Listener for notify handling
 	dbContext.mutationListener.Init(bucket.GetName())
 
-	// If this is an xattr import node, resume DCP feed where we left off.  Otherwise only listen for new changes (FeedNoBackfill)
-	feedMode := uint64(sgbucket.FeedNoBackfill)
+	// If this is an xattr import node, start import feed
 	if dbContext.UseXattrs() && dbContext.autoImport {
-		feedMode = sgbucket.FeedResume
+		dbContext.importListener = NewImportListener()
+		dbContext.importListener.StartImportFeed(bucket, dbContext.DbStats, dbContext)
 	}
 
 	// Start DCP feed
 	base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
-
-	err = dbContext.mutationListener.Start(bucket, feedMode, func(bucket string, err error) {
+	cacheFeedStatsMap, ok := dbContext.DbStats.statsDatabaseMap.Get(base.StatKeyCachingDcpStats).(*expvar.Map)
+	if !ok {
+		base.Infof(base.KeyDCP, "Cache feed stats map not initialized - will not be tracked")
+	}
+	err = dbContext.mutationListener.Start(bucket, func(bucket string, err error) {
 
 		msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
 		base.Warnf(base.KeyAll, msgFormat, base.UD(bucket), err)
 		errTakeDbOffline := dbContext.TakeDbOffline(fmt.Sprintf(msgFormat, bucket, err))
 		if errTakeDbOffline == nil {
 
-			//start a retry loop to pick up tap feed again backing off double the delay each time
+			// Start a backoff retry loop to pick up feed again
 			worker := func() (shouldRetry bool, err error, value interface{}) {
 				//If DB is going online via an admin request Bucket will be nil
 				if dbContext.Bucket != nil {
@@ -337,7 +341,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 		// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
 
-	}, dbContext.DbStats.statsDatabaseMap)
+	}, cacheFeedStatsMap)
 
 	// Check if there is an error starting the DCP feed
 	if err != nil {
@@ -503,10 +507,6 @@ func (context *DatabaseContext) GetChangeCache() *changeCache {
 	return context.changeCache
 }
 
-func (context *DatabaseContext) TapListener() changeListener {
-	return context.mutationListener
-}
-
 func (context *DatabaseContext) Close() {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
@@ -515,6 +515,10 @@ func (context *DatabaseContext) Close() {
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
+	if context.importListener != nil {
+		context.importListener.Stop()
+	}
+
 	context.Bucket.Close()
 	context.Bucket = nil
 
@@ -534,11 +538,7 @@ func (context *DatabaseContext) RestartListener() error {
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
 	context.mutationListener.Init(context.Bucket.GetName())
-	feedMode := uint64(sgbucket.FeedNoBackfill)
-	if context.UseXattrs() && context.autoImport {
-		feedMode = sgbucket.FeedResume
-	}
-	if err := context.mutationListener.Start(context.Bucket, feedMode, nil, context.DbStats.statsDatabaseMap); err != nil {
+	if err := context.mutationListener.Start(context.Bucket, nil, context.DbStats.statsDatabaseMap); err != nil {
 		return err
 	}
 	return nil

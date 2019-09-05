@@ -118,6 +118,8 @@ const (
 	StatKeyDcpReceivedTime         = "dcp_received_time"
 	StatKeyDcpCachingCount         = "dcp_caching_count"
 	StatKeyDcpCachingTime          = "dcp_caching_time"
+	StatKeyCachingDcpStats         = "cache_feed"
+	StatKeyImportDcpStats          = "import_feed"
 
 	// StatsDeltaSync
 	StatKeyDeltasRequested           = "deltas_requested"

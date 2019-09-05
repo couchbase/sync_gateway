@@ -381,7 +381,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	syncData, rawBody, rawXattr, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
+	syncData, rawBody, _, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, false)
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
@@ -393,46 +393,24 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		return
 	}
 
-	// Import handling.
+	// If using xattrs and this isn't an SG write, we shouldn't attempt to cache.
 	if c.context.UseXattrs() {
-		// If this isn't an SG write, we shouldn't attempt to cache.  Import if this node is configured for import, otherwise ignore.
-
 		var isSGWrite bool
-		var crc32Match bool
-
 		if syncData != nil {
+			var crc32Match bool
 			isSGWrite, crc32Match = syncData.IsSGWrite(event.Cas, rawBody)
 			if crc32Match {
 				c.context.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
 			}
 		}
-
 		if syncData == nil || !isSGWrite {
-			if c.context.autoImport {
-				// If syncData is nil, or if this was not an SG write, attempt to import
-				isDelete := event.Opcode == sgbucket.FeedOpDeletion
-				if isDelete {
-					rawBody = nil
-				}
-
-				db := Database{DatabaseContext: c.context, user: nil}
-				_, err := db.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
-				if err != nil {
-					if err == base.ErrImportCasFailure {
-						base.Debugf(base.KeyImport, "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))
-					} else if err == base.ErrImportCancelledFilter {
-						// No logging required - filter info already logged during importDoc
-					} else {
-						base.Debugf(base.KeyImport, "Did not import doc %q - external update will not be accessible via Sync Gateway.  Reason: %v", base.UD(docID), err)
-					}
-				}
-			}
 			return
 		}
 	}
 
+	// If not using xattrs and no sync metadata found, check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
+	// before ignoring the mutation.
 	if !c.context.UseXattrs() && !syncData.HasValidSyncData() {
-		// No sync metadata found - check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
 		migratedDoc, _ := c.context.checkForUpgrade(docID, DocUnmarshalNoHistory)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
 			base.Infof(base.KeyCache, "Found mobile xattr on doc %q without _sync property - caching, assuming upgrade in progress.", base.UD(docID))

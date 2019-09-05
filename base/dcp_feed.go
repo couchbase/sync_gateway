@@ -48,6 +48,10 @@ const kCheckpointTimeThreshold = 1 * time.Minute
 // Persist backfill progress every 10s
 const kBackfillPersistInterval = 10 * time.Second
 
+// DCP Feed IDs are used to build unique DCP identifiers
+const DCPCachingFeedID = "SG"
+const DCPImportFeedID = "SGI"
+
 type SimpleFeed struct {
 	eventFeed  chan sgbucket.FeedEvent
 	terminator chan bool
@@ -92,9 +96,10 @@ type DCPReceiver struct {
 	notify                 sgbucket.BucketNotifyFn        // Function to callback when we lose our dcp feed
 	callback               sgbucket.FeedEventCallbackFunc // Function to callback for mutation processing
 	backfill               *backfillStatus                // Backfill state and stats
+	feedID                 string                         // Unique feed ID, used for logging
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map) Receiver {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string) Receiver {
 	newBackfillStatus := backfillStatus{}
 
 	r := &DCPReceiver{
@@ -109,10 +114,11 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 		callback:               callback,
 		lastCheckpointTime:     make([]time.Time, maxVbNo),
 		backfill:               &newBackfillStatus,
+		feedID:                 feedID,
 	}
 
 	if LogDebugEnabled(KeyDCP) {
-		Infof(KeyDCP, "Using DCP Logging Receiver.")
+		r.Infof(KeyDCP, "Using DCP Logging Receiver")
 		logRec := &DCPLoggingReceiver{rec: r}
 		return logRec
 	}
@@ -129,7 +135,7 @@ func (r *DCPReceiver) GetBucketNotifyFn() sgbucket.BucketNotifyFn {
 }
 
 func (r *DCPReceiver) OnError(err error) {
-	Warnf(KeyAll, "Error processing DCP stream - will attempt to restart/reconnect if appropriate: %v.", err)
+	r.Warnf(KeyAll, "Error processing DCP stream %s - will attempt to restart/reconnect if appropriate: %v.", r.feedID, err)
 	// From cbdatasource:
 	//  Invoked in advisory fashion by the BucketDataSource when it
 	//  encounters an error.  The BucketDataSource will continue to try
@@ -173,7 +179,7 @@ func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	}
 	r.updateSeq(vbucketId, seq, true)
 	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpMutation))
-	if shouldPersistCheckpoint {
+	if r.persistCheckpoints && shouldPersistCheckpoint {
 		r.incrementCheckpointCount(vbucketId)
 	}
 	return nil
@@ -186,7 +192,7 @@ func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	}
 	r.updateSeq(vbucketId, seq, true)
 	shouldPersistCheckpoint := r.callback(makeFeedEvent(req, vbucketId, sgbucket.FeedOpDeletion))
-	if shouldPersistCheckpoint {
+	if r.persistCheckpoints && shouldPersistCheckpoint {
 		r.incrementCheckpointCount(vbucketId)
 	}
 	return nil
@@ -247,7 +253,7 @@ func (r *DCPReceiver) SetMetaData(vbucketId uint16, value []byte) error {
 
 		err := r.persistCheckpoint(vbucketId, value)
 		if err != nil {
-			Warnf(KeyAll, "Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
+			r.Warnf(KeyAll, "Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
 		}
 		r.updatesSinceCheckpoint[vbucketId] = 0
 		r.lastCheckpointTime[vbucketId] = time.Now()
@@ -276,7 +282,7 @@ func (r *DCPReceiver) GetMetaData(vbucketId uint16) (
 // RollbackEx should be called by cbdatasource - Rollback required to maintain the interface.  In the event
 // it's called, logs warning and does a hard reset on metadata for the vbucket
 func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
-	Warnf(KeyAll, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
+	r.Warnf(KeyAll, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
 	r.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	r.updateSeq(vbucketId, 0, false)
 	r.SetMetaData(vbucketId, nil)
@@ -286,7 +292,7 @@ func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
 
 // RollbackEx includes the vbucketUUID needed to reset the metadata correctly
 func (r *DCPReceiver) RollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64) error {
-	Warnf(KeyAll, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
+	r.Warnf(KeyAll, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	r.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	r.updateSeq(vbucketId, rollbackSeq, false)
 	r.SetMetaData(vbucketId, makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq))
@@ -305,7 +311,7 @@ func (r *DCPReceiver) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo b
 	previousSequence := r.seqs[vbucketId]
 
 	if seq < previousSequence && warnOnLowerSeqNo == true {
-		Warnf(KeyAll, "Setting to _lower_ sequence number than previous: %v -> %v", r.seqs[vbucketId], seq)
+		r.Warnf(KeyAll, "Setting to _lower_ sequence number than previous: %v -> %v", r.seqs[vbucketId], seq)
 	}
 
 	// Update r.seqs for use by GetMetaData()
@@ -369,7 +375,7 @@ func makeVbucketMetadataForSequence(vbucketUUID uint64, sequence uint64) []byte 
 //         - Would only result in some repeated entry processing, which is already handled by the indexer
 //         - Is a relatively infrequent operation
 func (r *DCPReceiver) persistCheckpoint(vbNo uint16, value []byte) error {
-	Tracef(KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
+	r.Tracef(KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
 	return r.bucket.SetRaw(fmt.Sprintf("%s%d", DCPCheckpointPrefix, vbNo), 0, value)
 }
 
@@ -415,7 +421,7 @@ func (r *DCPReceiver) initMetadata(maxVbNo uint16) {
 	for i := uint16(0); i < maxVbNo; i++ {
 		metadata, snapStart, snapEnd, err := r.loadCheckpoint(i)
 		if err != nil {
-			Warnf(KeyAll, "Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", i, err)
+			r.Warnf(KeyAll, "Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", i, err)
 			r.meta[i] = []byte{}
 			r.seqs[i] = 0
 		} else {
@@ -429,11 +435,11 @@ func (r *DCPReceiver) initMetadata(maxVbNo uint16) {
 				}
 				// If we have a backfill sequence later than the DCP checkpoint's snapStart, start from there
 				if partialBackfillSequence > snapStart {
-					Infof(KeyDCP, "Restarting vb %d using backfill sequence %d ([%d-%d])", i, partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
+					r.Infof(KeyDCP, "Restarting vb %d using backfill sequence %d ([%d-%d])", i, partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
 					r.seqs[i] = partialBackfillSequence
 					r.meta[i] = makeVbucketMetadata(r.vbuuids[i], partialBackfillSequence, backfillSeqs.SnapStart[i], backfillSeqs.SnapEnd[i])
 				} else {
-					Infof(KeyDCP, "Restarting vb %d using metadata sequence %d  (backfill %d not in [%d-%d])", i, snapStart, partialBackfillSequence, snapStart, snapEnd)
+					r.Infof(KeyDCP, "Restarting vb %d using metadata sequence %d  (backfill %d not in [%d-%d])", i, snapStart, partialBackfillSequence, snapStart, snapEnd)
 				}
 			}
 		}
@@ -474,64 +480,79 @@ func (r *DCPReceiver) initFeed(backfillType uint64) error {
 	return nil
 }
 
-// DCPReceiver implements cbdatasource.Receiver to manage updates coming from a
-// cbdatasource BucketDataSource.  See go-couchbase/cbdatasource for
-// additional details
+// Logging helpers for DCPReceiver that prefix logging with the feedID
+
+func (r *DCPReceiver) Warnf(logKey LogKey, format string, args ...interface{}) {
+	format = fmt.Sprintf("[%s]%s", r.feedID, format)
+	Warnf(logKey, format, args...)
+}
+
+func (r *DCPReceiver) Infof(logKey LogKey, format string, args ...interface{}) {
+	format = fmt.Sprintf("[%s]%s", r.feedID, format)
+	Infof(logKey, format, args...)
+}
+
+func (r *DCPReceiver) Tracef(logKey LogKey, format string, args ...interface{}) {
+	format = fmt.Sprintf("[%s]%s", r.feedID, format)
+	Tracef(logKey, format, args...)
+}
+
+// DCPLoggingReceiver wraps DCPReceiver to provide per-callback logging
 type DCPLoggingReceiver struct {
-	rec Receiver
+	rec *DCPReceiver
 }
 
 func (r *DCPLoggingReceiver) OnError(err error) {
-	Infof(KeyDCP, "OnError: %v", err)
+	r.rec.Infof(KeyDCP, "OnError: %v", err)
 	r.rec.OnError(err)
 }
 
 func (r *DCPLoggingReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	Tracef(KeyDCP, "DataUpdate:%d, %s, %d, %v", vbucketId, UD(string(key)), seq, UD(req))
+	r.rec.Tracef(KeyDCP, "DataUpdate:%d, %s, %d, %v", vbucketId, UD(string(key)), seq, UD(req))
 	return r.rec.DataUpdate(vbucketId, key, seq, req)
 }
 
 func (r *DCPLoggingReceiver) SetBucketNotifyFn(notify sgbucket.BucketNotifyFn) {
-	Tracef(KeyDCP, "SetBucketNotifyFn()")
+	r.rec.Tracef(KeyDCP, "SetBucketNotifyFn()")
 	r.rec.SetBucketNotifyFn(notify)
 }
 
 func (r *DCPLoggingReceiver) GetBucketNotifyFn() sgbucket.BucketNotifyFn {
-	Tracef(KeyDCP, "GetBucketNotifyFn()")
+	r.rec.Tracef(KeyDCP, "GetBucketNotifyFn()")
 	return r.rec.GetBucketNotifyFn()
 }
 
 func (r *DCPLoggingReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	Tracef(KeyDCP, "DataDelete:%d, %s, %d, %v", vbucketId, UD(string(key)), seq, UD(req))
+	r.rec.Tracef(KeyDCP, "DataDelete:%d, %s, %d, %v", vbucketId, UD(string(key)), seq, UD(req))
 	return r.rec.DataDelete(vbucketId, key, seq, req)
 }
 
 func (r *DCPLoggingReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
-	Infof(KeyDCP, "Rollback:%d, %d", vbucketId, rollbackSeq)
+	r.rec.Infof(KeyDCP, "Rollback:%d, %d", vbucketId, rollbackSeq)
 	return r.rec.Rollback(vbucketId, rollbackSeq)
 }
 
 func (r *DCPLoggingReceiver) SetMetaData(vbucketId uint16, value []byte) error {
-	Tracef(KeyDCP, "SetMetaData:%d, %s", vbucketId, value)
+	r.rec.Tracef(KeyDCP, "SetMetaData:%d, %s", vbucketId, value)
 	return r.rec.SetMetaData(vbucketId, value)
 }
 
 func (r *DCPLoggingReceiver) GetMetaData(vbucketId uint16) (
 	value []byte, lastSeq uint64, err error) {
-	Tracef(KeyDCP, "GetMetaData:%d", vbucketId)
+	r.rec.Tracef(KeyDCP, "GetMetaData:%d", vbucketId)
 	return r.rec.GetMetaData(vbucketId)
 }
 
 func (r *DCPLoggingReceiver) SnapshotStart(vbucketId uint16,
 	snapStart, snapEnd uint64, snapType uint32) error {
-	Tracef(KeyDCP, "SnapshotStart:%d, %d, %d, %d", vbucketId, snapStart, snapEnd, snapType)
+	r.rec.Tracef(KeyDCP, "SnapshotStart:%d, %d, %d, %d", vbucketId, snapStart, snapEnd, snapType)
 	return r.rec.SnapshotStart(vbucketId, snapStart, snapEnd, snapType)
 }
 
 func (r *DCPLoggingReceiver) SeedSeqnos(uuids map[uint16]uint64, seqs map[uint16]uint64) {
-	Tracef(KeyDCP, "SeedSeqnos:%v, %v", uuids, seqs)
+	r.rec.Tracef(KeyDCP, "SeedSeqnos:%v, %v", uuids, seqs)
 	r.rec.SeedSeqnos(uuids, seqs)
 }
 
@@ -582,7 +603,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		persistCheckpoints = true
 	}
 
-	dcpReceiver := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats)
+	dcpReceiver := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, args.ID)
 	dcpReceiver.SetBucketNotifyFn(args.Notify)
 
 	// Initialize the feed based on the backfill type
@@ -591,7 +612,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		return feedInitErr
 	}
 
-	dataSourceOptions := cbdatasource.DefaultBucketDataSourceOptions
+	dataSourceOptions := CopyDefaultBucketDatasourceOptions()
 	if spec.UseXattrs {
 		dataSourceOptions.IncludeXAttrs = true
 	}
@@ -600,7 +621,13 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		Debugf(KeyDCP, fmt, v...)
 	}
 
-	dataSourceOptions.Name, err = GenerateDcpStreamName("SG")
+	feedID := args.ID
+	if feedID == "" {
+		Infof(KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
+		feedID = DCPCachingFeedID
+	}
+	dataSourceOptions.Name, err = GenerateDcpStreamName(feedID)
+	Infof(KeyDCP, "DCP feed starting with name %s", dataSourceOptions.Name)
 	if err != nil {
 		return pkgerrors.Wrap(err, "unable to generate DCP stream name")
 	}
@@ -635,19 +662,20 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		dcpReceiver,
 		dataSourceOptions,
 	)
+
 	if err != nil {
-		return pkgerrors.WithStack(RedactErrorf("Error connecting to new bucket cbdatasource.  URLs:%s, pool:%s, bucket:%s.  Error: %v", MD(urls), MD(poolName), MD(bucketName), err))
+		return pkgerrors.WithStack(RedactErrorf("Error connecting to new bucket cbdatasource.  FeedID:%s URLs:%s, pool:%s, bucket:%s.  Error: %v", feedID, MD(urls), MD(poolName), MD(bucketName), err))
 	}
 
 	if err = bds.Start(); err != nil {
-		return pkgerrors.WithStack(RedactErrorf("Error starting bucket cbdatasource.  URLs:%s, pool:%s, bucket:%s.  Error: %v", MD(urls), MD(poolName), MD(bucketName), err))
+		return pkgerrors.WithStack(RedactErrorf("Error starting bucket cbdatasource.  FeedID:%s URLs:%s, pool:%s, bucket:%s.  Error: %v", feedID, MD(urls), MD(poolName), MD(bucketName), err))
 	}
 
 	// Close the data source if feed terminator is closed
 	if args.Terminator != nil {
 		go func() {
 			<-args.Terminator
-			Tracef(KeyDCP, "Closing DCP Feed based on termination notification")
+			Tracef(KeyDCP, "Closing DCP Feed [%s] based on termination notification", feedID)
 			bds.Close()
 		}()
 	}
@@ -661,11 +689,8 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 // version number / commit for debugging purposes
 func GenerateDcpStreamName(product string) (string, error) {
 
-	// Create a time-based UUID for uniqueness of DCP Stream Names
-	u, err := uuid.NewUUID()
-	if err != nil {
-		return "", err
-	}
+	// Create a non-time-based UUID for uniqueness of DCP Stream Names
+	u := uuid.New()
 
 	commitTruncated := StringPrefix(GitCommit, 7)
 
@@ -808,4 +833,29 @@ func (b *backfillStatus) loadBackfillSequences(bucket Bucket) (*BackfillSequence
 
 func (b *backfillStatus) purgeBackfillSequences(bucket Bucket) error {
 	return bucket.Delete(DCPBackfillSeqKey)
+}
+
+// CopyDefaultBucketDatasourceOptions makes a copy of cbdatasource.DefaultBucketDataSourceOptions.
+// DeepCopyInefficient can't be used here due to function definitions present on BucketDataSourceOptions (ConnectBucket, etc)
+func CopyDefaultBucketDatasourceOptions() *cbdatasource.BucketDataSourceOptions {
+	return &cbdatasource.BucketDataSourceOptions{
+		ClusterManagerBackoffFactor: cbdatasource.DefaultBucketDataSourceOptions.ClusterManagerBackoffFactor,
+		ClusterManagerSleepInitMS:   cbdatasource.DefaultBucketDataSourceOptions.ClusterManagerSleepInitMS,
+		ClusterManagerSleepMaxMS:    cbdatasource.DefaultBucketDataSourceOptions.ClusterManagerSleepMaxMS,
+
+		DataManagerBackoffFactor: cbdatasource.DefaultBucketDataSourceOptions.DataManagerBackoffFactor,
+		DataManagerSleepInitMS:   cbdatasource.DefaultBucketDataSourceOptions.DataManagerSleepInitMS,
+		DataManagerSleepMaxMS:    cbdatasource.DefaultBucketDataSourceOptions.DataManagerSleepMaxMS,
+
+		FeedBufferSizeBytes:    cbdatasource.DefaultBucketDataSourceOptions.FeedBufferSizeBytes,
+		FeedBufferAckThreshold: cbdatasource.DefaultBucketDataSourceOptions.FeedBufferAckThreshold,
+
+		NoopTimeIntervalSecs: cbdatasource.DefaultBucketDataSourceOptions.NoopTimeIntervalSecs,
+
+		TraceCapacity: cbdatasource.DefaultBucketDataSourceOptions.TraceCapacity,
+
+		PingTimeoutMS: cbdatasource.DefaultBucketDataSourceOptions.PingTimeoutMS,
+
+		IncludeXAttrs: cbdatasource.DefaultBucketDataSourceOptions.IncludeXAttrs,
+	}
 }
