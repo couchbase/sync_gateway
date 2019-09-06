@@ -116,7 +116,7 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 
 func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	terminator := make(chan bool)
 	defer close(terminator)
@@ -172,7 +172,7 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 // between compact triggers.  In the second compact, NRU channels should have eviction priority.
 func TestChannelCacheCompactNRU(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	terminator := make(chan bool)
 	defer close(terminator)
