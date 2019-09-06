@@ -395,15 +395,11 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// If using xattrs and this isn't an SG write, we shouldn't attempt to cache.
 	if c.context.UseXattrs() {
-		var isSGWrite bool
-		if syncData != nil {
-			var crc32Match bool
-			isSGWrite, crc32Match = syncData.IsSGWrite(event.Cas, rawBody)
-			if crc32Match {
-				c.context.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
-			}
+		if syncData == nil {
+			return
 		}
-		if syncData == nil || !isSGWrite {
+		isSGWrite, _ := syncData.IsSGWrite(event.Cas, rawBody)
+		if !isSGWrite {
 			return
 		}
 	}

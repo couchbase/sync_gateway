@@ -284,14 +284,16 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// If this is an xattr import node, start import feed
 	if dbContext.UseXattrs() && dbContext.autoImport {
 		dbContext.importListener = NewImportListener()
-		dbContext.importListener.StartImportFeed(bucket, dbContext.DbStats, dbContext)
+		if importFeedErr := dbContext.importListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
+			return nil, err
+		}
 	}
 
 	// Start DCP feed
 	base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
 	cacheFeedStatsMap, ok := dbContext.DbStats.statsDatabaseMap.Get(base.StatKeyCachingDcpStats).(*expvar.Map)
 	if !ok {
-		base.Infof(base.KeyDCP, "Cache feed stats map not initialized - will not be tracked")
+		return nil, errors.New("Cache feed stats map not initialized")
 	}
 	err = dbContext.mutationListener.Start(bucket, func(bucket string, err error) {
 
@@ -515,10 +517,7 @@ func (context *DatabaseContext) Close() {
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
-	if context.importListener != nil {
-		context.importListener.Stop()
-	}
-
+	context.importListener.Stop()
 	context.Bucket.Close()
 	context.Bucket = nil
 

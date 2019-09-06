@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"expvar"
 	"strings"
 
@@ -42,7 +43,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 
 	importFeedStatsMap, ok := dbContext.DbStats.statsDatabaseMap.Get(base.StatKeyImportDcpStats).(*expvar.Map)
 	if !ok {
-		base.Infof(base.KeyDCP, "Import feed stats map not initialized - will not be tracked")
+		return errors.New("Import feed stats map not initialized")
 	}
 
 	// Start DCP mutation feed
@@ -56,43 +57,41 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 // internal documents based on key, then checks sync metadata to determine whether document needs to be imported
 func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPersistCheckpoint bool) {
 
-	shouldPersistCheckpoint = true
-
 	// Ignore non-mutation/deletion events
 	if event.Opcode != sgbucket.FeedOpMutation && event.Opcode != sgbucket.FeedOpDeletion {
-		return shouldPersistCheckpoint
+		return true
 	}
 	key := string(event.Key)
 
 	// Ignore internal documents
 	if strings.HasPrefix(key, base.SyncPrefix) {
 		if strings.HasPrefix(key, base.DCPCheckpointPrefix) {
-			shouldPersistCheckpoint = false
+			return false
 		}
-		return shouldPersistCheckpoint
+		return true
 	}
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we shouldn't import
 	if event.Opcode == sgbucket.FeedOpDeletion && len(event.Value) == 0 {
 		base.Debugf(base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(event.Key))
-		return shouldPersistCheckpoint
+		return true
 	}
 
 	// If this is a binary document we can ignore, but update checkpoint to avoid reprocessing upon restart
 	if event.DataType == base.MemcachedDataTypeRaw {
-		return shouldPersistCheckpoint
+		return true
 	}
 
 	il.ImportFeedEvent(event)
-	return shouldPersistCheckpoint
+	return true
 }
 
 func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 
-	// Unmarshal the doc metadata to determine if this mutation requires import:
+	// Unmarshal the doc metadata (if present) to determine if this mutation requires import.
 	syncData, rawBody, rawXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, false)
 	if err != nil {
-		base.Debugf(base.KeyCache, "Unable to unmarshal sync metadata for feed document %q.  Will not be included in channel cache.  Error: %v", base.UD(event.Key), err)
+		base.Debugf(base.KeyImport, "Found sync metadata, but unable to unmarshal for feed document %q.  Will not be imported.  Error: %v", base.UD(event.Key), err)
 		if err == base.ErrEmptyMetadata {
 			base.Warnf(base.KeyAll, "Unexpected empty metadata when processing feed event.  docid: %s opcode: %v datatype:%v", base.UD(event.Key), event.Opcode, event.DataType)
 		}
@@ -129,5 +128,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 }
 
 func (il *importListener) Stop() {
-	close(il.terminator)
+	if il != nil {
+		close(il.terminator)
+	}
 }
