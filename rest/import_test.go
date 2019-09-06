@@ -2,6 +2,7 @@ package rest
 
 import (
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"log"
 	"net/http"
@@ -1749,8 +1750,10 @@ func TestDcpBackfill(t *testing.T) {
 	backfillComplete := false
 	var expectedBackfill, completedBackfill int
 	for i := 0; i < 20; i++ {
-		expectedBackfill, _ := strconv.Atoi(newRt.GetDatabase().DbStats.StatsDatabase().Get("dcp_backfill_expected").String())
-		completedBackfill, _ := strconv.Atoi(newRt.GetDatabase().DbStats.StatsDatabase().Get("dcp_backfill_completed").String())
+		importFeedStats, ok := newRt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyImportDcpStats).(*expvar.Map)
+		assert.True(t, ok)
+		expectedBackfill, _ := strconv.Atoi(importFeedStats.Get("dcp_backfill_expected").String())
+		completedBackfill, _ := strconv.Atoi(importFeedStats.Get("dcp_backfill_completed").String())
 		if expectedBackfill > 0 && completedBackfill >= expectedBackfill {
 			log.Printf("backfill complete: %d/%d", completedBackfill, expectedBackfill)
 			backfillComplete = true
