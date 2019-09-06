@@ -210,7 +210,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 func TestBypassRevisionCache(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
@@ -271,7 +271,7 @@ func TestBypassRevisionCache(t *testing.T) {
 // Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via Put
 func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
@@ -314,7 +314,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 // Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via PutExistingRev
 func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()

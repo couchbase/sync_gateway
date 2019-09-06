@@ -221,7 +221,7 @@ func TestImportNullDoc(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled and in integration mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyImport)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
@@ -245,7 +245,7 @@ func TestImportNullDoc(t *testing.T) {
 }
 
 func TestImportNullDocRaw(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyImport)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()

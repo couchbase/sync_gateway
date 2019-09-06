@@ -375,7 +375,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyChanges|base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyCache)()
 
 	cacheOptions := shortWaitCache()
 	cacheOptions.ChannelCacheOptions.MaxNumChannels = 100
