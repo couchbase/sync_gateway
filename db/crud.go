@@ -609,25 +609,6 @@ func (db *Database) backupAncestorRevs(doc *Document, newRevId string, newBody B
 
 //////// UPDATING DOCUMENTS:
 
-// Initializes the gateway-specific "_sync_" metadata of a new document.
-// Used when importing an existing Couchbase doc that hasn't been seen by the gateway before.
-func (db *Database) initializeSyncData(doc *Document) (err error) {
-	body := doc.Body()
-	doc.CurrentRev, err = createRevID(1, "", body)
-	if err != nil {
-		return err
-	}
-	body[BodyRev] = doc.CurrentRev
-	doc.setFlag(channels.Deleted, false)
-	doc.History = make(RevTree)
-	if err = doc.History.addRevision(doc.ID, RevInfo{ID: doc.CurrentRev, Parent: "", Deleted: false}); err != nil {
-		return err
-	}
-	doc.Sequence, err = db.sequences.nextSequence()
-
-	return
-}
-
 func (db *Database) OnDemandImportForWrite(docid string, doc *Document, deleted bool) error {
 
 	// Check whether the doc requiring import is an SDK delete
