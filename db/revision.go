@@ -425,31 +425,49 @@ func compareRevIDs(id1, id2 string) int {
 	return 0
 }
 
-func stripSpecialProperties(body Body) Body {
-	stripped := Body{}
-	for key, value := range body {
-		if key == "" || key[0] != '_' || key == BodyAttachments || key == BodyDeleted {
-			stripped[key] = value
+// stripSpecialProperties returns a copy of the given body with all underscore-prefixed keys removed, except _attachments and _deleted.
+func stripSpecialProperties(b Body) Body {
+	return stripSpecialPropertiesExcept(b, []string{BodyAttachments, BodyDeleted})
+}
+
+// stripAllSpecialProperties returns a copy of the given body with all underscore-prefixed keys removed.
+func stripAllSpecialProperties(b Body) Body {
+	return stripSpecialPropertiesExcept(b, nil)
+}
+
+// stripSpecialPropertiesExcept returns a copy of the given body with all underscore-prefixed keys removed, except those given.
+func stripSpecialPropertiesExcept(b Body, exceptions []string) Body {
+	// Assume no properties removed for the initial capacity to reduce allocs on large docs.
+	stripped := make(Body, len(b))
+	for k, v := range b {
+		if k == "" || k[0] != '_' ||
+			base.StringSliceContains(exceptions, k) {
+			// property is allowed
+			stripped[k] = v
 		}
 	}
 	return stripped
 }
 
-func containsUserSpecialProperties(body Body) bool {
-	for key := range body {
-		if key != "" && key[0] == '_' && key != BodyId && key != BodyRev && key != BodyDeleted && key != BodyAttachments && key != BodyRevisions {
+// containsUserSpecialProperties returns true if the given body contains a non-SG special property (underscore prefixed)
+func containsUserSpecialProperties(b Body) bool {
+	for k := range b {
+		if k != "" && k[0] == '_' &&
+			k != BodyId &&
+			k != BodyRev &&
+			k != BodyDeleted &&
+			k != BodyAttachments &&
+			k != BodyRevisions {
+			// body contains special property that isn't one of the above... must be user's
 			return true
 		}
 	}
 	return false
 }
 
+// canonicalEncoding returns the canonical version of body as bytes
 func canonicalEncoding(body Body) ([]byte, error) {
-	encoded, err := json.Marshal(body) //FIX: Use canonical JSON encoder
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Couldn't encode body %v", body))
-	}
-	return encoded, nil
+	return json.Marshal(body) // FIXME: Use canonical JSON encoder
 }
 
 func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {

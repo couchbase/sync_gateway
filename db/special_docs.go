@@ -94,7 +94,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 
 func (db *Database) PutSpecial(doctype string, docid string, body Body) (string, error) {
 	matchRev, _ := body[BodyRev].(string)
-	body = stripSpecialSpecialProperties(body)
+	body = stripAllSpecialProperties(body)
 	return db.putSpecial(doctype, docid, matchRev, body)
 }
 
@@ -105,14 +105,4 @@ func (db *Database) DeleteSpecial(doctype string, docid string, revid string) er
 
 func (db *Database) realSpecialDocID(doctype string, docid string) string {
 	return base.SyncPrefix + doctype + ":" + docid
-}
-
-func stripSpecialSpecialProperties(body Body) Body {
-	stripped := Body{}
-	for key, value := range body {
-		if key == "" || key[0] != '_' {
-			stripped[key] = value
-		}
-	}
-	return stripped
 }
