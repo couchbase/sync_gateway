@@ -84,3 +84,61 @@ func TestParseRevisionsToAncestor(t *testing.T) {
 	shortRevisions := Revisions{RevisionsStart: 3, RevisionsIds: []string{"three"}}
 	assert.Equal(t, []string(nil), shortRevisions.parseAncestorRevisions("2-two"))
 }
+
+func BenchmarkStripSpecialProperties(b *testing.B) {
+	tests := []struct {
+		name string
+		body Body
+	}{
+		{
+			"no special",
+			Body{
+				"asdf":  "qwerty",
+				"one":   1,
+				"two":   2,
+				"three": 3,
+				"four":  4,
+				"five":  5,
+				"six":   6,
+				"seven": 7,
+				"eight": 8,
+				"nine":  9,
+				"ten":   10,
+				"a":     true,
+				"b":     true,
+				"c":     true,
+			},
+		},
+		{
+			"special",
+			Body{
+				"asdf":  "qwerty",
+				"one":   1,
+				"two":   2,
+				"three": 3,
+				"four":  4,
+				"five":  5,
+				"six":   6,
+				"seven": 7,
+				"eight": 8,
+				"nine":  9,
+				"ten":   10,
+				"a":     true,
+				"b":     true,
+				"c":     true,
+				BodyId:  "1234",
+				BodyRev: "1-abc",
+			},
+		},
+	}
+
+	for _, t := range tests {
+		b.Run(t.name, func(bb *testing.B) {
+			bb.ReportAllocs()
+			for i := 0; i < bb.N; i++ {
+				stripSpecialProperties(t.body)
+			}
+		})
+	}
+
+}
