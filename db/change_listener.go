@@ -39,14 +39,14 @@ func (listener *changeListener) Init(name string) {
 }
 
 // Starts a changeListener on a given Bucket.
-
-func (listener *changeListener) Start(bucket base.Bucket, backfillMode uint64, bucketStateNotify sgbucket.BucketNotifyFn, dbStats *expvar.Map) error {
+func (listener *changeListener) Start(bucket base.Bucket, bucketStateNotify sgbucket.BucketNotifyFn, dbStats *expvar.Map) error {
 
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
 	listener.bucketName = bucket.GetName()
 	listener.FeedArgs = sgbucket.FeedArguments{
-		Backfill:   backfillMode,
+		ID:         base.DCPCachingFeedID,
+		Backfill:   sgbucket.FeedNoBackfill,
 		Notify:     bucketStateNotify,
 		Terminator: listener.terminator,
 	}
@@ -92,7 +92,11 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	requiresCheckpointPersistence := true
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
-		if strings.HasPrefix(key, base.UserPrefix) ||
+		if !strings.HasPrefix(key, base.SyncPrefix) { // Anything other than internal SG docs can go straight to OnDocChanged
+			if listener.OnDocChanged != nil {
+				listener.OnDocChanged(event)
+			}
+		} else if strings.HasPrefix(key, base.UserPrefix) ||
 			strings.HasPrefix(key, base.RolePrefix) { // SG users and roles
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
@@ -104,12 +108,10 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			}
 		} else if strings.HasPrefix(key, base.DCPCheckpointPrefix) { // SG DCP checkpoint docs
 			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
-			// we'll end up in a feedback loop for their vbucket
+			// we'll end up in a feedback loop for their vbucket if persistence is enabled
+			// NOTE: checkpoint persistence is disabled altogether for the caching feed.  Leaving this check in place
+			// defensively.
 			requiresCheckpointPersistence = false
-		} else if !strings.HasPrefix(key, base.SyncPrefix) { // Non-SG docs
-			if listener.OnDocChanged != nil {
-				listener.OnDocChanged(event)
-			}
 		}
 	}
 	return requiresCheckpointPersistence
