@@ -453,11 +453,13 @@ func stripSpecialPropertiesExcept(b Body, exceptions []string) Body {
 func containsUserSpecialProperties(b Body) bool {
 	for k := range b {
 		if k != "" && k[0] == '_' &&
-			k != BodyId &&
-			k != BodyRev &&
-			k != BodyDeleted &&
-			k != BodyAttachments &&
-			k != BodyRevisions {
+			!base.ContainsString([]string{
+				BodyId,
+				BodyRev,
+				BodyDeleted,
+				BodyAttachments,
+				BodyRevisions,
+			}, k) {
 			// body contains special property that isn't one of the above... must be user's
 			return true
 		}

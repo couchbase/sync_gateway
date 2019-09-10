@@ -85,60 +85,46 @@ func TestParseRevisionsToAncestor(t *testing.T) {
 	assert.Equal(t, []string(nil), shortRevisions.parseAncestorRevisions("2-two"))
 }
 
-func BenchmarkStripSpecialProperties(b *testing.B) {
+func BenchmarkSpecialProperties(b *testing.B) {
+	noSpecialBody := Body{
+		"asdf": "qwerty", "a": true, "b": true, "c": true,
+		"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+		"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+	}
+
+	specialBody := noSpecialBody.Copy(BodyShallowCopy)
+	specialBody[BodyId] = "abc123"
+	specialBody[BodyRev] = "1-abc"
+
 	tests := []struct {
 		name string
 		body Body
 	}{
 		{
 			"no special",
-			Body{
-				"asdf":  "qwerty",
-				"one":   1,
-				"two":   2,
-				"three": 3,
-				"four":  4,
-				"five":  5,
-				"six":   6,
-				"seven": 7,
-				"eight": 8,
-				"nine":  9,
-				"ten":   10,
-				"a":     true,
-				"b":     true,
-				"c":     true,
-			},
+			noSpecialBody,
 		},
 		{
 			"special",
-			Body{
-				"asdf":  "qwerty",
-				"one":   1,
-				"two":   2,
-				"three": 3,
-				"four":  4,
-				"five":  5,
-				"six":   6,
-				"seven": 7,
-				"eight": 8,
-				"nine":  9,
-				"ten":   10,
-				"a":     true,
-				"b":     true,
-				"c":     true,
-				BodyId:  "1234",
-				BodyRev: "1-abc",
-			},
+			specialBody,
 		},
 	}
 
 	for _, t := range tests {
-		b.Run(t.name, func(bb *testing.B) {
-			bb.ReportAllocs()
+		b.Run(t.name+"-stripSpecialProperties", func(bb *testing.B) {
 			for i := 0; i < bb.N; i++ {
 				stripSpecialProperties(t.body)
 			}
 		})
+		b.Run(t.name+"-stripAllSpecialProperties", func(bb *testing.B) {
+			for i := 0; i < bb.N; i++ {
+				stripAllSpecialProperties(t.body)
+			}
+		})
+		b.Run(t.name+"-containsUserSpecialProperties", func(bb *testing.B) {
+			for i := 0; i < bb.N; i++ {
+				containsUserSpecialProperties(t.body)
+			}
+		})
 	}
-
 }
