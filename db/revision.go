@@ -427,16 +427,16 @@ func compareRevIDs(id1, id2 string) int {
 
 // stripSpecialProperties returns a copy of the given body with all underscore-prefixed keys removed, except _attachments and _deleted.
 func stripSpecialProperties(b Body) Body {
-	return stripSpecialPropertiesExcept(b, []string{BodyAttachments, BodyDeleted})
+	return stripSpecialPropertiesExcept(b, BodyAttachments, BodyDeleted)
 }
 
 // stripAllSpecialProperties returns a copy of the given body with all underscore-prefixed keys removed.
 func stripAllSpecialProperties(b Body) Body {
-	return stripSpecialPropertiesExcept(b, nil)
+	return stripSpecialPropertiesExcept(b)
 }
 
 // stripSpecialPropertiesExcept returns a copy of the given body with all underscore-prefixed keys removed, except those given.
-func stripSpecialPropertiesExcept(b Body, exceptions []string) Body {
+func stripSpecialPropertiesExcept(b Body, exceptions ...string) Body {
 	// Assume no properties removed for the initial capacity to reduce allocs on large docs.
 	stripped := make(Body, len(b))
 	for k, v := range b {
