@@ -22,5 +22,9 @@ func init() {
 
 // Simple Sync Gateway launcher tool.
 func main() {
+
+
+
+
 	rest.ServerMain()
 }
