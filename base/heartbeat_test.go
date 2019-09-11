@@ -22,6 +22,10 @@ func (th *TestHeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUuid string) {
 // one second, so retry polling is required.
 func TestNewCouchbaseHeartbeater(t *testing.T) {
 
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test won't work under walrus - no expiry, required for heartbeats")
+	}
+
 	if testing.Short() {
 		t.Skip("Skipping heartbeattest in short mode")
 	}
