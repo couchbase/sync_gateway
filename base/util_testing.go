@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/couchbase/gocb"
 )
 
@@ -592,4 +594,26 @@ func DeepCopyInefficient(dst interface{}, src interface{}) error {
 		return fmt.Errorf("Unable to unmarshal into dst: %s", err)
 	}
 	return nil
+}
+
+// testRetryUntilTrue performs a short sleep-based retry loop until the timeout is reached or the
+// criteria in RetryUntilTrueFunc is met. Intended to
+// avoid arbitrarily long sleeps in tests that don't have any alternative to polling.
+// Default sleep time is 50ms, timeout is 10s.  Can be customized with testRetryUntilTrueCustom
+type RetryUntilTrueFunc func() bool
+
+func testRetryUntilTrue(t *testing.T, retryFunc RetryUntilTrueFunc) {
+	testRetryUntilTrueCustom(t, retryFunc, 100, 10000)
+}
+
+func testRetryUntilTrueCustom(t *testing.T, retryFunc RetryUntilTrueFunc, waitTimeMs int, timeoutMs int) {
+	timeElapsedMs := 0
+	for timeElapsedMs < timeoutMs {
+		if retryFunc() {
+			return
+		}
+		time.Sleep(time.Duration(waitTimeMs) * time.Millisecond)
+		timeElapsedMs += waitTimeMs
+	}
+	assert.Fail(t, fmt.Sprintf("Retry until function didn't succeed within timeout (%d ms)", timeoutMs))
 }

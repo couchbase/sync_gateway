@@ -2,7 +2,6 @@ package base
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -29,7 +28,7 @@ type HeartbeatChecker interface {
 
 // A HeartbeatSender sends heartbeats
 type HeartbeatSender interface {
-	StartSendingHeartbeats(intervalMs int) error
+	StartSendingHeartbeats(intervalSeconds int) error
 	StopSendingHeartbeats()
 }
 
@@ -56,6 +55,10 @@ type couchbaseHeartBeater struct {
 	keyPrefix            string
 	heartbeatSendCloser  chan struct{} // break out of heartbeat sender goroutine
 	heartbeatCheckCloser chan struct{} // break out of heartbeat checker goroutine
+	sendCount            int           // Monitoring stat - number of heartbeats sent
+	checkCount           int           // Monitoring stat - number of checks issued
+	sendActive           bool          // Monitoring state of send goroutine
+	checkActive          bool          // Monitoring state of check goroutine
 }
 
 // Create a new CouchbaseHeartbeater, passing in an authenticated bucket connection,
@@ -63,7 +66,7 @@ type couchbaseHeartBeater struct {
 // and the nodeUuid, which is an opaque identifier for the "thing" that is using this
 // library.  You can think of nodeUuid as a generic token, so put whatever you want there
 // as long as it is unique to the node where this is running.  (eg, an ip address could work)
-func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUuid string) (Heartbeater, error) {
+func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUuid string) (*couchbaseHeartBeater, error) {
 
 	heartbeater := &couchbaseHeartBeater{
 		bucket:               bucket,
@@ -80,31 +83,51 @@ func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUuid string) (Heartbe
 // Kick off the heartbeat sender with the given interval, in milliseconds.
 // This method will BLOCK until the first heartbeat is sent, and the rest
 // will happen asynchronously.
-func (h *couchbaseHeartBeater) StartSendingHeartbeats(intervalMs int) error {
+func (h *couchbaseHeartBeater) StartSendingHeartbeats(intervalSeconds int) error {
 
 	// send the first heartbeat in the current goroutine and return
 	// an error if it fails
-	if err := h.sendHeartbeat(intervalMs); err != nil {
+	if err := h.sendHeartbeat(intervalSeconds); err != nil {
 		return err
 	}
 
-	ticker := time.NewTicker(time.Duration(intervalMs) * time.Millisecond)
+	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
 
 	go func() {
+		defer func() { h.sendActive = false }()
+		h.sendActive = true
 		for {
 			select {
 			case _ = <-h.heartbeatSendCloser:
 				ticker.Stop()
 				return
 			case <-ticker.C:
-				if err := h.sendHeartbeat(intervalMs); err != nil {
-					log.Printf("Error sending heartbeat: %v", err)
+				if err := h.sendHeartbeat(intervalSeconds); err != nil {
 				}
 			}
 		}
 	}()
 	return nil
 
+}
+
+// Stop terminates the send and check goroutines, and blocks for up to 1s
+// until goroutines are actually terminated
+func (h *couchbaseHeartBeater) Stop() {
+	h.StopSendingHeartbeats()
+	h.StopCheckingHeartbeats()
+
+	maxWaitTimeMs := 1000
+	waitTimeMs := 0
+	for h.sendActive || h.checkActive {
+		waitTimeMs += 10
+		if waitTimeMs > maxWaitTimeMs {
+			Warnf(KeyImport, "couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+
+	}
 }
 
 // Stop sending heartbeats
@@ -124,6 +147,8 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, han
 	ticker := time.NewTicker(time.Duration(staleThresholdMs) * time.Millisecond)
 
 	go func() {
+		defer func() { h.checkActive = false }()
+		h.checkActive = true
 		for {
 			select {
 			case _ = <-h.heartbeatCheckCloser:
@@ -131,7 +156,7 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, han
 				return
 			case <-ticker.C:
 				if err := h.checkStaleHeartbeats(staleThresholdMs, handler); err != nil {
-					log.Printf("Error checking for stale heartbeats: %v", err)
+					Warnf(KeyImport, "Error checking for stale heartbeats: %v", err)
 				}
 			}
 		}
@@ -145,7 +170,7 @@ func (h *couchbaseHeartBeater) StopCheckingHeartbeats() {
 	close(h.heartbeatCheckCloser)
 }
 
-func (h couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handler HeartbeatsStoppedHandler) error {
+func (h *couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handler HeartbeatsStoppedHandler) error {
 
 	// query view to get all heartbeat docs
 	heartbeatDocs, err := h.viewQueryHeartbeatDocs()
@@ -159,9 +184,9 @@ func (h couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handler
 			continue
 		}
 		if heartbeatDoc.NodeUUID == "" {
-			log.Printf("Skipping invalid heartbeatDoc: %+v", heartbeatDoc)
 			continue
 		}
+
 		timeoutDocId := h.heartbeatTimeoutDocId(heartbeatDoc.NodeUUID)
 		heartbeatTimeoutDoc := heartbeatTimeout{}
 		_, err := h.bucket.Get(timeoutDocId, &heartbeatTimeoutDoc)
@@ -179,24 +204,25 @@ func (h couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handler
 			// repeated callbacks to the stale heartbeat handler
 			docId := h.heartbeatDocId(heartbeatDoc.NodeUUID)
 			if err := h.bucket.Delete(docId); err != nil {
-				log.Printf("Failed to delete heartbeat doc: %v err: %v", docId, err)
+				Infof(KeyImport, "Failed to delete heartbeat doc: %v err: %v", docId, err)
 			}
 
 		}
 
 	}
+	h.checkCount++
 	return nil
 }
 
-func (h couchbaseHeartBeater) heartbeatTimeoutDocId(nodeUuid string) string {
+func (h *couchbaseHeartBeater) heartbeatTimeoutDocId(nodeUuid string) string {
 	return fmt.Sprintf("%vheartbeat_timeout:%v", h.keyPrefix, nodeUuid)
 }
 
-func (h couchbaseHeartBeater) heartbeatDocId(nodeUuid string) string {
+func (h *couchbaseHeartBeater) heartbeatDocId(nodeUuid string) string {
 	return fmt.Sprintf("%vheartbeat:%v", h.keyPrefix, nodeUuid)
 }
 
-func (h couchbaseHeartBeater) viewQueryHeartbeatDocs() ([]heartbeatMeta, error) {
+func (h *couchbaseHeartBeater) viewQueryHeartbeatDocs() ([]heartbeatMeta, error) {
 
 	viewRes := struct {
 		Rows []struct {
@@ -227,18 +253,19 @@ func (h couchbaseHeartBeater) viewQueryHeartbeatDocs() ([]heartbeatMeta, error) 
 
 }
 
-func (h couchbaseHeartBeater) sendHeartbeat(intervalMs int) error {
+func (h *couchbaseHeartBeater) sendHeartbeat(intervalSeconds int) error {
 
 	if err := h.upsertHeartbeatDoc(); err != nil {
 		return err
 	}
-	if err := h.upsertHeartbeatTimeoutDoc(intervalMs); err != nil {
+	if err := h.upsertHeartbeatTimeoutDoc(intervalSeconds); err != nil {
 		return err
 	}
+	h.sendCount++
 	return nil
 }
 
-func (h couchbaseHeartBeater) upsertHeartbeatDoc() error {
+func (h *couchbaseHeartBeater) upsertHeartbeatDoc() error {
 
 	heartbeatDoc := heartbeatMeta{
 		Type:     docTypeHeartbeat,
@@ -253,7 +280,7 @@ func (h couchbaseHeartBeater) upsertHeartbeatDoc() error {
 
 }
 
-func (h couchbaseHeartBeater) upsertHeartbeatTimeoutDoc(intervalMs int) error {
+func (h *couchbaseHeartBeater) upsertHeartbeatTimeoutDoc(intervalSeconds int) error {
 
 	heartbeatTimeoutDoc := heartbeatTimeout{
 		Type:     docTypeHeartbeatTimeout,
@@ -262,11 +289,9 @@ func (h couchbaseHeartBeater) upsertHeartbeatTimeoutDoc(intervalMs int) error {
 
 	docId := h.heartbeatTimeoutDocId(h.nodeUuid)
 
-	expireTimeSeconds := (intervalMs / 1000)
-
 	// make the expire time double the interval time, to ensure there is
 	// always a heartbeat timeout document present under normal operation
-	expireTimeSeconds *= 2
+	expireTimeSeconds := intervalSeconds * 2
 
 	if err := h.bucket.Set(docId, uint32(expireTimeSeconds), heartbeatTimeoutDoc); err != nil {
 		return err
@@ -275,17 +300,15 @@ func (h couchbaseHeartBeater) upsertHeartbeatTimeoutDoc(intervalMs int) error {
 
 }
 
-func (h couchbaseHeartBeater) addHeartbeatCheckView() error {
+func (h *couchbaseHeartBeater) addHeartbeatCheckView() error {
 
-	designDoc := `
-	   {
-	       "views": {
-	           "heartbeats": {
-	               "map": "function (doc, meta) { if (doc.type == 'heartbeat') { emit(meta.id, doc.node_uuid); }}"
-	           }
-	       }
-	   }`
+	heartbeatsMap := `function (doc, meta) { if (doc.type == 'heartbeat') { emit(meta.id, doc.node_uuid); }}`
+
+	designDoc := sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"heartbeats": sgbucket.ViewDef{Map: heartbeatsMap},
+		},
+	}
 
 	return h.bucket.PutDDoc("cbgt", designDoc)
-
 }
