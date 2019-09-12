@@ -39,6 +39,186 @@ const (
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
 )
 
+// IncomingDocument is the struct that is populated from any incoming document request
+type IncomingDocument struct {
+	BodyBytes         []byte // must *never* contain special properties
+	SpecialProperties        // embedded special properties
+
+	_syncFnBody map[string]interface{} // optional - unmarshalled body to be used by the sync fn (contains special properties)
+}
+
+// Returns an IncomingDocument for the given Body, which has the _syncFnBody already set.
+func (b Body) ToIncomingDocument() (*IncomingDocument, error) {
+	specialProperties, err := b.ExtractSpecialProperties()
+	if err != nil {
+		return nil, err
+	}
+
+	bodyBytes, err := json.Marshal(b)
+	if err != nil {
+		return nil, err
+	}
+
+	incomingDoc := IncomingDocument{
+		BodyBytes:         bodyBytes,
+		SpecialProperties: *specialProperties,
+	}
+
+	stampSpecialProperties(b, *specialProperties)
+	incomingDoc._syncFnBody = b
+
+	return &incomingDoc, nil
+}
+
+// SpecialProperties defines properties that may be in an *incoming* document from users (	mostly from the REST API)
+type SpecialProperties struct {
+	DocID       string          `json:"_id,omitempty"`
+	RevID       string          `json:"_rev,omitempty"`
+	Deleted     bool            `json:"_deleted,omitempty"`
+	Expiry      *uint32         `json:"_exp,omitempty"`
+	Attachments AttachmentsMeta `json:"_attachments,omitempty"`
+	Revisions   Revisions       `json:"_revisions,omitempty"`
+}
+
+// ExtractSpecialProperties removes special properties from the given body and returns them as a SpecialProperties struct.
+func (b Body) ExtractSpecialProperties() (*SpecialProperties, error) {
+	bodyID, _ := b[BodyId].(string)
+	delete(b, BodyId)
+
+	bodyRev, _ := b[BodyRev].(string)
+	delete(b, BodyRev)
+
+	bodyDeleted, _ := b[BodyDeleted].(bool)
+	delete(b, BodyDeleted)
+
+	bodyExp, err := base.ReflectExpiry(b[BodyExp])
+	if err != nil {
+		return nil, err
+	}
+	delete(b, BodyExp)
+
+	bodyAttachments, _ := b[BodyAttachments].(map[string]interface{})
+	delete(b, BodyAttachments)
+
+	bodyRevisions, _ := b[BodyRevisions].(map[string]interface{})
+	delete(b, BodyRevisions)
+
+	return &SpecialProperties{
+		DocID:       bodyID,
+		RevID:       bodyRev,
+		Deleted:     bodyDeleted,
+		Expiry:      bodyExp,
+		Attachments: bodyAttachments,
+		Revisions:   bodyRevisions,
+	}, nil
+}
+
+// stampSpecialProperties inserts the given SpecialProperties into the given docBody map
+func stampSpecialProperties(docBody map[string]interface{}, p SpecialProperties) {
+	if p.DocID != "" {
+		docBody[BodyId] = p.DocID
+	}
+	if p.RevID != "" {
+		docBody[BodyRev] = p.RevID
+	}
+	if p.Deleted {
+		docBody[BodyDeleted] = p.Deleted
+	}
+	if p.Expiry != nil {
+		docBody[BodyExp] = *p.Expiry
+	}
+	if p.Attachments != nil {
+		docBody[BodyAttachments] = p.Attachments
+	}
+	if p.Revisions != nil {
+		docBody[BodyRevisions] = p.Revisions
+	}
+}
+
+func NewIncomingDocument(docID string, body []byte) *IncomingDocument {
+	return &IncomingDocument{
+		BodyBytes: body,
+		SpecialProperties: SpecialProperties{
+			DocID: docID,
+		},
+	}
+}
+
+// GetSyncFnBody lazily unmarshals from the doc bytes, and inserts values from the SpecialProperties struct
+// Not thread-safe, but not expected to be called concurrently.
+func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
+	// Don't bother re-unmarshalling when we've done it before
+	if doc._syncFnBody != nil {
+		return doc._syncFnBody, nil
+	}
+
+	var syncFnBody map[string]interface{}
+	buf := bytes.NewBuffer(doc.BodyBytes)
+	d := json.NewDecoder(buf)
+	d.UseNumber()
+	err := d.Decode(&syncFnBody)
+	if err != nil {
+		return nil, err
+	}
+
+	stampSpecialProperties(syncFnBody, doc.SpecialProperties)
+
+	// Save it for the next time we'll need it
+	doc._syncFnBody = syncFnBody
+
+	return syncFnBody, nil
+}
+
+// ValidateBodyBytes returns nil if the BodyBytes in the given IncomingDocument do not contain any special properties.
+func (doc *IncomingDocument) ValidateBodyBytes() error {
+	// Do a quick scan for suspicious bytes, to potentially save the cost of unmarshalling
+	if bytes.Contains(doc.BodyBytes, []byte(`"_`)) {
+		// now take the cost of unmarshalling to verify they're actually a top level property
+		var b Body
+		if err := b.Unmarshal(doc.BodyBytes); err != nil {
+			return err
+		}
+		for k := range b {
+			if len(k) > 0 && k[0] == '_' {
+				return fmt.Errorf("disallowed underscore prefix for key: %v", k)
+			}
+		}
+	}
+	return nil
+}
+
+// SetSyncFnBody stores the given body on the doc as _syncFnBody, if one is not already present.
+// This function expects special properties to be present.
+// Not thread-safe, but not expected to be called concurrently.
+func (doc *IncomingDocument) SetSyncFnBody(syncFnBody map[string]interface{}) error {
+	if doc._syncFnBody != nil {
+		return errors.New("already have a _syncFnBody stored for this doc")
+	}
+
+	for _, expected := range []string{BodyId, BodyRev} {
+		if syncFnBody[expected] == "" {
+			return fmt.Errorf("expected %q property in syncFnBody", expected)
+		}
+	}
+
+	doc._syncFnBody = syncFnBody
+	return nil
+}
+
+func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (string, error) {
+	// We don't care too much about "canonical" encoding (i.e. ordering of properties) of the incoming document - so we can use the raw bytes here.
+	// But we need to make sure we inject _attachments and _deleted, so that identical docs with different attachments produce different revisions.
+	revIDBody, err := base.InjectJSONProperties(doc.BodyBytes,
+		base.KVPair{Key: BodyAttachments, Val: doc.Attachments},
+		base.KVPair{Key: BodyDeleted, Val: doc.Deleted},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return createRevID(generation, parentRevID, revIDBody), nil
+}
+
 // Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
 

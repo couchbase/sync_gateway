@@ -98,7 +98,7 @@ func (rt *RestTester) createDoc(t *testing.T, docid string) string {
 	goassert.Equals(t, body["ok"], true)
 	revid := body["rev"].(string)
 	if revid == "" {
-		t.Fatalf("No revid in response for PUT doc")
+		t.Fatalf("No revid in response for PUT doc: %v", body)
 	}
 	return revid
 }
@@ -222,6 +222,20 @@ func TestDocAttachment(t *testing.T) {
 	goassert.Equals(t, response.Header().Get("Content-Length"), "2")
 	goassert.Equals(t, response.Header().Get("Content-Range"), "bytes 5-6/30")
 	goassert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
+}
+
+// Adds a doc with an attachment inline in the initial PUT doc body
+func TestInlineDocAttachment(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendRequest("PUT", "/db/doc", `{"prop":true,"_attachments":{"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	assertStatus(t, response, 201)
+
+	// retrieve attachment
+	response = rt.SendRequest("GET", "/db/doc/hello.txt", "")
+	assertStatus(t, response, 200)
+	goassert.Equals(t, string(response.Body.Bytes()), "hello world")
 }
 
 // Add an attachment to a document that has been removed from the users channels
@@ -3970,7 +3984,7 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		//PUT a new document until test run has completed
 		for pb.Next() {
-			prt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateUUID()), threekdoc)
+			prt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateRandomHex()), threekdoc)
 		}
 	})
 }
@@ -3986,7 +4000,7 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		//PUT a new document until test run has completed
 		for pb.Next() {
-			qrt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateUUID()), threekdoc)
+			qrt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateRandomHex()), threekdoc)
 		}
 	})
 }

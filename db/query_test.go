@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/channels"
 
-	"github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
@@ -23,11 +23,17 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	_, _, err := db.Put("queryTestDoc1", Body{"channels": []string{"ABC"}})
+	docBody := []byte(`{"channels":["ABC"]}`)
+	newDoc := NewIncomingDocument("queryTestDoc1", docBody)
+	_, _, err := db.Put(newDoc)
 	assert.NoError(t, err, "Put queryDoc1")
-	_, _, err = db.Put("queryTestDoc2", Body{"channels": []string{"ABC"}})
+
+	newDoc = NewIncomingDocument("queryTestDoc2", docBody)
+	_, _, err = db.Put(newDoc)
 	assert.NoError(t, err, "Put queryDoc2")
-	_, _, err = db.Put("queryTestDoc3", Body{"channels": []string{"ABC"}})
+
+	newDoc = NewIncomingDocument("queryTestDoc3", docBody)
+	_, _, err = db.Put(newDoc)
 	assert.NoError(t, err, "Put queryDoc3")
 
 	// Check expvar prior to test
@@ -69,11 +75,17 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	_, _, err := db.Put("queryTestDoc1", Body{"channels": []string{"ABC"}})
+	docBody := []byte(`{"channels":["ABC"]}`)
+	newDoc := NewIncomingDocument("queryTestDoc1", docBody)
+	_, _, err := db.Put(newDoc)
 	assert.NoError(t, err, "Put queryDoc1")
-	_, _, err = db.Put("queryTestDoc2", Body{"channels": []string{"ABC"}})
+
+	newDoc = NewIncomingDocument("queryTestDoc2", docBody)
+	_, _, err = db.Put(newDoc)
 	assert.NoError(t, err, "Put queryDoc2")
-	_, _, err = db.Put("queryTestDoc3", Body{"channels": []string{"ABC"}})
+
+	newDoc = NewIncomingDocument("queryTestDoc3", docBody)
+	_, _, err = db.Put(newDoc)
 	assert.NoError(t, err, "Put queryDoc3")
 
 	// Check expvar prior to test
@@ -113,8 +125,8 @@ func TestQuerySequencesStatsView(t *testing.T) {
 
 	// Add docs without channel assignment (will only be assigned to the star channel)
 	for i := 1; i <= 10; i++ {
-		//_, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"channels": []string{"ABC"}})
-		_, _, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"nochannels": true})
+		newDoc := NewIncomingDocument(fmt.Sprintf("queryTestDoc%d", i), []byte(`{"nochannels":true}`))
+		_, _, err := db.Put(newDoc)
 		assert.NoError(t, err, "Put queryDoc")
 	}
 
@@ -158,7 +170,8 @@ func TestQuerySequencesStatsView(t *testing.T) {
 
 	// Add some docs in different channels, to validate query handling when non-star channel docs are present
 	for i := 1; i <= 10; i++ {
-		_, _, err := db.Put(fmt.Sprintf("queryTestDocChanneled%d", i), Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
+		newDoc := NewIncomingDocument(fmt.Sprintf("queryTestDocChanneled%d", i), []byte(fmt.Sprintf(`{"channels":["ABC%d"]}`, i)))
+		_, _, err := db.Put(newDoc)
 		assert.NoError(t, err, "Put queryDoc")
 	}
 	// Issue channels query
@@ -197,8 +210,8 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 
 	// Add docs without channel assignment (will only be assigned to the star channel)
 	for i := 1; i <= 10; i++ {
-		//_, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"channels": []string{"ABC"}})
-		_, _, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"nochannels": true})
+		newDoc := NewIncomingDocument(fmt.Sprintf("queryTestDoc%d", i), []byte(`{"nochannels":true}`))
+		_, _, err := db.Put(newDoc)
 		assert.NoError(t, err, "Put queryDoc")
 	}
 
@@ -243,7 +256,8 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 
 	// Add some docs in different channels, to validate query handling when non-star channel docs are present
 	for i := 1; i <= 10; i++ {
-		_, _, err := db.Put(fmt.Sprintf("queryTestDocChanneled%d", i), Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
+		newDoc := NewIncomingDocument(fmt.Sprintf("queryTestDocChanneled%d", i), []byte(fmt.Sprintf(`{"channels":["ABC%d"]}`, i)))
+		_, _, err := db.Put(newDoc)
 		assert.NoError(t, err, "Put queryDoc")
 	}
 	// Issue channels query
@@ -328,7 +342,8 @@ func TestAllDocsQuery(t *testing.T) {
 
 	// Add docs with channel assignment
 	for i := 1; i <= 10; i++ {
-		_, _, err := db.Put(fmt.Sprintf("allDocsTest%d", i), Body{"channels": []string{"ABC"}})
+		newDoc := NewIncomingDocument(fmt.Sprintf("allDocsTest%d", i), []byte(`{"channels":["ABC"]}`))
+		_, _, err := db.Put(newDoc)
 		assert.NoError(t, err, "Put allDocsTest doc")
 	}
 
@@ -394,7 +409,8 @@ func TestAccessQuery(t *testing.T) {
 }`)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
-		_, _, err := db.Put(fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
+		newDoc := NewIncomingDocument(fmt.Sprintf("accessTest%d", i), []byte(fmt.Sprintf(`{"accessUser":"user1","accessChannel":"channel%d"}}`, i)))
+		_, _, err := db.Put(newDoc)
 		assert.NoError(t, err, "Put accessTest doc")
 	}
 
@@ -445,7 +461,8 @@ func TestRoleAccessQuery(t *testing.T) {
 }`)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
-		_, _, err := db.Put(fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
+		newDoc := NewIncomingDocument(fmt.Sprintf("accessTest%d", i), []byte(fmt.Sprintf(`{"accessUser":"user1","accessChannel":"channel%d"}}`, i)))
+		_, _, err := db.Put(newDoc)
 		assert.NoError(t, err, "Put accessTest doc")
 	}
 

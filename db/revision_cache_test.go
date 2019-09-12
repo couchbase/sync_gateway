@@ -171,37 +171,29 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	// Invalid _revisions property will be stripped.  Should also not be present in the rev cache.
-	rev1body := Body{
-		"value":       1234,
-		BodyRevisions: "unexpected data",
-	}
-	rev1id, _, err := db.Put("doc1", rev1body)
+	doc := NewIncomingDocument("doc1", []byte(`{"value:1234,"`+BodyRevisions+`":"unexpected data"}`))
+	rev1id, _, err := db.Put(doc)
 	assert.NoError(t, err, "Put")
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
 	var bucketBody Body
-	testBucket.Bucket.Get("doc1", &bucketBody)
+	_, err = testBucket.Bucket.Get("doc1", &bucketBody)
+	assert.NoError(t, err)
 	_, ok := bucketBody[BodyRevisions]
-	if ok {
-		t.Error("_revisions property still present in document retrieved directly from bucket.")
-	}
+	assert.False(t, ok, "_revisions property still present in document retrieved directly from bucket.")
 
 	// Get the doc while still resident in the rev cache w/ history=false, validate _revisions property isn't found
 	body, err := db.GetRev1xBody("doc1", rev1id, false, nil)
 	assert.NoError(t, err, "GetRev1xBody")
 	badRevisions, ok := body[BodyRevisions]
-	if ok {
-		t.Errorf("_revisions property still present in document retrieved from rev cache: %s", badRevisions)
-	}
+	assert.False(t, ok, "_revisions property still present in document retrieved from rev cache: %s", badRevisions)
 
 	// Get the doc while still resident in the rev cache w/ history=true, validate _revisions property is returned with expected
 	// properties ("start", "ids")
 	bodyWithHistory, err := db.GetRev1xBody("doc1", rev1id, true, nil)
 	assert.NoError(t, err, "GetRev1xBody")
 	validRevisions, ok := bodyWithHistory[BodyRevisions]
-	if !ok {
-		t.Errorf("Expected _revisions property not found in document retrieved from rev cache: %s", validRevisions)
-	}
+	assert.False(t, ok, "Expected _revisions property not found in document retrieved from rev cache: %s", validRevisions)
 
 	validRevisionsMap, ok := validRevisions.(Revisions)
 	_, startOk := validRevisionsMap[RevisionsStart]
@@ -218,16 +210,14 @@ func TestBypassRevisionCache(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	docBody := Body{
-		"value": 1234,
-	}
 	key := "doc1"
-	rev1, _, err := db.Put(key, docBody)
+	doc := NewIncomingDocument(key, []byte(`{"value":1234}`))
+	rev1, _, err := db.Put(doc)
 	assert.NoError(t, err)
 
-	docBody["_rev"] = rev1
-	docBody["value"] = 5678
-	rev2, _, err := db.Put(key, docBody)
+	doc = NewIncomingDocument(key, []byte(`{"value":5678}`))
+	doc.RevID = rev1
+	rev2, _, err := db.Put(doc)
 	assert.NoError(t, err)
 
 	bypassStat := expvar.Int{}
@@ -240,18 +230,18 @@ func TestBypassRevisionCache(t *testing.T) {
 	assert.False(t, ok)
 
 	// Get non-existing doc
-	doc, err := rc.Get("invalid", rev1)
+	docRev, err := rc.Get("invalid", rev1)
 	assert.True(t, base.IsDocNotFoundError(err))
 
 	// Get non-existing revision
-	doc, err = rc.Get(key, "3-abc")
+	docRev, err = rc.Get(key, "3-abc")
 	assertHTTPError(t, err, 404)
 
 	// Get specific revision
-	doc, err = rc.Get(key, rev1)
+	docRev, err = rc.Get(key, rev1)
 	assert.NoError(t, err)
 	var rev1Body Body
-	assert.NoError(t, rev1Body.Unmarshal(doc.Body))
+	assert.NoError(t, rev1Body.Unmarshal(docRev.Body))
 	assert.Equal(t, "1234", rev1Body["value"].(json.Number).String())
 
 	// Check peek is still returning false for "Get"
@@ -259,16 +249,16 @@ func TestBypassRevisionCache(t *testing.T) {
 	assert.False(t, ok)
 
 	// Put no-ops
-	rc.Put(*doc)
+	rc.Put(*docRev)
 
 	// Check peek is still returning false for "Put"
 	_, ok = rc.Peek(key, rev1)
 	assert.False(t, ok)
 
 	// Get active revision
-	doc, err = rc.GetActive(key)
+	docRev, err = rc.GetActive(key)
 	assert.NoError(t, err)
-	assert.NoError(t, rev1Body.Unmarshal(doc.Body))
+	assert.NoError(t, rev1Body.Unmarshal(docRev.Body))
 	assert.Equal(t, "5678", rev1Body["value"].(json.Number).String())
 
 }
@@ -282,12 +272,10 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	rev1body := Body{
-		"value":         1234,
-		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
-	}
 	rev1key := "doc1"
-	rev1id, _, err := db.Put(rev1key, rev1body)
+	doc := NewIncomingDocument(rev1key, []byte(`{"value":1234"}`))
+	doc.Attachments = map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}}
+	rev1id, _, err := db.Put(doc)
 	assert.NoError(t, err, "Unexpected error calling db.Put")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
@@ -328,10 +316,8 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	docKey := "doc1"
-	rev1body := Body{
-		"value": 1234,
-	}
-	rev1id, _, err := db.Put(docKey, rev1body)
+	doc := NewIncomingDocument(docKey, []byte(`{"value":1234}`))
+	rev1id, _, err := db.Put(doc)
 	assert.NoError(t, err, "Unexpected error calling db.Put")
 
 	rev2id := "2-xxx"
@@ -339,7 +325,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 		"value":         1235,
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
-	_, err = db.PutExistingRevWithBody(docKey, rev2body, []string{rev2id, rev1id}, false)
+	_, _, err = db.PutExistingRevWithBody(docKey, rev2body, []string{rev2id, rev1id}, false)
 	assert.NoError(t, err, "Unexpected error calling db.PutExistingRev")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found

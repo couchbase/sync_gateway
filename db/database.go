@@ -54,7 +54,6 @@ const (
 	DefaultRevsLimitNoConflicts = 50
 	DefaultRevsLimitConflicts   = 100
 	DefaultPurgeInterval        = 30 // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
-
 )
 
 // Default values for delta sync
@@ -846,7 +845,6 @@ func (db *Database) Compact() (int, error) {
 	ctx := db.Ctx
 
 	base.InfofCtx(ctx, base.KeyAll, "Starting compaction of purged tombstones for %s ...", base.MD(db.Name))
-	purgeBody := Body{"_purged": true}
 	for {
 		purgedDocs := make([]string, 0)
 		results, err := db.QueryTombstones(purgeOlderThan, QueryTombstoneBatch, gocb.RequestPlus)
@@ -864,7 +862,7 @@ func (db *Database) Compact() (int, error) {
 				purgedDocs = append(purgedDocs, tombstonesRow.Id)
 			} else if base.IsKeyNotFoundError(db.Bucket, purgeErr) {
 				// If key no longer exists, need to add and remove to trigger removal from view
-				_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
+				_, addErr := db.Bucket.AddRaw(tombstonesRow.Id, 0, purgeBodyRaw)
 				if addErr != nil {
 					base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
 					continue

@@ -63,10 +63,18 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	docID := "doc1"
-	var rev1Body Body
-	rev1Data := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
-	require.NoError(t, json.Unmarshal([]byte(rev1Data), &rev1Body))
-	rev1ID, _, err := db.Put(docID, rev1Body)
+	incomingDocument := IncomingDocument{
+		BodyBytes: []byte(`{"test":true}`),
+		SpecialProperties: SpecialProperties{
+			DocID: docID,
+			Attachments: AttachmentsMeta{
+				"hello.txt": map[string]interface{}{
+					"data": "aGVsbG8gd29ybGQ=",
+				},
+			},
+		},
+	}
+	rev1ID, _, err := db.Put(&incomingDocument)
 	require.NoError(t, err)
 	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
 
@@ -84,7 +92,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
 	require.NoError(t, json.Unmarshal([]byte(rev2Data), &rev2Body))
-	_, err = db.PutExistingRevWithBody(docID, rev2Body, []string{"2-abc", rev1ID}, true)
+	_, _, err = db.PutExistingRevWithBody(docID, rev2Body, []string{"2-abc", rev1ID}, true)
 	require.NoError(t, err)
 	rev2ID := "2-abc"
 
@@ -119,13 +127,22 @@ func TestAttachments(t *testing.T) {
 
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")
-	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
-                                    "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
-	var body Body
-	json.Unmarshal([]byte(rev1input), &body)
-	revid, _, err := db.Put("doc1", unjson(rev1input))
-	rev1id := revid
-	assert.NoError(t, err, "Couldn't create document")
+	rev1input := IncomingDocument{
+		BodyBytes: []byte(`{}`),
+		SpecialProperties: SpecialProperties{
+			DocID: "doc1",
+			Attachments: AttachmentsMeta{
+				"hello.txt": map[string]interface{}{
+					"data": "aGVsbG8gd29ybGQ=",
+				},
+				"bye.txt": map[string]interface{}{
+					"data": "Z29vZGJ5ZSBjcnVlbCB3b3JsZA==",
+				},
+			},
+		},
+	}
+	rev1id, _, err := db.Put(&rev1input)
+	require.NoError(t, err, "Couldn't create document")
 
 	log.Printf("Retrieve doc...")
 	rev1output := `{"_attachments":{"bye.txt":{"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA==","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":1},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`
@@ -134,13 +151,25 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, rev1output, tojson(gotbody))
 
 	log.Printf("Create rev 2...")
-	rev2str := `{"_attachments": {"hello.txt": {"stub":true, "revpos":1}, "bye.txt": {"data": "YnllLXlh"}}}`
-	var body2 Body
-	json.Unmarshal([]byte(rev2str), &body2)
-	body2[BodyRev] = revid
-	revid, _, err = db.Put("doc1", body2)
-	assert.NoError(t, err, "Couldn't update document")
-	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", revid)
+	rev2input := IncomingDocument{
+		BodyBytes: []byte(`{}`),
+		SpecialProperties: SpecialProperties{
+			DocID: "doc1",
+			RevID: rev1id,
+			Attachments: AttachmentsMeta{
+				"hello.txt": map[string]interface{}{
+					"stub":   true,
+					"revpos": 1,
+				},
+				"bye.txt": map[string]interface{}{
+					"data": "YnllLXlh",
+				},
+			},
+		},
+	}
+	rev2id, _, err := db.Put(&rev2input)
+	require.NoError(t, err, "Couldn't update document")
+	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", rev2id)
 
 	log.Printf("Retrieve doc...")
 	rev2output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"2-5d3308aae9930225ed7f6614cf115366"}`
@@ -155,13 +184,22 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, rev2Aoutput, tojson(gotbody))
 
 	log.Printf("Create rev 3...")
-	rev3str := `{"_attachments": {"bye.txt": {"stub":true,"revpos":2}}}`
-	var body3 Body
-	json.Unmarshal([]byte(rev3str), &body3)
-	body3[BodyRev] = revid
-	revid, _, err = db.Put("doc1", body3)
+	rev3input := IncomingDocument{
+		BodyBytes: []byte(`{}`),
+		SpecialProperties: SpecialProperties{
+			DocID: "doc1",
+			RevID: rev2id,
+			Attachments: AttachmentsMeta{
+				"bye.txt": map[string]interface{}{
+					"stub":   true,
+					"revpos": 2,
+				},
+			},
+		},
+	}
+	rev3id, _, err := db.Put(&rev3input)
 	assert.NoError(t, err, "Couldn't update document")
-	assert.Equal(t, "3-aa3ff4ca3aad12e1479b65cb1e602676", revid)
+	assert.Equal(t, "3-aa3ff4ca3aad12e1479b65cb1e602676", rev3id)
 
 	log.Printf("Retrieve doc...")
 	rev3output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2}},"_id":"doc1","_rev":"3-aa3ff4ca3aad12e1479b65cb1e602676"}`
@@ -176,7 +214,7 @@ func TestAttachments(t *testing.T) {
 	var body2B Body
 	err = json.Unmarshal([]byte(rev2Bstr), &body2B)
 	assert.NoError(t, err, "bad JSON")
-	_, err = db.PutExistingRevWithBody("doc1", body2B, []string{"2-f000", rev1id}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", body2B, []string{"2-f000", rev1id}, false)
 	assert.NoError(t, err, "Couldn't update document")
 }
 
@@ -196,17 +234,25 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 		throw({forbidden: "None shall pass!"});
 	}`)
 
-	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
-	var body Body
-	json.Unmarshal([]byte(docBody), &body)
-	_, _, err = db.Put("doc1", unjson(docBody))
-	log.Printf("Got error on put doc:%v", err)
+	doc := IncomingDocument{
+		BodyBytes: []byte(`{}`),
+		SpecialProperties: SpecialProperties{
+			DocID: "doc1",
+			Attachments: AttachmentsMeta{
+				"hello.txt": map[string]interface{}{
+					"data": "aGVsbG8gd29ybGQ=",
+				},
+			},
+		},
+	}
+
+	_, _, err = db.Put(&doc)
+	require.NoError(t, err, "Got error on put doc")
 	db.Bucket.Dump()
 
 	// Attempt to retrieve the attachment doc
 	_, _, err = db.Bucket.GetRaw(base.AttPrefix + "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
-
-	assert.True(t, err != nil, "Expect error when attempting to retrieve attachment document after doc is rejected.")
+	assert.Error(t, err, "Expect error when attempting to retrieve attachment document after doc is rejected.")
 
 }
 
@@ -223,10 +269,22 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	// Test creating & updating a document:
-	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
-                                    "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
-	_, _, err = db.Put("doc1", unjson(rev1input))
-	assert.NoError(t, err, "Couldn't create document")
+	doc := IncomingDocument{
+		BodyBytes: []byte(`{}`),
+		SpecialProperties: SpecialProperties{
+			DocID: "doc1",
+			Attachments: AttachmentsMeta{
+				"hello.txt": map[string]interface{}{
+					"data": "aGVsbG8gd29ybGQ=",
+				},
+				"bye.txt": map[string]interface{}{
+					"data": "Z29vZGJ5ZSBjcnVlbCB3b3JsZA==",
+				},
+			},
+		},
+	}
+	_, _, err = db.Put(&doc)
+	require.NoError(t, err, "Couldn't create document")
 
 	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
 	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")

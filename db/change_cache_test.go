@@ -15,6 +15,7 @@ import (
 	"expvar"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -1001,18 +1002,18 @@ func TestChannelQueryCancellation(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	// Write a handful of docs/sequences to the bucket
-	_, _, err := db.Put("key1", Body{"channels": "ABC"})
-	assert.NoError(t, err, "Put failed with error: %v", err)
-	_, _, err = db.Put("key2", Body{"channels": "ABC"})
-	assert.NoError(t, err, "Put failed with error: %v", err)
-	_, _, err = db.Put("key3", Body{"channels": "ABC"})
-	assert.NoError(t, err, "Put failed with error: %v", err)
-	_, _, err = db.Put("key4", Body{"channels": "ABC"})
-	assert.NoError(t, err, "Put failed with error: %v", err)
+	_, _, err := db.Put(&IncomingDocument{BodyBytes: []byte(`{"channels": "ABC"}`), SpecialProperties: SpecialProperties{DocID: "key1"}})
+	require.NoError(t, err, "Put failed with error: %v", err)
+	_, _, err = db.Put(&IncomingDocument{BodyBytes: []byte(`{"channels": "ABC"}`), SpecialProperties: SpecialProperties{DocID: "key2"}})
+	require.NoError(t, err, "Put failed with error: %v", err)
+	_, _, err = db.Put(&IncomingDocument{BodyBytes: []byte(`{"channels": "ABC"}`), SpecialProperties: SpecialProperties{DocID: "key3"}})
+	require.NoError(t, err, "Put failed with error: %v", err)
+	_, _, err = db.Put(&IncomingDocument{BodyBytes: []byte(`{"channels": "ABC"}`), SpecialProperties: SpecialProperties{DocID: "key4"}})
+	require.NoError(t, err, "Put failed with error: %v", err)
 	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 4, base.DefaultWaitForSequence))
 
 	// Flush the cache, to ensure view query on subsequent changes requests
-	db.FlushChannelCache()
+	require.NoError(t, db.FlushChannelCache())
 
 	// Issue two one-shot since=0 changes request.  Both will attempt a view query.  The first will block based on queryWg,
 	// the second will block waiting for the view lock
@@ -1711,10 +1712,9 @@ func TestInitializeEmptyCache(t *testing.T) {
 	docCount := 0
 	// Write docs to non-queried channel first, to increase cache.nextSequence
 	for i := 0; i < 10; i++ {
-		channels := []string{"islands"}
-		body := Body{"serialnumber": int64(i), "channels": channels}
-		docID := fmt.Sprintf("loadCache-ch-%d", i)
-		_, _, err := db.Put(docID, body)
+		iStr := strconv.FormatInt(int64(i), 10)
+		doc := NewIncomingDocument("loadCache-ch-"+iStr, []byte(`{"serialnumber":`+iStr+`,"channels":["islands"]}`))
+		_, _, err := db.Put(doc)
 		assert.NoError(t, err, "Couldn't create document")
 		docCount++
 	}
@@ -1727,10 +1727,9 @@ func TestInitializeEmptyCache(t *testing.T) {
 
 	// Write some documents to channel zero
 	for i := 0; i < 10; i++ {
-		channels := []string{"zero"}
-		body := Body{"serialnumber": int64(i), "channels": channels}
-		docID := fmt.Sprintf("loadCache-z-%d", i)
-		_, _, err := db.Put(docID, body)
+		iStr := strconv.FormatInt(int64(i), 10)
+		doc := NewIncomingDocument("loadCache-z-"+iStr, []byte(`{"serialnumber":`+iStr+`,"channels":["zero"]}`))
+		_, _, err := db.Put(doc)
 		assert.NoError(t, err, "Couldn't create document")
 		docCount++
 	}
@@ -1773,10 +1772,14 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	// Start writing docs
 	go func() {
 		for i := 0; i < docCount; i++ {
-			channels := []string{"zero"}
-			body := Body{"serialnumber": int64(i), "channels": channels}
-			docID := fmt.Sprintf("loadCache-%d", i)
-			_, _, err := db.Put(docID, body)
+			iStr := strconv.FormatInt(int64(i), 10)
+			doc := IncomingDocument{
+				BodyBytes: []byte(`{"serialnumber":` + iStr + `,"channels":["zero"]}`),
+				SpecialProperties: SpecialProperties{
+					DocID: "loadCache-" + iStr,
+				},
+			}
+			_, _, err := db.Put(&doc)
 			assert.NoError(t, err, "Couldn't create document")
 			if i < inProgressCount {
 				writesInProgress.Done()
@@ -1825,8 +1828,13 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	}
 
 	// Write a document to channel zero
-	body := Body{"channels": []string{"zero"}}
-	_, _, err := db.Put("inactiveCacheNotify", body)
+	doc := IncomingDocument{
+		BodyBytes: []byte(`{"channels":["zero"]}`),
+		SpecialProperties: SpecialProperties{
+			DocID: "inactiveCacheNotify",
+		},
+	}
+	_, _, err := db.Put(&doc)
 	assert.NoError(t, err)
 
 	// Wait for notify to arrive

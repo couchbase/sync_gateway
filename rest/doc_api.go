@@ -222,22 +222,24 @@ func (h *handler) handlePutAttachment() error {
 		return err
 	}
 
-	body, err := h.db.GetRev1xBody(docid, revid, false, nil)
+	var bodyBytes []byte
+
+	// FIXME: Ignored redactedRev
+	rev, _, err := h.db.GetRev(docid, revid, false, nil)
 	if err != nil && base.IsDocNotFoundError(err) {
 		// create empty body on attachment PUT
 		// for non-existent doc id
-		body = db.Body{}
-		body[db.BodyRev] = revid
+		bodyBytes = []byte(`{}`)
 	} else if err != nil {
 		return err
-	} else if body != nil {
-		body[db.BodyRev] = revid
+	} else {
+		bodyBytes = rev.Body
 	}
 
 	// find attachment (if it existed)
-	attachments := db.GetBodyAttachments(body)
+	attachments := rev.Attachments
 	if attachments == nil {
-		attachments = make(map[string]interface{})
+		attachments = make(db.AttachmentsMeta)
 	}
 
 	// create new attachment
@@ -247,14 +249,23 @@ func (h *handler) handlePutAttachment() error {
 
 	//attach it
 	attachments[attachmentName] = attachment
-	body[db.BodyAttachments] = attachments
 
-	newRev, _, err := h.db.Put(docid, body)
+	incomingDocument := db.IncomingDocument{
+		BodyBytes: bodyBytes,
+		SpecialProperties: db.SpecialProperties{
+			DocID:       rev.DocID,
+			RevID:       revid,
+			Attachments: attachments,
+		},
+	}
+
+	newRev, _, err := h.db.Put(&incomingDocument)
 	if err != nil {
 		return err
 	}
-	h.setHeader("Etag", strconv.Quote(newRev))
 
+	h.setHeader("Etag", strconv.Quote(newRev))
+	// FIXME: write this as raw JSON bytes instead
 	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
 }
@@ -276,9 +287,19 @@ func (h *handler) handlePutDoc() error {
 		return base.ErrEmptyDocument
 	}
 
-	var newRev string
-	var doc *db.Document
-	var ok bool
+	fmt.Printf("body1 %#v\n", body)
+
+	incomingDocument, err := body.ToIncomingDocument()
+	if err != nil {
+		return err
+	}
+	incomingDocument.DocID = docid
+
+	fmt.Printf("body2 %#v\n", body)
+	fmt.Printf("IncomingDocument BodyBytes: %v\n", string(incomingDocument.BodyBytes))
+	fmt.Printf("IncomingDocument %#v\n", incomingDocument.SpecialProperties)
+
+	var createdDoc *db.Document
 
 	roundTrip := h.getBoolQuery("roundtrip")
 
@@ -289,36 +310,31 @@ func (h *handler) handlePutDoc() error {
 		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
 			body[db.BodyRev] = ifMatch
 		}
-		newRev, doc, err = h.db.Put(docid, body)
+		_, createdDoc, err = h.db.Put(incomingDocument)
 		if err != nil {
 			return err
 		}
-		h.setHeader("Etag", strconv.Quote(newRev))
+		h.setHeader("Etag", strconv.Quote(createdDoc.RevID))
 	} else {
 		// Replicator-style PUT with new_edits=false:
 		revisions := db.ParseRevisions(body)
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		doc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
+		_, createdDoc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
 		if err != nil {
 			return err
 		}
-
-		newRev, ok = body[db.BodyRev].(string)
-		if !ok {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
-		}
-
 	}
 
-	if doc != nil && roundTrip {
-		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence); err != nil {
+	if createdDoc != nil && roundTrip {
+		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), createdDoc.Sequence); err != nil {
 			return err
 		}
 	}
 
-	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
+	// FIXME: write this as raw JSON bytes instead
+	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": createdDoc.RevID})
 	return nil
 }
 
@@ -330,21 +346,27 @@ func (h *handler) handlePostDoc() error {
 		return err
 	}
 
-	docid, newRev, doc, err := h.db.Post(body)
+	incomingDocument, err := body.ToIncomingDocument()
 	if err != nil {
 		return err
 	}
 
-	if doc != nil && roundTrip {
+	docID, revID, doc, err := h.db.Post(incomingDocument)
+	if err != nil {
+		return err
+	}
+
+	if roundTrip && doc != nil {
 		err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence)
 		if err != nil {
 			return err
 		}
 	}
 
-	h.setHeader("Location", docid)
-	h.setHeader("Etag", strconv.Quote(newRev))
-	h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
+	h.setHeader("Location", docID)
+	h.setHeader("Etag", strconv.Quote(revID))
+	// FIXME: write this as raw JSON bytes instead
+	h.writeJSON(db.Body{"ok": true, "id": docID, "rev": revID})
 	return nil
 }
 
@@ -357,6 +379,7 @@ func (h *handler) handleDeleteDoc() error {
 	}
 	newRev, err := h.db.DeleteDoc(docid, revid)
 	if err == nil {
+		// FIXME: write this as raw JSON bytes instead
 		h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
 	}
 	return err
@@ -387,6 +410,7 @@ func (h *handler) handlePutLocalDoc() error {
 		var revid string
 		revid, err = h.db.PutSpecial("local", docid, body)
 		if err == nil {
+			// FIXME: write this as raw JSON bytes instead
 			h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": "_local/" + docid, "rev": revid})
 		}
 	}

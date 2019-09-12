@@ -220,6 +220,7 @@ func (h *handler) createUserSession() error {
 	response.SessionID = session.ID
 	response.Expires = session.Expiration
 	response.CookieName = authenticator.SessionCookieName()
+	// FIXME: write this as raw JSON bytes instead
 	h.writeJSON(response)
 	return nil
 }

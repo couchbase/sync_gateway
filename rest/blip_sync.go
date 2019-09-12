@@ -937,15 +937,13 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
 		deltaSrcBody, err := deltaSrcRev.MutableBody()
 
-		// Strip out _id, _rev properties inserted by GetRevCopy
-		delete(deltaSrcBody, db.BodyId)
-		delete(deltaSrcBody, db.BodyRev)
-
-		// Convert attachments of type AttachmentsMeta into a plain type we can patch
-		if atts, ok := deltaSrcBody[db.BodyAttachments].(db.AttachmentsMeta); ok {
-			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(atts)
+		// Inject _attachments before patching
+		if deltaSrcRev.Attachments != nil {
+			// Convert attachments of type AttachmentsMeta into a plain type we can patch it
+			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
 		}
 
+		// Also convert the deltaSrcMap db.Body into a plain type so it's patchable
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
 		err = base.Patch(&deltaSrcMap, newDoc.Body())
 		if err != nil {

@@ -515,6 +515,7 @@ func (h *handler) handleSGCollectStatus() error {
 		status = "running"
 	}
 
+	// FIXME: write this as raw JSON bytes instead
 	h.writeJSONStatus(http.StatusOK, map[string]string{
 		"status": status,
 	})
@@ -527,6 +528,7 @@ func (h *handler) handleSGCollectCancel() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error stopping sgcollect_info: %v", err)
 	}
 
+	// FIXME: write this as raw JSON bytes instead
 	h.writeJSONStatus(http.StatusOK, map[string]string{
 		"status": "cancelled",
 	})
@@ -554,6 +556,7 @@ func (h *handler) handleSGCollect() error {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 
+	// FIXME: write this as raw JSON bytes instead
 	h.writeJSONStatus(http.StatusOK, map[string]string{
 		"status": "started",
 	})

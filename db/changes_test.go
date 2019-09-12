@@ -41,18 +41,20 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := db.Put("doc1", Body{"channels": []string{"ABC", "PBS"}})
+	doc := NewIncomingDocument("doc1", []byte(`{"channels":["ABC","PBS"]}`))
+	revid, _, err := db.Put(doc)
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
 	// Modify user to have access to both channels (sequence 2):
 	userInfo, err := db.GetPrincipal("naomi", true)
-	goassert.True(t, userInfo != nil)
+	require.NoError(t, err)
+	require.NotNil(t, userInfo)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
 	_, err = db.UpdatePrincipal(*userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
@@ -81,7 +83,8 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
-	revid, _, err = db.Put("doc2", Body{"channels": []string{"PBS"}})
+	doc = NewIncomingDocument("doc2", []byte(`{"channels":["PBS"]}`))
+	revid, _, err = db.Put(doc)
 	require.NoError(t, err)
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
@@ -140,12 +143,13 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	// Create a user with access to channel A
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	doc := NewIncomingDocument("alpha", []byte(`{"channels":["A","B"]}`))
+	revid, _, err := db.Put(doc)
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -166,7 +170,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	//Unmarshall into nested maps
 	var x map[string]interface{}
-	json.Unmarshal(rv, &x)
+	require.NoError(t, json.Unmarshal(rv, &x))
 	goassert.True(t, err == nil)
 
 	sync := x[base.SyncXattrName].(map[string]interface{})
@@ -187,7 +191,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	b, err := json.Marshal(x)
 
 	// Update raw document in the bucket
-	db.Bucket.SetRaw("alpha", 0, b)
+	require.NoError(t, db.Bucket.SetRaw("alpha", 0, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
@@ -226,12 +230,13 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	// Create a user with access to channel A
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	doc := NewIncomingDocument("alpha", []byte(`{"channels":["A","B"]}`))
+	revid, _, err := db.Put(doc)
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -253,7 +258,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	//Unmarshall into nested maps
 	var x map[string]interface{}
-	json.Unmarshal(rv, &x)
+	require.NoError(t, json.Unmarshal(rv, &x))
 
 	goassert.True(t, err == nil)
 
@@ -271,7 +276,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	b, err := json.Marshal(x)
 
 	// Update raw document in the bucket
-	db.Bucket.SetRaw("alpha", 0, b)
+	require.NoError(t, db.Bucket.SetRaw("alpha", 0, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 (the modified document) and isn't stuck waiting for it.
@@ -321,23 +326,30 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 	for docNum := 0; docNum < numDocs; docNum++ {
 
 		// Create the parent rev
-		docid := base.CreateUUID()
+		docID := base.CreateRandomHex()
 		docBody := createDoc(numKeys, valSizeBytes)
-		revId, _, err := db.Put(docid, docBody)
+		incomingDoc, err := docBody.ToIncomingDocument()
+		if err != nil {
+			require.NoError(b, err)
+		}
+		incomingDoc.DocID = docID
+		revId, _, err := db.Put(incomingDoc)
 		if err != nil {
 			b.Fatalf("Error creating doc: %v", err)
 		}
 
 		// Create child rev 1
-		docBody["child"] = "A"
-		_, err = db.PutExistingRevWithBody(docid, docBody, []string{"2-A", revId}, false)
+		rev1Body := docBody.Copy(BodyShallowCopy)
+		rev1Body["child"] = "A"
+		_, _, err = db.PutExistingRevWithBody(docID, rev1Body, []string{"2-A", revId}, false)
 		if err != nil {
 			b.Fatalf("Error creating child1 rev: %v", err)
 		}
 
 		// Create child rev 2
-		docBody["child"] = "B"
-		_, err = db.PutExistingRevWithBody(docid, docBody, []string{"2-B", revId}, false)
+		rev2Body := docBody.Copy(BodyShallowCopy)
+		rev2Body["child"] = "B"
+		_, _, err = db.PutExistingRevWithBody(docID, rev2Body, []string{"2-B", revId}, false)
 		if err != nil {
 			b.Fatalf("Error creating child2 rev: %v", err)
 		}

@@ -49,6 +49,7 @@ func (h *handler) handleCompact() error {
 	if err != nil {
 		return err
 	}
+	// FIXME: write this as raw JSON bytes instead\
 	h.writeJSON(db.Body{"revs": revsDeleted})
 	return nil
 }
@@ -58,6 +59,7 @@ func (h *handler) handleVacuum() error {
 	if err != nil {
 		return err
 	}
+	// FIXME: write this as raw JSON bytes instead
 	h.writeJSON(db.Body{"atts": attsDeleted})
 	return nil
 }
@@ -153,6 +155,7 @@ func (h *handler) handleResync() error {
 		if err != nil {
 			return err
 		}
+		// FIXME: write this as raw JSON bytes instead
 		h.writeJSON(db.Body{"changes": docsChanged})
 	}
 	return nil
@@ -240,6 +243,7 @@ func (h *handler) handleCreateTarget() error {
 
 func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
+	// FIXME: write this as raw JSON bytes instead
 	h.writeJSONStatus(http.StatusCreated, db.Body{
 		"ok":                  true,
 		"instance_start_time": h.instanceStartTime(),

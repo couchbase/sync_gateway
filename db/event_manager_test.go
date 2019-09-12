@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 )
@@ -107,7 +109,7 @@ func TestDocumentChangeEvent(t *testing.T) {
 	//Raise events
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		assert.NoError(t, em.RaiseDocumentChangeEvent(body, "", channels))
 	}
 
 	assertChannelLengthWithTimeout(t, resultChannel, 10, 10*time.Second)
@@ -132,11 +134,11 @@ func TestDBStateChangeEvent(t *testing.T) {
 	em.RegisterEventHandler(testHandler, DBStateChange)
 	//Raise online events
 	for i := 0; i < 10; i++ {
-		em.RaiseDBStateChangeEvent(ids[i], "online", "DB started from config", "0.0.0.0:0000")
+		assert.NoError(t, em.RaiseDBStateChangeEvent(ids[i], "online", "DB started from config", "0.0.0.0:0000"))
 	}
 	//Raise offline events
 	for i := 10; i < 20; i++ {
-		em.RaiseDBStateChangeEvent(ids[i], "offline", "Sync Gateway context closed", "0.0.0.0:0000")
+		assert.NoError(t, em.RaiseDBStateChangeEvent(ids[i], "offline", "Sync Gateway context closed", "0.0.0.0:0000"))
 	}
 
 	for i := 0; i < 25; i++ {
@@ -184,7 +186,7 @@ func TestSlowExecutionProcessing(t *testing.T) {
 
 	for i := 0; i < 20; i++ {
 		body, channels := eventForTest(i % 10)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		assert.NoError(t, em.RaiseDocumentChangeEvent(body, "", channels))
 	}
 
 	assertChannelLengthWithTimeout(t, resultChannel, 20, 10*time.Second)
@@ -223,7 +225,7 @@ func TestCustomHandler(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		assert.NoError(t, em.RaiseDocumentChangeEvent(body, "", channels))
 	}
 
 	assertChannelLengthWithTimeout(t, resultChannel, 10, 10*time.Second)
@@ -264,7 +266,7 @@ func TestUnhandledEvent(t *testing.T) {
 	// send DocumentChange events to handler
 	for i := 0; i < 10; i++ {
 		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		assert.NoError(t, em.RaiseDocumentChangeEvent(body, "", channels))
 	}
 
 	// Validate that no events were handled
@@ -272,7 +274,7 @@ func TestUnhandledEvent(t *testing.T) {
 
 }
 
-func InitWebhookTest() (*int, *float64, *[][]byte) {
+func InitWebhookTest(t *testing.T) (*int, *float64, *[][]byte) {
 
 	// Uses counter and sum values for simplified tracking of POST requests recieved by HTTP
 	// TODO:  enhance by adding listener for /count, /sum, /reset endpoints, and leave
@@ -285,20 +287,23 @@ func InitWebhookTest() (*int, *float64, *[][]byte) {
 		http.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(1000 * time.Millisecond)
 			counter++
-			fmt.Fprintf(w, "OK")
+			_, _ = w.Write([]byte("OK"))
 		})
 		http.HandleFunc("/slow_2s", func(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(2 * time.Second)
 			counter++
-			fmt.Fprintf(w, "OK")
+			_, _ = w.Write([]byte("OK"))
 		})
 		http.HandleFunc("/slow_5s", func(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(5 * time.Second)
 			counter++
-			fmt.Fprintf(w, "OK")
+			_, _ = w.Write([]byte("OK"))
 		})
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			r.ParseForm()
+			err := r.ParseForm()
+			if err != nil {
+				log.Printf("Error trying to parse form data: %s", err)
+			}
 
 			body, err := ioutil.ReadAll(r.Body)
 			if err != nil {
@@ -323,11 +328,14 @@ func InitWebhookTest() (*int, *float64, *[][]byte) {
 				}
 			}
 
-			fmt.Fprintf(w, "OK")
+			_, _ = w.Write([]byte("OK"))
 			counter++
 
 		})
-		http.ListenAndServe(":8081", nil)
+		err := http.ListenAndServe(":8081", nil)
+		if err != nil {
+			log.Printf("Error serving HTTP: %s", err)
+		}
 	}()
 	return &counter, &sum, &payloads
 }
@@ -335,9 +343,10 @@ func InitWebhookTest() (*int, *float64, *[][]byte) {
 func TestWebhookBasic(t *testing.T) {
 
 	if !testLiveHTTP {
-		return
+		t.Skip("skipped due to testLiveHTTP=false")
 	}
-	count, sum, payloads := InitWebhookTest()
+
+	count, sum, payloads := InitWebhookTest(t)
 	ids := make([]string, 200)
 	for i := 0; i < 200; i++ {
 		ids[i] = fmt.Sprintf("%d", i)
@@ -464,9 +473,10 @@ func TestWebhookBasic(t *testing.T) {
 func TestWebhookOldDoc(t *testing.T) {
 
 	if !testLiveHTTP {
-		return
+		t.Skip("skipped due to testLiveHTTP=false")
 	}
-	count, sum, _ := InitWebhookTest()
+
+	count, sum, _ := InitWebhookTest(t)
 	ids := make([]string, 200)
 	for i := 0; i < 200; i++ {
 		ids[i] = fmt.Sprintf("%d", i)
@@ -577,13 +587,14 @@ func TestWebhookOldDoc(t *testing.T) {
 }
 
 func TestWebhookTimeout(t *testing.T) {
+
 	if !testLiveHTTP {
-		return
+		t.Skip("skipped due to testLiveHTTP=false")
 	}
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyEvents)()
 
-	count, sum, _ := InitWebhookTest()
+	count, sum, _ := InitWebhookTest(t)
 	ids := make([]string, 200)
 	for i := 0; i < 200; i++ {
 		ids[i] = fmt.Sprintf("%d", i)

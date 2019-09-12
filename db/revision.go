@@ -34,6 +34,9 @@ const (
 	BodyExp         = "_exp"
 )
 
+// purgeBodyRaw is used during compaction to trigger a removal from views
+var purgeBodyRaw = []byte(`{"` + BodyPurged + `":true}`)
+
 // A revisions property found within a Body.  Expected to be of the form:
 //   Revisions["start"]: int64, starting generation number
 //   Revisions["ids"]: []string, list of digests
@@ -373,17 +376,15 @@ func (body Body) FixJSONNumbers() {
 	}
 }
 
-func createRevID(generation int, parentRevID string, body Body) (string, error) {
-	// This should produce the same results as TouchDB.
-	digester := md5.New()
-	digester.Write([]byte{byte(len(parentRevID))})
-	digester.Write([]byte(parentRevID))
-	encoding, err := canonicalEncoding(stripSpecialProperties(body))
-	if err != nil {
-		return "", err
-	}
-	digester.Write(encoding)
-	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil)), nil
+// createRevID will generate a Rev ID at the given generation, for a canonical version of body.
+// This is known to generate different rev IDs since Couchbase Lite 2.0, which uses SHA-1 digests.
+func createRevID(generation int, parentRevID string, bodyBytes []byte) string {
+	h := md5.New()
+	// TODO: Assert? md5.Write never returns an error
+	_, _ = h.Write([]byte{byte(len(parentRevID))})
+	_, _ = h.Write([]byte(parentRevID))
+	_, _ = h.Write(bodyBytes)
+	return fmt.Sprintf("%d-%x", generation, h.Sum(nil))
 }
 
 // Returns the generation number (numeric prefix) of a revision ID.

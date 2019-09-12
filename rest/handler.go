@@ -37,21 +37,21 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-// If set to true, JSON output will be pretty-printed.
-var PrettyPrint bool = false
+var (
+	// If set to true, JSON output will be pretty-printed.
+	PrettyPrint bool = false
 
-// If set to true, diagnostic data will be dumped if there's a problem with MIME multipart data
-var DebugMultipart bool = false
+	// If set to true, diagnostic data will be dumped if there's a problem with MIME multipart data
+	DebugMultipart bool = false
 
-var lastSerialNum uint64 = 0
+	lastSerialNum uint64 = 0
+
+	kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
+)
 
 func init() {
 	DebugMultipart = (os.Getenv("GatewayDebugMultipart") != "")
 }
-
-var kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
-var kBadMethodError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Method Not Allowed")
-var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request")
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
@@ -74,9 +74,9 @@ type handler struct {
 type handlerPrivs int
 
 const (
-	regularPrivs = iota // Handler requires authentication
-	publicPrivs         // Handler checks auth but doesn't require it
-	adminPrivs          // Handler ignores auth, always runs with root/admin privs
+	regularPrivs = handlerPrivs(iota) // Handler requires authentication
+	publicPrivs                       // Handler checks auth but doesn't require it
+	adminPrivs                        // Handler ignores auth, always runs with root/admin privs
 )
 
 type handlerMethod func(*handler) error

@@ -62,14 +62,14 @@ func GenerateRandomSecret() string {
 	return fmt.Sprintf("%x", randomBytes)
 }
 
-// Returns a cryptographically-random 160-bit number encoded as a hex string.
-func CreateUUID() string {
-	bytes := make([]byte, 16)
-	n, err := rand.Read(bytes)
-	if n < 16 {
+// CreateRandomHex returns a cryptographically-random 160-bit number encoded as a hex string.
+func CreateRandomHex() string {
+	b := make([]byte, 16)
+	_, err := rand.Read(b)
+	if err != nil {
 		Panicf(KeyAll, "Failed to generate random ID: %s", err)
 	}
-	return fmt.Sprintf("%x", bytes)
+	return fmt.Sprintf("%x", b)
 }
 
 // This is a workaround for an incompatibility between Go's JSON marshaler and CouchDB.
