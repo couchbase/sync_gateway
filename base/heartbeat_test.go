@@ -1,6 +1,7 @@
 package base
 
 import (
+	"fmt"
 	"log"
 	"testing"
 
@@ -64,15 +65,15 @@ func TestNewCouchbaseHeartbeater(t *testing.T) {
 	// Stop node 1
 	node1.Stop()
 
-	// Wait for other nodes to detect node1 has stopped sending heartbeats
+	// Wait for another node to detect node1 has stopped sending heartbeats
 	retryUntilFunc = func() bool {
-		return heartbeatStoppedHandler2.staleDetectCount >= 1 && heartbeatStoppedHandler3.staleDetectCount >= 1
+		return heartbeatStoppedHandler2.staleDetectCount >= 1 || heartbeatStoppedHandler3.staleDetectCount >= 1
 	}
 	testRetryUntilTrue(t, retryUntilFunc)
 
-	// Validate that both active nodes were notified of removal exactly once
-	assert.Equal(t, 1, heartbeatStoppedHandler2.staleDetectCount)
-	assert.Equal(t, 1, heartbeatStoppedHandler2.staleDetectCount)
+	// Validate that at least one node detected the stopped node 1
+	assert.True(t, heartbeatStoppedHandler2.staleDetectCount >= 1 || heartbeatStoppedHandler3.staleDetectCount >= 1,
+		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", heartbeatStoppedHandler2.staleDetectCount, heartbeatStoppedHandler3.staleDetectCount))
 
 	// Stop heartbeaters
 	node2.Stop()
