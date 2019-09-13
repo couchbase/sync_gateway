@@ -1,6 +1,7 @@
 package base
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -212,8 +213,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handle
 		}
 
 		timeoutDocId := heartbeatTimeoutDocId(heartbeatDocID, h.keyPrefix)
-		heartbeatTimeoutDoc := heartbeatTimeout{}
-		_, err := h.bucket.Get(timeoutDocId, &heartbeatTimeoutDoc)
+		_, _, err := h.bucket.GetRaw(timeoutDocId)
 		if err != nil {
 			if !IsKeyNotFoundError(h.bucket, err) {
 				// unexpected error
@@ -271,21 +271,31 @@ func (h *couchbaseHeartBeater) upsertHeartbeatDoc() error {
 
 func (h *couchbaseHeartBeater) upsertHeartbeatTimeoutDoc(intervalSeconds int) error {
 
-	heartbeatTimeoutDoc := heartbeatTimeout{
-		Type:     docTypeHeartbeatTimeout,
-		NodeUUID: h.nodeUuid,
-	}
-
 	docId := heartbeatTimeoutDocId(h.nodeUuid, h.keyPrefix)
 
 	// make the expire time double the interval time, to ensure there is
 	// always a heartbeat timeout document present under normal operation
 	expireTimeSeconds := intervalSeconds * 2
 
-	if err := h.bucket.Set(docId, uint32(expireTimeSeconds), heartbeatTimeoutDoc); err != nil {
-		return err
+	_, touchErr := h.bucket.Touch(docId, uint32(expireTimeSeconds))
+
+	if touchErr == nil {
+		return nil
 	}
-	return nil
+
+	// On KeyNotFound, recreate heartbeat timeout doc
+	if IsKeyNotFoundError(h.bucket, touchErr) {
+
+		heartbeatDocBody := []byte(h.nodeUuid)
+
+		setErr := h.bucket.SetRaw(docId, uint32(expireTimeSeconds), heartbeatDocBody)
+		if setErr != nil {
+			return setErr
+		}
+		return nil
+	} else {
+		return touchErr
+	}
 
 }
 
@@ -377,9 +387,9 @@ func (dh *documentBackedNodeListHandler) updateNodeList(nodeID string, remove bo
 
 }
 
-func (dh *documentBackedNodeListHandler) loadNodeIDs() (err error) {
+func (dh *documentBackedNodeListHandler) loadNodeIDs() error {
 
-	dh.cas, err = dh.bucket.Get(dh.nodeListKey, &dh.nodeIDs)
+	docBytes, cas, err := dh.bucket.GetRaw(dh.nodeListKey)
 	if err != nil {
 		dh.cas = 0
 		dh.nodeIDs = []string{}
@@ -387,6 +397,18 @@ func (dh *documentBackedNodeListHandler) loadNodeIDs() (err error) {
 			return err
 		}
 	}
+
+	if cas == dh.cas {
+		// node list hasn't changed since the last load
+		return nil
+	}
+
+	// Update the in-memory list and cas
+	if unmarshalErr := json.Unmarshal(docBytes, &dh.nodeIDs); unmarshalErr != nil {
+		return unmarshalErr
+	}
+	dh.cas = cas
+
 	return nil
 
 }
