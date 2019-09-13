@@ -1,7 +1,6 @@
 package base
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -227,7 +226,10 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handle
 
 			// delete the heartbeat doc itself so we don't have unwanted
 			// repeated callbacks to the stale heartbeat handler
-			h.heartbeatHandler.RemoveNode(heartbeatDocID)
+			err := h.heartbeatHandler.RemoveNode(heartbeatDocID)
+			if err != nil {
+				Infof(KeyImport, "Failed to remove node for node ID:%v err: %v", heartbeatDocID, err)
+			}
 		}
 
 	}
@@ -236,11 +238,11 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handle
 }
 
 func heartbeatTimeoutDocId(nodeUuid, keyPrefix string) string {
-	return fmt.Sprintf("%vheartbeat_timeout:%v", keyPrefix, nodeUuid)
+	return keyPrefix + "heartbeat_timeout:" + nodeUuid
 }
 
 func heartbeatDocId(nodeUuid, keyPrefix string) string {
-	return fmt.Sprintf("%vheartbeat:%v", keyPrefix, nodeUuid)
+	return keyPrefix + "heartbeat:" + nodeUuid
 }
 
 func (h *couchbaseHeartBeater) sendHeartbeat(intervalSeconds int) error {
@@ -342,6 +344,7 @@ func (dh *documentBackedNodeListHandler) updateNodeList(nodeID string, remove bo
 		for index, existingNodeID := range dh.nodeIDs {
 			if existingNodeID == nodeID {
 				nodeIndex = index
+				break
 			}
 		}
 
@@ -426,10 +429,7 @@ func (vh *viewBackedNodeListHandler) AddNode(nodeID string) error {
 // Deletes the heartbeat doc used to register the node
 func (vh *viewBackedNodeListHandler) RemoveNode(nodeID string) error {
 	docId := heartbeatDocId(nodeID, vh.keyPrefix)
-	if err := vh.bucket.Delete(docId); err != nil {
-		Infof(KeyImport, "Failed to delete heartbeat doc: %v err: %v", docId, err)
-	}
-	return nil
+	return vh.bucket.Delete(docId)
 }
 
 // Issues a view query to identify the node set
