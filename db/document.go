@@ -93,7 +93,7 @@ func (b Body) ExtractSpecialProperties() (*SpecialProperties, error) {
 
 	var exp uint32
 	bodyExp, err := base.ReflectExpiry(b[BodyExp])
-	if err == nil && bodyExp == nil {
+	if err == nil && bodyExp != nil {
 		exp = *bodyExp
 	}
 	delete(b, BodyExp)

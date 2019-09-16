@@ -886,48 +886,38 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
 	}()
 
-	//addRevisionParams := newAddRevisionParams(rq)
 	revMessage := revMessage{Message: rq}
-
 	bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
 
-	// FIXME: if bodyBytes contains _attachments, _exp, or isDelta:
-	//  unmarshal into Body, and get IncomingDocument first...
-	//  This gives us plain bytes to use
-	//  we only need to use the unmarshalled body when patching a delta
-	var body db.Body
-	// Unmarshal
-	err := rq.ReadJSONBody(&body)
+	bodyBytes, err := rq.Body()
 	if err != nil {
-		return err
+		return base.HTTPErrorf(http.StatusBadRequest, "error reading request body: %v", err)
 	}
-
-	// Marshal
-	newDoc, err := body.ToIncomingDocument()
-	if err != nil {
-		return err
-	}
-
 	bh.db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesBytesBlip, int64(len(bodyBytes)))
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
-	docID, found := revMessage.id()
-	revID, rfound := revMessage.rev()
-	if !found || !rfound {
+	docID, docIDFound := revMessage.id()
+	revID, revIDFound := revMessage.rev()
+	if !docIDFound || !revIDFound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
 
-	newDoc := &db.IncomingDocument{
-		BodyBytes: bodyBytes,
-		SpecialProperties: db.SpecialProperties{
-			DocID: docID,
-			RevID: revID,
-		},
-	}
+	hasAttachments := bytes.Contains(bodyBytes, []byte(db.BodyAttachments))
+	hasExpiry := bytes.Contains(bodyBytes, []byte(db.BodyExp))
 
-	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
+	var body db.Body
+	var newDoc *db.IncomingDocument
+
+	deltaSrcRevID, isDelta := revMessage.deltaSrc()
+	if isDelta {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
+		}
+
+		// Unmarshal the delta as-is (including _attachments, etc.) for patching
+		err = rq.ReadJSONBody(&body)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "error unmarshalling body: %v", err)
 		}
 
 		//  TODO: Doing a GetRevCopy here duplicates some rev cache retrieval effort, since deltaRevSrc is always
@@ -949,7 +939,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusForbidden, "Requested deltaSrc=%s was redacted", deltaSrcRevID)
 		}
 
-		// *** Unmarshal the body of the source revision ready for patching
+		// Unmarshal the body of the source revision ready for patching
 		deltaSrcBody, err := deltaSrcRev.MutableBody()
 
 		// Inject _attachments before patching
@@ -958,46 +948,66 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
 		}
 
-		// *** Unmarshal the delta to feed into Patch
-		deltaBody, err := newDoc.GetDeltaBody()
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Error unmarshalling delta body: %s", err)
-		}
-
 		// convert deltaSrcBody into a plain map type so it's patchable by the library
 		patchedBody := map[string]interface{}(deltaSrcBody)
-		err = base.Patch(&patchedBody, deltaBody)
+		err = base.Patch(&patchedBody, body)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 
-		// *** Marshal and update newDoc with the patched body
-		newDoc.BodyBytes, err = json.Marshal(patchedBody)
-		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Error marshalling patched body: %s", err)
+		// Extract attachments
+		newAttachments, ok := patchedBody[db.BodyAttachments].(map[string]interface{})
+		if !ok {
+			newAttachments = nil
 		}
+		delete(patchedBody, db.BodyAttachments)
 
-		unmarshalledBody = patchedBody
-
-		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(string(newDoc.BodyBytes)))
-		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
-	}
-
-	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(db.BodyExp)) {
-		if unmarshalledBody == nil {
-			if err := unmarshalledBody.Unmarshal(bodyBytes); err != nil {
-				return base.HTTPErrorf(http.StatusBadRequest, "Unable to unmarshal body: %s", err)
-			}
-		}
-		expiry, err := body.ExtractExpiry()
+		// Extract expiry
+		expiry, err := db.Body(patchedBody).ExtractExpiry()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 		}
-		newDoc.DocExpiry = expiry
-		newDoc.UpdateBody(body)
+
+		// Marshal resulting body back into newDoc
+		newBodyBytes, err := json.Marshal(patchedBody)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "Error marshalling patched body: %s", err)
+		}
+		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(string(newBodyBytes)))
+		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
+
+		body = patchedBody
+		newDoc = &db.IncomingDocument{
+			BodyBytes: newBodyBytes,
+			SpecialProperties: db.SpecialProperties{
+				// Properties below are pulled out of the body, even in BLIP replication
+				Attachments: newAttachments,
+				Expiry:      expiry,
+			},
+		}
+
+		// end if isDelta
+	} else if hasAttachments || hasExpiry {
+		// Unmarshal bytes into body to pull out these two properties
+		// In the case of a delta, these are already handled above.
+		err = rq.ReadJSONBody(&body)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "error unmarshalling body: %v", err)
+		}
+
+		// Marshal: Extract the special properties out of body
+		// This can be avoided with full blob support (CBG-451)
+		newDoc, err = body.ToIncomingDocument()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "error building new doc: %v", err)
+		}
+
+		// end if hasAttachments || hasExpiry
 	}
 
+	// These don't come from the body in BLIP replication
+	newDoc.DocID = docID
+	newDoc.RevID = revID
 	newDoc.Deleted = revMessage.deleted()
 
 	// noconflicts flag from LiteCore
@@ -1023,26 +1033,19 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		minRevpos++
 	}
 
-	// Pull out attachments
-	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
-		body := newDoc.Body()
-
-		// Check for any attachments I don't have yet, and request them:
-		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos); err != nil {
-			return err
-		}
-
-		newDoc.DocAttachments = db.GetBodyAttachments(body)
-		delete(body, db.BodyAttachments)
-		newDoc.UpdateBody(body)
+	// Check for any attachments I don't have yet, and request them:
+	if err := bh.downloadOrVerifyAttachments(rq.Sender, newDoc.Attachments, minRevpos); err != nil {
+		return err
 	}
 
-	// Finally, save the revision (with the new attachments inline)
-	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyDocPushCount, 1)
-
+	// Finally, save the revision
 	_, _, err = bh.db.PutExistingRev(newDoc, history, noConflicts)
+	if err != nil {
+		return err
+	}
 
-	return err
+	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyDocPushCount, 1)
+	return nil
 }
 
 //////// ATTACHMENTS:
@@ -1076,8 +1079,8 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
-func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.Body, minRevpos int) error {
-	return bh.db.ForEachStubAttachment(body, minRevpos,
+func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, attachments db.AttachmentsMeta, minRevpos int) error {
+	return bh.db.ForEachStubAttachment(attachments, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			if knownData != nil {
 				// If I have the attachment already I don't need the client to send it, but for
