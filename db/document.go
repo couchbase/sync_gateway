@@ -75,7 +75,7 @@ type SpecialProperties struct {
 	DocID       string          `json:"_id,omitempty"`
 	RevID       string          `json:"_rev,omitempty"`
 	Deleted     bool            `json:"_deleted,omitempty"`
-	Expiry      *uint32         `json:"_exp,omitempty"`
+	Expiry      uint32          `json:"_exp,omitempty"`
 	Attachments AttachmentsMeta `json:"_attachments,omitempty"`
 	Revisions   Revisions       `json:"_revisions,omitempty"`
 }
@@ -91,9 +91,10 @@ func (b Body) ExtractSpecialProperties() (*SpecialProperties, error) {
 	bodyDeleted, _ := b[BodyDeleted].(bool)
 	delete(b, BodyDeleted)
 
+	var exp uint32
 	bodyExp, err := base.ReflectExpiry(b[BodyExp])
-	if err != nil {
-		return nil, err
+	if err == nil && bodyExp == nil {
+		exp = *bodyExp
 	}
 	delete(b, BodyExp)
 
@@ -107,7 +108,7 @@ func (b Body) ExtractSpecialProperties() (*SpecialProperties, error) {
 		DocID:       bodyID,
 		RevID:       bodyRev,
 		Deleted:     bodyDeleted,
-		Expiry:      bodyExp,
+		Expiry:      exp,
 		Attachments: bodyAttachments,
 		Revisions:   bodyRevisions,
 	}, nil
@@ -124,8 +125,8 @@ func stampSpecialProperties(docBody map[string]interface{}, p SpecialProperties)
 	if p.Deleted {
 		docBody[BodyDeleted] = p.Deleted
 	}
-	if p.Expiry != nil {
-		docBody[BodyExp] = *p.Expiry
+	if p.Expiry != 0 {
+		docBody[BodyExp] = p.Expiry
 	}
 	if p.Attachments != nil {
 		docBody[BodyAttachments] = p.Attachments
@@ -167,6 +168,21 @@ func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
 	doc._syncFnBody = syncFnBody
 
 	return syncFnBody, nil
+}
+
+// GetDeltaBody unmarshals from the doc bytes
+// Not thread-safe, but not expected to be called concurrently.
+func (doc *IncomingDocument) GetDeltaBody() (map[string]interface{}, error) {
+	var deltaBody map[string]interface{}
+	buf := bytes.NewBuffer(doc.BodyBytes)
+	d := json.NewDecoder(buf)
+	d.UseNumber()
+	err := d.Decode(&deltaBody)
+	if err != nil {
+		return nil, err
+	}
+
+	return deltaBody, nil
 }
 
 // ValidateBodyBytes returns nil if the BodyBytes in the given IncomingDocument do not contain any special properties.

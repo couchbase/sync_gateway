@@ -250,7 +250,7 @@ func (h *handler) handlePutAttachment() error {
 	//attach it
 	attachments[attachmentName] = attachment
 
-	incomingDocument := db.IncomingDocument{
+	newDoc := db.IncomingDocument{
 		BodyBytes: bodyBytes,
 		SpecialProperties: db.SpecialProperties{
 			DocID:       rev.DocID,
@@ -259,7 +259,7 @@ func (h *handler) handlePutAttachment() error {
 		},
 	}
 
-	newRev, _, err := h.db.Put(&incomingDocument)
+	newRev, _, err := h.db.Put(&newDoc)
 	if err != nil {
 		return err
 	}
@@ -289,15 +289,15 @@ func (h *handler) handlePutDoc() error {
 
 	fmt.Printf("body1 %#v\n", body)
 
-	incomingDocument, err := body.ToIncomingDocument()
+	newDoc, err := body.ToIncomingDocument()
 	if err != nil {
 		return err
 	}
-	incomingDocument.DocID = docid
+	newDoc.DocID = docid
 
 	fmt.Printf("body2 %#v\n", body)
-	fmt.Printf("IncomingDocument BodyBytes: %v\n", string(incomingDocument.BodyBytes))
-	fmt.Printf("IncomingDocument %#v\n", incomingDocument.SpecialProperties)
+	fmt.Printf("IncomingDocument BodyBytes: %v\n", string(newDoc.BodyBytes))
+	fmt.Printf("IncomingDocument %#v\n", newDoc.SpecialProperties)
 
 	var createdDoc *db.Document
 
@@ -310,7 +310,7 @@ func (h *handler) handlePutDoc() error {
 		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
 			body[db.BodyRev] = ifMatch
 		}
-		_, createdDoc, err = h.db.Put(incomingDocument)
+		_, createdDoc, err = h.db.Put(newDoc)
 		if err != nil {
 			return err
 		}
@@ -321,7 +321,7 @@ func (h *handler) handlePutDoc() error {
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		_, createdDoc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
+		createdDoc, _, err = h.db.PutExistingRev(newDoc, revisions, false)
 		if err != nil {
 			return err
 		}

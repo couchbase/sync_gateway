@@ -891,7 +891,19 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
 	bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
 
-	bodyBytes, err := rq.Body()
+	// FIXME: if bodyBytes contains _attachments, _exp, or isDelta:
+	//  unmarshal into Body, and get IncomingDocument first...
+	//  This gives us plain bytes to use
+	//  we only need to use the unmarshalled body when patching a delta
+	var body db.Body
+	// Unmarshal
+	err := rq.ReadJSONBody(&body)
+	if err != nil {
+		return err
+	}
+
+	// Marshal
+	newDoc, err := body.ToIncomingDocument()
 	if err != nil {
 		return err
 	}
@@ -905,11 +917,13 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
 
-	newDoc := &db.Document{
-		ID:    docID,
-		RevID: revID,
+	newDoc := &db.IncomingDocument{
+		BodyBytes: bodyBytes,
+		SpecialProperties: db.SpecialProperties{
+			DocID: docID,
+			RevID: revID,
+		},
 	}
-	newDoc.UpdateBodyBytes(bodyBytes)
 
 	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
@@ -935,6 +949,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusForbidden, "Requested deltaSrc=%s was redacted", deltaSrcRevID)
 		}
 
+		// *** Unmarshal the body of the source revision ready for patching
 		deltaSrcBody, err := deltaSrcRev.MutableBody()
 
 		// Inject _attachments before patching
@@ -943,21 +958,38 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
 		}
 
-		// Also convert the deltaSrcMap db.Body into a plain type so it's patchable
-		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		err = base.Patch(&deltaSrcMap, newDoc.Body())
+		// *** Unmarshal the delta to feed into Patch
+		deltaBody, err := newDoc.GetDeltaBody()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Error unmarshalling delta body: %s", err)
+		}
+
+		// convert deltaSrcBody into a plain map type so it's patchable by the library
+		patchedBody := map[string]interface{}(deltaSrcBody)
+		err = base.Patch(&patchedBody, deltaBody)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 
-		newDoc.UpdateBody(deltaSrcMap)
-		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
+		// *** Marshal and update newDoc with the patched body
+		newDoc.BodyBytes, err = json.Marshal(patchedBody)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "Error marshalling patched body: %s", err)
+		}
+
+		unmarshalledBody = patchedBody
+
+		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(string(newDoc.BodyBytes)))
 		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 	}
 
 	// Handle and pull out expiry
 	if bytes.Contains(bodyBytes, []byte(db.BodyExp)) {
-		body := newDoc.Body()
+		if unmarshalledBody == nil {
+			if err := unmarshalledBody.Unmarshal(bodyBytes); err != nil {
+				return base.HTTPErrorf(http.StatusBadRequest, "Unable to unmarshal body: %s", err)
+			}
+		}
 		expiry, err := body.ExtractExpiry()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)

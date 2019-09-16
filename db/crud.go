@@ -643,34 +643,31 @@ func (db *Database) OnDemandImportForWrite(docID string, doc *Document, deleted 
 
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
-func (db *Database) Put(incomingDocument *IncomingDocument) (newRevID string, doc *Document, err error) {
+func (db *Database) Put(newDoc *IncomingDocument) (newRevID string, createdDoc *Document, err error) {
 
-	if err := incomingDocument.ValidateBodyBytes(); err != nil {
+	if err := newDoc.ValidateBodyBytes(); err != nil {
 		return "", nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 	}
 
 	// Get the revision ID to match, and the new generation number:
-	matchRev := incomingDocument.RevID
+	matchRev := newDoc.RevID
 	generation, _ := ParseRevID(matchRev)
 	if generation < 0 {
 		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
 
-	deleted := incomingDocument.Deleted
-	if incomingDocument.Expiry == nil {
-		incomingDocument.Expiry = base.Uint32Ptr(0)
-	}
+	deleted := newDoc.Deleted
 
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(incomingDocument.DocID, allowImport, *incomingDocument.Expiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	createdDoc, newRevID, err = db.updateAndReturnDoc(newDoc.DocID, allowImport, newDoc.Expiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		var isSgWrite bool
 		var crc32Match bool
 
 		// Is this doc an sgWrite?
-		if doc != nil {
-			isSgWrite, crc32Match = doc.IsSGWrite(nil)
+		if createdDoc != nil {
+			isSgWrite, crc32Match = createdDoc.IsSGWrite(nil)
 			if crc32Match {
 				db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
 			}
@@ -678,8 +675,8 @@ func (db *Database) Put(incomingDocument *IncomingDocument) (newRevID string, do
 
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !isSgWrite && db.UseXattrs() {
-			err := db.OnDemandImportForWrite(incomingDocument.DocID, doc, deleted)
+		if createdDoc != nil && !isSgWrite && db.UseXattrs() {
+			err := db.OnDemandImportForWrite(newDoc.DocID, createdDoc, deleted)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -687,50 +684,50 @@ func (db *Database) Put(incomingDocument *IncomingDocument) (newRevID string, do
 
 		// First, make sure matchRev matches an existing leaf revision:
 		if matchRev == "" {
-			matchRev = doc.CurrentRev
+			matchRev = createdDoc.CurrentRev
 			if matchRev != "" {
 				// PUT with no parent rev given, but there is an existing current revision.
 				// This is OK as long as the current one is deleted.
-				if !doc.History[matchRev].Deleted {
+				if !createdDoc.History[matchRev].Deleted {
 					return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
 				}
 				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
-		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false) {
+		} else if !createdDoc.History.isLeaf(matchRev) || db.IsIllegalConflict(createdDoc, matchRev, deleted, false) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
 		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
-		newAttachments, err := db.storeAttachments(doc, incomingDocument.Attachments, generation, matchRev, nil)
+		newAttachments, err := db.storeAttachments(createdDoc, newDoc.Attachments, generation, matchRev, nil)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
 		// Make up a new _rev, and add it to the history:
-		newRev, err := incomingDocument.CreateRevID(generation, matchRev)
+		newRev, err := newDoc.CreateRevID(generation, matchRev)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
-		if err := doc.History.addRevision(incomingDocument.DocID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
-			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(incomingDocument.DocID), err)
+		if err := createdDoc.History.addRevision(newDoc.DocID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
+			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(newDoc.DocID), err)
 			return nil, nil, nil, base.ErrRevTreeAddRevFailure
 		}
 
-		doc.RevID = newRev
-		doc.Deleted = incomingDocument.Deleted
-		doc.SyncData.Attachments = incomingDocument.Attachments
+		createdDoc.RevID = newRev
+		createdDoc.Deleted = newDoc.Deleted
+		createdDoc.SyncData.Attachments = newDoc.Attachments
 
-		return doc, newAttachments, nil, nil
+		return createdDoc, newAttachments, nil, nil
 	})
 
-	return newRevID, doc, err
+	return newRevID, createdDoc, err
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
-func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConflicts bool) (doc *Document, newRevID string, err error) {
+func (db *Database) PutExistingRev(newDoc *IncomingDocument, docHistory []string, noConflicts bool) (createdDoc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
@@ -738,23 +735,23 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 	}
 
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(newDoc.ID, allowImport, newDoc.DocExpiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	createdDoc, _, err = db.updateAndReturnDoc(newDoc.DocID, allowImport, newDoc.Expiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
 		var crc32Match bool
 
 		// Is this doc an sgWrite?
-		if doc != nil {
-			isSgWrite, crc32Match = doc.IsSGWrite(nil)
+		if createdDoc != nil {
+			isSgWrite, crc32Match = createdDoc.IsSGWrite(nil)
 			if crc32Match {
 				db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
 			}
 		}
 
 		// If the existing doc isn't an SG write, import prior to updating
-		if doc != nil && !isSgWrite && db.UseXattrs() {
-			err := db.OnDemandImportForWrite(newDoc.ID, doc, newDoc.Deleted)
+		if createdDoc != nil && !isSgWrite && db.UseXattrs() {
+			err := db.OnDemandImportForWrite(newDoc.DocID, createdDoc, newDoc.Deleted)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -764,26 +761,26 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 		currentRevIndex := len(docHistory)
 		parent := ""
 		for i, revid := range docHistory {
-			if doc.History.contains(revid) {
+			if createdDoc.History.contains(revid) {
 				currentRevIndex = i
 				parent = revid
 				break
 			}
 		}
 		if currentRevIndex == 0 {
-			base.DebugfCtx(db.Ctx, base.KeyCRUD, "PutExistingRevWithBody(%q): No new revisions to add", base.UD(newDoc.ID))
+			base.DebugfCtx(db.Ctx, base.KeyCRUD, "PutExistingRevWithBody(%q): No new revisions to add", base.UD(newDoc.DocID))
 			newDoc.RevID = newRev
 			return nil, nil, nil, base.ErrUpdateCancel // No new revisions to add
 		}
 
 		// Conflict-free mode check
-		if db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
+		if db.IsIllegalConflict(createdDoc, parent, newDoc.Deleted, noConflicts) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
-			err := doc.History.addRevision(newDoc.ID,
+			err := createdDoc.History.addRevision(newDoc.DocID,
 				RevInfo{
 					ID:      docHistory[i],
 					Parent:  parent,
@@ -796,54 +793,30 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 		}
 
 		// Process the attachments, replacing bodies with digests.
-		parentRevID := doc.History[newRev].Parent
-		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
+		parentRevID := createdDoc.History[newRev].Parent
+		newAttachments, err := db.storeAttachments(createdDoc, newDoc.Attachments, generation, parentRevID, docHistory)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
-		doc.SyncData.Attachments = newDoc.DocAttachments
+		createdDoc.SyncData.Attachments = newDoc.Attachments
 		newDoc.RevID = newRev
 
-		return newDoc, newAttachments, nil, nil
+		return createdDoc, newAttachments, nil, nil
 	})
 
-	return doc, newRev, err
+	return createdDoc, newRev, err
 }
 
 func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory []string, noConflicts bool) (newRevID string, doc *Document, err error) {
-	expiry, _ := body.ExtractExpiry()
-	deleted := body.ExtractDeleted()
-	revid := body.ExtractRev()
-
-	newDoc := &Document{
-		ID:        docid,
-		Deleted:   deleted,
-		DocExpiry: expiry,
-		RevID:     revid,
+	newDoc, err := body.ToIncomingDocument()
+	if err != nil {
+		return "", nil, err
 	}
 
-	delete(body, BodyId)
-	delete(body, BodyRevisions)
-
-	newDoc.DocAttachments = GetBodyAttachments(body)
-	delete(body, BodyAttachments)
-	newDoc.UpdateBody(body)
-
-	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts)
-
-	// FIXME: Callers (mostly tests?) expect the below properties to be in the body even if PutExistingRev returns error
-	// Mostly due to doing assert(givenBody == getDoc(id)) - the second having _rev, the first not...
-	body[BodyId] = docid
-	body[BodyRev] = newRevID
-
-	// FIXME: should we really be doing this?
-	if deleted {
-		body[BodyDeleted] = deleted
-	}
-
-	if putExistingRevErr != nil {
-		return newRevID, nil, putExistingRevErr
+	doc, newRevID, err = db.PutExistingRev(newDoc, docHistory, noConflicts)
+	if err != nil {
+		return newRevID, nil, err
 	}
 
 	return newRevID, doc, err
