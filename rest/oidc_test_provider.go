@@ -13,7 +13,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -120,7 +119,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 		ClaimsSupported:                   []string{"email", "sub", "exp", "iat", "iss", "aud", "nickname"},
 	}
 
-	if bytes, err := json.Marshal(config); err == nil {
+	if bytes, err := base.JSONMarshal(config); err == nil {
 		h.response.Write(bytes)
 	}
 
@@ -464,7 +463,7 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl t
 		IdToken:      idToken.Encode(),
 	}
 
-	if bytes, err := json.Marshal(tokenResponse); err == nil {
+	if bytes, err := base.JSONMarshal(tokenResponse); err == nil {
 		h.response.Write(bytes)
 	}
 

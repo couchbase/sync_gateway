@@ -12,7 +12,6 @@ package base
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"expvar"
 	"fmt"
 	"sync"
@@ -363,7 +362,7 @@ func makeVbucketMetadata(vbucketUUID uint64, sequence uint64, snapStart uint64, 
 		SnapEnd:     snapEnd,
 		FailOverLog: failOver,
 	}
-	metadataBytes, err := json.Marshal(metadata)
+	metadataBytes, err := JSONMarshal(metadata)
 	if err == nil {
 		return metadataBytes
 	} else {
@@ -405,7 +404,7 @@ func (r *DCPReceiver) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotSt
 	}
 
 	var snapshotMetadata cbdatasource.VBucketMetaData
-	unmarshalErr := json.Unmarshal(rawValue, &snapshotMetadata)
+	unmarshalErr := JSONUnmarshal(rawValue, &snapshotMetadata)
 	if unmarshalErr != nil {
 		return []byte{}, 0, 0, err
 	}

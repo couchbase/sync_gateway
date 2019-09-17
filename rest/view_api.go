@@ -2,12 +2,11 @@ package rest
 
 import (
 	"crypto/sha1"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -93,7 +92,7 @@ func (h *handler) handleView() error {
 	for _, name := range []string{"startkey", "endkey", "key", "keys"} {
 		if rawVal := h.getQuery(name); "" != rawVal {
 			var val interface{}
-			if err := json.Unmarshal([]byte(rawVal), &val); err != nil {
+			if err := base.JSONUnmarshal([]byte(rawVal), &val); err != nil {
 				return err
 			}
 			opts[name] = val

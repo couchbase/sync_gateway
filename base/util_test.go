@@ -10,7 +10,6 @@
 package base
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -668,7 +667,7 @@ func TestInjectJSONProperties(t *testing.T) {
 			assert.Equal(tt, test.expectedOutput, string(output))
 
 			var m map[string]interface{}
-			err = json.Unmarshal(output, &m)
+			err = JSONUnmarshal(output, &m)
 			assert.NoError(tt, err, "produced invalid JSON")
 		})
 	}
@@ -738,7 +737,7 @@ func TestInjectJSONProperties_Multiple(t *testing.T) {
 			assert.Equal(tt, test.expectedOutput, string(output))
 
 			var m map[string]interface{}
-			err = json.Unmarshal(output, &m)
+			err = JSONUnmarshal(output, &m)
 			assert.NoError(tt, err, "produced invalid JSON")
 		})
 	}
@@ -798,7 +797,7 @@ func TestInjectJSONPropertiesFromBytes(t *testing.T) {
 			assert.Equal(tt, test.expectedOutput, string(output))
 
 			var m map[string]interface{}
-			err = json.Unmarshal(output, &m)
+			err = JSONUnmarshal(output, &m)
 			assert.NoError(tt, err, "produced invalid JSON")
 		})
 	}
@@ -868,7 +867,7 @@ func TestInjectJSONPropertiesFromBytes_Multiple(t *testing.T) {
 			assert.Equal(tt, test.expectedOutput, string(output))
 
 			var m map[string]interface{}
-			err = json.Unmarshal(output, &m)
+			err = JSONUnmarshal(output, &m)
 			assert.NoError(tt, err, "produced invalid JSON")
 		})
 	}

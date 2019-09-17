@@ -10,7 +10,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"mime/multipart"
@@ -103,7 +102,7 @@ func (h *handler) handleGetDoc() error {
 			revids = doc.History.GetLeaves()
 		} else {
 			// open_revs=["id1", "id2", ...]
-			err := json.Unmarshal([]byte(openRevs), &revids)
+			err := base.JSONUnmarshal([]byte(openRevs), &revids)
 			if err != nil {
 				return base.HTTPErrorf(http.StatusBadRequest, "bad open_revs")
 			}

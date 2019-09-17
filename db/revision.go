@@ -280,7 +280,7 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 // so this function marshals body with atts included, and then removes it again
 func bodyBytesFromBodyAttachmentsMeta(body Body, atts AttachmentsMeta) ([]byte, error) {
 	if len(atts) == 0 {
-		return json.Marshal(body)
+		return base.JSONMarshal(body)
 	}
 
 	origAtts, haveOrigAtts := body[BodyAttachments]
@@ -304,7 +304,7 @@ func bodyBytesFromBodyAttachmentsMeta(body Body, atts AttachmentsMeta) ([]byte, 
 		body[BodyAttachments] = atts
 	}
 
-	newBodyBytes, err := json.Marshal(body)
+	newBodyBytes, err := base.JSONMarshal(body)
 
 	if haveOrigAtts {
 		// Restore original attachments field
@@ -469,7 +469,7 @@ func containsUserSpecialProperties(b Body) bool {
 
 // canonicalEncoding returns the canonical version of body as bytes
 func canonicalEncoding(body Body) ([]byte, error) {
-	return json.Marshal(body) // FIXME: Use canonical JSON encoder
+	return base.JSONMarshal(body) // FIXME: Use canonical JSON encoder
 }
 
 func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {

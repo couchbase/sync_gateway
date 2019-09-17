@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -336,7 +335,7 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 		return nil
 	}
 
-	bodyJson, marshalErr := json.Marshal(stripSpecialProperties(previousRev.Body))
+	bodyJson, marshalErr := base.JSONMarshal(stripSpecialProperties(previousRev.Body))
 	if marshalErr != nil {
 		return fmt.Errorf("Marshal error: %v", marshalErr)
 	}

@@ -10,7 +10,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -73,7 +72,7 @@ func TestViewQuery(t *testing.T) {
 	// TODO: update the query to use stale=false and remove the wait
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	assert.NoError(t, err, "Got unexpected error")
-	json.Unmarshal(response.Body.Bytes(), &result)
+	base.JSONUnmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 2)
 	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"})
 	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"})
@@ -220,21 +219,21 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_age", ``)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
-	json.Unmarshal(response.Body.Bytes(), &result)
+	base.JSONUnmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 2)
 	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)})
 	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)})
 
 	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_fname", ``)
 	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
+	base.JSONUnmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 2)
 	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)})
 	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)})
 
 	response = rt.SendAdminRequest("GET", "/db/_design/foo/_view/by_lname", ``)
 	assertStatus(t, response, 200)
-	json.Unmarshal(response.Body.Bytes(), &result)
+	base.JSONUnmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 2)
 	goassert.DeepEquals(t, result.Rows[0], &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)})
 	goassert.DeepEquals(t, result.Rows[1], &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)})
@@ -343,7 +342,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	// // test group=true
 	// response = rt.sendAdminRequest("GET", "/db/_design/foo/_view/bar?reduce=true&group=true", ``)
 	// assertStatus(t, response, 200)
-	// json.Unmarshal(response.Body.Bytes(), &result)
+	// base.JSONUnmarshal(response.Body.Bytes(), &result)
 	// // we should get 2 rows with the reduce result
 	// goassert.Equals(t, len(result.Rows), 2)
 	// row = result.Rows[0]
@@ -444,7 +443,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 	assertStatus(t, response, 200) // Query string was parsed properly
 
 	var result sgbucket.ViewResult
-	json.Unmarshal(response.Body.Bytes(), &result)
+	base.JSONUnmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 1)
 
 	// Ensure that query for non-existent keys returns no rows
@@ -452,7 +451,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
 	assertStatus(t, response, 200) // Query string was parsed properly
 
-	json.Unmarshal(response.Body.Bytes(), &result)
+	base.JSONUnmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 0)
 
 }
@@ -482,7 +481,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
-	json.Unmarshal(response.Body.Bytes(), &result)
+	base.JSONUnmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 1)
 
 	// Ensure that a query for non-existent key returns no rows
@@ -490,7 +489,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
 	assertStatus(t, response, 200)
 
-	json.Unmarshal(response.Body.Bytes(), &result)
+	base.JSONUnmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 0)
 }
 
@@ -519,7 +518,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
 	assertStatus(t, response, 200)
 	var result sgbucket.ViewResult
-	json.Unmarshal(response.Body.Bytes(), &result)
+	base.JSONUnmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 1)
 
 	// Ensure that a query for non-existent key returns no rows
@@ -528,7 +527,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	response = rt.SendAdminRequest("GET", viewUrlPath, ``)
 	assertStatus(t, response, 200)
 
-	json.Unmarshal(response.Body.Bytes(), &result)
+	base.JSONUnmarshal(response.Body.Bytes(), &result)
 	goassert.Equals(t, len(result.Rows), 0)
 }
 
@@ -591,7 +590,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	var postUpgradeResponse PostUpgradeResponse
 	response := rt.SendAdminRequest("POST", "/_post_upgrade?preview=true", "")
 	assertStatus(t, response, 200)
-	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	goassert.Equals(t, postUpgradeResponse.Preview, true)
 	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 2)
 
@@ -599,7 +598,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest("POST", "/_post_upgrade", "")
 	assertStatus(t, response, 200)
-	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	goassert.Equals(t, postUpgradeResponse.Preview, false)
 	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 2)
 
@@ -607,7 +606,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest("POST", "/_post_upgrade?preview=true", "")
 	assertStatus(t, response, 200)
-	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	goassert.Equals(t, postUpgradeResponse.Preview, true)
 	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 0)
 
@@ -615,7 +614,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	postUpgradeResponse = PostUpgradeResponse{}
 	response = rt.SendAdminRequest("POST", "/_post_upgrade", "")
 	assertStatus(t, response, 200)
-	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	goassert.Equals(t, postUpgradeResponse.Preview, false)
 	goassert.Equals(t, len(postUpgradeResponse.Result["db"].RemovedDDocs), 0)
 

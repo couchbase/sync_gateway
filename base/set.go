@@ -10,7 +10,6 @@
 package base
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -126,12 +125,12 @@ func (set Set) MarshalJSON() ([]byte, error) {
 	}
 	list := set.ToArray()
 	sort.Strings(list) // sort the array so it's written in a consistent order; helps testability
-	return json.Marshal(list)
+	return JSONMarshal(list)
 }
 
 func (setPtr *Set) UnmarshalJSON(data []byte) error {
 	var names []string
-	if err := json.Unmarshal(data, &names); err != nil {
+	if err := JSONUnmarshal(data, &names); err != nil {
 		return err
 	}
 	if names == nil {

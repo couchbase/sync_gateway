@@ -167,7 +167,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 					}
 					err = decoder.Decode(&doc._body)
 				} else {
-					err = json.Unmarshal(doc1k_body, &doc._body)
+					err = base.JSONUnmarshal(doc1k_body, &doc._body)
 					if bm.fixJSONNumbers {
 						doc.Body().FixJSONNumbers()
 					}

@@ -1,10 +1,10 @@
 package rest
 
 import (
-	"encoding/json"
 	"log"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
@@ -31,7 +31,7 @@ func TestDocumentUnmarshal(t *testing.T) {
 `
 
 	doc := RestDocument{}
-	err := json.Unmarshal([]byte(jsonContent), &doc)
+	err := base.JSONUnmarshal([]byte(jsonContent), &doc)
 	if err != nil {
 		log.Printf("Error: %v", err)
 	}

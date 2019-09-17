@@ -103,7 +103,7 @@ func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
 				stringResult = nativeValue
 				eventTask.responseType = StringResponse
 			case interface{}:
-				resultBytes, marshErr := json.Marshal(nativeValue)
+				resultBytes, marshErr := base.JSONMarshal(nativeValue)
 				if marshErr != nil {
 					err = marshErr
 				} else {

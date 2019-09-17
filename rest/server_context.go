@@ -697,12 +697,12 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 			}
 		}
 
-		eventHandlersJSON, err := json.Marshal(eventHandlersMap)
+		eventHandlersJSON, err := base.JSONMarshal(eventHandlersMap)
 		if err != nil {
-			return pkgerrors.Wrapf(err, "Error calling json.Marshal() in initEventHandlers")
+			return pkgerrors.Wrapf(err, "Error calling base.JSONMarshal() in initEventHandlers")
 		}
-		if err := json.Unmarshal(eventHandlersJSON, eventHandlers); err != nil {
-			return pkgerrors.Wrapf(err, "Error calling json.Unmarshal() in initEventHandlers")
+		if err := base.JSONUnmarshal(eventHandlersJSON, eventHandlers); err != nil {
+			return pkgerrors.Wrapf(err, "Error calling base.JSONUnmarshal() in initEventHandlers")
 		}
 
 		// Process document commit event handlers
@@ -928,7 +928,7 @@ func (sc *ServerContext) logStats() error {
 		RFC3339:            currentTime.Format(time.RFC3339),
 	}
 
-	marshalled, err := json.Marshal(wrapper)
+	marshalled, err := base.JSONMarshal(wrapper)
 	if err != nil {
 		return err
 	}

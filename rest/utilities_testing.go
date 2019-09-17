@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -376,7 +375,7 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 		} else {
 			response = rt.Send(requestByUser("GET", changesUrl, "", username))
 		}
-		err = json.Unmarshal(response.Body.Bytes(), &changes)
+		err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 		if err != nil {
 			return false, err, nil
 		}
@@ -457,7 +456,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200.", response.Code), sgbucket.ViewResult{}
 		}
 		var result sgbucket.ViewResult
-		json.Unmarshal(response.Body.Bytes(), &result)
+		base.JSONUnmarshal(response.Body.Bytes(), &result)
 
 		if len(result.Rows) >= numResultsExpected {
 			// Got enough results, break out of retry loop
@@ -518,7 +517,7 @@ func (rt *RestTester) WaitForDBOnline() (err error) {
 
 		response := rt.SendAdminRequest("GET", "/db/", "")
 		var body db.Body
-		json.Unmarshal(response.Body.Bytes(), &body)
+		base.JSONUnmarshal(response.Body.Bytes(), &body)
 
 		if body["state"].(string) == "Online" {
 			return
@@ -565,7 +564,7 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 	}
 
 	var rawResponse RawResponse
-	json.Unmarshal(response.Body.Bytes(), &rawResponse)
+	base.JSONUnmarshal(response.Body.Bytes(), &rawResponse)
 	return rawResponse.Sync.Sequence
 }
 
@@ -580,7 +579,7 @@ func (r TestResponse) DumpBody() {
 
 func (r TestResponse) GetRestDocument() RestDocument {
 	restDoc := NewRestDocument()
-	err := json.Unmarshal(r.Body.Bytes(), restDoc)
+	err := base.JSONUnmarshal(r.Body.Bytes(), restDoc)
 	if err != nil {
 		panic(fmt.Sprintf("Error parsing body into RestDocument.  Body: %s.  Err: %v", string(r.Body.Bytes()), err))
 	}
@@ -755,7 +754,7 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 		}
 
 		// serialize admin channels to json array
-		adminChannelsJson, err := json.Marshal(adminChannels)
+		adminChannelsJson, err := base.JSONMarshal(adminChannels)
 		if err != nil {
 			return nil, err
 		}
@@ -934,7 +933,7 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 			// unmarshal into json array
 			changesBatch := [][]interface{}{}
 
-			if err := json.Unmarshal(body, &changesBatch); err != nil {
+			if err := base.JSONUnmarshal(body, &changesBatch); err != nil {
 				panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
 			}
 
@@ -946,7 +945,7 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 			}
 
 			response := request.Response()
-			responseValBytes, err := json.Marshal(responseVal)
+			responseValBytes, err := base.JSONMarshal(responseVal)
 			log.Printf("responseValBytes: %s", responseValBytes)
 			if err != nil {
 				panic(fmt.Sprintf("Error marshalling response: %v", err))
@@ -962,7 +961,7 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
 		var doc RestDocument
-		err = json.Unmarshal(body, &doc)
+		err = base.JSONUnmarshal(body, &doc)
 		if err != nil {
 			panic(fmt.Sprintf("Unexpected err: %v", err))
 		}
@@ -1028,7 +1027,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 		input.attachmentName: &myAttachment,
 	})
 
-	docBody, err := json.Marshal(doc)
+	docBody, err := base.JSONMarshal(doc)
 	if err != nil {
 		panic(fmt.Sprintf("Error marshalling doc.  Error: %v", err))
 	}
@@ -1113,7 +1112,7 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 		// unmarshal into json array
 		changesBatch := [][]interface{}{}
 
-		if err := json.Unmarshal(body, &changesBatch); err != nil {
+		if err := base.JSONUnmarshal(body, &changesBatch); err != nil {
 			panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
 		}
 
@@ -1195,7 +1194,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 			// unmarshal into json array
 			changesBatch := [][]interface{}{}
 
-			if err := json.Unmarshal(body, &changesBatch); err != nil {
+			if err := base.JSONUnmarshal(body, &changesBatch); err != nil {
 				panic(fmt.Sprintf("Error unmarshalling changes. Body: %vs.  Error: %v", string(body), err))
 			}
 
@@ -1207,7 +1206,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 			}
 
 			response := request.Response()
-			responseValBytes, err := json.Marshal(responseVal)
+			responseValBytes, err := base.JSONMarshal(responseVal)
 			log.Printf("responseValBytes: %s", responseValBytes)
 			if err != nil {
 				panic(fmt.Sprintf("Error marshalling response: %v", err))
@@ -1223,7 +1222,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
 		var doc RestDocument
-		err = json.Unmarshal(body, &doc)
+		err = base.JSONUnmarshal(body, &doc)
 		if err != nil {
 			panic(fmt.Sprintf("Unexpected err: %v", err))
 		}
@@ -1306,7 +1305,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
 			emptyResponseVal := []interface{}{}
-			emptyResponseValBytes, err := json.Marshal(emptyResponseVal)
+			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			if err != nil {
 				panic(fmt.Sprintf("Error marshalling response: %v", err))
 			}
@@ -1447,12 +1446,12 @@ func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
 		for attachmentName, attachmentVal := range rawAttachmentsMap {
 
 			// marshal attachmentVal into a byte array, then unmarshal into a DocAttachment
-			attachmentValMarshalled, err := json.Marshal(attachmentVal)
+			attachmentValMarshalled, err := base.JSONMarshal(attachmentVal)
 			if err != nil {
 				return db.AttachmentMap{}, err
 			}
 			docAttachment := db.DocAttachment{}
-			if err := json.Unmarshal(attachmentValMarshalled, &docAttachment); err != nil {
+			if err := base.JSONUnmarshal(attachmentValMarshalled, &docAttachment); err != nil {
 				return db.AttachmentMap{}, err
 			}
 

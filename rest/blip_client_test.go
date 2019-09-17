@@ -3,7 +3,6 @@ package rest
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
@@ -72,7 +71,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		if string(body) != "null" {
 			var changesReqs [][]interface{}
-			err = json.Unmarshal(body, &changesReqs)
+			err = base.JSONUnmarshal(body, &changesReqs)
 			if err != nil {
 				panic(err)
 			}
@@ -124,7 +123,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			response.Properties["deltas"] = "true"
 		}
 
-		b, err := json.Marshal(knownRevs)
+		b, err := base.JSONMarshal(knownRevs)
 		if err != nil {
 			panic(err)
 		}
@@ -260,7 +259,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 
 		if bodyJSON != nil {
-			body, err = json.Marshal(bodyJSON)
+			body, err = base.JSONMarshal(bodyJSON)
 			if err != nil {
 				panic(err)
 			}
@@ -481,7 +480,7 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 	// Inline attachment processing
 	if bytes.Contains(body, []byte(db.BodyAttachments)) {
 		var newDocJSON map[string]interface{}
-		if err = json.Unmarshal(body, &newDocJSON); err != nil {
+		if err = base.JSONUnmarshal(body, &newDocJSON); err != nil {
 			return "", err
 		}
 		if attachments, ok := newDocJSON[db.BodyAttachments]; ok {
@@ -521,7 +520,7 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 					newDocJSON[db.BodyAttachments] = attachmentMap
 				}
 			}
-			if body, err = json.Marshal(newDocJSON); err != nil {
+			if body, err = base.JSONMarshal(newDocJSON); err != nil {
 				return "", err
 			}
 		}

@@ -1,7 +1,6 @@
 package base
 
 import (
-	"encoding/json"
 	"sync"
 	"time"
 
@@ -404,7 +403,7 @@ func (dh *documentBackedNodeListHandler) loadNodeIDs() error {
 	}
 
 	// Update the in-memory list and cas
-	if unmarshalErr := json.Unmarshal(docBytes, &dh.nodeIDs); unmarshalErr != nil {
+	if unmarshalErr := JSONUnmarshal(docBytes, &dh.nodeIDs); unmarshalErr != nil {
 		return unmarshalErr
 	}
 	dh.cas = cas

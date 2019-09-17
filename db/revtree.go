@@ -11,7 +11,6 @@ package db
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -104,7 +103,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 
 	}
 
-	return json.Marshal(rep)
+	return base.JSONMarshal(rep)
 }
 
 func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
@@ -114,7 +113,7 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		return nil
 	}
 	var rep revTreeList
-	err = json.Unmarshal(inputjson, &rep)
+	err = base.JSONUnmarshal(inputjson, &rep)
 	if err != nil {
 		return
 	}

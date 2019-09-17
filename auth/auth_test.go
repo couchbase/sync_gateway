@@ -10,7 +10,6 @@
 package auth
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"sync"
@@ -123,12 +122,12 @@ func TestSerializeUser(t *testing.T) {
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	user, _ := auth.NewUser("me", "letmein", ch.SetOf(t, "me", "public"))
 	require.NoError(t, user.SetEmail("foo@example.com"))
-	encoded, _ := json.Marshal(user)
+	encoded, _ := base.JSONMarshal(user)
 	assert.True(t, encoded != nil)
 	log.Printf("Marshaled User as: %s", encoded)
 
 	resu := &userImpl{}
-	err := json.Unmarshal(encoded, resu)
+	err := base.JSONUnmarshal(encoded, resu)
 	assert.True(t, err == nil)
 	goassert.DeepEquals(t, resu.Name(), user.Name())
 	goassert.DeepEquals(t, resu.Email(), user.Email())
@@ -143,11 +142,11 @@ func TestSerializeRole(t *testing.T) {
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	role, _ := auth.NewRole("froods", ch.SetOf(t, "hoopy", "public"))
-	encoded, _ := json.Marshal(role)
+	encoded, _ := base.JSONMarshal(role)
 	assert.True(t, encoded != nil)
 	log.Printf("Marshaled Role as: %s", encoded)
 	elor := &roleImpl{}
-	err := json.Unmarshal(encoded, elor)
+	err := base.JSONUnmarshal(encoded, elor)
 
 	assert.True(t, err == nil)
 	goassert.DeepEquals(t, elor.Name(), role.Name())

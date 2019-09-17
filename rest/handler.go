@@ -426,7 +426,7 @@ func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) 
 func (h *handler) getJSONQuery(query string) (value interface{}, err error) {
 	valueJSON := h.getQuery(query)
 	if valueJSON != "" {
-		err = json.Unmarshal([]byte(valueJSON), &value)
+		err = base.JSONUnmarshal([]byte(valueJSON), &value)
 	}
 	return
 }
@@ -435,7 +435,7 @@ func (h *handler) getJSONStringArrayQuery(param string) ([]string, error) {
 	var strings []string
 	value := h.getQuery(param)
 	if value != "" {
-		if err := json.Unmarshal([]byte(value), &strings); err != nil {
+		if err := base.JSONUnmarshal([]byte(value), &strings); err != nil {
 			return nil, base.HTTPErrorf(http.StatusBadRequest, "%s URL param is not a JSON string array", param)
 		}
 	}
@@ -573,7 +573,7 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		return
 	}
 
-	jsonOut, err := json.Marshal(value)
+	jsonOut, err := base.JSONMarshal(value)
 	if err != nil {
 		base.Warnf(base.KeyAll, "Couldn't serialize JSON for %v : %s", base.UD(value), err)
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
@@ -721,7 +721,7 @@ func (h *handler) writeStatus(status int, message string) {
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
 	h.setStatus(status, message)
-	jsonOut, _ := json.Marshal(db.Body{"error": errorStr, "reason": message})
+	jsonOut, _ := base.JSONMarshal(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }
 

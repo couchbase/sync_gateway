@@ -786,7 +786,7 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq db.Seq
 	properties := make(blip.Properties)
 
 	// TODO: Assert? db.SequenceID.MarshalJSON can never error
-	seqJSON, _ := json.Marshal(seq)
+	seqJSON, _ := base.JSONMarshal(seq)
 	properties[revMessageSequence] = string(seqJSON)
 
 	if len(revisionHistory) > 0 {

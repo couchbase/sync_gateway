@@ -2,7 +2,6 @@ package rest
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -51,7 +50,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	goassert.Equals(t, changesResponse.SerialNumber(), changesRequest.SerialNumber())
 	body, err := changesResponse.Body()
 	assert.NoError(t, err, "Error reading changes response body")
-	err = json.Unmarshal(body, &changeList)
+	err = base.JSONUnmarshal(body, &changeList)
 	assert.NoError(t, err, "Error unmarshalling response body")
 	goassert.Equals(t, len(changeList), 1) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow := changeList[0]
@@ -80,7 +79,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	goassert.Equals(t, changesResponse2.SerialNumber(), changesRequest2.SerialNumber())
 	body2, err := changesResponse2.Body()
 	assert.NoError(t, err, "Error reading changes response body")
-	err = json.Unmarshal(body2, &changeList2)
+	err = base.JSONUnmarshal(body2, &changeList2)
 	assert.NoError(t, err, "Error unmarshalling response body")
 	goassert.Equals(t, len(changeList2), 1) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow2 := changeList2[0]
@@ -101,7 +100,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 
 			// Expected changes body: [[1,"foo","1-abc"]]
 			changeListReceived := [][]interface{}{}
-			err = json.Unmarshal(body, &changeListReceived)
+			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
 			goassert.Equals(t, len(changeListReceived), 1)
 			change := changeListReceived[0] // [1,"foo","1-abc"]
@@ -116,7 +115,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
 			emptyResponseVal := []interface{}{}
-			emptyResponseValBytes, err := json.Marshal(emptyResponseVal)
+			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
 		}
@@ -173,7 +172,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 			// Expected changes body: [[1,"foo","1-abc"]]
 			changeListReceived := [][]interface{}{}
-			err = json.Unmarshal(body, &changeListReceived)
+			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
 
 			for _, change := range changeListReceived {
@@ -206,7 +205,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
 			emptyResponseVal := []interface{}{}
-			emptyResponseValBytes, err := json.Marshal(emptyResponseVal)
+			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
 		}
@@ -292,7 +291,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 
 			// Expected changes body: [[1,"foo","1-abc"]]
 			changeListReceived := [][]interface{}{}
-			err = json.Unmarshal(body, &changeListReceived)
+			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
 
 			for _, change := range changeListReceived {
@@ -329,7 +328,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
 			emptyResponseVal := []interface{}{}
-			emptyResponseValBytes, err := json.Marshal(emptyResponseVal)
+			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
 		}
@@ -457,7 +456,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 			// Expected changes body: [[1,"foo","1-abc"]]
 			changeListReceived := [][]interface{}{}
-			err = json.Unmarshal(body, &changeListReceived)
+			err = base.JSONUnmarshal(body, &changeListReceived)
 			assert.NoError(t, err, "Error unmarshalling changes received")
 
 			for _, change := range changeListReceived {
@@ -504,7 +503,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
 			emptyResponseVal := []interface{}{}
-			emptyResponseValBytes, err := json.Marshal(emptyResponseVal)
+			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
 		}
@@ -545,7 +544,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	subChangesRequest.SetCompressed(false)
 
 	body := subChangesBody{DocIDs: docIDsExpected}
-	bodyBytes, err := json.Marshal(body)
+	bodyBytes, err := base.JSONMarshal(body)
 	assert.NoError(t, err, "Error marshalling subChanges body.")
 
 	subChangesRequest.SetBody(bodyBytes)
@@ -613,7 +612,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 	assert.NoError(t, err, "Error getting changes response body")
 
 	var changeList [][]interface{}
-	err = json.Unmarshal(body, &changeList)
+	err = base.JSONUnmarshal(body, &changeList)
 	assert.NoError(t, err, "Error getting changes response body")
 
 	// The common case of an empty array response tells the sender to send all of the proposed revisions,
@@ -711,7 +710,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	response := bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=1-abc", "")
 	assertStatus(t, response, 200)
 	var responseBody RestDocument
-	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
 	_, ok := responseBody[db.BodyDeleted]
 	goassert.False(t, ok)
 
@@ -726,7 +725,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	response = bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=2-bcd", "")
 	assertStatus(t, response, 200)
 	responseBody = RestDocument{}
-	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
 	deletedValue, deletedOK := responseBody[db.BodyDeleted].(bool)
 	goassert.True(t, deletedOK)
 	goassert.True(t, deletedValue)
@@ -828,7 +827,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/db/_local/checkpoint%252Ftestclient", "")
 	assertStatus(t, response, 200)
 	var responseBody map[string]interface{}
-	err = json.Unmarshal(response.Body.Bytes(), &responseBody)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	goassert.Equals(t, responseBody["client_seq"], "1000")
 
 	// Attempt to update the checkpoint with previous rev
@@ -1501,7 +1500,7 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
 			emptyResponseVal := []interface{}{}
-			emptyResponseValBytes, err := json.Marshal(emptyResponseVal)
+			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
 		}
@@ -2061,7 +2060,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		// Validate that generation of a delta didn't mutate the revision body in the revision cache
 		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.BodyShallowCopy)
 		assert.NoError(t, cacheErr)
-		marshalledBody, _ := json.Marshal(docRev.Body)
+		marshalledBody, _ := base.JSONMarshal(docRev.Body)
 		assert.Equal(t, []byte(`{"_id":"doc1","_rev":"1-0335a345b6ffed05707ccc4cbc1b67f4","greetings":[{"hello":"world!"},{"hi":"alice"}]}`), marshalledBody)
 
 	} else {

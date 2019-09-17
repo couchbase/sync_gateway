@@ -248,7 +248,7 @@ type attInfo struct {
 }
 
 func writeJSONPart(writer *multipart.Writer, contentType string, body Body, compressed bool) (err error) {
-	bytes, err := json.Marshal(body)
+	bytes, err := base.JSONMarshal(body)
 	if err != nil {
 		return err
 	}

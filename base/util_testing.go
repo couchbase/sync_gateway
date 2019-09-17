@@ -583,7 +583,7 @@ func DeepCopyInefficient(dst interface{}, src interface{}) error {
 	if src == nil {
 		return fmt.Errorf("src cannot be nil")
 	}
-	b, err := json.Marshal(src)
+	b, err := JSONMarshal(src)
 	if err != nil {
 		return fmt.Errorf("Unable to marshal src: %s", err)
 	}

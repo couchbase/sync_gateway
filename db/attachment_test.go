@@ -10,7 +10,6 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"testing"
@@ -23,7 +22,7 @@ import (
 
 func unjson(j string) Body {
 	var body Body
-	err := json.Unmarshal([]byte(j), &body)
+	err := base.JSONUnmarshal([]byte(j), &body)
 	if err != nil {
 		panic(fmt.Sprintf("Invalid JSON: %v", err))
 	}
@@ -31,7 +30,7 @@ func unjson(j string) Body {
 }
 
 func tojson(obj interface{}) string {
-	j, _ := json.Marshal(obj)
+	j, _ := base.JSONMarshal(obj)
 	return string(j)
 }
 
@@ -65,7 +64,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	docID := "doc1"
 	var rev1Body Body
 	rev1Data := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
-	require.NoError(t, json.Unmarshal([]byte(rev1Data), &rev1Body))
+	require.NoError(t, base.JSONUnmarshal([]byte(rev1Data), &rev1Body))
 	rev1ID, _, err := db.Put(docID, rev1Body)
 	require.NoError(t, err)
 	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
@@ -83,7 +82,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	// create rev 2 and check backups for both revs
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
-	require.NoError(t, json.Unmarshal([]byte(rev2Data), &rev2Body))
+	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
 	_, err = db.PutExistingRevWithBody(docID, rev2Body, []string{"2-abc", rev1ID}, true)
 	require.NoError(t, err)
 	rev2ID := "2-abc"
@@ -122,7 +121,7 @@ func TestAttachments(t *testing.T) {
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
                                     "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
 	var body Body
-	json.Unmarshal([]byte(rev1input), &body)
+	base.JSONUnmarshal([]byte(rev1input), &body)
 	revid, _, err := db.Put("doc1", unjson(rev1input))
 	rev1id := revid
 	assert.NoError(t, err, "Couldn't create document")
@@ -136,7 +135,7 @@ func TestAttachments(t *testing.T) {
 	log.Printf("Create rev 2...")
 	rev2str := `{"_attachments": {"hello.txt": {"stub":true, "revpos":1}, "bye.txt": {"data": "YnllLXlh"}}}`
 	var body2 Body
-	json.Unmarshal([]byte(rev2str), &body2)
+	base.JSONUnmarshal([]byte(rev2str), &body2)
 	body2[BodyRev] = revid
 	revid, _, err = db.Put("doc1", body2)
 	assert.NoError(t, err, "Couldn't update document")
@@ -157,7 +156,7 @@ func TestAttachments(t *testing.T) {
 	log.Printf("Create rev 3...")
 	rev3str := `{"_attachments": {"bye.txt": {"stub":true,"revpos":2}}}`
 	var body3 Body
-	json.Unmarshal([]byte(rev3str), &body3)
+	base.JSONUnmarshal([]byte(rev3str), &body3)
 	body3[BodyRev] = revid
 	revid, _, err = db.Put("doc1", body3)
 	assert.NoError(t, err, "Couldn't update document")
@@ -174,7 +173,7 @@ func TestAttachments(t *testing.T) {
 	assert.NoError(t, err, "Couldn't compact old revision")
 	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
 	var body2B Body
-	err = json.Unmarshal([]byte(rev2Bstr), &body2B)
+	err = base.JSONUnmarshal([]byte(rev2Bstr), &body2B)
 	assert.NoError(t, err, "bad JSON")
 	_, err = db.PutExistingRevWithBody("doc1", body2B, []string{"2-f000", rev1id}, false)
 	assert.NoError(t, err, "Couldn't update document")
@@ -198,7 +197,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
-	json.Unmarshal([]byte(docBody), &body)
+	base.JSONUnmarshal([]byte(docBody), &body)
 	_, _, err = db.Put("doc1", unjson(docBody))
 	log.Printf("Got error on put doc:%v", err)
 	db.Bucket.Dump()

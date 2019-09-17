@@ -11,7 +11,6 @@ package base
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -641,7 +640,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
 
-	valBytes, marshalErr := json.Marshal(val)
+	valBytes, marshalErr := JSONMarshal(val)
 	assert.NoError(t, marshalErr, "Error marshalling document body")
 
 	xattrVal := make(map[string]interface{})
@@ -848,12 +847,12 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
-	valRaw, _ := json.Marshal(val)
+	valRaw, _ := JSONMarshal(val)
 
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = float64(123)
 	xattrVal["rev"] = "1-1234"
-	xattrValRaw, _ := json.Marshal(xattrVal)
+	xattrValRaw, _ := JSONMarshal(xattrVal)
 
 	var existsVal map[string]interface{}
 	_, err := bucket.Get(key, existsVal)
@@ -1094,7 +1093,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 		var xattrMap map[string]interface{}
 		// Marshal the doc
 		if len(doc) > 0 {
-			err = json.Unmarshal(doc, &docMap)
+			err = JSONUnmarshal(doc, &docMap)
 			if err != nil {
 				return nil, nil, false, nil, pkgerrors.Wrapf(err, "Unable to unmarshal incoming doc")
 			}
@@ -1105,7 +1104,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 		// Marshal the xattr
 		if len(xattr) > 0 {
-			err = json.Unmarshal(xattr, &xattrMap)
+			err = JSONUnmarshal(xattr, &xattrMap)
 			if err != nil {
 				return nil, nil, false, nil, pkgerrors.Wrapf(err, "Unable to unmarshal incoming xattr")
 			}
@@ -1130,8 +1129,8 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 			xattrMap["seq"] = float64(1)
 		}
 
-		updatedDoc, _ = json.Marshal(docMap)
-		updatedXattr, _ = json.Marshal(xattrMap)
+		updatedDoc, _ = JSONMarshal(docMap)
+		updatedXattr, _ = JSONMarshal(xattrMap)
 		return updatedDoc, updatedXattr, false, nil, nil
 	}
 
