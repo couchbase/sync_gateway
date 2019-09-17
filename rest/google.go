@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -55,7 +54,7 @@ func verifyGoogle(idToken string, allowedAppID []string) (*GoogleResponse, error
 	}
 	defer res.Body.Close()
 
-	decoder := json.NewDecoder(res.Body)
+	decoder := base.JSONDecoder(res.Body)
 
 	var response GoogleResponse
 	err = decoder.Decode(&response)

@@ -12,7 +12,6 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -634,7 +633,7 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 
 	b = base.ConvertBackQuotedStrings(b)
 
-	d := json.NewDecoder(bytes.NewBuffer(b))
+	d := base.JSONDecoder(bytes.NewBuffer(b))
 	d.DisallowUnknownFields()
 	err = d.Decode(config)
 	if err != nil && strings.HasPrefix(err.Error(), "json: unknown field") {

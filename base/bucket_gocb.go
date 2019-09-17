@@ -2418,7 +2418,7 @@ func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) 
 	}
 
 	respJson := map[string]interface{}{}
-	decoder := json.NewDecoder(resp.Body)
+	decoder := JSONDecoder(resp.Body)
 	if err := decoder.Decode(&respJson); err != nil {
 		return -1, err
 	}

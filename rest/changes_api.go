@@ -12,7 +12,6 @@ package rest
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -379,7 +378,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			base.InfofCtx(h.db.Ctx, base.KeyChanges, "simple changes cannot get Close Notifier from ResponseWriter")
 		}
 
-		encoder := json.NewEncoder(h.response)
+		encoder := base.JSONEncoder(h.response)
 	loop:
 		for {
 			select {

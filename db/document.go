@@ -14,7 +14,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -228,7 +227,7 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 func unmarshalDocument(docid string, data []byte) (*Document, error) {
 	doc := NewDocument(docid)
 	if len(data) > 0 {
-		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder := base.JSONDecoder(bytes.NewReader(data))
 		decoder.UseNumber()
 		if err := decoder.Decode(doc); err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error unmarshalling doc.")

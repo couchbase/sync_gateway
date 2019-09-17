@@ -13,7 +13,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -1547,7 +1546,7 @@ func TestResponseEncoding(t *testing.T) {
 	assert.Equal(t, "gzip", response.Header().Get("Content-Encoding"))
 	unzip, err := gzip.NewReader(response.Body)
 	assert.NoError(t, err)
-	unjson := json.NewDecoder(unzip)
+	unjson := base.JSONDecoder(unzip)
 	var body db.Body
 	assert.Equal(t, nil, unjson.Decode(&body))
 	assert.Equal(t, str, body["long"])

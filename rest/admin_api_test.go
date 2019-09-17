@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -153,7 +155,7 @@ func TestUserAPI(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
 	assertStatus(t, response, 200)
 	body = nil
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
 	goassert.DeepEquals(t, body["all_channels"], []interface{}{"!", "bar", "fedoras", "fixies", "foo"})
 
