@@ -104,6 +104,7 @@
   <!-- Enterprise edition dependencies -->
   <project groups="notdefault,cb_sg_enterprise" name="go-fleecedelta" path="godeps/src/github.com/couchbaselabs/go-fleecedelta" remote="couchbaselabs_private" revision="68cf89ddc17d5fed0c1424083439585bec964590"/>
   <project groups="notdefault,cb_sg_enterprise" name="go-diff" path="godeps/src/github.com/sergi/go-diff" remote="couchbasedeps" revision="da645544ed44df016359bd4c0e3dc60ee3a0da43"/>
+  <project groups="notdefault,cb_sg_enterprise" name="json-iterator-go" path="godeps/src/github.com/json-iterator/go" remote="couchbasedeps" revision="27518f6661eba504be5a7a9a9f6d9460d892ade3"/>
 
   <!-- gozip tools -->
   <project name="ns_server" path="godeps/src/github.com/couchbase/ns_server" remote="couchbase" revision="6d835931f574f25e3781192c09e45a3ee30deb51"/>
