@@ -64,7 +64,10 @@ func TestReadServerConfig(t *testing.T) {
 			if test.err == "" {
 				assert.NoError(tt, err, "unexpected error for test config")
 			} else {
-				if test.errEE != "" && !base.UseStdlibJSON.IsTrue() {
+				if test.errEE != "" &&
+					base.IsEnterpriseEdition() &&
+					!base.UseStdlibJSON {
+					// jsoniter-specific error handling
 					assert.NotNil(tt, err)
 					assert.Contains(tt, err.Error(), test.errEE)
 					return
