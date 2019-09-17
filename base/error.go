@@ -128,7 +128,7 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		case ErrEmptyDocument:
 			return http.StatusBadRequest, "Document body is empty"
 		}
-	case *json.SyntaxError, *json.UnmarshalTypeError:
+	case *json.SyntaxError, *json.UnmarshalTypeError, *JSONIterError:
 		return http.StatusBadRequest, fmt.Sprintf("Invalid JSON: \"%v\"", unwrappedErr)
 	case *RetryTimeoutError:
 		return http.StatusGatewayTimeout, unwrappedErr.Error()
