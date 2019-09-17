@@ -110,7 +110,7 @@ func FixJSONNumbers(value interface{}) interface{} {
 // "thing" -> "thing"
 func ConvertJSONString(s string) string {
 	var jsonString string
-	err := JSONUnmarshal([]byte(s), &jsonString)
+	err := json.Unmarshal([]byte(s), &jsonString)
 	if err != nil {
 		return s
 	} else {
@@ -1039,7 +1039,7 @@ func InjectJSONProperties(b []byte, kvPairs ...KVPair) (new []byte, err error) {
 
 	kvPairsBytes := make([]KVPairBytes, len(kvPairs))
 	for i, kv := range kvPairs {
-		valBytes, err := JSONMarshal(kv.Val)
+		valBytes, err := json.Marshal(kv.Val)
 		if err != nil {
 			return nil, err
 		}
@@ -1121,7 +1121,9 @@ func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, kvPairs []KVPairBytes)
 	return newJSON
 }
 
-var UseStdlibJSON AtomicBool
+// UseStdlibJSON if true, uses the stdlib JSON package.
+// This variable is not thread-safe, and should be set only once on startup.
+var UseStdlibJSON bool
 
 // JSONIterError is returned by the JSON wrapper functions, whenever jsoniter returns a non-nil error.
 type JSONIterError struct {

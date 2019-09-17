@@ -993,7 +993,7 @@ func RunServer(config *ServerConfig) {
 	// Use the stdlib JSON package, if configured to do so
 	if config.Unsupported != nil && config.Unsupported.UseStdlibJSON != nil && *config.Unsupported.UseStdlibJSON {
 		base.Infof(base.KeyAll, "Using the stdlib JSON package")
-		base.UseStdlibJSON.Set(true)
+		base.UseStdlibJSON = true
 	}
 
 	// Set global bcrypt cost if configured

@@ -33,7 +33,7 @@ func Patch(old *map[string]interface{}, delta map[string]interface{}) (err error
 
 // JSONUnmarshal parses the JSON-encoded data and stores the result in the value pointed to by v.
 func JSONUnmarshal(data []byte, v interface{}) (err error) {
-	if !UseStdlibJSON.IsTrue() {
+	if !UseStdlibJSON {
 		err = jsonIterConfig.Unmarshal(data, v)
 		if err != nil {
 			err = &JSONIterError{E: err}
@@ -46,7 +46,7 @@ func JSONUnmarshal(data []byte, v interface{}) (err error) {
 
 // JSONMarshal returns the JSON encoding of v.
 func JSONMarshal(v interface{}) (b []byte, err error) {
-	if !UseStdlibJSON.IsTrue() {
+	if !UseStdlibJSON {
 		b, err = jsonIterConfig.Marshal(v)
 		if err != nil {
 			err = &JSONIterError{E: err}
@@ -59,7 +59,7 @@ func JSONMarshal(v interface{}) (b []byte, err error) {
 
 // JSONDecoder returns a new JSON decoder implementing the JSONDecoderI interface
 func JSONDecoder(r io.Reader) JSONDecoderI {
-	if !UseStdlibJSON.IsTrue() {
+	if !UseStdlibJSON {
 		return jsonIterConfig.NewDecoder(r)
 	} else {
 		return json.NewDecoder(r)
@@ -68,7 +68,7 @@ func JSONDecoder(r io.Reader) JSONDecoderI {
 
 // JSONEncoder returns a new JSON encoder implementing the JSONEncoderI interface
 func JSONEncoder(w io.Writer) JSONEncoderI {
-	if !UseStdlibJSON.IsTrue() {
+	if !UseStdlibJSON {
 		return jsonIterConfig.NewEncoder(w)
 	} else {
 		return json.NewEncoder(w)
