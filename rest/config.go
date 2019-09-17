@@ -636,7 +636,7 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	d := base.JSONDecoder(bytes.NewBuffer(b))
 	d.DisallowUnknownFields()
 	err = d.Decode(config)
-	if err != nil && strings.HasPrefix(err.Error(), "json: unknown field") {
+	if err != nil && strings.Contains(err.Error(), "unknown field") {
 		// Special handling for unknown field errors
 		// json.Decode continues to decode the full data into the struct
 		// so it's safe to use even after this error

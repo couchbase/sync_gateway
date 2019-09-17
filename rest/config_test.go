@@ -16,9 +16,9 @@ import (
 func TestReadServerConfig(t *testing.T) {
 
 	tests := []struct {
-		name   string
-		config string
-		err    string
+		name       string
+		config     string
+		err, errEE string
 	}{
 		{
 			name:   "nil",
@@ -37,16 +37,19 @@ func TestReadServerConfig(t *testing.T) {
 			name:   "unknown field",
 			config: `{"invalid": true}`,
 			err:    `json: unknown field "invalid": unrecognized config value`,
+			errEE:  `found unknown field: invalid`,
 		},
 		{
 			name:   "incorrect type",
 			config: `{"logging": true}`,
 			err:    `json: cannot unmarshal bool into Go struct field ServerConfig.Logging of type base.LoggingConfig`,
+			errEE:  `expect { or n, but found t`,
 		},
 		{
 			name:   "invalid JSON",
 			config: `{true}`,
 			err:    `invalid character 't' looking for beginning of object key string`,
+			errEE:  `expects " or n, but found t`,
 		},
 		{
 			name:   "sync fn backquotes",
@@ -61,6 +64,11 @@ func TestReadServerConfig(t *testing.T) {
 			if test.err == "" {
 				assert.NoError(tt, err, "unexpected error for test config")
 			} else {
+				if test.errEE != "" && !base.UseStdlibJSON.IsTrue() {
+					assert.NotNil(tt, err)
+					assert.Contains(tt, err.Error(), test.errEE)
+					return
+				}
 				assert.EqualError(tt, err, test.err, "expecting error for test config")
 			}
 		})
