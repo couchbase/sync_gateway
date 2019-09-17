@@ -1120,3 +1120,20 @@ func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, kvPairs []KVPairBytes)
 
 	return newJSON
 }
+
+// JSONDecoderI is the common interface between json.Decoder and jsoniter.Decoder
+type JSONDecoderI interface {
+	UseNumber()
+	DisallowUnknownFields()
+	Decode(v interface{}) error
+	Buffered() io.Reader
+	//Token() (json.Token, error) // Not implemented by jsoniter
+	More() bool
+}
+
+// JSONEncoderI is the common interface between json.Encoder and jsoniter.Encoder
+type JSONEncoderI interface {
+	Encode(v interface{}) error
+	SetIndent(prefix, indent string)
+	SetEscapeHTML(on bool)
+}
