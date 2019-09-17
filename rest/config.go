@@ -286,6 +286,7 @@ type ChannelCacheConfig struct {
 type UnsupportedServerConfig struct {
 	Http2Config           *Http2Config `json:"http2,omitempty"`               // Config settings for HTTP2
 	StatsLogFrequencySecs *uint        `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
+	UseStdlibJSON         *bool        `json:"use_stdlib_json,omitempty"`     // Bypass the jsoniter package and use Go's stdlib instead
 }
 
 type Http2Config struct {
@@ -988,6 +989,12 @@ func RunServer(config *ServerConfig) {
 	}
 
 	SetMaxFileDescriptors(config.MaxFileDescriptors)
+
+	// Use the stdlib JSON package, if configured to do so
+	if config.Unsupported != nil && config.Unsupported.UseStdlibJSON != nil && *config.Unsupported.UseStdlibJSON {
+		base.Infof(base.KeyAll, "Using the stdlib JSON package")
+		base.UseStdlibJSON.Set(true)
+	}
 
 	// Set global bcrypt cost if configured
 	if config.BcryptCost > 0 {

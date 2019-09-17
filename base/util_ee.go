@@ -3,6 +3,7 @@
 package base
 
 import (
+	"encoding/json"
 	"io"
 	"time"
 
@@ -31,32 +32,45 @@ func Patch(old *map[string]interface{}, delta map[string]interface{}) (err error
 }
 
 // JSONUnmarshal parses the JSON-encoded data and stores the result in the value pointed to by v.
-func JSONUnmarshal(data []byte, v interface{}) error {
-	// TODO: Fall back to stdlib json when unsupported config option is set
-	if err := jsonIterConfig.Unmarshal(data, v); err != nil {
-		return &JSONIterError{E: err}
+func JSONUnmarshal(data []byte, v interface{}) (err error) {
+	if !UseStdlibJSON.IsTrue() {
+		err = jsonIterConfig.Unmarshal(data, v)
+		if err != nil {
+			err = &JSONIterError{E: err}
+		}
+	} else {
+		err = json.Unmarshal(data, v)
 	}
-	return nil
+	return err
 }
 
 // JSONMarshal returns the JSON encoding of v.
-func JSONMarshal(v interface{}) ([]byte, error) {
-	// TODO: Fall back to stdlib json when unsupported config option is set
-	b, err := jsonIterConfig.Marshal(v)
-	if err != nil {
-		return nil, &JSONIterError{E: err}
+func JSONMarshal(v interface{}) (b []byte, err error) {
+	if !UseStdlibJSON.IsTrue() {
+		b, err = jsonIterConfig.Marshal(v)
+		if err != nil {
+			err = &JSONIterError{E: err}
+		}
+	} else {
+		b, err = json.Marshal(v)
 	}
-	return b, nil
+	return b, err
 }
 
 // JSONDecoder returns a new JSON decoder implementing the JSONDecoderI interface
 func JSONDecoder(r io.Reader) JSONDecoderI {
-	// TODO: Fall back to stdlib json when unsupported config option is set
-	return jsonIterConfig.NewDecoder(r)
+	if !UseStdlibJSON.IsTrue() {
+		return jsonIterConfig.NewDecoder(r)
+	} else {
+		return json.NewDecoder(r)
+	}
 }
 
 // JSONEncoder returns a new JSON encoder implementing the JSONEncoderI interface
 func JSONEncoder(w io.Writer) JSONEncoderI {
-	// TODO: Fall back to stdlib json when unsupported config option is set
-	return jsonIterConfig.NewEncoder(w)
+	if !UseStdlibJSON.IsTrue() {
+		return jsonIterConfig.NewEncoder(w)
+	} else {
+		return json.NewEncoder(w)
+	}
 }

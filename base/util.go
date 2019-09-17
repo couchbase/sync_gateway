@@ -1121,6 +1121,9 @@ func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, kvPairs []KVPairBytes)
 	return newJSON
 }
 
+var UseStdlibJSON AtomicBool
+
+// JSONIterError is returned by the JSON wrapper functions, whenever jsoniter returns a non-nil error.
 type JSONIterError struct {
 	E error
 }
