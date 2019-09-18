@@ -44,8 +44,8 @@ class LogRedactor:
             log("I/O error(%s): %s" % (e.errno, e.strerror))
 
     def redact_file(self, name, ifile):
-        ofile = os.path.join(self.target_dir, name)
         _, filename = os.path.split(name)
+        ofile = os.path.join(self.target_dir, filename)
         self._process_file(ifile, ofile, self.regular_log)
         return ofile
 
@@ -53,6 +53,7 @@ class LogRedactor:
         ostring = self.couchbase_log.do("RedactLevel")
         ostring += self.regular_log.do(istring)
         return ostring
+
 
 class CouchbaseLogProcessor:
     def __init__(self, salt):
@@ -323,7 +324,9 @@ class TaskRunner(object):
         redactor = LogRedactor(salt, self.tmpdir)
 
         for name, fp in self.files.iteritems():
-            if not (".gz" in name or "expvars.json" in name):
+            if not (".gz" in name or
+                    "expvars.json" in name or
+                    os.path.basename(name) == "sync_gateway"):
                 files.append(redactor.redact_file(name, fp.name))
             else:
                 files.append(fp.name)
