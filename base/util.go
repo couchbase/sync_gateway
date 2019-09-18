@@ -1120,3 +1120,33 @@ func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, kvPairs []KVPairBytes)
 
 	return newJSON
 }
+
+// UseStdlibJSON if true, uses the stdlib JSON package.
+// This variable is not thread-safe, and should be set only once on startup.
+var UseStdlibJSON bool
+
+// JSONIterError is returned by the JSON wrapper functions, whenever jsoniter returns a non-nil error.
+type JSONIterError struct {
+	E error
+}
+
+func (iterErr *JSONIterError) Error() string {
+	return iterErr.E.Error()
+}
+
+// JSONDecoderI is the common interface between json.Decoder and jsoniter.Decoder
+type JSONDecoderI interface {
+	UseNumber()
+	DisallowUnknownFields()
+	Decode(v interface{}) error
+	Buffered() io.Reader
+	//Token() (json.Token, error) // Not implemented by jsoniter
+	More() bool
+}
+
+// JSONEncoderI is the common interface between json.Encoder and jsoniter.Encoder
+type JSONEncoderI interface {
+	Encode(v interface{}) error
+	SetIndent(prefix, indent string)
+	SetEscapeHTML(on bool)
+}
