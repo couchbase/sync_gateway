@@ -370,6 +370,10 @@ func (h *handler) handleGetRawDoc() error {
 
 	doc, err := h.db.GetDocument(docid, db.DocUnmarshalSync)
 
+	if err != nil {
+		return err
+	}
+
 	response := map[string]interface{}{}
 
 	if includeDoc {

@@ -3940,6 +3940,14 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 
 }
 
+func TestGetRawDocumentError(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("GET", "/db/_raw/doc", ``)
+	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	prt := NewRestTester(b, nil)
