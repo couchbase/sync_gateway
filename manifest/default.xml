@@ -7,8 +7,6 @@
 
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
 
-  <remote fetch="https://github.com/modern-go/" name="modern-go"/>
-
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
   
   <default remote="couchbase" revision="master"/>
@@ -108,8 +106,8 @@
   <project groups="notdefault,cb_sg_enterprise" name="go-diff" path="godeps/src/github.com/sergi/go-diff" remote="couchbasedeps" revision="da645544ed44df016359bd4c0e3dc60ee3a0da43"/>
 
   <project groups="notdefault,cb_sg_enterprise" name="json-iterator-go" path="godeps/src/github.com/json-iterator/go" remote="couchbasedeps" revision="27518f6661eba504be5a7a9a9f6d9460d892ade3"/>
-  <project groups="notdefault,cb_sg_enterprise" name="concurrent" path="godeps/src/github.com/modern-go/concurrent" remote="modern-go" revision="bacd9c7ef1dd9b15be4a9909b8ac7a4e313eec94"/>
-  <project groups="notdefault,cb_sg_enterprise" name="reflect2" path="godeps/src/github.com/modern-go/reflect2" remote="modern-go" revision="94122c33edd36123c84d5368cfb2b69df93a0ec8"/>
+  <project groups="notdefault,cb_sg_enterprise" name="concurrent" path="godeps/src/github.com/modern-go/concurrent" remote="couchbasedeps" revision="bacd9c7ef1dd9b15be4a9909b8ac7a4e313eec94"/>
+  <project groups="notdefault,cb_sg_enterprise" name="reflect2" path="godeps/src/github.com/modern-go/reflect2" remote="couchbasedeps" revision="94122c33edd36123c84d5368cfb2b69df93a0ec8"/>
   <!-- Enterprise edition dependencies -->
 
   <!-- gozip tools -->
