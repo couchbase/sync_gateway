@@ -367,7 +367,7 @@ func createRevID(generation int, parentRevID string, body Body) (string, error) 
 	digester := md5.New()
 	digester.Write([]byte{byte(len(parentRevID))})
 	digester.Write([]byte(parentRevID))
-	encoding, err := canonicalEncoding(stripSpecialProperties(body))
+	encoding, err := base.JSONMarshalCanonical(stripSpecialProperties(body))
 	if err != nil {
 		return "", err
 	}
@@ -464,11 +464,6 @@ func containsUserSpecialProperties(b Body) bool {
 		}
 	}
 	return false
-}
-
-// canonicalEncoding returns the canonical version of body as bytes
-func canonicalEncoding(body Body) ([]byte, error) {
-	return base.JSONMarshal(body) // FIXME: Use canonical JSON encoder
 }
 
 func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {

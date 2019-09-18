@@ -19,8 +19,6 @@ func init() {
 	fleecedelta.StringDiffTimeout = time.Millisecond // Aggressive string diff timeout
 }
 
-var jsonIterConfig = jsoniter.ConfigCompatibleWithStandardLibrary
-
 // Diff will return the fleece delta between old and new.
 func Diff(old, new map[string]interface{}) (delta []byte, err error) {
 	return fleecedelta.DiffJSON(old, new)
@@ -34,7 +32,7 @@ func Patch(old *map[string]interface{}, delta map[string]interface{}) (err error
 // JSONUnmarshal parses the JSON-encoded data and stores the result in the value pointed to by v.
 func JSONUnmarshal(data []byte, v interface{}) (err error) {
 	if !UseStdlibJSON {
-		err = jsonIterConfig.Unmarshal(data, v)
+		err = jsoniter.Unmarshal(data, v)
 		if err != nil {
 			err = &JSONIterError{E: err}
 		}
@@ -47,7 +45,20 @@ func JSONUnmarshal(data []byte, v interface{}) (err error) {
 // JSONMarshal returns the JSON encoding of v.
 func JSONMarshal(v interface{}) (b []byte, err error) {
 	if !UseStdlibJSON {
-		b, err = jsonIterConfig.Marshal(v)
+		b, err = jsoniter.Marshal(v)
+		if err != nil {
+			err = &JSONIterError{E: err}
+		}
+	} else {
+		b, err = json.Marshal(v)
+	}
+	return b, err
+}
+
+// JSONMarshalCanonical returns the stdlib-compatible JSON encoding of v.
+func JSONMarshalCanonical(v interface{}) (b []byte, err error) {
+	if !UseStdlibJSON {
+		b, err = jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(v)
 		if err != nil {
 			err = &JSONIterError{E: err}
 		}
@@ -60,7 +71,7 @@ func JSONMarshal(v interface{}) (b []byte, err error) {
 // JSONDecoder returns a new JSON decoder implementing the JSONDecoderI interface
 func JSONDecoder(r io.Reader) JSONDecoderI {
 	if !UseStdlibJSON {
-		return jsonIterConfig.NewDecoder(r)
+		return jsoniter.NewDecoder(r)
 	} else {
 		return json.NewDecoder(r)
 	}
@@ -69,7 +80,7 @@ func JSONDecoder(r io.Reader) JSONDecoderI {
 // JSONEncoder returns a new JSON encoder implementing the JSONEncoderI interface
 func JSONEncoder(w io.Writer) JSONEncoderI {
 	if !UseStdlibJSON {
-		return jsonIterConfig.NewEncoder(w)
+		return jsoniter.NewEncoder(w)
 	} else {
 		return json.NewEncoder(w)
 	}
