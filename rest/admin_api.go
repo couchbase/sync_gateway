@@ -390,7 +390,7 @@ func (h *handler) handleGetRawDoc() error {
 	}
 
 	h.writeJSON(response)
-	return err
+	return nil
 }
 
 func (h *handler) handleGetRevTree() error {
