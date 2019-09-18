@@ -370,6 +370,10 @@ func (h *handler) handleGetRawDoc() error {
 
 	doc, err := h.db.GetDocument(docid, db.DocUnmarshalSync)
 
+	if err != nil {
+		return err
+	}
+
 	response := map[string]interface{}{}
 
 	if includeDoc {
@@ -386,7 +390,7 @@ func (h *handler) handleGetRawDoc() error {
 	}
 
 	h.writeJSON(response)
-	return err
+	return nil
 }
 
 func (h *handler) handleGetRevTree() error {
