@@ -1722,8 +1722,8 @@ func TestRawRedaction(t *testing.T) {
 	res := rt.SendAdminRequest("PUT", "/db/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
 	assertStatus(t, res, http.StatusCreated)
 
-	// Test redact being disabled
-	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?redact=false", ``)
+	// Test redact being disabled by default
+	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc", ``)
 	var body map[string]interface{}
 	err := json.Unmarshal(res.Body.Bytes(), &body)
 	assert.NoError(t, err)
@@ -1733,26 +1733,26 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test redacted
 	body = map[string]interface{}{}
-	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc", ``)
+	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?redact=true&include_doc=false", ``)
 	err = json.Unmarshal(res.Body.Bytes(), &body)
 	assert.NoError(t, err)
 	syncData = body["_sync"]
 	assert.NotEqual(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
 	assert.NotEqual(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
 
-	// Test include doc returns doc
+	// Test include doc false doesn't return doc
 	body = map[string]interface{}{}
-	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=true&redact=false", ``)
-	err = json.Unmarshal(res.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.Equal(t, "bar", body["foo"])
-
-	// Test no doc is returned by default
-	body = map[string]interface{}{}
-	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc", ``)
+	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=false", ``)
 	assert.NotContains(t, res.Body.String(), "foo")
 
+	// Test doc is returned by default
+	body = map[string]interface{}{}
+	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc", ``)
+	err = json.Unmarshal(res.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.Equal(t, body["foo"], "bar")
+
 	// Test that you can't use include_doc and redact at the same time
-	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=true", ``)
+	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=true&redact=true", ``)
 	assertStatus(t, res, http.StatusBadRequest)
 }
