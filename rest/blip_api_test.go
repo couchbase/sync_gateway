@@ -2060,9 +2060,10 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		// Validate that generation of a delta didn't mutate the revision body in the revision cache
 		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.BodyShallowCopy)
 		assert.NoError(t, cacheErr)
-		marshalledBody, _ := base.JSONMarshal(docRev.Body)
-		assert.Equal(t, []byte(`{"_id":"doc1","_rev":"1-0335a345b6ffed05707ccc4cbc1b67f4","greetings":[{"hello":"world!"},{"hi":"alice"}]}`), marshalledBody)
-
+		greetings := docRev.Body["greetings"].([]interface{})
+		assert.Len(t, greetings, 2)
+		assert.Equal(t, map[string]interface{}{"hello": "world!"}, greetings[0])
+		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[1])
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
 		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
@@ -2075,7 +2076,15 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev="+newRev, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, `{"_id":"doc1","_rev":"2-abcxyz","greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, resp.Body.String())
+	var respBody db.Body
+	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
+	assert.Equal(t, "doc1", respBody[db.BodyId])
+	assert.Equal(t, "2-abcxyz", respBody[db.BodyRev])
+	greetings := respBody["greetings"].([]interface{})
+	assert.Len(t, greetings, 3)
+	assert.Equal(t, map[string]interface{}{"hello": "world!"}, greetings[0])
+	assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[1])
+	assert.Equal(t, map[string]interface{}{"howdy": "bob"}, greetings[2])
 }
 
 // TestBlipNonDeltaSyncPush tests that a client that doesn't support deltas can push to a SG that supports deltas (either CE or EE)
@@ -2159,7 +2168,15 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 
 	data, ok = client.WaitForRev("doc1", "2-10000d5ec533b29b117e60274b1e3653")
 	assert.True(t, ok)
-	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+	var dataMap map[string]interface{}
+	assert.NoError(t, base.JSONUnmarshal(data, &dataMap))
+	atts := dataMap[db.BodyAttachments].(map[string]interface{})
+	assert.Len(t, atts, 1)
+	hello := atts["hello.txt"].(map[string]interface{})
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, float64(11), hello["length"])
+	assert.Equal(t, float64(2), hello["revpos"])
+	assert.Equal(t, true, hello["stub"])
 
 	// message #3 is the getAttachment message that is sent in-between rev processing
 	msg, ok := client.pullReplication.WaitForMessage(3)
@@ -2189,5 +2206,20 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-10000d5ec533b29b117e60274b1e3653", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-10000d5ec533b29b117e60274b1e3653","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
+	var respBody db.Body
+	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
+	assert.Equal(t, "doc1", respBody[db.BodyId])
+	assert.Equal(t, "2-10000d5ec533b29b117e60274b1e3653", respBody[db.BodyRev])
+	greetings := respBody["greetings"].([]interface{})
+	assert.Len(t, greetings, 2)
+	assert.Equal(t, map[string]interface{}{"hello": "world!"}, greetings[0])
+	assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[1])
+	atts = respBody[db.BodyAttachments].(map[string]interface{})
+	assert.Len(t, atts, 1)
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, float64(11), hello["length"])
+	assert.Equal(t, float64(2), hello["revpos"])
+	assert.Equal(t, true, hello["stub"])
+
+	//assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-10000d5ec533b29b117e60274b1e3653","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
 }
