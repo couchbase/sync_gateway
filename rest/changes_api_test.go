@@ -1577,34 +1577,31 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedResults[9] = `{"seq":24,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
 	changesResponse := rt.Send(requestByUser("GET", "/db/_changes?include_docs=true", "", "user1"))
 
-	// If we unmarshal results to db.ChangeEntry, json numbers get mangled by the test.  Validate against RawMessage to simplify.
-	var changes struct {
-		Results []*json.RawMessage
-	}
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	var changes changesResults
+	assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
 	assert.Equal(t, len(expectedResults), len(changes.Results))
 
 	for index, result := range changes.Results {
-		assert.Equal(t, fmt.Sprintf("%s", *result), expectedResults[index])
+		var expectedChange db.ChangeEntry
+		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, result, expectedChange)
 	}
 
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
 	testDB.FlushRevisionCacheForTest()
 	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
-	testDB.Bucket.Delete("_sync:rev:doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00")
+	assert.NoError(t, testDB.Bucket.Delete("_sync:rev:doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00"))
 
 	postFlushChangesResponse := rt.Send(requestByUser("GET", "/db/_changes?include_docs=true", "", "user1"))
 
-	var postFlushChanges struct {
-		Results []*json.RawMessage
-	}
-	err = base.JSONUnmarshal(postFlushChangesResponse.Body.Bytes(), &postFlushChanges)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	var postFlushChanges changesResults
+	assert.NoError(t, base.JSONUnmarshal(postFlushChangesResponse.Body.Bytes(), &postFlushChanges))
 	assert.Equal(t, len(expectedResults), len(postFlushChanges.Results))
 
 	for index, result := range postFlushChanges.Results {
-		assert.Equal(t, fmt.Sprintf("%s", *result), expectedResults[index])
+		var expectedChange db.ChangeEntry
+		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, result, expectedChange)
 	}
 
 	// Validate include_docs=false, style=all_docs permutations
@@ -1635,15 +1632,14 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"},{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
 
 	combinedChangesResponse := rt.Send(requestByUser("GET", "/db/_changes?style=all_docs&include_docs=true", "", "user1"))
-	var combinedChanges struct {
-		Results []*json.RawMessage
-	}
-
-	err = base.JSONUnmarshal(combinedChangesResponse.Body.Bytes(), &combinedChanges)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	var combinedChanges changesResults
+	assert.NoError(t, base.JSONUnmarshal(combinedChangesResponse.Body.Bytes(), &combinedChanges))
 	assert.Equal(t, len(expectedResults), len(combinedChanges.Results))
+
 	for index, result := range combinedChanges.Results {
-		assert.Equal(t, fmt.Sprintf("%s", *result), expectedResults[index])
+		var expectedChange db.ChangeEntry
+		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, result, expectedChange)
 	}
 }
 
