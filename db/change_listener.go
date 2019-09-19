@@ -39,7 +39,7 @@ func (listener *changeListener) Init(name string) {
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket, bucketStateNotify sgbucket.BucketNotifyFn, dbStats *expvar.Map) error {
+func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) error {
 
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
@@ -47,7 +47,6 @@ func (listener *changeListener) Start(bucket base.Bucket, bucketStateNotify sgbu
 	listener.FeedArgs = sgbucket.FeedArguments{
 		ID:         base.DCPCachingFeedID,
 		Backfill:   sgbucket.FeedNoBackfill,
-		Notify:     bucketStateNotify,
 		Terminator: listener.terminator,
 	}
 

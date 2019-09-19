@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -75,6 +76,8 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		Warnf(KeyAuth, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
 	}
+
+	log.Printf("----Attempting to connect to bucket with connString %s", connString)
 
 	cluster, err := gocb.Connect(connString)
 	if err != nil {
@@ -2280,7 +2283,8 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbS
 }
 
 func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return StartDCPFeed(bucket, bucket.spec, args, callback, dbStats)
+	return StartCbgtDCPFeed(bucket, bucket.spec, args, callback, dbStats)
+	//	return StartDCPFeed(bucket, bucket.spec, args, callback, dbStats)
 }
 
 func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
