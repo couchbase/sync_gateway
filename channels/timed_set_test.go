@@ -11,6 +11,7 @@ package channels
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -24,17 +25,24 @@ func TestTimedSetMarshal(t *testing.T) {
 	}
 	bytes, err := base.JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
-	goassert.Equals(t, string(bytes), `{"Channels":null}`)
+	assert.Equal(t, string(bytes), `{"Channels":null}`)
 
 	str.Channels = TimedSet{}
 	bytes, err = base.JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":{}}`)
 
+	str.Channels = AtSequence(SetOf(t, "a"), 17)
+	bytes, err = base.JSONMarshal(str)
+	assert.NoError(t, err, "Marshal")
+	goassert.Equals(t, string(bytes), `{"Channels":{"a":17}}`)
+
 	str.Channels = AtSequence(SetOf(t, "a", "b"), 17)
 	bytes, err = base.JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
-	goassert.Equals(t, string(bytes), `{"Channels":{"a":17,"b":17}}`)
+	// Ordering of JSON keys can vary - so just check each channel is present with the correct sequence
+	assert.True(t, strings.Contains(string(bytes), `"a":17`))
+	assert.True(t, strings.Contains(string(bytes), `"b":17`))
 }
 
 func TestTimedSetUnmarshal(t *testing.T) {
