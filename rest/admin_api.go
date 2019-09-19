@@ -358,8 +358,8 @@ func (h *handler) handleActiveTasks() error {
 func (h *handler) handleGetRawDoc() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
-	includeDoc := h.getBoolQuery("include_doc")
-	redact := h.getOptBoolQuery("redact", true)
+	includeDoc := h.getOptBoolQuery("include_doc", true)
+	redact := h.getBoolQuery("redact")
 	salt := h.getQuery("salt")
 
 	if redact && includeDoc {
