@@ -763,32 +763,42 @@ func TestBulkDocs(t *testing.T) {
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}, {"_id": "_local/bulk3", "n": 3}]}`
 	response := rt.SendRequest("POST", "/db/_bulk_docs", input)
 	assertStatus(t, response, 201)
+
 	var docs []interface{}
-	base.JSONUnmarshal(response.Body.Bytes(), &docs)
-	goassert.Equals(t, len(docs), 3)
-	goassert.DeepEquals(t, docs[0],
-		map[string]interface{}{"rev": "1-50133ddd8e49efad34ad9ecae4cb9907", "id": "bulk1"})
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
+	assert.Len(t, docs, 3)
+	assert.Equal(t, map[string]interface{}{"rev": "1-50133ddd8e49efad34ad9ecae4cb9907", "id": "bulk1"}, docs[0])
+
 	response = rt.SendRequest("GET", "/db/bulk1", "")
-	goassert.Equals(t, response.Body.String(), `{"_id":"bulk1","_rev":"1-50133ddd8e49efad34ad9ecae4cb9907","n":1}`)
-	goassert.DeepEquals(t, docs[1],
-		map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"})
-	goassert.DeepEquals(t, docs[2],
-		map[string]interface{}{"rev": "0-1", "id": "_local/bulk3"})
-	response = rt.SendRequest("GET", "/db/_local/bulk3", "")
-	goassert.Equals(t, response.Body.String(), `{"_id":"_local/bulk3","_rev":"0-1","n":3}`)
 	assertStatus(t, response, 200)
+	var respBody db.Body
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+	assert.Equal(t, "bulk1", respBody[db.BodyId])
+	assert.Equal(t, "1-50133ddd8e49efad34ad9ecae4cb9907", respBody[db.BodyRev])
+	assert.Equal(t, float64(1), respBody["n"])
+	assert.Equal(t, map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"}, docs[1])
+	assert.Equal(t, map[string]interface{}{"rev": "0-1", "id": "_local/bulk3"}, docs[2])
+
+	response = rt.SendRequest("GET", "/db/_local/bulk3", "")
+	assertStatus(t, response, 200)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+	assert.Equal(t, "_local/bulk3", respBody[db.BodyId])
+	assert.Equal(t, "0-1", respBody[db.BodyRev])
+	assert.Equal(t, float64(3), respBody["n"])
 
 	// update all documents
 	input = `{"docs": [{"_id": "bulk1", "_rev" : "1-50133ddd8e49efad34ad9ecae4cb9907", "n": 10}, {"_id": "bulk2", "_rev":"1-035168c88bd4b80fb098a8da72f881ce", "n": 20}, {"_id": "_local/bulk3","_rev":"0-1","n": 30}]}`
 	response = rt.SendRequest("POST", "/db/_bulk_docs", input)
-	base.JSONUnmarshal(response.Body.Bytes(), &docs)
-	goassert.Equals(t, len(docs), 3)
-	goassert.DeepEquals(t, docs[0],
-		map[string]interface{}{"rev": "2-7e384b16e63ee3218349ee568f156d6f", "id": "bulk1"})
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
+	assert.Len(t, docs, 3)
+	assert.Equal(t, map[string]interface{}{"rev": "2-7e384b16e63ee3218349ee568f156d6f", "id": "bulk1"}, docs[0])
 
 	response = rt.SendRequest("GET", "/db/_local/bulk3", "")
-	goassert.Equals(t, response.Body.String(), `{"_id":"_local/bulk3","_rev":"0-2","n":30}`)
 	assertStatus(t, response, 200)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+	assert.Equal(t, "_local/bulk3", respBody[db.BodyId])
+	assert.Equal(t, "0-2", respBody[db.BodyRev])
+	assert.Equal(t, float64(30), respBody["n"])
 }
 
 func TestBulkDocsIDGeneration(t *testing.T) {
@@ -1492,7 +1502,11 @@ func TestLocalDocs(t *testing.T) {
 	assertStatus(t, response, 201)
 	response = rt.SendRequest("GET", "/db/_local/loc1", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-1","hi":"there"}`)
+	var respBody db.Body
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+	assert.Equal(t, "_local/loc1", respBody[db.BodyId])
+	assert.Equal(t, "0-1", respBody[db.BodyRev])
+	assert.Equal(t, "there", respBody["hi"])
 
 	response = rt.SendRequest("PUT", "/db/_local/loc1", `{"hi": "there"}`)
 	assertStatus(t, response, 409)
@@ -1500,14 +1514,20 @@ func TestLocalDocs(t *testing.T) {
 	assertStatus(t, response, 201)
 	response = rt.SendRequest("GET", "/db/_local/loc1", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-2","hi":"again"}`)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+	assert.Equal(t, "_local/loc1", respBody[db.BodyId])
+	assert.Equal(t, "0-2", respBody[db.BodyRev])
+	assert.Equal(t, "again", respBody["hi"])
 
 	// Check the handling of large integers, which caused trouble for us at one point:
 	response = rt.SendRequest("PUT", "/db/_local/loc1", `{"big": 123456789, "_rev": "0-2"}`)
 	assertStatus(t, response, 201)
 	response = rt.SendRequest("GET", "/db/_local/loc1", "")
 	assertStatus(t, response, 200)
-	goassert.Equals(t, response.Body.String(), `{"_id":"_local/loc1","_rev":"0-3","big":123456789}`)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+	assert.Equal(t, "_local/loc1", respBody[db.BodyId])
+	assert.Equal(t, "0-3", respBody[db.BodyRev])
+	assert.Equal(t, float64(123456789), respBody["big"])
 
 	response = rt.SendRequest("DELETE", "/db/_local/loc1", "")
 	assertStatus(t, response, 409)
