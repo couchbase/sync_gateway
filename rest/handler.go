@@ -406,15 +406,16 @@ func (h *handler) getJSONStringQuery(query string) string {
 }
 
 func (h *handler) getBoolQuery(query string) bool {
-	return h.getOptBoolQuery(query, false)
+	result, _ := h.getOptBoolQuery(query, false)
+	return result
 }
 
-func (h *handler) getOptBoolQuery(query string, defaultValue bool) bool {
+func (h *handler) getOptBoolQuery(query string, defaultValue bool) (result, isSet bool) {
 	q := h.getQuery(query)
 	if q == "" {
-		return defaultValue
+		return defaultValue, false
 	}
-	return q == "true"
+	return q == "true", true
 }
 
 // Returns the integer value of a URL query, defaulting to 0 if unparseable
