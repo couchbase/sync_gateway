@@ -364,7 +364,7 @@ func (h *handler) handleGetRawDoc() error {
 
 	if redact && includeDoc {
 		return base.HTTPErrorf(http.StatusBadRequest, "redact and include_doc cannot be true at the same time. "+
-			"If you want to include_doc you must add redact=false")
+			"If you want to redact you must add include_doc=false")
 
 	}
 
