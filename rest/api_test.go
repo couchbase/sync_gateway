@@ -1365,10 +1365,19 @@ func TestOpenRevs(t *testing.T) {
 	}
 	response = rt.SendRequestWithHeaders("GET", `/db/or1?open_revs=["12-abc","10-ten"]`, "", reqHeaders)
 	assertStatus(t, response, 200)
-	goassert.Equals(t, response.Body.String(), `[
-{"ok":{"_id":"or1","_rev":"12-abc","n":1}}
-,{"missing":"10-ten"}
-]`)
+
+	var respBody []map[string]interface{}
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+
+	assert.Len(t, respBody, 2)
+
+	ok := respBody[0]["ok"].(map[string]interface{})
+	assert.NotNil(t, ok)
+	assert.Equal(t, "or1", ok[db.BodyId])
+	assert.Equal(t, "12-abc", ok[db.BodyRev])
+	assert.Equal(t, float64(1), ok["n"])
+
+	assert.Equal(t, "10-ten", respBody[1]["missing"])
 }
 
 // Attempts to get a varying number of revisions on a per-doc basis.

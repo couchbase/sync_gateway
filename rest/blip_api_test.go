@@ -2131,7 +2131,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev="+newRev, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	assert.Equal(t, `{"_id":"doc1","_rev":"2-abcxyz","greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, resp.Body.String())
+	assert.Contains(t, resp.Body.String(), `{"howdy":"bob"}`)
 }
 
 // TestBlipDeltaSyncNewAttachmentPull tests that adding a new attachment in SG and replicated via delta sync adds the attachment
