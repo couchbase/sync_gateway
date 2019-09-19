@@ -334,13 +334,14 @@ func TestRebuildRoleChannels(t *testing.T) {
 	defer gTestBucket.Close()
 	computer := mockComputer{roleChannels: ch.AtSequence(ch.SetOf(t, "derived1", "derived2"), 1)}
 	auth := NewAuthenticator(gTestBucket.Bucket, &computer)
-	role, _ := auth.NewRole("testRole", ch.SetOf(t, "explicit1"))
-	err := auth.InvalidateChannels(role)
+	role, err := auth.NewRole("testRole", ch.SetOf(t, "explicit1"))
+	assert.NoError(t, err)
+	err = auth.InvalidateChannels(role)
 	assert.Equal(t, nil, err)
 
 	role2, err := auth.GetRole("testRole")
 	assert.Equal(t, nil, err)
-	goassert.DeepEquals(t, role2.Channels(), ch.AtSequence(ch.SetOf(t, "explicit1", "derived1", "derived2", "!"), 1))
+	assert.Equal(t, ch.AtSequence(ch.SetOf(t, "explicit1", "derived1", "derived2", "!"), 1), role2.Channels())
 }
 
 func TestRebuildChannelsError(t *testing.T) {
@@ -350,14 +351,14 @@ func TestRebuildChannelsError(t *testing.T) {
 	computer := mockComputer{}
 	auth := NewAuthenticator(gTestBucket.Bucket, &computer)
 	role, err := auth.NewRole("testRole2", ch.SetOf(t, "explicit1"))
-	assert.Equal(t, nil, err)
+	assert.NoError(t, err)
 	assert.Equal(t, nil, auth.InvalidateChannels(role))
 
 	computer.err = errors.New("I'm sorry, Dave.")
 
 	role2, err := auth.GetRole("testRole2")
-	assert.Equal(t, nil, role2)
-	goassert.DeepEquals(t, err, computer.err)
+	assert.Nil(t, role2)
+	assert.Equal(t, computer.err, err)
 }
 
 func TestRebuildUserRoles(t *testing.T) {
