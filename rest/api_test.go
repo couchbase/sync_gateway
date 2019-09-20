@@ -21,6 +21,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"strconv"
 	"strings"
@@ -3974,6 +3975,48 @@ func TestGetRawDocumentError(t *testing.T) {
 
 	response := rt.SendAdminRequest("GET", "/db/_raw/doc", ``)
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+func TestWebhookProperties(t *testing.T) {
+
+	wg := sync.WaitGroup{}
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		out, err := ioutil.ReadAll(r.Body)
+		assert.NoError(t, err)
+		err = r.Body.Close()
+		assert.NoError(t, err)
+		assert.Contains(t, string(out), db.BodyId)
+		assert.Contains(t, string(out), db.BodyRev)
+		wg.Done()
+	}
+
+	s := httptest.NewServer(http.HandlerFunc(handler))
+	defer s.Close()
+
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport:    true,
+			EventHandlers: map[string]interface{}{"document_changed": []map[string]interface{}{{"url": s.URL, "filter": "function(doc){return true;}", "handler": "webhook"}}},
+		},
+	}
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
+	wg.Add(1)
+
+	if base.TestUseXattrs() {
+		body := make(map[string]interface{})
+		body["foo"] = "bar"
+		added, err := rt.Bucket().Add("doc2", 0, body)
+		assert.True(t, added)
+		assert.NoError(t, err)
+		wg.Add(1)
+	}
+
+	wg.Wait()
+
 }
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
