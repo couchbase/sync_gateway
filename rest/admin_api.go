@@ -358,14 +358,18 @@ func (h *handler) handleActiveTasks() error {
 func (h *handler) handleGetRawDoc() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
-	includeDoc := h.getBoolQuery("include_doc")
-	redact := h.getOptBoolQuery("redact", true)
+
+	includeDoc, includeDocSet := h.getOptBoolQuery("include_doc", true)
+	redact, _ := h.getOptBoolQuery("redact", false)
 	salt := h.getQuery("salt")
 
-	if redact && includeDoc {
+	if redact && includeDoc && includeDocSet {
 		return base.HTTPErrorf(http.StatusBadRequest, "redact and include_doc cannot be true at the same time. "+
-			"If you want to include_doc you must add redact=false")
+			"If you want to redact you must specify include_doc=false")
+	}
 
+	if redact && !includeDocSet {
+		includeDoc = false
 	}
 
 	doc, err := h.db.GetDocument(docid, db.DocUnmarshalSync)
