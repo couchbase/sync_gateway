@@ -235,6 +235,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		return newDoc, nil, updatedExpiry, nil
 	})
 
+	body[BodyId] = docid
+	body[BodyRev] = newRev
+
 	switch err {
 	case base.ErrAlreadyImported, base.ErrDocumentMigrated:
 		// If the doc was already imported, we want to return the imported version
