@@ -22,7 +22,7 @@ const testLiveHTTP = false
 type TestingHandler struct {
 	receivedType  EventType
 	payload       Body
-	ResultChannel chan Body // channel for tracking async results
+	ResultChannel chan interface{} // channel for tracking async results
 	HandledEvent  EventType
 	handleDelay   int        // long running handler execution
 	t             *testing.T //enclosing test instance
@@ -34,7 +34,7 @@ func (th *TestingHandler) HandleEvent(event Event) {
 		time.Sleep(time.Duration(th.handleDelay) * time.Millisecond)
 	}
 	if dceEvent, ok := event.(*DocumentChangeEvent); ok {
-		th.ResultChannel <- dceEvent.Doc
+		th.ResultChannel <- dceEvent.DocBytes
 	}
 
 	if dsceEvent, ok := event.(*DBStateChangeEvent); ok {
@@ -67,7 +67,7 @@ func (th *TestingHandler) HandleEvent(event Event) {
 	return
 }
 
-func (th *TestingHandler) SetChannel(channel chan Body) {
+func (th *TestingHandler) SetChannel(channel chan interface{}) {
 	th.ResultChannel = channel
 }
 
@@ -85,7 +85,7 @@ func TestDocumentChangeEvent(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
-	eventForTest := func(i int) (Body, base.Set) {
+	eventForTest := func(i int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[i],
 			"value": i,
@@ -96,17 +96,18 @@ func TestDocumentChangeEvent(t *testing.T) {
 		} else {
 			channelSet = base.SetFromArray([]string{"Odd"})
 		}
-		return testBody, channelSet
+		return testBody, ids[i], channelSet
 	}
-	resultChannel := make(chan Body, 10)
+	resultChannel := make(chan interface{}, 10)
 	//Setup test handler
 	testHandler := &TestingHandler{HandledEvent: DocumentChange}
 	testHandler.SetChannel(resultChannel)
 	em.RegisterEventHandler(testHandler, DocumentChange)
 	//Raise events
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 
 	assertChannelLengthWithTimeout(t, resultChannel, 10, 10*time.Second)
@@ -124,7 +125,7 @@ func TestDBStateChangeEvent(t *testing.T) {
 		ids[i] = fmt.Sprintf("db%d", i)
 	}
 
-	resultChannel := make(chan Body, 20)
+	resultChannel := make(chan interface{}, 20)
 	//Setup test handler
 	testHandler := &TestingHandler{HandledEvent: DBStateChange, t: t}
 	testHandler.SetChannel(resultChannel)
@@ -162,7 +163,7 @@ func TestSlowExecutionProcessing(t *testing.T) {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
-	eventForTest := func(i int) (Body, base.Set) {
+	eventForTest := func(i int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[i],
 			"value": i,
@@ -173,17 +174,18 @@ func TestSlowExecutionProcessing(t *testing.T) {
 		} else {
 			channelSet = base.SetFromArray([]string{"Odd"})
 		}
-		return testBody, channelSet
+		return testBody, ids[i], channelSet
 	}
 
-	resultChannel := make(chan Body, 100)
+	resultChannel := make(chan interface{}, 100)
 	testHandler := &TestingHandler{HandledEvent: DocumentChange, handleDelay: 500}
 	testHandler.SetChannel(resultChannel)
 	em.RegisterEventHandler(testHandler, DocumentChange)
 
 	for i := 0; i < 20; i++ {
-		body, channels := eventForTest(i % 10)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i % 10)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 
 	assertChannelLengthWithTimeout(t, resultChannel, 20, 10*time.Second)
@@ -200,7 +202,7 @@ func TestCustomHandler(t *testing.T) {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
-	eventForTest := func(i int) (Body, base.Set) {
+	eventForTest := func(i int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[i],
 			"value": i,
@@ -211,18 +213,19 @@ func TestCustomHandler(t *testing.T) {
 		} else {
 			channelSet = base.SetFromArray([]string{"Odd"})
 		}
-		return testBody, channelSet
+		return testBody, ids[i], channelSet
 	}
 
-	resultChannel := make(chan Body, 20)
+	resultChannel := make(chan interface{}, 20)
 
 	testHandler := &TestingHandler{HandledEvent: DocumentChange}
 	testHandler.SetChannel(resultChannel)
 	em.RegisterEventHandler(testHandler, DocumentChange)
 
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 
 	assertChannelLengthWithTimeout(t, resultChannel, 10, 10*time.Second)
@@ -239,7 +242,7 @@ func TestUnhandledEvent(t *testing.T) {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
-	eventForTest := func(i int) (Body, base.Set) {
+	eventForTest := func(i int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[i],
 			"value": i,
@@ -250,10 +253,10 @@ func TestUnhandledEvent(t *testing.T) {
 		} else {
 			channelSet = base.SetFromArray([]string{"Odd"})
 		}
-		return testBody, channelSet
+		return testBody, ids[i], channelSet
 	}
 
-	resultChannel := make(chan Body, 10)
+	resultChannel := make(chan interface{}, 10)
 
 	// create handler for UserAdd events
 	testHandler := &TestingHandler{HandledEvent: UserAdd}
@@ -262,8 +265,9 @@ func TestUnhandledEvent(t *testing.T) {
 
 	// send DocumentChange events to handler
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 
 	// Validate that no events were handled
@@ -343,7 +347,7 @@ func TestWebhookBasic(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Second)
-	eventForTest := func(i int) (Body, base.Set) {
+	eventForTest := func(i int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[i],
 			"value": i,
@@ -354,7 +358,7 @@ func TestWebhookBasic(t *testing.T) {
 		} else {
 			channelSet = base.SetFromArray([]string{"Odd"})
 		}
-		return testBody, channelSet
+		return testBody, ids[i], channelSet
 	}
 
 	// Test basic webhook
@@ -363,8 +367,9 @@ func TestWebhookBasic(t *testing.T) {
 	webhookHandler, _ := NewWebhook("http://localhost:8081/echo", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 	time.Sleep(50 * time.Millisecond)
 	goassert.Equals(t, *count, 10)
@@ -384,8 +389,9 @@ func TestWebhookBasic(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 	time.Sleep(50 * time.Millisecond)
 	goassert.Equals(t, *count, 4)
@@ -396,8 +402,9 @@ func TestWebhookBasic(t *testing.T) {
 	em.Start(0, -1)
 	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
-	body, channels := eventForTest(0)
-	em.RaiseDocumentChangeEvent(body, "", channels)
+	body, docid, channels := eventForTest(0)
+	bodyBytes, _ := base.JSONMarshal(body)
+	em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	time.Sleep(50 * time.Millisecond)
 	receivedPayload := string((*payloads)[0])
 	fmt.Println("payload:", receivedPayload)
@@ -412,8 +419,9 @@ func TestWebhookBasic(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", "", &timeout)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
-		body, channels := eventForTest(i % 10)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i % 10)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 	time.Sleep(500 * time.Millisecond)
 	goassert.Equals(t, *count, 100)
@@ -427,8 +435,9 @@ func TestWebhookBasic(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
-		body, channels := eventForTest(i)
-		err := em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 		time.Sleep(2 * time.Millisecond)
 		if err != nil {
 			errCount++
@@ -448,8 +457,9 @@ func TestWebhookBasic(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
-		body, channels := eventForTest(i % 10)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i % 10)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 	time.Sleep(5 * time.Second)
 	goassert.Equals(t, *count, 100)
@@ -472,7 +482,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Second)
-	eventForTest := func(i int) (Body, base.Set) {
+	eventForTest := func(i int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[i],
 			"value": i,
@@ -483,7 +493,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		} else {
 			channelSet = base.SetFromArray([]string{"Odd"})
 		}
-		return testBody, channelSet
+		return testBody, ids[i], channelSet
 	}
 
 	// Test basic webhook where an old doc is passed but not filtered
@@ -492,10 +502,13 @@ func TestWebhookOldDoc(t *testing.T) {
 	webhookHandler, _ := NewWebhook("http://localhost:8081/echo", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		oldBody, _ := eventForTest(-i)
+		oldBody, olddocid, _ := eventForTest(-i)
+		oldBody[BodyId] = olddocid
 		oldBodyBytes, _ := base.JSONMarshal(oldBody)
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, string(oldBodyBytes), channels)
+
 	}
 	time.Sleep(50 * time.Millisecond)
 	goassert.Equals(t, *count, 10)
@@ -515,10 +528,12 @@ func TestWebhookOldDoc(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		oldBody, _ := eventForTest(-i)
+		oldBody, olddocid, _ := eventForTest(-i)
+		oldBody[BodyId] = olddocid
 		oldBodyBytes, _ := base.JSONMarshal(oldBody)
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, string(oldBodyBytes), channels)
 	}
 	time.Sleep(50 * time.Millisecond)
 	goassert.Equals(t, *count, 4)
@@ -538,10 +553,12 @@ func TestWebhookOldDoc(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		oldBody, _ := eventForTest(-i)
+		oldBody, olddocid, _ := eventForTest(-i)
+		oldBody[BodyId] = olddocid
 		oldBodyBytes, _ := base.JSONMarshal(oldBody)
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, string(oldBodyBytes), channels)
 	}
 	time.Sleep(50 * time.Millisecond)
 	goassert.Equals(t, *count, 4)
@@ -561,14 +578,17 @@ func TestWebhookOldDoc(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/echo", filterFunction, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 	for i := 10; i < 20; i++ {
-		body, channels := eventForTest(i)
-		oldBody, _ := eventForTest(-i)
+		oldBody, olddocid, _ := eventForTest(-i)
+		oldBody[BodyId] = olddocid
 		oldBodyBytes, _ := base.JSONMarshal(oldBody)
-		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, string(oldBodyBytes), channels)
 	}
 	time.Sleep(50 * time.Millisecond)
 	goassert.Equals(t, *count, 10)
@@ -589,7 +609,7 @@ func TestWebhookTimeout(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Second)
-	eventForTest := func(i int) (Body, base.Set) {
+	eventForTest := func(i int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[i],
 			"value": i,
@@ -600,7 +620,7 @@ func TestWebhookTimeout(t *testing.T) {
 		} else {
 			channelSet = base.SetFromArray([]string{"Odd"})
 		}
-		return testBody, channelSet
+		return testBody, ids[i], channelSet
 	}
 
 	// Test fast execution, short timeout.  All events processed
@@ -611,8 +631,9 @@ func TestWebhookTimeout(t *testing.T) {
 	webhookHandler, _ := NewWebhook("http://localhost:8081/echo", "", &timeout)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 	time.Sleep(50 * time.Millisecond)
 	goassert.Equals(t, *count, 10)
@@ -627,8 +648,9 @@ func TestWebhookTimeout(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/slow_2s", "", &timeout)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		err := em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 		time.Sleep(2 * time.Millisecond)
 		if err != nil {
 			errCount++
@@ -649,8 +671,9 @@ func TestWebhookTimeout(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/slow_5s", "", &timeout)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		err := em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 		time.Sleep(2 * time.Millisecond)
 		if err != nil {
 			errCount++
@@ -670,8 +693,9 @@ func TestWebhookTimeout(t *testing.T) {
 	webhookHandler, _ = NewWebhook("http://localhost:8081/slow", "", &timeout)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		err := em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 		time.Sleep(2 * time.Millisecond)
 		if err != nil {
 			errCount++
@@ -690,7 +714,7 @@ func TestUnavailableWebhook(t *testing.T) {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
-	eventForTest := func(i int) (Body, base.Set) {
+	eventForTest := func(i int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[i],
 			"value": i,
@@ -701,7 +725,7 @@ func TestUnavailableWebhook(t *testing.T) {
 		} else {
 			channelSet = base.SetFromArray([]string{"Odd"})
 		}
-		return testBody, channelSet
+		return testBody, ids[i], channelSet
 	}
 
 	// Test unreachable webhook
@@ -710,15 +734,16 @@ func TestUnavailableWebhook(t *testing.T) {
 	webhookHandler, _ := NewWebhook("http://badhost:1000/echo", "", nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
-		body, channels := eventForTest(i)
-		em.RaiseDocumentChangeEvent(body, "", channels)
+		body, docid, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 
 }
 
 // asserts that the number of items seen in the channel within the specified time limit is the same as the expected value.
 // WARNING: This function will drain the channel of items!
-func assertChannelLengthWithTimeout(t *testing.T, c chan Body, expectedLength int, timeout time.Duration) {
+func assertChannelLengthWithTimeout(t *testing.T, c chan interface{}, expectedLength int, timeout time.Duration) {
 	count := 0
 	for {
 		if count >= expectedLength {
