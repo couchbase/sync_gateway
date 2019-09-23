@@ -1744,9 +1744,7 @@ func TestRawRedaction(t *testing.T) {
 	// Test include doc false doesn't return doc
 	body = map[string]interface{}{}
 	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=false", ``)
-	err = base.JSONUnmarshal(res.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.Equal(t, "bar", body["foo"])
+	assert.NotContains(t, res.Body.String(), "foo")
 
 	// Test doc is returned by default
 	body = map[string]interface{}{}
