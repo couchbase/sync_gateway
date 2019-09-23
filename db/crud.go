@@ -1345,7 +1345,12 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		}
 		db.revisionCache.Put(doc.ID, documentRevision)
 		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
-			db.EventMgr.RaiseDocumentChangeEvent(body, oldBodyJSON, revChannels)
+			webhookJSON, err := doc.MarshalBodyForWebhook()
+			if err != nil {
+				base.Warnf(base.KeyAll, "Error marshalling doc for webhook post: %v", err)
+			} else {
+				db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels)
+			}
 		}
 	} else {
 		//Revision has been pruned away so won't be added to cache

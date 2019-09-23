@@ -40,13 +40,15 @@ func (ae AsyncEvent) Synchronous() bool {
 // data store.  Event has the document body and channel set as properties.
 type DocumentChangeEvent struct {
 	AsyncEvent
-	Doc      Body
+	// Doc      Body
+	DocBytes []byte
+	DocID    string
 	OldDoc   string
 	Channels base.Set
 }
 
 func (dce *DocumentChangeEvent) String() string {
-	return fmt.Sprintf("Document change event for doc id: %s", dce.Doc[BodyId])
+	return fmt.Sprintf("Document change event for doc id: %s", dce.DocID)
 }
 
 func (dce *DocumentChangeEvent) EventType() EventType {
@@ -146,7 +148,7 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	switch event := event.(type) {
 
 	case *DocumentChangeEvent:
-		result, err = ef.Call(event.Doc, sgbucket.JSONString(event.OldDoc))
+		result, err = ef.Call(event.DocBytes, sgbucket.JSONString(event.OldDoc))
 	case *DBStateChangeEvent:
 		result, err = ef.Call(event.Doc)
 	}
