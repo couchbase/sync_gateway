@@ -2,7 +2,6 @@ package db
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -88,7 +87,7 @@ func (wh *Webhook) HandleEvent(event Event) {
 	switch event := event.(type) {
 	case *DocumentChangeEvent:
 		// for DocumentChangeEvent, post document body
-		jsonOut, err := json.Marshal(event.Doc)
+		jsonOut, err := base.JSONMarshal(event.Doc)
 		if err != nil {
 			base.Warnf(base.KeyAll, "Error marshalling doc for webhook post: %v", err)
 			return
@@ -104,7 +103,7 @@ func (wh *Webhook) HandleEvent(event Event) {
 		//	"reason":"DB started from config”,
 		//	“state”:"online"
 		//}
-		jsonOut, err := json.Marshal(event.Doc)
+		jsonOut, err := base.JSONMarshal(event.Doc)
 		if err != nil {
 			base.Warnf(base.KeyAll, "Error marshalling doc for webhook post")
 			return

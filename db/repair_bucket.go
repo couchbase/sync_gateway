@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -346,7 +345,7 @@ func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDo
 		return nil, false, err
 	}
 
-	transformedCBDoc, errMarshal := json.Marshal(doc)
+	transformedCBDoc, errMarshal := base.JSONMarshal(doc)
 	if errMarshal != nil {
 		return nil, false, errMarshal
 	}

@@ -10,7 +10,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -258,7 +257,7 @@ func (h *handler) handleProfiling() error {
 		return err
 	}
 	if len(body) > 0 {
-		if err = json.Unmarshal(body, &params); err != nil {
+		if err = base.JSONUnmarshal(body, &params); err != nil {
 			return err
 		}
 	}
@@ -300,7 +299,7 @@ func (h *handler) handleHeapProfiling() error {
 	if err != nil {
 		return err
 	}
-	if err = json.Unmarshal(body, &params); err != nil {
+	if err = base.JSONUnmarshal(body, &params); err != nil {
 		return err
 	}
 

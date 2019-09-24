@@ -10,7 +10,6 @@
 package auth
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"sync"
@@ -123,12 +122,12 @@ func TestSerializeUser(t *testing.T) {
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	user, _ := auth.NewUser("me", "letmein", ch.SetOf(t, "me", "public"))
 	require.NoError(t, user.SetEmail("foo@example.com"))
-	encoded, _ := json.Marshal(user)
+	encoded, _ := base.JSONMarshal(user)
 	assert.True(t, encoded != nil)
 	log.Printf("Marshaled User as: %s", encoded)
 
 	resu := &userImpl{}
-	err := json.Unmarshal(encoded, resu)
+	err := base.JSONUnmarshal(encoded, resu)
 	assert.True(t, err == nil)
 	goassert.DeepEquals(t, resu.Name(), user.Name())
 	goassert.DeepEquals(t, resu.Email(), user.Email())
@@ -143,11 +142,11 @@ func TestSerializeRole(t *testing.T) {
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
 	role, _ := auth.NewRole("froods", ch.SetOf(t, "hoopy", "public"))
-	encoded, _ := json.Marshal(role)
+	encoded, _ := base.JSONMarshal(role)
 	assert.True(t, encoded != nil)
 	log.Printf("Marshaled Role as: %s", encoded)
 	elor := &roleImpl{}
-	err := json.Unmarshal(encoded, elor)
+	err := base.JSONUnmarshal(encoded, elor)
 
 	assert.True(t, err == nil)
 	goassert.DeepEquals(t, elor.Name(), role.Name())
@@ -335,13 +334,14 @@ func TestRebuildRoleChannels(t *testing.T) {
 	defer gTestBucket.Close()
 	computer := mockComputer{roleChannels: ch.AtSequence(ch.SetOf(t, "derived1", "derived2"), 1)}
 	auth := NewAuthenticator(gTestBucket.Bucket, &computer)
-	role, _ := auth.NewRole("testRole", ch.SetOf(t, "explicit1"))
-	err := auth.InvalidateChannels(role)
+	role, err := auth.NewRole("testRole", ch.SetOf(t, "explicit1"))
+	assert.NoError(t, err)
+	err = auth.InvalidateChannels(role)
 	assert.Equal(t, nil, err)
 
 	role2, err := auth.GetRole("testRole")
 	assert.Equal(t, nil, err)
-	goassert.DeepEquals(t, role2.Channels(), ch.AtSequence(ch.SetOf(t, "explicit1", "derived1", "derived2", "!"), 1))
+	assert.Equal(t, ch.AtSequence(ch.SetOf(t, "explicit1", "derived1", "derived2", "!"), 1), role2.Channels())
 }
 
 func TestRebuildChannelsError(t *testing.T) {
@@ -351,14 +351,14 @@ func TestRebuildChannelsError(t *testing.T) {
 	computer := mockComputer{}
 	auth := NewAuthenticator(gTestBucket.Bucket, &computer)
 	role, err := auth.NewRole("testRole2", ch.SetOf(t, "explicit1"))
-	assert.Equal(t, nil, err)
+	assert.NoError(t, err)
 	assert.Equal(t, nil, auth.InvalidateChannels(role))
 
 	computer.err = errors.New("I'm sorry, Dave.")
 
 	role2, err := auth.GetRole("testRole2")
-	assert.Equal(t, nil, role2)
-	goassert.DeepEquals(t, err, computer.err)
+	assert.Nil(t, role2)
+	assert.Equal(t, computer.err, err)
 }
 
 func TestRebuildUserRoles(t *testing.T) {

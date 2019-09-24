@@ -10,7 +10,6 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -97,7 +96,7 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 		}`
 
 	revTree := RevTree{}
-	if err := json.Unmarshal([]byte(testJSON), &revTree); err != nil {
+	if err := base.JSONUnmarshal([]byte(testJSON), &revTree); err != nil {
 		panic(fmt.Sprintf("Error: %v", err))
 	}
 
@@ -172,7 +171,7 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 
 func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	gotmap := RevTree{}
-	assert.NoError(t, json.Unmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
+	assert.NoError(t, base.JSONUnmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
 	goassert.DeepEquals(t, gotmap, testmap)
 	return gotmap
 }
@@ -215,12 +214,12 @@ func TestRevTreeUnmarshal(t *testing.T) {
 func TestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"]]}`
 	gotmap := RevTree{}
-	err := json.Unmarshal([]byte(testJSON), &gotmap)
-	goassert.Equals(t, err.Error(), "revtreelist data is invalid, revs/parents/channels counts are inconsistent")
+	err := base.JSONUnmarshal([]byte(testJSON), &gotmap)
+	assert.Errorf(t, err, "revtreelist data is invalid, revs/parents/channels counts are inconsistent")
 }
 
 func TestRevTreeMarshal(t *testing.T) {
-	bytes, err := json.Marshal(testmap)
+	bytes, err := base.JSONMarshal(testmap)
 	assert.NoError(t, err, "Couldn't write RevTree to JSON")
 	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
 	testUnmarshal(t, string(bytes))
@@ -976,7 +975,7 @@ func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest
 
 	docSizeBytes := 1024 * 5
 	body := createBodyContentAsMapWithSize(docSizeBytes)
-	bodyBytes, err := json.Marshal(body)
+	bodyBytes, err := base.JSONMarshal(body)
 	if err != nil {
 		panic(fmt.Sprintf("Error: %v", err))
 	}

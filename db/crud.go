@@ -10,7 +10,6 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -165,7 +164,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 		docRoot := documentRoot{
 			SyncData: &SyncData{History: make(RevTree)},
 		}
-		if err := json.Unmarshal(rawDocBytes, &docRoot); err != nil {
+		if err := base.JSONUnmarshal(rawDocBytes, &docRoot); err != nil {
 			return emptySyncData, err
 		}
 

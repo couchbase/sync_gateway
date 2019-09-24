@@ -10,7 +10,6 @@
 package base
 
 import (
-	"encoding/json"
 	"sort"
 	"testing"
 
@@ -86,17 +85,17 @@ func TestSetMarshal(t *testing.T) {
 	var str struct {
 		Channels Set
 	}
-	bytes, err := json.Marshal(str)
+	bytes, err := JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":null}`)
 
 	str.Channels = SetOf()
-	bytes, err = json.Marshal(str)
+	bytes, err = JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":[]}`)
 
 	str.Channels = SetOf("a", "b")
-	bytes, err = json.Marshal(str)
+	bytes, err = JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
 	goassert.Equals(t, string(bytes), `{"Channels":["a","b"]}`)
 }
@@ -123,15 +122,15 @@ func TestSetUnmarshal(t *testing.T) {
 	var str struct {
 		Channels Set
 	}
-	err := json.Unmarshal([]byte(`{"channels":null}`), &str)
+	err := JSONUnmarshal([]byte(`{"channels":null}`), &str)
 	assert.NoError(t, err, "Unmarshal")
 	goassert.DeepEquals(t, str.Channels, Set(nil))
 
-	err = json.Unmarshal([]byte(`{"channels":[]}`), &str)
+	err = JSONUnmarshal([]byte(`{"channels":[]}`), &str)
 	assert.NoError(t, err, "Unmarshal")
 	goassert.DeepEquals(t, str.Channels, SetOf())
 
-	err = json.Unmarshal([]byte(`{"channels":["foo"]}`), &str)
+	err = JSONUnmarshal([]byte(`{"channels":["foo"]}`), &str)
 	assert.NoError(t, err, "Unmarshal")
 	goassert.DeepEquals(t, str.Channels.ToArray(), []string{"foo"})
 

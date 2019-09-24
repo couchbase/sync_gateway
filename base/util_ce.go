@@ -31,6 +31,12 @@ func JSONMarshal(v interface{}) ([]byte, error) {
 	return json.Marshal(v)
 }
 
+// JSONMarshalCanonical returns the canonical JSON encoding of v.
+// Mostly notably: Ordered properties, in order to generate deterministic Rev IDs.
+func JSONMarshalCanonical(v interface{}) ([]byte, error) {
+	return json.Marshal(v)
+}
+
 // JSONDecoder returns a new JSON decoder implementing the JSONDecoderI interface
 func JSONDecoder(r io.Reader) JSONDecoderI {
 	return json.NewDecoder(r)

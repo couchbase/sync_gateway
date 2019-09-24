@@ -1,12 +1,12 @@
 package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -108,7 +108,7 @@ func TestDocumentNumbers(t *testing.T) {
 			// Check channel assignment
 			getRawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s?redact=false", test.name), "")
 			var rawResponse RawResponse
-			json.Unmarshal(getRawResponse.Body.Bytes(), &rawResponse)
+			base.JSONUnmarshal(getRawResponse.Body.Bytes(), &rawResponse)
 			log.Printf("raw response: %s", getRawResponse.Body.Bytes())
 			assert.Equal(ts, 1, len(rawResponse.Sync.Channels))
 			assert.True(ts, HasActiveChannel(rawResponse.Sync.Channels, test.expectedFormatChannel), fmt.Sprintf("Expected channel %s was not found in document channels (%s)", test.expectedFormatChannel, test.name))

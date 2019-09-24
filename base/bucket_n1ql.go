@@ -1,7 +1,6 @@
 package base
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -100,7 +99,7 @@ func (bucket *CouchbaseBucketGoCB) ExplainQuery(statement string, params interfa
 	}
 
 	firstRow := explainResults.NextBytes()
-	unmarshalErr := json.Unmarshal(firstRow, &plan)
+	unmarshalErr := JSONUnmarshal(firstRow, &plan)
 	return plan, unmarshalErr
 }
 
@@ -209,7 +208,7 @@ func (bucket *CouchbaseBucketGoCB) CreatePrimaryIndex(indexName string, options 
 func (bucket *CouchbaseBucketGoCB) createIndex(indexName string, createStatement string, options *N1qlIndexOptions) error {
 
 	if options != nil {
-		withClause, marshalErr := json.Marshal(options)
+		withClause, marshalErr := JSONMarshal(options)
 		if marshalErr != nil {
 			return marshalErr
 		}

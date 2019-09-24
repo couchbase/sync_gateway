@@ -10,7 +10,6 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -81,7 +80,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 			}
 			revid = fmt.Sprintf("0-%d", generation+1)
 			body[BodyRev] = revid
-			bodyBytes, marshalErr := json.Marshal(body)
+			bodyBytes, marshalErr := base.JSONMarshal(body)
 			return bodyBytes, nil, marshalErr
 		} else {
 			// Deleting:

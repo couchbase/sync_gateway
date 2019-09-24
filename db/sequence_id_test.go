@@ -1,9 +1,9 @@
 package db
 
 import (
-	"encoding/json"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
@@ -46,12 +46,12 @@ func TestParseSequenceID(t *testing.T) {
 func TestMarshalSequenceID(t *testing.T) {
 	s := SequenceID{Seq: 1234}
 	goassert.Equals(t, s.String(), "1234")
-	asJson, err := json.Marshal(s)
+	asJson, err := base.JSONMarshal(s)
 	assert.NoError(t, err, "Marshal failed")
 	goassert.Equals(t, string(asJson), "1234")
 
 	var s2 SequenceID
-	err = json.Unmarshal(asJson, &s2)
+	err = base.JSONUnmarshal(asJson, &s2)
 	assert.NoError(t, err, "Unmarshal failed")
 	goassert.Equals(t, s2, s)
 }
@@ -98,12 +98,12 @@ func TestSequenceIDUnmarshalJSON(t *testing.T) {
 func TestMarshalTriggeredSequenceID(t *testing.T) {
 	s := SequenceID{TriggeredBy: 5678, Seq: 1234}
 	goassert.Equals(t, s.String(), "5678:1234")
-	asJson, err := json.Marshal(s)
+	asJson, err := base.JSONMarshal(s)
 	assert.NoError(t, err, "Marshal failed")
 	goassert.Equals(t, string(asJson), "\"5678:1234\"")
 
 	var s2 SequenceID
-	err = json.Unmarshal(asJson, &s2)
+	err = base.JSONUnmarshal(asJson, &s2)
 	assert.NoError(t, err, "Unmarshal failed")
 	goassert.Equals(t, s2, s)
 }

@@ -16,14 +16,16 @@ import (
 func TestReadServerConfig(t *testing.T) {
 
 	tests := []struct {
-		name   string
-		config string
-		err    string
+		name        string
+		config      string
+		errStdlib   string
+		errJSONIter string
 	}{
 		{
-			name:   "nil",
-			config: ``,
-			err:    "EOF",
+			name:        "nil",
+			config:      ``,
+			errStdlib:   "EOF",
+			errJSONIter: "EOF",
 		},
 		{
 			name:   "valid empty",
@@ -34,19 +36,22 @@ func TestReadServerConfig(t *testing.T) {
 			config: `{"logging": {"console": {"enabled": true}}}`,
 		},
 		{
-			name:   "unknown field",
-			config: `{"invalid": true}`,
-			err:    `json: unknown field "invalid": unrecognized config value`,
+			name:        "unknown field",
+			config:      `{"invalid": true}`,
+			errStdlib:   `json: unknown field "invalid": unrecognized config value`,
+			errJSONIter: `found unknown field: invalid`,
 		},
 		{
-			name:   "incorrect type",
-			config: `{"logging": true}`,
-			err:    `json: cannot unmarshal bool into Go struct field ServerConfig.Logging of type base.LoggingConfig`,
+			name:        "incorrect type",
+			config:      `{"logging": true}`,
+			errStdlib:   `json: cannot unmarshal bool into Go struct field ServerConfig.Logging of type base.LoggingConfig`,
+			errJSONIter: `expect { or n, but found t`,
 		},
 		{
-			name:   "invalid JSON",
-			config: `{true}`,
-			err:    `invalid character 't' looking for beginning of object key string`,
+			name:        "invalid JSON",
+			config:      `{true}`,
+			errStdlib:   `invalid character 't' looking for beginning of object key string`,
+			errJSONIter: `expects " or n, but found t`,
 		},
 		{
 			name:   "sync fn backquotes",
@@ -58,10 +63,21 @@ func TestReadServerConfig(t *testing.T) {
 		t.Run(test.name, func(tt *testing.T) {
 			buf := bytes.NewBufferString(test.config)
 			_, err := readServerConfig(buf)
-			if test.err == "" {
-				assert.NoError(tt, err, "unexpected error for test config")
+
+			// stdlib/CE specific error checking
+			expectedErr := test.errStdlib
+			if !base.UseStdlibJSON && base.IsEnterpriseEdition() {
+				// jsoniter specific error checking
+				expectedErr = test.errJSONIter
+			}
+
+			// If we expected no error, make sure we didn't get one
+			if expectedErr == "" {
+				require.NoError(tt, err, "unexpected error for test config")
 			} else {
-				assert.EqualError(tt, err, test.err, "expecting error for test config")
+				// Otherwise - check the error we got matches what we expected
+				require.NotNil(tt, err)
+				assert.Contains(tt, err.Error(), expectedErr)
 			}
 		})
 	}

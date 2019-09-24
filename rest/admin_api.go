@@ -10,7 +10,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -73,7 +72,7 @@ func (h *handler) handleDbOnline() error {
 
 	input.Delay = kDefaultDBOnlineDelay
 
-	json.Unmarshal(body, &input)
+	base.JSONUnmarshal(body, &input)
 
 	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 
@@ -166,7 +165,7 @@ func (h *handler) handleReplicate() error {
 			}
 			fmt.Println(string(b))
 			var body db.Body
-			err = json.Unmarshal(b, &body)
+			err = base.JSONUnmarshal(b, &body)
 			if err != nil {
 				return err
 			}
@@ -185,7 +184,7 @@ func (h *handler) handleReplicate() error {
 			}
 			fmt.Println(string(b))
 			var body db.Body
-			err = json.Unmarshal(b, &body)
+			err = base.JSONUnmarshal(b, &body)
 			if err != nil {
 				return err
 			}
@@ -221,7 +220,7 @@ type ReplicationConfig struct {
 func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
 
 	var in ReplicationConfig
-	if err = json.Unmarshal(jsonData, &in); err != nil {
+	if err = base.JSONUnmarshal(jsonData, &in); err != nil {
 		return params, false, localdb, err
 	}
 
@@ -500,11 +499,11 @@ func (h *handler) handleSetLogging() error {
 	}
 
 	var keys map[string]bool
-	if err := json.Unmarshal(body, &keys); err != nil {
+	if err := base.JSONUnmarshal(body, &keys); err != nil {
 
 		// return a better error if a user is setting log level inside the body
 		var logLevel map[string]string
-		if err := json.Unmarshal(body, &logLevel); err == nil {
+		if err := base.JSONUnmarshal(body, &logLevel); err == nil {
 			if _, ok := logLevel["logLevel"]; ok {
 				return base.HTTPErrorf(http.StatusBadRequest, "Can't set log level in body, please use \"logLevel\" query parameter instead.")
 			}
@@ -548,7 +547,7 @@ func (h *handler) handleSGCollect() error {
 	}
 
 	var params sgCollectOptions
-	if err = json.Unmarshal(body, &params); err != nil {
+	if err = base.JSONUnmarshal(body, &params); err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to parse request body: %v", err)
 	}
 
@@ -599,7 +598,7 @@ func marshalPrincipal(princ auth.Principal) ([]byte, error) {
 	} else {
 		info.Channels = princ.Channels().AsSet()
 	}
-	return json.Marshal(info)
+	return base.JSONMarshal(info)
 }
 
 // Handles PUT and POST for a user or a role.
@@ -609,7 +608,7 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	body, _ := h.readBody()
 	var newInfo db.PrincipalConfig
 	var err error
-	if err = json.Unmarshal(body, &newInfo); err != nil {
+	if err = base.JSONUnmarshal(body, &newInfo); err != nil {
 		return err
 	}
 
@@ -725,7 +724,7 @@ func (h *handler) getUsers() error {
 	if err != nil {
 		return err
 	}
-	bytes, err := json.Marshal(users)
+	bytes, err := base.JSONMarshal(users)
 	h.response.Write(bytes)
 	return err
 }
@@ -735,7 +734,7 @@ func (h *handler) getRoles() error {
 	if err != nil {
 		return err
 	}
-	bytes, err := json.Marshal(roles)
+	bytes, err := base.JSONMarshal(roles)
 	h.response.Write(bytes)
 	return err
 }

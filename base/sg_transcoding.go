@@ -1,7 +1,6 @@
 package base
 
 import (
-	"encoding/json"
 	"github.com/couchbase/gocb"
 
 	"gopkg.in/couchbase/gocbcore.v7"
@@ -44,7 +43,7 @@ func (t SGTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
 		// calls back into this
 		return t.Encode(*value.(*interface{}))
 	default:
-		bytes, err = json.Marshal(value)
+		bytes, err = JSONMarshal(value)
 		if err != nil {
 			return nil, 0, err
 		}

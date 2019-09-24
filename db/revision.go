@@ -12,7 +12,6 @@ package db
 import (
 	"bytes"
 	"crypto/md5"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -60,7 +59,7 @@ func (b *Body) Unmarshal(data []byte) error {
 	}
 
 	// Use decoder for unmarshalling to preserve large numbers
-	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder := base.JSONDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	if err := decoder.Decode(b); err != nil {
 		return err
@@ -280,7 +279,7 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 // so this function marshals body with atts included, and then removes it again
 func bodyBytesFromBodyAttachmentsMeta(body Body, atts AttachmentsMeta) ([]byte, error) {
 	if len(atts) == 0 {
-		return json.Marshal(body)
+		return base.JSONMarshal(body)
 	}
 
 	origAtts, haveOrigAtts := body[BodyAttachments]
@@ -304,7 +303,7 @@ func bodyBytesFromBodyAttachmentsMeta(body Body, atts AttachmentsMeta) ([]byte, 
 		body[BodyAttachments] = atts
 	}
 
-	newBodyBytes, err := json.Marshal(body)
+	newBodyBytes, err := base.JSONMarshal(body)
 
 	if haveOrigAtts {
 		// Restore original attachments field
@@ -368,7 +367,7 @@ func createRevID(generation int, parentRevID string, body Body) (string, error) 
 	digester := md5.New()
 	digester.Write([]byte{byte(len(parentRevID))})
 	digester.Write([]byte(parentRevID))
-	encoding, err := canonicalEncoding(stripSpecialProperties(body))
+	encoding, err := base.JSONMarshalCanonical(stripSpecialProperties(body))
 	if err != nil {
 		return "", err
 	}
@@ -465,11 +464,6 @@ func containsUserSpecialProperties(b Body) bool {
 		}
 	}
 	return false
-}
-
-// canonicalEncoding returns the canonical version of body as bytes
-func canonicalEncoding(body Body) ([]byte, error) {
-	return json.Marshal(body) // FIXME: Use canonical JSON encoder
 }
 
 func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {

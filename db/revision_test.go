@@ -1,11 +1,11 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
@@ -56,7 +56,7 @@ func TestBodyUnmarshal(t *testing.T) {
 
 			// Unmarshal using json.Unmarshal for comparison below
 			var jsonUnmarshalBody Body
-			unmarshalErr := json.Unmarshal(test.inputBytes, &jsonUnmarshalBody)
+			unmarshalErr := base.JSONUnmarshal(test.inputBytes, &jsonUnmarshalBody)
 
 			if unmarshalErr != nil {
 				// If json.Unmarshal returns error for input, body.Unmarshal should do the same

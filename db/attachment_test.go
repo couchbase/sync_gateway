@@ -10,7 +10,6 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"testing"
@@ -23,7 +22,7 @@ import (
 
 func unjson(j string) Body {
 	var body Body
-	err := json.Unmarshal([]byte(j), &body)
+	err := base.JSONUnmarshal([]byte(j), &body)
 	if err != nil {
 		panic(fmt.Sprintf("Invalid JSON: %v", err))
 	}
@@ -31,7 +30,7 @@ func unjson(j string) Body {
 }
 
 func tojson(obj interface{}) string {
-	j, _ := json.Marshal(obj)
+	j, _ := base.JSONMarshal(obj)
 	return string(j)
 }
 
@@ -65,7 +64,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	docID := "doc1"
 	var rev1Body Body
 	rev1Data := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
-	require.NoError(t, json.Unmarshal([]byte(rev1Data), &rev1Body))
+	require.NoError(t, base.JSONUnmarshal([]byte(rev1Data), &rev1Body))
 	rev1ID, _, err := db.Put(docID, rev1Body)
 	require.NoError(t, err)
 	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
@@ -83,7 +82,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	// create rev 2 and check backups for both revs
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
-	require.NoError(t, json.Unmarshal([]byte(rev2Data), &rev2Body))
+	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
 	_, err = db.PutExistingRevWithBody(docID, rev2Body, []string{"2-abc", rev1ID}, true)
 	require.NoError(t, err)
 	rev2ID := "2-abc"
@@ -122,60 +121,96 @@ func TestAttachments(t *testing.T) {
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
                                     "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
 	var body Body
-	json.Unmarshal([]byte(rev1input), &body)
-	revid, _, err := db.Put("doc1", unjson(rev1input))
+	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
+	revid, _, err := db.Put("doc1", body)
 	rev1id := revid
 	assert.NoError(t, err, "Couldn't create document")
 
 	log.Printf("Retrieve doc...")
-	rev1output := `{"_attachments":{"bye.txt":{"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA==","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":1},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`
 	gotbody, err := db.GetRev("doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
-	assert.Equal(t, rev1output, tojson(gotbody))
+	atts := gotbody[BodyAttachments].(AttachmentsMeta)
+
+	hello := atts["hello.txt"].(map[string]interface{})
+	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, 11, hello["length"])
+	assert.Equal(t, 1, hello["revpos"])
+
+	bye := atts["bye.txt"].(map[string]interface{})
+	assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
+	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
+	assert.Equal(t, 19, bye["length"])
+	assert.Equal(t, 1, bye["revpos"])
 
 	log.Printf("Create rev 2...")
 	rev2str := `{"_attachments": {"hello.txt": {"stub":true, "revpos":1}, "bye.txt": {"data": "YnllLXlh"}}}`
 	var body2 Body
-	json.Unmarshal([]byte(rev2str), &body2)
+	assert.NoError(t, base.JSONUnmarshal([]byte(rev2str), &body2))
 	body2[BodyRev] = revid
 	revid, _, err = db.Put("doc1", body2)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", revid)
 
 	log.Printf("Retrieve doc...")
-	rev2output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"2-5d3308aae9930225ed7f6614cf115366"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
-	assert.Equal(t, rev2output, tojson(gotbody))
+	atts = gotbody[BodyAttachments].(AttachmentsMeta)
+
+	hello = atts["hello.txt"].(map[string]interface{})
+	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, float64(11), hello["length"])
+	assert.Equal(t, float64(1), hello["revpos"])
+
+	bye = atts["bye.txt"].(map[string]interface{})
+	assert.Equal(t, "bye-ya", string(bye["data"].([]byte)))
+	assert.Equal(t, "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", bye["digest"])
+	assert.Equal(t, 6, bye["length"])
+	assert.Equal(t, 2, bye["revpos"])
 
 	log.Printf("Retrieve doc with atts_since...")
-	rev2Aoutput := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2},"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_id":"doc1","_rev":"2-5d3308aae9930225ed7f6614cf115366"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{"1-ca9ad22802b66f662ff171f226211d5c", "1-foo", "993-bar"})
 	assert.NoError(t, err, "Couldn't get document")
-	assert.Equal(t, rev2Aoutput, tojson(gotbody))
+	atts = gotbody[BodyAttachments].(AttachmentsMeta)
+
+	hello = atts["hello.txt"].(map[string]interface{})
+	assert.Nil(t, hello["data"])
+
+	bye = atts["bye.txt"].(map[string]interface{})
+	assert.Equal(t, "bye-ya", string(bye["data"].([]byte)))
+	assert.Equal(t, "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", bye["digest"])
+	assert.Equal(t, 6, bye["length"])
+	assert.Equal(t, 2, bye["revpos"])
 
 	log.Printf("Create rev 3...")
 	rev3str := `{"_attachments": {"bye.txt": {"stub":true,"revpos":2}}}`
 	var body3 Body
-	json.Unmarshal([]byte(rev3str), &body3)
+	assert.NoError(t, base.JSONUnmarshal([]byte(rev3str), &body3))
 	body3[BodyRev] = revid
 	revid, _, err = db.Put("doc1", body3)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.Equal(t, "3-aa3ff4ca3aad12e1479b65cb1e602676", revid)
 
 	log.Printf("Retrieve doc...")
-	rev3output := `{"_attachments":{"bye.txt":{"data":"YnllLXlh","digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=","length":6,"revpos":2}},"_id":"doc1","_rev":"3-aa3ff4ca3aad12e1479b65cb1e602676"}`
 	gotbody, err = db.GetRev("doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
-	assert.Equal(t, rev3output, tojson(gotbody))
+	atts = gotbody[BodyAttachments].(AttachmentsMeta)
+
+	assert.Nil(t, atts["hello.txt"])
+
+	bye = atts["bye.txt"].(map[string]interface{})
+	assert.Equal(t, "bye-ya", string(bye["data"].([]byte)))
+	assert.Equal(t, "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", bye["digest"])
+	assert.Equal(t, float64(6), bye["length"])
+	assert.Equal(t, float64(2), bye["revpos"])
 
 	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
 	err = db.Bucket.Delete(oldRevisionKey("doc1", rev1id))
 	assert.NoError(t, err, "Couldn't compact old revision")
 	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
 	var body2B Body
-	err = json.Unmarshal([]byte(rev2Bstr), &body2B)
-	assert.NoError(t, err, "bad JSON")
+	assert.NoError(t, base.JSONUnmarshal([]byte(rev2Bstr), &body2B))
 	_, err = db.PutExistingRevWithBody("doc1", body2B, []string{"2-f000", rev1id}, false)
 	assert.NoError(t, err, "Couldn't update document")
 }
@@ -198,7 +233,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
-	json.Unmarshal([]byte(docBody), &body)
+	base.JSONUnmarshal([]byte(docBody), &body)
 	_, _, err = db.Put("doc1", unjson(docBody))
 	log.Printf("Got error on put doc:%v", err)
 	db.Bucket.Dump()
@@ -230,10 +265,21 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 
 	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
 	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
-	rev1output := `{"_attachments":{"bye.txt":{"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA==","digest":"sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=","length":19,"revpos":1},"hello.txt":{"data":"aGVsbG8gd29ybGQ=","digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1}},"_id":"doc1","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`
 	gotbody, err := db.GetRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
-	assert.Equal(t, rev1output, tojson(gotbody))
+	atts := gotbody[BodyAttachments].(AttachmentsMeta)
+
+	hello := atts["hello.txt"].(map[string]interface{})
+	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, 11, hello["length"])
+	assert.Equal(t, 1, hello["revpos"])
+
+	bye := atts["bye.txt"].(map[string]interface{})
+	assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
+	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
+	assert.Equal(t, 19, bye["length"])
+	assert.Equal(t, 1, bye["revpos"])
 
 	getCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
 	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
@@ -242,7 +288,20 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	// Repeat, validate no additional get operations
 	gotbody, err = db.GetRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
-	assert.Equal(t, rev1output, tojson(gotbody))
+	atts = gotbody[BodyAttachments].(AttachmentsMeta)
+
+	hello = atts["hello.txt"].(map[string]interface{})
+	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, 11, hello["length"])
+	assert.Equal(t, 1, hello["revpos"])
+
+	bye = atts["bye.txt"].(map[string]interface{})
+	assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
+	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
+	assert.Equal(t, 19, bye["length"])
+	assert.Equal(t, 1, bye["revpos"])
+
 	getCount, countErr = base.GetExpvarAsInt("syncGateway_db", "document_gets")
 	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
 	assert.Equal(t, initCount, getCount)

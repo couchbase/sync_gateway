@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -308,7 +307,7 @@ func InitWebhookTest() (*int, *float64, *[][]byte) {
 			if len(body) > 0 {
 				payloads = append(payloads, body)
 				var payload map[string]interface{}
-				json.Unmarshal(body, &payload)
+				base.JSONUnmarshal(body, &payload)
 				floatValue, ok := payload["value"].(float64)
 				if ok {
 					sum = sum + floatValue
@@ -494,7 +493,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		oldBody, _ := eventForTest(-i)
-		oldBodyBytes, _ := json.Marshal(oldBody)
+		oldBodyBytes, _ := base.JSONMarshal(oldBody)
 		body, channels := eventForTest(i)
 		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
 	}
@@ -517,7 +516,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		oldBody, _ := eventForTest(-i)
-		oldBodyBytes, _ := json.Marshal(oldBody)
+		oldBodyBytes, _ := base.JSONMarshal(oldBody)
 		body, channels := eventForTest(i)
 		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
 	}
@@ -540,7 +539,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		oldBody, _ := eventForTest(-i)
-		oldBodyBytes, _ := json.Marshal(oldBody)
+		oldBodyBytes, _ := base.JSONMarshal(oldBody)
 		body, channels := eventForTest(i)
 		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
 	}
@@ -568,7 +567,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	for i := 10; i < 20; i++ {
 		body, channels := eventForTest(i)
 		oldBody, _ := eventForTest(-i)
-		oldBodyBytes, _ := json.Marshal(oldBody)
+		oldBodyBytes, _ := base.JSONMarshal(oldBody)
 		em.RaiseDocumentChangeEvent(body, string(oldBodyBytes), channels)
 	}
 	time.Sleep(50 * time.Millisecond)

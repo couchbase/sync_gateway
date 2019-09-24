@@ -10,7 +10,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/url"
 
@@ -69,7 +68,7 @@ func verifyFacebook(fbUrl, accessToken string) (*FacebookResponse, error) {
 			"Facebook verification server status %d", res.StatusCode)
 	}
 
-	decoder := json.NewDecoder(res.Body)
+	decoder := base.JSONDecoder(res.Body)
 
 	var response FacebookResponse
 	err = decoder.Decode(&response)

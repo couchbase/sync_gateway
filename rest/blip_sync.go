@@ -592,7 +592,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 	output := bytes.NewBuffer(make([]byte, 0, 100*len(changeList)))
 	output.Write([]byte("["))
-	jsonOutput := json.NewEncoder(output)
+	jsonOutput := base.JSONEncoder(output)
 	nWritten := 0
 
 	// Include changes messages w/ proposeChanges stats, although CBL should only be using proposeChanges
@@ -786,7 +786,7 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq db.Seq
 	properties := make(blip.Properties)
 
 	// TODO: Assert? db.SequenceID.MarshalJSON can never error
-	seqJSON, _ := json.Marshal(seq)
+	seqJSON, _ := base.JSONMarshal(seq)
 	properties[revMessageSequence] = string(seqJSON)
 
 	if len(revisionHistory) > 0 {

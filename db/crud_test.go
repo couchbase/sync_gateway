@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"log"
 	"testing"
 
@@ -30,7 +29,7 @@ func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList
 		}
 
 		var treeMeta treeMeta
-		err := json.Unmarshal(rawXattr, &treeMeta)
+		err := base.JSONUnmarshal(rawXattr, &treeMeta)
 		if err != nil {
 			return revTreeList{}, err
 		}
@@ -42,7 +41,7 @@ func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList
 			return revTreeList{}, err
 		}
 		var doc treeDoc
-		err = json.Unmarshal(rawDoc, &doc)
+		err = base.JSONUnmarshal(rawDoc, &doc)
 		return doc.Meta.RevTree, err
 	}
 
@@ -114,7 +113,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	var revisionBody Body
 	rawRevision, _, err := db.Bucket.GetRaw("_sync:rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
-	json.Unmarshal(rawRevision, &revisionBody)
+	base.JSONUnmarshal(rawRevision, &revisionBody)
 	goassert.Equals(t, revisionBody["version"], rev2a_body["version"])
 	goassert.Equals(t, revisionBody["value"], rev2a_body["value"])
 
@@ -287,7 +286,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	var revisionBody Body
 	rawRevision, _, err := db.Bucket.GetRaw("_sync:rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
-	json.Unmarshal(rawRevision, &revisionBody)
+	base.JSONUnmarshal(rawRevision, &revisionBody)
 	goassert.Equals(t, revisionBody["version"], rev2a_body["version"])
 	goassert.Equals(t, revisionBody["value"], rev2a_body["value"])
 

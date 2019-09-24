@@ -234,7 +234,7 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 		return 0, err
 	}
 
-	if err := json.Unmarshal(respBytes, &purgeResponse); err != nil {
+	if err := JSONUnmarshal(respBytes, &purgeResponse); err != nil {
 		return 0, err
 	}
 
@@ -260,7 +260,7 @@ func (bucket *CouchbaseBucketGoCB) GetServerUUID() (uuid string, err error) {
 		ServerUUID string `json:"uuid"`
 	}
 
-	if err := json.Unmarshal(respBytes, &responseJson); err != nil {
+	if err := JSONUnmarshal(respBytes, &responseJson); err != nil {
 		return "", err
 	}
 
@@ -286,7 +286,7 @@ func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
 		return -1, err
 	}
 
-	if err := json.Unmarshal(respBytes, &bucketResponseWithMaxTTL); err != nil {
+	if err := JSONUnmarshal(respBytes, &bucketResponseWithMaxTTL); err != nil {
 		return -1, err
 	}
 
@@ -1873,13 +1873,13 @@ func (bucket *CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) err
 		// marshal/unmarshal round trip
 
 		// Serialize DesignDocument into []byte
-		designDocBytes, err := json.Marshal(designDocPointer)
+		designDocBytes, err := JSONMarshal(designDocPointer)
 		if err != nil {
 			return err
 		}
 
 		// Deserialize []byte into "into" empty interface
-		if err := json.Unmarshal(designDocBytes, into); err != nil {
+		if err := JSONUnmarshal(designDocBytes, into); err != nil {
 			return err
 		}
 
@@ -1955,7 +1955,7 @@ func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocumen
 		DesignDocument:         ddoc,
 		IndexXattrOnTombstones: true,
 	}
-	data, err := json.Marshal(&xattrEnabledDesignDoc)
+	data, err := JSONMarshal(&xattrEnabledDesignDoc)
 	if err != nil {
 		return err
 	}
@@ -2181,13 +2181,13 @@ func (bucket *CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[stri
 	}
 
 	// serialize the whole thing to a []byte
-	viewResponseBytes, err := json.Marshal(viewResponse)
+	viewResponseBytes, err := JSONMarshal(viewResponse)
 	if err != nil {
 		return err
 	}
 
 	// unmarshal into vres
-	if err := json.Unmarshal(viewResponseBytes, vres); err != nil {
+	if err := JSONUnmarshal(viewResponseBytes, vres); err != nil {
 		return err
 	}
 
@@ -2418,7 +2418,7 @@ func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) 
 	}
 
 	respJson := map[string]interface{}{}
-	decoder := json.NewDecoder(resp.Body)
+	decoder := JSONDecoder(resp.Body)
 	if err := decoder.Decode(&respJson); err != nil {
 		return -1, err
 	}

@@ -1,7 +1,6 @@
 package base
 
 import (
-	"encoding/json"
 	"expvar"
 	"fmt"
 	"sync/atomic"
@@ -89,7 +88,7 @@ func (b *StatsBucket) Get(k string, rv interface{}) (uint64, error) {
 	cas, err := b.bucket.Get(k, rv)
 	if vBytes, ok := rv.([]byte); ok {
 		defer b.docRead(1, len(vBytes))
-	} else if marshalledJSON, marshalErr := json.Marshal(rv); marshalErr == nil {
+	} else if marshalledJSON, marshalErr := JSONMarshal(rv); marshalErr == nil {
 		defer b.docRead(1, len(marshalledJSON))
 	} else {
 		defer b.docRead(1, -1)
@@ -193,7 +192,7 @@ func (b *StatsBucket) GetWithXattr(k string, xattr string, rv interface{}, xv in
 	cas, err = b.bucket.GetWithXattr(k, xattr, rv, xv)
 	if vBytes, ok := rv.([]byte); ok {
 		defer b.docRead(1, len(vBytes))
-	} else if marshalledJSON, marshalErr := json.Marshal(rv); marshalErr == nil {
+	} else if marshalledJSON, marshalErr := JSONMarshal(rv); marshalErr == nil {
 		defer b.docRead(1, len(marshalledJSON))
 	} else {
 		defer b.docRead(1, -1)

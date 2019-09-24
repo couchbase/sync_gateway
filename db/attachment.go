@@ -16,7 +16,6 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -232,7 +231,7 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 
-	decoder := json.NewDecoder(input)
+	decoder := base.JSONDecoder(input)
 	decoder.UseNumber()
 	if err := decoder.Decode(into); err != nil {
 		base.Warnf(base.KeyAll, "Couldn't parse JSON in HTTP request: %v", err)
@@ -248,7 +247,7 @@ type attInfo struct {
 }
 
 func writeJSONPart(writer *multipart.Writer, contentType string, body Body, compressed bool) (err error) {
-	bytes, err := json.Marshal(body)
+	bytes, err := base.JSONMarshal(body)
 	if err != nil {
 		return err
 	}

@@ -10,7 +10,6 @@
 package channels
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -26,7 +25,7 @@ func init() {
 
 func parse(jsonStr string) map[string]interface{} {
 	var parsed map[string]interface{}
-	json.Unmarshal([]byte(jsonStr), &parsed)
+	base.JSONUnmarshal([]byte(jsonStr), &parsed)
 	return parsed
 }
 

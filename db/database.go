@@ -11,7 +11,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
@@ -932,14 +931,14 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 	_, err = context.Bucket.Update(base.SyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
-			parseErr := json.Unmarshal(currentValue, &syncData)
+			parseErr := base.JSONUnmarshal(currentValue, &syncData)
 			if parseErr != nil || syncData.Sync != syncFun {
 				changed = true
 			}
 		}
 		if changed || currentValue == nil {
 			syncData.Sync = syncFun
-			bytes, err := json.Marshal(syncData)
+			bytes, err := base.JSONMarshal(syncData)
 			return bytes, nil, err
 		} else {
 			return nil, nil, base.ErrUpdateCancel // value unchanged, no need to save
@@ -1073,7 +1072,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 					if updatedExpiry != nil {
 						updatedDoc.UpdateExpiry(*updatedExpiry)
 					}
-					updatedBytes, marshalErr := json.Marshal(updatedDoc)
+					updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
 					return updatedBytes, updatedExpiry, marshalErr
 				} else {
 					return nil, nil, base.ErrUpdateCancel

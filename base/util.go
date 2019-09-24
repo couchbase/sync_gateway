@@ -110,7 +110,7 @@ func FixJSONNumbers(value interface{}) interface{} {
 // "thing" -> "thing"
 func ConvertJSONString(s string) string {
 	var jsonString string
-	err := json.Unmarshal([]byte(s), &jsonString)
+	err := JSONUnmarshal([]byte(s), &jsonString)
 	if err != nil {
 		return s
 	} else {
@@ -1039,7 +1039,7 @@ func InjectJSONProperties(b []byte, kvPairs ...KVPair) (new []byte, err error) {
 
 	kvPairsBytes := make([]KVPairBytes, len(kvPairs))
 	for i, kv := range kvPairs {
-		valBytes, err := json.Marshal(kv.Val)
+		valBytes, err := JSONMarshal(kv.Val)
 		if err != nil {
 			return nil, err
 		}
