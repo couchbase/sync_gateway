@@ -86,9 +86,8 @@ func (wh *Webhook) HandleEvent(event Event) {
 	// Different events post different content by default
 	switch event := event.(type) {
 	case *DocumentChangeEvent:
-		jsonOut := event.DocBytes
 		contentType = "application/json"
-		payload = bytes.NewBuffer(jsonOut)
+		payload = bytes.NewBuffer(event.DocBytes)
 	case *DBStateChangeEvent:
 		// for DBStateChangeEvent, post JSON document with the following format
 		//{

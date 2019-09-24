@@ -40,7 +40,6 @@ func (ae AsyncEvent) Synchronous() bool {
 // data store.  Event has the document body and channel set as properties.
 type DocumentChangeEvent struct {
 	AsyncEvent
-	// Doc      Body
 	DocBytes []byte
 	DocID    string
 	OldDoc   string
