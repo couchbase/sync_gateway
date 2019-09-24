@@ -171,7 +171,7 @@ func (rc *LRURevisionCache) statsRecorderFunc(cacheHit bool) {
 // Adds a revision to the cache.
 func (rc *LRURevisionCache) Put(docID string, docRev DocumentRevision) {
 	if docRev.History == nil {
-		panic("Missing history for RevisionCache.Put")
+		panic("Missing history for RevisionCache.PutWithBody")
 	}
 	value := rc.getValue(docID, docRev.RevID, true)
 	value.store(docRev)

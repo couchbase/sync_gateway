@@ -247,7 +247,7 @@ func (h *handler) handlePutAttachment() error {
 	attachments[attachmentName] = attachment
 	body[db.BodyAttachments] = attachments
 
-	newRev, _, err := h.db.Put(docid, body)
+	newRev, _, err := h.db.PutWithBody(docid, body)
 	if err != nil {
 		return err
 	}
@@ -280,34 +280,72 @@ func (h *handler) handlePutDoc() error {
 
 	roundTrip := h.getBoolQuery("roundtrip")
 
-	if h.getQuery("new_edits") != "false" {
-		// Regular PUT:
-		if oldRev := h.getQuery("rev"); oldRev != "" {
-			body[db.BodyRev] = oldRev
-		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
-			body[db.BodyRev] = ifMatch
+	// If new url parameters are used
+	if h.getQuery("deleted") != "" || h.getQuery("expiry") != "" || h.getQuery("revisions") != "" {
+		if db.ContainsSpecialProperties(body) {
+			return base.HTTPErrorf(http.StatusBadRequest, "Cannot mix in body special properties and url queries")
+		} else {
+			docToAdd := &db.Document{
+				ID: docid,
+			}
+			if oldRev := h.getQuery("rev"); oldRev != "" {
+				docToAdd.RevID = oldRev
+			} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+				docToAdd.RevID = ifMatch
+			}
+			if deleted, _ := h.getOptBoolQuery("deleted", false); deleted {
+				docToAdd.Deleted = deleted
+			}
+			expiry := h.getIntQuery("expiry", 0)
+			docToAdd.DocExpiry = uint32(expiry)
+
+			docToAdd.UpdateBody(body)
+			if h.getQuery("new_edits") != "false" {
+				newRev, doc, err = h.db.Put(docToAdd)
+				if err != nil {
+					return err
+				}
+				h.setHeader("Etag", strconv.Quote(newRev))
+			} else {
+				revisionsQuery := h.getQuery("revisions")
+				revisions := strings.Split(revisionsQuery, ",")
+				doc, newRev, err = h.db.PutExistingRev(docToAdd, revisions, false)
+				if err != nil {
+					return err
+				}
+			}
 		}
-		newRev, doc, err = h.db.Put(docid, body)
-		if err != nil {
-			return err
-		}
-		h.setHeader("Etag", strconv.Quote(newRev))
+		// If new url properties are not used handle as we used to
 	} else {
-		// Replicator-style PUT with new_edits=false:
-		revisions := db.ParseRevisions(body)
-		if revisions == nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
-		}
-		doc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
-		if err != nil {
-			return err
-		}
+		if h.getQuery("new_edits") != "false" {
+			// Regular PUT:
+			if oldRev := h.getQuery("rev"); oldRev != "" {
+				body[db.BodyRev] = oldRev
+			} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+				body[db.BodyRev] = ifMatch
+			}
+			newRev, doc, err = h.db.PutWithBody(docid, body)
+			if err != nil {
+				return err
+			}
+			h.setHeader("Etag", strconv.Quote(newRev))
+		} else {
+			// Replicator-style PUT with new_edits=false:
+			revisions := db.ParseRevisions(body)
+			if revisions == nil {
+				return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
+			}
+			doc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
+			if err != nil {
+				return err
+			}
 
-		newRev, ok = body[db.BodyRev].(string)
-		if !ok {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
-		}
+			newRev, ok = body[db.BodyRev].(string)
+			if !ok {
+				return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
+			}
 
+		}
 	}
 
 	if doc != nil && roundTrip {

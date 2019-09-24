@@ -466,6 +466,15 @@ func containsUserSpecialProperties(b Body) bool {
 	return false
 }
 
+func ContainsSpecialProperties(b Body) bool {
+	for k := range b {
+		if k != "" && k[0] == '_' {
+			return true
+		}
+	}
+	return false
+}
+
 func GetStringArrayProperty(body map[string]interface{}, property string) ([]string, error) {
 	if raw, exists := body[property]; !exists {
 		return nil, nil

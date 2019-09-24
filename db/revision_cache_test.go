@@ -173,8 +173,8 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 		"value":       1234,
 		BodyRevisions: "unexpected data",
 	}
-	rev1id, _, err := db.Put("doc1", rev1body)
-	assert.NoError(t, err, "Put")
+	rev1id, _, err := db.PutWithBody("doc1", rev1body)
+	assert.NoError(t, err, "PutWithBody")
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
 	var bucketBody Body
@@ -220,12 +220,12 @@ func TestBypassRevisionCache(t *testing.T) {
 		"value": 1234,
 	}
 	key := "doc1"
-	rev1, _, err := db.Put(key, docBody)
+	rev1, _, err := db.PutWithBody(key, docBody)
 	assert.NoError(t, err)
 
 	docBody["_rev"] = rev1
 	docBody["value"] = 5678
-	rev2, _, err := db.Put(key, docBody)
+	rev2, _, err := db.PutWithBody(key, docBody)
 	assert.NoError(t, err)
 
 	bypassStat := expvar.Int{}
@@ -257,7 +257,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	// Put no-ops
 	rc.Put(key, doc)
 
-	// Check peek is still returning false for "Put"
+	// Check peek is still returning false for "PutWithBody"
 	_, ok = rc.Peek(key, rev1, BodyShallowCopy)
 	assert.False(t, ok)
 
@@ -268,7 +268,7 @@ func TestBypassRevisionCache(t *testing.T) {
 
 }
 
-// Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via Put
+// Ensure attachment properties aren't being incorrectly stored in revision cache body when inserted via PutWithBody
 func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
@@ -282,8 +282,8 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
 	rev1key := "doc1"
-	rev1id, _, err := db.Put(rev1key, rev1body)
-	assert.NoError(t, err, "Unexpected error calling db.Put")
+	rev1id, _, err := db.PutWithBody(rev1key, rev1body)
+	assert.NoError(t, err, "Unexpected error calling db.PutWithBody")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
 	var bucketBody Body
@@ -324,8 +324,8 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	rev1body := Body{
 		"value": 1234,
 	}
-	rev1id, _, err := db.Put(docKey, rev1body)
-	assert.NoError(t, err, "Unexpected error calling db.Put")
+	rev1id, _, err := db.PutWithBody(docKey, rev1body)
+	assert.NoError(t, err, "Unexpected error calling db.PutWithBody")
 
 	rev2id := "2-xxx"
 	rev2body := Body{
