@@ -86,14 +86,8 @@ func (wh *Webhook) HandleEvent(event Event) {
 	// Different events post different content by default
 	switch event := event.(type) {
 	case *DocumentChangeEvent:
-		// for DocumentChangeEvent, post document body
-		jsonOut, err := base.JSONMarshal(event.Doc)
-		if err != nil {
-			base.Warnf(base.KeyAll, "Error marshalling doc for webhook post: %v", err)
-			return
-		}
 		contentType = "application/json"
-		payload = bytes.NewBuffer(jsonOut)
+		payload = bytes.NewBuffer(event.DocBytes)
 	case *DBStateChangeEvent:
 		// for DBStateChangeEvent, post JSON document with the following format
 		//{

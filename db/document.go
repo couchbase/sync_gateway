@@ -189,6 +189,24 @@ func (doc *Document) MarshalBodyAndSync() (retBytes []byte, err error) {
 	}
 }
 
+func (doc *Document) MarshalBodyForWebhook() (retBytes []byte, err error) {
+	bodyBytes, err := doc.BodyBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	bodyBytes, err = base.InjectJSONPropertiesFromBytes(
+		bodyBytes,
+		base.KVPairBytes{Key: BodyId, Val: []byte(`"` + doc.ID + `"`)},
+		base.KVPairBytes{Key: BodyRev, Val: []byte(`"` + doc.RevID + `"`)},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return bodyBytes, nil
+}
+
 // Returns a new empty document.
 func NewDocument(docid string) *Document {
 	return &Document{ID: docid, SyncData: SyncData{History: make(RevTree)}}

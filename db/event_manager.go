@@ -2,9 +2,10 @@ package db
 
 import (
 	"errors"
-	"github.com/couchbase/sync_gateway/base"
 	"sync"
 	"time"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // EventManager routes raised events to corresponding event handlers.  Incoming events are just dumped in the
@@ -116,13 +117,14 @@ func (em *EventManager) raiseEvent(event Event) error {
 
 // Raises a document change event based on the the document body and channel set.  If the
 // event manager doesn't have a listener for this event, ignores.
-func (em *EventManager) RaiseDocumentChangeEvent(body Body, oldBodyJSON string, channels base.Set) error {
+func (em *EventManager) RaiseDocumentChangeEvent(docBytes []byte, docID string, oldBodyJSON string, channels base.Set) error {
 
 	if !em.activeEventTypes[DocumentChange] {
 		return nil
 	}
 	event := &DocumentChangeEvent{
-		Doc:      body,
+		DocID:    docID,
+		DocBytes: docBytes,
 		OldDoc:   oldBodyJSON,
 		Channels: channels,
 	}
