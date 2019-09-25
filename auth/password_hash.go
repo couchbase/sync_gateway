@@ -34,7 +34,7 @@ var ErrInvalidBcryptCost = fmt.Errorf("invalid bcrypt cost")
 // Set of known-to-be-valid {password, bcryt-hash} pairs.
 // Keys are of the form SHA1 digest of password + bcrypt'ed hash of password
 var cachedHashes = map[string]struct{}{}
-var cacheLock sync.Mutex
+var cacheLock sync.RWMutex
 
 // The maximum number of pairs to keep in the above cache
 const kMaxCacheSize = 25000
@@ -48,9 +48,9 @@ func compareHashAndPassword(hash []byte, password []byte) bool {
 	digest := string(s.Sum(nil))
 	key := digest + string(hash)
 
-	cacheLock.Lock()
+	cacheLock.RLock()
 	_, valid := cachedHashes[key]
-	cacheLock.Unlock()
+	cacheLock.RUnlock()
 	if valid {
 		return true
 	}
