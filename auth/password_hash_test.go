@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -26,6 +27,31 @@ func BenchmarkBcryptCostTimes(b *testing.B) {
 			goassert.Equals(bn, err, nil)
 		})
 	}
+}
+
+func BenchmarkCompareAndHashPassword(b *testing.B) {
+	maxLoop := 20
+	passwordList := make([]string, 0, maxLoop)
+	hashList := [][]byte{}
+
+	for i := 0; i < maxLoop; i++ {
+		passwordString := "password"
+		if i%2 == 0 {
+			passwordString += strconv.Itoa(i)
+		}
+		hash, _ := bcrypt.GenerateFromPassword([]byte(passwordString), bcryptDefaultCost)
+		hashList = append(hashList, hash)
+		passwordList = append(passwordList, passwordString)
+	}
+	compareHashAndPassword(hashList[1], []byte(passwordList[1]))
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for i := 0; i < maxLoop; i++ {
+			for pb.Next() {
+				compareHashAndPassword(hashList[i], []byte(passwordList[i]))
+			}
+		}
+	})
 }
 
 // TestBcryptDefaultCostTime will ensure that the default bcrypt cost takes at least a 'reasonable' amount of time
