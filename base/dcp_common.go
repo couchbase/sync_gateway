@@ -8,12 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/couchbase/go-couchbase/cbdatasource"
-	pkgerrors "github.com/pkg/errors"
-
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/google/uuid"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // Number of non-checkpoint updates per vbucket required to trigger metadata persistence.  Must be greater than zero to avoid

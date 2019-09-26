@@ -8,9 +8,8 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/couchbase/gomemcached"
-
 	"github.com/couchbase/cbgt"
+	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )

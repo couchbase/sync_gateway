@@ -16,7 +16,7 @@ import (
 
 // Webhook tests use an HTTP listener.  Use of this listener is disabled by default, to avoid
 // port conflicts/permission issues when running tests on a non-dev machine.
-const testLiveHTTP = true
+const testLiveHTTP = false
 
 // Testing handler tracks received events in ResultChannel
 type TestingHandler struct {

@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -534,7 +533,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("database context is: %v, err is %v", dbcontext, err)
 	dbcontext.BucketSpec = spec
 
 	syncFn := ""

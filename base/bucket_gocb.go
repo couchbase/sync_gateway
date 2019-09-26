@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -76,8 +75,6 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		Warnf(KeyAuth, "Unable to parse server value: %s error: %v", SD(spec.Server), err)
 		return nil, err
 	}
-
-	log.Printf("----Attempting to connect to bucket with connString %s", connString)
 
 	cluster, err := gocb.Connect(connString)
 	if err != nil {
@@ -2283,6 +2280,7 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbS
 }
 
 func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	// TODO: Possibly set an unsupported flag to revert to cbdatasource-based feed
 	return StartCbgtDCPFeed(bucket, bucket.spec, args, callback, dbStats)
 	//	return StartDCPFeed(bucket, bucket.spec, args, callback, dbStats)
 }
