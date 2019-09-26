@@ -812,7 +812,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 
 		// Process the attachments, replacing bodies with digests.
 		parentRevID := doc.History[newRev].Parent
-		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
+		newAttachments, err := db.storeAttachments(doc, doc.DocAttachments, generation, parentRevID, docHistory)
 		if err != nil {
 			return nil, nil, nil, err
 		}

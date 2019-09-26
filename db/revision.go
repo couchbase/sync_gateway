@@ -257,7 +257,7 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 	// Special handling for Xattrs so that SG still has revisions that were updated by an SDK write
 	if db.UseXattrs() {
 		// Inject _attachments metadata into the body we're about to backup
-		newBodyBytes := newBody
+		var newBodyBytes []byte
 		if len(newAtts) > 0 {
 			var err error
 			newBodyBytes, err = base.InjectJSONProperties(newBody, base.KVPair{Key: BodyAttachments, Val: newAtts})

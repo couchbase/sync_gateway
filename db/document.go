@@ -538,7 +538,7 @@ func (doc *Document) getRevisionBodyJSON(revid string, loader RevLoaderFunc) []b
 	var bodyJSON []byte
 	if revid == doc.CurrentRev {
 		var marshalErr error
-		bodyJSON, marshalErr = base.JSONMarshal(doc._body)
+		bodyJSON, marshalErr = doc.BodyBytes()
 		if marshalErr != nil {
 			base.Warnf(base.KeyAll, "Marshal error when retrieving active current revision body: %v", marshalErr)
 		}
