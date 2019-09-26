@@ -35,9 +35,10 @@
 
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="f83e63d76bc41c5b61e022db2d5463f776dc545f"/>
 
-  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="d46732ea85f0ca44f82842ca2996bd2a21995172"/>
+  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="d5dc4f6170174357adee38c22e81721d1918b09e" />
+  <project name="gocb" path="godeps/src/gopkg.in/couchbase/gocb.v1" remote="couchbase" revision="d5dc4f6170174357adee38c22e81721d1918b09e" />
 
-  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="5905fd813f0ec718a59374725efaab4993560436"/>
+  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="bbbfeaf52639128d7736a5a03a9011a71b152ab6"/>
 
   <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="5b7baa20429a46a5543ee259664cc86502738cad"/>
 
@@ -103,6 +104,11 @@
 
   <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="e437cdd2e1d7da08ec0ad394b7f89ce17da8e49b"/>
 
+  <project name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="5cd1345cca3ed72f1e63d41d622fcda73e63fea8" />
+
+  <project name="cbauth" path="godeps/src/github.com/couchbase/cbauth" remote="couchbase" revision="82614adbe4d480de5675d8eee9b21a180a779222" />
+
+  <project name="go-metrics" path="godeps/src/github.com/rcrowley/go-metrics" remote="couchbasedeps" revision="dee209f2455f101a5e4e593dea94872d2c62d85d" />
 
   <!-- Enterprise edition dependencies -->
   <project groups="notdefault,cb_sg_enterprise" name="go-fleecedelta" path="godeps/src/github.com/couchbaselabs/go-fleecedelta" remote="couchbaselabs_private" revision="68cf89ddc17d5fed0c1424083439585bec964590"/>
