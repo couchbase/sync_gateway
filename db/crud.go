@@ -256,7 +256,8 @@ func (db *Database) GetRev1xBodyWithHistory(docid, revid string, maxHistory int,
 // * attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //   revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //   that hasn't changed since one of those revisions will be returned as a stub.
-func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string) (revision *DocumentRevision, redactedRev *DocumentRevision, err error) {
+func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string) (rev *DocumentRevision, redactedRev *DocumentRevision, err error) {
+	var revision DocumentRevision
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
@@ -296,7 +297,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		return nil, nil, base.HTTPErrorf(404, "deleted")
 	}
 
-	return revision, nil, nil
+	return &revision, nil, nil
 }
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
@@ -349,7 +350,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
-			revCacheDelta := newRevCacheDelta([]byte(`{}`), fromRevID, *toRevision, deleted)
+			revCacheDelta := newRevCacheDelta([]byte(`{}`), fromRevID, toRevision, deleted)
 			db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)
 			return revCacheDelta, nil, nil
 		}
@@ -381,7 +382,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		if err != nil {
 			return nil, nil, err
 		}
-		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, *toRevision, deleted)
+		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted)
 
 		// Write the newly calculated delta back into the cache before returning
 		db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)

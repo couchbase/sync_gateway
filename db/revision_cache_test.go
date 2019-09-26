@@ -154,7 +154,7 @@ func TestBackingStore(t *testing.T) {
 	// Rev still doesn't exist, make sure it wasn't cached
 	docRev, err = cache.Get("Peter", "1-abc")
 	assertHTTPError(t, err, 404)
-	assert.Nil(t, docRev)
+	assert.Nil(t, docRev.BodyBytes)
 	assert.Equal(t, int64(1), cacheHitCounter.Value())
 	assert.Equal(t, int64(3), cacheMissCounter.Value())
 	assert.Equal(t, int64(3), getDocumentCounter.Value())
@@ -255,7 +255,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	assert.False(t, ok)
 
 	// Put no-ops
-	rc.Put(*doc)
+	rc.Put(doc)
 
 	// Check peek is still returning false for "Put"
 	_, ok = rc.Peek(key, rev1)
