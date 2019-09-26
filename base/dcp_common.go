@@ -3,7 +3,6 @@ package base
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"expvar"
 	"fmt"
 	"sync"
@@ -202,7 +201,7 @@ func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStar
 	}
 
 	var snapshotMetadata cbdatasource.VBucketMetaData
-	unmarshalErr := json.Unmarshal(rawValue, &snapshotMetadata)
+	unmarshalErr := JSONUnmarshal(rawValue, &snapshotMetadata)
 	if unmarshalErr != nil {
 		return []byte{}, 0, 0, err
 	}

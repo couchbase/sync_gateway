@@ -11,7 +11,6 @@ package base
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"expvar"
 
@@ -138,7 +137,7 @@ func makeVbucketMetadata(vbucketUUID uint64, sequence uint64, snapStart uint64, 
 		SnapEnd:     snapEnd,
 		FailOverLog: failOver,
 	}
-	metadataBytes, err := json.Marshal(metadata)
+	metadataBytes, err := JSONMarshal(metadata)
 	if err == nil {
 		return metadataBytes
 	} else {

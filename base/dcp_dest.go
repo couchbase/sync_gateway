@@ -2,7 +2,6 @@ package base
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
@@ -234,7 +233,7 @@ func StartCbgtDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 		feedParams.IncludeXAttrs = true // TODO: Seems like this is always being set in NewGocbDCPFeed
 	}
 
-	paramBytes, err := json.Marshal(feedParams)
+	paramBytes, err := JSONMarshal(feedParams)
 	if err != nil {
 		return err
 	}
