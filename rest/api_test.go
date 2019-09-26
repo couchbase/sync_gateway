@@ -3977,6 +3977,35 @@ func TestGetRawDocumentError(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, response.Code)
 }
 
+func BenchmarkAuth(b *testing.B) {
+	wg := sync.WaitGroup{}
+
+	rt := NewRestTester(b, nil)
+	defer rt.Close()
+
+	rt.SendAdminRequest("PUT", "/db/_user/User", `{"name": "User", "password": "pass",  "email": "user@example.com", "disabled": false}`)
+
+	testHandler := func(w http.ResponseWriter, r *http.Request) {
+		h := newHandler(rt.ServerContext(), regularPrivs, w, r, true)
+		b.StartTimer()
+		h.checkAuth(rt.GetDatabase())
+		b.StopTimer()
+		wg.Done()
+	}
+
+	s := httptest.NewServer(http.HandlerFunc(testHandler))
+	defer s.Close()
+
+	wg.Add(1)
+	req, _ := http.NewRequest("PUT", s.URL, nil)
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("User:pass")))
+
+	client := http.Client{}
+	client.Do(req)
+	wg.Wait()
+
+}
+
 func TestWebhookProperties(t *testing.T) {
 
 	wg := sync.WaitGroup{}
