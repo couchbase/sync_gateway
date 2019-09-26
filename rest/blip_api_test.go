@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -1155,6 +1157,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	goassert.True(t, err == nil)
 	goassert.Equals(t, len(attachments), 1)
 	retrievedAttachment := attachments[input.attachmentName]
+	require.NotNil(t, retrievedAttachment)
 	goassert.Equals(t, string(retrievedAttachment.Data), input.attachmentBody)
 	goassert.Equals(t, retrievedAttachment.Length, len(attachmentBody))
 	goassert.Equals(t, input.attachmentDigest, retrievedAttachment.Digest)

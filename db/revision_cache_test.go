@@ -98,7 +98,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 		docID := strconv.Itoa(i)
 		docRev, ok := cache.Peek(docID, "1-abc")
 		assert.False(t, ok)
-		assert.Nil(t, docRev.BodyBytes)
+		assert.Nil(t, docRev)
 		assert.Equal(t, int64(0), cacheMissCounter.Value()) // peek incurs no cache miss if not found
 		assert.Equal(t, int64(prevCacheHitCount), cacheHitCounter.Value())
 	}
@@ -154,7 +154,7 @@ func TestBackingStore(t *testing.T) {
 	// Rev still doesn't exist, make sure it wasn't cached
 	docRev, err = cache.Get("Peter", "1-abc")
 	assertHTTPError(t, err, 404)
-	assert.Nil(t, docRev.BodyBytes)
+	assert.Nil(t, docRev)
 	assert.Equal(t, int64(1), cacheHitCounter.Value())
 	assert.Equal(t, int64(3), cacheMissCounter.Value())
 	assert.Equal(t, int64(3), getDocumentCounter.Value())

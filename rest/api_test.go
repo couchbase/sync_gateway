@@ -2132,6 +2132,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	log.Printf("_changes looks like: %+v", changes)
 	assert.Equal(t, len(expectedIDs), len(changes.Results))
 
+	require.Len(t, changes.Results, len(expectedIDs))
 	for i, expectedID := range expectedIDs {
 		if changes.Results[i].ID != expectedID {
 			log.Printf("changes.Results[i].ID != expectedID.  changes.Results: %+v, expectedIDs: %v", changes.Results, expectedIDs)

@@ -178,9 +178,13 @@ func TestAttachments(t *testing.T) {
 	assert.Nil(t, hello["data"])
 
 	bye = atts["bye.txt"].(map[string]interface{})
+	require.NotNil(t, bye["data"])
 	assert.Equal(t, "bye-ya", string(bye["data"].([]byte)))
+	require.NotNil(t, bye["digest"])
 	assert.Equal(t, "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", bye["digest"])
+	require.NotNil(t, bye["length"])
 	assert.Equal(t, 6, bye["length"])
+	require.NotNil(t, bye["revpos"])
 	assert.Equal(t, 2, bye["revpos"])
 
 	log.Printf("Create rev 3...")
