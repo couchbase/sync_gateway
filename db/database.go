@@ -947,7 +947,15 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			// Run the sync fn over each current/leaf revision, in case there are conflicts:
 			changed := 0
 			doc.History.forEachLeaf(func(rev *RevInfo) {
-				body, _ := db.getRevFromDoc(doc, rev.ID, false)
+				bodyBytes, err := db.getRevFromDoc(doc, rev.ID, false)
+				if err != nil {
+					base.Warnf(base.KeyAll, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
+				}
+				var body Body
+				if err := body.Unmarshal(bodyBytes); err != nil {
+					base.Warnf(base.KeyAll, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
+					return
+				}
 				channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, rev.ID)
 				if err != nil {
 					// Probably the validator rejected the doc

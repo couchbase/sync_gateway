@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -107,7 +108,7 @@ func (h *handler) handleAllDocs() error {
 		Key       string           `json:"key"`
 		ID        string           `json:"id,omitempty"`
 		Value     *allDocsRowValue `json:"value,omitempty"`
-		Doc       db.Body          `json:"doc,omitempty"`
+		Doc       json.RawMessage  `json:"doc,omitempty"`
 		UpdateSeq uint64           `json:"update_seq,omitempty"`
 		Error     string           `json:"error,omitempty"`
 		Status    int              `json:"status,omitempty"`
@@ -128,11 +129,11 @@ func (h *handler) handleAllDocs() error {
 
 		if explicitDocIDs != nil || includeDocs || includeAccess {
 			// Fetch the document body and other metadata that lives with it:
-			body, channelSet, access, roleAccess, _, _, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, includeRevs)
+			bodyBytes, channelSet, access, roleAccess, _, _, gotRevID, removed, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, includeRevs)
 			if err != nil {
 				row.Status, _ = base.ErrorAsHTTPStatus(err)
 				return row
-			} else if body["_removed"] != nil {
+			} else if removed {
 				row.Status = http.StatusForbidden
 				return row
 			}
@@ -141,10 +142,10 @@ func (h *handler) handleAllDocs() error {
 					row.Status = http.StatusForbidden
 					return row
 				}
-				doc.RevID = body[db.BodyRev].(string)
+				doc.RevID = gotRevID
 			}
 			if includeDocs {
-				row.Doc = body
+				row.Doc = bodyBytes
 			}
 			if includeAccess && (access != nil || roleAccess != nil) {
 				value.Access = map[string]base.Set{}
@@ -416,7 +417,7 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.db.GetRevWithHistory(docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
+				body, err = h.db.GetRev1xBodyWithHistory(docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
 			}
 
 			if err != nil {

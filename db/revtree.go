@@ -742,7 +742,7 @@ func ParseRevisions(body Body) []string {
 		return nil
 	}
 
-	return revisions.parseRevisions()
+	return revisions.ParseRevisions()
 }
 
 // Splits out the "start" and "ids" properties from encoded revision list

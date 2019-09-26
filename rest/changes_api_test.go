@@ -1442,7 +1442,9 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, 4, len(changes.Results))
 	assert.Equal(t, "docD", changes.Results[3].ID)
-	assert.Equal(t, "docD", changes.Results[3].Doc[db.BodyId])
+	var docBody db.Body
+	assert.NoError(t, base.JSONUnmarshal(changes.Results[3].Doc, &docBody))
+	assert.Equal(t, "docD", docBody[db.BodyId])
 
 	//test parameter style=all_docs
 	//Create a conflict revision on docC

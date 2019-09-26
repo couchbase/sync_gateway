@@ -41,14 +41,14 @@ type ChangesOptions struct {
 // A changes entry; Database.GetChanges returns an array of these.
 // Marshals into the standard CouchDB _changes format.
 type ChangeEntry struct {
-	Seq          SequenceID  `json:"seq"`
-	ID           string      `json:"id"`
-	Deleted      bool        `json:"deleted,omitempty"`
-	Removed      base.Set    `json:"removed,omitempty"`
-	Doc          Body        `json:"doc,omitempty"`
-	Changes      []ChangeRev `json:"changes"`
-	Err          error       `json:"err,omitempty"` // Used to notify feed consumer of errors
-	allRemoved   bool        // Flag to track whether an entry is a removal in all channels visible to the user.
+	Seq          SequenceID      `json:"seq"`
+	ID           string          `json:"id"`
+	Deleted      bool            `json:"deleted,omitempty"`
+	Removed      base.Set        `json:"removed,omitempty"`
+	Doc          json.RawMessage `json:"doc,omitempty"`
+	Changes      []ChangeRev     `json:"changes"`
+	Err          error           `json:"err,omitempty"` // Used to notify feed consumer of errors
+	allRemoved   bool            // Flag to track whether an entry is a removal in all channels visible to the user.
 	branched     bool
 	backfill     backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
 	principalDoc bool         // Used to indicate _user/_role docs
@@ -132,8 +132,11 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 }
 
 func (db *Database) AddDocToChangeEntryUsingRevCache(entry *ChangeEntry, revID string) (err error) {
-	// GetRevWithHistory for (doc, rev, no max history, no history from, no attachments, no _exp)
-	entry.Doc, err = db.GetRevWithHistory(entry.ID, revID, 0, nil, nil, false)
+	rev, _, err := db.getRev(entry.ID, revID, 0, nil)
+	if err != nil {
+		return err
+	}
+	entry.Doc, err = rev.As1xBytes(db, nil, nil, false)
 	return err
 }
 
@@ -161,6 +164,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 			return
 		}
 		var err error
+
 		entry.Doc, err = db.getRevFromDoc(doc, revID, false)
 		db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		if err != nil {
@@ -927,7 +931,7 @@ func createChangesEntry(docid string, db *Database, options ChangesOptions) *Cha
 	row := &ChangeEntry{ID: docid}
 
 	// Fetch the document body and other metadata that lives with it:
-	populatedDoc, body, err := db.GetDocAndActiveRev(docid)
+	populatedDoc, revID, deleted, err := db.GetDocAndActiveRev(docid)
 	if err != nil {
 		base.InfofCtx(db.Ctx, base.KeyChanges, "Unable to get changes for docID %v, caused by %v", base.UD(docid), err)
 		return nil
@@ -937,20 +941,14 @@ func createChangesEntry(docid string, db *Database, options ChangesOptions) *Cha
 		return nil
 	}
 
-	if body == nil {
-		return nil
-	}
-
 	changes := make([]ChangeRev, 1)
-	changes[0] = ChangeRev{"rev": body[BodyRev].(string)}
+	changes[0] = ChangeRev{"rev": revID}
 	row.Changes = changes
+	row.Deleted = deleted
 	row.Seq = SequenceID{Seq: populatedDoc.Sequence}
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 
 	var removedChannels []string
-	if deleted, _ := body[BodyDeleted].(bool); deleted {
-		row.Deleted = true
-	}
 
 	userCanSeeDocChannel := false
 

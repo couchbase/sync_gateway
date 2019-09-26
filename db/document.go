@@ -214,12 +214,19 @@ func NewDocument(docid string) *Document {
 
 // Accessors for document properties.  To support lazy unmarshalling of document contents, all access should be done through accessors
 func (doc *Document) Body() Body {
+	var caller string
+	if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
+		caller = base.GetCallersName(1, true)
+	}
 	if doc._body == nil && doc._rawBody != nil {
+		base.Tracef(base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		err := doc._body.Unmarshal(doc._rawBody)
 		if err != nil {
 			base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
 			return nil
 		}
+	} else {
+		base.Tracef(base.KeyAll, "Already had doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 	}
 	return doc._body
 }
@@ -230,12 +237,19 @@ func (doc *Document) RemoveBody() {
 }
 
 func (doc *Document) BodyBytes() ([]byte, error) {
+	var caller string
+	if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
+		caller = base.GetCallersName(1, true)
+	}
 	if doc._rawBody == nil && doc._body != nil {
+		base.Tracef(base.KeyAll, "        MARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		bodyBytes, err := base.JSONMarshal(doc._body)
 		if err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error marshalling document body")
 		}
 		doc._rawBody = bodyBytes
+	} else {
+		base.Tracef(base.KeyAll, "Already had doc body bytes %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 	}
 	return doc._rawBody, nil
 }
@@ -245,11 +259,14 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 func unmarshalDocument(docid string, data []byte) (*Document, error) {
 	doc := NewDocument(docid)
 	if len(data) > 0 {
+		//doc._rawBody = data
+
 		decoder := base.JSONDecoder(bytes.NewReader(data))
 		decoder.UseNumber()
 		if err := decoder.Decode(doc); err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error unmarshalling doc.")
 		}
+
 		if doc != nil && doc.Deleted_OLD {
 			doc.Deleted_OLD = false
 			doc.Flags |= channels.Deleted // Backward compatibility with old Deleted property
@@ -713,7 +730,7 @@ func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.
 
 // Determine whether the specified revision was a channel removal, based on doc.Channels.  If so, construct the standard document body for a
 // removal notification (_removed=true)
-func (doc *Document) IsChannelRemoval(revID string) (body Body, history Revisions, channels base.Set, isRemoval bool, err error) {
+func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, err error) {
 
 	channels = make(base.Set)
 
@@ -733,13 +750,13 @@ func (doc *Document) IsChannelRemoval(revID string) (body Body, history Revision
 	}
 
 	// Construct removal body
-	body = Body{
-		BodyId:     doc.ID,
-		BodyRev:    revID,
-		"_removed": true,
-	}
+	bodyBytes = []byte(`{"` + BodyId + `":"` + doc.ID + `","` + BodyRev + `":"` + revID + `","_removed":true}`)
 	if isDelete {
-		body[BodyDeleted] = true
+		bodyBytes, err = base.InjectJSONPropertiesFromBytes(bodyBytes,
+			base.KVPairBytes{Key: BodyDeleted, Val: []byte("true")})
+		if err != nil {
+			return nil, nil, nil, false, err
+		}
 	}
 
 	// Build revision history for revID
@@ -754,7 +771,7 @@ func (doc *Document) IsChannelRemoval(revID string) (body Body, history Revision
 	}
 	history = encodeRevisions(revHistory)
 
-	return body, history, channels, true, nil
+	return bodyBytes, history, channels, true, nil
 }
 
 // Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.
@@ -799,21 +816,24 @@ func (doc *Document) UnmarshalJSON(data []byte) error {
 	if doc.ID == "" {
 		panic("Doc was unmarshaled without ID set")
 	}
-	root := documentRoot{SyncData: &SyncData{History: make(RevTree)}}
-	err := base.JSONUnmarshal([]byte(data), &root)
+
+	// Unmarshal only sync data (into a typed struct)
+	syncData := documentRoot{SyncData: &SyncData{History: make(RevTree)}}
+	err := base.JSONUnmarshal(data, &syncData)
 	if err != nil {
 		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
-
-	if root.SyncData != nil {
-		doc.SyncData = *root.SyncData
+	if syncData.SyncData != nil {
+		doc.SyncData = *syncData.SyncData
 	}
 
+	// Unmarshal the rest of the doc body as map[string]interface{}
 	if err := doc._body.Unmarshal(data); err != nil {
 		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
-
+	// Remove _sync from body
 	delete(doc._body, base.SyncXattrName)
+
 	return nil
 }
 

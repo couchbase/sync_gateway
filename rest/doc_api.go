@@ -63,7 +63,7 @@ func (h *handler) handleGetDoc() error {
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+		value, err := h.db.GetRev1xBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
 			if err == base.ErrImportCancelledPurged {
 				base.Debugf(base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
@@ -112,7 +112,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+					revBody, err := h.db.GetRev1xBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 					if err != nil {
 						revBody = db.Body{"missing": revid} //TODO: More specific error
 					}
@@ -128,7 +128,7 @@ func (h *handler) handleGetDoc() error {
 			h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.db.GetRevWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+				revBody, err := h.db.GetRev1xBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 				if err != nil {
 					revBody = db.Body{"missing": revid} //TODO: More specific error
 				} else {
@@ -150,14 +150,15 @@ func (h *handler) handleGetAttachment() error {
 	docid := h.PathVar("docid")
 	attachmentName := h.PathVar("attach")
 	revid := h.getQuery("rev")
-	body, err := h.db.GetRev(docid, revid, false, nil)
+	rev, err := h.db.GetRev(docid, revid, false, nil)
 	if err != nil {
 		return err
 	}
-	if body == nil {
+	if rev.BodyBytes == nil {
 		return kNotFoundError
 	}
-	meta, ok := db.GetBodyAttachments(body)[attachmentName].(map[string]interface{})
+
+	meta, ok := rev.Attachments[attachmentName].(map[string]interface{})
 	if !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
@@ -221,16 +222,24 @@ func (h *handler) handlePutAttachment() error {
 		return err
 	}
 
-	body, err := h.db.GetRev(docid, revid, false, nil)
-	if err != nil && base.IsDocNotFoundError(err) {
-		// couchdb creates empty body on attachment PUT
-		// for non-existant doc id
-		body = db.Body{}
-		body[db.BodyRev] = revid
-	} else if err != nil {
-		return err
-	} else if body != nil {
-		body[db.BodyRev] = revid
+	var body db.Body
+	if rev, err := h.db.GetRev(docid, revid, false, nil); err != nil {
+		if base.IsDocNotFoundError(err) {
+			// couchdb creates empty body on attachment PUT
+			// for non-existant doc id
+			body = db.Body{db.BodyRev: revid}
+		} else if err != nil {
+			return err
+		}
+	} else if rev != nil {
+		body, err = rev.Mutable1xBody(h.db, nil, nil, false)
+		if err != nil {
+			return err
+		} else if body != nil {
+			body[db.BodyRev] = revid
+		}
+	} else {
+		panic("???")
 	}
 
 	// find attachment (if it existed)

@@ -2058,12 +2058,9 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 
 		// Validate that generation of a delta didn't mutate the revision body in the revision cache
-		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.BodyShallowCopy)
+		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
 		assert.NoError(t, cacheErr)
-		greetings := docRev.Body["greetings"].([]interface{})
-		assert.Len(t, greetings, 2)
-		assert.Equal(t, map[string]interface{}{"hello": "world!"}, greetings[0])
-		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[1])
+		assert.NotContains(t, docRev.BodyBytes, "bob")
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
 		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])

@@ -330,17 +330,12 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 		return nil
 	}
 
-	previousRev, ok := db.revisionCache.Peek(docid, revid, BodyShallowCopy)
+	previousRev, ok := db.revisionCache.Peek(docid, revid)
 	if !ok {
 		return nil
 	}
 
-	bodyJson, marshalErr := base.JSONMarshal(stripSpecialProperties(previousRev.Body))
-	if marshalErr != nil {
-		return fmt.Errorf("Marshal error: %v", marshalErr)
-	}
-
-	setOldRevErr := db.setOldRevisionJSON(docid, revid, bodyJson, db.Options.OldRevExpirySeconds)
+	setOldRevErr := db.setOldRevisionJSON(docid, revid, previousRev.BodyBytes, db.Options.OldRevExpirySeconds)
 	if setOldRevErr != nil {
 		return fmt.Errorf("Persistence error: %v", setOldRevErr)
 	}
