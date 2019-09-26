@@ -101,7 +101,7 @@
 
   <project name="testify" path="godeps/src/github.com/stretchr/testify" remote="couchbasedeps" revision="04af85275a5c7ac09d16bb3b9b2e751ed45154e5"/>
 
-  <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="b5f9985941dd106c9fd6af8c864621b7c54bb758"/>
+  <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="e437cdd2e1d7da08ec0ad394b7f89ce17da8e49b"/>
 
 
   <!-- Enterprise edition dependencies -->
