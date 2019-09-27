@@ -408,7 +408,7 @@ func (db *Database) authorizeUserForChannels(docID, revID string, channels base.
 				redactedRev.BodyBytes = []byte(`{}`)
 			} else {
 				// ... but removals are still denoted by the _removed property in the body, even for 2.x replication
-				redactedRev.BodyBytes = []byte(`{"_removed":true}`)
+				redactedRev.BodyBytes = []byte(`{"` + BodyRemoved + `":true}`)
 			}
 			return false, redactedRev
 		}
@@ -879,7 +879,7 @@ func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists 
 func validateNewBody(body Body) error {
 	// Reject a body that contains the "_removed" property, this means that the user
 	// is trying to update a document they do not have read access to.
-	if body["_removed"] != nil {
+	if body[BodyRemoved] != nil {
 		return base.HTTPErrorf(http.StatusNotFound, "Document revision is not accessible")
 	}
 

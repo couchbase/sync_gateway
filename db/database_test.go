@@ -396,9 +396,9 @@ func TestGetRemovedAsUser(t *testing.T) {
 	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	expectedResult = Body{
-		BodyId:     "doc1",
-		BodyRev:    rev2id,
-		"_removed": true,
+		BodyId:      "doc1",
+		BodyRev:     rev2id,
+		BodyRemoved: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
@@ -472,9 +472,9 @@ func TestGetRemoved(t *testing.T) {
 	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	expectedResult = Body{
-		BodyId:     "doc1",
-		BodyRev:    rev2id,
-		"_removed": true,
+		BodyId:      "doc1",
+		BodyRev:     rev2id,
+		BodyRemoved: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
@@ -550,7 +550,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	expectedResult = Body{
 		BodyId:      "doc1",
 		BodyRev:     rev2id,
-		"_removed":  true,
+		BodyRemoved: true,
 		BodyDeleted: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,

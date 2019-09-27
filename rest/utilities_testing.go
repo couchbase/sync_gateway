@@ -1467,7 +1467,7 @@ func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
 }
 
 func (d RestDocument) IsRemoved() bool {
-	removed, ok := d["_removed"]
+	removed, ok := d[db.BodyRemoved]
 	if !ok {
 		return false
 	}
