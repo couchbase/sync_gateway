@@ -19,13 +19,13 @@ const (
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
 	// Get returns the given revision, and stores if not already cached
-	Get(docID, revID string) (DocumentRevision, error)
+	Get(docID, revID string) (*DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached
-	GetActive(docID string) (docRev DocumentRevision, err error)
+	GetActive(docID string) (docRev *DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
-	Peek(docID, revID string) (docRev DocumentRevision, found bool)
+	Peek(docID, revID string) (docRev *DocumentRevision, found bool)
 
 	// Put will store the given docRev in the cache
 	Put(docRev DocumentRevision)
@@ -177,7 +177,7 @@ type RevisionDelta struct {
 	ToDeleted         bool     // Flag if ToRevID is a tombstone
 }
 
-func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool) *RevisionDelta {
+func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision *DocumentRevision, deleted bool) *RevisionDelta {
 	return &RevisionDelta{
 		ToRevID:           toRevision.RevID,
 		DeltaBytes:        deltaBytes,

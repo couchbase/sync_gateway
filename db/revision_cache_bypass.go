@@ -19,15 +19,15 @@ func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *
 }
 
 // Get fetches the revision for the given docID and revID immediately from the bucket.
-func (rc *BypassRevisionCache) Get(docID, revID string) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) Get(docID, revID string) (docRev *DocumentRevision, err error) {
 
-	docRev = DocumentRevision{
+	docRev = &DocumentRevision{
 		RevID: revID,
 	}
 
 	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoader(rc.backingStore, IDAndRev{DocID: docID, RevID: revID})
 	if err != nil {
-		return DocumentRevision{}, err
+		return nil, err
 	}
 
 	rc.bypassStat.Add(1)
@@ -36,19 +36,19 @@ func (rc *BypassRevisionCache) Get(docID, revID string) (docRev DocumentRevision
 }
 
 // GetActive fetches the active revision for the given docID immediately from the bucket.
-func (rc *BypassRevisionCache) GetActive(docID string) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) GetActive(docID string) (docRev *DocumentRevision, err error) {
 	doc, err := rc.backingStore.GetDocument(docID, DocUnmarshalAll)
 	if err != nil {
-		return DocumentRevision{}, err
+		return nil, err
 	}
 
-	docRev = DocumentRevision{
+	docRev = &DocumentRevision{
 		RevID: doc.CurrentRev,
 	}
 
 	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(rc.backingStore, doc, doc.SyncData.CurrentRev)
 	if err != nil {
-		return DocumentRevision{}, err
+		return nil, err
 	}
 
 	rc.bypassStat.Add(1)
@@ -57,8 +57,8 @@ func (rc *BypassRevisionCache) GetActive(docID string) (docRev DocumentRevision,
 }
 
 // Peek is a no-op for a BypassRevisionCache, and always returns a false 'found' value.
-func (rc *BypassRevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
-	return DocumentRevision{}, false
+func (rc *BypassRevisionCache) Peek(docID, revID string) (docRev *DocumentRevision, found bool) {
+	return nil, false
 }
 
 // Put is a no-op for a BypassRevisionCache

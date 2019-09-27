@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
@@ -72,7 +74,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Fill up the rev cache with the first 10 docs
 	for docID := 0; docID < 10; docID++ {
 		id := strconv.Itoa(docID)
-		cache.Put(DocumentRevision{DocID: id, RevID: "1-abc", History: Revisions{"start": 1}})
+		cache.Put(DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", History: Revisions{"start": 1}})
 	}
 
 	// Get them back out
@@ -89,7 +91,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Add 3 more docs to the now full revcache
 	for i := 10; i < 13; i++ {
 		docID := strconv.Itoa(i)
-		cache.Put(DocumentRevision{DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}})
+		cache.Put(DocumentRevision{BodyBytes: []byte(`{}`), DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}})
 	}
 
 	// Check that the first 3 docs were evicted
@@ -248,14 +250,15 @@ func TestBypassRevisionCache(t *testing.T) {
 	// Get specific revision
 	doc, err = rc.Get(key, rev1)
 	assert.NoError(t, err)
-	assert.Equal(t, `{"value":1234}`, doc.BodyBytes)
+	require.NotNil(t, doc)
+	assert.Equal(t, `{"value":1234}`, string(doc.BodyBytes))
 
 	// Check peek is still returning false for "Get"
 	_, ok = rc.Peek(key, rev1)
 	assert.False(t, ok)
 
 	// Put no-ops
-	rc.Put(doc)
+	rc.Put(*doc)
 
 	// Check peek is still returning false for "Put"
 	_, ok = rc.Peek(key, rev1)
@@ -264,7 +267,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	// Get active revision
 	doc, err = rc.GetActive(key)
 	assert.NoError(t, err)
-	assert.Equal(t, `{"value":5678}`, doc.BodyBytes)
+	assert.Equal(t, `{"value":5678}`, string(doc.BodyBytes))
 
 }
 

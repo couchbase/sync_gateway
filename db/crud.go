@@ -256,8 +256,7 @@ func (db *Database) GetRev1xBodyWithHistory(docid, revid string, maxHistory int,
 // * attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //   revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //   that hasn't changed since one of those revisions will be returned as a stub.
-func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string) (rev *DocumentRevision, redactedRev *DocumentRevision, err error) {
-	var revision DocumentRevision
+func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string) (revision *DocumentRevision, redactedRev *DocumentRevision, err error) {
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
@@ -271,7 +270,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		return nil, nil, err
 	}
 
-	if revision.BodyBytes == nil {
+	if revision == nil {
 		return nil, nil, base.HTTPErrorf(404, "missing")
 	}
 
@@ -297,7 +296,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		return nil, nil, base.HTTPErrorf(404, "deleted")
 	}
 
-	return &revision, nil, nil
+	return revision, nil, nil
 }
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
