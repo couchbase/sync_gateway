@@ -80,7 +80,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := db.Get("doc1")
+	gotbody, err := db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2a_body)
 
@@ -97,7 +97,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2b_body)
 
@@ -143,7 +143,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the document, validate that we get 2-a
 	log.Printf("Retrieve doc, expect 2-a")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2a_body)
 
@@ -172,7 +172,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-c")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2c_body)
 
@@ -204,7 +204,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	goassert.DeepEquals(t, rev3cGet, rev3c_body)
 
 	log.Printf("Retrieve doc, verify active rev is 2-a")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2a_body)
 
@@ -252,7 +252,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := db.Get("doc1")
+	gotbody, err := db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2a_body)
 
@@ -269,7 +269,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2b_body)
 
@@ -318,7 +318,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the document, validate that we get 2-a
 	log.Printf("Retrieve doc, expect 2-a")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2a_body)
 
@@ -399,7 +399,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := db.Get("doc1")
+	gotbody, err := db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2a_body)
 
@@ -417,7 +417,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 3-a...")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev3a_body)
 
@@ -434,7 +434,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify still rev 3-a")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev3a_body)
 
@@ -457,7 +457,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 6-a...")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev6a_body)
 
@@ -554,7 +554,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := db.Get("doc1")
+	gotbody, err := db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2a_body)
 
@@ -582,7 +582,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify still rev 3-a")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev3a_body)
 
@@ -605,7 +605,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 6-a...")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev6a_body)
 

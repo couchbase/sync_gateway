@@ -259,8 +259,6 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 func unmarshalDocument(docid string, data []byte) (*Document, error) {
 	doc := NewDocument(docid)
 	if len(data) > 0 {
-		//doc._rawBody = data
-
 		decoder := base.JSONDecoder(bytes.NewReader(data))
 		decoder.UseNumber()
 		if err := decoder.Decode(doc); err != nil {

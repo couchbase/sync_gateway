@@ -190,11 +190,6 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 }
 
 // Returns the body of the current revision of a document
-func (db *Database) Get(docid string) (Body, error) {
-	return db.GetRev1xBody(docid, "", false, nil)
-}
-
-// Returns the body of the current revision of a document
 func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince []string) (*DocumentRevision, error) {
 	maxHistory := 0
 	if history {
@@ -211,6 +206,11 @@ func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince [
 	}
 
 	return rev, nil
+}
+
+// Returns the body of the current revision of a document
+func (db *Database) Get1xBody(docid string) (Body, error) {
+	return db.GetRev1xBody(docid, "", false, nil)
 }
 
 // Get Rev with all-or-none history based on specified 'history' flag

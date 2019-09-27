@@ -220,7 +220,7 @@ func TestDatabase(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc...")
-	gotbody, err := db.Get("doc1")
+	gotbody, err := db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, body)
 
@@ -280,7 +280,7 @@ func TestDatabase(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Check Get...")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, body)
 
@@ -808,7 +808,7 @@ func TestConflicts(t *testing.T) {
 	log.Printf("got raw body: %s", rawBody)
 
 	// Verify the change with the higher revid won:
-	gotBody, err := db.Get("doc")
+	gotBody, err := db.Get1xBody("doc")
 	goassert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-b", "n": 2,
 		"channels": []string{"all", "2b"}})
 
@@ -849,7 +849,7 @@ func TestConflicts(t *testing.T) {
 	rawBody, _, _ = db.Bucket.GetRaw("doc")
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
-	gotBody, err = db.Get("doc")
+	gotBody, err = db.Get1xBody("doc")
 	goassert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-a", "n": 3,
 		"channels": []string{"all", "2a"}})
 
