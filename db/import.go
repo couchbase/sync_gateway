@@ -335,7 +335,22 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 		return nil
 	}
 
-	setOldRevErr := db.setOldRevisionJSON(docid, revid, previousRev.BodyBytes, db.Options.OldRevExpirySeconds)
+	var kvPairs []base.KVPair
+	if len(previousRev.Attachments) > 0 {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: previousRev.Attachments})
+	}
+
+	if previousRev.Deleted {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
+	}
+
+	// Stamp _attachments and _deleted into backup
+	oldRevJSON, err := base.InjectJSONProperties(previousRev.BodyBytes, kvPairs...)
+	if err != nil {
+		return err
+	}
+
+	setOldRevErr := db.setOldRevisionJSON(docid, revid, oldRevJSON, db.Options.OldRevExpirySeconds)
 	if setOldRevErr != nil {
 		return fmt.Errorf("Persistence error: %v", setOldRevErr)
 	}

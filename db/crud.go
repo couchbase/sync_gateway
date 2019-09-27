@@ -434,7 +434,7 @@ func (db *Database) GetRevAndChannels(docid string, revid string, listRevisions 
 	if doc == nil {
 		return
 	}
-	bodyBytes, err = db.getRevFromDoc(doc, revid, listRevisions)
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc, revid, listRevisions)
 	if err != nil {
 		return
 	}
@@ -443,7 +443,6 @@ func (db *Database) GetRevAndChannels(docid string, revid string, listRevisions 
 	roleAccess = doc.RoleAccess
 	sequence = doc.Sequence
 	flags = doc.Flags
-	removed = !doc.History[revid].Deleted
 	gotRevID = doc.RevID
 	return
 }
@@ -523,8 +522,7 @@ func (db *Database) getAncestorJSON(doc *Document, revid string) ([]byte, error)
 }
 
 // Returns the body of a revision given a document struct. Checks user access.
-func (db *Database) getRevFromDoc(doc *Document, revid string, listRevisions bool) ([]byte, error) {
-	var bodyBytes []byte
+func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions bool) (bodyBytes []byte, removed bool, err error) {
 	if err := db.authorizeDoc(doc, revid); err != nil {
 		// As a special case, you don't need channel access to see a deletion revision,
 		// otherwise the client's replicator can't process the deletion (since deletions
@@ -532,24 +530,25 @@ func (db *Database) getRevFromDoc(doc *Document, revid string, listRevisions boo
 		// Update: this applies to non-deletions too, since the client may have lost access to
 		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
 		// incorporate that tombstone and for that it needs to see the _revisions property.
-		if revid == "" || doc.History[revid] == nil /*|| !doc.History[revid].Deleted*/ {
-			return nil, err
+		if revid == "" || doc.History[revid] == nil {
+			return nil, false, err
 		}
 		if doc.History[revid].Deleted {
+			// FIXME: helper func for generating this body
 			bodyBytes = []byte(`{"` + BodyId + `":"` + doc.ID + `","` + BodyRev + `":"` + revid + `"}`)
 		} else {
-			bodyBytes = []byte(`{"` + BodyId + `":"` + doc.ID + `","` + BodyRev + `":"` + revid + `","_removed":true}`)
+			bodyBytes = []byte(`{"` + BodyId + `":"` + doc.ID + `","` + BodyRev + `":"` + revid + `","` + BodyRemoved + `":true}`)
+			removed = true
 		}
 	} else {
 		if revid == "" {
 			revid = doc.CurrentRev
 			if doc.History[revid].Deleted == true {
-				return nil, base.HTTPErrorf(404, "deleted")
+				return nil, false, base.HTTPErrorf(404, "deleted")
 			}
 		}
-		var err error
 		if bodyBytes, err = db.getRevision(doc, revid); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 
@@ -561,18 +560,17 @@ func (db *Database) getRevFromDoc(doc *Document, revid string, listRevisions boo
 	if listRevisions {
 		validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 		if getHistoryErr != nil {
-			return nil, getHistoryErr
+			return nil, removed, getHistoryErr
 		}
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyRevisions, Val: encodeRevisions(validatedHistory)})
 	}
 
-	var err error
 	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
 	if err != nil {
-		return nil, err
+		return nil, removed, err
 	}
 
-	return bodyBytes, nil
+	return bodyBytes, removed, nil
 }
 
 // Returns the body of the asked-for revision or the most recent available ancestor.
@@ -910,7 +908,7 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 		}
 
 		if doc.Deleted {
-			kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: doc.Deleted})
+			kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 		}
 
 		// Stamp _attachments and _deleted into rev tree bodies

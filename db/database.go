@@ -947,7 +947,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			// Run the sync fn over each current/leaf revision, in case there are conflicts:
 			changed := 0
 			doc.History.forEachLeaf(func(rev *RevInfo) {
-				bodyBytes, err := db.getRevFromDoc(doc, rev.ID, false)
+				bodyBytes, _, err := db.get1xRevFromDoc(doc, rev.ID, false)
 				if err != nil {
 					base.Warnf(base.KeyAll, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
 				}
