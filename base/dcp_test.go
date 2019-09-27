@@ -67,7 +67,6 @@ func BenchmarkPartitionToVbNo(b *testing.B) {
 		vbNos[vbucketIdStrings[i]] = uint16(i)
 	}
 
-	// We'd expect a minor performance hit when redaction is enabled.
 	b.Run("map", func(bn *testing.B) {
 		for i := 0; i < bn.N; i++ {
 			value := uint16(vbNos["23"])
@@ -78,7 +77,6 @@ func BenchmarkPartitionToVbNo(b *testing.B) {
 	})
 
 	b.Run("atoi", func(bn *testing.B) {
-		RedactUserData = true
 		for i := 0; i < bn.N; i++ {
 			valueInt, err := strconv.Atoi("23")
 			value := uint16(valueInt)
@@ -89,7 +87,6 @@ func BenchmarkPartitionToVbNo(b *testing.B) {
 	})
 
 	b.Run("parseUint", func(bn *testing.B) {
-		RedactUserData = true
 		for i := 0; i < bn.N; i++ {
 			valueUint64, err := strconv.ParseUint("23", 10, 0)
 			value := uint16(valueUint64)

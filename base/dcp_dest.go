@@ -17,10 +17,9 @@ import (
 // vbucketIdStrings is a memorized array of 1024 entries for fast
 // conversion of vbucketId's to partition strings via an index lookup.
 // (Atoi is faster than map lookup when going in the other direction)
-var vbucketIdStrings []string
+var vbucketIdStrings [1024]string
 
 func init() {
-	vbucketIdStrings = make([]string, 1024)
 	for i := 0; i < len(vbucketIdStrings); i++ {
 		vbucketIdStrings[i] = fmt.Sprintf("%d", i)
 	}
@@ -81,6 +80,7 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 	if extrasType == cbgt.DEST_EXTRAS_TYPE_MCREQUEST {
 		mcReq, ok := req.(*gomemcached.MCRequest)
 		if !ok {
+			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_MCREQUEST to *gomemcached.MCRequest")
 		}
 		event = makeFeedEventForMCRequest(mcReq, sgbucket.FeedOpMutation)
 	} else if extrasType == cbgt.DEST_EXTRAS_TYPE_GOCB_DCP {
@@ -88,9 +88,7 @@ func (d *DCPDest) DataUpdateEx(partition string, key []byte, seq uint64, val []b
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
-		// TODO: has a dependency on cbgt enhancement
 		event = makeFeedEventForDest(key, val, cas, partitionToVbNo(partition), dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpMutation)
-		//event = makeFeedEventForDest(key, val, cas, partitionToVbNo(partition), 0, 0, sgbucket.FeedOpMutation)
 
 	}
 
@@ -128,9 +126,7 @@ func (d *DCPDest) DataDeleteEx(partition string, key []byte, seq uint64,
 		if !ok {
 			return errors.New("Unable to cast extras of type DEST_EXTRAS_TYPE_GOCB_DCP to cbgt.GocbExtras")
 		}
-		// TODO: has a dependency on cbgt enhancement
 		event = makeFeedEventForDest(key, dcpExtras.Value, cas, partitionToVbNo(partition), dcpExtras.Expiry, dcpExtras.Datatype, sgbucket.FeedOpDeletion)
-		//event = makeFeedEventForDest(key, nil, cas, partitionToVbNo(partition), 0, 0, sgbucket.FeedOpDeletion)
 
 	}
 	d.dataUpdate(seq, event)
@@ -161,7 +157,6 @@ func (d *DCPDest) Rollback(partition string, rollbackSeq uint64) error {
 }
 
 func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq uint64) error {
-	// TODO: need to craft meta appropriately based on cbdatasource vs. gocb DCP client
 	cbgtMeta := makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq)
 	return d.rollbackEx(partitionToVbNo(partition), vbucketUUID, rollbackSeq, cbgtMeta)
 }
@@ -169,23 +164,23 @@ func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq u
 // TODO: Not implemented, review potential usage
 func (d *DCPDest) ConsistencyWait(partition, partitionUUID string,
 	consistencyLevel string, consistencySeq uint64, cancelCh <-chan bool) error {
-	Warnf(KeyAll, "Dest.ConsistencyWait being invoked by cbgt - not supported by Sync Gateway")
+	WarnfCtx(d.loggingCtx, KeyAll, "Dest.ConsistencyWait being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
 
 func (d *DCPDest) Count(pindex *cbgt.PIndex, cancelCh <-chan bool) (uint64, error) {
-	Warnf(KeyAll, "Dest.Count being invoked by cbgt - not supported by Sync Gateway")
+	WarnfCtx(d.loggingCtx, KeyAll, "Dest.Count being invoked by cbgt - not supported by Sync Gateway")
 	return 0, nil
 }
 
 func (d *DCPDest) Query(pindex *cbgt.PIndex, req []byte, w io.Writer,
 	cancelCh <-chan bool) error {
-	Warnf(KeyAll, "Dest.Query being invoked by cbgt - not supported by Sync Gateway")
+	WarnfCtx(d.loggingCtx, KeyAll, "Dest.Query being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
 
 func (d *DCPDest) Stats(io.Writer) error {
-	Warnf(KeyAll, "Dest.Stats being invoked by cbgt - not supported by Sync Gateway")
+	WarnfCtx(d.loggingCtx, KeyAll, "Dest.Stats being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
 
@@ -229,7 +224,8 @@ func StartCbgtDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 	}
 
 	if spec.UseXattrs {
-		feedParams.IncludeXAttrs = true // TODO: Seems like this is always being set in NewGocbDCPFeed
+		// TODO: This is always being set in NewGocbDCPFeed, review whether we actually need ability to run w/ false
+		feedParams.IncludeXAttrs = true
 	}
 
 	paramBytes, err := JSONMarshal(feedParams)
