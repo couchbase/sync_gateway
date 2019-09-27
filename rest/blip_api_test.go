@@ -1746,7 +1746,8 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 
 	data, ok := client.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
-	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
+	assert.Contains(t, string(data), `"channels":["public"]`)
+	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 	// tombstone doc1 at rev 2-2db70833630b396ef98a3ec75b3e90fc
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", "")
@@ -1833,14 +1834,16 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	data, ok := client1.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
-	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
+	assert.Contains(t, string(data), `"channels":["public"]`)
+	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 	// Have client2 get only rev-1 and then stop replicating
 	err = client2.StartOneshotPull()
 	assert.NoError(t, err)
 	data, ok = client2.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
-	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
+	assert.Contains(t, string(data), `"channels":["public"]`)
+	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 	// tombstone doc1 at rev 2-2db70833630b396ef98a3ec75b3e90fc
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", `{"test": true"`)
