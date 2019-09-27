@@ -930,8 +930,7 @@ func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []str
 func createChangesEntry(docid string, db *Database, options ChangesOptions) *ChangeEntry {
 	row := &ChangeEntry{ID: docid}
 
-	// Fetch the document body and other metadata that lives with it:
-	populatedDoc, err := db.GetDocAndActiveRev(docid)
+	populatedDoc, err := db.GetDocument(docid, DocUnmarshalSync)
 	if err != nil {
 		base.InfofCtx(db.Ctx, base.KeyChanges, "Unable to get changes for docID %v, caused by %v", base.UD(docid), err)
 		return nil

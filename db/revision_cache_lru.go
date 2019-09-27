@@ -243,10 +243,9 @@ func (value *revCacheValue) load(backingStore RevisionCacheBackingStore) (docRev
 // _asDocumentRevision copies the rev cache value into a DocumentRevision.  Requires callers hold at least the read lock on value.lock
 func (value *revCacheValue) _asDocumentRevision() (*DocumentRevision, error) {
 	return &DocumentRevision{
-		DocID:     value.key.DocID,
-		RevID:     value.key.RevID,
-		BodyBytes: value.bodyBytes,
-		//Body:        value.body.Copy(copyType), // Never let the caller mutate the stored body
+		DocID:       value.key.DocID,
+		RevID:       value.key.RevID,
+		BodyBytes:   value.bodyBytes,
 		History:     value.history,
 		Channels:    value.channels,
 		Expiry:      value.expiry,
@@ -288,9 +287,6 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 	if value.bodyBytes == nil {
 		// value already has doc id/rev id in key
 		value.bodyBytes = docRev.BodyBytes
-		//value.body = docRev.Body.ShallowCopy() // Don't store a body the caller might later mutate
-		//value.body[BodyId] = value.key.DocID   // Rev cache includes id and rev in the body.  Ensure they are set in case callers aren't passing
-		//value.body[BodyRev] = value.key.RevID
 		value.history = docRev.History
 		value.channels = docRev.Channels
 		value.expiry = docRev.Expiry

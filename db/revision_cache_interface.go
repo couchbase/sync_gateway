@@ -205,15 +205,15 @@ func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Docu
 	if bodyBytes, err = backingStore.getRevision(doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
-		removalBodyBytes, removalHistory, removalChannels, isRemoval, _, isRemovalErr := doc.IsChannelRemoval(revid)
+		removalBodyBytes, removalHistory, removalChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(revid)
 		if isRemovalErr != nil {
-			return bodyBytes, history, channels, nil, false, nil, isRemovalErr
+			return bodyBytes, history, channels, nil, isDelete, nil, isRemovalErr
 		}
 		if isRemoval {
-			return removalBodyBytes, removalHistory, removalChannels, nil, false, nil, nil
+			return removalBodyBytes, removalHistory, removalChannels, nil, isDelete, nil, nil
 		} else {
 			// If this wasn't a removal, return the original error from getRevision
-			return bodyBytes, history, channels, nil, false, nil, err
+			return bodyBytes, history, channels, nil, isDelete, nil, err
 		}
 	}
 	deleted = doc.History[revid].Deleted

@@ -417,16 +417,6 @@ func (db *Database) authorizeUserForChannels(docID, revID string, channels base.
 	return true, nil
 }
 
-// Returns the body of the active revision of a document, as well as the document's current channels
-// and the user/roles it grants channel access to.
-func (db *Database) GetDocAndActiveRev(docid string) (populatedDoc *Document, err error) {
-	populatedDoc, err = db.GetDocument(docid, DocUnmarshalSync)
-	if populatedDoc == nil {
-		return
-	}
-	return populatedDoc, nil
-}
-
 // Returns the body of a revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
 func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevisions bool) (bodyBytes []byte, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, flags uint8, sequence uint64, gotRevID string, removed bool, err error) {

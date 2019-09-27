@@ -761,9 +761,12 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	}
 
 	// Construct removal body
-	// FIXME: comment why
-	// If/else
-	bodyBytes = []byte(`{"` + BodyRemoved + `":true}`)
+	// FIXME: comment why no docid/revid
+	if isDelete {
+		bodyBytes = []byte(`{"` + BodyDeleted + `":true,"` + BodyRemoved + `":true}`)
+	} else {
+		bodyBytes = []byte(`{"` + BodyRemoved + `":true}`)
+	}
 
 	// Build revision history for revID
 	revHistory, err := doc.History.getHistory(revID)
