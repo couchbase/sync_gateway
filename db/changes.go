@@ -931,7 +931,7 @@ func createChangesEntry(docid string, db *Database, options ChangesOptions) *Cha
 	row := &ChangeEntry{ID: docid}
 
 	// Fetch the document body and other metadata that lives with it:
-	populatedDoc, revID, deleted, err := db.GetDocAndActiveRev(docid)
+	populatedDoc, err := db.GetDocAndActiveRev(docid)
 	if err != nil {
 		base.InfofCtx(db.Ctx, base.KeyChanges, "Unable to get changes for docID %v, caused by %v", base.UD(docid), err)
 		return nil
@@ -942,9 +942,9 @@ func createChangesEntry(docid string, db *Database, options ChangesOptions) *Cha
 	}
 
 	changes := make([]ChangeRev, 1)
-	changes[0] = ChangeRev{"rev": revID}
+	changes[0] = ChangeRev{"rev": populatedDoc.CurrentRev}
 	row.Changes = changes
-	row.Deleted = deleted
+	row.Deleted = populatedDoc.Deleted
 	row.Seq = SequenceID{Seq: populatedDoc.Sequence}
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 

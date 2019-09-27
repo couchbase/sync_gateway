@@ -354,13 +354,13 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 			return revCacheDelta, nil, nil
 		}
 
-		// We didn't copy fromBody earlier (in case we could get by with just the delta), so need do it now
+		// We didn't unmarshal fromBody earlier (in case we could get by with just the delta), so need do it now
 		var fromBodyCopy Body
 		if err := fromBodyCopy.Unmarshal(fromRevision.BodyBytes); err != nil {
 			return nil, nil, err
 		}
 
-		// We didn't copy fromBody earlier (in case we could get by with just the delta), so need do it now
+		// We didn't unmarshal toBody earlier (in case we could get by with just the delta), so need do it now
 		var toBodyCopy Body
 		if err := toBodyCopy.Unmarshal(toRevision.BodyBytes); err != nil {
 			return nil, nil, err
@@ -419,12 +419,12 @@ func (db *Database) authorizeUserForChannels(docID, revID string, channels base.
 
 // Returns the body of the active revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
-func (db *Database) GetDocAndActiveRev(docid string) (populatedDoc *Document, revID string, deleted bool, err error) {
+func (db *Database) GetDocAndActiveRev(docid string) (populatedDoc *Document, err error) {
 	populatedDoc, err = db.GetDocument(docid, DocUnmarshalSync)
 	if populatedDoc == nil {
 		return
 	}
-	return populatedDoc, populatedDoc.CurrentRev, populatedDoc.Deleted, nil
+	return populatedDoc, nil
 }
 
 // Returns the body of a revision of a document, as well as the document's current channels
