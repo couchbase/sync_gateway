@@ -692,7 +692,9 @@ func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, docID, revID, deltaSr
 	}
 
 	if redactedRev != nil {
-		return bh.sendRevisionWithProperties(sender, docID, revID, redactedRev.BodyBytes, nil, nil)
+		history := toHistory(redactedRev.History, knownRevs, maxHistory)
+		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq)
+		return bh.sendRevisionWithProperties(sender, docID, revID, redactedRev.BodyBytes, nil, properties)
 	}
 
 	if revDelta == nil {
@@ -750,8 +752,16 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, se
 
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known", base.UD(docID), revID, len(knownRevs))
 
+	history := toHistory(rev.History, knownRevs, maxHistory)
+	properties := blipRevMessageProperties(history, rev.Deleted, seq)
+
+	attDigests := db.AttachmentDigests(rev.Attachments)
+	return bh.sendRevisionWithProperties(sender, docID, revID, rev.BodyBytes, attDigests, properties)
+}
+
+func toHistory(revisions db.Revisions, knownRevs map[string]bool, maxHistory int) []string {
 	// Get the revision's history as a descending array of ancestor revIDs:
-	history := rev.History.ParseRevisions()[1:]
+	history := revisions.ParseRevisions()[1:]
 	for i, rev := range history {
 		if knownRevs[rev] || (maxHistory > 0 && i+1 >= maxHistory) {
 			history = history[0 : i+1]
@@ -760,11 +770,7 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, se
 			knownRevs[rev] = true
 		}
 	}
-
-	attDigests := db.AttachmentDigests(rev.Attachments)
-
-	properties := blipRevMessageProperties(history, rev.Deleted, seq)
-	return bh.sendRevisionWithProperties(sender, docID, revID, rev.BodyBytes, attDigests, properties)
+	return history
 }
 
 // blipRevMessageProperties returns a set of BLIP message properties for the given parameters.
