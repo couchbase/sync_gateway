@@ -904,17 +904,18 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 		if marshalErr != nil {
 			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body for storage in rev tree: %v", marshalErr)
 		}
+		var kvPairs []base.KVPair
+		if len(doc.SyncData.Attachments) > 0 {
+			kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.SyncData.Attachments})
+		}
+
+		if doc.Deleted {
+			kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: doc.Deleted})
+		}
+
 		// Stamp _attachments and _deleted into rev tree bodies
-		oldBodyJson, marshalErr = base.InjectJSONProperties(
-			oldBodyJson,
-			base.KVPair{
-				Key: BodyAttachments,
-				Val: doc.SyncData.Attachments,
-			}, base.KVPair{
-				Key: BodyDeleted,
-				Val: doc.Deleted,
-			},
-		)
+		oldBodyJson, marshalErr = base.InjectJSONProperties(oldBodyJson, kvPairs...)
+
 		if marshalErr != nil {
 			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body properties for storage in rev tree: %v", marshalErr)
 		}
