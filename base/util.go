@@ -1026,15 +1026,16 @@ type KVPair struct {
 // This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
 // usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
 func InjectJSONProperties(b []byte, kvPairs ...KVPair) (new []byte, err error) {
+	if len(kvPairs) < 1 {
+		// noop
+		return b, nil
+	}
+
 	b = bytes.TrimSpace(b)
 
 	bIsJSONObject, bIsEmpty := isJSONObject(b)
 	if !bIsJSONObject {
 		return nil, errors.New("b is not a JSON object")
-	}
-
-	if len(kvPairs) < 1 {
-		return nil, errors.New("kvPairs was empty")
 	}
 
 	kvPairsBytes := make([]KVPairBytes, len(kvPairs))
@@ -1090,15 +1091,16 @@ type KVPairBytes struct {
 // This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
 // usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
 func InjectJSONPropertiesFromBytes(b []byte, kvPairs ...KVPairBytes) (new []byte, err error) {
+	if len(kvPairs) < 1 {
+		// noop
+		return b, nil
+	}
+
 	b = bytes.TrimSpace(b)
 
 	bIsJSONObject, bIsEmpty := isJSONObject(b)
 	if !bIsJSONObject {
 		return nil, errors.New("b is not a JSON object")
-	}
-
-	if len(kvPairs) < 1 {
-		return nil, errors.New("kvPairs was empty")
 	}
 
 	return injectJSONPropertyFromBytes(b, bIsEmpty, kvPairs), nil
