@@ -266,6 +266,8 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 				base.Warnf(base.KeyAll, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, err)
 				return
 			}
+		} else {
+			newBodyBytes = newBody
 		}
 		// Backup the current revision
 		_ = db.setOldRevisionJSON(docId, newRevId, newBodyBytes, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)

@@ -124,7 +124,7 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 func (db *Database) retrieveAncestorAttachments(doc *Document, parentRev string, docHistory []string) map[string]interface{} {
 
 	// Attempt to find a non-pruned parent or ancestor
-	if parent, _ := db.getAvailableRev(doc, parentRev); parent != nil {
+	if parent, _ := db.getAvailable1xRev(doc, parentRev); parent != nil {
 		// exit early if we know we have no attachments with a simple byte-contains check
 		if !bytes.Contains(parent, []byte(BodyAttachments)) {
 			return nil

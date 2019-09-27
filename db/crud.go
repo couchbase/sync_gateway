@@ -579,9 +579,19 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 }
 
 // Returns the body of the asked-for revision or the most recent available ancestor.
-func (db *Database) getAvailableRev(doc *Document, revid string) ([]byte, error) {
+func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
 		if bodyBytes, _ := db.getRevision(doc, revid); bodyBytes != nil {
+			if doc.CurrentRev == revid && doc.Attachments != nil {
+				var err error
+				bodyBytes, err = base.InjectJSONProperties(bodyBytes,
+					base.KVPair{Key: BodyId, Val: doc.ID},
+					base.KVPair{Key: BodyRev, Val: revid},
+					base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
+				if err != nil {
+					return nil, err
+				}
+			}
 			return bodyBytes, nil
 		}
 	}
@@ -962,7 +972,7 @@ func (db *Database) runSyncFn(doc *Document, body Body, newRevId string) (*uint3
 func (db *Database) recalculateSyncFnForActiveRev(doc *Document, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
 	// In some cases an older revision might become the current one. If so, get its
 	// channels & access, for purposes of updating the doc:
-	curBodyBytes, err := db.getAvailableRev(doc, doc.CurrentRev)
+	curBodyBytes, err := db.getAvailable1xRev(doc, doc.CurrentRev)
 	if err != nil {
 		return
 	}
