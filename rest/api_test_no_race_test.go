@@ -108,7 +108,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		a.Save(bernard)
 	*/
 
-	// PutWithBody several documents in channel PBS
+	// Put several documents in channel PBS
 	response := it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = it.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
@@ -155,7 +155,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	// Wait to see if the longpoll will terminate on wait before a document shows up on the channel
 	caughtUpWaiter.Wait()
 
-	// PutWithBody public document that triggers termination of the longpoll
+	// Put public document that triggers termination of the longpoll
 	response = it.SendAdminRequest("PUT", "/db/abc1", `{"value":3, "channel":["ABC"]}`)
 	assertStatus(t, response, 201)
 	wg.Wait()

@@ -646,7 +646,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	putResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?rev=%s", mobileKey, revId), `{"updated":true}`)
 	goassert.Equals(t, putResponse.Code, 201)
 	base.JSONUnmarshal(putResponse.Body.Bytes(), &body)
-	log.Printf("PutWithBody response details: %s", putResponse.Body.Bytes())
+	log.Printf("Put response details: %s", putResponse.Body.Bytes())
 	newRevId, ok := body["rev"].(string)
 	assert.True(t, ok, "Unable to cast rev to string")
 	log.Printf("Retrieved via Sync Gateway PUT after non-mobile update, revId:%v", newRevId)

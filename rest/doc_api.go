@@ -282,7 +282,7 @@ func (h *handler) handlePutDoc() error {
 
 	// If new url parameters are used
 	if h.getQuery("deleted") != "" || h.getQuery("expiry") != "" || h.getQuery("revisions") != "" {
-		if db.ContainsSpecialProperties(body) {
+		if db.ContainsAnySpecialProperties(body) {
 			return base.HTTPErrorf(http.StatusBadRequest, "Cannot mix in body special properties and url queries")
 		} else {
 			docToAdd := &db.Document{
@@ -297,6 +297,9 @@ func (h *handler) handlePutDoc() error {
 				docToAdd.Deleted = deleted
 			}
 			expiry := h.getIntQuery("expiry", 0)
+			if expiry < 0 || expiry > math.MaxUint32 {
+				return fmt.Errorf("Expiry value is not within valid range: %d", expiry)
+			}
 			docToAdd.DocExpiry = uint32(expiry)
 
 			docToAdd.UpdateBody(body)

@@ -257,7 +257,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	// Put no-ops
 	rc.Put(key, doc)
 
-	// Check peek is still returning false for "PutWithBody"
+	// Check peek is still returning false for "Put"
 	_, ok = rc.Peek(key, rev1, BodyShallowCopy)
 	assert.False(t, ok)
 

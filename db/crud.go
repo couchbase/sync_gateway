@@ -634,8 +634,10 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *Document, deleted 
 }
 
 func (db *Database) Put(newDoc *Document) (newRevID string, doc *Document, err error) {
-
 	generation, _ := ParseRevID(newDoc.RevID)
+	if generation < 0 {
+		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
+	}
 	generation++
 
 	allowImport := db.UseXattrs()
@@ -698,7 +700,6 @@ func (db *Database) Put(newDoc *Document) (newRevID string, doc *Document, err e
 		// move _attachment metadata to syncdata of doc after rev-id generation
 		doc.SyncData.Attachments = newDoc.DocAttachments
 		newDoc.RevID = newRev
-		newDoc.Deleted = newDoc.Deleted
 
 		return newDoc, newAttachments, nil, nil
 	})
@@ -712,10 +713,6 @@ func (db *Database) Put(newDoc *Document) (newRevID string, doc *Document, err e
 func (db *Database) PutWithBody(docid string, body Body) (newRevID string, doc *Document, err error) {
 	// Get the revision ID to match, and the new generation number:
 	matchRev, _ := body[BodyRev].(string)
-	generation, _ := ParseRevID(matchRev)
-	if generation < 0 {
-		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
-	}
 	deleted, _ := body[BodyDeleted].(bool)
 
 	expiry, err := body.ExtractExpiry()
@@ -743,7 +740,7 @@ func (db *Database) PutWithBody(docid string, body Body) (newRevID string, doc *
 	body[BodyId] = docid
 	body[BodyRev] = newRevID
 
-	return
+	return newRevID, doc, err
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)

@@ -466,7 +466,7 @@ func containsUserSpecialProperties(b Body) bool {
 	return false
 }
 
-func ContainsSpecialProperties(b Body) bool {
+func ContainsAnySpecialProperties(b Body) bool {
 	for k := range b {
 		if k != "" && k[0] == '_' {
 			return true
