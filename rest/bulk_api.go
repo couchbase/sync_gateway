@@ -142,7 +142,9 @@ func (h *handler) handleAllDocs() error {
 					row.Status = http.StatusForbidden
 					return row
 				}
-				doc.RevID = gotRevID
+				// handle the case where the incoming doc.RevID == ""
+				// and GetRevAndChannels returns the current revision
+				doc.RevID = currentRevID
 			}
 			if includeDocs {
 				row.Doc = bodyBytes
