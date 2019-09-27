@@ -231,6 +231,20 @@ func (doc *Document) Body() Body {
 	return doc._body
 }
 
+func (doc *Document) GetMutableBody() Body {
+	if doc._body != nil {
+		// already have a body unmarshalled, so we'll need to deep copy so callers can mutate
+		return doc._body.Copy(BodyDeepCopy)
+	}
+	// Otherwise unmarshal as normal, but don't store it in the document
+	var b Body
+	if err := b.Unmarshal(doc._rawBody); err != nil {
+		base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
+		return nil
+	}
+	return b
+}
+
 func (doc *Document) RemoveBody() {
 	doc._body = nil
 	doc._rawBody = nil
@@ -728,12 +742,11 @@ func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.
 
 // Determine whether the specified revision was a channel removal, based on doc.Channels.  If so, construct the standard document body for a
 // removal notification (_removed=true)
-func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, err error) {
+func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
 
 	channels = make(base.Set)
 
 	// Iterate over the document's channel history, looking for channels that were removed at revID.  If found, also identify whether the removal was a tombstone.
-	isDelete := false
 	for channel, removal := range doc.Channels {
 		if removal != nil && removal.RevID == revID {
 			channels[channel] = struct{}{}
@@ -744,23 +757,18 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	}
 	// If no matches found, return isRemoval=false
 	if len(channels) == 0 {
-		return nil, nil, nil, false, nil
+		return nil, nil, nil, false, false, nil
 	}
 
 	// Construct removal body
-	bodyBytes = []byte(`{"` + BodyId + `":"` + doc.ID + `","` + BodyRev + `":"` + revID + `","_removed":true}`)
-	if isDelete {
-		bodyBytes, err = base.InjectJSONPropertiesFromBytes(bodyBytes,
-			base.KVPairBytes{Key: BodyDeleted, Val: []byte("true")})
-		if err != nil {
-			return nil, nil, nil, false, err
-		}
-	}
+	// FIXME: comment why
+	// If/else
+	bodyBytes = []byte(`{"` + BodyRemoved + `":true}`)
 
 	// Build revision history for revID
 	revHistory, err := doc.History.getHistory(revID)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, nil, false, false, err
 	}
 
 	// If there's no history (because the revision has been pruned from the rev tree), treat revision history as only the specified rev id.
@@ -769,7 +777,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	}
 	history = encodeRevisions(revHistory)
 
-	return bodyBytes, history, channels, true, nil
+	return bodyBytes, history, channels, true, isDelete, nil
 }
 
 // Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.

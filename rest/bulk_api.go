@@ -129,7 +129,7 @@ func (h *handler) handleAllDocs() error {
 
 		if explicitDocIDs != nil || includeDocs || includeAccess {
 			// Fetch the document body and other metadata that lives with it:
-			bodyBytes, channelSet, access, roleAccess, _, _, gotRevID, removed, err := h.db.GetRevAndChannels(doc.DocID, doc.RevID, includeRevs)
+			bodyBytes, channelSet, access, roleAccess, _, _, currentRevID, removed, err := h.db.Get1xRevAndChannels(doc.DocID, doc.RevID, includeRevs)
 			if err != nil {
 				row.Status, _ = base.ErrorAsHTTPStatus(err)
 				return row
@@ -143,7 +143,7 @@ func (h *handler) handleAllDocs() error {
 					return row
 				}
 				// handle the case where the incoming doc.RevID == ""
-				// and GetRevAndChannels returns the current revision
+				// and Get1xRevAndChannels returns the current revision
 				doc.RevID = currentRevID
 			}
 			if includeDocs {
@@ -419,7 +419,7 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.db.GetRev1xBodyWithHistory(docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
+				body, err = h.db.Get1xRevBodyWithHistory(docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
 			}
 
 			if err != nil {

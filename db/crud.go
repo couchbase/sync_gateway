@@ -210,21 +210,21 @@ func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince [
 
 // Returns the body of the current revision of a document
 func (db *Database) Get1xBody(docid string) (Body, error) {
-	return db.GetRev1xBody(docid, "", false, nil)
+	return db.Get1xRevBody(docid, "", false, nil)
 }
 
 // Get Rev with all-or-none history based on specified 'history' flag
-func (db *Database) GetRev1xBody(docid, revid string, history bool, attachmentsSince []string) (Body, error) {
+func (db *Database) Get1xRevBody(docid, revid string, history bool, attachmentsSince []string) (Body, error) {
 	maxHistory := 0
 	if history {
 		maxHistory = math.MaxInt32
 	}
 
-	return db.GetRev1xBodyWithHistory(docid, revid, maxHistory, nil, attachmentsSince, false)
+	return db.Get1xRevBodyWithHistory(docid, revid, maxHistory, nil, attachmentsSince, false)
 }
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
-func (db *Database) GetRev1xBodyWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
+func (db *Database) Get1xRevBodyWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
 	rev, redactedRev, err := db.getRev(docid, revid, maxHistory, historyFrom)
 	if err != nil {
 		return nil, err
@@ -247,7 +247,7 @@ func (db *Database) GetRev1xBodyWithHistory(docid, revid string, maxHistory int,
 	return rev.Mutable1xBody(db, requestedHistory, attachmentsSince, showExp)
 }
 
-// Underlying revision retrieval used by GetRev1xBody, GetRev1xBodyWithHistory, GetRevCopy.
+// Underlying revision retrieval used by Get1xRevBody, Get1xRevBodyWithHistory, GetRevCopy.
 // Returns the body of a revision of a document. Uses the revision cache.
 // * revid may be "", meaning the current revision.
 // * maxHistory is >0 if the caller wants a revision history; it's the max length of the history.
@@ -429,7 +429,7 @@ func (db *Database) GetDocAndActiveRev(docid string) (populatedDoc *Document, er
 
 // Returns the body of a revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
-func (db *Database) GetRevAndChannels(docid string, revid string, listRevisions bool) (bodyBytes []byte, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, flags uint8, sequence uint64, gotRevID string, removed bool, err error) {
+func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevisions bool) (bodyBytes []byte, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, flags uint8, sequence uint64, gotRevID string, removed bool, err error) {
 	doc, err := db.GetDocument(docid, DocUnmarshalAll)
 	if doc == nil {
 		return
@@ -522,6 +522,8 @@ func (db *Database) getAncestorJSON(doc *Document, revid string) ([]byte, error)
 }
 
 // Returns the body of a revision given a document struct. Checks user access.
+// If the user is not authorized to see the specific revision they asked for,
+// instead returns a minimal deletion or removal revision to let them know it's gone.
 func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions bool) (bodyBytes []byte, removed bool, err error) {
 	if err := db.authorizeDoc(doc, revid); err != nil {
 		// As a special case, you don't need channel access to see a deletion revision,
@@ -534,10 +536,9 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 			return nil, false, err
 		}
 		if doc.History[revid].Deleted {
-			// FIXME: helper func for generating this body
-			bodyBytes = []byte(`{"` + BodyId + `":"` + doc.ID + `","` + BodyRev + `":"` + revid + `"}`)
+			bodyBytes = []byte(`{}`)
 		} else {
-			bodyBytes = []byte(`{"` + BodyId + `":"` + doc.ID + `","` + BodyRev + `":"` + revid + `","` + BodyRemoved + `":true}`)
+			bodyBytes = []byte(`{"` + BodyRemoved + `":true}`)
 			removed = true
 		}
 	} else {
@@ -552,7 +553,11 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 		}
 	}
 
-	var kvPairs []base.KVPair
+	kvPairs := []base.KVPair{
+		{Key: BodyId, Val: doc.ID},
+		{Key: BodyRev, Val: doc.RevID},
+	}
+
 	if doc.History[revid].Deleted {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
@@ -668,6 +673,9 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 	newDoc.DocAttachments = GetBodyAttachments(body)
 	delete(body, BodyAttachments)
 	delete(body, BodyRevisions)
+
+	delete(body, BodyRev)
+	delete(body, BodyId)
 
 	newDoc.UpdateBody(body)
 
@@ -810,7 +818,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 
 		// Process the attachments, replacing bodies with digests.
 		parentRevID := doc.History[newRev].Parent
-		newAttachments, err := db.storeAttachments(doc, doc.DocAttachments, generation, parentRevID, docHistory)
+		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -1138,25 +1146,22 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	//// FIXME: This stored body stuff can be changed with the upcoming revcache work
-	body := newDoc.Body()
-	//storedBody := body
-	//if newDoc.Deleted {
-	//	storedBody[BodyDeleted] = true
-	//}
-	//storedBody = stripSpecialProperties(storedBody)
+	syncFnBody := newDoc.GetMutableBody()
 
-	err = validateNewBody(body)
+	// FIXME: seems a bit late to do this. Could we move it earlier?
+	err = validateNewBody(syncFnBody)
 	if err != nil {
 		return
 	}
+
+	// FIXME: Used to strip special properties here... do we still need to?
 
 	newRevID := newDoc.RevID
 	prevCurrentRev := doc.CurrentRev
 	doc.updateWinningRevAndSetDocFlags()
 	db.storeOldBodyInRevTreeAndUpdateCurrent(doc, prevCurrentRev, newRevID, newDoc)
 
-	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, body.DeepCopy(), newRevID)
+	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, syncFnBody, newRevID)
 	if err != nil {
 		return
 	}

@@ -63,7 +63,7 @@ func (h *handler) handleGetDoc() error {
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.db.GetRev1xBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+		value, err := h.db.Get1xRevBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
 			if err == base.ErrImportCancelledPurged {
 				base.Debugf(base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
@@ -112,7 +112,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.db.GetRev1xBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+					revBody, err := h.db.Get1xRevBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 					if err != nil {
 						revBody = db.Body{"missing": revid} //TODO: More specific error
 					}
@@ -128,7 +128,7 @@ func (h *handler) handleGetDoc() error {
 			h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.db.GetRev1xBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+				revBody, err := h.db.Get1xRevBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 				if err != nil {
 					revBody = db.Body{"missing": revid} //TODO: More specific error
 				} else {
@@ -154,7 +154,7 @@ func (h *handler) handleGetAttachment() error {
 	if err != nil {
 		return err
 	}
-	if rev.BodyBytes == nil {
+	if rev == nil {
 		return kNotFoundError
 	}
 

@@ -127,7 +127,7 @@ func TestAttachments(t *testing.T) {
 	assert.NoError(t, err, "Couldn't create document")
 
 	log.Printf("Retrieve doc...")
-	gotbody, err := db.GetRev1xBody("doc1", "", false, []string{})
+	gotbody, err := db.Get1xRevBody("doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
 	atts := gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -153,7 +153,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", revid)
 
 	log.Printf("Retrieve doc...")
-	gotbody, err = db.GetRev1xBody("doc1", "", false, []string{})
+	gotbody, err = db.Get1xRevBody("doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
 	atts = gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -170,7 +170,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, 2, bye["revpos"])
 
 	log.Printf("Retrieve doc with atts_since...")
-	gotbody, err = db.GetRev1xBody("doc1", "", false, []string{"1-ca9ad22802b66f662ff171f226211d5c", "1-foo", "993-bar"})
+	gotbody, err = db.Get1xRevBody("doc1", "", false, []string{"1-ca9ad22802b66f662ff171f226211d5c", "1-foo", "993-bar"})
 	assert.NoError(t, err, "Couldn't get document")
 	atts = gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -197,7 +197,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, "3-aa3ff4ca3aad12e1479b65cb1e602676", revid)
 
 	log.Printf("Retrieve doc...")
-	gotbody, err = db.GetRev1xBody("doc1", "", false, []string{})
+	gotbody, err = db.Get1xRevBody("doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
 	atts = gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -269,7 +269,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 
 	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
 	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
-	gotbody, err := db.GetRev1xBody("doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
+	gotbody, err := db.Get1xRevBody("doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
 	atts := gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -290,7 +290,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	assert.Equal(t, initCount, getCount)
 
 	// Repeat, validate no additional get operations
-	gotbody, err = db.GetRev1xBody("doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
+	gotbody, err = db.Get1xRevBody("doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
 	atts = gotbody[BodyAttachments].(AttachmentsMeta)
 

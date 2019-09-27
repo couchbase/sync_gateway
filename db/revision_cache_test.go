@@ -187,8 +187,8 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	}
 
 	// Get the doc while still resident in the rev cache w/ history=false, validate _revisions property isn't found
-	body, err := db.GetRev1xBody("doc1", rev1id, false, nil)
-	assert.NoError(t, err, "GetRev1xBody")
+	body, err := db.Get1xRevBody("doc1", rev1id, false, nil)
+	assert.NoError(t, err, "Get1xRevBody")
 	badRevisions, ok := body[BodyRevisions]
 	if ok {
 		t.Errorf("_revisions property still present in document retrieved from rev cache: %s", badRevisions)
@@ -196,8 +196,8 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	// Get the doc while still resident in the rev cache w/ history=true, validate _revisions property is returned with expected
 	// properties ("start", "ids")
-	bodyWithHistory, err := db.GetRev1xBody("doc1", rev1id, true, nil)
-	assert.NoError(t, err, "GetRev1xBody")
+	bodyWithHistory, err := db.Get1xRevBody("doc1", rev1id, true, nil)
+	assert.NoError(t, err, "Get1xRevBody")
 	validRevisions, ok := bodyWithHistory[BodyRevisions]
 	if !ok {
 		t.Errorf("Expected _revisions property not found in document retrieved from rev cache: %s", validRevisions)
@@ -303,10 +303,10 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
 	// db.getRev stamps _attachments back in from revcache Attachment metadata
-	body, err := db.GetRev1xBody(rev1key, rev1id, false, nil)
-	assert.NoError(t, err, "Unexpected error calling db.GetRev1xBody")
+	body, err := db.Get1xRevBody(rev1key, rev1id, false, nil)
+	assert.NoError(t, err, "Unexpected error calling db.Get1xRevBody")
 	atts, ok := body[BodyAttachments]
-	assert.True(t, ok, "_attachments property was not stamped back in body during db.GetRev1xBody: %#v", body)
+	assert.True(t, ok, "_attachments property was not stamped back in body during db.Get1xRevBody: %#v", body)
 
 	attsMap, ok := atts.(AttachmentsMeta)
 	_, ok = attsMap["myatt"]
@@ -352,10 +352,10 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
 	// db.getRev stamps _attachments back in from revcache Attachment metadata
-	body, err := db.GetRev1xBody(docKey, rev2id, false, nil)
-	assert.NoError(t, err, "Unexpected error calling db.GetRev1xBody")
+	body, err := db.Get1xRevBody(docKey, rev2id, false, nil)
+	assert.NoError(t, err, "Unexpected error calling db.Get1xRevBody")
 	atts, ok := body[BodyAttachments]
-	assert.True(t, ok, "_attachments property was not stamped back in body during db.GetRev1xBody: %#v", body)
+	assert.True(t, ok, "_attachments property was not stamped back in body during db.Get1xRevBody: %#v", body)
 
 	attsMap, ok := atts.(AttachmentsMeta)
 	_, ok = attsMap["myatt"]
