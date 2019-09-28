@@ -978,6 +978,9 @@ func (db *Database) recalculateSyncFnForActiveRev(doc *Document, newRevID string
 		base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
 			base.UD(doc.ID), newRevID, doc.CurrentRev)
 		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
+		if err != nil {
+			return
+		}
 	} else {
 		// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
 		base.WarnfCtx(db.Ctx, base.KeyAll, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
@@ -1363,11 +1366,6 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		if getHistoryErr != nil {
 			return nil, "", getHistoryErr
 		}
-
-		//winningRevBody := doc.Body()
-		//if doc.History[newRevID].Deleted {
-		//	winningRevBody[BodyDeleted] = true
-		//}
 
 		// Lazily marshal bytes for storage in revcache
 		storedDocBytes, err := storedDoc.BodyBytes()
