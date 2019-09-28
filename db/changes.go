@@ -159,12 +159,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 		})
 	}
 	if options.IncludeDocs {
-		if doc.Body() == nil {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "AddDocInstanceToChangeEntry called with options.IncludeDocs, but doc %q/%q is missing Body", base.UD(doc.ID), revID)
-			return
-		}
 		var err error
-
 		entry.Doc, _, err = db.get1xRevFromDoc(doc, revID, false)
 		db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		if err != nil {
