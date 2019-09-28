@@ -537,7 +537,7 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 
 	kvPairs := []base.KVPair{
 		{Key: BodyId, Val: doc.ID},
-		{Key: BodyRev, Val: doc.RevID},
+		{Key: BodyRev, Val: revid},
 	}
 
 	if doc.History[revid].Deleted {
@@ -564,16 +564,20 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
 		if bodyBytes, _ := db.getRevision(doc, revid); bodyBytes != nil {
-			if doc.CurrentRev == revid && doc.Attachments != nil {
-				var err error
-				bodyBytes, err = base.InjectJSONProperties(bodyBytes,
-					base.KVPair{Key: BodyId, Val: doc.ID},
-					base.KVPair{Key: BodyRev, Val: revid},
-					base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
-				if err != nil {
-					return nil, err
-				}
+			kvPairs := []base.KVPair{
+				{Key: BodyId, Val: doc.ID},
+				{Key: BodyRev, Val: revid},
 			}
+
+			if doc.CurrentRev == revid && doc.Attachments != nil {
+				kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
+			}
+
+			bodyBytes, err := base.InjectJSONProperties(bodyBytes, kvPairs...)
+			if err != nil {
+				return nil, err
+			}
+
 			return bodyBytes, nil
 		}
 	}

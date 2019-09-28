@@ -1688,7 +1688,8 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 
 	data, ok := client.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
-	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
+	assert.Contains(t, string(data), `"channels":["public"]`)
+	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 	// create doc1 rev 2-ff91e11bc1fd12bbb4815a06571859a9
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", `{"channels": ["private"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`)
@@ -2206,7 +2207,8 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
 		assert.NotEqual(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}]}`, string(msgBody))
-		assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(msgBody))
+		assert.Contains(t, `"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}`, string(msgBody))
+		assert.Contains(t, `"greetings":[{"hello":"world!"},{"hi":"alice"}]`, string(msgBody))
 	}
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-10000d5ec533b29b117e60274b1e3653", "")

@@ -1592,7 +1592,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
 		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, result, expectedChange)
+		assert.Equal(t, expectedChange, result)
 	}
 
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
@@ -1609,7 +1609,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	for index, result := range postFlushChanges.Results {
 		var expectedChange db.ChangeEntry
 		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, result, expectedChange)
+		assert.Equal(t, expectedChange, result)
 	}
 
 	// Validate include_docs=false, style=all_docs permutations
@@ -1633,7 +1633,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	assert.Equal(t, len(expectedStyleAllDocs), len(allDocsChanges.Results))
 	for index, result := range allDocsChanges.Results {
-		assert.Equal(t, fmt.Sprintf("%s", *result), expectedStyleAllDocs[index])
+		assert.Equal(t, expectedStyleAllDocs[index], fmt.Sprintf("%s", *result))
 	}
 
 	// Validate style=all_docs, include_docs=true permutations.  Only modified doc from include_docs test is doc_conflict (adds open revisions)
@@ -1647,7 +1647,8 @@ func TestChangesIncludeDocs(t *testing.T) {
 	for index, result := range combinedChanges.Results {
 		var expectedChange db.ChangeEntry
 		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, result, expectedChange)
+		assert.Equal(t, expectedChange, result)
+		assert.Equal(t, string(expectedChange.Doc), string(result.Doc))
 	}
 }
 
