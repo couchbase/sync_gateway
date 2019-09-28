@@ -653,6 +653,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
+	// Not extracting it yet because we need this property around to generate a rev ID
 	deleted, _ := body[BodyDeleted].(bool)
 
 	expiry, err := body.ExtractExpiry()
@@ -722,10 +723,14 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		}
 
 		// Make up a new _rev, and add it to the history:
-		newRev, err := createRevID(generation, matchRev, newDoc.Body())
+		newDocBody := newDoc.Body()
+		newRev, err := createRevID(generation, matchRev, newDocBody)
 		if err != nil {
 			return nil, nil, nil, err
 		}
+
+		// We needed to keep _deleted around in the body until we generated a rev ID, but now we can ditch it.
+		delete(newDocBody, BodyDeleted)
 
 		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)

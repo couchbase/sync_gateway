@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -161,4 +163,12 @@ func (sw *StatWaiter) Wait() {
 	}
 
 	sw.tb.Fatalf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d)", sw.targetCount, actualCount)
+}
+
+func AssertEqualBodies(t *testing.T, expected, actual Body) {
+	expectedCanonical, err := base.JSONMarshalCanonical(expected)
+	assert.NoError(t, err)
+	actualCanonical, err := base.JSONMarshalCanonical(actual)
+	assert.NoError(t, err)
+	assert.Equal(t, string(expectedCanonical), string(actualCanonical))
 }
