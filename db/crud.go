@@ -196,13 +196,9 @@ func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince [
 		maxHistory = math.MaxInt32
 	}
 
-	rev, redactedRev, err := db.getRev(docid, revid, maxHistory, nil)
+	rev, err := db.getRev(docid, revid, maxHistory, nil)
 	if err != nil {
 		return nil, err
-	}
-
-	if redactedRev != nil {
-		return redactedRev, nil
 	}
 
 	return rev, nil
@@ -225,13 +221,9 @@ func (db *Database) Get1xRevBody(docid, revid string, history bool, attachmentsS
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
 func (db *Database) Get1xRevBodyWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
-	rev, redactedRev, err := db.getRev(docid, revid, maxHistory, historyFrom)
+	rev, err := db.getRev(docid, revid, maxHistory, historyFrom)
 	if err != nil {
 		return nil, err
-	}
-
-	if redactedRev != nil {
-		rev = redactedRev
 	}
 
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
@@ -256,7 +248,7 @@ func (db *Database) Get1xRevBodyWithHistory(docid, revid string, maxHistory int,
 // * attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //   revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //   that hasn't changed since one of those revisions will be returned as a stub.
-func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string) (revision *DocumentRevision, redactedRev *DocumentRevision, err error) {
+func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string) (revision *DocumentRevision, err error) {
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
@@ -267,11 +259,11 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 	}
 
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	if revision == nil {
-		return nil, nil, base.HTTPErrorf(404, "missing")
+		return nil, base.HTTPErrorf(404, "missing")
 	}
 
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
@@ -287,16 +279,16 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
 		if revid == "" {
-			return nil, nil, ErrForbidden
+			return nil, ErrForbidden
 		}
-		return nil, redactedRev, nil
+		return redactedRev, nil
 	}
 
 	if revision.Deleted && revid == "" {
-		return nil, nil, base.HTTPErrorf(404, "deleted")
+		return nil, base.HTTPErrorf(404, "deleted")
 	}
 
-	return revision, nil, nil
+	return revision, nil
 }
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
