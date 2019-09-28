@@ -1565,12 +1565,12 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.NoError(t, err)
 	_, err = updateTestDoc(rt, "doc_resolved_conflict", revid, `{"type": "resolved_conflict", "channels":["alpha"]}`)
 	assert.NoError(t, err)
-	newEdits_conflict = `{"type": "resolved_conflict", "channels":["alpha"]},
+	newEdits_conflict = `{"type": "resolved_conflict", "channels":["alpha"],
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "4e123c0497a1a6975540977ec127c06c"]}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc_resolved_conflict?new_edits=false", newEdits_conflict)
 	assertStatus(t, response, 201)
 	response = rt.SendAdminRequest("DELETE", "/db/doc_resolved_conflict?rev=2-conflicting_rev", "")
-	assertStatus(t, response, 201)
+	assertStatus(t, response, 200)
 
 	expectedResults := make([]string, 10)
 	expectedResults[0] = `{"seq":1,"id":"_user/user1","changes":[]}`

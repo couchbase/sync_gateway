@@ -84,12 +84,6 @@ func CreateUUID() string {
 // TODO: In Go 1.1 we will be able to use a new option in the JSON parser that converts numbers
 // to a special number type that preserves the exact formatting.
 func FixJSONNumbers(value interface{}) interface{} {
-	if jsonNumberVal, ok := value.(json.Number); ok {
-		var err error
-		if value, err = jsonNumberVal.Float64(); err != nil {
-			panic(err)
-		}
-	}
 	switch value := value.(type) {
 	case float64:
 		var asInt int64 = int64(value)

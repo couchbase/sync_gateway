@@ -3779,14 +3779,14 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	response := rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+docrevId, attachmentBody, reqHeaders)
 	assertStatus(t, response, http.StatusCreated)
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docrevId2 := body["rev"].(string)
 
 	//Update Doc
 	rev3Input := `{"_attachments":{"attach1":{"content-type": "content/type", "digest":"sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub": true}}, "_id": "doc1", "_rev": "` + docrevId2 + `", "prop":true}`
 	response = rt.SendRequest("PUT", "/db/doc1", rev3Input)
 	assertStatus(t, response, http.StatusCreated)
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docrevId3 := body["rev"].(string)
 
 	//Get Existing Doc & Update rev
@@ -3797,7 +3797,7 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	//Get Existing Doc to Modify
 	response = rt.SendRequest("GET", "/db/doc1?revs=true", "")
 	assertStatus(t, response, http.StatusOK)
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
 	//Modify Doc
 	parentRevList := [3]string{"foo3", "foo2", docRevDigest}
@@ -3962,10 +3962,10 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", "")
 	assertStatus(t, response, http.StatusOK)
 
-	response = rt.SendRequest("PUT", "/db/testdoc?new_edits=true&rev="+rev1, `{"value":"a value", "channels":[]})`)
+	response = rt.SendRequest("PUT", "/db/testdoc?new_edits=true&rev="+rev1, `{"value":"a value", "channels":[]}`)
 	assertStatus(t, response, http.StatusCreated)
 
-	response = rt.SendRequest("PUT", "/db/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]})`)
+	response = rt.SendRequest("PUT", "/db/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]}`)
 	assertStatus(t, response, http.StatusCreated)
 
 	err = rt.WaitForPendingChanges()

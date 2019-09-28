@@ -319,7 +319,7 @@ func TestGetDeleted(t *testing.T) {
 		BodyDeleted:   true,
 		BodyRevisions: Revisions{RevisionsStart: 2, RevisionsIds: []string{"bc6d97f6e97c0d034a34f8aac2bf8b44", "dfd5e19813767eeddd08270fc5f385cd"}},
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	assertEqualBodies(t, expectedResult, body)
 
 	// Get the raw doc and make sure the sync data has the current revision
 	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
@@ -334,7 +334,7 @@ func TestGetDeleted(t *testing.T) {
 
 	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
-	goassert.DeepEquals(t, body, expectedResult)
+	assertEqualBodies(t, expectedResult, body)
 }
 
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
