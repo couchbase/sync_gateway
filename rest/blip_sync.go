@@ -750,13 +750,21 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, se
 		return bh.sendNoRev(sender, docID, revID, err)
 	}
 
+	// Still need to stamp _attachments into BLIP messages
+	bodyBytes := rev.BodyBytes
+	if len(rev.Attachments) > 0 {
+		bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: db.BodyAttachments, Val: rev.Attachments})
+		if err != nil {
+			return err
+		}
+	}
+
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known", base.UD(docID), revID, len(knownRevs))
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
-
 	attDigests := db.AttachmentDigests(rev.Attachments)
-	return bh.sendRevisionWithProperties(sender, docID, revID, rev.BodyBytes, attDigests, properties)
+	return bh.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties)
 }
 
 func toHistory(revisions db.Revisions, knownRevs map[string]bool, maxHistory int) []string {

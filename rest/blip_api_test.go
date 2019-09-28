@@ -2173,9 +2173,11 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.True(t, ok)
 	var dataMap map[string]interface{}
 	assert.NoError(t, base.JSONUnmarshal(data, &dataMap))
-	atts := dataMap[db.BodyAttachments].(map[string]interface{})
+	atts, ok := dataMap[db.BodyAttachments].(map[string]interface{})
+	require.True(t, ok)
 	assert.Len(t, atts, 1)
-	hello := atts["hello.txt"].(map[string]interface{})
+	hello, ok := atts["hello.txt"].(map[string]interface{})
+	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 	assert.Equal(t, float64(11), hello["length"])
 	assert.Equal(t, float64(2), hello["revpos"])
