@@ -2981,9 +2981,6 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 
 	cacheWaiter.AddAndWait(3)
 
-	errorCountStart := base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String()
-	warnCountStart := base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String()
-
 	var changes struct {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
@@ -3006,12 +3003,6 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	// Expect three docs and the authenticated user's user doc
 	assert.Equal(t, 4, len(changes.Results))
-
-	errorCountEnd := base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String()
-	warnCountEnd := base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String()
-
-	assert.Equal(t, errorCountStart, errorCountEnd, "Unexpected error count in TestIncludeDocsWithPrincipals")
-	assert.Equal(t, warnCountStart, warnCountEnd, "Unexpected warning count in TestIncludeDocsWithPrincipals")
 
 }
 
