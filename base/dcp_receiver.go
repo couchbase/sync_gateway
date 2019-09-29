@@ -36,7 +36,7 @@ const MemcachedDataTypeRaw = 0
 // cbdatasource BucketDataSource.  See go-couchbase/cbdatasource for
 // additional details
 type DCPReceiver struct {
-	DCPCommon
+	*DCPCommon
 }
 
 func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string) (cbdatasource.Receiver, context.Context) {

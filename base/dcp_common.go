@@ -65,10 +65,10 @@ type DCPCommon struct {
 	loggingCtx             context.Context                // Logging context, prefixes feedID
 }
 
-func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string) DCPCommon {
+func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string) *DCPCommon {
 	newBackfillStatus := backfillStatus{}
 
-	c := DCPCommon{
+	c := &DCPCommon{
 		dbStatsExpvars:         dbStats,
 		bucket:                 bucket,
 		maxVbNo:                maxVbNo,

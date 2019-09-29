@@ -47,7 +47,7 @@ type SGDest interface {
 // DCPDest implements SGDest (superset of cbgt.Dest) interface to manage updates coming from a
 // cbgt-based DCP feed.  Embeds DCPCommon for underlying feed event processing
 type DCPDest struct {
-	DCPCommon
+	*DCPCommon
 }
 
 func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string) (SGDest, context.Context) {
