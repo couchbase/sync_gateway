@@ -2280,9 +2280,16 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbS
 }
 
 func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	// TODO: Possibly set an unsupported flag to revert to cbdatasource-based feed
-	return StartCbgtDCPFeed(bucket, bucket.spec, args, callback, dbStats)
-	//	return StartDCPFeed(bucket, bucket.spec, args, callback, dbStats)
+
+	// TODO: Include feed type or an unsupported flag to support
+	//  legacy cbdatasource-based feed?  Depends on stablility/risk of cbgt feed
+	// TODO: Use cbgt exclusively when x.509 support is finalized
+	// Use non-cbgt cbdatasource feed when x.509 cert is present
+	if bucket.spec.Certpath != "" {
+		return StartDCPFeed(bucket, bucket.spec, args, callback, dbStats)
+	} else {
+		return StartCbgtDCPFeed(bucket, bucket.spec, args, callback, dbStats)
+	}
 }
 
 func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
