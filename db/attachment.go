@@ -123,6 +123,7 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
 func (db *Database) retrieveAncestorAttachments(doc *Document, parentRev string, docHistory []string) map[string]interface{} {
 
+	// FIXME: parent contains _attachment property
 	// Attempt to find a non-pruned parent or ancestor
 	if parent, _ := db.getAvailable1xRev(doc, parentRev); parent != nil {
 		// exit early if we know we have no attachments with a simple byte-contains check

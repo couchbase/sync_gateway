@@ -905,7 +905,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags() {
 }
 
 func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCurrentRev string, newRevID string, newDoc *Document) {
-	if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.Body() != nil {
+	if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
 		// Store the doc's previous body into the revision tree:
 		oldBodyJson, marshalErr := doc.BodyBytes()
 		if marshalErr != nil {
@@ -922,7 +922,6 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 
 		// Stamp _attachments and _deleted into rev tree bodies
 		oldBodyJson, marshalErr = base.InjectJSONProperties(oldBodyJson, kvPairs...)
-
 		if marshalErr != nil {
 			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body properties for storage in rev tree: %v", marshalErr)
 		}
