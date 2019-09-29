@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/couchbase/cbgt"
+	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
@@ -19,10 +22,21 @@ import (
 // (Atoi is faster than map lookup when going in the other direction)
 var vbucketIdStrings [1024]string
 
+type cbgtFeedType int8
+
+const (
+	cbgtFeedType_gocb cbgtFeedType = iota
+	cbgtFeedType_cbdatasource
+)
+
+var feedType cbgtFeedType
+
 func init() {
 	for i := 0; i < len(vbucketIdStrings); i++ {
 		vbucketIdStrings[i] = fmt.Sprintf("%d", i)
 	}
+	feedType = cbgtFeedType_cbdatasource
+	cbgt.DCPFeedPrefix = "sg:"
 }
 
 type SGDest interface {
@@ -200,6 +214,16 @@ func vbNoToPartition(vbNo uint16) string {
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
 func StartCbgtDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+	if feedType == cbgtFeedType_gocb {
+		return StartCbgtGocbFeed(bucket, spec, args, callback, dbStats)
+	} else {
+		return StartCbgtCbdatasourceFeed(bucket, spec, args, callback, dbStats)
+	}
+}
+
+// This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
+// bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
+func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 
 	feedName, err := GenerateDcpStreamName(args.ID)
 	if err != nil {
@@ -265,8 +289,6 @@ func StartCbgtDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 		return feedInitErr
 	}
 
-	bucketName := bucket.GetName()
-
 	// Full DCP feed - assign a single Dest to all vbuckets.  Vbuckets need to be converted to
 	// cbgt's string representation ('partition')
 	dests := make(map[string]cbgt.Dest, maxVbNo)
@@ -278,10 +300,11 @@ func StartCbgtDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 	disableFeed := false
 	var noopManager *cbgt.Manager
 
-	feed, err := cbgt.NewGocbDCPFeed(feedName,
+	feed, err := cbgt.NewGocbDCPFeed(
+		feedName,
 		indexName,
 		serverURL,
-		bucketName,
+		spec.BucketName,
 		bucketUUID,
 		paramsStr,
 		cbgt.BasicPartitionFunc,
@@ -290,13 +313,13 @@ func StartCbgtDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 		noopManager)
 
 	if err != nil {
-		return pkgerrors.WithStack(RedactErrorf("Error instantiating gocb DCP Feed.  Feed:%s URL:%s, bucket:%s.  Error: %v", feedName, UD(serverURL), MD(bucketName), err))
+		return pkgerrors.WithStack(RedactErrorf("Error instantiating gocb DCP Feed.  Feed:%s URL:%s, bucket:%s.  Error: %v", feedName, UD(serverURL), MD(spec.BucketName), err))
 	}
 
 	InfofCtx(loggingCtx, KeyDCP, "DCP feed starting with name %s", feedName)
 
 	if err = feed.Start(); err != nil {
-		return pkgerrors.WithStack(RedactErrorf("Error starting gocb DCP Feed.  Feed:%s URLs:%s, bucket:%s.  Error: %v", feedName, UD(serverURL), MD(bucketName), err))
+		return pkgerrors.WithStack(RedactErrorf("Error starting gocb DCP Feed.  Feed:%s URLs:%s, bucket:%s.  Error: %v", feedName, UD(serverURL), MD(spec.BucketName), err))
 	}
 
 	InfofCtx(loggingCtx, KeyDCP, "DCP feed started successfully with name %s", feedName)
@@ -305,7 +328,149 @@ func StartCbgtDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgument
 	if args.Terminator != nil {
 		go func() {
 			<-args.Terminator
-			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(bucketName), feedName)
+			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(spec.BucketName), feedName)
+			feed.Close()
+		}()
+	}
+
+	return nil
+
+}
+
+// This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
+// bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
+func StartCbgtCbdatasourceFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+
+	feedName, err := GenerateDcpStreamName(args.ID)
+	if err != nil {
+		return err
+	}
+	indexName := feedName
+
+	// cbdatasource expects server URL in http format
+	serverURLs, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server)
+	if errConvertServerSpec != nil {
+		return errConvertServerSpec
+	}
+
+	// paramsStr is serialized DCPFeedParams, as string
+	feedParams := cbgt.NewDCPFeedParams()
+
+	// check for basic auth
+	if spec.Certpath == "" && spec.Auth != nil {
+		username, password, _ := spec.Auth.GetCredentials()
+		feedParams.AuthUser = username
+		feedParams.AuthPassword = password
+	}
+
+	if spec.UseXattrs {
+		// TODO: This is always being set in NewGocbDCPFeed, review whether we actually need ability to run w/ false
+		feedParams.IncludeXAttrs = true
+	}
+
+	// Update feed params with cbdatasource defaults
+	feedParams.ClusterManagerBackoffFactor = cbdatasource.DefaultBucketDataSourceOptions.ClusterManagerBackoffFactor
+	feedParams.ClusterManagerSleepInitMS = cbdatasource.DefaultBucketDataSourceOptions.ClusterManagerSleepInitMS
+	feedParams.ClusterManagerSleepMaxMS = cbdatasource.DefaultBucketDataSourceOptions.ClusterManagerSleepMaxMS
+	feedParams.DataManagerBackoffFactor = cbdatasource.DefaultBucketDataSourceOptions.DataManagerBackoffFactor
+	feedParams.DataManagerSleepInitMS = cbdatasource.DefaultBucketDataSourceOptions.DataManagerSleepInitMS
+	feedParams.DataManagerSleepMaxMS = cbdatasource.DefaultBucketDataSourceOptions.DataManagerSleepMaxMS
+	feedParams.FeedBufferSizeBytes = cbdatasource.DefaultBucketDataSourceOptions.FeedBufferSizeBytes
+	feedParams.FeedBufferAckThreshold = cbdatasource.DefaultBucketDataSourceOptions.FeedBufferAckThreshold
+	feedParams.NoopTimeIntervalSecs = cbdatasource.DefaultBucketDataSourceOptions.NoopTimeIntervalSecs
+
+	paramBytes, err := JSONMarshal(feedParams)
+	if err != nil {
+		return err
+	}
+	paramsStr := string(paramBytes)
+
+	bucketUUID, err := bucket.UUID()
+	if err != nil {
+		return err
+	}
+
+	persistCheckpoints := false
+	if args.Backfill == sgbucket.FeedResume {
+		persistCheckpoints = true
+	}
+
+	feedID := args.ID
+	if feedID == "" {
+		Infof(KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
+		feedID = DCPCachingFeedID
+	}
+
+	// Initialize the feed Dest
+	maxVbNo, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+	cachingDest, loggingCtx := NewDCPDest(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID)
+	// Initialize the feed based on the backfill type
+	feedInitErr := cachingDest.initFeed(args.Backfill)
+	if feedInitErr != nil {
+		return feedInitErr
+	}
+
+	// Full DCP feed - assign a single Dest to all vbuckets.  Vbuckets need to be converted to
+	// cbgt's string representation ('partition')
+	dests := make(map[string]cbgt.Dest, maxVbNo)
+	for vbNo := uint16(0); vbNo < maxVbNo; vbNo++ {
+		partition := vbNoToPartition(vbNo)
+		dests[partition] = cachingDest
+	}
+
+	// If using client certificate for authentication, configure go-couchbase for cbdatasource's initial
+	// connection to retrieve cluster configuration.
+	if spec.Certpath != "" {
+		couchbase.SetCertFile(spec.Certpath)
+		couchbase.SetKeyFile(spec.Keypath)
+		couchbase.SetRootFile(spec.CACertPath)
+		couchbase.SetSkipVerify(false)
+		// TODO: x.509 not supported for cbgt with cbdatasource until cbAuth supports
+		//    a way to use NoPasswordAuthHandler, and custom options.Connect
+		//auth = NoPasswordAuthHandler{handler: spec.Auth}
+	}
+
+	// If using TLS, pass a custom connect method to support using TLS for cbdatasource's memcached connections
+	//if spec.IsTLS() {
+	//	dataSourceOptions.Connect = spec.TLSConnect
+	//}
+
+	disableFeed := false
+	var noopManager *cbgt.Manager
+	serverURLsString := strings.Join(serverURLs, ";")
+
+	feed, err := cbgt.NewDCPFeed(
+		feedName,
+		indexName,
+		serverURLsString,
+		spec.GetPoolName(),
+		spec.BucketName,
+		bucketUUID,
+		paramsStr,
+		cbgt.BasicPartitionFunc,
+		dests,
+		disableFeed,
+		noopManager)
+	if err != nil {
+		return pkgerrors.WithStack(RedactErrorf("Error instantiating gocb DCP Feed.  Feed:%s URL:%s, bucket:%s.  Error: %v", feedName, UD(serverURLsString), MD(spec.BucketName), err))
+	}
+
+	InfofCtx(loggingCtx, KeyDCP, "DCP feed starting with name %s", feedName)
+
+	if err = feed.Start(); err != nil {
+		return pkgerrors.WithStack(RedactErrorf("Error starting gocb DCP Feed.  Feed:%s URLs:%s, bucket:%s.  Error: %v", feedName, UD(serverURLsString), MD(spec.BucketName), err))
+	}
+
+	InfofCtx(loggingCtx, KeyDCP, "DCP feed started successfully with name %s", feedName)
+
+	// Close the feed if feed terminator is closed
+	if args.Terminator != nil {
+		go func() {
+			<-args.Terminator
+			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(spec.BucketName), feedName)
 			feed.Close()
 		}()
 	}

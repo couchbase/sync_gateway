@@ -287,7 +287,6 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	// If using TLS, pass a custom connect method to support using TLS for cbdatasource's memcached connections
 	if spec.IsTLS() {
 		dataSourceOptions.Connect = spec.TLSConnect
-
 	}
 
 	DebugfCtx(loggingCtx, KeyDCP, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))

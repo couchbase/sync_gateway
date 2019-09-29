@@ -123,6 +123,13 @@ func (spec BucketSpec) UseClientCert() bool {
 	return true
 }
 
+func (spec BucketSpec) GetPoolName() string {
+	if spec.PoolName == "" {
+		return "default"
+	}
+	return spec.PoolName
+}
+
 // Builds a gocb connection string based on BucketSpec.Server.
 // Adds idle connection configuration, and X.509 auth settings when
 // certpath/keypath/cacertpath specified.
