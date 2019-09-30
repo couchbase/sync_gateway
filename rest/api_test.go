@@ -3931,7 +3931,6 @@ func TestNonImportedDuplicateID(t *testing.T) {
 }
 
 func TestChanCacheActiveRevsStat(t *testing.T) {
-
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	rt := NewRestTester(t, nil)
@@ -3956,10 +3955,11 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", "")
 	assertStatus(t, response, http.StatusOK)
 
-	response = rt.SendRequest("PUT", "/db/testdoc?new_edits=true&rev="+rev1, `{"value":"a value", "channels":[]})`)
+	fmt.Println(rev1)
+	response = rt.SendRequest("PUT", "/db/testdoc?new_edits=true&rev="+rev1, `{"value":"a value", "channels":[]}`)
 	assertStatus(t, response, http.StatusCreated)
 
-	response = rt.SendRequest("PUT", "/db/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]})`)
+	response = rt.SendRequest("PUT", "/db/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]}`)
 	assertStatus(t, response, http.StatusCreated)
 
 	err = rt.WaitForPendingChanges()
@@ -4018,6 +4018,21 @@ func TestWebhookProperties(t *testing.T) {
 	wg.Wait()
 
 }
+
+//func TestDeleteDocWithQueryParameters(t *testing.T) {
+//	rt := NewRestTester(t, nil)
+//	defer rt.Close()
+//
+//	// Create doc as usual
+//	response := rt.SendAdminRequest("PUT", "/db/doc1", ``)
+//	var body db.Body
+//	base.JSONUnmarshal(response.Body.Bytes(), &body)
+//	assert.Equal(t, true, body["ok"])
+//	revId := body["rev"].(string)
+//
+//	fmt.Println(revId)
+//
+//}
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 

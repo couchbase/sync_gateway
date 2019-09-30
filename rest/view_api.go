@@ -77,7 +77,7 @@ func (h *handler) handleView() error {
 	// Integer options:
 	for _, name := range []string{"skip", "limit", "group_level"} {
 		if h.getQuery(name) != "" {
-			opts[name] = h.getIntQuery(name, 0)
+			opts[name], _ = h.getIntQuery(name, 0)
 		}
 	}
 
