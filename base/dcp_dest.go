@@ -35,7 +35,7 @@ func init() {
 	for i := 0; i < len(vbucketIdStrings); i++ {
 		vbucketIdStrings[i] = fmt.Sprintf("%d", i)
 	}
-	feedType = cbgtFeedType_cbdatasource
+	feedType = cbgtFeedType_gocb
 	cbgt.DCPFeedPrefix = "sg:"
 }
 
