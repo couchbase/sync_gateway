@@ -4019,20 +4019,112 @@ func TestWebhookProperties(t *testing.T) {
 
 }
 
-//func TestDeleteDocWithQueryParameters(t *testing.T) {
-//	rt := NewRestTester(t, nil)
-//	defer rt.Close()
-//
-//	// Create doc as usual
-//	response := rt.SendAdminRequest("PUT", "/db/doc1", ``)
-//	var body db.Body
-//	base.JSONUnmarshal(response.Body.Bytes(), &body)
-//	assert.Equal(t, true, body["ok"])
-//	revId := body["rev"].(string)
-//
-//	fmt.Println(revId)
-//
-//}
+func TestDeletePutDocReplicator2(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create doc as usual
+	response := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
+	assertStatus(t, response, http.StatusCreated)
+	var body db.Body
+	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	revId := body["rev"].(string)
+	assert.Equal(t, "1-ca9ad22802b66f662ff171f226211d5c", revId)
+
+	// Update doc to delete with PUT
+	delPutURL := fmt.Sprintf("/db/doc1?rev=%s&deleted=true", revId)
+	response = rt.SendAdminRequest("PUT", delPutURL, `{"foo": "bar"}`)
+	assertStatus(t, response, http.StatusCreated)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	revId = body["rev"].(string)
+	assert.Equal(t, "2-4a75d72f2daca76707590039a2937cb7", revId)
+
+	// Get doc to ensure its deleted
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/doc1?rev=%s", revId), ``)
+	assertStatus(t, response, http.StatusOK)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.Equal(t, true, body[db.BodyDeleted])
+}
+
+func TestBasicPutReplicator2(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+
+	// Put basic doc with replicator2 flag and ensure it saves correctly
+	response := rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true", `{"foo": "bar"}`)
+	assertStatus(t, response, http.StatusCreated)
+	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.True(t, body["ok"].(bool))
+	response = rt.SendAdminRequest("GET", "/db/doc1", ``)
+	assertStatus(t, response, http.StatusOK)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.Equal(t, "bar", body["foo"])
+}
+
+func TestPutExpiryReplicator2(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Index tests require Couchbase Bucket")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+
+	response := rt.SendAdminRequest("PUT", "/db/doc1?expiry=5", `{"foo": "bar"}`)
+	assertStatus(t, response, http.StatusCreated)
+	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+
+	// Test expiry. Using 8 instead of 5 seconds to allow for slower tests.
+	time.Sleep(8 * time.Second)
+
+	// Ensure doc is deleted
+	response = rt.SendAdminRequest("GET", "/db/doc1", "")
+	assertStatus(t, response, http.StatusNotFound)
+}
+
+func TestPutRevisionsReplicator2(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+
+	// Create rev 1
+	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
+	assertStatus(t, response, http.StatusCreated)
+	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.True(t, body["ok"].(bool))
+	revId := body["rev"]
+
+	// Update doc
+	response = rt.SendAdminRequest("PUT", "/db/doc1", fmt.Sprintf(`{"foo":"bar2", "_rev":"%s"}`, revId))
+
+	// Create conflict
+	input := fmt.Sprintf(`{"value": "conflictvalue", "_revisions": {"start": 2, "ids": ["conflictingrev", "cd809becc169215072fd567eebd8b8de"]}}`)
+	response = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false", input)
+	response.DumpBody()
+
+	// Create another conflict but with url params
+	input = fmt.Sprintf(`{"value": "conflictvalue2"}`)
+	response = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false&revisions=2-conflictingrev2,1-cd809becc169215072fd567eebd8b8de", input)
+	response.DumpBody()
+
+	response = rt.SendAdminRequest("GET", "/db/_raw/doc1", ``)
+	assertStatus(t, response, http.StatusOK)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.Equal(t, "conflictvalue2", body["value"])
+}
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
