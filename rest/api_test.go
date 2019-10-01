@@ -3986,8 +3986,13 @@ func TestWebhookProperties(t *testing.T) {
 		assert.NoError(t, err)
 		err = r.Body.Close()
 		assert.NoError(t, err)
+
+		var body db.Body
+		err = base.JSONUnmarshal(out, &body)
+		assert.NoError(t, err)
 		assert.Contains(t, string(out), db.BodyId)
 		assert.Contains(t, string(out), db.BodyRev)
+		assert.Equal(t, "1-cd809becc169215072fd567eebd8b8de", body[db.BodyRev])
 		wg.Done()
 	}
 
