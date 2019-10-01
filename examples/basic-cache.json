@@ -1,0 +1,45 @@
+{
+  "logging": {
+    "console": {
+      "log_keys": [
+        "*"
+      ]
+    }
+  },
+  "databases": {
+    "db": {
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default",
+      "users": {
+        "GUEST": {
+          "disabled": false,
+          "admin_channels": [
+            "*"
+          ]
+        }
+      },
+      "allow_conflicts": false,
+      "revs_limit": 20,
+      "cache":{
+        "channel_cache":{
+          "max_number": 50000,
+          "compact_high_watermark_pct":80,
+          "compact_low_watermark_pct":60,
+          "max_length":500,
+          "min_length":50,
+          "expiry_seconds":60,
+          "max_wait_pending":5,
+          "max_num_pending":10000,
+          "max_wait_skipped":60,
+          "enable_star_channel":true
+        },
+        "rev_cache":{
+          "size":5000,
+          "shard_count":8
+        }
+      }
+    }
+  }
+}
