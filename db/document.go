@@ -198,7 +198,7 @@ func (doc *Document) MarshalBodyForWebhook() (retBytes []byte, err error) {
 	bodyBytes, err = base.InjectJSONPropertiesFromBytes(
 		bodyBytes,
 		base.KVPairBytes{Key: BodyId, Val: []byte(`"` + doc.ID + `"`)},
-		base.KVPairBytes{Key: BodyRev, Val: []byte(`"` + doc.RevID + `"`)},
+		base.KVPairBytes{Key: BodyRev, Val: []byte(`"` + doc.CurrentRev + `"`)},
 	)
 	if err != nil {
 		return nil, err
