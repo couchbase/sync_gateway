@@ -272,107 +272,15 @@ func (h *handler) handlePutDoc() error {
 	var newRev string
 	var doc *db.Document
 	var ok bool
+	var err error
 
 	roundTrip := h.getBoolQuery("roundtrip")
 
 	// If new url parameters are used
 	if h.getQuery("deleted") != "" || h.getQuery("expiry") != "" || h.getQuery("revisions") != "" || h.getQuery("replicator2") != "" {
-
-		bodyBytes, err := h.readBody()
+		doc, newRev, err = h.handlePutReplicator2Doc(docid)
 		if err != nil {
 			return err
-		}
-		if bodyBytes == nil || len(bodyBytes) == 0 {
-			return base.ErrEmptyDocument
-		}
-
-		docToAdd := &db.Document{
-			ID: docid,
-		}
-
-		docToAdd.UpdateBodyBytes(bodyBytes)
-
-		// Pull out rev as supplied in url query
-		if oldRev := h.getQuery("rev"); oldRev != "" {
-			docToAdd.RevID = oldRev
-		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
-			docToAdd.RevID = ifMatch
-		} else if bytes.Contains(bodyBytes, []byte(`"`+db.BodyRev+`"`)) {
-			// If not in url query or ifMatch attempt to get direct from body
-			body := docToAdd.Body()
-			docToAdd.RevID = body[db.BodyRev].(string)
-			delete(body, db.BodyRev)
-			docToAdd.UpdateBody(body)
-		}
-
-		// Pull out deleted field, this can either be supplied with url parameters or in the body
-		deleted, deletedIsSet := h.getOptBoolQuery("deleted", false)
-		if deletedIsSet {
-			docToAdd.Deleted = deleted
-		}
-		if bytes.Contains(bodyBytes, []byte(db.BodyDeleted)) {
-			body := docToAdd.Body()
-			if deletedIsSet {
-				return base.HTTPErrorf(http.StatusBadRequest, "deleted property specified in both body and url. Defaulting to use url parameter")
-			} else {
-				docToAdd.Deleted = body[db.BodyDeleted].(bool)
-			}
-			delete(body, db.BodyDeleted)
-			docToAdd.UpdateBody(body)
-		}
-
-		// Handle and pull out expiry
-		expiry, expiryIsSet := h.getIntQuery("expiry", 0)
-		if expiryIsSet {
-			docToAdd.DocExpiry = uint32(expiry)
-		}
-		if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
-			body := docToAdd.Body()
-			if deletedIsSet {
-				return base.HTTPErrorf(http.StatusBadRequest, "expiry property specified in both body and url. Defaulting to use url parameter")
-			} else {
-				expiry, err := body.ExtractExpiry()
-				if err != nil {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
-				}
-				docToAdd.DocExpiry = expiry
-			}
-			delete(body, db.BodyExpiry)
-			docToAdd.UpdateBody(body)
-		}
-
-		// Pull out attachments
-		if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
-			body := docToAdd.Body()
-			docToAdd.DocAttachments = db.GetBodyAttachments(body)
-			delete(body, db.BodyAttachments)
-			docToAdd.UpdateBody(body)
-		}
-
-		if h.getQuery("new_edits") != "false" {
-			newRev, doc, err = h.db.Put(docToAdd)
-			if err != nil {
-				return err
-			}
-			h.setHeader("Etag", strconv.Quote(newRev))
-		} else {
-			var revisions []string
-			revisionsQuery := h.getQuery("revisions")
-			if revisionsQuery != "" {
-				revisions = strings.Split(revisionsQuery, ",")
-			} else {
-				body := docToAdd.Body()
-				revisions = db.ParseRevisions(body)
-				if revisions == nil {
-					return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
-				}
-				delete(body, db.BodyRevisions)
-				docToAdd.UpdateBody(body)
-			}
-			doc, newRev, err = h.db.PutExistingRev(docToAdd, revisions, false)
-			if err != nil {
-				return err
-			}
 		}
 		// If new url properties are not used handle as we used to
 	} else {
@@ -423,6 +331,106 @@ func (h *handler) handlePutDoc() error {
 
 	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
+}
+
+func (h *handler) handlePutReplicator2Doc(docid string) (doc *db.Document, newRev string, err error) {
+	bodyBytes, err := h.readBody()
+	if err != nil {
+		return nil, "", err
+	}
+	if bodyBytes == nil || len(bodyBytes) == 0 {
+		return nil, "", base.ErrEmptyDocument
+	}
+
+	docToAdd := &db.Document{
+		ID: docid,
+	}
+
+	docToAdd.UpdateBodyBytes(bodyBytes)
+
+	// Pull out rev as supplied in url query
+	if oldRev := h.getQuery("rev"); oldRev != "" {
+		docToAdd.RevID = oldRev
+	} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+		docToAdd.RevID = ifMatch
+	} else if bytes.Contains(bodyBytes, []byte(`"`+db.BodyRev+`"`)) {
+		// If not in url query or ifMatch attempt to get direct from body
+		body := docToAdd.Body()
+		docToAdd.RevID = body[db.BodyRev].(string)
+		delete(body, db.BodyRev)
+		docToAdd.UpdateBody(body)
+	}
+
+	// Pull out deleted field, this can either be supplied with url parameters or in the body
+	deleted, deletedIsSet := h.getOptBoolQuery("deleted", false)
+	if deletedIsSet {
+		docToAdd.Deleted = deleted
+	}
+	if bytes.Contains(bodyBytes, []byte(db.BodyDeleted)) {
+		body := docToAdd.Body()
+		if deletedIsSet {
+			return nil, "", base.HTTPErrorf(http.StatusBadRequest, "deleted property specified in both body and url. Defaulting to use url parameter")
+		} else {
+			docToAdd.Deleted = body[db.BodyDeleted].(bool)
+		}
+		delete(body, db.BodyDeleted)
+		docToAdd.UpdateBody(body)
+	}
+
+	// Handle and pull out expiry
+	expiry, expiryIsSet := h.getIntQuery("expiry", 0)
+	if expiryIsSet {
+		docToAdd.DocExpiry = uint32(expiry)
+	}
+	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
+		body := docToAdd.Body()
+		if deletedIsSet {
+			return nil, "", base.HTTPErrorf(http.StatusBadRequest, "expiry property specified in both body and url. Defaulting to use url parameter")
+		} else {
+			expiry, err := body.ExtractExpiry()
+			if err != nil {
+				return nil, "", base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+			}
+			docToAdd.DocExpiry = expiry
+		}
+		delete(body, db.BodyExpiry)
+		docToAdd.UpdateBody(body)
+	}
+
+	// Pull out attachments
+	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
+		body := docToAdd.Body()
+		docToAdd.DocAttachments = db.GetBodyAttachments(body)
+		delete(body, db.BodyAttachments)
+		docToAdd.UpdateBody(body)
+	}
+
+	if h.getQuery("new_edits") != "false" {
+		newRev, doc, err = h.db.Put(docToAdd)
+		if err != nil {
+			return nil, "", err
+		}
+		h.setHeader("Etag", strconv.Quote(newRev))
+	} else {
+		var revisions []string
+		revisionsQuery := h.getQuery("revisions")
+		if revisionsQuery != "" {
+			revisions = strings.Split(revisionsQuery, ",")
+		} else {
+			body := docToAdd.Body()
+			revisions = db.ParseRevisions(body)
+			if revisions == nil {
+				return nil, "", base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
+			}
+			delete(body, db.BodyRevisions)
+			docToAdd.UpdateBody(body)
+		}
+		doc, newRev, err = h.db.PutExistingRev(docToAdd, revisions, false)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	return doc, newRev, err
 }
 
 // HTTP handler for a POST to a database (creating a document)
