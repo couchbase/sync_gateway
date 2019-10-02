@@ -1039,7 +1039,25 @@ func InjectJSONProperties(b []byte, kvPairs ...KVPair) (new []byte, err error) {
 
 	kvPairsBytes := make([]KVPairBytes, len(kvPairs))
 	for i, kv := range kvPairs {
-		valBytes, err := JSONMarshal(kv.Val)
+		var valBytes []byte
+		var err error
+
+		switch v := kv.Val.(type) {
+		case int, int8, int16, int32, int64:
+			valBytes = []byte(strconv.Itoa(kv.Val.(int)))
+		case uint, uint8, uint16, uint32, uint64:
+			valBytes = []byte(strconv.Itoa(int(kv.Val.(uint))))
+		case string:
+			valBytes = []byte(`"` + v + `"`)
+		case bool:
+			valBytes = []byte(strconv.FormatBool(v))
+		case float32:
+			valBytes = []byte(strconv.FormatFloat(float64(v), 'f', -1, 32))
+		case float64:
+			valBytes = []byte(strconv.FormatFloat(v, 'f', -1, 64))
+		default:
+			valBytes, err = JSONMarshal(kv.Val)
+		}
 		if err != nil {
 			return nil, err
 		}
