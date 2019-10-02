@@ -359,10 +359,10 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// Use the cache, and return if it fulfilled the entire request:
 	cacheValidFrom, resultFromCache := c.GetCachedChanges(options)
 	numFromCache := len(resultFromCache)
-	if numFromCache > 0 || resultFromCache == nil {
+	if numFromCache > 0 {
 		base.InfofCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
 			base.UD(c.channelName), options.Since.String(), numFromCache, cacheValidFrom)
-	} else if resultFromCache == nil {
+	} else {
 		base.InfofCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
 			base.UD(c.channelName), options.Since.String())
 	}
