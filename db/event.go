@@ -147,7 +147,7 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	switch event := event.(type) {
 
 	case *DocumentChangeEvent:
-		result, err = ef.Call(event.DocBytes, sgbucket.JSONString(event.OldDoc))
+		result, err = ef.Call(sgbucket.JSONString(event.DocBytes), sgbucket.JSONString(event.OldDoc))
 	case *DBStateChangeEvent:
 		result, err = ef.Call(event.Doc)
 	}
