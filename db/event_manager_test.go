@@ -530,7 +530,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	em = NewEventManager()
 	em.Start(0, -1)
 	filterFunction := `function(doc) {
-							if (doc.value < 6 ) {
+							if (doc.value < 6) {
 								return false;
 							} else {
 								return true;
