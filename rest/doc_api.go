@@ -277,7 +277,7 @@ func (h *handler) handlePutDoc() error {
 	roundTrip := h.getBoolQuery("roundtrip")
 
 	// If new url parameters are used
-	if h.getQuery("deleted") != "" || h.getQuery("expiry") != "" || h.getQuery("revisions") != "" || h.getQuery("replicator2") != "" {
+	if h.getQuery("replicator2") != "" {
 		doc, newRev, err = h.handlePutReplicator2Doc(docid)
 		if err != nil {
 			return err

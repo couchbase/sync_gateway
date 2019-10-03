@@ -4033,7 +4033,7 @@ func TestDeletePutDocReplicator2(t *testing.T) {
 	assert.Equal(t, "1-ca9ad22802b66f662ff171f226211d5c", revId)
 
 	// Update doc to delete with PUT
-	delPutURL := fmt.Sprintf("/db/doc1?rev=%s&deleted=true", revId)
+	delPutURL := fmt.Sprintf("/db/doc1?rev=%s&deleted=true&replicator2=true", revId)
 	response = rt.SendAdminRequest("PUT", delPutURL, `{"foo": "bar"}`)
 	assertStatus(t, response, http.StatusCreated)
 	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
@@ -4079,7 +4079,7 @@ func TestPutExpiryReplicator2(t *testing.T) {
 
 	var body db.Body
 
-	response := rt.SendAdminRequest("PUT", "/db/doc1?expiry=5", `{"foo": "bar"}`)
+	response := rt.SendAdminRequest("PUT", "/db/doc1?expiry=5&replicator2=true", `{"foo": "bar"}`)
 	assertStatus(t, response, http.StatusCreated)
 	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
 	assert.NoError(t, err)
@@ -4116,7 +4116,7 @@ func TestPutRevisionsReplicator2(t *testing.T) {
 
 	// Create another conflict but with url params
 	input = fmt.Sprintf(`{"value": "conflictvalue2"}`)
-	response = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false&revisions=2-conflictingrev2,1-cd809becc169215072fd567eebd8b8de", input)
+	response = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false&revisions=2-conflictingrev2,1-cd809becc169215072fd567eebd8b8de&replicator2=true", input)
 	response.DumpBody()
 
 	response = rt.SendAdminRequest("GET", "/db/_raw/doc1", ``)
