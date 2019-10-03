@@ -21,7 +21,6 @@ type LeakyBucket struct {
 
 // The config object that controls the LeakyBucket behavior
 type LeakyBucketConfig struct {
-
 	// Incr() fails N times before finally succeeding
 	IncrTemporaryFailCount uint16
 
@@ -46,6 +45,10 @@ type LeakyBucketConfig struct {
 	// Returns a partial error the first time ViewCustom is called
 	FirstTimeViewCustomPartialError bool
 	PostQueryCallback               func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
+
+	// WriteUpdateCallback issues additional callback in WriteUpdate after standard callback completes, but prior to document write.  Allows
+	// tests to trigger CAS retry handling by modifying the underlying document in a WriteUpdateCallback implementation.
+	WriteUpdateCallback func(key string)
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
@@ -115,6 +118,14 @@ func (b *LeakyBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc)
 	return b.bucket.Update(k, exp, callback)
 }
 func (b *LeakyBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
+	if b.config.WriteUpdateCallback != nil {
+		wrapperCallback := func(current []byte) (updated []byte, opt sgbucket.WriteOptions, expiry *uint32, err error) {
+			updated, opt, expiry, err = callback(current)
+			b.config.WriteUpdateCallback(k)
+			return updated, opt, expiry, err
+		}
+		return b.bucket.WriteUpdate(k, exp, wrapperCallback)
+	}
 	return b.bucket.WriteUpdate(k, exp, callback)
 }
 func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
@@ -192,6 +203,14 @@ func (b *LeakyBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas 
 }
 
 func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+	if b.config.WriteUpdateCallback != nil {
+		wrapperCallback := func(current []byte, xattr []byte, cas uint64) (updated []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
+			updated, updatedXattr, deletedDoc, expiry, err = callback(current, xattr, cas)
+			b.config.WriteUpdateCallback(k)
+			return updated, updatedXattr, deletedDoc, expiry, err
+		}
+		return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, wrapperCallback)
+	}
 	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, callback)
 }
 
