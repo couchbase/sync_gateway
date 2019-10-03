@@ -496,8 +496,9 @@ func TestWebhookOldDoc(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 	eventForTest := func(i int) (Body, string, base.Set) {
+		idx := Abs(int64(i))
 		testBody := Body{
-			BodyId:  ids[Abs(int64(i))],
+			BodyId:  ids[idx],
 			"value": i,
 		}
 		var channelSet base.Set
@@ -506,7 +507,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		} else {
 			channelSet = base.SetFromArray([]string{"Odd"})
 		}
-		return testBody, ids[Abs(int64(i))], channelSet
+		return testBody, ids[idx], channelSet
 	}
 
 	// Test basic webhook where an old doc is passed but not filtered
