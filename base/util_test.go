@@ -12,6 +12,7 @@ package base
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -682,10 +683,18 @@ func TestInjectJSONPropertiesDiffTypes(t *testing.T) {
 	}{
 		{
 			input:  `{"foo": "bar"}`,
-			output: `{"foo": "bar","uint":0}`,
+			output: `{"foo": "bar","maxuint64":18446744073709551615}`,
 			pair: KVPair{
-				"uint",
-				uint(0),
+				"maxuint64",
+				uint64(math.MaxUint64),
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","minuint64":0}`,
+			pair: KVPair{
+				"minuint64",
+				0,
 			},
 		},
 		{
@@ -694,6 +703,22 @@ func TestInjectJSONPropertiesDiffTypes(t *testing.T) {
 			pair: KVPair{
 				"int",
 				int(0),
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: fmt.Sprintf(`{"foo": "bar","maxint64":%d}`, math.MaxInt64),
+			pair: KVPair{
+				"maxint64",
+				math.MaxInt64,
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: fmt.Sprintf(`{"foo": "bar","minint64":%d}`, math.MinInt64),
+			pair: KVPair{
+				"minint64",
+				math.MinInt64,
 			},
 		},
 		{
@@ -726,6 +751,14 @@ func TestInjectJSONPropertiesDiffTypes(t *testing.T) {
 			pair: KVPair{
 				"float64-2",
 				float64(123.45),
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: fmt.Sprintf(`{"foo": "bar","maxfloat64":%v}`, math.MaxFloat64),
+			pair: KVPair{
+				"maxfloat64",
+				float64(math.MaxFloat64),
 			},
 		},
 		{

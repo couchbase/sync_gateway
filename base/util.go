@@ -1046,15 +1046,15 @@ func InjectJSONProperties(b []byte, kvPairs ...KVPair) (new []byte, err error) {
 		case int, int8, int16, int32, int64:
 			valBytes = []byte(strconv.Itoa(kv.Val.(int)))
 		case uint, uint8, uint16, uint32, uint64:
-			valBytes = []byte(strconv.Itoa(int(kv.Val.(uint))))
+			valBytes = []byte(strconv.FormatUint(v.(uint64), 10))
 		case string:
 			valBytes = []byte(`"` + v + `"`)
 		case bool:
 			valBytes = []byte(strconv.FormatBool(v))
 		case float32:
-			valBytes = []byte(strconv.FormatFloat(float64(v), 'f', -1, 32))
+			valBytes = []byte(fmt.Sprintf("%v", v))
 		case float64:
-			valBytes = []byte(strconv.FormatFloat(v, 'f', -1, 64))
+			valBytes = []byte(fmt.Sprintf("%v", v))
 		default:
 			valBytes, err = JSONMarshal(kv.Val)
 		}
