@@ -18,7 +18,7 @@ import (
 
 // Webhook tests use an HTTP listener.  Use of this listener is disabled by default, to avoid
 // port conflicts/permission issues when running tests on a non-dev machine.
-const testLiveHTTP = true
+const testLiveHTTP = false
 
 // Testing handler tracks received events in ResultChannel
 type TestingHandler struct {
@@ -372,6 +372,7 @@ func TestWebhookBasic(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(i)
+		log.Printf("{body: %v, docid: %v, channels: %v}", body, docid, channels)
 		bodyBytes, _ := base.JSONMarshal(body)
 		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
@@ -394,6 +395,7 @@ func TestWebhookBasic(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(i)
+		log.Printf("{body: %v, docid: %v, channels: %v}", body, docid, channels)
 		bodyBytes, _ := base.JSONMarshal(body)
 		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
@@ -470,12 +472,6 @@ func TestWebhookBasic(t *testing.T) {
 
 }
 
-// Abs returns the absolute value of x.
-func Abs(x int64) int64 {
-	y := x >> 63
-	return (x ^ y) - y
-}
-
 /*
  * Test Webhook where there is an old doc revision and where the filter function
  * is expecting an old doc revision
@@ -485,6 +481,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	if !testLiveHTTP {
 		return
 	}
+
 	count, sum, _, ts := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL
@@ -533,7 +530,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	em = NewEventManager()
 	em.Start(0, -1)
 	filterFunction := `function(doc) {
-							if (doc.value < 6) {
+							if (doc.value < 6 ) {
 								return false;
 							} else {
 								return true;
@@ -558,7 +555,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	em = NewEventManager()
 	em.Start(0, -1)
 	filterFunction = `function(doc, oldDoc) {
-							if (doc.value > 6 && doc.value = -oldDoc.value) {
+							if (doc.value > 6 && doc.value == -oldDoc.value) {
 								return false;
 							} else {
 								return true;
@@ -610,12 +607,8 @@ func TestWebhookOldDoc(t *testing.T) {
 }
 
 func TestWebhookTimeout(t *testing.T) {
-	if !testLiveHTTP {
-		return
-	}
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyEvents)()
-
 	count, sum, _, ts := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL
@@ -778,4 +771,10 @@ func assertChannelLengthWithTimeout(t *testing.T, c chan interface{}, expectedLe
 			t.Fatalf("timed out waiting for items on channel... got: %d, expected: %d", count, expectedLength)
 		}
 	}
+}
+
+// Abs returns the absolute value of x.
+func Abs(x int64) int64 {
+	y := x >> 63
+	return (x ^ y) - y
 }
