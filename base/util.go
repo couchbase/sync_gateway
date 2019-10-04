@@ -1043,18 +1043,30 @@ func InjectJSONProperties(b []byte, kvPairs ...KVPair) (new []byte, err error) {
 		var err error
 
 		switch v := kv.Val.(type) {
-		case int, int8, int16, int32, int64:
-			valBytes = []byte(strconv.Itoa(kv.Val.(int)))
-		case uint, uint8, uint16, uint32, uint64:
-			valBytes = []byte(strconv.FormatUint(v.(uint64), 10))
+		case int:
+			valBytes = []byte(strconv.FormatInt(int64(v), 10))
+		case int8:
+			valBytes = []byte(strconv.FormatInt(int64(v), 10))
+		case int16:
+			valBytes = []byte(strconv.FormatInt(int64(v), 10))
+		case int32:
+			valBytes = []byte(strconv.FormatInt(int64(v), 10))
+		case int64:
+			valBytes = []byte(strconv.FormatInt(v, 10))
+		case uint:
+			valBytes = []byte(strconv.FormatUint(uint64(v), 10))
+		case uint8:
+			valBytes = []byte(strconv.FormatUint(uint64(v), 10))
+		case uint16:
+			valBytes = []byte(strconv.FormatUint(uint64(v), 10))
+		case uint32:
+			valBytes = []byte(strconv.FormatUint(uint64(v), 10))
+		case uint64:
+			valBytes = []byte(strconv.FormatUint(v, 10))
 		case string:
 			valBytes = []byte(`"` + v + `"`)
 		case bool:
 			valBytes = []byte(strconv.FormatBool(v))
-		case float32:
-			valBytes = []byte(fmt.Sprintf("%v", v))
-		case float64:
-			valBytes = []byte(fmt.Sprintf("%v", v))
 		default:
 			valBytes, err = JSONMarshal(kv.Val)
 		}
