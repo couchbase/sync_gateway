@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"mime/multipart"
@@ -43,7 +44,8 @@ func (h *handler) handleGetDoc() error {
 		}
 
 		if h.getBoolQuery("revs") {
-			revsLimit = int(h.getIntQuery("revs_limit", math.MaxInt32))
+			revsLimitValue, _ := h.getIntQuery("revs_limit", math.MaxInt32)
+			revsLimit = int(revsLimitValue)
 			if revsFromParam != nil {
 				revsFrom = revsFromParam
 			} else {
@@ -247,7 +249,7 @@ func (h *handler) handlePutAttachment() error {
 	attachments[attachmentName] = attachment
 	body[db.BodyAttachments] = attachments
 
-	newRev, _, err := h.db.Put(docid, body)
+	newRev, _, err := h.db.PutWithBody(docid, body)
 	if err != nil {
 		return err
 	}
@@ -266,48 +268,56 @@ func (h *handler) handlePutDoc() error {
 	}()
 
 	docid := h.PathVar("docid")
-	body, err := h.readDocument()
-	if err != nil {
-		return err
-	}
-	if body == nil {
-		return base.ErrEmptyDocument
-	}
 
 	var newRev string
 	var doc *db.Document
 	var ok bool
+	var err error
+	var body db.Body
 
 	roundTrip := h.getBoolQuery("roundtrip")
 
-	if h.getQuery("new_edits") != "false" {
-		// Regular PUT:
-		if oldRev := h.getQuery("rev"); oldRev != "" {
-			body[db.BodyRev] = oldRev
-		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
-			body[db.BodyRev] = ifMatch
-		}
-		newRev, doc, err = h.db.Put(docid, body)
+	if replicator2, _ := h.getOptBoolQuery("replicator2", false); replicator2 {
+		newRev, doc, err = h.handlePutDocReplicator2(docid)
 		if err != nil {
 			return err
 		}
-		h.setHeader("Etag", strconv.Quote(newRev))
 	} else {
-		// Replicator-style PUT with new_edits=false:
-		revisions := db.ParseRevisions(body)
-		if revisions == nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
-		}
-		doc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
+		body, err = h.readDocument()
 		if err != nil {
 			return err
 		}
-
-		newRev, ok = body[db.BodyRev].(string)
-		if !ok {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
+		if body == nil {
+			return base.ErrEmptyDocument
 		}
+		if h.getQuery("new_edits") != "false" {
+			// Regular PUT:
+			if oldRev := h.getQuery("rev"); oldRev != "" {
+				body[db.BodyRev] = oldRev
+			} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+				body[db.BodyRev] = ifMatch
+			}
+			newRev, doc, err = h.db.PutWithBody(docid, body)
+			if err != nil {
+				return err
+			}
+			h.setHeader("Etag", strconv.Quote(newRev))
+		} else {
+			// Replicator-style PUT with new_edits=false:
+			revisions := db.ParseRevisions(body)
+			if revisions == nil {
+				return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
+			}
+			doc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
+			if err != nil {
+				return err
+			}
 
+			newRev, ok = body[db.BodyRev].(string)
+			if !ok {
+				return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
+			}
+		}
 	}
 
 	if doc != nil && roundTrip {
@@ -318,6 +328,57 @@ func (h *handler) handlePutDoc() error {
 
 	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
 	return nil
+}
+
+func (h *handler) handlePutDocReplicator2(docid string) (newRev string, doc *db.Document, err error) {
+	bodyBytes, err := h.readBody()
+	if err != nil {
+		return "", nil, err
+	}
+	if bodyBytes == nil || len(bodyBytes) == 0 {
+		return "", nil, base.ErrEmptyDocument
+	}
+
+	newDoc := &db.Document{
+		ID: docid,
+	}
+	newDoc.UpdateBodyBytes(bodyBytes)
+
+	var parentRev string
+	if oldRev := h.getQuery("rev"); oldRev != "" {
+		parentRev = oldRev
+	} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+		parentRev = ifMatch
+	}
+
+	generation, _ := db.ParseRevID(parentRev)
+	generation++
+
+	newDoc.RevID, _ = db.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
+	history := []string{newDoc.RevID, parentRev}
+	// Handle and pull out expiry
+	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
+		body := newDoc.Body()
+		expiry, err := body.ExtractExpiry()
+		if err != nil {
+			return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+		}
+		newDoc.DocExpiry = expiry
+		newDoc.UpdateBody(body)
+	}
+
+	// Pull out attachments
+	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
+		body := newDoc.Body()
+
+		newDoc.DocAttachments = db.GetBodyAttachments(body)
+		delete(body, db.BodyAttachments)
+		newDoc.UpdateBody(body)
+	}
+
+	newDoc, newRev, err = h.db.PutExistingRev(newDoc, history, true)
+
+	return newRev, newDoc, err
 }
 
 // HTTP handler for a POST to a database (creating a document)

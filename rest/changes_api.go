@@ -88,7 +88,8 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["limit"]; ok {
-		options.Limit = int(h.getIntQuery("limit", 0))
+		optionsLimitValue, _ := h.getIntQuery("limit", 0)
+		options.Limit = int(optionsLimitValue)
 	}
 
 	if _, ok := values["style"]; ok {
@@ -132,7 +133,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["heartbeat"]; ok {
-		options.HeartbeatMs = getRestrictedIntQuery(
+		options.HeartbeatMs, _ = getRestrictedIntQuery(
 			h.getQueryValues(),
 			"heartbeat",
 			kDefaultHeartbeatMS,
@@ -143,7 +144,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["timeout"]; ok {
-		options.TimeoutMs = getRestrictedIntQuery(
+		options.TimeoutMs, _ = getRestrictedIntQuery(
 			h.getQueryValues(),
 			"timeout",
 			kDefaultTimeoutMS,
@@ -173,10 +174,11 @@ func (h *handler) handleChanges() error {
 		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return err
 		}
-		options.Limit = int(h.getIntQuery("limit", 0))
-		options.Conflicts = (h.getQuery("style") == "all_docs")
+		optionsLimitValue, _ := h.getIntQuery("limit", 0)
+		options.Limit = int(optionsLimitValue)
+		options.Conflicts = h.getQuery("style") == "all_docs"
 		options.ActiveOnly = h.getBoolQuery("active_only")
-		options.IncludeDocs = (h.getBoolQuery("include_docs"))
+		options.IncludeDocs = h.getBoolQuery("include_docs")
 		filter = h.getQuery("filter")
 		channelsParam := h.getQuery("channels")
 		if channelsParam != "" {
@@ -198,7 +200,7 @@ func (h *handler) handleChanges() error {
 			}
 		}
 
-		options.HeartbeatMs = getRestrictedIntQuery(
+		options.HeartbeatMs, _ = getRestrictedIntQuery(
 			h.getQueryValues(),
 			"heartbeat",
 			kDefaultHeartbeatMS,
@@ -206,7 +208,7 @@ func (h *handler) handleChanges() error {
 			h.server.config.MaxHeartbeat*1000,
 			true,
 		)
-		options.TimeoutMs = getRestrictedIntQuery(
+		options.TimeoutMs, _ = getRestrictedIntQuery(
 			h.getQueryValues(),
 			"timeout",
 			kDefaultTimeoutMS,

@@ -4024,6 +4024,34 @@ func TestWebhookProperties(t *testing.T) {
 
 }
 
+func TestBasicPutReplicator2(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+
+	response := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
+	assertStatus(t, response, http.StatusCreated)
+	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.True(t, body["ok"].(bool))
+	revID := body["rev"].(string)
+
+	// Put basic doc with replicator2 flag and ensure it saves correctly
+	response = rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true&rev="+revID, `{"foo": "bar"}`)
+	assertStatus(t, response, http.StatusCreated)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.True(t, body["ok"].(bool))
+	fmt.Println(response.Body)
+
+	response = rt.SendAdminRequest("GET", "/db/doc1", ``)
+	assertStatus(t, response, http.StatusOK)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.Equal(t, "bar", body["foo"])
+}
+
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	prt := NewRestTester(b, nil)

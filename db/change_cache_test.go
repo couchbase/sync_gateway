@@ -1001,13 +1001,13 @@ func TestChannelQueryCancellation(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	// Write a handful of docs/sequences to the bucket
-	_, _, err := db.Put("key1", Body{"channels": "ABC"})
+	_, _, err := db.PutWithBody("key1", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
-	_, _, err = db.Put("key2", Body{"channels": "ABC"})
+	_, _, err = db.PutWithBody("key2", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
-	_, _, err = db.Put("key3", Body{"channels": "ABC"})
+	_, _, err = db.PutWithBody("key3", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
-	_, _, err = db.Put("key4", Body{"channels": "ABC"})
+	_, _, err = db.PutWithBody("key4", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
 	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 4, base.DefaultWaitForSequence))
 
@@ -1714,7 +1714,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 		channels := []string{"islands"}
 		body := Body{"serialnumber": int64(i), "channels": channels}
 		docID := fmt.Sprintf("loadCache-ch-%d", i)
-		_, _, err := db.Put(docID, body)
+		_, _, err := db.PutWithBody(docID, body)
 		assert.NoError(t, err, "Couldn't create document")
 		docCount++
 	}
@@ -1730,7 +1730,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 		channels := []string{"zero"}
 		body := Body{"serialnumber": int64(i), "channels": channels}
 		docID := fmt.Sprintf("loadCache-z-%d", i)
-		_, _, err := db.Put(docID, body)
+		_, _, err := db.PutWithBody(docID, body)
 		assert.NoError(t, err, "Couldn't create document")
 		docCount++
 	}
@@ -1776,7 +1776,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 			channels := []string{"zero"}
 			body := Body{"serialnumber": int64(i), "channels": channels}
 			docID := fmt.Sprintf("loadCache-%d", i)
-			_, _, err := db.Put(docID, body)
+			_, _, err := db.PutWithBody(docID, body)
 			assert.NoError(t, err, "Couldn't create document")
 			if i < inProgressCount {
 				writesInProgress.Done()
@@ -1826,7 +1826,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 
 	// Write a document to channel zero
 	body := Body{"channels": []string{"zero"}}
-	_, _, err := db.Put("inactiveCacheNotify", body)
+	_, _, err := db.PutWithBody("inactiveCacheNotify", body)
 	assert.NoError(t, err)
 
 	// Wait for notify to arrive

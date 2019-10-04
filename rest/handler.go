@@ -419,7 +419,7 @@ func (h *handler) getOptBoolQuery(query string, defaultValue bool) (result, isSe
 }
 
 // Returns the integer value of a URL query, defaulting to 0 if unparseable
-func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) {
+func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64, isSet bool) {
 	return getRestrictedIntQuery(h.getQueryValues(), query, defaultValue, 0, 0, false)
 }
 
@@ -822,14 +822,21 @@ func parseHTTPRangeHeader(rangeStr string, contentLength uint64) (status int, st
 // Returns the integer value of a URL query, restricted to a min and max value,
 // but returning 0 if missing or unparseable.  If allowZero is true, values coming in
 // as zero will stay zero, instead of being set to the minValue.
-func getRestrictedIntQuery(values url.Values, query string, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
+func getRestrictedIntQuery(values url.Values, query string, defaultValue, minValue, maxValue uint64, allowZero bool) (value uint64, isSet bool) {
+	queryValue := values.Get(query)
+	if queryValue == "" {
+		isSet = false
+	} else {
+		isSet = true
+	}
+
 	return getRestrictedIntFromString(
 		values.Get(query),
 		defaultValue,
 		minValue,
 		maxValue,
 		allowZero,
-	)
+	), isSet
 }
 
 func getRestrictedIntFromString(rawValue string, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {

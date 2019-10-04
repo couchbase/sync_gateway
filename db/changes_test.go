@@ -45,7 +45,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := db.Put("doc1", Body{"channels": []string{"ABC", "PBS"}})
+	revid, _, err := db.PutWithBody("doc1", Body{"channels": []string{"ABC", "PBS"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -80,7 +80,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
-	revid, _, err = db.Put("doc2", Body{"channels": []string{"PBS"}})
+	revid, _, err = db.PutWithBody("doc2", Body{"channels": []string{"PBS"}})
 	require.NoError(t, err)
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
@@ -144,7 +144,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	revid, _, err := db.PutWithBody("alpha", Body{"channels": []string{"A", "B"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -230,7 +230,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := db.Put("alpha", Body{"channels": []string{"A", "B"}})
+	revid, _, err := db.PutWithBody("alpha", Body{"channels": []string{"A", "B"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -322,7 +322,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 		// Create the parent rev
 		docid := base.CreateUUID()
 		docBody := createDoc(numKeys, valSizeBytes)
-		revId, _, err := db.Put(docid, docBody)
+		revId, _, err := db.PutWithBody(docid, docBody)
 		if err != nil {
 			b.Fatalf("Error creating doc: %v", err)
 		}

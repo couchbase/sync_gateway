@@ -200,7 +200,7 @@ func TestDatabase(t *testing.T) {
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")
 	body := Body{"key1": "value1", "key2": 1234}
-	rev1id, _, err := db.Put("doc1", body)
+	rev1id, _, err := db.PutWithBody("doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 	goassert.Equals(t, rev1id, body[BodyRev])
 	goassert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
@@ -208,7 +208,7 @@ func TestDatabase(t *testing.T) {
 	log.Printf("Create rev 2...")
 	body["key1"] = "new value"
 	body["key2"] = int64(4321)
-	rev2id, _, err := db.Put("doc1", body)
+	rev2id, _, err := db.PutWithBody("doc1", body)
 	body[BodyId] = "doc1"
 	assert.NoError(t, err, "Couldn't update document")
 	goassert.Equals(t, rev2id, body[BodyRev])
@@ -289,7 +289,7 @@ func TestGetDeleted(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	body := Body{"key1": 1234}
-	rev1id, _, err := db.Put("doc1", body)
+	rev1id, _, err := db.PutWithBody("doc1", body)
 	assert.NoError(t, err, "Put")
 
 	rev2id, err := db.DeleteDoc("doc1", rev1id)
@@ -333,7 +333,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, err := db.Put("doc1", rev1body)
+	rev1id, _, err := db.PutWithBody("doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -341,7 +341,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev1id,
 	}
-	rev2id, _, err := db.Put("doc1", rev2body)
+	rev2id, _, err := db.PutWithBody("doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -350,7 +350,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev2id,
 	}
-	_, _, err = db.Put("doc1", rev3body)
+	_, _, err = db.PutWithBody("doc1", rev3body)
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
@@ -418,7 +418,7 @@ func TestGetRemoved(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, err := db.Put("doc1", rev1body)
+	rev1id, _, err := db.PutWithBody("doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -426,7 +426,7 @@ func TestGetRemoved(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev1id,
 	}
-	rev2id, _, err := db.Put("doc1", rev2body)
+	rev2id, _, err := db.PutWithBody("doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -435,7 +435,7 @@ func TestGetRemoved(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev2id,
 	}
-	_, _, err = db.Put("doc1", rev3body)
+	_, _, err = db.PutWithBody("doc1", rev3body)
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
@@ -494,7 +494,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		"key1":     1234,
 		"channels": []string{"ABC"},
 	}
-	rev1id, _, err := db.Put("doc1", rev1body)
+	rev1id, _, err := db.PutWithBody("doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	rev2body := Body{
@@ -502,7 +502,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		BodyDeleted: true,
 		BodyRev:     rev1id,
 	}
-	rev2id, _, err := db.Put("doc1", rev2body)
+	rev2id, _, err := db.PutWithBody("doc1", rev2body)
 	assert.NoError(t, err, "Put Rev 2")
 
 	// Add another revision, so that rev 2 is obsolete
@@ -511,7 +511,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		"channels": []string{"NBC"},
 		BodyRev:    rev2id,
 	}
-	_, _, err = db.Put("doc1", rev3body)
+	_, _, err = db.PutWithBody("doc1", rev3body)
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
@@ -608,7 +608,7 @@ func TestAllDocsOnly(t *testing.T) {
 		}
 		body := Body{"serialnumber": int64(i), "channels": channels}
 		ids[i].DocID = fmt.Sprintf("alldoc-%02d", i)
-		revid, _, err := db.Put(ids[i].DocID, body)
+		revid, _, err := db.PutWithBody(ids[i].DocID, body)
 		ids[i].RevID = revid
 		ids[i].Sequence = uint64(i + 1)
 		ids[i].Channels = channels
@@ -961,15 +961,15 @@ func TestNoConflictsMode(t *testing.T) {
 	// Now use Put instead of PutExistingRev:
 
 	// Successfully add a new revision:
-	_, _, err = db.Put("doc", Body{BodyRev: "5-f", "foo": -1})
+	_, _, err = db.PutWithBody("doc", Body{BodyRev: "5-f", "foo": -1})
 	assert.NoError(t, err, "Put rev after 1-f")
 
 	// Try to create a conflict:
-	_, _, err = db.Put("doc", Body{BodyRev: "3-a", "foo": 7})
+	_, _, err = db.PutWithBody("doc", Body{BodyRev: "3-a", "foo": 7})
 	assertHTTPError(t, err, 409)
 
 	// Conflict with no ancestry:
-	_, _, err = db.Put("doc", Body{"foo": 7})
+	_, _, err = db.PutWithBody("doc", Body{"foo": 7})
 	assertHTTPError(t, err, 409)
 }
 
@@ -1016,7 +1016,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 
 	// Tombstone the non-winning branch of a conflicted document
 	body[BodyRev] = "2-a"
-	tombstoneRev, _, putErr := db.Put("doc1", body)
+	tombstoneRev, _, putErr := db.PutWithBody("doc1", body)
 	assert.NoError(t, putErr, "tombstone 2-a")
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1024,12 +1024,12 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 
 	// Attempt to add a tombstone rev w/ the previous tombstone as parent
 	body[BodyRev] = tombstoneRev
-	_, _, putErr = db.Put("doc1", body)
+	_, _, putErr = db.PutWithBody("doc1", body)
 	assert.True(t, putErr != nil, "Expect error tombstoning a tombstone")
 
 	// Tombstone the winning branch of a conflicted document
 	body[BodyRev] = "2-b"
-	_, _, putErr = db.Put("doc2", body)
+	_, _, putErr = db.PutWithBody("doc2", body)
 	assert.NoError(t, putErr, "tombstone 2-b")
 	doc, err = db.GetDocument("doc2", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1038,7 +1038,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
 	db.RevsLimit = uint32(1)
 	body[BodyRev] = "2-a"
-	_, _, putErr = db.Put("doc3", body)
+	_, _, putErr = db.PutWithBody("doc3", body)
 	assert.NoError(t, putErr, "tombstone 2-a w/ revslimit=1")
 	doc, err = db.GetDocument("doc3", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1129,7 +1129,7 @@ func TestSyncFnOnPush(t *testing.T) {
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": 1234, "channels": []string{"public"}}
-	rev1id, _, err := db.Put("doc1", body)
+	rev1id, _, err := db.PutWithBody("doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 
 	// Add several revisions at once to a doc, as on a push:
@@ -1161,7 +1161,7 @@ func TestInvalidChannel(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	body := Body{"channels": []string{"bad,name"}}
-	_, _, err := db.Put("doc", body)
+	_, _, err := db.PutWithBody("doc", body)
 	assertHTTPError(t, err, 500)
 }
 
@@ -1175,27 +1175,27 @@ func TestAccessFunctionValidation(t *testing.T) {
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
 
 	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
-	_, _, err = db.Put("doc1", body)
+	_, _, err = db.PutWithBody("doc1", body)
 	assert.NoError(t, err, "")
 
 	body = Body{"users": []string{"role:rolename"}, "userChannels": []string{"BBC1"}}
-	_, _, err = db.Put("doc2", body)
+	_, _, err = db.PutWithBody("doc2", body)
 	assert.NoError(t, err, "")
 
 	body = Body{"users": []string{"bad username"}, "userChannels": []string{"BBC1"}}
-	_, _, err = db.Put("doc3", body)
+	_, _, err = db.PutWithBody("doc3", body)
 	assertHTTPError(t, err, 500)
 
 	body = Body{"users": []string{"role:bad rolename"}, "userChannels": []string{"BBC1"}}
-	_, _, err = db.Put("doc4", body)
+	_, _, err = db.PutWithBody("doc4", body)
 	assertHTTPError(t, err, 500)
 
 	body = Body{"users": []string{"roll:over"}, "userChannels": []string{"BBC1"}}
-	_, _, err = db.Put("doc5", body)
+	_, _, err = db.PutWithBody("doc5", body)
 	assertHTTPError(t, err, 500)
 
 	body = Body{"users": []string{"username"}, "userChannels": []string{"bad,name"}}
-	_, _, err = db.Put("doc6", body)
+	_, _, err = db.PutWithBody("doc6", body)
 	assertHTTPError(t, err, 500)
 }
 
@@ -1215,11 +1215,11 @@ func TestAccessFunctionDb(t *testing.T) {
 	assert.NoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}
-	_, _, err = db.Put("doc1", body)
+	_, _, err = db.PutWithBody("doc1", body)
 	assert.NoError(t, err, "")
 
 	body = Body{"users": []string{"role:animefan"}, "userChannels": []string{"CrunchyRoll"}}
-	_, _, err = db.Put("doc2", body)
+	_, _, err = db.PutWithBody("doc2", body)
 	assert.NoError(t, err, "")
 
 	// Create the role _after_ creating the documents, to make sure the previously-indexed access
@@ -1374,7 +1374,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	//document
 	log.Printf("Update document with existing id...")
 	body = Body{BodyId: customDocId, BodyRev: rev1id, "_special": "value", "key1": "value1", "key2": "existing"}
-	_, _, err = db.Put(docid, body)
+	_, _, err = db.PutWithBody(docid, body)
 	goassert.True(t, err.Error() == "400 user defined top level properties beginning with '_' are not allowed in document body")
 
 	// Test retrieval gets rev1
@@ -1395,7 +1395,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	// Validate recent sequence is written
 	body := Body{"val": "one"}
-	revid, _, err := db.Put("doc1", body)
+	revid, _, err := db.PutWithBody("doc1", body)
 	seqTracker++
 
 	expectedRecent := make([]uint64, 0)
@@ -1407,7 +1407,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	// Add up to kMaxRecentSequences revisions - validate they are retained when total is less than max
 	for i := 1; i < kMaxRecentSequences; i++ {
-		revid, _, err = db.Put("doc1", body)
+		revid, _, err = db.PutWithBody("doc1", body)
 		seqTracker++
 		expectedRecent = append(expectedRecent, seqTracker)
 	}
@@ -1422,7 +1422,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence)
 
 	// Add another sequence to validate pruning when past max (20)
-	revid, _, err = db.Put("doc1", body)
+	revid, _, err = db.PutWithBody("doc1", body)
 	seqTracker++
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	goassert.True(t, err == nil)
@@ -1432,14 +1432,14 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Ensure pruning works when sequences aren't sequential
 	doc2Body := Body{"val": "two"}
 	for i := 0; i < kMaxRecentSequences; i++ {
-		revid, _, err = db.Put("doc1", body)
+		revid, _, err = db.PutWithBody("doc1", body)
 		seqTracker++
-		revid, _, err = db.Put("doc2", doc2Body)
+		revid, _, err = db.PutWithBody("doc2", doc2Body)
 		seqTracker++
 	}
 
 	db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence) //
-	revid, _, err = db.Put("doc1", body)
+	revid, _, err = db.PutWithBody("doc1", body)
 	seqTracker++
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	goassert.True(t, err == nil)
@@ -1457,7 +1457,7 @@ func TestChannelView(t *testing.T) {
 	// Create doc
 	log.Printf("Create doc 1...")
 	body := Body{"key1": "value1", "key2": 1234}
-	rev1id, _, err := db.Put("doc1", body)
+	rev1id, _, err := db.PutWithBody("doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 	goassert.Equals(t, rev1id, body[BodyRev])
 	goassert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
@@ -1531,7 +1531,7 @@ func TestViewCustom(t *testing.T) {
 
 	// add some docs
 	docId := base.CreateUUID()
-	_, _, err := db.Put(docId, Body{"val": "one"})
+	_, _, err := db.PutWithBody(docId, Body{"val": "one"})
 	if err != nil {
 		log.Printf("error putting doc: %v", err)
 	}
@@ -1579,7 +1579,7 @@ func BenchmarkDatabase(b *testing.B) {
 		db, _ := CreateDatabase(context)
 
 		body := Body{"key1": "value1", "key2": 1234}
-		db.Put(fmt.Sprintf("doc%d", i), body)
+		db.PutWithBody(fmt.Sprintf("doc%d", i), body)
 
 		db.Close()
 	}
@@ -1602,7 +1602,7 @@ func BenchmarkPut(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		db.Put(fmt.Sprintf("doc%d", i), body)
+		db.PutWithBody(fmt.Sprintf("doc%d", i), body)
 	}
 
 	db.Close()

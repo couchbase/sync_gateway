@@ -857,7 +857,6 @@ func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID str
 
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleRev(rq *blip.Message) error {
-
 	startTime := time.Now()
 	defer func() {
 		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
@@ -928,17 +927,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 	}
 
-	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
-		body := newDoc.Body()
-		expiry, err := body.ExtractExpiry()
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
-		}
-		newDoc.DocExpiry = expiry
-		newDoc.UpdateBody(body)
-	}
-
 	newDoc.Deleted = revMessage.deleted()
 
 	// noconflicts flag from LiteCore
@@ -962,6 +950,17 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	if len(history) > 0 {
 		minRevpos, _ := db.ParseRevID(history[len(history)-1])
 		minRevpos++
+	}
+
+	// Handle and pull out expiry
+	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
+		body := newDoc.Body()
+		expiry, err := body.ExtractExpiry()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+		}
+		newDoc.DocExpiry = expiry
+		newDoc.UpdateBody(body)
 	}
 
 	// Pull out attachments
