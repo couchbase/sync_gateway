@@ -78,6 +78,10 @@ func (th *TestingHandler) String() string {
 }
 
 func TestDocumentChangeEvent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping TestDocumentChangeEvent in short mode")
+		return
+	}
 
 	em := NewEventManager()
 	em.Start(0, -1)
@@ -324,7 +328,7 @@ func GetRouterWithHandler(counter *int, sum *float64, payloads *[][]byte) http.H
 
 func InitWebhookTest() (*int, *float64, *[][]byte, *httptest.Server) {
 
-	// Uses counter and sum values for simplified tracking of POST requests recieved by HTTP
+	// Uses counter and sum values for simplified tracking of POST requests received by HTTP
 	// TODO:  enhance by adding listener for /count, /sum, /reset endpoints, and leave
 	// all management within the function, instead of sharing pointer references around
 	counter := 0
@@ -366,6 +370,7 @@ func TestWebhookBasic(t *testing.T) {
 	}
 
 	// Test basic webhook
+	log.Println("Test basic webhook")
 	em := NewEventManager()
 	em.Start(0, -1)
 	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", nil)
@@ -444,7 +449,7 @@ func TestWebhookBasic(t *testing.T) {
 		body, docid, channels := eventForTest(i)
 		bodyBytes, _ := base.JSONMarshal(body)
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
-		time.Sleep(2 * time.Millisecond)
+		//time.Sleep(2 * time.Millisecond)
 		if err != nil {
 			errCount++
 		}
@@ -478,10 +483,6 @@ func TestWebhookBasic(t *testing.T) {
  */
 func TestWebhookOldDoc(t *testing.T) {
 
-	if !testLiveHTTP {
-		return
-	}
-
 	count, sum, _, ts := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL
@@ -508,6 +509,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	}
 
 	// Test basic webhook where an old doc is passed but not filtered
+	log.Println("Test basic webhook where an old doc is passed but not filtered")
 	em := NewEventManager()
 	em.Start(0, -1)
 	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", nil)
@@ -555,7 +557,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	em = NewEventManager()
 	em.Start(0, -1)
 	filterFunction = `function(doc, oldDoc) {
-							if (doc.value > 6 && doc.value == -oldDoc.value) {
+							if (doc.value < 6 && doc.value == -oldDoc.value) {
 								return false;
 							} else {
 								return true;
