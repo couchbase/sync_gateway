@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -274,36 +273,79 @@ func TestUnhandledEvent(t *testing.T) {
 
 }
 
-// Uses count and sum values for simplified tracking of POST requests received by HTTP
-// Embed a mutex in a struct to avoid race conditions.
-var webhookHits struct {
-	sync.Mutex
+// Uses WebhookRequest for simplified tracking of POST requests received by HTTP.
+// A mutex has been embedded in WebhookRequest to avoid race conditions.
+type WebhookRequest struct {
+	mutex    sync.Mutex
 	count    int
 	sum      float64
 	payloads [][]byte
 }
 
-func GetRouterWithHandler() http.Handler {
+func (wr *WebhookRequest) GetCount() int {
+	wr.mutex.Lock()
+	defer wr.mutex.Unlock()
+	return wr.count
+}
+
+func (wr *WebhookRequest) SetCount(count int) {
+	wr.mutex.Lock()
+	defer wr.mutex.Unlock()
+	wr.count = count
+}
+
+func (wr *WebhookRequest) IncrementCount() int {
+	wr.mutex.Lock()
+	defer wr.mutex.Unlock()
+	wr.count = wr.count + 1
+	return wr.count
+}
+
+func (wr *WebhookRequest) GetSum() float64 {
+	wr.mutex.Lock()
+	defer wr.mutex.Unlock()
+	return wr.sum
+}
+
+func (wr *WebhookRequest) SetSum(sum float64) {
+	wr.mutex.Lock()
+	defer wr.mutex.Unlock()
+	wr.sum = sum
+}
+
+func (wr *WebhookRequest) GetPayloads() [][]byte {
+	wr.mutex.Lock()
+	defer wr.mutex.Unlock()
+	return wr.payloads
+}
+
+func (wr *WebhookRequest) SetPayloads(payloads [][]byte) {
+	wr.mutex.Lock()
+	defer wr.mutex.Unlock()
+	wr.payloads = payloads
+}
+
+func (wr *WebhookRequest) Clear() {
+	wr.SetCount(0)
+	wr.SetSum(0.0)
+	wr.SetPayloads(nil)
+}
+
+func GetRouterWithHandler(wr *WebhookRequest) http.Handler {
 	r := http.NewServeMux()
 	r.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(1 * time.Second)
-		webhookHits.Lock()
-		webhookHits.count++
-		webhookHits.Unlock()
+		wr.IncrementCount()
 		fmt.Fprintf(w, "OK")
 	})
 	r.HandleFunc("/slow_2s", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
-		webhookHits.Lock()
-		webhookHits.count++
-		webhookHits.Unlock()
+		wr.IncrementCount()
 		fmt.Fprintf(w, "OK")
 	})
 	r.HandleFunc("/slow_5s", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second)
-		webhookHits.Lock()
-		webhookHits.count++
-		webhookHits.Unlock()
+		wr.IncrementCount()
 		fmt.Fprintf(w, "OK")
 	})
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -313,50 +355,40 @@ func GetRouterWithHandler() http.Handler {
 			log.Printf("Error trying to read body: %s", err)
 		}
 		if len(body) > 0 {
-			webhookHits.Lock()
-			webhookHits.payloads = append(webhookHits.payloads, body)
+			wr.SetPayloads(append(wr.GetPayloads(), body))
 			var payload map[string]interface{}
-			json.Unmarshal(body, &payload)
+			err = base.JSONUnmarshal(body, &payload)
+			if err != nil {
+				log.Printf("Error trying parses the JSON-encoded data: %s", err)
+			}
 			floatValue, ok := payload["value"].(float64)
 			if ok {
-				webhookHits.sum += floatValue
+				wr.SetSum(wr.GetSum() + floatValue)
 			}
-			webhookHits.Unlock()
 		}
 		if len(r.Form) > 0 {
 			log.Printf("Handled request with form: %v", r.Form)
 			floatValue, err := strconv.ParseFloat(r.Form.Get("value"), 64)
 			if err == nil {
-				webhookHits.Lock()
-				webhookHits.sum += floatValue
-				webhookHits.Unlock()
+				wr.SetSum(wr.GetSum() + floatValue)
 			}
 		}
-		webhookHits.Lock()
-		webhookHits.count++
-		webhookHits.Unlock()
+		wr.IncrementCount()
 		fmt.Fprintf(w, "OK")
 	})
 	return r
 }
 
-func InitWebhookTest() *httptest.Server {
-	ClearWebhookHits()
-	ts := httptest.NewServer(GetRouterWithHandler())
-	return ts
-}
-
-func ClearWebhookHits() {
-	webhookHits.Lock()
-	webhookHits.count = 0
-	webhookHits.sum = 0.0
-	webhookHits.payloads = nil
-	webhookHits.Unlock()
+func InitWebhookTest() (*httptest.Server, *WebhookRequest) {
+	wr := &WebhookRequest{}
+	wr.Clear()
+	ts := httptest.NewServer(GetRouterWithHandler(wr))
+	return ts, wr
 }
 
 func TestWebhookBasic(t *testing.T) {
 
-	ts := InitWebhookTest()
+	ts, wr := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL
 
@@ -392,13 +424,11 @@ func TestWebhookBasic(t *testing.T) {
 		em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 	}
 	time.Sleep(50 * time.Millisecond)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 10)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 10)
 
 	// Test webhook filter function
 	log.Println("Test filter function")
-	ClearWebhookHits()
+	wr.Clear()
 	em = NewEventManager()
 	em.Start(0, -1)
 	filterFunction := `function(doc) {
@@ -417,13 +447,11 @@ func TestWebhookBasic(t *testing.T) {
 	}
 
 	time.Sleep(50 * time.Millisecond)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 4)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 4)
 
 	// Validate payload
 	log.Println("Test payload validation")
-	ClearWebhookHits()
+	wr.Clear()
 	em = NewEventManager()
 	em.Start(0, -1)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), "", nil)
@@ -432,18 +460,14 @@ func TestWebhookBasic(t *testing.T) {
 	bodyBytes, _ := base.JSONMarshal(body)
 	em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 	time.Sleep(50 * time.Millisecond)
-	webhookHits.Lock()
-	receivedPayload := string((webhookHits.payloads)[0])
-	webhookHits.Unlock()
+	receivedPayload := string((wr.GetPayloads())[0])
 	fmt.Println("payload:", receivedPayload)
-	goassert.Equals(t, string((webhookHits.payloads)[0]), `{"_id":"0","value":0}`)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 1)
-	webhookHits.Unlock()
+	goassert.Equals(t, receivedPayload, `{"_id":"0","value":0}`)
+	goassert.Equals(t, wr.GetCount(), 1)
 
 	// Test fast fill, fast webhook
 	log.Println("Test fast fill, fast webhook")
-	ClearWebhookHits()
+	wr.Clear()
 	em = NewEventManager()
 	em.Start(5, -1)
 	timeout := uint64(60)
@@ -455,13 +479,11 @@ func TestWebhookBasic(t *testing.T) {
 		em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 	}
 	time.Sleep(500 * time.Millisecond)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 100)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 100)
 
 	// Test queue full, slow webhook.  Drops events
 	log.Println("Test queue full, slow webhook")
-	ClearWebhookHits()
+	wr.Clear()
 	errCount := 0
 	em = NewEventManager()
 	em.Start(5, 1)
@@ -478,14 +500,12 @@ func TestWebhookBasic(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
 	// for a goroutine.  The rest get discarded because the queue is full.
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 21)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 21)
 	goassert.Equals(t, errCount, 79)
 
 	// Test queue full, slow webhook, long wait time.  Throttles events
 	log.Println("Test queue full, slow webhook, long wait")
-	ClearWebhookHits()
+	wr.Clear()
 	em = NewEventManager()
 	em.Start(5, 1100)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil)
@@ -496,18 +516,15 @@ func TestWebhookBasic(t *testing.T) {
 		em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 	}
 	time.Sleep(5 * time.Second)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 100)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 100)
+
 }
 
-/*
- * Test Webhook where there is an old doc revision and where the filter function
- * is expecting an old doc revision
- */
+// Test Webhook where there is an old doc revision and where the filter
+// function is expecting an old doc revision.
 func TestWebhookOldDoc(t *testing.T) {
 
-	ts := InitWebhookTest()
+	ts, wr := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL
 
@@ -547,13 +564,12 @@ func TestWebhookOldDoc(t *testing.T) {
 
 	}
 	time.Sleep(50 * time.Millisecond)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 10)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 10)
+	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
 
 	// Test webhook where an old doc is passed and is not used by the filter
 	log.Println("Test filter function with old doc which is not referenced")
-	ClearWebhookHits()
+	wr.Clear()
 	em = NewEventManager()
 	em.Start(0, -1)
 	filterFunction := `function(doc) {
@@ -574,13 +590,12 @@ func TestWebhookOldDoc(t *testing.T) {
 		em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
 	}
 	time.Sleep(50 * time.Millisecond)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 4)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 4)
+	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
 
 	// Test webhook where an old doc is passed and is validated by the filter
 	log.Println("Test filter function with old doc")
-	ClearWebhookHits()
+	wr.Clear()
 	em = NewEventManager()
 	em.Start(0, -1)
 	filterFunction = `function(doc, oldDoc) {
@@ -601,13 +616,12 @@ func TestWebhookOldDoc(t *testing.T) {
 		em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
 	}
 	time.Sleep(50 * time.Millisecond)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 4)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 4)
+	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
 
 	// Test webhook where an old doc is not passed but is referenced in the filter function args
 	log.Println("Test filter function with old doc")
-	ClearWebhookHits()
+	wr.Clear()
 	em = NewEventManager()
 	em.Start(0, -1)
 	filterFunction = `function(doc, oldDoc) {
@@ -633,16 +647,15 @@ func TestWebhookOldDoc(t *testing.T) {
 		em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
 	}
 	time.Sleep(50 * time.Millisecond)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 10)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 10)
+	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
 
 }
 
 func TestWebhookTimeout(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyEvents)()
-	ts := InitWebhookTest()
+	ts, wr := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL
 
@@ -679,13 +692,11 @@ func TestWebhookTimeout(t *testing.T) {
 		em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 	}
 	time.Sleep(50 * time.Millisecond)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 10)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 10)
 
 	// Test slow webhook, short timeout, numProcess=1, waitForProcess > timeout.  All events should get processed.
 	log.Println("Test slow webhook, short timeout")
-	ClearWebhookHits()
+	wr.Clear()
 	errCount := 0
 	em = NewEventManager()
 	em.Start(1, 1100)
@@ -703,14 +714,12 @@ func TestWebhookTimeout(t *testing.T) {
 	}
 	time.Sleep(15 * time.Second)
 	// Even though we timed out waiting for response on the SG side, POST still completed on target side.
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 10)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 10)
 
 	// Test slow webhook, short timeout, numProcess=1, waitForProcess << timeout.  Events that don't fit in queues
 	// should get dropped (1 immediately processed, 1 in normal queue, 3 in overflow queue, 5 dropped)
 	log.Println("Test very slow webhook, short timeout")
-	ClearWebhookHits()
+	wr.Clear()
 	errCount = 0
 	em = NewEventManager()
 	em.Start(1, 100)
@@ -728,13 +737,11 @@ func TestWebhookTimeout(t *testing.T) {
 	}
 	// wait for slow webhook to finish processing
 	time.Sleep(25 * time.Second)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 5)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 5)
 
 	// Test slow webhook, no timeout, numProcess=1, waitForProcess=1s.  All events should complete.
 	log.Println("Test slow webhook, no timeout, wait for process ")
-	ClearWebhookHits()
+	wr.Clear()
 	errCount = 0
 	em = NewEventManager()
 	em.Start(1, 1100)
@@ -752,13 +759,13 @@ func TestWebhookTimeout(t *testing.T) {
 	}
 	// wait for slow webhook to finish processing
 	time.Sleep(15 * time.Second)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 10)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 10)
 
 }
 
 func TestUnavailableWebhook(t *testing.T) {
+	ts, wr := InitWebhookTest()
+	defer ts.Close()
 
 	ids := make([]string, 20)
 	for i := 0; i < 20; i++ {
@@ -780,7 +787,7 @@ func TestUnavailableWebhook(t *testing.T) {
 	}
 
 	// Test unreachable webhook
-	ClearWebhookHits()
+
 	em := NewEventManager()
 	em.Start(0, -1)
 	webhookHandler, _ := NewWebhook("http://badhost:1000/echo", "", nil)
@@ -791,9 +798,7 @@ func TestUnavailableWebhook(t *testing.T) {
 		em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 	}
 	time.Sleep(50 * time.Millisecond)
-	webhookHits.Lock()
-	goassert.Equals(t, webhookHits.count, 0)
-	webhookHits.Unlock()
+	goassert.Equals(t, wr.GetCount(), 0)
 
 }
 
