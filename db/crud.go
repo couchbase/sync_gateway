@@ -676,6 +676,12 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 
 	allowImport := db.UseXattrs()
 
+	// Get a reference to the incoming attachments here, for potential reuse during multiple updateDoc callback (CAS retry).
+	// Attachment reference will be removed from the actual body.  Note that storeAttachments mutates incomingAttachments
+	// (via the reference from body), and so updates digest/stub=true in incomingAttachments. This avoids duplication
+	// of storage on CAS retry, and also avoids an unnecessary ShallowCopy of attachments here.
+	incomingAttachments := GetBodyAttachments(body)
+
 	return db.updateDoc(docid, allowImport, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		var isSgWrite bool
@@ -714,6 +720,11 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
+		// Restore the incoming attachments, if they are present, in case of CAS retry
+		if incomingAttachments != nil {
+			body[BodyAttachments] = incomingAttachments
+		}
+
 		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
 		newAttachments, err := db.storeAttachments(doc, body, generation, matchRev, nil)
@@ -733,8 +744,10 @@ func (db *Database) Put(docid string, body Body) (newRevID string, err error) {
 		}
 
 		// move _attachment metadata to syncdata of doc after rev-id generation
-		doc.syncData.Attachments = GetBodyAttachments(body)
-		delete(body, BodyAttachments)
+		if incomingAttachments != nil {
+			doc.syncData.Attachments = incomingAttachments
+			delete(body, BodyAttachments)
+		}
 
 		return body, newAttachments, nil, nil
 	})
@@ -765,13 +778,18 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}
 
+	// Get a reference to the incoming attachments here, for potential reuse during multiple updateDoc callback (CAS retry).
+	// Attachment reference will be removed from the actual body.  Note that storeAttachments mutates incomingAttachments
+	// (via the reference from body), and so updates digest/stub=true in incomingAttachments. This avoids duplication
+	// of storage on CAS retry, and also avoids an unnecessary ShallowCopy of attachments here.
+	incomingAttachments := GetBodyAttachments(body)
+
 	allowImport := db.UseXattrs()
 	_, err = db.updateDoc(docid, allowImport, expiry, func(doc *document) (resultBody Body, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
 		var crc32Match bool
-
 		// Is this doc an sgWrite?
 		if doc != nil {
 			isSgWrite, crc32Match = doc.IsSGWrite(nil)
@@ -829,9 +847,12 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		// move _attachment metadata to syncdata of doc
-		doc.syncData.Attachments = GetBodyAttachments(body)
-		delete(body, BodyAttachments)
+
+		if incomingAttachments != nil {
+			doc.syncData.Attachments = incomingAttachments
+			delete(body, BodyAttachments)
+		}
+
 
 		body[BodyRev] = newRev
 		return body, newAttachments, nil, nil
