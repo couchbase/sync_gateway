@@ -284,51 +284,53 @@ type WebhookRequest struct {
 
 func (wr *WebhookRequest) GetCount() int {
 	wr.mutex.Lock()
-	defer wr.mutex.Unlock()
-	return wr.count
-}
-
-func (wr *WebhookRequest) SetCount(count int) {
-	wr.mutex.Lock()
-	defer wr.mutex.Unlock()
-	wr.count = count
+	count := wr.count
+	wr.mutex.Unlock()
+	return count
 }
 
 func (wr *WebhookRequest) IncrementCount() int {
 	wr.mutex.Lock()
-	defer wr.mutex.Unlock()
 	wr.count = wr.count + 1
-	return wr.count
+	count := wr.count
+	wr.mutex.Unlock()
+	return count
 }
 
 func (wr *WebhookRequest) GetSum() float64 {
 	wr.mutex.Lock()
-	defer wr.mutex.Unlock()
-	return wr.sum
+	sum := wr.sum
+	wr.mutex.Unlock()
+	return sum
 }
 
-func (wr *WebhookRequest) SetSum(sum float64) {
+func (wr *WebhookRequest) IncrementSum(sum float64) float64 {
 	wr.mutex.Lock()
-	defer wr.mutex.Unlock()
-	wr.sum = sum
+	wr.sum += sum
+	sum = wr.sum
+	wr.mutex.Unlock()
+	return sum
 }
 
 func (wr *WebhookRequest) GetPayloads() [][]byte {
 	wr.mutex.Lock()
-	defer wr.mutex.Unlock()
-	return wr.payloads
+	payloads := wr.payloads
+	wr.mutex.Unlock()
+	return payloads
 }
 
 func (wr *WebhookRequest) SetPayloads(payloads [][]byte) {
 	wr.mutex.Lock()
-	defer wr.mutex.Unlock()
 	wr.payloads = payloads
+	wr.mutex.Unlock()
 }
 
 func (wr *WebhookRequest) Clear() {
-	wr.SetCount(0)
-	wr.SetSum(0.0)
-	wr.SetPayloads(nil)
+	wr.mutex.Lock()
+	wr.count = 0
+	wr.sum = 0.0
+	wr.payloads = nil
+	wr.mutex.Unlock()
 }
 
 func GetRouterWithHandler(wr *WebhookRequest) http.Handler {
@@ -363,14 +365,14 @@ func GetRouterWithHandler(wr *WebhookRequest) http.Handler {
 			}
 			floatValue, ok := payload["value"].(float64)
 			if ok {
-				wr.SetSum(wr.GetSum() + floatValue)
+				wr.IncrementSum(floatValue)
 			}
 		}
 		if len(r.Form) > 0 {
 			log.Printf("Handled request with form: %v", r.Form)
 			floatValue, err := strconv.ParseFloat(r.Form.Get("value"), 64)
 			if err == nil {
-				wr.SetSum(wr.GetSum() + floatValue)
+				wr.IncrementSum(floatValue)
 			}
 		}
 		wr.IncrementCount()
