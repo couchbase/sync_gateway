@@ -464,7 +464,7 @@ func TestWebhookBasic(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	receivedPayload := string((wr.GetPayloads())[0])
 	fmt.Println("payload:", receivedPayload)
-	goassert.Equals(t, receivedPayload, `{"_id":"0","value":0}`)
+	goassert.JsonEquals(t, receivedPayload, `{"_id":"0","value":0}`)
 	goassert.Equals(t, wr.GetCount(), 1)
 
 	// Test fast fill, fast webhook
