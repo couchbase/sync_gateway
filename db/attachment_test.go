@@ -306,3 +306,123 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
 	assert.Equal(t, initCount, getCount)
 }
+
+func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
+
+	var db *Database
+	var enableCallback bool
+	var rev1ID string
+
+	writeUpdateCallback := func(key string) {
+		if enableCallback {
+			enableCallback = false
+			log.Printf("Creating rev 2 for key %s", key)
+			var rev2Body Body
+			rev2Data := `{"prop1":"value2", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+			require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
+			_, err := db.PutExistingRevWithBody("doc1", rev2Body, []string{"2-abc", rev1ID}, true)
+			require.NoError(t, err)
+
+			log.Printf("Done creating rev 2 for key %s", key)
+		}
+	}
+
+	// Use leaky bucket to inject callback in query invocation
+	queryCallbackConfig := base.LeakyBucketConfig{
+		WriteUpdateCallback: writeUpdateCallback,
+	}
+
+	db = setupTestLeakyDBWithCacheOptions(t, CacheOptions{}, queryCallbackConfig)
+	defer tearDownTestDB(t, db)
+
+	// Test creating & updating a document:
+
+	// 1. Create a document with no attachment
+	rev1Json := `{"prop1":"value1"}`
+	rev1ID, _, err := db.Put("doc1", unjson(rev1Json))
+	assert.NoError(t, err, "Couldn't create document")
+
+	// 2. Create rev 2 with new attachment - done in callback
+	enableCallback = true
+
+	// 3. Create rev 3 with new attachment to same attachment
+	log.Printf("starting create of rev 3")
+	var rev3Body Body
+	rev3Data := `{"prop1":"value3", "_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
+	require.NoError(t, base.JSONUnmarshal([]byte(rev3Data), &rev3Body))
+	_, err = db.PutExistingRevWithBody("doc1", rev3Body, []string{"3-abc", "2-abc", rev1ID}, true)
+	require.NoError(t, err)
+
+	log.Printf("rev 3 done")
+
+	// 4. Get the document, check attachments
+	finalDoc, err := db.Get("doc1")
+	attachments := GetBodyAttachments(finalDoc)
+	assert.True(t, attachments != nil, "_attachments should be present in GET response")
+	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
+	assert.True(t, attachmentOk, "hello.txt attachment should be present in GET response")
+	_, digestOk := attachment["digest"]
+	assert.True(t, digestOk, "digest should be set for attachment hello.txt in GET response")
+
+}
+
+func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
+
+	var db *Database
+	var enableCallback bool
+	var rev1ID string
+
+	writeUpdateCallback := func(key string) {
+		if enableCallback {
+			enableCallback = false
+			log.Printf("Creating rev 2 for key %s", key)
+			var rev2Body Body
+			rev2Data := `{"prop1":"value2"}`
+			require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
+			_, err := db.PutExistingRevWithBody("doc1", rev2Body, []string{"2-abc", rev1ID}, true)
+			require.NoError(t, err)
+
+			log.Printf("Done creating rev 2 for key %s", key)
+		}
+	}
+
+	// Use leaky bucket to inject callback in query invocation
+	queryCallbackConfig := base.LeakyBucketConfig{
+		WriteUpdateCallback: writeUpdateCallback,
+	}
+
+	db = setupTestLeakyDBWithCacheOptions(t, CacheOptions{}, queryCallbackConfig)
+	defer tearDownTestDB(t, db)
+
+	// Test creating & updating a document:
+
+	// 1. Create a document with no attachment
+	rev1Json := `{"prop1":"value1"}`
+	rev1ID, _, err := db.Put("doc1", unjson(rev1Json))
+	assert.NoError(t, err, "Couldn't create document")
+
+	// 2. Create rev 2 with no attachment
+	enableCallback = true
+
+	// 3. Create rev 3 with new attachment
+	log.Printf("starting create of rev 3")
+	var rev3Body Body
+	rev3Data := `{"prop1":"value3", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	require.NoError(t, base.JSONUnmarshal([]byte(rev3Data), &rev3Body))
+	_, err = db.PutExistingRevWithBody("doc1", rev3Body, []string{"3-abc", "2-abc", rev1ID}, true)
+	require.NoError(t, err)
+
+	log.Printf("rev 3 done")
+
+	// 4. Get the document, check attachments
+	finalDoc, err := db.Get("doc1")
+	log.Printf("get doc attachments: %v", finalDoc)
+
+	attachments := GetBodyAttachments(finalDoc)
+	assert.True(t, attachments != nil, "_attachments should be present in GET response")
+	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
+	assert.True(t, attachmentOk, "hello.txt attachment should be present in GET response")
+	_, digestOk := attachment["digest"]
+	assert.True(t, digestOk, "digest should be set for attachment hello.txt in GET response")
+
+}
