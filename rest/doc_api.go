@@ -44,8 +44,7 @@ func (h *handler) handleGetDoc() error {
 		}
 
 		if h.getBoolQuery("revs") {
-			revsLimitValue, _ := h.getIntQuery("revs_limit", math.MaxInt32)
-			revsLimit = int(revsLimitValue)
+			revsLimit = int(h.getIntQuery("revs_limit", math.MaxInt32))
 			if revsFromParam != nil {
 				revsFrom = revsFromParam
 			} else {
@@ -354,8 +353,12 @@ func (h *handler) handlePutDocReplicator2(docid string) (newRev string, doc *db.
 	generation, _ := db.ParseRevID(parentRev)
 	generation++
 
-	newDoc.RevID, _ = db.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
+	deleted, _ := h.getOptBoolQuery("deleted", false)
+	newDoc.Deleted = deleted
+
+	newDoc.RevID = db.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
 	history := []string{newDoc.RevID, parentRev}
+
 	// Handle and pull out expiry
 	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
 		body := newDoc.Body()

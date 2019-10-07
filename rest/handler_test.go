@@ -16,7 +16,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 
 	// make sure it returns default value when passed empty Values
 	values := make(url.Values)
-	restricted, _ := getRestrictedIntQuery(
+	restricted := getRestrictedIntQuery(
 		values,
 		"foo",
 		defaultValue,
@@ -28,7 +28,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 
 	// make sure it returns default value when passed Values that doesn't contain key
 	values.Set("bar", "99")
-	restricted, _ = getRestrictedIntQuery(
+	restricted = getRestrictedIntQuery(
 		values,
 		"foo",
 		defaultValue,
@@ -40,7 +40,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 
 	// make sure it returns appropriate value from Values
 	values.Set("foo", "99")
-	restricted, _ = getRestrictedIntQuery(
+	restricted = getRestrictedIntQuery(
 		values,
 		"foo",
 		defaultValue,
@@ -52,7 +52,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 
 	// make sure it is limited to max when value value is over max
 	values.Set("foo", "200")
-	restricted, _ = getRestrictedIntQuery(
+	restricted = getRestrictedIntQuery(
 		values,
 		"foo",
 		defaultValue,
@@ -64,7 +64,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 
 	// make sure it is limited to min when value value is under min
 	values.Set("foo", "1")
-	restricted, _ = getRestrictedIntQuery(
+	restricted = getRestrictedIntQuery(
 		values,
 		"foo",
 		defaultValue,
@@ -76,7 +76,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 
 	// Return zero when allowZero=true
 	values.Set("foo", "0")
-	restricted, _ = getRestrictedIntQuery(
+	restricted = getRestrictedIntQuery(
 		values,
 		"foo",
 		defaultValue,
@@ -88,7 +88,7 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 
 	// Return minValue when allowZero=false
 	values.Set("foo", "0")
-	restricted, _ = getRestrictedIntQuery(
+	restricted = getRestrictedIntQuery(
 		values,
 		"foo",
 		defaultValue,

@@ -193,7 +193,7 @@ func (h *handler) handleAllDocs() error {
 	var options db.ForEachDocIDOptions
 	options.Startkey = h.getJSONStringQuery("startkey")
 	options.Endkey = h.getJSONStringQuery("endkey")
-	options.Limit, _ = h.getIntQuery("limit", 0)
+	options.Limit = h.getIntQuery("limit", 0)
 
 	// Now it's time to actually write the response!
 	lastSeq, _ := h.db.LastSequence()
@@ -299,7 +299,7 @@ func (h *handler) handleRepair() error {
 // HTTP handler for _dumpchannel
 func (h *handler) handleDumpChannel() error {
 	channelName := h.PathVar("channel")
-	since, _ := h.getIntQuery("since", 0)
+	since := h.getIntQuery("since", 0)
 	base.Infof(base.KeyHTTP, "Dump channel %q", base.UD(channelName))
 
 	chanLog := h.db.GetChangeLog(channelName, since)
@@ -342,7 +342,7 @@ func (h *handler) handleBulkGet() error {
 	showExp := h.getBoolQuery("show_exp")
 
 	showRevs := h.getBoolQuery("revs")
-	globalRevsLimitValue, _ := h.getIntQuery("revs_limit", math.MaxInt32)
+	globalRevsLimitValue := h.getIntQuery("revs_limit", math.MaxInt32)
 	globalRevsLimit := int(globalRevsLimitValue)
 
 	// If a client passes the HTTP header "Accept-Encoding: gzip" then the header "X-Accept-Part-Encoding: gzip" will be

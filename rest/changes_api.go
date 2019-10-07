@@ -88,8 +88,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["limit"]; ok {
-		optionsLimitValue, _ := h.getIntQuery("limit", 0)
-		options.Limit = int(optionsLimitValue)
+		options.Limit = int(h.getIntQuery("limit", 0))
 	}
 
 	if _, ok := values["style"]; ok {
@@ -133,7 +132,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["heartbeat"]; ok {
-		options.HeartbeatMs, _ = getRestrictedIntQuery(
+		options.HeartbeatMs = getRestrictedIntQuery(
 			h.getQueryValues(),
 			"heartbeat",
 			kDefaultHeartbeatMS,
@@ -144,7 +143,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["timeout"]; ok {
-		options.TimeoutMs, _ = getRestrictedIntQuery(
+		options.TimeoutMs = getRestrictedIntQuery(
 			h.getQueryValues(),
 			"timeout",
 			kDefaultTimeoutMS,
@@ -174,8 +173,7 @@ func (h *handler) handleChanges() error {
 		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return err
 		}
-		optionsLimitValue, _ := h.getIntQuery("limit", 0)
-		options.Limit = int(optionsLimitValue)
+		options.Limit = int(h.getIntQuery("limit", 0))
 		options.Conflicts = h.getQuery("style") == "all_docs"
 		options.ActiveOnly = h.getBoolQuery("active_only")
 		options.IncludeDocs = h.getBoolQuery("include_docs")
@@ -200,7 +198,7 @@ func (h *handler) handleChanges() error {
 			}
 		}
 
-		options.HeartbeatMs, _ = getRestrictedIntQuery(
+		options.HeartbeatMs = getRestrictedIntQuery(
 			h.getQueryValues(),
 			"heartbeat",
 			kDefaultHeartbeatMS,
@@ -208,7 +206,7 @@ func (h *handler) handleChanges() error {
 			h.server.config.MaxHeartbeat*1000,
 			true,
 		)
-		options.TimeoutMs, _ = getRestrictedIntQuery(
+		options.TimeoutMs = getRestrictedIntQuery(
 			h.getQueryValues(),
 			"timeout",
 			kDefaultTimeoutMS,

@@ -475,7 +475,7 @@ func (h *handler) handleSetLogging() error {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 		setLogLevel = true
-	} else if level, _ := h.getIntQuery("level", 0); level != 0 {
+	} else if level := h.getIntQuery("level", 0); level != 0 {
 		base.Warnf(base.KeyAll, "Using deprecated query parameter: %q. Use %q instead.", "level", "logLevel")
 		switch getRestrictedInt(&level, 0, 1, 3, false) {
 		case 1:
