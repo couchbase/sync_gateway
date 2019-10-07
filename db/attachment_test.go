@@ -360,7 +360,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 	log.Printf("rev 3 done")
 
 	// 4. Get the document, check attachments
-	finalDoc, err := db.Get("doc1")
+	finalDoc, err := db.Get1xBody("doc1")
 	attachments := GetBodyAttachments(finalDoc)
 	assert.True(t, attachments != nil, "_attachments should be present in GET response")
 	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
@@ -419,7 +419,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	log.Printf("rev 3 done")
 
 	// 4. Get the document, check attachments
-	finalDoc, err := db.Get("doc1")
+	finalDoc, err := db.Get1xBody("doc1")
 	log.Printf("get doc attachments: %v", finalDoc)
 
 	attachments := GetBodyAttachments(finalDoc)
