@@ -332,7 +332,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	db = setupTestLeakyDBWithCacheOptions(t, CacheOptions{}, queryCallbackConfig)
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer tearDownTestDB(t, db)
 
 	// Test creating & updating a document:
@@ -391,7 +391,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	db = setupTestLeakyDBWithCacheOptions(t, CacheOptions{}, queryCallbackConfig)
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer tearDownTestDB(t, db)
 
 	// Test creating & updating a document:
