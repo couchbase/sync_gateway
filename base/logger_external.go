@@ -9,11 +9,11 @@ import (
 
 // This file implements wrappers around the loggers of external packages
 // so that all of SG's logging output is consistent
-
 func initExternalLoggers() {
 	gocb.SetLogger(GoCBLogger{})
 	gocbcore.SetLogger(GoCBCoreLogger{})
 	logging.SetLogger(CBGoUtilsLogger{})
+	clog.SetLoggerCallback(ClogCallback)
 }
 
 // **************************************************
@@ -97,6 +97,31 @@ func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 	case clog.LevelPanic:
 		Errorf(KeyReplicate, format, args...)
 	}
+}
+
+// **************************************************************************
+// Implementation of callback for github.com/couchbase/clog.SetLoggerCallback
+//    Our main library that uses clog is cbgt, so all logging goes to KeyDCP.
+//    Note that although sg-replicate uses clog's log levels, sgreplicateLogFn
+//    bypasses clog logging, and so won't end up in this callback.
+// **************************************************************************
+func ClogCallback(level, format string, v ...interface{}) string {
+	switch level {
+	case "ERRO", "FATA", "CRIT":
+		Errorf(KeyDCP, format, v...)
+	case "WARN":
+		// TODO: cbgt currently logs a lot of what we'd consider info as WARN,
+		// (i.e. diagnostic information that's not actionable by users), so
+		// routing to Info pending potential enhancements on cbgt side.
+		Infof(KeyDCP, format, v...)
+	case "INFO":
+		Infof(KeyDCP, format, v...)
+	case "DEBU":
+		Debugf(KeyDCP, format, v...)
+	case "TRAC":
+		Tracef(KeyDCP, format, v...)
+	}
+	return ""
 }
 
 // **************************************************************
