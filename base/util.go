@@ -1039,7 +1039,37 @@ func InjectJSONProperties(b []byte, kvPairs ...KVPair) (new []byte, err error) {
 
 	kvPairsBytes := make([]KVPairBytes, len(kvPairs))
 	for i, kv := range kvPairs {
-		valBytes, err := JSONMarshal(kv.Val)
+		var valBytes []byte
+		var err error
+
+		switch v := kv.Val.(type) {
+		case int:
+			valBytes = []byte(strconv.FormatInt(int64(v), 10))
+		case int8:
+			valBytes = []byte(strconv.FormatInt(int64(v), 10))
+		case int16:
+			valBytes = []byte(strconv.FormatInt(int64(v), 10))
+		case int32:
+			valBytes = []byte(strconv.FormatInt(int64(v), 10))
+		case int64:
+			valBytes = []byte(strconv.FormatInt(v, 10))
+		case uint:
+			valBytes = []byte(strconv.FormatUint(uint64(v), 10))
+		case uint8:
+			valBytes = []byte(strconv.FormatUint(uint64(v), 10))
+		case uint16:
+			valBytes = []byte(strconv.FormatUint(uint64(v), 10))
+		case uint32:
+			valBytes = []byte(strconv.FormatUint(uint64(v), 10))
+		case uint64:
+			valBytes = []byte(strconv.FormatUint(v, 10))
+		case string:
+			valBytes = []byte(`"` + v + `"`)
+		case bool:
+			valBytes = []byte(strconv.FormatBool(v))
+		default:
+			valBytes, err = JSONMarshal(kv.Val)
+		}
 		if err != nil {
 			return nil, err
 		}

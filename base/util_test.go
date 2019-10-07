@@ -12,6 +12,7 @@ package base
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -669,6 +670,112 @@ func TestInjectJSONProperties(t *testing.T) {
 			var m map[string]interface{}
 			err = JSONUnmarshal(output, &m)
 			assert.NoError(tt, err, "produced invalid JSON")
+		})
+	}
+}
+
+func TestInjectJSONPropertiesDiffTypes(t *testing.T) {
+
+	tests := []struct {
+		input  string
+		output string
+		pair   KVPair
+	}{
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","maxuint64":18446744073709551615}`,
+			pair: KVPair{
+				"maxuint64",
+				uint64(math.MaxUint64),
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","minuint64":0}`,
+			pair: KVPair{
+				"minuint64",
+				0,
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","int":0}`,
+			pair: KVPair{
+				"int",
+				int(0),
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: fmt.Sprintf(`{"foo": "bar","maxint64":%d}`, math.MaxInt64),
+			pair: KVPair{
+				"maxint64",
+				math.MaxInt64,
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: fmt.Sprintf(`{"foo": "bar","minint64":%d}`, math.MinInt64),
+			pair: KVPair{
+				"minint64",
+				math.MinInt64,
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","float32":0}`,
+			pair: KVPair{
+				"float32",
+				float32(0),
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","float64":0}`,
+			pair: KVPair{
+				"float64",
+				float64(0),
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","float32-2":123.45}`,
+			pair: KVPair{
+				"float32-2",
+				float32(123.45),
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","float64-2":123.45}`,
+			pair: KVPair{
+				"float64-2",
+				float64(123.45),
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: fmt.Sprintf(`{"foo": "bar","maxfloat64":%v}`, math.MaxFloat64),
+			pair: KVPair{
+				"maxfloat64",
+				float64(math.MaxFloat64),
+			},
+		},
+		{
+			input:  `{"foo": "bar"}`,
+			output: `{"foo": "bar","bool":true}`,
+			pair: KVPair{
+				"bool",
+				true,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.output, func(t *testing.T) {
+			output, err := InjectJSONProperties([]byte(test.input), test.pair)
+			assert.NoError(t, err)
+			assert.Equal(t, test.output, string(output))
 		})
 	}
 }
