@@ -12,9 +12,12 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
+	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +27,7 @@ import (
 	goassert "github.com/couchbaselabs/go.assert"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 
@@ -2106,6 +2110,89 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 	_, err := GetBucketWithInvalidUsernamePassword(DataBucket)
 	goassert.Equals(t, err, ErrFatalBucketConnection)
 
+}
+
+// TestCouchbaseServerIncorrectX509Login tries to open a bucket using an example X509 Cert/Key
+// to make sure that we get back a "no access" error.
+func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	spec := GetTestBucketSpec(DataBucket)
+
+	// Remove existing password-based authentication
+	spec.Auth = nil
+
+	// Force use of TLS so we are able to use X509
+	if strings.HasPrefix(spec.Server, "http://") {
+		spec.Server = "couchbases://" + spec.Server[7:]
+	} else if strings.HasPrefix(spec.Server, "couchbase://") {
+		spec.Server = "couchbases://" + spec.Server[12:]
+	}
+	spec.Server = strings.TrimSuffix(spec.Server, ":8091")
+
+	// Set CertPath/KeyPath for X509 auth
+	certPath, keyPath, x509CleanupFn := tempX509Certs(t)
+	spec.Certpath = certPath
+	spec.Keypath = keyPath
+
+	// Attempt to open a test bucket with invalid certs
+	_, err := GetBucket(spec, nil)
+
+	// We no longer need the cert files, so go ahead and clean those up now before any assertions stop the test.
+	x509CleanupFn()
+
+	// Make sure we get an error when opening the bucket
+	require.Error(t, err)
+
+	// And also check it's an access error
+	errCause := pkgerrors.Cause(err)
+	kvErr, ok := errCause.(*gocbcore.KvError)
+	require.Truef(t, ok, "Expected error type gocbcore.KvError, but got %#v", errCause)
+	assert.Equal(t, gocbcore.StatusAccessError, kvErr.Code)
+}
+
+// tempX509Certs creates temporary files for an example X509 cert and key
+// which returns the path to those files, and a cleanupFn to remove the files.
+func tempX509Certs(t *testing.T) (certPath, keyPath string, cleanupFn func()) {
+	tmpDir := os.TempDir()
+
+	// The contents of these certificates was taken directly from Go's tls package examples.
+	certFile, err := ioutil.TempFile(tmpDir, "x509-cert")
+	require.NoError(t, err)
+	_, err = certFile.Write([]byte(`-----BEGIN CERTIFICATE-----
+MIIBhTCCASugAwIBAgIQIRi6zePL6mKjOipn+dNuaTAKBggqhkjOPQQDAjASMRAw
+DgYDVQQKEwdBY21lIENvMB4XDTE3MTAyMDE5NDMwNloXDTE4MTAyMDE5NDMwNlow
+EjEQMA4GA1UEChMHQWNtZSBDbzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABD0d
+7VNhbWvZLWPuj/RtHFjvtJBEwOkhbN/BnnE8rnZR8+sbwnc/KhCk3FhnpHZnQz7B
+5aETbbIgmuvewdjvSBSjYzBhMA4GA1UdDwEB/wQEAwICpDATBgNVHSUEDDAKBggr
+BgEFBQcDATAPBgNVHRMBAf8EBTADAQH/MCkGA1UdEQQiMCCCDmxvY2FsaG9zdDo1
+NDUzgg4xMjcuMC4wLjE6NTQ1MzAKBggqhkjOPQQDAgNIADBFAiEA2zpJEPQyz6/l
+Wf86aX6PepsntZv2GYlA5UpabfT2EZICICpJ5h/iI+i341gBmLiAFQOyTDT+/wQc
+6MF9+Yw1Yy0t
+-----END CERTIFICATE-----`))
+	require.NoError(t, err)
+	_ = certFile.Close()
+
+	keyFile, err := ioutil.TempFile(tmpDir, "x509-key")
+	require.NoError(t, err)
+	_, err = keyFile.Write([]byte(`-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIIrYSSNQFaA2Hwf1duRSxKtLYX5CB04fSeQ6tF1aY/PuoAoGCCqGSM49
+AwEHoUQDQgAEPR3tU2Fta9ktY+6P9G0cWO+0kETA6SFs38GecTyudlHz6xvCdz8q
+EKTcWGekdmdDPsHloRNtsiCa697B2O9IFA==
+-----END EC PRIVATE KEY-----`))
+	require.NoError(t, err)
+	_ = keyFile.Close()
+
+	certPath = certFile.Name()
+	keyPath = keyFile.Name()
+	cleanupFn = func() {
+		_ = os.Remove(certPath)
+		_ = os.Remove(keyPath)
+	}
+
+	return certPath, keyPath, cleanupFn
 }
 
 func createTombstonedDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) {
