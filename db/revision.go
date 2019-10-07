@@ -368,15 +368,15 @@ func createRevID(generation int, parentRevID string, body Body) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	return CreateRevIDWithBytes(generation, parentRevID, encoding)
+	return CreateRevIDWithBytes(generation, parentRevID, encoding), nil
 }
 
-func CreateRevIDWithBytes(generation int, parentRevID string, bodyBytes []byte) (string, error) {
+func CreateRevIDWithBytes(generation int, parentRevID string, bodyBytes []byte) string {
 	digester := md5.New()
 	digester.Write([]byte{byte(len(parentRevID))})
 	digester.Write([]byte(parentRevID))
 	digester.Write(bodyBytes)
-	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil)), nil
+	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil))
 }
 
 // Returns the generation number (numeric prefix) of a revision ID.

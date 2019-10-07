@@ -249,7 +249,7 @@ func (h *handler) handlePutAttachment() error {
 	attachments[attachmentName] = attachment
 	body[db.BodyAttachments] = attachments
 
-	newRev, _, err := h.db.PutWithBody(docid, body)
+	newRev, _, err := h.db.Put(docid, body)
 	if err != nil {
 		return err
 	}
@@ -297,7 +297,7 @@ func (h *handler) handlePutDoc() error {
 			} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
 				body[db.BodyRev] = ifMatch
 			}
-			newRev, doc, err = h.db.PutWithBody(docid, body)
+			newRev, doc, err = h.db.Put(docid, body)
 			if err != nil {
 				return err
 			}

@@ -492,7 +492,7 @@ func (h *handler) handleBulkDocs() error {
 		var revid string
 		if newEdits {
 			if docid != "" {
-				revid, _, err = h.db.PutWithBody(docid, doc)
+				revid, _, err = h.db.Put(docid, doc)
 			} else {
 				docid, revid, _, err = h.db.Post(doc)
 			}

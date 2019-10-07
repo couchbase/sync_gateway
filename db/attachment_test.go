@@ -65,7 +65,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev1Body Body
 	rev1Data := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev1Data), &rev1Body))
-	rev1ID, _, err := db.PutWithBody(docID, rev1Body)
+	rev1ID, _, err := db.Put(docID, rev1Body)
 	require.NoError(t, err)
 	assert.Equal(t, "1-12ff9ce1dd501524378fe092ce9aee8f", rev1ID)
 
@@ -122,7 +122,7 @@ func TestAttachments(t *testing.T) {
                                     "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
 	var body Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
-	revid, _, err := db.PutWithBody("doc1", body)
+	revid, _, err := db.Put("doc1", body)
 	rev1id := revid
 	assert.NoError(t, err, "Couldn't create document")
 
@@ -148,7 +148,7 @@ func TestAttachments(t *testing.T) {
 	var body2 Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev2str), &body2))
 	body2[BodyRev] = revid
-	revid, _, err = db.PutWithBody("doc1", body2)
+	revid, _, err = db.Put("doc1", body2)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", revid)
 
@@ -188,7 +188,7 @@ func TestAttachments(t *testing.T) {
 	var body3 Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev3str), &body3))
 	body3[BodyRev] = revid
-	revid, _, err = db.PutWithBody("doc1", body3)
+	revid, _, err = db.Put("doc1", body3)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.Equal(t, "3-aa3ff4ca3aad12e1479b65cb1e602676", revid)
 
@@ -234,7 +234,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
 	base.JSONUnmarshal([]byte(docBody), &body)
-	_, _, err = db.PutWithBody("doc1", unjson(docBody))
+	_, _, err = db.Put("doc1", unjson(docBody))
 	log.Printf("Got error on put doc:%v", err)
 	db.Bucket.Dump()
 
@@ -260,7 +260,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	// Test creating & updating a document:
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
                                     "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
-	_, _, err = db.PutWithBody("doc1", unjson(rev1input))
+	_, _, err = db.Put("doc1", unjson(rev1input))
 	assert.NoError(t, err, "Couldn't create document")
 
 	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")

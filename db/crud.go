@@ -633,15 +633,37 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *Document, deleted 
 	return nil
 }
 
-func (db *Database) Put(newDoc *Document) (newRevID string, doc *Document, err error) {
-	generation, _ := ParseRevID(newDoc.RevID)
+// Updates or creates a document.
+// The new body's BodyRev property must match the current revision's, if any.
+func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document, err error) {
+	// Get the revision ID to match, and the new generation number:
+	matchRev, _ := body[BodyRev].(string)
+	generation, _ := ParseRevID(matchRev)
 	if generation < 0 {
 		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
+	deleted, _ := body[BodyDeleted].(bool)
+
+	expiry, err := body.ExtractExpiry()
+	if err != nil {
+		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+	}
+
+	// Create newDoc which will be used to pass around Body
+	newDoc := &Document{
+		ID: docid,
+	}
+
+	// Pull out attachments
+	newDoc.DocAttachments = GetBodyAttachments(body)
+	delete(body, BodyAttachments)
+	delete(body, BodyRevisions)
+
+	newDoc.UpdateBody(body)
 
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, newDoc.DocExpiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		var isSgWrite bool
 		var crc32Match bool
@@ -657,85 +679,53 @@ func (db *Database) Put(newDoc *Document) (newRevID string, doc *Document, err e
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !isSgWrite && db.UseXattrs() {
-			err := db.OnDemandImportForWrite(newDoc.ID, doc, newDoc.Deleted)
+			err := db.OnDemandImportForWrite(newDoc.ID, doc, deleted)
 			if err != nil {
 				return nil, nil, nil, err
 			}
 		}
 
 		// First, make sure matchRev matches an existing leaf revision:
-		if newDoc.RevID == "" {
-			newDoc.RevID = doc.CurrentRev
-			if newDoc.RevID != "" {
+		if matchRev == "" {
+			matchRev = doc.CurrentRev
+			if matchRev != "" {
 				// PUT with no parent rev given, but there is an existing current revision.
 				// This is OK as long as the current one is deleted.
-				if !doc.History[newDoc.RevID].Deleted {
+				if !doc.History[matchRev].Deleted {
 					return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
 				}
-				generation, _ = ParseRevID(newDoc.RevID)
+				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
-		} else if !doc.History.isLeaf(newDoc.RevID) || db.IsIllegalConflict(doc, newDoc.RevID, newDoc.Deleted, false) {
+		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
 		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
 		// be done before calling createRevID (the ID is based on the digest of the body.)
-		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, newDoc.RevID, nil)
+		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, matchRev, nil)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
 		// Make up a new _rev, and add it to the history:
-		newRev, err := createRevID(generation, newDoc.RevID, newDoc.Body())
+		newRev, err := createRevID(generation, matchRev, newDoc.Body())
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
-		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: newDoc.RevID, Deleted: newDoc.Deleted}); err != nil {
-			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(newDoc.ID), err)
+		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
+			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
 			return nil, nil, nil, base.ErrRevTreeAddRevFailure
 		}
 
 		// move _attachment metadata to syncdata of doc after rev-id generation
 		doc.SyncData.Attachments = newDoc.DocAttachments
 		newDoc.RevID = newRev
+		newDoc.Deleted = deleted
 
 		return newDoc, newAttachments, nil, nil
 	})
-
-	return
-
-}
-
-// Updates or creates a document.
-// The new body's BodyRev property must match the current revision's, if any.
-func (db *Database) PutWithBody(docid string, body Body) (newRevID string, doc *Document, err error) {
-	// Get the revision ID to match, and the new generation number:
-	matchRev, _ := body[BodyRev].(string)
-	deleted, _ := body[BodyDeleted].(bool)
-
-	expiry, err := body.ExtractExpiry()
-	if err != nil {
-		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
-	}
-
-	// Create newDoc which will be used to pass around Body
-	newDoc := &Document{
-		ID:        docid,
-		Deleted:   deleted,
-		DocExpiry: expiry,
-		RevID:     matchRev,
-	}
-
-	// Pull out attachments
-	newDoc.DocAttachments = GetBodyAttachments(body)
-	delete(body, BodyAttachments)
-	delete(body, BodyRevisions)
-
-	newDoc.UpdateBody(body)
-
-	newRevID, doc, err = db.Put(newDoc)
 
 	body[BodyId] = docid
 	body[BodyRev] = newRevID
@@ -1466,7 +1456,7 @@ func (db *Database) Post(body Body) (string, string, *Document, error) {
 		docid = base.CreateUUID()
 	}
 
-	rev, doc, err := db.PutWithBody(docid, body)
+	rev, doc, err := db.Put(docid, body)
 	if err != nil {
 		docid = ""
 	}
@@ -1476,7 +1466,7 @@ func (db *Database) Post(body Body) (string, string, *Document, error) {
 // Deletes a document, by adding a new revision whose _deleted property is true.
 func (db *Database) DeleteDoc(docid string, revid string) (string, error) {
 	body := Body{BodyDeleted: true, BodyRev: revid}
-	newRevID, _, err := db.PutWithBody(docid, body)
+	newRevID, _, err := db.Put(docid, body)
 	return newRevID, err
 }
 
