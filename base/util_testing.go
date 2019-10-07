@@ -11,9 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/couchbase/gocb"
+	"github.com/stretchr/testify/assert"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
