@@ -945,17 +945,11 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
 func (db *Database) runSyncFn(doc *Document, body Body, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
-	body[BodyId] = doc.ID
-	body[BodyRev] = newRevId
-
 	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(doc, body, newRevId)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
 	}
 	db.checkDocChannelsAndGrantsLimits(doc.ID, channelSet, access, roles)
-
-	delete(body, BodyId)
-	delete(body, BodyRev)
 	return syncExpiry, oldBody, channelSet, access, roles, nil
 }
 
@@ -1163,6 +1157,10 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	prevCurrentRev := doc.CurrentRev
 	doc.updateWinningRevAndSetDocFlags()
 	db.storeOldBodyInRevTreeAndUpdateCurrent(doc, prevCurrentRev, newRevID, newDoc)
+
+	syncFnBody[BodyId] = doc.ID
+	syncFnBody[BodyRev] = newRevID
+	syncFnBody[BodyDeleted] = newDoc.Deleted
 
 	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, syncFnBody, newRevID)
 	if err != nil {
