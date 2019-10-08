@@ -123,6 +123,13 @@ func (spec BucketSpec) UseClientCert() bool {
 	return true
 }
 
+func (spec BucketSpec) GetPoolName() string {
+	if spec.PoolName == "" {
+		return "default"
+	}
+	return spec.PoolName
+}
+
 // Builds a gocb connection string based on BucketSpec.Server.
 // Adds idle connection configuration, and X.509 auth settings when
 // certpath/keypath/cacertpath specified.
@@ -321,7 +328,7 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 
 }
 
-func GetBucket(spec BucketSpec, callback sgbucket.BucketNotifyFn) (bucket Bucket, err error) {
+func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Infof(KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))

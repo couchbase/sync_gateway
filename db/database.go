@@ -178,11 +178,11 @@ func ValidateDatabaseName(dbName string) error {
 }
 
 // Helper function to open a Couchbase connection and return a specific bucket.
-func ConnectToBucket(spec base.BucketSpec, callback sgbucket.BucketNotifyFn) (bucket base.Bucket, err error) {
+func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 
 	//start a retry loop to connect to the bucket backing off double the delay each time
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		bucket, err = base.GetBucket(spec, callback)
+		bucket, err = base.GetBucket(spec)
 
 		// By default, if there was an error, retry
 		shouldRetry = err != nil
@@ -284,7 +284,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if dbContext.UseXattrs() && dbContext.autoImport {
 		dbContext.importListener = NewImportListener()
 		if importFeedErr := dbContext.importListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
-			return nil, err
+			return nil, importFeedErr
 		}
 	}
 
@@ -294,55 +294,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if !ok {
 		return nil, errors.New("Cache feed stats map not initialized")
 	}
-	err = dbContext.mutationListener.Start(bucket, func(bucket string, err error) {
-
-		msgFormat := "%v dropped Mutation Feed (TAP/DCP) due to error: %v, taking offline"
-		base.Warnf(base.KeyAll, msgFormat, base.UD(bucket), err)
-		errTakeDbOffline := dbContext.TakeDbOffline(fmt.Sprintf(msgFormat, bucket, err))
-		if errTakeDbOffline == nil {
-
-			// Start a backoff retry loop to pick up feed again
-			worker := func() (shouldRetry bool, err error, value interface{}) {
-				//If DB is going online via an admin request Bucket will be nil
-				if dbContext.Bucket != nil {
-					err = dbContext.Bucket.Refresh()
-				} else {
-					err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is not available", dbName)
-					return false, err, nil
-				}
-				return err != nil, err, nil
-			}
-
-			sleeper := base.CreateDoublingSleeperFunc(
-				20, //MaxNumRetries
-				5,  //InitialRetrySleepTimeMS
-			)
-
-			description := fmt.Sprintf("Attempt reconnect to lost Mutation (TAP/DCP) Feed for : %v", dbContext.Name)
-			err, _ := base.RetryLoop(description, worker, sleeper)
-
-			if err == nil {
-				base.Infof(base.KeyCRUD, "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(dbContext.Name))
-
-				// The 10 second wait was introduced because the bucket was not fully initialised
-				// after the return of the retry loop.
-				timer := time.NewTimer(time.Duration(10) * time.Second)
-				<-timer.C
-
-				if options.DBOnlineCallback != nil {
-					options.DBOnlineCallback(dbContext)
-				}
-			}
-		}
-
-		// If errTakeDbOffline is non-nil, it can be safely ignored because:
-		// - The only known error state for dbContext.TakeDbOffline is if the current db state wasn't online
-		// - That code would hit an error if the dropped tap feed triggered TakeDbOffline, but the db was already non-online
-		// - In that case (some other event, potentially an admin action, took the DB offline), and so there is no reason to do the auto-reconnect processing
-
-		// TODO: invoke the same callback function from there as well, to pick up the auto-online handling
-
-	}, cacheFeedStatsMap)
+	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap)
 
 	// Check if there is an error starting the DCP feed
 	if err != nil {
@@ -536,7 +488,7 @@ func (context *DatabaseContext) RestartListener() error {
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
 	context.mutationListener.Init(context.Bucket.GetName())
-	if err := context.mutationListener.Start(context.Bucket, nil, context.DbStats.statsDatabaseMap); err != nil {
+	if err := context.mutationListener.Start(context.Bucket, context.DbStats.statsDatabaseMap); err != nil {
 		return err
 	}
 	return nil
