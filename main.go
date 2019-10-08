@@ -11,6 +11,7 @@ package main
 
 import (
 	"math/rand"
+	"runtime"
 	"time"
 
 	"github.com/couchbase/sync_gateway/rest"
@@ -22,5 +23,7 @@ func init() {
 
 // Simple Sync Gateway launcher tool.
 func main() {
+	runtime.SetMutexProfileFraction(1)
+	runtime.SetBlockProfileRate(1)
 	rest.ServerMain()
 }
