@@ -342,8 +342,7 @@ func (h *handler) handleBulkGet() error {
 	showExp := h.getBoolQuery("show_exp")
 
 	showRevs := h.getBoolQuery("revs")
-	globalRevsLimitValue := h.getIntQuery("revs_limit", math.MaxInt32)
-	globalRevsLimit := int(globalRevsLimitValue)
+	globalRevsLimit := int(h.getIntQuery("revs_limit", math.MaxInt32))
 
 	// If a client passes the HTTP header "Accept-Encoding: gzip" then the header "X-Accept-Part-Encoding: gzip" will be
 	// ignored and the entire HTTP response will be gzip compressed.  (aside from exception mentioned below for issue 1419)

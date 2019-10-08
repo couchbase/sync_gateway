@@ -277,45 +277,42 @@ func (h *handler) handlePutDoc() error {
 	roundTrip := h.getBoolQuery("roundtrip")
 
 	if replicator2, _ := h.getOptBoolQuery("replicator2", false); replicator2 {
-		newRev, doc, err = h.handlePutDocReplicator2(docid)
-		if err != nil {
-			return err
-		}
-	} else {
-		body, err = h.readDocument()
-		if err != nil {
-			return err
-		}
-		if body == nil {
-			return base.ErrEmptyDocument
-		}
-		if h.getQuery("new_edits") != "false" {
-			// Regular PUT:
-			if oldRev := h.getQuery("rev"); oldRev != "" {
-				body[db.BodyRev] = oldRev
-			} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
-				body[db.BodyRev] = ifMatch
-			}
-			newRev, doc, err = h.db.Put(docid, body)
-			if err != nil {
-				return err
-			}
-			h.setHeader("Etag", strconv.Quote(newRev))
-		} else {
-			// Replicator-style PUT with new_edits=false:
-			revisions := db.ParseRevisions(body)
-			if revisions == nil {
-				return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
-			}
-			doc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
-			if err != nil {
-				return err
-			}
+		return h.handlePutDocReplicator2(docid, roundTrip)
+	}
 
-			newRev, ok = body[db.BodyRev].(string)
-			if !ok {
-				return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
-			}
+	body, err = h.readDocument()
+	if err != nil {
+		return err
+	}
+	if body == nil {
+		return base.ErrEmptyDocument
+	}
+	if h.getQuery("new_edits") != "false" {
+		// Regular PUT:
+		if oldRev := h.getQuery("rev"); oldRev != "" {
+			body[db.BodyRev] = oldRev
+		} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+			body[db.BodyRev] = ifMatch
+		}
+		newRev, doc, err = h.db.Put(docid, body)
+		if err != nil {
+			return err
+		}
+		h.setHeader("Etag", strconv.Quote(newRev))
+	} else {
+		// Replicator-style PUT with new_edits=false:
+		revisions := db.ParseRevisions(body)
+		if revisions == nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
+		}
+		doc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
+		if err != nil {
+			return err
+		}
+
+		newRev, ok = body[db.BodyRev].(string)
+		if !ok {
+			return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
 		}
 	}
 
@@ -329,13 +326,13 @@ func (h *handler) handlePutDoc() error {
 	return nil
 }
 
-func (h *handler) handlePutDocReplicator2(docid string) (newRev string, doc *db.Document, err error) {
+func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err error) {
 	bodyBytes, err := h.readBody()
 	if err != nil {
-		return "", nil, err
+		return err
 	}
 	if bodyBytes == nil || len(bodyBytes) == 0 {
-		return "", nil, base.ErrEmptyDocument
+		return base.ErrEmptyDocument
 	}
 
 	newDoc := &db.Document{
@@ -364,7 +361,7 @@ func (h *handler) handlePutDocReplicator2(docid string) (newRev string, doc *db.
 		body := newDoc.Body()
 		expiry, err := body.ExtractExpiry()
 		if err != nil {
-			return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 		}
 		newDoc.DocExpiry = expiry
 		newDoc.UpdateBody(body)
@@ -379,9 +376,16 @@ func (h *handler) handlePutDocReplicator2(docid string) (newRev string, doc *db.
 		newDoc.UpdateBody(body)
 	}
 
-	newDoc, newRev, err = h.db.PutExistingRev(newDoc, history, true)
+	doc, rev, err := h.db.PutExistingRev(newDoc, history, true)
 
-	return newRev, newDoc, err
+	if newDoc != nil && roundTrip {
+		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence); err != nil {
+			return err
+		}
+	}
+
+	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": rev})
+	return nil
 }
 
 // HTTP handler for a POST to a database (creating a document)
