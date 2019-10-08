@@ -989,55 +989,48 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
-	body := Body{"n": 1}
-	doc, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	doc, err := db.PutExistingRevWithBody("doc1", Body{"n": 1}, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
-	doc, err = db.PutExistingRevWithBody("doc2", body, []string{"1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc2", Body{"n": 1}, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
-	doc, err = db.PutExistingRevWithBody("doc3", body, []string{"1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc3", Body{"n": 1}, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create two conflicting changes:
-	body["n"] = 2
-	doc, err = db.PutExistingRevWithBody("doc1", body, []string{"2-b", "1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc1", Body{"n": 2}, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-	doc, err = db.PutExistingRevWithBody("doc2", body, []string{"2-b", "1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc2", Body{"n": 2}, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-	doc, err = db.PutExistingRevWithBody("doc3", body, []string{"2-b", "1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc3", Body{"n": 2}, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-	body["n"] = 3
-	doc, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
+
+	doc, err = db.PutExistingRevWithBody("doc1", Body{"n": 3}, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
-	doc, err = db.PutExistingRevWithBody("doc2", body, []string{"2-a", "1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc2", Body{"n": 3}, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
-	doc, err = db.PutExistingRevWithBody("doc3", body, []string{"2-a", "1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc3", Body{"n": 3}, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
 	db.Options.AllowConflicts = base.BoolPtr(false)
-	delete(body, "n")
-	body[BodyDeleted] = true
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
-	_, err = db.PutExistingRevWithBody("doc1", body, []string{"2-c", "1-a"}, false)
+	_, err = db.PutExistingRevWithBody("doc1", Body{BodyDeleted: true}, []string{"2-c", "1-a"}, false)
 	assert.True(t, err != nil, "expected error tombstoning non-leaf")
 
 	// Tombstone the non-winning branch of a conflicted document
-	body[BodyRev] = "2-a"
-	tombstoneRev, _, putErr := db.Put("doc1", body)
+	tombstoneRev, _, putErr := db.Put("doc1", Body{BodyRev: "2-a", BodyDeleted: true})
 	assert.NoError(t, putErr, "tombstone 2-a")
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
 	goassert.Equals(t, doc.CurrentRev, "2-b")
 
 	// Attempt to add a tombstone rev w/ the previous tombstone as parent
-	body[BodyRev] = tombstoneRev
-	_, _, putErr = db.Put("doc1", body)
+	_, _, putErr = db.Put("doc1", Body{BodyRev: tombstoneRev, BodyDeleted: true})
 	assert.True(t, putErr != nil, "Expect error tombstoning a tombstone")
 
 	// Tombstone the winning branch of a conflicted document
-	body[BodyRev] = "2-b"
-	_, _, putErr = db.Put("doc2", body)
+	_, _, putErr = db.Put("doc2", Body{BodyRev: "2-b", BodyDeleted: true})
 	assert.NoError(t, putErr, "tombstone 2-b")
 	doc, err = db.GetDocument("doc2", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1045,8 +1038,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 
 	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
 	db.RevsLimit = uint32(1)
-	body[BodyRev] = "2-a"
-	_, _, putErr = db.Put("doc3", body)
+	_, _, putErr = db.Put("doc3", Body{BodyRev: "2-a", BodyDeleted: true})
 	assert.NoError(t, putErr, "tombstone 2-a w/ revslimit=1")
 	doc, err = db.GetDocument("doc3", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
