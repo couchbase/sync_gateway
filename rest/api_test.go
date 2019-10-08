@@ -2167,17 +2167,17 @@ func TestAccessOnTombstone(t *testing.T) {
 
 	// Create user:
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "zero"))
-	a.Save(bernard)
+	assert.NoError(t, a.Save(bernard))
 
 	// Create doc that gives user access to its channel
 	response := rt.Send(request("PUT", "/db/alpha", `{"owner":"bernard", "channel":"PBS"}`))
 	assertStatus(t, response, 201)
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	revId := body["rev"].(string)
 
-	rt.WaitForPendingChanges()
+	assert.NoError(t, rt.WaitForPendingChanges())
 
 	// Validate the user gets the doc on the _changes feed
 	// Check the _changes feed:
@@ -2197,13 +2197,18 @@ func TestAccessOnTombstone(t *testing.T) {
 	response = rt.Send(request("DELETE", fmt.Sprintf("/db/alpha?rev=%s", revId), ""))
 	assertStatus(t, response, 200)
 
+	// Make sure it actually was deleted
+	response = rt.Send(request("GET", "/db/alpha", ""))
+	assertStatus(t, response, 404)
+
 	// Wait for change caching to complete
-	rt.WaitForPendingChanges()
+	assert.NoError(t, rt.WaitForPendingChanges())
 
 	// Check user access again:
 	changes.Results = nil
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
-	base.JSONUnmarshal(response.Body.Bytes(), &changes)
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	goassert.Equals(t, len(changes.Results), 1)
 	if len(changes.Results) > 0 {
 		goassert.Equals(t, changes.Results[0].ID, "alpha")
