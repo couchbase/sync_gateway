@@ -646,6 +646,9 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *Document, deleted 
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
 func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document, err error) {
+
+	delete(body, BodyId)
+
 	// Get the revision ID to match, and the new generation number:
 	matchRev, _ := body[BodyRev].(string)
 	generation, _ := ParseRevID(matchRev)
@@ -653,6 +656,8 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
+	delete(body, BodyRev)
+
 	// Not extracting it yet because we need this property around to generate a rev ID
 	deleted, _ := body[BodyDeleted].(bool)
 
@@ -669,12 +674,8 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 	// Pull out attachments
 	newDoc.DocAttachments = GetBodyAttachments(body)
 	delete(body, BodyAttachments)
+
 	delete(body, BodyRevisions)
-
-	delete(body, BodyRev)
-	delete(body, BodyId)
-
-	newDoc.UpdateBody(body)
 
 	allowImport := db.UseXattrs()
 	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
@@ -723,14 +724,15 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		}
 
 		// Make up a new _rev, and add it to the history:
-		newDocBody := newDoc.Body()
-		newRev, err := createRevID(generation, matchRev, newDocBody)
+		newRev, err := createRevID(generation, matchRev, body)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
 		// We needed to keep _deleted around in the body until we generated a rev ID, but now we can ditch it.
-		delete(newDocBody, BodyDeleted)
+		delete(body, BodyDeleted)
+		// and now we can finally update the newDoc body to be without any special properties
+		newDoc.UpdateBody(body)
 
 		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
