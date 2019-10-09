@@ -268,10 +268,6 @@ func (h *handler) handlePutDoc() error {
 
 	docid := h.PathVar("docid")
 
-	var newRev string
-	var doc *db.Document
-	var ok bool
-
 	roundTrip := h.getBoolQuery("roundtrip")
 
 	if replicator2, _ := h.getOptBoolQuery("replicator2", false); replicator2 {
@@ -285,6 +281,11 @@ func (h *handler) handlePutDoc() error {
 	if body == nil {
 		return base.ErrEmptyDocument
 	}
+
+	var newRev string
+	var doc *db.Document
+	var ok bool
+
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
 		if oldRev := h.getQuery("rev"); oldRev != "" {
