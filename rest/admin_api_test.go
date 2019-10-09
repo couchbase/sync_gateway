@@ -805,55 +805,51 @@ func TestSessionExtension(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.Bucket(), nil)
-	user, err := a.GetUser("")
-	assert.NoError(t, err)
-	user.SetDisabled(true)
-	err = a.Save(user)
-	assert.NoError(t, err)
-
-	user, err = a.GetUser("")
-	assert.NoError(t, err)
-	goassert.True(t, user.Disabled())
-
-	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
-	assertStatus(t, response, 401)
-
-	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
+	user, err := a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
 	a.Save(user)
 
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/_session", ""), 200)
+	if err != nil {
+		log.Printf(err.Error())
+	}
 
-	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":1}`)
-	assertStatus(t, response, 200)
+	// More than 10% of expiry (24h)
+	fakeSession := auth.LoginSession{
+		ID:         base.GenerateRandomSecret(),
+		Username:   "user1",
+		Expiration: time.Now().Add(time.Hour * 4),
+		Ttl:        time.Hour * 24,
+	}
 
-	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
-	sessionId := body["session_id"].(string)
-	sessionExpiration := body["expires"].(string)
-	assert.NotEmpty(t, sessionId)
-	assert.NotEmpty(t, sessionExpiration)
-	assert.True(t, body["cookie_name"].(string) == "SyncGatewaySession")
+	rt.Bucket().Set(docIDForSession(fakeSession.ID), 0, fakeSession)
 
 	reqHeaders := map[string]string{
-		"Cookie": "SyncGatewaySession=" + body["session_id"].(string),
+		"Cookie": "SyncGatewaySession=" + fakeSession.ID,
 	}
-	response = rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
-	assertStatus(t, response, 201)
+	response := rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
+	log.Printf("PUT Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
+	assertStatus(t, response, http.StatusCreated)
+	goassert.True(t, response.Header().Get("Set-Cookie") != "")
 
+	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
+	assertStatus(t, response, http.StatusOK)
 	goassert.True(t, response.Header().Get("Set-Cookie") == "")
 
-	//Sleep for 150ms seconds, this will ensure 10% of the 1 second session ttl has elapsed and
-	//should cause a new Cookie to be sent by the server with the same session ID and an extended expiration date
-	time.Sleep(150 * time.Millisecond)
-	response = rt.SendRequestWithHeaders("PUT", "/db/doc2", `{"hi": "there"}`, reqHeaders)
-	assertStatus(t, response, 201)
+	fakeSession.Expiration = time.Now().Add(time.Hour * 21)
+	rt.Bucket().Set(docIDForSession(fakeSession.ID), 0, fakeSession)
 
+	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	goassert.True(t, response.Header().Get("Set-Cookie") != "")
+
+}
+
+func docIDForSession(sessionID string) string {
+	return base.SessionPrefix + sessionID
 }
 
 func TestSessionAPI(t *testing.T) {
