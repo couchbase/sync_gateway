@@ -2292,6 +2292,10 @@ func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, cal
 	}
 }
 
+func (bucket *CouchbaseBucketGoCB) StartShardedDCPFeed(dbName string) (*CbgtContext, error) {
+	return StartShardedDCPFeed(dbName, bucket, bucket.spec)
+}
+
 func (bucket *CouchbaseBucketGoCB) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {

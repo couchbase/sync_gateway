@@ -9,13 +9,14 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// importListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
+// ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
-	bucketName string      // Used for logging
-	terminator chan bool   // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	database   Database    // Admin database instance to be used for import
-	stats      *expvar.Map // Database stats group
+	bucketName  string            // Used for logging
+	terminator  chan bool         // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	database    Database          // Admin database instance to be used for import
+	stats       *expvar.Map       // Database stats group
+	cbgtContext *base.CbgtContext // Handle to cbgt manager,cfg
 }
 
 func NewImportListener() *importListener {
@@ -23,12 +24,16 @@ func NewImportListener() *importListener {
 	importListener := &importListener{
 		terminator: make(chan bool),
 	}
+
+	// Register cbgt PIndex to support sharded import.
+	importListener.RegisterImportPindexImpl()
+
 	return importListener
 }
 
 // StartImportFeed starts an import DCP feed.  Always starts the feed based on previous checkpoints (Backfill:FeedResume).
 // Writes DCP stats into the StatKeyImportDcpStats map
-func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseStats, dbContext *DatabaseContext) error {
+func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseStats, dbContext *DatabaseContext) (err error) {
 
 	base.Infof(base.KeyDCP, "Attempting to start import DCP feed...")
 
@@ -49,7 +54,16 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 	// Start DCP mutation feed
 	base.Infof(base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
 
-	return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap)
+	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	if !ok {
+		// Non-gocb bucket, start a non-sharded feed
+		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap)
+	} else {
+		il.cbgtContext, err = gocbBucket.StartShardedDCPFeed(dbContext.Name)
+		return err
+	}
+
 }
 
 // ProcessFeedEvent is invoked for each mutate or delete event seen on the server's mutation feed.  It may be
