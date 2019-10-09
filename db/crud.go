@@ -853,7 +853,6 @@ func (db *Database) PutExistingRev(docid string, body Body, docHistory []string,
 			delete(body, BodyAttachments)
 		}
 
-
 		body[BodyRev] = newRev
 		return body, newAttachments, nil, nil
 	})
