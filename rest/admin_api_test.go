@@ -801,10 +801,6 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 }
 
 func TestSessionExtension(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
