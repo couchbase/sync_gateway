@@ -271,8 +271,6 @@ func (h *handler) handlePutDoc() error {
 	var newRev string
 	var doc *db.Document
 	var ok bool
-	var err error
-	var body db.Body
 
 	roundTrip := h.getBoolQuery("roundtrip")
 
@@ -280,7 +278,7 @@ func (h *handler) handlePutDoc() error {
 		return h.handlePutDocReplicator2(docid, roundTrip)
 	}
 
-	body, err = h.readDocument()
+	body, err := h.readDocument()
 	if err != nil {
 		return err
 	}

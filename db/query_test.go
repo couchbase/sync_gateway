@@ -5,9 +5,8 @@ import (
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbase/sync_gateway/channels"
-
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
