@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"testing"
@@ -22,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/websocket"
 )
 
@@ -603,11 +603,11 @@ func requestByUser(method, resource, body, username string) *http.Request {
 }
 
 func assertStatus(t *testing.T, response *TestResponse, expectedStatus int) {
-	if response.Code != expectedStatus {
-		debug.PrintStack()
-		t.Fatalf("Response status %d (expected %d) for %s <%s> : %s",
-			response.Code, expectedStatus, response.Req.Method, response.Req.URL, response.Body)
-	}
+	require.Equalf(t, expectedStatus, response.Code,
+		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
+		response.Code, http.StatusText(response.Code),
+		expectedStatus, http.StatusText(expectedStatus),
+		response.Req.Method, response.Req.URL, response.Body)
 }
 
 func NewSlowResponseRecorder(responseDelay time.Duration, responseRecorder *httptest.ResponseRecorder) *SlowResponseRecorder {
