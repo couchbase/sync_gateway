@@ -820,7 +820,7 @@ func TestSessionExtension(t *testing.T) {
 		Ttl:        time.Hour * 24,
 	}
 
-	rt.Bucket().Set(docIDForSession(fakeSession.ID), 0, fakeSession)
+	rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession)
 
 	reqHeaders := map[string]string{
 		"Cookie": "SyncGatewaySession=" + fakeSession.ID,
@@ -836,16 +836,12 @@ func TestSessionExtension(t *testing.T) {
 	goassert.True(t, response.Header().Get("Set-Cookie") == "")
 
 	fakeSession.Expiration = time.Now().Add(time.Hour * 21)
-	rt.Bucket().Set(docIDForSession(fakeSession.ID), 0, fakeSession)
+	rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession)
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	goassert.True(t, response.Header().Get("Set-Cookie") != "")
 
-}
-
-func docIDForSession(sessionID string) string {
-	return base.SessionPrefix + sessionID
 }
 
 func TestSessionAPI(t *testing.T) {
