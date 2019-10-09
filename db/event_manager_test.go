@@ -318,9 +318,9 @@ func (wr *WebhookRequest) GetPayloads() [][]byte {
 	return payloads
 }
 
-func (wr *WebhookRequest) SetPayloads(payloads [][]byte) {
+func (wr *WebhookRequest) AddPayload(payload []byte) {
 	wr.mutex.Lock()
-	wr.payloads = payloads
+	wr.payloads = append(wr.payloads, payload)
 	wr.mutex.Unlock()
 }
 
@@ -356,7 +356,7 @@ func GetRouterWithHandler(wr *WebhookRequest) http.Handler {
 			log.Printf("Error trying to read body: %s", err)
 		}
 		if len(body) > 0 {
-			wr.SetPayloads(append(wr.GetPayloads(), body))
+			wr.AddPayload(body)
 			var payload map[string]interface{}
 			err = base.JSONUnmarshal(body, &payload)
 			if err != nil {
