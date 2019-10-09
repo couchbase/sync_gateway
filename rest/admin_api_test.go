@@ -804,43 +804,38 @@ func TestSessionExtension(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.Bucket(), nil)
-	user, err := a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
-	a.Save(user)
-
-	if err != nil {
-		log.Printf(err.Error())
-	}
-
 	// More than 10% of expiry (24h)
 	fakeSession := auth.LoginSession{
 		ID:         base.GenerateRandomSecret(),
-		Username:   "user1",
-		Expiration: time.Now().Add(time.Hour * 4),
-		Ttl:        time.Hour * 24,
+		Username:   "Alice",
+		Expiration: time.Now().Add(4 * time.Hour),
+		Ttl:        24 * time.Hour,
 	}
 
-	rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession)
-
+	assert.NoError(t, rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession))
 	reqHeaders := map[string]string{
-		"Cookie": "SyncGatewaySession=" + fakeSession.ID,
+		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
 	}
+
 	response := rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
 	log.Printf("PUT Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	assertStatus(t, response, http.StatusCreated)
-	goassert.True(t, response.Header().Get("Set-Cookie") != "")
+	assert.Contains(t, response.Header().Get("Set-Cookie"), auth.DefaultCookieName+"="+fakeSession.ID)
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	assertStatus(t, response, http.StatusOK)
-	goassert.True(t, response.Header().Get("Set-Cookie") == "")
+	assert.Equal(t, "", response.Header().Get("Set-Cookie"))
 
-	fakeSession.Expiration = time.Now().Add(time.Hour * 21)
-	rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession)
+	fakeSession.Expiration = time.Now().Add(-2 * time.Hour)
+	assert.NoError(t, rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession))
+	rt.Bucket().Get(auth.DocIDForSession(fakeSession.ID), &fakeSession)
+	log.Printf("fakeSession: %v", fakeSession)
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	goassert.True(t, response.Header().Get("Set-Cookie") != "")
+	assert.NotEqual(t, "", response.Header().Get("Set-Cookie"))
+	log.Printf("response.Code: %v", response.Code)
 
 }
 
