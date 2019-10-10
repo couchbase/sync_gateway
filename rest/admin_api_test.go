@@ -800,6 +800,8 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	goassert.True(t, expires2.Sub(expires) < acceptableTimeDelta)
 }
 
+// Check whether the session is getting extended or refreshed if 10% or more of the current
+// expiration time has elapsed.
 func TestSessionExtension(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -830,7 +832,7 @@ func TestSessionExtension(t *testing.T) {
 
 	fakeSession.Expiration = time.Now().Add(-2 * time.Hour)
 	assert.NoError(t, rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession))
-	log.Printf("fakeSession: %v", fakeSession)
+	log.Printf("Expired fake session: %v", fakeSession)
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
