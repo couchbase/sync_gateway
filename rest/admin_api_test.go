@@ -830,14 +830,15 @@ func TestSessionExtension(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	assert.Equal(t, "", response.Header().Get("Set-Cookie"))
 
-	fakeSession.Expiration = time.Now().Add(-2 * time.Hour)
-	assert.NoError(t, rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession))
-	log.Printf("Expired fake session: %v", fakeSession)
+	// Explicitly delete the fake session doc from the bucket to simulate the test
+	// scenario for expired session. In reality, Sync Gateway rely on Couchbase
+	// Server to nuke the expired document based on TTL. Couchbase Server periodically
+	// removes all items with expiration times that have passed.
+	assert.NoError(t, rt.Bucket().Delete(auth.DocIDForSession(fakeSession.ID)))
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	assert.NotEqual(t, "", response.Header().Get("Set-Cookie"))
-	log.Printf("response.Code: %v", response.Code)
+	assertStatus(t, response, http.StatusUnauthorized)
 
 }
 
