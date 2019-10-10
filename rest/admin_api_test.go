@@ -804,7 +804,8 @@ func TestSessionExtension(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	// More than 10% of expiry (24h)
+	// Fake session with more than 10% of the 24 hours TTL has elapsed. It should cause a new
+	// cookie to be sent by the server with the same session ID and an extended expiration date.
 	fakeSession := auth.LoginSession{
 		ID:         base.GenerateRandomSecret(),
 		Username:   "Alice",
@@ -829,7 +830,6 @@ func TestSessionExtension(t *testing.T) {
 
 	fakeSession.Expiration = time.Now().Add(-2 * time.Hour)
 	assert.NoError(t, rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession))
-	rt.Bucket().Get(auth.DocIDForSession(fakeSession.ID), &fakeSession)
 	log.Printf("fakeSession: %v", fakeSession)
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
