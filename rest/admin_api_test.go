@@ -800,60 +800,46 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	goassert.True(t, expires2.Sub(expires) < acceptableTimeDelta)
 }
 
+// Check whether the session is getting extended or refreshed if 10% or more of the current
+// expiration time has elapsed.
 func TestSessionExtension(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.Bucket(), nil)
-	user, err := a.GetUser("")
-	assert.NoError(t, err)
-	user.SetDisabled(true)
-	err = a.Save(user)
-	assert.NoError(t, err)
-
-	user, err = a.GetUser("")
-	assert.NoError(t, err)
-	goassert.True(t, user.Disabled())
-
-	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
-	assertStatus(t, response, 401)
-
-	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
-	a.Save(user)
-
-	assertStatus(t, rt.SendAdminRequest("GET", "/db/_session", ""), 200)
-
-	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":1}`)
-	assertStatus(t, response, 200)
-
-	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
-	sessionId := body["session_id"].(string)
-	sessionExpiration := body["expires"].(string)
-	assert.NotEmpty(t, sessionId)
-	assert.NotEmpty(t, sessionExpiration)
-	assert.True(t, body["cookie_name"].(string) == "SyncGatewaySession")
-
-	reqHeaders := map[string]string{
-		"Cookie": "SyncGatewaySession=" + body["session_id"].(string),
+	// Fake session with more than 10% of the 24 hours TTL has elapsed. It should cause a new
+	// cookie to be sent by the server with the same session ID and an extended expiration date.
+	fakeSession := auth.LoginSession{
+		ID:         base.GenerateRandomSecret(),
+		Username:   "Alice",
+		Expiration: time.Now().Add(4 * time.Hour),
+		Ttl:        24 * time.Hour,
 	}
-	response = rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
-	assertStatus(t, response, 201)
 
-	goassert.True(t, response.Header().Get("Set-Cookie") == "")
+	assert.NoError(t, rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, fakeSession))
+	reqHeaders := map[string]string{
+		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
+	}
 
-	//Sleep for 150ms seconds, this will ensure 10% of the 1 second session ttl has elapsed and
-	//should cause a new Cookie to be sent by the server with the same session ID and an extended expiration date
-	time.Sleep(150 * time.Millisecond)
-	response = rt.SendRequestWithHeaders("PUT", "/db/doc2", `{"hi": "there"}`, reqHeaders)
-	assertStatus(t, response, 201)
+	response := rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
+	log.Printf("PUT Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
+	assertStatus(t, response, http.StatusCreated)
+	assert.Contains(t, response.Header().Get("Set-Cookie"), auth.DefaultCookieName+"="+fakeSession.ID)
 
-	goassert.True(t, response.Header().Get("Set-Cookie") != "")
+	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
+	assertStatus(t, response, http.StatusOK)
+	assert.Equal(t, "", response.Header().Get("Set-Cookie"))
+
+	// Explicitly delete the fake session doc from the bucket to simulate the test
+	// scenario for expired session. In reality, Sync Gateway rely on Couchbase
+	// Server to nuke the expired document based on TTL. Couchbase Server periodically
+	// removes all items with expiration times that have passed.
+	assert.NoError(t, rt.Bucket().Delete(auth.DocIDForSession(fakeSession.ID)))
+
+	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
+	assertStatus(t, response, http.StatusUnauthorized)
+
 }
 
 func TestSessionAPI(t *testing.T) {
