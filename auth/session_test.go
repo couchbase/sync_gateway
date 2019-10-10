@@ -2,8 +2,6 @@ package auth
 
 import (
 	"log"
-	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -77,7 +75,7 @@ func TestDeleteSession(t *testing.T) {
 	bucket := testBucket.Bucket
 	auth := NewAuthenticator(bucket, nil)
 
-	mockedSession := &LoginSession{
+	mockedSession := LoginSession{
 		ID:         base.GenerateRandomSecret(),
 		Username:   Username,
 		Expiration: time.Now().Add(TwoHours),
@@ -87,81 +85,4 @@ func TestDeleteSession(t *testing.T) {
 	assert.NoError(t, bucket.Set(DocIDForSession(mockedSession.ID), NoExpiry, mockedSession))
 	log.Printf("Mocked session: %v", mockedSession)
 	assert.NoError(t, auth.DeleteSession(mockedSession.ID))
-}
-
-// Coverage for MakeSessionCookie. The MakeSessionCookie should create a cookie
-// using the sessionID, username, expiration and TTL from LoginSession provided.
-// If nil is provided instead of valid login session, nil must be returned.
-func TestMakeSessionCookie(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
-	testBucket := base.GetTestBucket(t)
-
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-	auth := NewAuthenticator(bucket, nil)
-
-	sessionID := base.GenerateRandomSecret()
-	mockedSession := &LoginSession{
-		ID:         sessionID,
-		Username:   Username,
-		Expiration: time.Now().Add(TwoHours),
-		Ttl:        TwentyFourHours,
-	}
-
-	cookie := auth.MakeSessionCookie(mockedSession)
-	log.Printf("cookie: %v", cookie)
-
-	assert.Equal(t, DefaultCookieName, cookie.Name)
-	assert.Equal(t, sessionID, cookie.Value)
-	assert.NotEmpty(t, cookie.Expires)
-
-	cookie = auth.MakeSessionCookie(nil)
-	log.Printf("cookie: %v", cookie)
-	assert.Empty(t, cookie)
-}
-
-// Coverage for DeleteSessionForCookie. Mock a fake cookie with default cookie name,
-// sessionID and expiration; Try to delete the session for the cookie. DocID for session
-// must be deleted from the Couchbase bucket and a new cookie must be returned with no
-// sessionID against SyncGatewaySession and Now as the expiration value. If the cookie in
-// the request is unknown, Nil would be returned from DeleteSessionForCookie.
-func TestDeleteSessionForCookie(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
-	testBucket := base.GetTestBucket(t)
-
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-	auth := NewAuthenticator(bucket, nil)
-
-	sessionID := base.GenerateRandomSecret()
-	body := strings.NewReader("?")
-	request, _ := http.NewRequest("POST", "http://localhost/", body)
-
-	cookie := &http.Cookie{
-		Name:    DefaultCookieName,
-		Value:   sessionID,
-		Expires: time.Now().Add(time.Duration(10)),
-	}
-
-	request.AddCookie(cookie)
-	newCookie := auth.DeleteSessionForCookie(request)
-	log.Printf("newCookie: %v", newCookie)
-
-	assert.NotEmpty(t, newCookie.Name)
-	assert.Empty(t, newCookie.Value)
-	assert.NotEmpty(t, newCookie.Expires)
-
-	// Check delete session for cookie request with unknown cookie.
-	// No new cookie must be returned from DeleteSessionForCookie; Nil.
-	request, _ = http.NewRequest("POST", "http://localhost/", body)
-	cookie = &http.Cookie{
-		Name:    "Unknown",
-		Value:   sessionID,
-		Expires: time.Now().Add(time.Duration(10)),
-	}
-
-	request.AddCookie(cookie)
-	newCookie = auth.DeleteSessionForCookie(request)
-	log.Printf("Cookie: %v", newCookie)
-	assert.Nil(t, newCookie)
 }
