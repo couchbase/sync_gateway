@@ -36,7 +36,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	}
 
 	var session LoginSession
-	_, err := auth.bucket.Get(docIDForSession(cookie.Value), &session)
+	_, err := auth.bucket.Get(DocIDForSession(cookie.Value), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
@@ -57,7 +57,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	tenPercentOfTtl := int(duration.Nanoseconds()) / 10
 	if sessionTimeElapsed > tenPercentOfTtl {
 		session.Expiration = time.Now().Add(duration)
-		if err = auth.bucket.Set(docIDForSession(session.ID), base.DurationToCbsExpiry(duration), session); err != nil {
+		if err = auth.bucket.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(duration), session); err != nil {
 			return nil, err
 		}
 		base.AddDbPathToCookie(rq, cookie)
@@ -84,7 +84,7 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 		Expiration: time.Now().Add(ttl),
 		Ttl:        ttl,
 	}
-	if err := auth.bucket.Set(docIDForSession(session.ID), base.DurationToCbsExpiry(ttl), session); err != nil {
+	if err := auth.bucket.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), session); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -92,7 +92,7 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 
 func (auth *Authenticator) GetSession(sessionid string) (*LoginSession, error) {
 	var session LoginSession
-	_, err := auth.bucket.Get(docIDForSession(sessionid), &session)
+	_, err := auth.bucket.Get(DocIDForSession(sessionid), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			err = nil
@@ -118,7 +118,7 @@ func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie 
 	if cookie == nil {
 		return nil
 	}
-	auth.bucket.Delete(docIDForSession(cookie.Value))
+	auth.bucket.Delete(DocIDForSession(cookie.Value))
 
 	newCookie := *cookie
 	newCookie.Value = ""
@@ -126,12 +126,10 @@ func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie 
 	return &newCookie
 }
 
-func (auth Authenticator) DeleteSession(sessionid string) error {
-
-	return auth.bucket.Delete(docIDForSession(sessionid))
-
+func (auth Authenticator) DeleteSession(sessionID string) error {
+	return auth.bucket.Delete(DocIDForSession(sessionID))
 }
 
-func docIDForSession(sessionID string) string {
+func DocIDForSession(sessionID string) string {
 	return base.SessionPrefix + sessionID
 }
