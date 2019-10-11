@@ -258,7 +258,19 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 	// Special handling for Xattrs so that SG still has revisions that were updated by an SDK write
 	if db.UseXattrs() {
 		// Backup the current revision
-		_ = db.setOldRevisionJSON(docId, newRevId, newBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
+		var newBodyWithAtts = newBody
+		if len(newAtts) > 0 {
+			var err error
+			newBodyWithAtts, err = base.InjectJSONProperties(newBody, base.KVPair{
+				Key: BodyAttachments,
+				Val: newAtts,
+			})
+			if err != nil {
+				base.Warnf(base.KeyAll, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, err)
+				return
+			}
+		}
+		_ = db.setOldRevisionJSON(docId, newRevId, newBodyWithAtts, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
 
 		// Refresh the expiry on the previous revision backup
 		_ = db.refreshPreviousRevisionBackup(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)

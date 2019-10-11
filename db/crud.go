@@ -10,6 +10,7 @@
 package db
 
 import (
+	"bytes"
 	"math"
 	"net/http"
 	"strings"
@@ -459,18 +460,30 @@ func (db *Database) authorizeDoc(doc *Document, revid string) error {
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
 func (db *DatabaseContext) getRevision(doc *Document, revid string) ([]byte, error) {
 	var bodyBytes []byte
-	if bodyBytes = doc.getRevisionBodyJSON(revid, db.RevisionBodyLoader); bodyBytes == nil {
-		// No inline body, so look for separate doc:
+	var err error
+
+	bodyBytes = doc.getRevisionBodyJSON(revid, db.RevisionBodyLoader)
+
+	// No inline body, so look for separate doc:
+	if bodyBytes == nil {
 		if !doc.History.contains(revid) {
 			return nil, base.HTTPErrorf(404, "missing")
 		}
 
-		data, err := db.getOldRevisionJSON(doc.ID, revid)
+		bodyBytes, err = db.getOldRevisionJSON(doc.ID, revid)
 		if err != nil {
 			return nil, err
 		}
+	}
 
-		return data, nil
+	if doc.CurrentRev == revid && doc.Attachments != nil {
+		bodyBytes, err = base.InjectJSONProperties(bodyBytes, base.KVPair{
+			Key: BodyAttachments,
+			Val: doc.Attachments,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return bodyBytes, nil
@@ -560,28 +573,71 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 	return bodyBytes, removed, nil
 }
 
-// Returns the body of the asked-for revision or the most recent available ancestor.
-func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, error) {
+// Returns the body and rev ID of the asked-for revision or the most recent available ancestor.
+func (db *Database) getAvailableRev(doc *Document, revid string) ([]byte, string, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
 		if bodyBytes, _ := db.getRevision(doc, revid); bodyBytes != nil {
-			kvPairs := []base.KVPair{
-				{Key: BodyId, Val: doc.ID},
-				{Key: BodyRev, Val: revid},
-			}
-
-			if doc.CurrentRev == revid && doc.Attachments != nil {
-				kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
-			}
-
-			bodyBytes, err := base.InjectJSONProperties(bodyBytes, kvPairs...)
-			if err != nil {
-				return nil, err
-			}
-
-			return bodyBytes, nil
+			return bodyBytes, revid, nil
 		}
 	}
-	return nil, base.HTTPErrorf(404, "missing")
+	return nil, "", base.HTTPErrorf(404, "missing")
+}
+
+// Returns the 1x-style body of the asked-for revision or the most recent available ancestor.
+func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, error) {
+	bodyBytes, ancestorRevID, err := db.getAvailableRev(doc, revid)
+	if err != nil {
+		return nil, err
+	}
+
+	kvPairs := []base.KVPair{
+		{Key: BodyId, Val: doc.ID},
+		{Key: BodyRev, Val: ancestorRevID},
+	}
+
+	// TODO: do we need _deleted here too? - maybe not because by definition a rev is not available if deleted
+	if doc.CurrentRev == revid && doc.Attachments != nil {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
+	}
+
+	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
+	if err != nil {
+		return nil, err
+	}
+
+	return bodyBytes, nil
+}
+
+// Returns the attachments of the asked-for revision or the most recent available ancestor.
+// Returns nil if no attachments or ancestors are found.
+func (db *Database) getAvailableRevAttachments(doc *Document, revid string) (ancestorAttachments AttachmentsMeta, foundAncestor bool) {
+	bodyBytes, ancestorRevID, err := db.getAvailableRev(doc, revid)
+	if err != nil {
+		return nil, false
+	}
+
+	// If the ancestor rev is the current rev, we can pull attachments directly from the doc
+	if doc.CurrentRev == ancestorRevID {
+		return doc.Attachments, true
+	}
+
+	// Otherwise, we need to go and extract them from a backup revision's stamped _attachments property
+
+	// exit early if we know we have no attachments with a simple byte-contains check
+	if !bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
+		return nil, true
+	}
+
+	// Unmarshal attachments into a struct
+	var parentAttachmentsStruct struct {
+		Attachments AttachmentsMeta `json:"_attachments"`
+	}
+	if err := base.JSONUnmarshal(bodyBytes, &parentAttachmentsStruct); err != nil {
+		base.Warnf(base.KeyAll, "Error unmarshaling attachments metadata: %s", err)
+		return nil, true
+	}
+
+	return parentAttachmentsStruct.Attachments, true
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
@@ -914,8 +970,28 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body for storage in rev tree: %v", marshalErr)
 		}
 		var kvPairs []base.KVPair
+
+		// Stamp _attachments into the old body we're about to backup
+		// We need to do a revpos check here because doc actually contains the new attachments
 		if len(doc.SyncData.Attachments) > 0 {
-			kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.SyncData.Attachments})
+			prevCurrentRevGen, _ := ParseRevID(prevCurrentRev)
+			bodyAtts := make(AttachmentsMeta)
+			for attName, attMeta := range doc.SyncData.Attachments {
+				if attMetaMap, ok := attMeta.(map[string]interface{}); ok {
+					var attRevposInt int
+					if attRevpos, ok := attMetaMap["revpos"].(int); ok {
+						attRevposInt = attRevpos
+					} else if attRevPos, ok := attMetaMap["revpos"].(float64); ok {
+						attRevposInt = int(attRevPos)
+					}
+					if attRevposInt <= prevCurrentRevGen {
+						bodyAtts[attName] = attMeta
+					}
+				}
+			}
+			if len(bodyAtts) > 0 {
+				kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: bodyAtts})
+			}
 		}
 
 		if doc.Deleted {

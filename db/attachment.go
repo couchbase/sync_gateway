@@ -123,24 +123,9 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
 func (db *Database) retrieveAncestorAttachments(doc *Document, parentRev string, docHistory []string) map[string]interface{} {
 
-	// FIXME: parent contains _attachment property
 	// Attempt to find a non-pruned parent or ancestor
-	if parent, _ := db.getAvailable1xRev(doc, parentRev); parent != nil {
-		// exit early if we know we have no attachments with a simple byte-contains check
-		if !bytes.Contains(parent, []byte(BodyAttachments)) {
-			return nil
-		}
-
-		// Otherwise, unmarshal attachments into struct
-		var parentAttachmentsStruct struct {
-			Attachments AttachmentsMeta `json:"_attachments"`
-		}
-		if err := base.JSONUnmarshal(parent, &parentAttachmentsStruct); err != nil {
-			base.Warnf(base.KeyAll, "Error unmarshaling attachments metadata: %s", err)
-			return nil
-		}
-
-		return parentAttachmentsStruct.Attachments
+	if ancestorAttachments, foundAncestor := db.getAvailableRevAttachments(doc, parentRev); foundAncestor {
+		return ancestorAttachments
 	}
 
 	// No non-pruned ancestor is available
