@@ -75,7 +75,7 @@ func TestDeleteSession(t *testing.T) {
 	bucket := testBucket.Bucket
 	auth := NewAuthenticator(bucket, nil)
 
-	mockedSession := LoginSession{
+	mockedSession := &LoginSession{
 		ID:         base.GenerateRandomSecret(),
 		Username:   Username,
 		Expiration: time.Now().Add(TwoHours),
@@ -85,4 +85,32 @@ func TestDeleteSession(t *testing.T) {
 	assert.NoError(t, bucket.Set(DocIDForSession(mockedSession.ID), NoExpiry, mockedSession))
 	log.Printf("Mocked session: %v", mockedSession)
 	assert.NoError(t, auth.DeleteSession(mockedSession.ID))
+}
+
+func TestMakeSessionCookie(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	testBucket := base.GetTestBucket(t)
+
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+	auth := NewAuthenticator(bucket, nil)
+
+	sessionID := base.GenerateRandomSecret()
+	mockedSession := &LoginSession{
+		ID:         sessionID,
+		Username:   Username,
+		Expiration: time.Now().Add(TwoHours),
+		Ttl:        TwentyFourHours,
+	}
+
+	cookie := auth.MakeSessionCookie(mockedSession)
+	log.Printf("cookie: %v", cookie)
+
+	assert.Equal(t, DefaultCookieName, cookie.Name)
+	assert.Equal(t, sessionID, cookie.Value)
+	assert.NotEmpty(t, cookie.Expires)
+
+	cookie = auth.MakeSessionCookie(nil)
+	log.Printf("cookie: %v", cookie)
+	assert.Empty(t, cookie)
 }
