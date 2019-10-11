@@ -406,50 +406,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
-	bucket, err := db.ConnectToBucket(spec, func(bucket string, err error) {
-
-		msgFormatStr := "%v dropped Mutation feed (TAP/DCP) due to error: %v, taking offline"
-		base.Warnf(base.KeyAll, msgFormatStr, base.UD(bucket), err)
-
-		if dc := sc.databases_[dbName]; dc != nil {
-
-			err := dc.TakeDbOffline(fmt.Sprintf(msgFormatStr, bucket, err))
-			if err == nil {
-
-				//start a retry loop to pick up tap feed again backing off double the delay each time
-				worker := func() (shouldRetry bool, err error, value interface{}) {
-					//If DB is going online via an admin request Bucket will be nil
-					if dc.Bucket != nil {
-						err = dc.Bucket.Refresh()
-					} else {
-						err = base.HTTPErrorf(http.StatusPreconditionFailed, "Database %q, bucket is not available", dbName)
-						return false, err, nil
-					}
-					return err != nil, err, nil
-				}
-
-				sleeper := base.CreateDoublingSleeperFunc(
-					20, //MaxNumRetries
-					5,  //InitialRetrySleepTimeMS
-				)
-
-				description := fmt.Sprintf("Attempt reconnect to lost Mutation (TAP/DCP) Feed for : %v", dc.Name)
-				err, _ := base.RetryLoop(description, worker, sleeper)
-
-				if err == nil {
-					base.Infof(base.KeyCRUD, "Connection to Mutation (TAP/DCP) feed for %v re-established, bringing DB back online", base.UD(dc.Name))
-
-					// The 10 second wait was introduced because the bucket was not fully initialised
-					// after the return of the retry loop.
-					timer := time.NewTimer(time.Duration(10) * time.Second)
-					<-timer.C
-
-					sc.TakeDbOnline(dc)
-				}
-			}
-		}
-	})
-
+	bucket, err := db.ConnectToBucket(spec)
 	if err != nil {
 		return nil, err
 	}

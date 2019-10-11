@@ -364,15 +364,19 @@ func (body Body) FixJSONNumbers() {
 
 func createRevID(generation int, parentRevID string, body Body) (string, error) {
 	// This should produce the same results as TouchDB.
-	digester := md5.New()
-	digester.Write([]byte{byte(len(parentRevID))})
-	digester.Write([]byte(parentRevID))
 	encoding, err := base.JSONMarshalCanonical(stripSpecialProperties(body))
 	if err != nil {
 		return "", err
 	}
-	digester.Write(encoding)
-	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil)), nil
+	return CreateRevIDWithBytes(generation, parentRevID, encoding), nil
+}
+
+func CreateRevIDWithBytes(generation int, parentRevID string, bodyBytes []byte) string {
+	digester := md5.New()
+	digester.Write([]byte{byte(len(parentRevID))})
+	digester.Write([]byte(parentRevID))
+	digester.Write(bodyBytes)
+	return fmt.Sprintf("%d-%x", generation, digester.Sum(nil))
 }
 
 // Returns the generation number (numeric prefix) of a revision ID.

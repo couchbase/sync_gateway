@@ -174,9 +174,9 @@ func (h *handler) handleChanges() error {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
-		options.Conflicts = (h.getQuery("style") == "all_docs")
+		options.Conflicts = h.getQuery("style") == "all_docs"
 		options.ActiveOnly = h.getBoolQuery("active_only")
-		options.IncludeDocs = (h.getBoolQuery("include_docs"))
+		options.IncludeDocs = h.getBoolQuery("include_docs")
 		filter = h.getQuery("filter")
 		channelsParam := h.getQuery("channels")
 		if channelsParam != "" {

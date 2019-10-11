@@ -857,7 +857,6 @@ func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID str
 
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleRev(rq *blip.Message) error {
-
 	startTime := time.Now()
 	defer func() {
 		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())

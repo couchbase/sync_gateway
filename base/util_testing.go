@@ -125,7 +125,7 @@ func GetBucketCommon(bucketType CouchbaseBucketType, tester testing.TB) TestBuck
 	}
 
 	// Now open the bucket _again_ to ensure it's open with the correct driver
-	bucket, err := GetBucket(spec, nil)
+	bucket, err := GetBucket(spec)
 	if err != nil {
 		tester.Fatalf("Could not open bucket: %v", err)
 	}
@@ -149,7 +149,7 @@ func GetBucketWithInvalidUsernamePassword(bucketType CouchbaseBucketType) (TestB
 	}
 
 	// Attempt to open a test bucket with invalid creds. We should expect an error.
-	bucket, err := GetBucket(spec, nil)
+	bucket, err := GetBucket(spec)
 	return TestBucket{Bucket: bucket}, err
 
 }
@@ -459,7 +459,7 @@ func (tbm *TestBucketManager) CreateTestBucket() error {
 	maxTries := 20
 	for {
 
-		bucket, errOpen := GetBucket(tbm.BucketSpec, nil)
+		bucket, errOpen := GetBucket(tbm.BucketSpec)
 
 		if errOpen == nil {
 			// We were able to open the bucket, so it worked and we're done

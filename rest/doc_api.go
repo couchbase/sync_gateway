@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"mime/multipart"
@@ -266,6 +267,13 @@ func (h *handler) handlePutDoc() error {
 	}()
 
 	docid := h.PathVar("docid")
+
+	roundTrip := h.getBoolQuery("roundtrip")
+
+	if replicator2, _ := h.getOptBoolQuery("replicator2", false); replicator2 {
+		return h.handlePutDocReplicator2(docid, roundTrip)
+	}
+
 	body, err := h.readDocument()
 	if err != nil {
 		return err
@@ -277,8 +285,6 @@ func (h *handler) handlePutDoc() error {
 	var newRev string
 	var doc *db.Document
 	var ok bool
-
-	roundTrip := h.getBoolQuery("roundtrip")
 
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
@@ -307,7 +313,6 @@ func (h *handler) handlePutDoc() error {
 		if !ok {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
 		}
-
 	}
 
 	if doc != nil && roundTrip {
@@ -317,6 +322,68 @@ func (h *handler) handlePutDoc() error {
 	}
 
 	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
+	return nil
+}
+
+func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err error) {
+	bodyBytes, err := h.readBody()
+	if err != nil {
+		return err
+	}
+	if bodyBytes == nil || len(bodyBytes) == 0 {
+		return base.ErrEmptyDocument
+	}
+
+	newDoc := &db.Document{
+		ID: docid,
+	}
+	newDoc.UpdateBodyBytes(bodyBytes)
+
+	var parentRev string
+	if oldRev := h.getQuery("rev"); oldRev != "" {
+		parentRev = oldRev
+	} else if ifMatch := h.rq.Header.Get("If-Match"); ifMatch != "" {
+		parentRev = ifMatch
+	}
+
+	generation, _ := db.ParseRevID(parentRev)
+	generation++
+
+	deleted, _ := h.getOptBoolQuery("deleted", false)
+	newDoc.Deleted = deleted
+
+	newDoc.RevID = db.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
+	history := []string{newDoc.RevID, parentRev}
+
+	// Handle and pull out expiry
+	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
+		body := newDoc.Body()
+		expiry, err := body.ExtractExpiry()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+		}
+		newDoc.DocExpiry = expiry
+		newDoc.UpdateBody(body)
+	}
+
+	// Pull out attachments
+	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
+		body := newDoc.Body()
+
+		newDoc.DocAttachments = db.GetBodyAttachments(body)
+		delete(body, db.BodyAttachments)
+		newDoc.UpdateBody(body)
+	}
+
+	doc, rev, err := h.db.PutExistingRev(newDoc, history, true)
+
+	if newDoc != nil && roundTrip {
+		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence); err != nil {
+			return err
+		}
+	}
+
+	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": rev})
 	return nil
 }
 

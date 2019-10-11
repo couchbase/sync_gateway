@@ -2138,7 +2138,7 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 	spec.Keypath = keyPath
 
 	// Attempt to open a test bucket with invalid certs
-	_, err := GetBucket(spec, nil)
+	_, err := GetBucket(spec)
 
 	// We no longer need the cert files, so go ahead and clean those up now before any assertions stop the test.
 	x509CleanupFn()
