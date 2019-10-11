@@ -162,6 +162,6 @@ func TestDeleteSessionForCookie(t *testing.T) {
 
 	request.AddCookie(cookie)
 	newCookie = auth.DeleteSessionForCookie(request)
-	log.Printf("Cookie: %v", newCookie)
+	log.Printf("newCookie: %v", newCookie)
 	assert.Nil(t, newCookie)
 }
