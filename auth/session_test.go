@@ -2,6 +2,8 @@ package auth
 
 import (
 	"log"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -113,4 +115,63 @@ func TestMakeSessionCookie(t *testing.T) {
 	cookie = auth.MakeSessionCookie(nil)
 	log.Printf("cookie: %v", cookie)
 	assert.Empty(t, cookie)
+}
+
+func (auth Authenticator) DeleteSessionForCookie1(rq *http.Request) *http.Cookie {
+	cookie, _ := rq.Cookie(auth.sessionCookieName)
+	if cookie == nil {
+		return nil
+	}
+	auth.bucket.Delete(DocIDForSession(cookie.Value))
+
+	newCookie := *cookie
+	newCookie.Value = ""
+	newCookie.Expires = time.Now()
+	return &newCookie
+}
+
+// Coverage for DeleteSessionForCookie. Mock a fake cookie with default cookie name,
+// sessionID and expiration; Try to delete the session for the cookie. DocID for session
+// must be deleted from the Couchbase bucket and a new cookie must be returned with no
+// sessionID against SyncGatewaySession and Now as the expiration value. If the cookie in
+// the request is unknown, Nil would be returned from DeleteSessionForCookie.
+func TestDeleteSessionForCookie(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	testBucket := base.GetTestBucket(t)
+
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+	auth := NewAuthenticator(bucket, nil)
+
+	sessionID := base.GenerateRandomSecret()
+	body := strings.NewReader("?")
+	request, _ := http.NewRequest("POST", "http://localhost/", body)
+
+	cookie := &http.Cookie{
+		Name:    DefaultCookieName,
+		Value:   sessionID,
+		Expires: time.Now().Add(time.Duration(10)),
+	}
+
+	request.AddCookie(cookie)
+	newCookie := auth.DeleteSessionForCookie(request)
+	log.Printf("newCookie: %v", newCookie)
+
+	assert.NotEmpty(t, newCookie.Name)
+	assert.Empty(t, newCookie.Value)
+	assert.NotEmpty(t, newCookie.Expires)
+
+	// Check delete session for cookie request with unknown cookie.
+	// No new cookie must be returned from DeleteSessionForCookie; Nil.
+	request, _ = http.NewRequest("POST", "http://localhost/", body)
+	cookie = &http.Cookie{
+		Name:    "Unknown",
+		Value:   sessionID,
+		Expires: time.Now().Add(time.Duration(10)),
+	}
+
+	request.AddCookie(cookie)
+	newCookie = auth.DeleteSessionForCookie(request)
+	log.Printf("newCookie: %v", newCookie)
+	assert.Nil(t, newCookie)
 }
