@@ -19,6 +19,7 @@ const (
 	NegativeTtl            = -1
 	NoTtl                  = 0
 	ErrorMessageIllegalTtl = "400 Invalid session time-to-live"
+	DefaultURL             = "http://localhost/"
 )
 
 func TestDocIDForSession(t *testing.T) {
@@ -135,7 +136,8 @@ func TestDeleteSessionForCookie(t *testing.T) {
 
 	sessionID := base.GenerateRandomSecret()
 	body := strings.NewReader("?")
-	request, _ := http.NewRequest("POST", "http://localhost/", body)
+
+	request, _ := http.NewRequest(http.MethodPost, DefaultURL, body)
 
 	cookie := &http.Cookie{
 		Name:    DefaultCookieName,
@@ -153,7 +155,7 @@ func TestDeleteSessionForCookie(t *testing.T) {
 
 	// Check delete session for cookie request with unknown cookie.
 	// No new cookie must be returned from DeleteSessionForCookie; Nil.
-	request, _ = http.NewRequest("POST", "http://localhost/", body)
+	request, _ = http.NewRequest(http.MethodPost, DefaultURL, body)
 	cookie = &http.Cookie{
 		Name:    "Unknown",
 		Value:   sessionID,
