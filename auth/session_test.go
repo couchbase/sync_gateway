@@ -89,6 +89,9 @@ func TestDeleteSession(t *testing.T) {
 	assert.NoError(t, auth.DeleteSession(mockedSession.ID))
 }
 
+// Coverage for MakeSessionCookie. The MakeSessionCookie should create a cookie
+// using the sessionID, username, expiration and TTL from LoginSession provided.
+// If nil is provided instead of valid login session, nil must be returned.
 func TestMakeSessionCookie(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 	testBucket := base.GetTestBucket(t)
@@ -115,19 +118,6 @@ func TestMakeSessionCookie(t *testing.T) {
 	cookie = auth.MakeSessionCookie(nil)
 	log.Printf("cookie: %v", cookie)
 	assert.Empty(t, cookie)
-}
-
-func (auth Authenticator) DeleteSessionForCookie1(rq *http.Request) *http.Cookie {
-	cookie, _ := rq.Cookie(auth.sessionCookieName)
-	if cookie == nil {
-		return nil
-	}
-	auth.bucket.Delete(DocIDForSession(cookie.Value))
-
-	newCookie := *cookie
-	newCookie.Value = ""
-	newCookie.Expires = time.Now()
-	return &newCookie
 }
 
 // Coverage for DeleteSessionForCookie. Mock a fake cookie with default cookie name,
