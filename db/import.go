@@ -24,7 +24,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 
 	var body Body
 	if isDelete {
-		body = Body{BodyDeleted: true}
+		body = Body{}
 	} else {
 		err := body.Unmarshal(value)
 		if err != nil {
@@ -104,7 +104,8 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	}
 
 	newDoc := &Document{
-		ID: docid,
+		ID:      docid,
+		Deleted: isDelete,
 	}
 
 	var newRev string
