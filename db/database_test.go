@@ -206,9 +206,10 @@ func TestDatabase(t *testing.T) {
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")
 	body := Body{"key1": "value1", "key2": 1234}
-	rev1id, _, err := db.Put("doc1", body)
+	rev1id, doc, err := db.Put("doc1", body)
+	body[BodyId] = doc.ID
+	body[BodyRev] = rev1id
 	assert.NoError(t, err, "Couldn't create document")
-	goassert.Equals(t, rev1id, body[BodyRev])
 	goassert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
 
 	log.Printf("Create rev 2...")
@@ -216,8 +217,8 @@ func TestDatabase(t *testing.T) {
 	body["key2"] = int64(4321)
 	rev2id, _, err := db.Put("doc1", body)
 	body[BodyId] = "doc1"
+	body[BodyRev] = rev2id
 	assert.NoError(t, err, "Couldn't update document")
-	goassert.Equals(t, rev2id, body[BodyRev])
 	goassert.Equals(t, rev2id, "2-488724414d0ed6b398d6d2aeb228d797")
 
 	// Retrieve the document:
@@ -1407,19 +1408,23 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	// Validate recent sequence is written
 	body := Body{"val": "one"}
-	revid, _, err := db.Put("doc1", body)
+	revid, doc, err := db.Put("doc1", body)
+	body[BodyId] = doc.ID
+	body[BodyRev] = revid
 	seqTracker++
 
 	expectedRecent := make([]uint64, 0)
 	goassert.True(t, revid != "")
-	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	expectedRecent = append(expectedRecent, seqTracker)
 	goassert.True(t, err == nil)
 	goassert.DeepEquals(t, doc.RecentSequences, expectedRecent)
 
 	// Add up to kMaxRecentSequences revisions - validate they are retained when total is less than max
 	for i := 1; i < kMaxRecentSequences; i++ {
-		revid, _, err = db.Put("doc1", body)
+		revid, doc, err = db.Put("doc1", body)
+		body[BodyId] = doc.ID
+		body[BodyRev] = revid
 		seqTracker++
 		expectedRecent = append(expectedRecent, seqTracker)
 	}
@@ -1434,7 +1439,9 @@ func TestRecentSequenceHistory(t *testing.T) {
 	db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence)
 
 	// Add another sequence to validate pruning when past max (20)
-	revid, _, err = db.Put("doc1", body)
+	revid, doc, err = db.Put("doc1", body)
+	body[BodyId] = doc.ID
+	body[BodyRev] = revid
 	seqTracker++
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	goassert.True(t, err == nil)
@@ -1444,14 +1451,20 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Ensure pruning works when sequences aren't sequential
 	doc2Body := Body{"val": "two"}
 	for i := 0; i < kMaxRecentSequences; i++ {
-		revid, _, err = db.Put("doc1", body)
+		revid, doc, err = db.Put("doc1", body)
+		body[BodyId] = doc.ID
+		body[BodyRev] = revid
 		seqTracker++
-		revid, _, err = db.Put("doc2", doc2Body)
+		revid, doc, err = db.Put("doc2", doc2Body)
+		doc2Body[BodyId] = doc.ID
+		doc2Body[BodyRev] = revid
 		seqTracker++
 	}
 
 	db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence) //
-	revid, _, err = db.Put("doc1", body)
+	revid, doc, err = db.Put("doc1", body)
+	body[BodyId] = doc.ID
+	body[BodyRev] = revid
 	seqTracker++
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	goassert.True(t, err == nil)
@@ -1471,7 +1484,6 @@ func TestChannelView(t *testing.T) {
 	body := Body{"key1": "value1", "key2": 1234}
 	rev1id, _, err := db.Put("doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
-	goassert.Equals(t, rev1id, body[BodyRev])
 	goassert.Equals(t, rev1id, "1-cb0c9a22be0e5a1b01084ec019defa81")
 
 	var entries LogEntries

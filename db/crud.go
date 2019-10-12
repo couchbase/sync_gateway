@@ -801,9 +801,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		return newDoc, newAttachments, nil, nil
 	})
 
-	body[BodyId] = docid
-	body[BodyRev] = newRevID
-
 	return newRevID, doc, err
 }
 
