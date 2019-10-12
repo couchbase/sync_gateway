@@ -285,10 +285,10 @@ func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte, 
 
 	// Setting the binary flag isn't sufficient to make N1QL ignore the doc - the binary flag is only used by the SDKs.
 	// To ensure it's not available via N1QL, need to prefix the raw bytes with non-JSON data.
-	// Prepending using append/shift/set to reduce garbage.
-	body = append(body, byte(0))
-	copy(body[1:], body[0:])
-	body[0] = nonJSONPrefix
+	// Copying byte slice to make sure we don't modify the version stored in the revcache.
+	nonJSONBytes := make([]byte, 1, len(body)+1)
+	nonJSONBytes[0] = nonJSONPrefix
+	nonJSONBytes = append(nonJSONBytes, body...)
 	err := db.Bucket.SetRaw(oldRevisionKey(docid, revid), expiry, base.BinaryDocument(body))
 	if err == nil {
 		base.Debugf(base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), revid, len(body), expiry)
