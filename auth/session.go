@@ -90,9 +90,9 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 	return session, nil
 }
 
-func (auth *Authenticator) GetSession(sessionid string) (*LoginSession, error) {
+func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, error) {
 	var session LoginSession
-	_, err := auth.bucket.Get(DocIDForSession(sessionid), &session)
+	_, err := auth.bucket.Get(DocIDForSession(sessionID), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			err = nil

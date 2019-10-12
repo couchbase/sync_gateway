@@ -116,3 +116,28 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 	assert.NoError(t, err)
 	goassert.Equals(t, cost, newBcryptCost)
 }
+
+func TestIsValidEmail(t *testing.T) {
+	assert.True(t, IsValidEmail("alice@couchbase.com"))       // Valid Email Address Check
+	assert.True(t, IsValidEmail("a1ice@couchbase.com"))       // Numbers and letters in the address field
+	assert.True(t, IsValidEmail("alice.bob@couchbase.com"))   // Email contains dot in the address field
+	assert.True(t, IsValidEmail("alice@couchbase.lab.com"))   // Email contains dot with sub-domain
+	assert.True(t, IsValidEmail("alice+bob@couchbase.com"))   // Plus sign is considered valid character
+	assert.True(t, IsValidEmail("alice@127.0.0.1"))           // Domain is valid IP address
+	assert.True(t, IsValidEmail("1234567890@couchbase.com"))  // Digits in address are valid
+	assert.True(t, IsValidEmail("alice@couchbase-com"))       // Dash in domain name is valid
+	assert.True(t, IsValidEmail("_______@couchbase-com"))     // Underscore in the address field is valid
+	assert.True(t, IsValidEmail("alice@couchbase.name"))      // .name is valid Top Level Domain name
+	assert.True(t, IsValidEmail("alice@couchbase.co.jp"))     // Dot in Top Level Domain name is considered valid
+	assert.True(t, IsValidEmail("alice-bob@couchbase.co.jp")) // Dash in address field is valid
+
+	assert.False(t, IsValidEmail("aliceatcouchbasedotcom"))          // Missing @ sign and domain
+	assert.False(t, IsValidEmail("#@%^%#$@#$@#.com"))                // Garbage value
+	assert.False(t, IsValidEmail("@couchbase.com"))                  // Missing username
+	assert.False(t, IsValidEmail("Alice Bob <alice@couchbase.com>")) // Encoded html within email is invalid
+	assert.False(t, IsValidEmail("email.couchbase.com"))             // Missing @
+	assert.False(t, IsValidEmail("alice@couchbase@couchbase.com"))   // Two @ sign
+	assert.False(t, IsValidEmail("あいうえお@couchbase.com"))             // Unicode char as address
+	assert.False(t, IsValidEmail("alice@couchbase.com (Alice Bob)")) // Text followed email is not allowed
+	assert.False(t, IsValidEmail("alice@-couchbase.com"))            // Leading dash in front of domain is invalid
+}

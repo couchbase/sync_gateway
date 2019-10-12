@@ -12,14 +12,14 @@ import (
 )
 
 const (
-	Username               = "Alice"
-	TwoHours               = 2 * time.Hour
-	TwentyFourHours        = 24 * time.Hour
-	NoExpiry               = 0
-	NegativeTtl            = -1
-	NoTtl                  = 0
-	ErrorMessageIllegalTtl = "400 Invalid session time-to-live"
-	DefaultURL             = "http://localhost/"
+	Username         = "Alice"
+	TwoHours         = 2 * time.Hour
+	TwentyFourHours  = 24 * time.Hour
+	NoExpiry         = 0
+	NegativeTtl      = -1
+	NoTtl            = 0
+	ErrMsgIllegalTtl = "400 Invalid session time-to-live"
+	DefaultURL       = "http://localhost/"
 )
 
 func TestDocIDForSession(t *testing.T) {
@@ -61,13 +61,13 @@ func TestCreateSession(t *testing.T) {
 	session, err = auth.CreateSession(Username, NoTtl)
 	assert.Nil(t, session)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), ErrorMessageIllegalTtl)
+	assert.Contains(t, err.Error(), ErrMsgIllegalTtl)
 
 	// Session must not be created with negative TTL; it's illegal.
 	session, err = auth.CreateSession(Username, NegativeTtl)
 	assert.Nil(t, session)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), ErrorMessageIllegalTtl)
+	assert.Contains(t, err.Error(), ErrMsgIllegalTtl)
 }
 
 func TestDeleteSession(t *testing.T) {
@@ -136,7 +136,6 @@ func TestDeleteSessionForCookie(t *testing.T) {
 
 	sessionID := base.GenerateRandomSecret()
 	body := strings.NewReader("?")
-
 	request, _ := http.NewRequest(http.MethodPost, DefaultURL, body)
 
 	cookie := &http.Cookie{
