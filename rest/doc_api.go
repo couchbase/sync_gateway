@@ -296,7 +296,6 @@ func (h *handler) handlePutDoc() error {
 
 	var newRev string
 	var doc *db.Document
-	var ok bool
 
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
@@ -316,14 +315,9 @@ func (h *handler) handlePutDoc() error {
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		doc, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
+		doc, newRev, err = h.db.PutExistingRevWithBody(docid, body, revisions, false)
 		if err != nil {
 			return err
-		}
-
-		newRev, ok = body[db.BodyRev].(string)
-		if !ok {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Expected revision id in body _rev field")
 		}
 	}
 

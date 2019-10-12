@@ -83,7 +83,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	var rev2Body Body
 	rev2Data := `{"test": true, "updated": true, "_attachments": {"hello.txt": {"stub": true, "revpos": 1}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
-	_, err = db.PutExistingRevWithBody(docID, rev2Body, []string{"2-abc", rev1ID}, true)
+	_, _, err = db.PutExistingRevWithBody(docID, rev2Body, []string{"2-abc", rev1ID}, true)
 	require.NoError(t, err)
 	rev2ID := "2-abc"
 
@@ -215,7 +215,7 @@ func TestAttachments(t *testing.T) {
 	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
 	var body2B Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev2Bstr), &body2B))
-	_, err = db.PutExistingRevWithBody("doc1", body2B, []string{"2-f000", rev1id}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", body2B, []string{"2-f000", rev1id}, false)
 	assert.NoError(t, err, "Couldn't update document")
 }
 
@@ -324,7 +324,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 			var rev2Body Body
 			rev2Data := `{"prop1":"value2", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 			require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
-			_, err := db.PutExistingRevWithBody("doc1", rev2Body, []string{"2-abc", rev1ID}, true)
+			_, _, err := db.PutExistingRevWithBody("doc1", rev2Body, []string{"2-abc", rev1ID}, true)
 			require.NoError(t, err)
 
 			log.Printf("Done creating rev 2 for key %s", key)
@@ -354,7 +354,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 	var rev3Body Body
 	rev3Data := `{"prop1":"value3", "_attachments": {"hello.txt": {"revpos":2,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev3Data), &rev3Body))
-	_, err = db.PutExistingRevWithBody("doc1", rev3Body, []string{"3-abc", "2-abc", rev1ID}, true)
+	_, _, err = db.PutExistingRevWithBody("doc1", rev3Body, []string{"3-abc", "2-abc", rev1ID}, true)
 	require.NoError(t, err)
 
 	log.Printf("rev 3 done")
@@ -383,7 +383,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 			var rev2Body Body
 			rev2Data := `{"prop1":"value2"}`
 			require.NoError(t, base.JSONUnmarshal([]byte(rev2Data), &rev2Body))
-			_, err := db.PutExistingRevWithBody("doc1", rev2Body, []string{"2-abc", rev1ID}, true)
+			_, _, err := db.PutExistingRevWithBody("doc1", rev2Body, []string{"2-abc", rev1ID}, true)
 			require.NoError(t, err)
 
 			log.Printf("Done creating rev 2 for key %s", key)
@@ -413,7 +413,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	var rev3Body Body
 	rev3Data := `{"prop1":"value3", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	require.NoError(t, base.JSONUnmarshal([]byte(rev3Data), &rev3Body))
-	_, err = db.PutExistingRevWithBody("doc1", rev3Body, []string{"3-abc", "2-abc", rev1ID}, true)
+	_, _, err = db.PutExistingRevWithBody("doc1", rev3Body, []string{"3-abc", "2-abc", rev1ID}, true)
 	require.NoError(t, err)
 
 	log.Printf("rev 3 done")

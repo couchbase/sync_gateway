@@ -64,7 +64,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "version": "1a"}
-	_, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create rev 2-a
@@ -75,7 +75,9 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev2a_body := Body{}
 	rev2a_body["key1"] = prop_1000_bytes
 	rev2a_body["version"] = "2a"
-	_, err = db.PutExistingRevWithBody("doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	doc, newRev, err := db.PutExistingRevWithBody("doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	rev2a_body[BodyId] = doc.ID
+	rev2a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-a")
 
 	// Retrieve the document:
@@ -92,7 +94,9 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev2b_body := Body{}
 	rev2b_body["key1"] = prop_1000_bytes
 	rev2b_body["version"] = "2b"
-	_, err = db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	rev2b_body[BodyId] = doc.ID
+	rev2b_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-b")
 
 	// Retrieve the document:
@@ -133,7 +137,9 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev3b_body := Body{}
 	rev3b_body["version"] = "3b"
 	rev3b_body[BodyDeleted] = true
-	_, err = db.PutExistingRevWithBody("doc1", rev3b_body, []string{"3-b", "2-b"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev3b_body, []string{"3-b", "2-b"}, false)
+	rev3b_body[BodyId] = doc.ID
+	rev3b_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 3-b (tombstone)")
 
 	// Retrieve tombstone
@@ -167,7 +173,9 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev2c_body := Body{}
 	rev2c_body["key1"] = prop_1000_bytes
 	rev2c_body["version"] = "2c"
-	_, err = db.PutExistingRevWithBody("doc1", rev2c_body, []string{"2-c", "1-a"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev2c_body, []string{"2-c", "1-a"}, false)
+	rev2c_body[BodyId] = doc.ID
+	rev2c_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-c")
 
 	// Retrieve the document:
@@ -187,7 +195,9 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev3c_body["version"] = "3c"
 	rev3c_body["key1"] = prop_1000_bytes
 	rev3c_body[BodyDeleted] = true
-	_, err = db.PutExistingRevWithBody("doc1", rev3c_body, []string{"3-c", "2-c"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev3c_body, []string{"3-c", "2-c"}, false)
+	rev3c_body[BodyId] = doc.ID
+	rev3c_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 3-c (large tombstone)")
 
 	// Validate the tombstone is not stored inline (due to small size)
@@ -213,7 +223,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	rev3a_body := Body{}
 	rev3a_body["key1"] = prop_1000_bytes
 	rev3a_body["version"] = "3a"
-	_, err = db.PutExistingRevWithBody("doc1", rev2c_body, []string{"3-a", "2-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", rev2c_body, []string{"3-a", "2-a"}, false)
 	assert.NoError(t, err, "add 3-a")
 
 	revTree, err = getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
@@ -236,7 +246,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	// Create rev 2-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "version": "1a"}
-	_, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create rev 2-a
@@ -247,7 +257,9 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	rev2a_body := Body{}
 	rev2a_body["key1"] = prop_1000_bytes
 	rev2a_body["version"] = "2a"
-	_, err = db.PutExistingRevWithBody("doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	doc, newRev, err := db.PutExistingRevWithBody("doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	rev2a_body[BodyId] = doc.ID
+	rev2a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-a")
 
 	// Retrieve the document:
@@ -264,7 +276,9 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	rev2b_body := Body{}
 	rev2b_body["key1"] = prop_1000_bytes
 	rev2b_body["version"] = "2b"
-	_, err = db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	rev2b_body[BodyId] = doc.ID
+	rev2b_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-b")
 
 	// Retrieve the document:
@@ -307,7 +321,9 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	rev3b_body["version"] = "3b"
 	rev3b_body["key1"] = prop_1000_bytes
 	rev3b_body[BodyDeleted] = true
-	_, err = db.PutExistingRevWithBody("doc1", rev3b_body, []string{"3-b", "2-b"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev3b_body, []string{"3-b", "2-b"}, false)
+	rev3b_body[BodyId] = doc.ID
+	rev3b_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 3-b (tombstone)")
 
 	// Retrieve tombstone
@@ -338,17 +354,17 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	activeRevBody := Body{}
 	activeRevBody["version"] = "...a"
 	activeRevBody["key1"] = prop_1000_bytes
-	_, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"3-a", "2-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"3-a", "2-a"}, false)
 	assert.NoError(t, err, "add 3-a")
-	_, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"4-a", "3-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"4-a", "3-a"}, false)
 	assert.NoError(t, err, "add 4-a")
-	_, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"5-a", "4-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"5-a", "4-a"}, false)
 	assert.NoError(t, err, "add 5-a")
-	_, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"6-a", "5-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"6-a", "5-a"}, false)
 	assert.NoError(t, err, "add 6-a")
-	_, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"7-a", "6-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"7-a", "6-a"}, false)
 	assert.NoError(t, err, "add 7-a")
-	_, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"8-a", "7-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"8-a", "7-a"}, false)
 	assert.NoError(t, err, "add 8-a")
 
 	// Verify that 3-b is still present at this point
@@ -357,7 +373,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	assert.NoError(t, err, "Rev 3-b should still exist")
 
 	// Add one more rev that triggers pruning since gen(9-3) > revsLimit
-	_, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"9-a", "8-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", activeRevBody, []string{"9-a", "8-a"}, false)
 	assert.NoError(t, err, "add 9-a")
 
 	// Verify that 3-b has been pruned
@@ -385,7 +401,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "version": "1a", "large": prop_1000_bytes}
-	_, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create rev 2-a
@@ -394,7 +410,9 @@ func TestOldRevisionStorage(t *testing.T) {
 	// 2-a
 	log.Printf("Create rev 2-a")
 	rev2a_body := Body{"key1": "value2", "version": "2a", "large": prop_1000_bytes}
-	_, err = db.PutExistingRevWithBody("doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	doc, newRev, err := db.PutExistingRevWithBody("doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	rev2a_body[BodyId] = doc.ID
+	rev2a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-a")
 
 	// Retrieve the document:
@@ -412,7 +430,9 @@ func TestOldRevisionStorage(t *testing.T) {
 	// 3-a
 	log.Printf("Create rev 3-a")
 	rev3a_body := Body{"key1": "value2", "version": "3a", "large": prop_1000_bytes}
-	_, err = db.PutExistingRevWithBody("doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false)
+	rev3a_body[BodyId] = doc.ID
+	rev3a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 3-a")
 
 	// Retrieve the document:
@@ -429,7 +449,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	// 3-a
 	log.Printf("Create rev 2-b")
 	rev2b_body := Body{"key1": "value2", "version": "2b", "large": prop_1000_bytes}
-	_, err = db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
 
 	// Retrieve the document:
@@ -452,7 +472,9 @@ func TestOldRevisionStorage(t *testing.T) {
 	// 6-a
 	log.Printf("Create rev 6-a")
 	rev6a_body := Body{"key1": "value2", "version": "6a", "large": prop_1000_bytes}
-	_, err = db.PutExistingRevWithBody("doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false)
+	rev6a_body[BodyId] = doc.ID
+	rev6a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 6-a")
 
 	// Retrieve the document:
@@ -475,7 +497,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	// 6-a
 	log.Printf("Create rev 3-b")
 	rev3b_body := Body{"key1": "value2", "version": "3b", "large": prop_1000_bytes}
-	_, err = db.PutExistingRevWithBody("doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 3-b")
 
 	// Same again and again
@@ -494,12 +516,12 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	log.Printf("Create rev 3-c")
 	rev3c_body := Body{"key1": "value2", "version": "3c", "large": prop_1000_bytes}
-	_, err = db.PutExistingRevWithBody("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 3-c")
 
 	log.Printf("Create rev 3-d")
 	rev3d_body := Body{"key1": "value2", "version": "3d", "large": prop_1000_bytes}
-	_, err = db.PutExistingRevWithBody("doc1", rev3d_body, []string{"3-d", "2-b", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", rev3d_body, []string{"3-d", "2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 3-d")
 
 	// Create new winning revision on 'b' branch.  Triggers movement of 6-a to inline storage.  Force cas retry, check document contents
@@ -518,7 +540,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	//     7-b
 	log.Printf("Create rev 7-b")
 	rev7b_body := Body{"key1": "value2", "version": "7b", "large": prop_1000_bytes}
-	_, err = db.PutExistingRevWithBody("doc1", rev7b_body, []string{"7-b", "6-b", "5-b", "4-b", "3-b"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", rev7b_body, []string{"7-b", "6-b", "5-b", "4-b", "3-b"}, false)
 	assert.NoError(t, err, "add 7-b")
 
 }
@@ -540,7 +562,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "v": "1a"}
-	_, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create rev 2-a
@@ -549,7 +571,9 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// 2-a
 	log.Printf("Create rev 2-a")
 	rev2a_body := Body{"key1": "value2", "v": "2a"}
-	_, err = db.PutExistingRevWithBody("doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	doc, newRev, err := db.PutExistingRevWithBody("doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	rev2a_body[BodyId] = doc.ID
+	rev2a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-a")
 
 	// Retrieve the document:
@@ -566,7 +590,9 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// 3-a
 	log.Printf("Create rev 3-a")
 	rev3a_body := Body{"key1": "value2", "v": "3a"}
-	_, err = db.PutExistingRevWithBody("doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false)
+	rev3a_body[BodyId] = doc.ID
+	rev3a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 3-a")
 
 	// Create rev 2-b
@@ -577,7 +603,9 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// 3-a
 	log.Printf("Create rev 2-b")
 	rev2b_body := Body{"key1": "value2", "v": "2b"}
-	_, err = db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	rev2b_body[BodyId] = doc.ID
+	rev2b_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 2-b")
 
 	// Retrieve the document:
@@ -600,7 +628,9 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// 6-a
 	log.Printf("Create rev 6-a")
 	rev6a_body := Body{"key1": "value2", "v": "6a"}
-	_, err = db.PutExistingRevWithBody("doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false)
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false)
+	rev6a_body[BodyId] = doc.ID
+	rev6a_body[BodyRev] = newRev
 	assert.NoError(t, err, "add 6-a")
 
 	// Retrieve the document:
@@ -624,7 +654,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	// 6-a
 	log.Printf("Create rev 3-b")
 	rev3b_body := Body{"key1": "value2", "v": "3b"}
-	_, err = db.PutExistingRevWithBody("doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 3-b")
 
 	// Same again
@@ -644,7 +674,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	log.Printf("Create rev 3-c")
 	rev3c_body := Body{"key1": "value2", "v": "3c"}
-	_, err = db.PutExistingRevWithBody("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 3-c")
 
 }
@@ -660,7 +690,7 @@ func TestLargeSequence(t *testing.T) {
 
 	// Write a doc via SG
 	body := Body{"key1": "largeSeqTest"}
-	_, err := db.PutExistingRevWithBody("largeSeqDoc", body, []string{"1-a"}, false)
+	_, _, err := db.PutExistingRevWithBody("largeSeqDoc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add largeSeqDoc")
 
 	syncData, err := db.GetDocSyncData("largeSeqDoc")
@@ -736,6 +766,6 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	// 6-a
 	log.Printf("Attempt to create rev 3-c")
 	rev3c_body := Body{"key1": "value2", "v": "3c"}
-	_, err := db.PutExistingRevWithBody("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
+	_, _, err := db.PutExistingRevWithBody("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 3-c")
 }

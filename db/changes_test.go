@@ -329,14 +329,14 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 		// Create child rev 1
 		docBody["child"] = "A"
-		_, err = db.PutExistingRevWithBody(docid, docBody, []string{"2-A", revId}, false)
+		_, _, err = db.PutExistingRevWithBody(docid, docBody, []string{"2-A", revId}, false)
 		if err != nil {
 			b.Fatalf("Error creating child1 rev: %v", err)
 		}
 
 		// Create child rev 2
 		docBody["child"] = "B"
-		_, err = db.PutExistingRevWithBody(docid, docBody, []string{"2-B", revId}, false)
+		_, _, err = db.PutExistingRevWithBody(docid, docBody, []string{"2-B", revId}, false)
 		if err != nil {
 			b.Fatalf("Error creating child2 rev: %v", err)
 		}
