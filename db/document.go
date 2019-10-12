@@ -846,16 +846,23 @@ func (doc *Document) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (doc *Document) MarshalJSON() ([]byte, error) {
-	body := doc._body
-	if body == nil {
-		body = Body{}
-	}
-	body[base.SyncXattrName] = &doc.SyncData
-	data, err := base.JSONMarshal(body)
-	delete(body, base.SyncXattrName)
-	if err != nil {
-		err = pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
+func (doc *Document) MarshalJSON() (data []byte, err error) {
+	if doc._rawBody != nil {
+		data, err = base.InjectJSONProperties(doc._rawBody, base.KVPair{
+			Key: base.SyncXattrName,
+			Val: doc.SyncData,
+		})
+	} else {
+		body := doc._body
+		if body == nil {
+			body = Body{}
+		}
+		body[base.SyncXattrName] = &doc.SyncData
+		data, err = base.JSONMarshal(body)
+		delete(body, base.SyncXattrName)
+		if err != nil {
+			err = pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
+		}
 	}
 	return data, err
 }
@@ -927,15 +934,20 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 }
 
 func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
-
-	body := doc._body
-	// If body is non-empty and non-deleted, unmarshal and return
-	if body != nil {
-		deleted, _ := body[BodyDeleted].(bool)
-		if !deleted {
-			data, err = base.JSONMarshal(body)
-			if err != nil {
-				return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
+	// Grab the rawBody if it's already marshalled, otherwise unmarshal the body
+	if doc._rawBody != nil {
+		data = doc._rawBody
+	} else {
+		body := doc._body
+		// If body is non-empty and non-deleted, unmarshal and return
+		if body != nil {
+			// TODO: Could we check doc.Deleted?
+			deleted, _ := body[BodyDeleted].(bool)
+			if !deleted {
+				data, err = base.JSONMarshal(body)
+				if err != nil {
+					return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
+				}
 			}
 		}
 	}
