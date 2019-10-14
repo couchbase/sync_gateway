@@ -379,8 +379,8 @@ func (h *handler) handleGetRawDoc() error {
 
 	response := map[string]interface{}{}
 
-	if includeDoc {
-		response = doc.Body().Copy(db.BodyDeepCopy)
+	if docBody := doc.Body(); docBody != nil && includeDoc {
+		response = docBody.Copy(db.BodyDeepCopy)
 	}
 
 	if redact {
