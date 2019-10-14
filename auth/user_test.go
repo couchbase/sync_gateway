@@ -177,8 +177,14 @@ func TestGetAddedChannels(t *testing.T) {
 	assert.Nil(t, err)
 	require.NoError(t, user.SetEmail("alice@couchbase.com"))
 
-	user.(*userImpl).setRolesSince(channels.TimedSet{"music": channels.NewVbSimpleSequence(0x5), "video": channels.NewVbSimpleSequence(0x6)})
-	addedChannels := user.(*userImpl).GetAddedChannels(channels.TimedSet{"ESPN": channels.NewVbSimpleSequence(0x5), "HBO": channels.NewVbSimpleSequence(0x6)})
+	user.(*userImpl).setRolesSince(channels.TimedSet{
+		"music": channels.NewVbSimpleSequence(0x5),
+		"video": channels.NewVbSimpleSequence(0x6)})
+
+	addedChannels := user.(*userImpl).GetAddedChannels(channels.TimedSet{
+		"ESPN": channels.NewVbSimpleSequence(0x5),
+		"HBO":  channels.NewVbSimpleSequence(0x6)})
+
 	expectedChannels := channels.SetOf(t, "!", "AMC", "FX", "Hulu", "Netflix", "Spotify", "Youtube")
 	log.Printf("Added Channels: %v", addedChannels)
 	assert.Equal(t, expectedChannels, addedChannels)
