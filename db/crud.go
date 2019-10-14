@@ -969,6 +969,11 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 		if marshalErr != nil {
 			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body for storage in rev tree: %v", marshalErr)
 		}
+
+		if oldBodyJson == nil {
+			oldBodyJson = []byte(`{}`)
+		}
+
 		var kvPairs []base.KVPair
 
 		// Stamp _attachments into the old body we're about to backup

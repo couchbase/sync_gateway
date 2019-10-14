@@ -100,7 +100,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	if existingDoc == nil {
 		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
 	} else if body == nil {
-		return nil, base.ErrEmptyDocument
+		body = Body{}
 	}
 
 	newDoc := &Document{

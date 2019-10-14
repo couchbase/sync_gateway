@@ -218,15 +218,22 @@ func (doc *Document) Body() Body {
 	if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
 		caller = base.GetCallersName(1, true)
 	}
-	if doc._body == nil && doc._rawBody != nil {
-		base.Tracef(base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
-		err := doc._body.Unmarshal(doc._rawBody)
-		if err != nil {
-			base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
-			return nil
-		}
-	} else {
+
+	if doc._body != nil {
 		base.Tracef(base.KeyAll, "Already had doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		return doc._body
+	}
+
+	if doc._rawBody == nil {
+		base.Tracef(base.KeyAll, "Empty doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		return nil
+	}
+
+	base.Tracef(base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+	err := doc._body.Unmarshal(doc._rawBody)
+	if err != nil {
+		base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
+		return nil
 	}
 	return doc._body
 }
@@ -255,16 +262,23 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
 		caller = base.GetCallersName(1, true)
 	}
-	if doc._rawBody == nil && doc._body != nil {
-		base.Tracef(base.KeyAll, "        MARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
-		bodyBytes, err := base.JSONMarshal(doc._body)
-		if err != nil {
-			return nil, pkgerrors.Wrapf(err, "Error marshalling document body")
-		}
-		doc._rawBody = bodyBytes
-	} else {
-		base.Tracef(base.KeyAll, "Already had doc body bytes %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+
+	if doc._rawBody != nil {
+		base.Tracef(base.KeyAll, "Already had doc rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		return doc._rawBody, nil
 	}
+
+	if doc._body == nil {
+		base.Tracef(base.KeyAll, "Empty doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		return nil, nil
+	}
+
+	base.Tracef(base.KeyAll, "        MARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+	bodyBytes, err := base.JSONMarshal(doc._body)
+	if err != nil {
+		return nil, pkgerrors.Wrapf(err, "Error marshalling document body")
+	}
+	doc._rawBody = bodyBytes
 	return doc._rawBody, nil
 }
 
@@ -925,10 +939,9 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		doc._rawBody = data
 	}
 
-	// If there's no body, but there is an xattr, set body as {"_deleted":true} to align with non-xattr handling
+	// If there's no body, but there is an xattr, set deleted flag
 	if len(data) == 0 && len(xdata) > 0 {
-		doc._body = Body{}
-		doc._body[BodyDeleted] = true
+		doc.Deleted = true
 	}
 	return nil
 }
