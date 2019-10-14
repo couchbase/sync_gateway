@@ -1,9 +1,12 @@
 package auth
 
 import (
+	"github.com/stretchr/testify/require"
+	"log"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -157,4 +160,26 @@ func TestCanSeeChannelSince(t *testing.T) {
 		assert.Equal(t, uint64(1), user.CanSeeChannelSince(channel))
 	}
 	assert.Equal(t, uint64(0), user.CanSeeChannelSince("unknown"))
+}
+
+func TestGetAddedChannels(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+	role, _ := auth.NewRole("music", channels.SetOf(t, "Spotify", "Youtube"))
+	assert.Equal(t, nil, auth.Save(role))
+	role, _ = auth.NewRole("video", channels.SetOf(t, "Netflix", "Hulu"))
+	assert.Equal(t, nil, auth.Save(role))
+
+	user, err := auth.NewUser("alice", "password", channels.SetOf(t, "ESPN", "HBO", "FX", "AMC"))
+	assert.Nil(t, err)
+	require.NoError(t, user.SetEmail("alice@couchbase.com"))
+
+	user.(*userImpl).setRolesSince(channels.TimedSet{"music": channels.NewVbSimpleSequence(0x5), "video": channels.NewVbSimpleSequence(0x6)})
+	addedChannels := user.(*userImpl).GetAddedChannels(channels.TimedSet{"ESPN": channels.NewVbSimpleSequence(0x5), "HBO": channels.NewVbSimpleSequence(0x6)})
+	expectedChannels := channels.SetOf(t, "!", "AMC", "FX", "Hulu", "Netflix", "Spotify", "Youtube")
+	log.Printf("Added Channels: %v", addedChannels)
+	assert.Equal(t, expectedChannels, addedChannels)
 }
