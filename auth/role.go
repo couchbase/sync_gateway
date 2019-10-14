@@ -18,7 +18,7 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 )
 
-/** A group that users can belong to, with associated channel permisisons. */
+/** A group that users can belong to, with associated channel permissions. */
 type roleImpl struct {
 	Name_             string      `json:"name,omitempty"`
 	ExplicitChannels_ ch.TimedSet `json:"admin_channels,omitempty"`
