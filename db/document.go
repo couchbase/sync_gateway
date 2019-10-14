@@ -775,7 +775,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	}
 
 	// Construct removal body
-	// FIXME: comment why no docid/revid
+	// doc ID and rev ID aren't required to be inserted here, as both of those are available in the request.
 	if isDelete {
 		bodyBytes = []byte(`{"` + BodyDeleted + `":true,"` + BodyRemoved + `":true}`)
 	} else {
