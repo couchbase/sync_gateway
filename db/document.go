@@ -29,6 +29,9 @@ const MaximumInlineBodySize = 250
 
 type DocumentUnmarshalLevel uint8
 
+// emptyDoc denotes an empty JSON document
+const emptyDoc = `{}`
+
 const (
 	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // Unmarshals sync metadata and body
 	DocUnmarshalSync                                     // Unmarshals all sync metadata
@@ -226,7 +229,9 @@ func (doc *Document) Body() Body {
 
 	if doc._rawBody == nil {
 		base.Tracef(base.KeyAll, "Empty doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
-		return nil
+		doc._body = Body{}
+		doc._rawBody = []byte(emptyDoc)
+		return doc._body
 	}
 
 	base.Tracef(base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
@@ -270,7 +275,9 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 
 	if doc._body == nil {
 		base.Tracef(base.KeyAll, "Empty doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
-		return nil, nil
+		doc._body = Body{}
+		doc._rawBody = []byte(emptyDoc)
+		return doc._rawBody, nil
 	}
 
 	base.Tracef(base.KeyAll, "        MARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
