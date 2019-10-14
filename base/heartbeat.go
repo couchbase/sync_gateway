@@ -1,8 +1,11 @@
 package base
 
 import (
+	"errors"
 	"sync"
 	"time"
+
+	"github.com/couchbase/cbgt"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 )
@@ -49,6 +52,7 @@ type HeartbeatNodeSetHandler interface {
 	AddNode(nodeID string) error
 	RemoveNode(nodeID string) error
 	GetNodes() ([]string, error)
+	Stop()
 }
 
 type heartbeatMeta struct {
@@ -173,6 +177,7 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, han
 			select {
 			case _ = <-h.heartbeatCheckCloser:
 				ticker.Stop()
+				h.heartbeatHandler.Stop()
 				return
 			case <-ticker.C:
 				if err := h.checkStaleHeartbeats(staleThresholdMs, handler); err != nil {
@@ -196,22 +201,23 @@ func (h *couchbaseHeartBeater) GetNodeList() ([]string, error) {
 
 func (h *couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handler HeartbeatsStoppedHandler) error {
 
-	// query view to get all heartbeat docs
-	heartbeatDocs, err := h.heartbeatHandler.GetNodes()
+	// Get node set
+	heartbeatNodes, err := h.heartbeatHandler.GetNodes()
 	if err != nil {
 		return err
 	}
+	Debugf(KeyDCP, "Checking heartbeats for nodes: %v", heartbeatNodes)
 
-	for _, heartbeatDocID := range heartbeatDocs {
-		if heartbeatDocID == h.nodeUuid {
+	for _, heartbeatNodeUUID := range heartbeatNodes {
+		if heartbeatNodeUUID == h.nodeUuid {
 			// that's us, and we don't care about ourselves
 			continue
 		}
-		if heartbeatDocID == "" {
+		if heartbeatNodeUUID == "" {
 			continue
 		}
 
-		timeoutDocId := heartbeatTimeoutDocId(heartbeatDocID, h.keyPrefix)
+		timeoutDocId := heartbeatTimeoutDocId(heartbeatNodeUUID, h.keyPrefix)
 		_, _, err := h.bucket.GetRaw(timeoutDocId)
 		if err != nil {
 			if !IsKeyNotFoundError(h.bucket, err) {
@@ -221,13 +227,13 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handle
 
 			// doc not found, which means the heartbeat doc expired.
 			// call back the handler.
-			handler.StaleHeartBeatDetected(heartbeatDocID)
+			handler.StaleHeartBeatDetected(heartbeatNodeUUID)
 
 			// delete the heartbeat doc itself so we don't have unwanted
 			// repeated callbacks to the stale heartbeat handler
-			err := h.heartbeatHandler.RemoveNode(heartbeatDocID)
+			err := h.heartbeatHandler.RemoveNode(heartbeatNodeUUID)
 			if err != nil {
-				Infof(KeyImport, "Failed to remove node for node ID:%v err: %v", heartbeatDocID, err)
+				Infof(KeyImport, "Failed to remove node for node ID:%v err: %v", heartbeatNodeUUID, err)
 			}
 		}
 
@@ -272,12 +278,11 @@ func (h *couchbaseHeartBeater) upsertHeartbeatTimeoutDoc(intervalSeconds int) er
 
 	docId := heartbeatTimeoutDocId(h.nodeUuid, h.keyPrefix)
 
-	// make the expire time double the interval time, to ensure there is
+	// make the expire time double the touch interval time, to ensure there is
 	// always a heartbeat timeout document present under normal operation
 	expireTimeSeconds := intervalSeconds * 2
 
 	_, touchErr := h.bucket.Touch(docId, uint32(expireTimeSeconds))
-
 	if touchErr == nil {
 		return nil
 	}
@@ -331,6 +336,10 @@ func (dh *documentBackedNodeListHandler) GetNodes() ([]string, error) {
 	err := dh.loadNodeIDs()
 	dh.lock.Unlock()
 	return dh.nodeIDs, err
+}
+
+func (dh *documentBackedNodeListHandler) Stop() {
+	return
 }
 
 // Adds or removes a nodeID from the node list document
@@ -496,4 +505,108 @@ func (vh *viewBackedNodeListHandler) viewQueryHeartbeatDocs() ([]string, error) 
 
 	return nodeIDs, nil
 
+}
+
+func (vh *viewBackedNodeListHandler) Stop() {
+	return
+}
+
+// cbgtNodeListHandler uses cbgt's cfg to manage node list
+// TODO: should this build a superset of KNOWN and WANTED?
+type cbgtNodeListHandler struct {
+	cfg        cbgt.Cfg      // cbgt Config
+	terminator chan struct{} // close cfg subscription on close
+	nodeIDs    []string      // Set of nodes from the latest retrieval
+	lock       sync.RWMutex  // lock for nodeIDs access
+}
+
+func NewCBGTNodeListHandler(cfg cbgt.Cfg) (*cbgtNodeListHandler, error) {
+
+	if cfg == nil {
+		return nil, errors.New("Manager Cfg must not be nil for CBGTNodeListHandler")
+	}
+
+	handler := &cbgtNodeListHandler{
+		cfg:        cfg,
+		terminator: make(chan struct{}),
+	}
+
+	// Initialize the node set
+	err := handler.reloadNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Subscribe to changes to the known node set key
+	err = handler.subscribeNodeChanges()
+	if err != nil {
+		return nil, err
+	}
+
+	return handler, nil
+}
+
+// subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
+// NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
+func (ch *cbgtNodeListHandler) subscribeNodeChanges() error {
+
+	cfgEvents := make(chan cbgt.CfgEvent)
+	ch.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
+	go func() {
+		for {
+			select {
+			case <-cfgEvents:
+				err := ch.reloadNodes()
+				if err != nil {
+					Warnf(KeyDCP, "Error while reloading heartbeat node definitions: %v", err)
+				}
+			case <-ch.terminator:
+				return
+			}
+		}
+	}()
+	return nil
+}
+
+func (ch *cbgtNodeListHandler) reloadNodes() error {
+
+	nodeSet, _, err := cbgt.CfgGetNodeDefs(ch.cfg, cbgt.NODE_DEFS_KNOWN)
+	if err != nil {
+		return err
+	}
+
+	nodeUUIDs := make([]string, 0)
+	for _, nodeDef := range nodeSet.NodeDefs {
+		nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
+	}
+
+	ch.lock.Lock()
+	ch.nodeIDs = nodeUUIDs
+	ch.lock.Unlock()
+
+	return nil
+}
+
+// AddNode is a no-op for cbgtNodeListHandler.  Nodes self-register with the cfg on startup
+func (ch *cbgtNodeListHandler) AddNode(nodeID string) error {
+	return nil
+}
+
+// RemoveNode is a no-op for cbgtNodeListHandler.  cbgt manages removal via the associated HeartbeatsStoppedHandler
+func (ch *cbgtNodeListHandler) RemoveNode(nodeID string) error {
+	return nil
+}
+
+// GetNodes returns a copy of the in-memory node set
+func (ch *cbgtNodeListHandler) GetNodes() ([]string, error) {
+
+	ch.lock.RLock()
+	nodeIDsCopy := make([]string, len(ch.nodeIDs))
+	copy(nodeIDsCopy, ch.nodeIDs)
+	ch.lock.RUnlock()
+	return nodeIDsCopy, nil
+}
+
+func (ch *cbgtNodeListHandler) Stop() {
+	close(ch.terminator)
 }

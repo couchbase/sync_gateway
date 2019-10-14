@@ -12,10 +12,13 @@ import (
 // init registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
 // vbuckets) is assigned to this node.
 func (il *importListener) RegisterImportPindexImpl() {
+
+	base.Infof(base.KeyDCP, "Registering PindexImplType for %s", base.CBGTIndexTypeSyncGatewayImport)
 	cbgt.RegisterPIndexImplType(base.CBGTIndexTypeSyncGatewayImport,
 		&cbgt.PIndexImplType{
-			New:  il.NewImportPIndexImpl,
-			Open: il.OpenImportPIndexImpl,
+			New:       il.NewImportPIndexImpl,
+			Open:      il.OpenImportPIndexImpl,
+			OpenUsing: il.OpenImportPIndexImplUsing,
 			Description: "general/syncGateway-import " +
 				" - import processing for shared bucket access",
 		})
@@ -27,6 +30,7 @@ func (il *importListener) NewImportPIndexImpl(indexType, indexParams, path strin
 
 	// TODO: Would really rather not require any file persistence here
 	// https://issues.couchbase.com/browse/MB-36085
+	base.Infof(base.KeyDCP, "NewImportPindexImpl - indexType %s, path %s", indexType, path)
 
 	// Create the pindex-specific path
 	err := os.MkdirAll(path, 0700)
@@ -35,15 +39,24 @@ func (il *importListener) NewImportPIndexImpl(indexType, indexParams, path strin
 	}
 
 	importDest, err := il.NewImportDest()
+	if err != nil {
+		base.Errorf(base.KeyDCP, "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
+	}
 	return nil, importDest, err
 }
 
 func (il *importListener) OpenImportPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+
+	base.Infof(base.KeyDCP, "OpenImportPindexImpl - indexType %s, path %s", indexType, path)
 	importDest, err := il.NewImportDest()
+	if err != nil {
+		base.Errorf(base.KeyDCP, "Error creating NewImportDest during OpenImportPIndexImpl: %v", err)
+	}
 	return nil, importDest, err
 }
 
 func (il *importListener) OpenImportPIndexImplUsing(indexType, path, indexParams string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
+	base.Infof(base.KeyDCP, "OpenImportPindexImplUsing - indexType %s, path %s", indexType, path)
 	return il.OpenImportPIndexImpl(indexType, path, restart)
 }
 
