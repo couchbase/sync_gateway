@@ -1,7 +1,6 @@
 package base
 
 import (
-	"log"
 	"os"
 	"strings"
 
@@ -237,22 +236,12 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
 func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec) (err error) {
-	// TODO: Unclear on the functional difference between registering the manager as 'wanted' vs 'known'.
 
+	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
 	if err := c.Manager.Start(registerType); err != nil {
 		Errorf(KeyDCP, "cbgt Manager start failed: %v", err)
 		return err
-	}
-
-	wanted, err := c.Manager.GetNodeDefs(cbgt.NODE_DEFS_WANTED, true)
-	for key, def := range wanted.NodeDefs {
-		log.Printf("Wanted nodedef [%s]: %+v", key, def)
-	}
-
-	known, err := c.Manager.GetNodeDefs(cbgt.NODE_DEFS_KNOWN, true)
-	for key, def := range known.NodeDefs {
-		log.Printf("Known nodedef [%s]: %+v", key, def)
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
