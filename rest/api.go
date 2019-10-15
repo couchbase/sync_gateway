@@ -348,6 +348,13 @@ func (h *handler) handlePprofProfile() error {
 }
 
 func (h *handler) handlePprofBlock() error {
+	sec, err := strconv.ParseInt(h.rq.FormValue("seconds"), 10, 64)
+	if sec <= 0 || err != nil {
+		sec = 30
+	}
+	runtime.SetBlockProfileRate(1)
+	defer runtime.SetBlockProfileRate(0)
+	time.Sleep(time.Duration(sec) * time.Second)
 	httpprof.Handler("block").ServeHTTP(h.response, h.rq)
 	return nil
 }
