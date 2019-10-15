@@ -576,8 +576,10 @@ func (ch *cbgtNodeListHandler) reloadNodes() error {
 	}
 
 	nodeUUIDs := make([]string, 0)
-	for _, nodeDef := range nodeSet.NodeDefs {
-		nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
+	if nodeSet != nil {
+		for _, nodeDef := range nodeSet.NodeDefs {
+			nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
+		}
 	}
 
 	ch.lock.Lock()
