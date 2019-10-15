@@ -17,7 +17,9 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
 	"sync/atomic"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -356,6 +358,13 @@ func (h *handler) handlePprofThreadcreate() error {
 }
 
 func (h *handler) handlePprofMutex() error {
+	sec, err := strconv.ParseInt(h.rq.FormValue("seconds"), 10, 64)
+	if sec <= 0 || err != nil {
+		sec = 30
+	}
+	runtime.SetMutexProfileFraction(1)
+	defer runtime.SetMutexProfileFraction(0)
+	time.Sleep(time.Duration(sec) * time.Second)
 	httpprof.Handler("mutex").ServeHTTP(h.response, h.rq)
 	return nil
 }
