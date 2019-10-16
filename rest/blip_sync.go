@@ -592,7 +592,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 	output := bytes.NewBuffer(make([]byte, 0, 100*len(changeList)))
 	output.Write([]byte("["))
-	jsonOutput := base.JSONEncoderCanonical(output)
+	jsonOutput := base.JSONEncoder(output)
 	nWritten := 0
 
 	// Include changes messages w/ proposeChanges stats, although CBL should only be using proposeChanges
