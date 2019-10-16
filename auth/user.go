@@ -29,7 +29,7 @@ type userImpl struct {
 	roles []Role
 }
 
-// Marshalable data is stored in separate struct from userImpl,
+// Marshallable data is stored in separate struct from userImpl,
 // to work around limitations of JSON marshaling.
 type userImplBody struct {
 	Email_           string      `json:"email,omitempty"`
