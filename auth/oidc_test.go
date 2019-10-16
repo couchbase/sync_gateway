@@ -15,7 +15,6 @@ import (
 
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -86,7 +85,7 @@ func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.Name, func(tt *testing.T) {
 			provider := test.ProviderMap.GetDefaultProvider()
-			goassert.Equals(tt, provider, test.ExpectedProvider)
+			assert.Equal(tt, test.ExpectedProvider, provider)
 		})
 	}
 }
@@ -152,7 +151,7 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.Name, func(tt *testing.T) {
 			provider := providerMap.GetProviderForIssuer(test.Issuer, test.Audiences)
-			goassert.Equals(tt, provider, test.ExpectedProvider)
+			assert.Equal(tt, test.ExpectedProvider, provider)
 		})
 	}
 }
@@ -166,24 +165,24 @@ func TestOIDCUsername(t *testing.T) {
 
 	err := provider.InitUserPrefix()
 	assert.NoError(t, err)
-	goassert.Equals(t, provider.UserPrefix, "www.someprovider.com")
+	assert.Equal(t, "www.someprovider.com", provider.UserPrefix)
 
 	// test username suffix
 	oidcUsername := GetOIDCUsername(&provider, "bernard")
-	goassert.Equals(t, oidcUsername, "www.someprovider.com_bernard")
-	goassert.Equals(t, IsValidPrincipalName(oidcUsername), true)
+	assert.Equal(t, "www.someprovider.com_bernard", oidcUsername)
+	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test char escaping
 	oidcUsername = GetOIDCUsername(&provider, "{bernard}")
-	goassert.Equals(t, oidcUsername, "www.someprovider.com_%7Bbernard%7D")
-	goassert.Equals(t, IsValidPrincipalName(oidcUsername), true)
+	assert.Equal(t, "www.someprovider.com_%7Bbernard%7D", oidcUsername)
+	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test URL with paths
 	provider.UserPrefix = ""
 	provider.Issuer = "http://www.someprovider.com/extra"
 	err = provider.InitUserPrefix()
 	assert.NoError(t, err)
-	goassert.Equals(t, provider.UserPrefix, "www.someprovider.com%2Fextra")
+	assert.Equal(t, "www.someprovider.com%2Fextra", provider.UserPrefix)
 
 	// test invalid URL
 	provider.UserPrefix = ""
@@ -191,7 +190,7 @@ func TestOIDCUsername(t *testing.T) {
 	err = provider.InitUserPrefix()
 	assert.NoError(t, err)
 	// falls back to provider name:
-	goassert.Equals(t, provider.UserPrefix, "Some_Provider")
+	assert.Equal(t, "Some_Provider", provider.UserPrefix)
 
 }
 
@@ -244,18 +243,18 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 		t.Run(test.Name, func(tt *testing.T) {
 			err := test.Provider.InitOIDCClient()
 			if test.ErrContains != "" {
-				goassert.NotEquals(tt, err, nil)
-				goassert.StringContains(tt, err.Error(), test.ErrContains)
+				assert.Error(t, err)
+				assert.Contains(tt, err.Error(), test.ErrContains)
 			} else {
-				goassert.Equals(tt, err, nil)
+				assert.NoError(t, err)
 			}
 
 			if test.Provider != nil {
 				client := test.Provider.GetClient(func() string { return "" })
 				if test.ExpectOIDCClient {
-					goassert.NotEquals(tt, client, (*oidc.Client)(nil))
+					assert.NotEqual(tt, (*oidc.Client)(nil), client)
 				} else {
-					goassert.Equals(tt, client, (*oidc.Client)(nil))
+					assert.Equal(tt, (*oidc.Client)(nil), client)
 				}
 			}
 		})
@@ -270,7 +269,7 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 // See https://github.com/couchbase/sync_gateway/issues/3065
 func TestFetchCustomProviderConfig(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() {
+	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only enabled in integration test mode due to remote webserver dependencies")
 	}
 
@@ -282,7 +281,28 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 	for _, discoveryUrl := range providerDiscoveryUrls {
 		oidcProvider := OIDCProvider{}
 		_, err := oidcProvider.FetchCustomProviderConfig(discoveryUrl)
-		goassert.True(t, err == nil)
+		assert.True(t, err == nil)
 	}
 
+}
+
+// Check fetching custom provider configuration with blank or empty provider
+// discovery URL. If discovery URL is empty, it must use the standard discovery
+// URL. Fetching  custom provider configuration should fail while sending HTTP
+// request. Error message should contain 'unsupported protocol scheme'.
+func TestFetchCustomProviderConfigWithEmptyURL(t *testing.T) {
+	provider := OIDCProvider{}
+	_, err := provider.FetchCustomProviderConfig("")
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "unsupported protocol scheme")
+}
+
+// Check fetching custom provider configuration with bad or unknown provider
+// discovery URL. Fetching  custom provider configuration should fail while
+// sending HTTP request. Error message should contain 'no such host'.
+func TestFetchCustomProviderConfigWithBadURL(t *testing.T) {
+	provider := OIDCProvider{}
+	_, err := provider.FetchCustomProviderConfig("https://accounts.unknown.com")
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "no such host")
 }
