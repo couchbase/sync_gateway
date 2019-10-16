@@ -481,6 +481,11 @@ func TestCORSOrigin(t *testing.T) {
 }
 
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 

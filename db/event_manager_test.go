@@ -384,6 +384,10 @@ func InitWebhookTest() (*httptest.Server, *WebhookRequest) {
 
 func TestWebhookBasic(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	ts, wr := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL
@@ -520,6 +524,10 @@ func TestWebhookBasic(t *testing.T) {
 // function is expecting an old doc revision.
 func TestWebhookOldDoc(t *testing.T) {
 
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	ts, wr := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL
@@ -649,6 +657,10 @@ func TestWebhookOldDoc(t *testing.T) {
 }
 
 func TestWebhookTimeout(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyEvents)()
 	ts, wr := InitWebhookTest()

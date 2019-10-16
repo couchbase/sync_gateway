@@ -48,6 +48,11 @@ func TestVerifyFacebook(t *testing.T) {
 // This test exists because there have been problems with builds of Go being unable to make HTTPS
 // connections due to the TLS package missing the Cgo bits needed to load system root certs.
 func TestVerifyHTTPSSupport(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
 	resp, err := http.Get("https://google.com")
 	if err != nil {
 		// Skip test if dial tcp fails with no such host.
