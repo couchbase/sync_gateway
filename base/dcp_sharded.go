@@ -192,9 +192,19 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 	bindHttp := uuid
 
 	// serverURL: Passing gocb connect string.
-	serverURL, err := spec.GetGoCBConnString()
-	if err != nil {
-		return nil, err
+	var serverURL string
+	if feedType == cbgtFeedType_cbdatasource {
+		// cbdatasource expects server URL in http format
+		serverURLs, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server)
+		if errConvertServerSpec != nil {
+			return nil, errConvertServerSpec
+		}
+		serverURL = strings.Join(serverURLs, ";")
+	} else {
+		serverURL, err = spec.GetGoCBConnString()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// dataDir: file system location for files persisted by cbgt.  Needs to be unique
