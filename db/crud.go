@@ -1224,13 +1224,11 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 
 	syncFnBody := newDoc.GetMutableBody()
 
-	// FIXME: seems a bit late to do this. Could we move it earlier?
+	// TODO: seems a bit late to do this. Could we move it earlier?
 	err = validateNewBody(syncFnBody)
 	if err != nil {
 		return
 	}
-
-	// FIXME: Used to strip special properties here... do we still need to?
 
 	newRevID := newDoc.RevID
 	prevCurrentRev := doc.CurrentRev
