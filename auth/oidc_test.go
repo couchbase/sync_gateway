@@ -269,7 +269,7 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 // See https://github.com/couchbase/sync_gateway/issues/3065
 func TestFetchCustomProviderConfig(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() {
+	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is only enabled in integration test mode due to remote webserver dependencies")
 	}
 
@@ -281,7 +281,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 	for _, discoveryUrl := range providerDiscoveryUrls {
 		oidcProvider := OIDCProvider{}
 		_, err := oidcProvider.FetchCustomProviderConfig(discoveryUrl)
-		assert.True(t, err == nil)
+		assert.NoError(t, err)
 	}
 
 }
