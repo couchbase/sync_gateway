@@ -1592,7 +1592,24 @@ func TestChangesIncludeDocs(t *testing.T) {
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
 		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, expectedChange, result)
+
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Err, result.Err)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
+
+		if expectedChange.Doc != nil {
+			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
+			var expectedBody db.Body
+			var resultBody db.Body
+			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
+			assert.NoError(t, resultBody.Unmarshal(result.Doc))
+			db.AssertEqualBodies(t, expectedBody, resultBody)
+		} else {
+			assert.Equal(t, expectedChange.Doc, result.Doc)
+		}
 	}
 
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
@@ -1609,7 +1626,24 @@ func TestChangesIncludeDocs(t *testing.T) {
 	for index, result := range postFlushChanges.Results {
 		var expectedChange db.ChangeEntry
 		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, expectedChange, result)
+
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Err, result.Err)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
+
+		if expectedChange.Doc != nil {
+			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
+			var expectedBody db.Body
+			var resultBody db.Body
+			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
+			assert.NoError(t, resultBody.Unmarshal(result.Doc))
+			db.AssertEqualBodies(t, expectedBody, resultBody)
+		} else {
+			assert.Equal(t, expectedChange.Doc, result.Doc)
+		}
 	}
 
 	// Validate include_docs=false, style=all_docs permutations

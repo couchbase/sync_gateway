@@ -939,8 +939,10 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		doc._rawBody = data
 	}
 
-	// If there's no body, but there is an xattr, set deleted flag
+	// If there's no body, but there is an xattr, set deleted flag and initialize an empty body
 	if len(data) == 0 && len(xdata) > 0 {
+		doc._body = Body{}
+		doc._rawBody = []byte(`{}`)
 		doc.Deleted = true
 	}
 	return nil
