@@ -25,9 +25,6 @@ func NewImportListener() *importListener {
 		terminator: make(chan bool),
 	}
 
-	// Register cbgt PIndex to support sharded import.
-	importListener.RegisterImportPindexImpl()
-
 	return importListener
 }
 
@@ -50,6 +47,9 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 	if !ok {
 		return errors.New("Import feed stats map not initialized")
 	}
+
+	// Register cbgt PIndex to support sharded import.
+	il.RegisterImportPindexImpl()
 
 	// Start DCP mutation feed
 	base.Infof(base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))

@@ -13,8 +13,13 @@ import (
 // vbuckets) is assigned to this node.
 func (il *importListener) RegisterImportPindexImpl() {
 
-	base.Infof(base.KeyDCP, "Registering PindexImplType for %s", base.CBGTIndexTypeSyncGatewayImport)
-	cbgt.RegisterPIndexImplType(base.CBGTIndexTypeSyncGatewayImport,
+	// Since RegisterPIndexImplType is a global var, index type needs to be database-scoped to support
+	// running multiple databases.  This avoids requiring a database lookup based in indexParams at PIndex creation
+	// time, which introduces deadlock potential
+
+	pIndexType := base.CBGTIndexTypeSyncGatewayImport + il.database.Name
+	base.Infof(base.KeyDCP, "Registering PindexImplType for %s", pIndexType)
+	cbgt.RegisterPIndexImplType(pIndexType,
 		&cbgt.PIndexImplType{
 			New:       il.NewImportPIndexImpl,
 			Open:      il.OpenImportPIndexImpl,
@@ -30,7 +35,7 @@ func (il *importListener) NewImportPIndexImpl(indexType, indexParams, path strin
 
 	// TODO: Would really rather not require any file persistence here
 	// https://issues.couchbase.com/browse/MB-36085
-	base.Infof(base.KeyDCP, "NewImportPindexImpl - indexType %s, path %s", indexType, path)
+	base.Infof(base.KeyDCP, "NewImportPindexImpl - indexType %s, path %s, params %v", indexType, path, indexParams)
 
 	// Create the pindex-specific path
 	err := os.MkdirAll(path, 0700)
@@ -56,7 +61,7 @@ func (il *importListener) OpenImportPIndexImpl(indexType, path string, restart f
 }
 
 func (il *importListener) OpenImportPIndexImplUsing(indexType, path, indexParams string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-	base.Infof(base.KeyDCP, "OpenImportPindexImplUsing - indexType %s, path %s", indexType, path)
+	base.Infof(base.KeyDCP, "OpenImportPindexImplUsing - indexType %s, path %s, params %v", indexType, path, indexParams)
 	return il.OpenImportPIndexImpl(indexType, path, restart)
 }
 

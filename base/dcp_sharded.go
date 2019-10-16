@@ -10,7 +10,7 @@ import (
 	pkgerrors "github.com/pkg/errors"
 )
 
-const CBGTIndexTypeSyncGatewayImport = "syncGateway-import"
+const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
@@ -106,16 +106,17 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 	indexName := dbName + "_import"
 
 	_, previousIndexUUID, err := getCBGTIndexUUID(manager, indexName)
+	indexType := CBGTIndexTypeSyncGatewayImport + dbName
 	err = manager.CreateIndex(
-		sourceType,                     // sourceType
-		bucket.GetName(),               // sourceName
-		bucketUUID,                     // sourceUUID
-		sourceParams,                   // sourceParams
-		CBGTIndexTypeSyncGatewayImport, // indexType
-		indexName,                      // indexName
-		indexParams,                    // indexParams
-		planParams,                     // planParams
-		previousIndexUUID,              // prevIndexUUID
+		sourceType,        // sourceType
+		bucket.GetName(),  // sourceName
+		bucketUUID,        // sourceUUID
+		sourceParams,      // sourceParams
+		indexType,         // indexType
+		indexName,         // indexName
+		indexParams,       // indexParams
+		planParams,        // planParams
+		previousIndexUUID, // prevIndexUUID
 	)
 	manager.Kick("NewIndexesCreated")
 
