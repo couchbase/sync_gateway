@@ -352,10 +352,15 @@ func (h *handler) handlePprofBlock() error {
 	if sec <= 0 || err != nil {
 		sec = 30
 	}
+	if h.server.blockRunning.IsTrue() {
+		return base.HTTPErrorf(http.StatusForbidden, "Can only run one block profile at a time")
+	}
+	h.server.blockRunning.Set(true)
 	runtime.SetBlockProfileRate(1)
 	defer runtime.SetBlockProfileRate(0)
-	time.Sleep(time.Duration(sec) * time.Second)
+	sleep(h.rq, time.Duration(sec)*time.Second)
 	httpprof.Handler("block").ServeHTTP(h.response, h.rq)
+	h.server.blockRunning.Set(false)
 	return nil
 }
 
@@ -369,15 +374,28 @@ func (h *handler) handlePprofMutex() error {
 	if sec <= 0 || err != nil {
 		sec = 30
 	}
+	if h.server.mutexRunning.IsTrue() {
+		return base.HTTPErrorf(http.StatusForbidden, "Can only run one mutex profile at a time")
+	}
+	h.server.mutexRunning.Set(true)
 	runtime.SetMutexProfileFraction(1)
 	defer runtime.SetMutexProfileFraction(0)
-	time.Sleep(time.Duration(sec) * time.Second)
+	sleep(h.rq, time.Duration(sec)*time.Second)
 	httpprof.Handler("mutex").ServeHTTP(h.response, h.rq)
+	h.server.mutexRunning.Set(false)
 	return nil
 }
 
 type stats struct {
 	MemStats runtime.MemStats
+}
+
+func sleep(rq *http.Request, d time.Duration) {
+	select {
+	case <-time.After(d):
+	case <-rq.Context().Done():
+	}
+	fmt.Println("Done")
 }
 
 // ADMIN API to expose runtime and other stats

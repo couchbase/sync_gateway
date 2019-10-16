@@ -46,6 +46,8 @@ type ServerContext struct {
 	statsContext *statsContext
 	HTTPClient   *http.Client
 	replicator   *base.Replicator
+	mutexRunning base.AtomicBool
+	blockRunning base.AtomicBool
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
