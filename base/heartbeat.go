@@ -558,7 +558,7 @@ func (ch *cbgtNodeListHandler) subscribeNodeChanges() error {
 			case <-cfgEvents:
 				err := ch.reloadNodes()
 				if err != nil {
-					Warnf(KeyDCP, "Error while reloading heartbeat node definitions: %v", err)
+					Warnf(KeyAll, "Error while reloading heartbeat node definitions: %v", err)
 				}
 			case <-ch.terminator:
 				return

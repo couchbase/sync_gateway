@@ -2,6 +2,7 @@ package base
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/couchbase/cbgt"
@@ -152,7 +153,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 
 	cfgCB, err := initCfgCB(bucket, spec)
 	if err != nil {
-		Warnf(KeyDCP, "Error initializing cfg for import sharding: %v", err)
+		Warnf(KeyAll, "Error initializing cfg for import sharding: %v", err)
 		return nil, err
 	}
 
@@ -198,7 +199,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 	// dataDir: file system location for files persisted by cbgt.  Needs to be unique
 	// per database
 
-	dataDir := os.TempDir() + "sg_" + dbName
+	dataDir := filepath.Join(os.TempDir(), "sg_"+dbName)
 	// TODO: Would really not have to persist here
 	// Create the db-scoped path
 	err = os.MkdirAll(dataDir, 0700)
@@ -332,6 +333,6 @@ func (h HeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUUID string) {
 	Debugf(KeyDCP, "StaleHeartBeatDetected for node: %v", nodeUUID)
 	err := cbgt.UnregisterNodes(h.Cfg, h.Manager.Version(), []string{nodeUUID})
 	if err != nil {
-		Warnf(KeyDCP, "base.Warning: attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
+		Warnf(KeyAll, "base.Warning: attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
 	}
 }
