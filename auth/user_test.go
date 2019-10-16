@@ -1,13 +1,13 @@
 package auth
 
 import (
-	"github.com/stretchr/testify/require"
 	"log"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -168,9 +168,13 @@ func TestGetAddedChannels(t *testing.T) {
 	defer testBucket.Close()
 
 	auth := NewAuthenticator(testBucket.Bucket, nil)
-	role, _ := auth.NewRole("music", channels.SetOf(t, "Spotify", "Youtube"))
+
+	role, err := auth.NewRole("music", channels.SetOf(t, "Spotify", "Youtube"))
+	assert.Nil(t, err)
 	assert.Equal(t, nil, auth.Save(role))
-	role, _ = auth.NewRole("video", channels.SetOf(t, "Netflix", "Hulu"))
+
+	role, err = auth.NewRole("video", channels.SetOf(t, "Netflix", "Hulu"))
+	assert.Nil(t, err)
 	assert.Equal(t, nil, auth.Save(role))
 
 	user, err := auth.NewUser("alice", "password", channels.SetOf(t, "ESPN", "HBO", "FX", "AMC"))
@@ -188,4 +192,121 @@ func TestGetAddedChannels(t *testing.T) {
 	expectedChannels := channels.SetOf(t, "!", "AMC", "FX", "Hulu", "Netflix", "Spotify", "Youtube")
 	log.Printf("Added Channels: %v", addedChannels)
 	assert.Equal(t, expectedChannels, addedChannels)
+}
+
+// Needless to say; must not authenticate with nil user reference;
+func TestUserAuthenticateWithNilUserReference(t *testing.T) {
+	var nouser *userImpl
+	assert.False(t, nouser.Authenticate("password"))
+}
+
+// Must not authenticate if the user account is disabled.
+func TestUserAuthenticateWithDisabledUserAccount(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	const (
+		username = "alice"
+		password = "hunter2"
+	)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	user, err := auth.NewUser(username, password, base.Set{})
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+
+	user.SetDisabled(true)
+	assert.True(t, user.Disabled())
+	assert.False(t, user.Authenticate(password))
+}
+
+// Must not authenticate if old hash is present.
+// Password must be reset to use new (bcrypt) password hash.
+func TestUserAuthenticateWithOldPasswordHash(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	const (
+		username = "alice"
+		password = "hunter2"
+	)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	user, err := auth.NewUser(username, password, base.Set{})
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+
+	passwordHash := user.(*userImpl).PasswordHash_
+	user.(*userImpl).OldPasswordHash_ = passwordHash
+	assert.False(t, user.Authenticate(password))
+}
+
+// Must not authenticate with bad password hash
+func TestUserAuthenticateWithBadPasswordHash(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	const (
+		username = "alice"
+		password = "hunter2"
+	)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	user, err := auth.NewUser(username, password, base.Set{})
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+
+	user.SetPassword("hunter3")
+	assert.False(t, user.Authenticate(password))
+}
+
+// Must authenticate but the password gets rehashed if the password
+// was correct if the bcryptCost is different.
+func TestUserAuthenticateWithNewBcryptCost(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	const (
+		username      = "alice"
+		password      = "hunter2"
+		newBcryptCost = 12
+	)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	user, err := auth.NewUser(username, password, base.Set{})
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+
+	defer SetBcryptCost(bcryptDefaultCost)
+	cost, err := bcrypt.Cost(user.(*userImpl).PasswordHash_)
+	assert.NoError(t, err)
+	assert.Equal(t, bcryptDefaultCost, cost)
+
+	err = SetBcryptCost(newBcryptCost)
+	assert.NoError(t, err)
+	user.SetPassword(password)
+
+	cost, err = bcrypt.Cost(user.(*userImpl).PasswordHash_)
+	assert.NoError(t, err)
+	assert.Equal(t, newBcryptCost, cost)
+	assert.True(t, user.Authenticate(password))
+}
+
+// Must not authenticate if No hash, but (incorrect) password provided.
+func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	const (
+		username = "alice"
+		password = "hunter2"
+	)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	user, err := auth.NewUser(username, password, base.Set{})
+	assert.NoError(t, err)
+	assert.NotNil(t, user)
+
+	user.(*userImpl).OldPasswordHash_ = nil
+	assert.False(t, user.Authenticate("hunter3"))
 }
