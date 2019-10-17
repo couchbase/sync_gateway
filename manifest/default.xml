@@ -102,7 +102,7 @@
 
   <project name="testify" path="godeps/src/github.com/stretchr/testify" remote="couchbasedeps" revision="04af85275a5c7ac09d16bb3b9b2e751ed45154e5"/>
 
-  <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="6478dd22181e70f5ef5a2116bc59ef5175671a6f"/>
+  <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="46a999e3db7c1edcaeb4e2bee9281167198b7bdd"/>
 
   <project name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="5cd1345cca3ed72f1e63d41d622fcda73e63fea8" />
 
