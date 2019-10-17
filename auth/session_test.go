@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"log"
 	"net/http"
 	"strings"
 	"testing"
@@ -25,7 +24,7 @@ const (
 func TestDocIDForSession(t *testing.T) {
 	sessionID := base.GenerateRandomSecret()
 	docIDForSession := DocIDForSession(sessionID)
-	assert.Equal(t, base.SessionPrefix+sessionID, docIDForSession)
+	assert.Contains(t, docIDForSession, sessionID)
 }
 
 func TestCreateSession(t *testing.T) {
@@ -39,7 +38,6 @@ func TestCreateSession(t *testing.T) {
 	// Create session with a username and valid TTL of 2 hours.
 	session, err := auth.CreateSession(Username, TwoHours)
 	assert.NoError(t, err)
-	log.Printf("Session: %v", session)
 
 	assert.Equal(t, Username, session.Username)
 	assert.Equal(t, TwoHours, session.Ttl)
@@ -50,7 +48,6 @@ func TestCreateSession(t *testing.T) {
 	// and it must be accessible anytime later within the session expiration time.
 	session, err = auth.GetSession(session.ID)
 	assert.NoError(t, err)
-	log.Printf("Session: %v", session)
 
 	assert.Equal(t, Username, session.Username)
 	assert.Equal(t, TwoHours, session.Ttl)
@@ -86,8 +83,12 @@ func TestDeleteSession(t *testing.T) {
 	}
 
 	assert.NoError(t, bucket.Set(DocIDForSession(mockSession.ID), NoExpiry, mockSession))
-	log.Printf("Mocked session: %v", mockSession)
 	assert.NoError(t, auth.DeleteSession(mockSession.ID))
+
+	// Just to verify the session has been deleted gracefully.
+	session, err := auth.GetSession(mockSession.ID)
+	assert.Nil(t, session)
+	assert.NoError(t, err)
 }
 
 // Coverage for MakeSessionCookie. The MakeSessionCookie should create a cookie
@@ -110,14 +111,13 @@ func TestMakeSessionCookie(t *testing.T) {
 	}
 
 	cookie := auth.MakeSessionCookie(mockSession)
-	log.Printf("cookie: %v", cookie)
-
 	assert.Equal(t, DefaultCookieName, cookie.Name)
 	assert.Equal(t, sessionID, cookie.Value)
 	assert.NotEmpty(t, cookie.Expires)
 
-	cookie = auth.MakeSessionCookie(nil)
-	log.Printf("cookie: %v", cookie)
+	// Cookies should not be created with uninitialized session
+	mockSession = nil
+	cookie = auth.MakeSessionCookie(mockSession)
 	assert.Empty(t, cookie)
 }
 
@@ -146,7 +146,6 @@ func TestDeleteSessionForCookie(t *testing.T) {
 
 	request.AddCookie(cookie)
 	newCookie := auth.DeleteSessionForCookie(request)
-	log.Printf("newCookie: %v", newCookie)
 
 	assert.NotEmpty(t, newCookie.Name)
 	assert.Empty(t, newCookie.Value)
@@ -163,6 +162,5 @@ func TestDeleteSessionForCookie(t *testing.T) {
 
 	request.AddCookie(cookie)
 	newCookie = auth.DeleteSessionForCookie(request)
-	log.Printf("newCookie: %v", newCookie)
 	assert.Nil(t, newCookie)
 }
