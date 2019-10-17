@@ -46,3 +46,8 @@ func JSONDecoder(r io.Reader) JSONDecoderI {
 func JSONEncoder(w io.Writer) JSONEncoderI {
 	return json.NewEncoder(w)
 }
+
+// JSONEncoderCanonical returns a new canonical JSON encoder implementing the JSONEncoderI interface
+func JSONEncoderCanonical(w io.Writer) JSONEncoderI {
+	return json.NewEncoder(w)
+}

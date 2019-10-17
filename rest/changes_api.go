@@ -378,7 +378,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 			base.InfofCtx(h.db.Ctx, base.KeyChanges, "simple changes cannot get Close Notifier from ResponseWriter")
 		}
 
-		encoder := base.JSONEncoder(h.response)
+		encoder := base.JSONEncoderCanonical(h.response)
 	loop:
 		for {
 			select {

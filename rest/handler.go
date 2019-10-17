@@ -627,7 +627,7 @@ func (h *handler) writeTextStatus(status int, value []byte) {
 }
 
 func (h *handler) addJSON(value interface{}) error {
-	encoder := base.JSONEncoder(h.response)
+	encoder := base.JSONEncoderCanonical(h.response)
 	err := encoder.Encode(value)
 	if err != nil {
 		clientConnectionError := strings.Contains(err.Error(), "write: broken pipe")
