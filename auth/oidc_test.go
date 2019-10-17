@@ -269,9 +269,9 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 // See https://github.com/couchbase/sync_gateway/issues/3065
 func TestFetchCustomProviderConfig(t *testing.T) {
 
-	//if base.UnitTestUrlIsWalrus() {
-	//	t.Skip("This test is only enabled in integration test mode due to remote webserver dependencies")
-	//}
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("This test is only enabled in integration test mode due to remote webserver dependencies")
+	}
 
 	providerDiscoveryUrls := []string{
 		"https://accounts.google.com/.well-known/openid-configuration",
