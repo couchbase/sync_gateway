@@ -17,11 +17,21 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
 	"sync/atomic"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+)
+
+var mutexProfileRunning uint32
+var blockProfileRunning uint32
+
+const (
+	profileStopped uint32 = iota
+	profileRunning
 )
 
 // HTTP handler for the root ("/")
@@ -346,7 +356,18 @@ func (h *handler) handlePprofProfile() error {
 }
 
 func (h *handler) handlePprofBlock() error {
+	sec, err := strconv.ParseInt(h.rq.FormValue("seconds"), 10, 64)
+	if sec <= 0 || err != nil {
+		sec = 30
+	}
+	if !atomic.CompareAndSwapUint32(&blockProfileRunning, profileStopped, profileRunning) {
+		return base.HTTPErrorf(http.StatusForbidden, "Can only run one block profile at a time")
+	}
+	runtime.SetBlockProfileRate(1)
+	sleep(h.rq, time.Duration(sec)*time.Second)
 	httpprof.Handler("block").ServeHTTP(h.response, h.rq)
+	runtime.SetBlockProfileRate(0)
+	atomic.StoreUint32(&blockProfileRunning, profileStopped)
 	return nil
 }
 
@@ -356,12 +377,30 @@ func (h *handler) handlePprofThreadcreate() error {
 }
 
 func (h *handler) handlePprofMutex() error {
+	sec, err := strconv.ParseInt(h.rq.FormValue("seconds"), 10, 64)
+	if sec <= 0 || err != nil {
+		sec = 30
+	}
+	if !atomic.CompareAndSwapUint32(&mutexProfileRunning, profileStopped, profileRunning) {
+		return base.HTTPErrorf(http.StatusForbidden, "Can only run one mutex profile at a time")
+	}
+	runtime.SetMutexProfileFraction(1)
+	sleep(h.rq, time.Duration(sec)*time.Second)
 	httpprof.Handler("mutex").ServeHTTP(h.response, h.rq)
+	runtime.SetMutexProfileFraction(0)
+	atomic.StoreUint32(&mutexProfileRunning, profileStopped)
 	return nil
 }
 
 type stats struct {
 	MemStats runtime.MemStats
+}
+
+func sleep(rq *http.Request, d time.Duration) {
+	select {
+	case <-time.After(d):
+	case <-rq.Context().Done():
+	}
 }
 
 // ADMIN API to expose runtime and other stats
