@@ -967,10 +967,16 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	} else {
 		body := doc._body
 		// If body is non-empty and non-deleted, unmarshal and return
-		if body != nil && !doc.Deleted {
-			data, err = base.JSONMarshal(body)
-			if err != nil {
-				return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
+		if body != nil {
+			// TODO: Could we check doc.Deleted?
+			//       apparently we can't... doing this causes invalid argument errors from Couchbase Server
+			//       when running 'TestGetRemovedAndDeleted' and 'TestNoConflictsMode' for some reason...
+			deleted, _ := body[BodyDeleted].(bool)
+			if !deleted {
+				data, err = base.JSONMarshal(body)
+				if err != nil {
+					return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
+				}
 			}
 		}
 	}
