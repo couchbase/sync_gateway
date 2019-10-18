@@ -4,6 +4,8 @@ import (
 	"log"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
@@ -738,4 +740,194 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	rev3c_body := Body{"key1": "value2", "v": "3c"}
 	_, err := db.PutExistingRevWithBody("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 3-c")
+}
+
+func BenchmarkDatabaseGet1xRev(b *testing.B) {
+	db, testBucket := setupTestDB(b)
+	defer testBucket.Close()
+	defer tearDownTestDB(b, db)
+
+	body := Body{"foo": "bar", "rev": "1-a"}
+	_, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(b, err)
+
+	largeDoc := make([]byte, 1000000)
+	longBody := Body{"val": string(largeDoc), "rev": "1-a"}
+	_, err = db.PutExistingRevWithBody("doc2", longBody, []string{"1-a"}, false)
+	assert.NoError(b, err)
+
+	var shortWithAttachmentsDataBody Body
+	shortWithAttachmentsData := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}, "rev":"1-a"}`
+	err = base.JSONUnmarshal([]byte(shortWithAttachmentsData), &shortWithAttachmentsDataBody)
+	require.NoError(b, err)
+	_, err = db.PutExistingRevWithBody("doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false)
+	assert.NoError(b, err)
+
+	b.Run("ShortLatest", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.Get1xRevBody("doc1", "", false, nil)
+			require.NoError(b, err)
+		}
+	})
+	b.Run("LongLatest", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.Get1xRevBody("doc2", "", false, nil)
+			require.NoError(b, err)
+		}
+	})
+	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.Get1xRevBody("doc3", "", false, nil)
+			require.NoError(b, err)
+		}
+	})
+
+	updateBody := Body{"rev": "2-a"}
+	_, err = db.PutExistingRevWithBody("doc1", updateBody, []string{"2-a", "1-a"}, false)
+	assert.NoError(b, err)
+	_, err = db.PutExistingRevWithBody("doc2", updateBody, []string{"2-a", "1-a"}, false)
+	assert.NoError(b, err)
+	_, err = db.PutExistingRevWithBody("doc3", updateBody, []string{"2-a", "1-a"}, false)
+	assert.NoError(b, err)
+
+	b.Run("ShortOld", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.Get1xRevBody("doc1", "1-a", false, nil)
+			require.NoError(b, err)
+		}
+	})
+	b.Run("LongOld", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.Get1xRevBody("doc2", "1-a", false, nil)
+			require.NoError(b, err)
+		}
+	})
+	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.Get1xRevBody("doc3", "1-a", false, nil)
+			require.NoError(b, err)
+		}
+	})
+}
+
+func BenchmarkDatabaseGetRev(b *testing.B) {
+	db, testBucket := setupTestDB(b)
+	defer testBucket.Close()
+	defer tearDownTestDB(b, db)
+
+	body := Body{"foo": "bar", "rev": "1-a"}
+	_, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(b, err)
+
+	largeDoc := make([]byte, 1000000)
+	longBody := Body{"val": string(largeDoc), "rev": "1-a"}
+	_, err = db.PutExistingRevWithBody("doc2", longBody, []string{"1-a"}, false)
+	assert.NoError(b, err)
+
+	var shortWithAttachmentsDataBody Body
+	shortWithAttachmentsData := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}, "rev":"1-a"}`
+	err = base.JSONUnmarshal([]byte(shortWithAttachmentsData), &shortWithAttachmentsDataBody)
+	require.NoError(b, err)
+	_, err = db.PutExistingRevWithBody("doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false)
+	assert.NoError(b, err)
+
+	b.Run("ShortLatest", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.GetRev("doc1", "", false, nil)
+			require.NoError(b, err)
+		}
+	})
+	b.Run("LongLatest", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.GetRev("doc2", "", false, nil)
+			require.NoError(b, err)
+		}
+	})
+	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.GetRev("doc3", "", false, nil)
+			require.NoError(b, err)
+		}
+	})
+
+	updateBody := Body{"rev": "2-a"}
+	_, err = db.PutExistingRevWithBody("doc1", updateBody, []string{"2-a", "1-a"}, false)
+	assert.NoError(b, err)
+	_, err = db.PutExistingRevWithBody("doc2", updateBody, []string{"2-a", "1-a"}, false)
+	assert.NoError(b, err)
+	_, err = db.PutExistingRevWithBody("doc3", updateBody, []string{"2-a", "1-a"}, false)
+	assert.NoError(b, err)
+
+	b.Run("ShortOld", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.GetRev("doc1", "1-a", false, nil)
+			require.NoError(b, err)
+		}
+	})
+	b.Run("LongOld", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.GetRev("doc2", "1-a", false, nil)
+			require.NoError(b, err)
+		}
+	})
+	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err := db.GetRev("doc3", "1-a", false, nil)
+			require.NoError(b, err)
+		}
+	})
+}
+
+// Replicates delta patching work carried out by handleRev
+func BenchmarkHandleRevDelta(b *testing.B) {
+
+	db, testBucket := setupTestDB(b)
+	defer testBucket.Close()
+	defer tearDownTestDB(b, db)
+
+	body := Body{"foo": "bar"}
+	_, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(b, err)
+
+	getDelta := func(newDoc *Document) {
+		deltaSrcRev, err := db.GetRev("doc1", "1-a", false, nil)
+		assert.NoError(b, err)
+
+		deltaSrcBody, err := deltaSrcRev.MutableBody()
+		assert.NoError(b, err)
+
+		// Stamp attachments so we can patch them
+		if len(deltaSrcRev.Attachments) > 0 {
+			deltaSrcBody[BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
+		}
+
+		deltaSrcMap := map[string]interface{}(deltaSrcBody)
+		err = base.Patch(&deltaSrcMap, newDoc.Body())
+	}
+
+	b.Run("SmallDiff", func(b *testing.B) {
+		newDoc := &Document{
+			ID:    "doc1",
+			RevID: "1a",
+		}
+		newDoc.UpdateBodyBytes([]byte(`{"foo": "bart"}`))
+		for n := 0; n < b.N; n++ {
+			getDelta(newDoc)
+		}
+	})
+
+	b.Run("Huge Diff", func(b *testing.B) {
+		newDoc := &Document{
+			ID:    "doc1",
+			RevID: "1a",
+		}
+		largeDoc := make([]byte, 1000000)
+		longBody := Body{"val": string(largeDoc)}
+		bodyBytes, err := base.JSONMarshal(longBody)
+		assert.NoError(b, err)
+		newDoc.UpdateBodyBytes(bodyBytes)
+		for n := 0; n < b.N; n++ {
+			getDelta(newDoc)
+		}
+	})
 }
