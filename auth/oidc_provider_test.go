@@ -100,7 +100,7 @@ const (
 	GoodRegistrationEndpoint = "https://accounts.google.com/clients/"
 	BadRegistrationEndpoint  = "sftp://accounts.google.com/clients/"
 	GoodPolicy               = "https://accounts.google.com/policy/"
-	BadPolicy                = "https://accounts.google.com/policy/"
+	BadPolicy                = "sftp://accounts.google.com/policy/"
 	GoodTermsOfService       = "https://accounts.google.com/termsofservice/"
 	BadTermsOfService        = "sftp://accounts.google.com/termsofservice/"
 	GoodServiceDocs          = "https://accounts.google.com/servicedocs/"
