@@ -117,6 +117,11 @@ const (
 	SyncFnErrorMissingChannelAccess = "sg missing channel access"
 )
 
+const (
+	// EmptyDocument denotes an empty document in JSON form.
+	EmptyDocument = `{}`
+)
+
 var (
 	SyncFnAccessErrors = []string{
 		HTTPErrorf(403, SyncFnErrorMissingRole).Error(),

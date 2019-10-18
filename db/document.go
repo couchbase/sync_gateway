@@ -38,6 +38,11 @@ const (
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
 )
 
+const (
+	// RemovedRedactedDocument is returned by SG when a given document has been dropped out of a channel
+	RemovedRedactedDocument = `{"` + BodyRemoved + `":true}`
+)
+
 // Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
 
@@ -239,17 +244,24 @@ func (doc *Document) Body() Body {
 }
 
 func (doc *Document) GetMutableBody() Body {
+	// we can avoid a deep copy by just unmarshalling raw bytes, if available
+	if doc._rawBody != nil {
+		var b Body
+		err := b.Unmarshal(doc._rawBody)
+		if err == nil {
+			return b
+		}
+		// Error unmarshalling raw body, try to use the existing _body
+		base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
+	}
+
+	// We didn't have raw bytes available, but if we do have a body to copy
 	if doc._body != nil {
-		// already have a body unmarshalled, so we'll need to deep copy so callers can mutate
+		// need to deep copy so callers can mutate
 		return doc._body.Copy(BodyDeepCopy)
 	}
-	// Otherwise unmarshal as normal, but don't store it in the document
-	var b Body
-	if err := b.Unmarshal(doc._rawBody); err != nil {
-		base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
-		return nil
-	}
-	return b
+
+	return nil
 }
 
 func (doc *Document) RemoveBody() {
@@ -779,7 +791,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	if isDelete {
 		bodyBytes = []byte(`{"` + BodyDeleted + `":true,"` + BodyRemoved + `":true}`)
 	} else {
-		bodyBytes = []byte(`{"` + BodyRemoved + `":true}`)
+		bodyBytes = []byte(RemovedRedactedDocument)
 	}
 
 	// Build revision history for revID
@@ -942,7 +954,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 	// If there's no body, but there is an xattr, set deleted flag and initialize an empty body
 	if len(data) == 0 && len(xdata) > 0 {
 		doc._body = Body{}
-		doc._rawBody = []byte(`{}`)
+		doc._rawBody = []byte(base.EmptyDocument)
 		doc.Deleted = true
 	}
 	return nil
@@ -955,14 +967,10 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	} else {
 		body := doc._body
 		// If body is non-empty and non-deleted, unmarshal and return
-		if body != nil {
-			// TODO: Could we check doc.Deleted?
-			deleted, _ := body[BodyDeleted].(bool)
-			if !deleted {
-				data, err = base.JSONMarshal(body)
-				if err != nil {
-					return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
-				}
+		if body != nil && !doc.Deleted {
+			data, err = base.JSONMarshal(body)
+			if err != nil {
+				return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
 			}
 		}
 	}

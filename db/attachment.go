@@ -131,10 +131,11 @@ func (db *Database) retrieveAncestorAttachments(doc *Document, parentRev string,
 	// No non-pruned ancestor is available
 	if commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory); commonAncestor != "" {
 		parentAttachments := make(map[string]interface{})
+		commonAncestorGen := int64(genOfRevID(commonAncestor))
 		for name, activeAttachment := range GetBodyAttachments(doc.Body()) {
 			if attachmentMeta, ok := activeAttachment.(map[string]interface{}); ok {
 				activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
-				if ok && activeRevpos <= int64(genOfRevID(commonAncestor)) {
+				if ok && activeRevpos <= commonAncestorGen {
 					parentAttachments[name] = activeAttachment
 				}
 			}

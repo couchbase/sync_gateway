@@ -922,6 +922,7 @@ func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []str
 	return output, nil
 }
 
+// createChangesEntry is used when creating a doc ID filtered changes feed
 func createChangesEntry(docid string, db *Database, options ChangesOptions) *ChangeEntry {
 	row := &ChangeEntry{ID: docid}
 

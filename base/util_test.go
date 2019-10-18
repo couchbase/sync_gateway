@@ -614,6 +614,19 @@ func TestDefaultHTTPTransport(t *testing.T) {
 	})
 }
 
+// Test to ensure that InjectJSONProperties does not mutate the given byte slice, and instead only returns a modified copy.
+func TestInjectJSONPropertiesMutable(t *testing.T) {
+	origBytes := []byte(`{"orig":true}`)
+
+	newBytes, err := InjectJSONProperties(origBytes, KVPair{Key: "updated", Val: true})
+	require.NoError(t, err)
+	assert.NotEqual(t, origBytes, newBytes)
+
+	assert.Contains(t, string(newBytes), `"updated":true`)
+	assert.NotContains(t, string(origBytes), `"updated":true`)
+
+}
+
 func TestInjectJSONProperties(t *testing.T) {
 	newKV := KVPair{
 		Key: "newval",

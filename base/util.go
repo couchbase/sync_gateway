@@ -1021,12 +1021,13 @@ type KVPair struct {
 	Val interface{}
 }
 
-// InjectJSONProperties takes the given JSON byte slice, and for each KV pair, marshals the value and inserts into b under the given key.
+// InjectJSONProperties takes the given JSON byte slice, and for each KV pair, marshals the value and inserts into
+// the returned byte slice under the given key, without modifying the given byte slice.
 //
 // This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
 // usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
 func InjectJSONProperties(b []byte, kvPairs ...KVPair) (new []byte, err error) {
-	if len(kvPairs) < 1 {
+	if len(kvPairs) == 0 {
 		// noop
 		return b, nil
 	}
@@ -1091,7 +1092,7 @@ type KVPairBytes struct {
 // This has the potential to create duplicate keys, which whilst adhering to the spec, are ambiguous with how they get read...
 // usually "last key wins" - although there is no standardized way of handling JSON with non-unique keys.
 func InjectJSONPropertiesFromBytes(b []byte, kvPairs ...KVPairBytes) (new []byte, err error) {
-	if len(kvPairs) < 1 {
+	if len(kvPairs) == 0 {
 		// noop
 		return b, nil
 	}

@@ -342,7 +342,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
-			revCacheDelta := newRevCacheDelta([]byte(`{}`), fromRevID, toRevision, deleted)
+			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted)
 			db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)
 			return revCacheDelta, nil, nil
 		}
@@ -398,10 +398,10 @@ func (db *Database) authorizeUserForChannels(docID, revID string, channels base.
 			}
 			if isDeleted {
 				// Deletions are denoted by the deleted message property during 2.x replication
-				redactedRev.BodyBytes = []byte(`{}`)
+				redactedRev.BodyBytes = []byte(base.EmptyDocument)
 			} else {
 				// ... but removals are still denoted by the _removed property in the body, even for 2.x replication
-				redactedRev.BodyBytes = []byte(`{"` + BodyRemoved + `":true}`)
+				redactedRev.BodyBytes = []byte(RemovedRedactedDocument)
 			}
 			return false, redactedRev
 		}
@@ -531,9 +531,9 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 			return nil, false, err
 		}
 		if doc.History[revid].Deleted {
-			bodyBytes = []byte(`{}`)
+			bodyBytes = []byte(base.EmptyDocument)
 		} else {
-			bodyBytes = []byte(`{"` + BodyRemoved + `":true}`)
+			bodyBytes = []byte(RemovedRedactedDocument)
 			removed = true
 		}
 	} else {
@@ -595,7 +595,10 @@ func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, erro
 		{Key: BodyRev, Val: ancestorRevID},
 	}
 
-	// TODO: do we need _deleted here too? - maybe not because by definition a rev is not available if deleted
+	if doc.Deleted {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
+	}
+
 	if doc.CurrentRev == revid && doc.Attachments != nil {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
 	}
@@ -621,7 +624,7 @@ func (db *Database) getAvailableRevAttachments(doc *Document, revid string) (anc
 		return doc.Attachments, true
 	}
 
-	// Otherwise, we need to go and extract them from a backup revision's stamped _attachments property
+	// Otherwise, we need to go and extract _attachments from bodyBytes, which is a backup revision
 
 	// exit early if we know we have no attachments with a simple byte-contains check
 	if !bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
