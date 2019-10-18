@@ -100,7 +100,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 		docID := strconv.Itoa(i)
 		docRev, ok := cache.Peek(docID, "1-abc")
 		assert.False(t, ok)
-		assert.Nil(t, docRev)
+		assert.Nil(t, docRev.BodyBytes)
 		assert.Equal(t, int64(0), cacheMissCounter.Value()) // peek incurs no cache miss if not found
 		assert.Equal(t, int64(prevCacheHitCount), cacheHitCounter.Value())
 	}
@@ -258,7 +258,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	assert.False(t, ok)
 
 	// Put no-ops
-	rc.Put(*doc)
+	rc.Put(doc)
 
 	// Check peek is still returning false for "Put"
 	_, ok = rc.Peek(key, rev1)
@@ -373,7 +373,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	// Trigger load into cache
 	_, err := cache.Get("doc1", "1-abc")
 	assert.NoError(t, err, "Error adding to cache")
-	cache.UpdateDelta("doc1", "1-abc", &RevisionDelta{ToRevID: "rev2", DeltaBytes: firstDelta})
+	cache.UpdateDelta("doc1", "1-abc", RevisionDelta{ToRevID: "rev2", DeltaBytes: firstDelta})
 
 	// Retrieve from cache
 	retrievedRev, err := cache.Get("doc1", "1-abc")
@@ -382,7 +382,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 	// Update delta again, validate data in retrievedRev isn't mutated
-	cache.UpdateDelta("doc1", "1-abc", &RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
+	cache.UpdateDelta("doc1", "1-abc", RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
 	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 

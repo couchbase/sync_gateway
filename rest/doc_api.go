@@ -154,7 +154,7 @@ func (h *handler) handleGetAttachment() error {
 	if err != nil {
 		return err
 	}
-	if rev == nil {
+	if rev.BodyBytes == nil {
 		return kNotFoundError
 	}
 
@@ -231,7 +231,7 @@ func (h *handler) handlePutAttachment() error {
 		} else if err != nil {
 			return err
 		}
-	} else if rev != nil {
+	} else if rev.BodyBytes != nil {
 		body, err = rev.Mutable1xBody(h.db, nil, nil, false)
 		if err != nil {
 			return err
