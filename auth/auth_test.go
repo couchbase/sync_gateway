@@ -591,3 +591,47 @@ func TestConcurrentUserWrites(t *testing.T) {
 	cost, _ := bcrypt.Cost(userImpl.PasswordHash_)
 	assert.Equal(t, cost, bcryptDefaultCost)
 }
+
+func TestAuthenticateUntrustedJWTWithBadToken(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	clientID := "SGW-TEST"
+	callbackURL := "http://sgw-test:4984/_callback"
+
+	provider := &OIDCProvider{
+		ClientID:    &clientID,
+		Issuer:      "https://accounts.google.com",
+		CallbackURL: &callbackURL,
+	}
+
+	user, jws, err := auth.AuthenticateTrustedJWT("", provider, nil)
+	assert.Error(t, err)
+	assert.Nil(t, user)
+	assert.NotNil(t, jws)
+}
+
+func TestAuthenticateUntrustedJWTWithBadClaim(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	clientID := "SGW-TEST"
+	callbackURL := "http://sgw-test:4984/_callback"
+	const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJDb3VjaGJhc2UsIEluYy4iLCJzd" +
+		"WIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6WyJlYmF5IiwiY29tY2FzdCIsImxpbmtlZGluIl0sImlhdCI6M" +
+		"TUxNjIzOTAyMiwiZXhwIjoxNTg2MjM5MDIyLCJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS5jb20ifQ.X7A3MAlaZscwth20plFDxv" +
+		"OQ3VXBNnV-9JK0z4g0Z6U"
+
+	provider := &OIDCProvider{
+		ClientID:    &clientID,
+		Issuer:      "https://accounts.google.com",
+		CallbackURL: &callbackURL,
+	}
+
+	user, jws, err := auth.AuthenticateTrustedJWT(token, provider, nil)
+	assert.Error(t, err)
+	assert.Nil(t, user)
+	assert.NotNil(t, jws)
+}
