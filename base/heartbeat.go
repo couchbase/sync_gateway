@@ -144,9 +144,6 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats(intervalSeconds int) error
 func (h *couchbaseHeartBeater) Stop() {
 	h.StopSendingHeartbeats()
 	h.StopCheckingHeartbeats()
-	if h.heartbeatHandler != nil {
-		h.heartbeatHandler.Stop()
-	}
 
 	maxWaitTimeMs := 1000
 	waitTimeMs := 0
