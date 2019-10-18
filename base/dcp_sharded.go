@@ -15,8 +15,9 @@ const NumPIndexes = 16
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
-	Manager *cbgt.Manager // Manager is main entry point for initialization, registering indexes
-	Cfg     cbgt.Cfg      // Cfg manages storage of the current pindex set and node assignment
+	Manager     *cbgt.Manager // Manager is main entry point for initialization, registering indexes
+	Cfg         cbgt.Cfg      // Cfg manages storage of the current pindex set and node assignment
+	Heartbeater Heartbeater   // Detects failed nodes when running in multi-node configuration
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
@@ -36,7 +37,7 @@ func StartShardedDCPFeed(dbName string, bucket Bucket, spec BucketSpec) (*CbgtCo
 
 	// Start heartbeater.  Sends heartbeats for this SG node, and triggers removal from cfg when
 	// other SG nodes stop sending heartbeats.
-	err = startHeartbeater(bucket, cbgtContext)
+	cbgtContext.Heartbeater, err = startHeartbeater(bucket, cbgtContext)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +235,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 
 	// Specify one feed per pindex
 	options := make(map[string]string)
-	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
+	//options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
 
 	// Creates a new cbgt manager.
 	mgr := cbgt.NewManagerEx(
@@ -308,21 +309,21 @@ func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {
 	return cfgCB, nil
 }
 
-func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) error {
+func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, error) {
 
 	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil {
-		return errors.New("Unable to start heartbeater with nil manager or cfg")
+		return nil, errors.New("Unable to start heartbeater with nil manager or cfg")
 	}
 	// Initialize handler to use cfg to determine the set of participating nodes
 	nodeListHandler, err := NewCBGTNodeListHandler(cbgtContext.Cfg)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Create heartbeater
 	heartbeater, err := NewCouchbaseHeartbeater(bucket, SyncPrefix, cbgtContext.Manager.UUID(), nodeListHandler)
 	if err != nil {
-		return pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", MD(bucket.GetName()))
+		return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", MD(bucket.GetName()))
 	}
 
 	// TODO: Allow customization of heartbeat interval
@@ -337,11 +338,11 @@ func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) error {
 
 	staleThresholdMs := intervalSeconds * 10 * 1000
 	if err := heartbeater.StartCheckingHeartbeats(staleThresholdMs, deadNodeHandler); err != nil {
-		return pkgerrors.Wrapf(err, "Error calling StartCheckingHeartbeats() during startHeartbeater for bucket %s", MD(bucket.GetName))
+		return nil, pkgerrors.Wrapf(err, "Error calling StartCheckingHeartbeats() during startHeartbeater for bucket %s", MD(bucket.GetName))
 	}
 	Debugf(KeyDCP, "Checking CBGT node heartbeats with stale threshold: %v ms", staleThresholdMs)
 
-	return nil
+	return heartbeater, nil
 
 }
 

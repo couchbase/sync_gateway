@@ -20,6 +20,7 @@ const (
 type Heartbeater interface {
 	HeartbeatChecker
 	HeartbeatSender
+	Stop()
 }
 
 // A HeartbeatChecker checks _other_ nodes in the cluster for stale heartbeats
@@ -27,7 +28,6 @@ type Heartbeater interface {
 type HeartbeatChecker interface {
 	StartCheckingHeartbeats(staleThresholdMs int, handler HeartbeatsStoppedHandler) error
 	StopCheckingHeartbeats()
-	GetNodeList() []string
 }
 
 // A HeartbeatSender sends heartbeats
@@ -144,6 +144,9 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats(intervalSeconds int) error
 func (h *couchbaseHeartBeater) Stop() {
 	h.StopSendingHeartbeats()
 	h.StopCheckingHeartbeats()
+	if h.heartbeatHandler != nil {
+		h.heartbeatHandler.Stop()
+	}
 
 	maxWaitTimeMs := 1000
 	waitTimeMs := 0
@@ -193,10 +196,6 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, han
 // Stop the heartbeat checker
 func (h *couchbaseHeartBeater) StopCheckingHeartbeats() {
 	close(h.heartbeatCheckCloser)
-}
-
-func (h *couchbaseHeartBeater) GetNodeList() ([]string, error) {
-	return h.heartbeatHandler.GetNodes()
 }
 
 func (h *couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handler HeartbeatsStoppedHandler) error {

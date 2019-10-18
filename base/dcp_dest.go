@@ -35,7 +35,7 @@ func init() {
 	for i := 0; i < len(vbucketIdStrings); i++ {
 		vbucketIdStrings[i] = fmt.Sprintf("%d", i)
 	}
-	feedType = cbgtFeedType_cbdatasource
+	feedType = cbgtFeedType_gocb
 	cbgt.DCPFeedPrefix = "sg:"
 }
 
@@ -193,8 +193,8 @@ func (d *DCPDest) Query(pindex *cbgt.PIndex, req []byte, w io.Writer,
 	return nil
 }
 
+// Stats would allow SG to return SG-specific stats to cbgt's stats reporting - not currently used.
 func (d *DCPDest) Stats(io.Writer) error {
-	WarnfCtx(d.loggingCtx, KeyAll, "Dest.Stats being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
 
