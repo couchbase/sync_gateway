@@ -114,9 +114,6 @@ func (pc OidcProviderConfiguration) AsProviderConfig() (oidc.ProviderConfig, err
 	if conf.Policy, err = pc.parseURI(pc.Policy); err != nil {
 		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.Policy")
 	}
-	if conf.Policy, err = pc.parseURI(pc.Policy); err != nil {
-		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.Policy")
-	}
 	if conf.TermsOfService, err = pc.parseURI(pc.TermsOfService); err != nil {
 		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.TermsOfService")
 	}
