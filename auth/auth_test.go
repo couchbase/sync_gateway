@@ -597,8 +597,8 @@ func TestAuthenticateUntrustedJWTWithBadToken(t *testing.T) {
 	defer testBucket.Close()
 	auth := NewAuthenticator(testBucket.Bucket, nil)
 
-	clientID := "SGW-TEST"
-	callbackURL := "http://sgw-test:4984/_callback"
+	clientID := "comcast"
+	callbackURL := "http://comcast:4984/_callback"
 
 	provider := &OIDCProvider{
 		ClientID:    &clientID,
@@ -617,8 +617,8 @@ func TestAuthenticateUntrustedJWTWithBadClaim(t *testing.T) {
 	defer testBucket.Close()
 	auth := NewAuthenticator(testBucket.Bucket, nil)
 
-	clientID := "SGW-TEST"
-	callbackURL := "http://sgw-test:4984/_callback"
+	clientID := "comcast"
+	callbackURL := "http://comcast:4984/_callback"
 	const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJDb3VjaGJhc2UsIEluYy4iLCJzd" +
 		"WIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6WyJlYmF5IiwiY29tY2FzdCIsImxpbmtlZGluIl0sImlhdCI6M" +
 		"TUxNjIzOTAyMiwiZXhwIjoxNTg2MjM5MDIyLCJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS5jb20ifQ.X7A3MAlaZscwth20plFDxv" +
@@ -632,6 +632,31 @@ func TestAuthenticateUntrustedJWTWithBadClaim(t *testing.T) {
 
 	user, jws, err := auth.AuthenticateTrustedJWT(token, provider, nil)
 	assert.Error(t, err)
+	assert.Nil(t, user)
+	assert.NotNil(t, jws)
+}
+
+func TestAuthenticateUntrustedJWT(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJodHRwczovL2FjY291bnRz" +
+		"Lmdvb2dsZS5jb20iLCJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6WyJlYmF5IiwiY29tY2FzdCI" +
+		"sImxpbmtlZGluIl0sImlhdCI6MTUxNjIzOTAyMiwiZXhwIjoxNTg2MjM5MDIyLCJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS" +
+		"5jb20ifQ.zE_h-a-iKjxV7fccAHsLJcEeNvucdZ-TQNTYNk_kL6M"
+
+	clientID := "comcast"
+	callbackURL := "http://comcast:4984/_callback"
+
+	provider := &OIDCProvider{
+		ClientID:    &clientID,
+		Issuer:      "https://accounts.google.com",
+		CallbackURL: &callbackURL,
+	}
+
+	user, jws, err := auth.AuthenticateTrustedJWT(token, provider, nil)
+	assert.NoError(t, err)
 	assert.Nil(t, user)
 	assert.NotNil(t, jws)
 }
