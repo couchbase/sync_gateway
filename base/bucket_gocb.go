@@ -1763,7 +1763,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		}
 
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
-		deleteBody := !bytes.Equal(value, []byte(EmptyDocument))
+		deleteBody := len(value) > len(EmptyDocument)
 		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
 
 		switch pkgerrors.Cause(writeErr) {

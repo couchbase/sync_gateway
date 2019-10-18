@@ -3640,7 +3640,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	var retrievedXattr map[string]interface{}
 	_, err = gocbBucket.GetWithXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, &retrievedVal, &retrievedXattr)
 	assert.NoError(t, err, "Unexpected Error")
-	goassert.True(t, retrievedXattr["rev"].(string) == "2-466a1fab90a810dc0a63565b70680e4e")
+	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedXattr["rev"])
 
 }
 
