@@ -466,7 +466,7 @@ func (db *DatabaseContext) getRevision(doc *Document, revid string) ([]byte, err
 		}
 
 		bodyBytes, err = db.getOldRevisionJSON(doc.ID, revid)
-		if err != nil {
+		if err != nil || bodyBytes == nil {
 			return nil, err
 		}
 	}

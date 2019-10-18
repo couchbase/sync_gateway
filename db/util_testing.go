@@ -8,10 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 )
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.

@@ -238,8 +238,6 @@ func (h *handler) handlePutAttachment() error {
 		} else if body != nil {
 			body[db.BodyRev] = revid
 		}
-	} else {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Tried to retrieve rev for %s/%s but got nil rev and nil error", base.UD(docid), revid)
 	}
 
 	// find attachment (if it existed)
