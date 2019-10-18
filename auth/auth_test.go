@@ -660,3 +660,68 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	assert.Nil(t, user)
 	assert.NotNil(t, jws)
 }
+
+func TestGetPrincipal(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	const (
+		channelRead       = "read"
+		channelWrite      = "write"
+		channelExecute    = "execute"
+		channelCreate     = "create"
+		channelUpdate     = "update"
+		channelDelete     = "delete"
+		roleRoot          = "root"
+		roleUser          = "user"
+		username          = "batman"
+		password          = "YmF0bWFu"
+		accessViewKeyRoot = "role:root"
+		accessViewKeyUser = "role:user"
+	)
+
+	// Create a new role named root with access to read, write and execute channels
+	role, _ := auth.NewRole(roleRoot, ch.SetOf(t, channelRead, channelWrite, channelExecute))
+	assert.Equal(t, nil, auth.Save(role))
+
+	// Create another role named user with access to read and execute channels; no write channel access.
+	role, _ = auth.NewRole(roleUser, ch.SetOf(t, channelRead, channelExecute))
+	assert.Equal(t, nil, auth.Save(role))
+
+	// Get the principal against root role and verify the details.
+	principal, err := auth.GetPrincipal(roleRoot, false)
+	assert.NoError(t, err)
+	assert.Equal(t, roleRoot, principal.Name())
+	assert.Equal(t, accessViewKeyRoot, principal.accessViewKey())
+	assert.True(t, principal.CanSeeChannel(channelRead))
+	assert.True(t, principal.CanSeeChannel(channelWrite))
+	assert.True(t, principal.CanSeeChannel(channelExecute))
+
+	// Get the principal against user role and verify the details.
+	principal, err = auth.GetPrincipal(roleUser, false)
+	assert.NoError(t, err)
+	assert.Equal(t, roleUser, principal.Name())
+	assert.Equal(t, accessViewKeyUser, principal.accessViewKey())
+	assert.True(t, principal.CanSeeChannel(channelRead))
+	assert.False(t, principal.CanSeeChannel(channelWrite))
+	assert.True(t, principal.CanSeeChannel(channelExecute))
+
+	// Create a new user with new set of channels and assign user role to the user.
+	user, err := auth.NewUser(username, password, ch.SetOf(
+		t, channelCreate, channelRead, channelUpdate, channelDelete))
+	user.(*userImpl).setRolesSince(ch.TimedSet{roleUser: ch.NewVbSimpleSequence(0x3)})
+	require.NoError(t, auth.Save(user))
+
+	// Get the principal of user and verify the details
+	principal, err = auth.GetPrincipal(username, true)
+	assert.NoError(t, err)
+	assert.Equal(t, username, principal.Name())
+	assert.Equal(t, username, principal.accessViewKey())
+	assert.True(t, principal.CanSeeChannel(channelRead))
+	assert.False(t, principal.CanSeeChannel(channelWrite))
+	assert.True(t, principal.CanSeeChannel(channelExecute))
+	assert.True(t, principal.CanSeeChannel(channelCreate))
+	assert.True(t, principal.CanSeeChannel(channelUpdate))
+	assert.True(t, principal.CanSeeChannel(channelDelete))
+}
