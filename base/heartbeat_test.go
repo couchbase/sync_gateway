@@ -108,7 +108,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 				fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", heartbeatStoppedHandler2.staleDetectCount, heartbeatStoppedHandler3.staleDetectCount))
 
 			// Validate current node list
-			activeNodes, err := node2.GetNodeList()
+			activeNodes, err := handler2.GetNodes()
 			require.NoError(t, err, "Error getting node list")
 			assert.Equal(t, 2, len(activeNodes))
 			assert.NotContains(t, activeNodes, "node1")
@@ -199,7 +199,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", heartbeatStoppedHandler2.staleDetectCount, heartbeatStoppedHandler3.staleDetectCount))
 
 	// Validate current node list
-	activeNodes, err := node2.GetNodeList()
+	activeNodes, err := handler2.GetNodes()
 	require.NoError(t, err, "Error getting node list")
 	assert.Equal(t, 2, len(activeNodes))
 	assert.NotContains(t, activeNodes, "node1")
