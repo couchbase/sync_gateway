@@ -11,6 +11,7 @@ import (
 )
 
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
+const NumPIndexes = 16
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
@@ -93,10 +94,17 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 		return err
 	}
 
-	// TODO: MaxPartitionsPerPIndex could be configurable, but inconsistency between SG nodes would result in latest being used
+	vbNo, err := bucket.GetMaxVbno()
+	if err != nil {
+		return pkgerrors.Wrapf(err, "Unable to retrieve maxVbNo for bucket %s", MD(bucket.GetName()))
+	}
+
+	// Calculate partitionsPerPIndex required to hit target NumPIndexes
+	partitionsPerPIndex := int(vbNo) / NumPIndexes
+
 	planParams := cbgt.PlanParams{
-		MaxPartitionsPerPIndex: 16, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
-		NumReplicas:            0,  // No replicas required for SG sharded feed
+		MaxPartitionsPerPIndex: partitionsPerPIndex, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
+		NumReplicas:            0,                   // No replicas required for SG sharded feed
 	}
 
 	// TODO: If this isn't well-formed JSON, cbgt emits errors when opening locally persisted pindex files.  Review
@@ -224,9 +232,12 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 	//   - OnFeedError
 	var eventHandlers cbgt.ManagerEventHandlers
 
-	// Creates a new cbgt manager.  NewManagerEx is available if we need to specify advanced options,
-	// but isn't needed today.
-	mgr := cbgt.NewManager(
+	// Specify one feed per pindex
+	options := make(map[string]string)
+	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
+
+	// Creates a new cbgt manager.
+	mgr := cbgt.NewManagerEx(
 		cbgt.VERSION, // cbgt metadata version
 		cfgCB,
 		uuid,
@@ -237,7 +248,8 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 		bindHttp,
 		dataDir,
 		serverURL,
-		eventHandlers)
+		eventHandlers,
+		options)
 
 	cbgtContext := &CbgtContext{
 		Manager: mgr,
