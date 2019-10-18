@@ -143,8 +143,11 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 
 func (il *importListener) Stop() {
 	if il != nil {
-		if il.cbgtContext != nil && il.cbgtContext.Heartbeater != nil {
-			il.cbgtContext.Heartbeater.Stop()
+		if il.cbgtContext != nil {
+			il.cbgtContext.Manager.Stop()
+			if il.cbgtContext.Heartbeater != nil {
+				il.cbgtContext.Heartbeater.Stop()
+			}
 		}
 		close(il.terminator)
 	}
