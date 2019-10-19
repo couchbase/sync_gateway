@@ -10,11 +10,15 @@
 package auth
 
 import (
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/coreos/go-oidc/jose"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
@@ -592,7 +596,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 	assert.Equal(t, cost, bcryptDefaultCost)
 }
 
-func TestAuthenticateUntrustedJWTWithBadToken(t *testing.T) {
+func TestAuthenticateTrustedJWTWithBadToken(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	auth := NewAuthenticator(testBucket.Bucket, nil)
@@ -606,23 +610,19 @@ func TestAuthenticateUntrustedJWTWithBadToken(t *testing.T) {
 		CallbackURL: &callbackURL,
 	}
 
-	user, jws, err := auth.AuthenticateTrustedJWT("", provider, nil)
+	user, jws, err := auth.AuthenticateTrustedJWT(GetBadBearerToken(), provider, nil)
 	assert.Error(t, err)
 	assert.Nil(t, user)
 	assert.NotNil(t, jws)
 }
 
-func TestAuthenticateUntrustedJWTWithBadClaim(t *testing.T) {
+func TestAuthenticateTrustedJWTWithBadClaim(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	auth := NewAuthenticator(testBucket.Bucket, nil)
 
 	clientID := "comcast"
 	callbackURL := "http://comcast:4984/_callback"
-	const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJDb3VjaGJhc2UsIEluYy4iLCJzd" +
-		"WIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6WyJlYmF5IiwiY29tY2FzdCIsImxpbmtlZGluIl0sImlhdCI6M" +
-		"TUxNjIzOTAyMiwiZXhwIjoxNTg2MjM5MDIyLCJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS5jb20ifQ.X7A3MAlaZscwth20plFDxv" +
-		"OQ3VXBNnV-9JK0z4g0Z6U"
 
 	provider := &OIDCProvider{
 		ClientID:    &clientID,
@@ -630,21 +630,17 @@ func TestAuthenticateUntrustedJWTWithBadClaim(t *testing.T) {
 		CallbackURL: &callbackURL,
 	}
 
-	user, jws, err := auth.AuthenticateTrustedJWT(token, provider, nil)
+	user, jws, err := auth.AuthenticateTrustedJWT(TokenWithBadClaim, provider, nil)
+	log.Printf("%v", err.Error())
 	assert.Error(t, err)
 	assert.Nil(t, user)
 	assert.NotNil(t, jws)
 }
 
-func TestAuthenticateUntrustedJWT(t *testing.T) {
+func TestAuthenticateTrustedJWT(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	auth := NewAuthenticator(testBucket.Bucket, nil)
-
-	const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJodHRwczovL2FjY291bnRz" +
-		"Lmdvb2dsZS5jb20iLCJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6WyJlYmF5IiwiY29tY2FzdCI" +
-		"sImxpbmtlZGluIl0sImlhdCI6MTUxNjIzOTAyMiwiZXhwIjoxNTg2MjM5MDIyLCJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS" +
-		"5jb20ifQ.zE_h-a-iKjxV7fccAHsLJcEeNvucdZ-TQNTYNk_kL6M"
 
 	clientID := "comcast"
 	callbackURL := "http://comcast:4984/_callback"
@@ -655,10 +651,50 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		CallbackURL: &callbackURL,
 	}
 
-	user, jws, err := auth.AuthenticateTrustedJWT(token, provider, nil)
+	user, jws, err := auth.AuthenticateTrustedJWT(Token, provider, nil)
+
 	assert.NoError(t, err)
 	assert.Nil(t, user)
 	assert.NotNil(t, jws)
+}
+
+func TestAuthenticateJWTWithNoClaim(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	// Parse the mocked JWS token.
+	jws, err := jose.ParseJWS(Token)
+	assert.NotNil(t, jws)
+	assert.NoError(t, err)
+
+	// Verify the header, payload, and signature.
+	parts := strings.Split(Token, ".")
+	assert.NotNil(t, parts)
+	assert.Equal(t, parts[0], jws.RawHeader)
+	assert.Equal(t, parts[1], jws.RawPayload)
+
+	assert.NotNil(t, jws.Header)
+	assert.NotNil(t, jws.Payload)
+	assert.NotNil(t, jws.Signature)
+
+	jwt := jose.JWT{
+		RawHeader: jws.RawHeader,
+		Header:    jws.Header,
+		Signature: jws.Signature}
+
+	clientID := "comcast"
+	callbackURL := "http://comcast:4984/_callback"
+
+	provider := &OIDCProvider{
+		ClientID:    &clientID,
+		Issuer:      "https://accounts.google.com",
+		CallbackURL: &callbackURL,
+	}
+	usr, jwtNew, err := auth.authenticateJWT(jwt, provider)
+	assert.Error(t, err)
+	assert.Nil(t, usr)
+	assert.Equal(t, jwt, jwtNew)
 }
 
 func TestGetPrincipal(t *testing.T) {
@@ -724,4 +760,140 @@ func TestGetPrincipal(t *testing.T) {
 	assert.True(t, principal.CanSeeChannel(channelCreate))
 	assert.True(t, principal.CanSeeChannel(channelUpdate))
 	assert.True(t, principal.CanSeeChannel(channelDelete))
+}
+
+// Encode the given string to base64.
+func ToBase64String(key string) string {
+	return base64.StdEncoding.EncodeToString([]byte(key))
+}
+
+// Get a random bad bearer token.
+func GetBadBearerToken() string {
+	header := ToBase64String(base.GenerateRandomSecret())
+	payload := ToBase64String(base.GenerateRandomSecret())
+	signature := ToBase64String(base.GenerateRandomSecret())
+	return fmt.Sprintf("%s.%s.%s", header, payload, signature)
+}
+
+// Check untrusted JWT authentication method with a bad bearer token.
+// The step which parse JWT (needed to determine issuer/provider) should fail.
+func TestAuthenticateUnTrustedJWTWithBadToken(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	googleClientID := "google"
+	googleCallbackURL := "https://accounts.google.com/_callback"
+
+	const (
+		googleName   = "Google LLC"
+		googleIssuer = "https://accounts.google.com"
+	)
+
+	providerGoogle := &OIDCProvider{
+		Name:        googleName,
+		ClientID:    &googleClientID,
+		Issuer:      googleIssuer,
+		CallbackURL: &googleCallbackURL,
+	}
+
+	providers := map[string]*OIDCProvider{
+		googleName: providerGoogle,
+	}
+
+	user, jws, err := auth.AuthenticateUntrustedJWT(GetBadBearerToken(), providers, nil)
+	assert.Error(t, err)
+	assert.Nil(t, user)
+	assert.NotNil(t, jws)
+}
+
+func TestAuthenticateUnTrustedJWTWithNoIssAud(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	googleClientID := "google"
+	googleCallbackURL := "https://accounts.google.com/_callback"
+
+	const (
+		googleName   = "Google LLC"
+		googleIssuer = "https://accounts.google.com"
+	)
+
+	providerGoogle := &OIDCProvider{
+		Name:        googleName,
+		ClientID:    &googleClientID,
+		Issuer:      googleIssuer,
+		CallbackURL: &googleCallbackURL,
+	}
+
+	providers := map[string]*OIDCProvider{
+		googleName: providerGoogle,
+	}
+
+	user, jws, err := auth.AuthenticateUntrustedJWT(TokenWithNoIssuer, providers, nil)
+	assert.Error(t, err)
+	assert.Nil(t, user)
+	assert.NotNil(t, jws)
+}
+
+func TestAuthenticateUnTrustedJWTNoProviderForIssuer(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	// Different clientID from token; "aud": ["ebay", "comcast", "linkedin"]
+	clientID := "google"
+	callbackURL := "https://accounts.google.com/_callback"
+
+	const (
+		googleName   = "Google LLC"
+		googleIssuer = "https://accounts.google.com"
+	)
+
+	providerGoogle := &OIDCProvider{
+		Name:        googleName,
+		ClientID:    &clientID,
+		Issuer:      googleIssuer,
+		CallbackURL: &callbackURL,
+	}
+
+	providers := map[string]*OIDCProvider{
+		googleName: providerGoogle,
+	}
+
+	user, jws, err := auth.AuthenticateUntrustedJWT(Token, providers, nil)
+	assert.Error(t, err)
+	assert.Nil(t, user)
+	assert.NotNil(t, jws)
+}
+
+func TestAuthenticateUnTrustedJWTWithNoClient(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	clientID := "comcast"
+	callbackURL := "https://accounts.google.com/_callback"
+
+	const (
+		googleName   = "Google LLC"
+		googleIssuer = "https://accounts.google.com"
+	)
+
+	providerGoogle := &OIDCProvider{
+		Name:        googleName,
+		ClientID:    &clientID,
+		Issuer:      googleIssuer,
+		CallbackURL: &callbackURL,
+	}
+
+	providers := map[string]*OIDCProvider{
+		googleName: providerGoogle,
+	}
+
+	user, jws, err := auth.AuthenticateUntrustedJWT(Token, providers, nil)
+	assert.Error(t, err)
+	assert.Nil(t, user)
+	assert.NotNil(t, jws)
 }

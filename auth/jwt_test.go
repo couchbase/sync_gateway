@@ -34,37 +34,44 @@ HMACSHA256(
   your-256-bit-secret)
 */
 
-const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJDb3VjaGJhc2UsIEluYy4iLCJzd" +
-	"WIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6WyJlYmF5IiwiY29tY2FzdCIsImxpbmtlZGluIl0sImlhdCI6M" +
-	"TUxNjIzOTAyMiwiZXhwIjoxNTg2MjM5MDIyLCJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS5jb20ifQ.X7A3MAlaZscwth20plFDxv" +
-	"OQ3VXBNnV-9JK0z4g0Z6U"
+const (
+	TokenWithBadClaim = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJDb3VjaGJhc2UsIEluYy" +
+		"4iLCJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6WyJlYmF5IiwiY29tY2FzdCIsImxpbmtlZGluIl0sI" +
+		"mlhdCI6MTUxNjIzOTAyMiwiZXhwIjoxNTg2MjM5MDIyLCJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS5jb20ifQ.X7A3MAlaZscwt" +
+		"h20plFDxvOQ3VXBNnV-9JK0z4g0Z6U"
 
-const tokenWithSingleAudience = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJDb3VjaGJh" +
-	"c2UsIEluYy4iLCJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6ImxpbmtlZGluIiwiaWF0IjoxNTE2MjM5M" +
-	"DIyLCJleHAiOjE1ODYyMzkwMjIsImVtYWlsIjoiam9obndpY2tAY291Y2hiYXNlLmNvbSJ9.SaltmbXl3_0IyE3g1MIikjQRXuyNLUhZw" +
-	"-P575pg-ac"
+	Token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2" +
+		"dsZS5jb20iLCJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6WyJlYmF5IiwiY29tY2FzdCIsImxpbmtlZ" +
+		"GluIl0sImlhdCI6MTUxNjIzOTAyMiwiZXhwIjoxNTg2MjM5MDIyLCJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS5jb20ifQ.zE_h-" +
+		"a-iKjxV7fccAHsLJcEeNvucdZ-TQNTYNk_kL6M"
 
-const tokenWithNoAudience = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJDb3VjaGJhc2Us" +
-	"IEluYy4iLCJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImlhdCI6MTUxNjIzOTAyMiwiZXhwIjoxNTg2MjM5MDIyL" +
-	"CJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS5jb20ifQ.2TdaiunHtgTY1RZsr0ItdmNLMWX5BgcdB6teiGdK_1o"
+	TokenWithSingleAudience = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJDb3VjaGJh" +
+		"c2UsIEluYy4iLCJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6ImxpbmtlZGluIiwiaWF0IjoxNTE2MjM5M" +
+		"DIyLCJleHAiOjE1ODYyMzkwMjIsImVtYWlsIjoiam9obndpY2tAY291Y2hiYXNlLmNvbSJ9.SaltmbXl3_0IyE3g1MIikjQRXuyNLUhZw" +
+		"-P575pg-ac"
 
-const tokenWithNoIssuer = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJzdWIiOiIxMjM0NTY3ODkwIi" +
-	"wibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6WyJlYmF5IiwiY29tY2FzdCIsImxpbmtlZGluIl0sImlhdCI6MTUxNjIzOTAyMiwiZXhwIjo" +
-	"xNTg2MjM5MDIyLCJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS5jb20ifQ.lCT0AE2EL8d9lJkBtVM7FI4QCHrnuKgSeiOZfEGtANM"
+	TokenWithNoAudience = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOiJDb3VjaGJhc2Us" +
+		"IEluYy4iLCJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gV2ljayIsImlhdCI6MTUxNjIzOTAyMiwiZXhwIjoxNTg2MjM5MDIyL" +
+		"CJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS5jb20ifQ.2TdaiunHtgTY1RZsr0ItdmNLMWX5BgcdB6teiGdK_1o"
 
-const tokenWithBadIssuer = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOnsidmFsdWUiOiJDb" +
-	"3VjaGJhc2UsIEluYy4ifSwic3ViIjoiMTIzNDU2Nzg5MCIsIm5hbWUiOiJKb2huIFdpY2siLCJhdWQiOlsiZWJheSIsImNvbWNhc3QiLC" +
-	"JsaW5rZWRpbiJdLCJpYXQiOjE1MTYyMzkwMjIsImV4cCI6MTU4NjIzOTAyMiwiZW1haWwiOiJqb2hud2lja0Bjb3VjaGJhc2UuY29tIn0" +
-	".vquz1bpub2XakltcmRhiAmynRqmniO4I1uMuIPsvVR4"
+	TokenWithNoIssuer = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJzdWIiOiIxMjM0NTY3ODkwIi" +
+		"wibmFtZSI6IkpvaG4gV2ljayIsImF1ZCI6WyJlYmF5IiwiY29tY2FzdCIsImxpbmtlZGluIl0sImlhdCI6MTUxNjIzOTAyMiwiZXhwIjo" +
+		"xNTg2MjM5MDIyLCJlbWFpbCI6ImpvaG53aWNrQGNvdWNoYmFzZS5jb20ifQ.lCT0AE2EL8d9lJkBtVM7FI4QCHrnuKgSeiOZfEGtANM"
+
+	TokenWithBadIssuer = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IkNCMDA5MTIiLCJpc3MiOnsidmFsdWUiOiJDb" +
+		"3VjaGJhc2UsIEluYy4ifSwic3ViIjoiMTIzNDU2Nzg5MCIsIm5hbWUiOiJKb2huIFdpY2siLCJhdWQiOlsiZWJheSIsImNvbWNhc3QiLC" +
+		"JsaW5rZWRpbiJdLCJpYXQiOjE1MTYyMzkwMjIsImV4cCI6MTU4NjIzOTAyMiwiZW1haWwiOiJqb2hud2lja0Bjb3VjaGJhc2UuY29tIn0" +
+		".vquz1bpub2XakltcmRhiAmynRqmniO4I1uMuIPsvVR4"
+)
 
 func TestGetJWTIdentity(t *testing.T) {
 	// Parse the mocked JWS token.
-	jws, err := jose.ParseJWS(token)
+	jws, err := jose.ParseJWS(Token)
 	assert.NotNil(t, jws)
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(Token, ".")
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -92,12 +99,12 @@ func TestGetJWTIdentity(t *testing.T) {
 
 func TestGetJWTExpiry(t *testing.T) {
 	// Parse the mocked JWS token.
-	jws, err := jose.ParseJWS(token)
+	jws, err := jose.ParseJWS(Token)
 	assert.NotNil(t, jws)
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(Token, ".")
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -128,12 +135,12 @@ func TestGetJWTExpiryWithNoIdentity(t *testing.T) {
 
 func TestGetJWTIssuer(t *testing.T) {
 	// Parse the mocked JWS token.
-	jws, err := jose.ParseJWS(token)
+	jws, err := jose.ParseJWS(Token)
 	assert.NotNil(t, jws)
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(Token, ".")
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -159,12 +166,12 @@ func TestGetJWTIssuer(t *testing.T) {
 
 func TestGetJWTIssuerWithSingleAudience(t *testing.T) {
 	// Parse the mocked JWS token.
-	jws, err := jose.ParseJWS(tokenWithSingleAudience)
+	jws, err := jose.ParseJWS(TokenWithSingleAudience)
 	assert.NotNil(t, jws)
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(tokenWithSingleAudience, ".")
+	parts := strings.Split(TokenWithSingleAudience, ".")
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -191,12 +198,12 @@ func TestGetJWTIssuerWithSingleAudience(t *testing.T) {
 
 func TestGetJWTIssuerWithNoAudience(t *testing.T) {
 	// Parse the mocked JWS token.
-	jws, err := jose.ParseJWS(tokenWithNoAudience)
+	jws, err := jose.ParseJWS(TokenWithNoAudience)
 	assert.NotNil(t, jws)
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(tokenWithNoAudience, ".")
+	parts := strings.Split(TokenWithNoAudience, ".")
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -222,12 +229,12 @@ func TestGetJWTIssuerWithNoAudience(t *testing.T) {
 
 func TestGetJWTIssuerWithNoIssuer(t *testing.T) {
 	// Parse the mocked JWS token.
-	jws, err := jose.ParseJWS(tokenWithNoIssuer)
+	jws, err := jose.ParseJWS(TokenWithNoIssuer)
 	assert.NotNil(t, jws)
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(tokenWithNoIssuer, ".")
+	parts := strings.Split(TokenWithNoIssuer, ".")
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -253,12 +260,12 @@ func TestGetJWTIssuerWithNoIssuer(t *testing.T) {
 
 func TestGetJWTIssuerWithBadIssuer(t *testing.T) {
 	// Parse the mocked JWS token.
-	jws, err := jose.ParseJWS(tokenWithBadIssuer)
+	jws, err := jose.ParseJWS(TokenWithBadIssuer)
 	assert.NotNil(t, jws)
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(tokenWithBadIssuer, ".")
+	parts := strings.Split(TokenWithBadIssuer, ".")
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -284,12 +291,12 @@ func TestGetJWTIssuerWithBadIssuer(t *testing.T) {
 
 func TestGetJWTIssuerWithNoClaims(t *testing.T) {
 	// Parse the mocked JWS token.
-	jws, err := jose.ParseJWS(token)
+	jws, err := jose.ParseJWS(Token)
 	assert.NotNil(t, jws)
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(Token, ".")
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
