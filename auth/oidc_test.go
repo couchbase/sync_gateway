@@ -310,6 +310,18 @@ func TestFetchCustomProviderConfigWithBadURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "no such host")
 }
 
+func TestDiscoverConfig(t *testing.T) {
+	provider := OIDCProvider{
+		Name:         "Some_Provider",
+		Issuer:       "http://accounts.google.com",
+		DiscoveryURI: "https://accounts.google.com/.well-known/openid-configuration",
+	}
+	conf, sync, err := provider.DiscoverConfig()
+	assert.NotNil(t, conf)
+	assert.NotNil(t, sync)
+	assert.NoError(t, err)
+}
+
 func TestOIDCToHTTPError(t *testing.T) {
 	oauth2Err := oauth2.NewError(oauth2.ErrorAccessDenied)
 	oauth2Err.Description = "The Authorization Server requires End-User authentication!"
