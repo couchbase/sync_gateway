@@ -40,3 +40,19 @@ func TestRoleVBHashFunction(t *testing.T) {
 	}
 	assert.Equal(t, uint16(0x7b51), role.getVbNo(vbHashFunction))
 }
+
+func TestAuthorizeChannelsRole(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	role, err := auth.NewRole("root", channels.SetOf(t, "superuser"))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	assert.NoError(t, role.AuthorizeAllChannels(channels.SetOf(t, "superuser")))
+	assert.Error(t, role.AuthorizeAllChannels(channels.SetOf(t, "unknown")))
+	assert.NoError(t, role.AuthorizeAnyChannel(channels.SetOf(t, "superuser", "unknown")))
+	assert.Error(t, role.AuthorizeAllChannels(channels.SetOf(t, "unknown1", "unknown2")))
+}
