@@ -10,9 +10,12 @@
 package auth
 
 import (
+	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/coreos/go-oidc/oauth2"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -305,4 +308,54 @@ func TestFetchCustomProviderConfigWithBadURL(t *testing.T) {
 	_, err := provider.FetchCustomProviderConfig("https://accounts.unknown.com")
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "no such host")
+}
+
+func TestOIDCToHTTPError(t *testing.T) {
+	oauth2Err := oauth2.NewError(oauth2.ErrorAccessDenied)
+	oauth2Err.Description = "The Authorization Server requires End-User authentication!"
+	httpErr := OIDCToHTTPError(oauth2Err)
+	assert.Error(t, httpErr)
+	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusUnauthorized))
+
+	oauth2Err = oauth2.NewError(oauth2.ErrorUnauthorizedClient)
+	oauth2Err.Description = "Hey, you stop right there! Authentication required."
+	httpErr = OIDCToHTTPError(oauth2Err)
+	assert.Error(t, httpErr)
+	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusUnauthorized))
+
+	oauth2Err = oauth2.NewError(oauth2.ErrorInvalidClient)
+	oauth2Err.Description = "Oh no! there's not much left here for you;-)"
+	httpErr = OIDCToHTTPError(oauth2Err)
+	assert.Error(t, httpErr)
+	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusUnauthorized))
+
+	oauth2Err = oauth2.NewError(oauth2.ErrorInvalidGrant)
+	oauth2Err.Description = "Hmm...that doesn't look good!"
+	httpErr = OIDCToHTTPError(oauth2Err)
+	assert.Error(t, httpErr)
+	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusUnauthorized))
+
+	oauth2Err = oauth2.NewError(oauth2.ErrorInvalidRequest)
+	oauth2Err.Description = "You lost in space!"
+	httpErr = OIDCToHTTPError(oauth2Err)
+	assert.Error(t, httpErr)
+	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusUnauthorized))
+
+	oauth2Err = oauth2.NewError(oauth2.ErrorServerError)
+	oauth2Err.Description = "Even the things we love break sometimes!"
+	httpErr = OIDCToHTTPError(oauth2Err)
+	assert.Error(t, httpErr)
+	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusBadGateway))
+
+	oauth2Err = oauth2.NewError(oauth2.ErrorUnsupportedGrantType)
+	oauth2Err.Description = "Yikes, looks like this link is pretty broken! Sorry about that."
+	httpErr = OIDCToHTTPError(oauth2Err)
+	assert.Error(t, httpErr)
+	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusBadRequest))
+
+	oauth2Err = oauth2.NewError(oauth2.ErrorUnsupportedResponseType)
+	oauth2Err.Description = "We're coming soon!"
+	httpErr = OIDCToHTTPError(oauth2Err)
+	assert.Error(t, httpErr)
+	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusBadRequest))
 }
