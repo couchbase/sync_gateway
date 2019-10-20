@@ -616,6 +616,27 @@ func TestAuthenticateTrustedJWTWithBadToken(t *testing.T) {
 	assert.NotNil(t, jws)
 }
 
+func mockTokenWithBadIssuerURL() string {
+	// Mock up a payload or claim for token
+	claims := func() map[string]interface{} {
+		audience := [...]string{"ebay", "comcast", "linkedin"}
+		claims := make(map[string]interface{})
+		claims["id"] = "CB00912"
+		claims["iss"] = "Couchbase, Inc." // Expected to be a valid URL.
+		claims["sub"] = "1234567890"
+		claims["name"] = "John Wick"
+		claims["aud"] = audience
+		claims["iat"] = 1516239022
+		claims["exp"] = 1586239022
+		claims["email"] = "johnwick@couchbase.com"
+		return claims
+	}
+	header := GetStandardHeaderAsJSON()
+	payload, _ := toJson(claims())
+	token := GetBearerToken(header, payload, "secret")
+	return token
+}
+
 func TestAuthenticateTrustedJWTWithBadClaim(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -630,7 +651,8 @@ func TestAuthenticateTrustedJWTWithBadClaim(t *testing.T) {
 		CallbackURL: &callbackURL,
 	}
 
-	user, jws, err := auth.AuthenticateTrustedJWT(TokenWithBadClaim, provider, nil)
+	token := mockTokenWithBadIssuerURL()
+	user, jws, err := auth.AuthenticateTrustedJWT(token, provider, nil)
 	log.Printf("%v", err.Error())
 	assert.Error(t, err)
 	assert.Nil(t, user)
@@ -651,7 +673,8 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		CallbackURL: &callbackURL,
 	}
 
-	user, jws, err := auth.AuthenticateTrustedJWT(Token, provider, nil)
+	token := mockGoodToken()
+	user, jws, err := auth.AuthenticateTrustedJWT(token, provider, nil)
 
 	assert.NoError(t, err)
 	assert.Nil(t, user)
@@ -664,12 +687,13 @@ func TestAuthenticateJWTWithNoClaim(t *testing.T) {
 	auth := NewAuthenticator(testBucket.Bucket, nil)
 
 	// Parse the mocked JWS token.
-	jws, err := jose.ParseJWS(Token)
+	token := mockGoodToken()
+	jws, err := jose.ParseJWS(token)
 	assert.NotNil(t, jws)
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(Token, ".")
+	parts := strings.Split(token, ".")
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -831,7 +855,8 @@ func TestAuthenticateUnTrustedJWTWithNoIssAud(t *testing.T) {
 		googleName: providerGoogle,
 	}
 
-	user, jws, err := auth.AuthenticateUntrustedJWT(TokenWithNoIssuer, providers, nil)
+	token := mockTokenWithNoIssuer()
+	user, jws, err := auth.AuthenticateUntrustedJWT(token, providers, nil)
 	assert.Error(t, err)
 	assert.Nil(t, user)
 	assert.NotNil(t, jws)
@@ -862,7 +887,8 @@ func TestAuthenticateUnTrustedJWTNoProviderForIssuer(t *testing.T) {
 		googleName: providerGoogle,
 	}
 
-	user, jws, err := auth.AuthenticateUntrustedJWT(Token, providers, nil)
+	token := mockGoodToken()
+	user, jws, err := auth.AuthenticateUntrustedJWT(token, providers, nil)
 	assert.Error(t, err)
 	assert.Nil(t, user)
 	assert.NotNil(t, jws)
@@ -892,7 +918,8 @@ func TestAuthenticateUnTrustedJWTWithNoClient(t *testing.T) {
 		googleName: providerGoogle,
 	}
 
-	user, jws, err := auth.AuthenticateUntrustedJWT(Token, providers, nil)
+	token := mockGoodToken()
+	user, jws, err := auth.AuthenticateUntrustedJWT(token, providers, nil)
 	assert.Error(t, err)
 	assert.Nil(t, user)
 	assert.NotNil(t, jws)
