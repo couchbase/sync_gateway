@@ -152,11 +152,23 @@ func TestCanSeeChannelSince(t *testing.T) {
 	defer testBucket.Close()
 
 	auth := NewAuthenticator(testBucket.Bucket, nil)
-	channels := base.SetFromArray([]string{"ESPN", "HBO", "FX", "AMC"})
-	user, err := auth.NewUser("user", "password", channels)
+	freeChannels := base.SetFromArray([]string{"ESPN", "HBO", "FX", "AMC"})
+	user, err := auth.NewUser("user", "password", freeChannels)
 	assert.Nil(t, err)
 
-	for channel := range channels {
+	role, err := auth.NewRole("music", channels.SetOf(t, "Spotify", "Youtube"))
+	assert.Nil(t, err)
+	assert.Equal(t, nil, auth.Save(role))
+
+	role, err = auth.NewRole("video", channels.SetOf(t, "Netflix", "Hulu"))
+	assert.Nil(t, err)
+	assert.Equal(t, nil, auth.Save(role))
+
+	user.(*userImpl).setRolesSince(channels.TimedSet{
+		"music": channels.NewVbSimpleSequence(1),
+		"video": channels.NewVbSimpleSequence(1)})
+
+	for channel := range freeChannels {
 		assert.Equal(t, uint64(1), user.CanSeeChannelSince(channel))
 	}
 	assert.Equal(t, uint64(0), user.CanSeeChannelSince("unknown"))
@@ -309,4 +321,20 @@ func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
 
 	user.(*userImpl).OldPasswordHash_ = nil
 	assert.False(t, user.Authenticate("hunter3"))
+}
+
+func TestUserVBHashFunction(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	user, err := auth.NewUser("alice", "password", channels.SetOf(t, "user"))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NotNil(t, user)
+
+	vbHashFunction := func(str string) uint32 {
+		return hash(str)
+	}
+	assert.Equal(t, uint16(0xe760), user.getVbNo(vbHashFunction))
 }
