@@ -24,3 +24,19 @@ func TestInitRole(t *testing.T) {
 	assert.Error(t, role.initRole("Musi[", channels.SetOf(t, "Spotify", "Youtube")))
 	assert.Error(t, role.initRole("Music~", channels.SetOf(t, "Spotify", "Youtube")))
 }
+
+func TestRoleVBHashFunction(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	role, err := auth.NewRole("root", channels.SetOf(t, "superuser"))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	vbHashFunction := func(str string) uint32 {
+		return hash(str)
+	}
+	assert.Equal(t, uint16(0x7b51), role.getVbNo(vbHashFunction))
+}
