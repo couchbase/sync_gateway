@@ -296,7 +296,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 func TestFetchCustomProviderConfigWithEmptyURL(t *testing.T) {
 	provider := OIDCProvider{}
 	_, err := provider.FetchCustomProviderConfig("")
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported protocol scheme")
 }
 
@@ -306,8 +306,15 @@ func TestFetchCustomProviderConfigWithEmptyURL(t *testing.T) {
 func TestFetchCustomProviderConfigWithBadURL(t *testing.T) {
 	provider := OIDCProvider{}
 	_, err := provider.FetchCustomProviderConfig("https://accounts.unknown.com")
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no such host")
+}
+
+func TestFetchCustomProviderConfigWithCtrlCharURL(t *testing.T) {
+	provider := OIDCProvider{}
+	_, err := provider.FetchCustomProviderConfig(`https://accounts.unknown.com\r\n?param=123`)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid character")
 }
 
 func TestDiscoverConfig(t *testing.T) {
