@@ -41,48 +41,36 @@ func TestParseURIWithValidURL(t *testing.T) {
 	assert.Equal(t, httpsPort, url.Port())
 }
 
-// Check parsing an empty URL instead of a valid HTTP/HTTPS URL.
-// It should not return any URL or Error message.
-func TestParseURIWithEmptyURL(t *testing.T) {
+func TestParseURIWithBadURIs(t *testing.T) {
 	config := &OidcProviderConfiguration{}
-	url, err := config.parseURI("")
-	assert.Nil(t, url)
-	assert.Nil(t, err)
-}
+	tests := []struct {
+		input string
+		text  string
+		want  interface{}
+	}{
+		// Simulate Error parsing URI use case; Unicode U+237E (⍾), "graphic for bell"
+		{input: "⍾://accounts.unknown.com/", text: "Error parsing URI", want: nil},
+		// HTTP URL without hostname
+		{input: "http://", text: "Host required in URI", want: nil},
+		// HTTPS URL without hostname
+		{input: "https://", text: "Host required in URI", want: nil},
+		// HTTPS URL without a valid scheme.
+		{input: "sftp://accounts.unknown.com", text: "Invalid URI scheme", want: nil},
+		// Blank or empty URL
+		{input: "", text: "", want: nil},
+	}
 
-// Check parsing a non HTTP/HTTPS URL. It should should return an error
-// stating "Invalid URI scheme".
-func TestParseURIWithNonHttpURL(t *testing.T) {
-	config := &OidcProviderConfiguration{}
-	url, err := config.parseURI("sftp://accounts.unknown.com")
-	assert.Nil(t, url)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Invalid URI scheme")
-}
-
-// Check parsing an HTTP/HTTPS URL with no Host. It should should return
-// an error stating "Host required in URI".
-func TestParseURIWithNoHost(t *testing.T) {
-	config := &OidcProviderConfiguration{}
-	url, err := config.parseURI("http://") // HTTP URL with No hostname
-	assert.Nil(t, url)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Host required in URI")
-
-	url, err = config.parseURI("https://") // HTTPS URL with No hostname
-	assert.Nil(t, url)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Host required in URI")
-}
-
-// Simulate Error parsing URI use case
-// Unicode U+237E (⍾), "graphic for bell"
-func TestParseURIWithBadHttpURL(t *testing.T) {
-	config := &OidcProviderConfiguration{}
-	url, err := config.parseURI("⍾://accounts.unknown.com/")
-	assert.Nil(t, url)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Error parsing URI")
+	for _, tc := range tests {
+		got, err := config.parseURI(tc.input)
+		if tc.input == "" {
+			assert.Nil(t, got)
+			assert.Nil(t, err)
+			continue
+		}
+		if !assert.Error(t, err) || (assert.Error(t, err) && !assert.Contains(t, err.Error(), tc.text)) {
+			t.Fatalf("expected: %v, got: %v", tc.want, got)
+		}
+	}
 }
 
 // Constants for checking provider configuration method
