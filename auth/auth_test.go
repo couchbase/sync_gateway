@@ -631,9 +631,9 @@ func mockTokenWithBadIssuerURL() string {
 		claims["email"] = "johnwick@couchbase.com"
 		return claims
 	}
-	header := GetStandardHeaderAsJSON()
+	header := getStandardHeaderAsJSON()
 	payload, _ := toJson(claims())
-	token := GetBearerToken(header, payload, "secret")
+	token := getBearerToken(header, payload, "secret")
 	return token
 }
 

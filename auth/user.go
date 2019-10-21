@@ -214,14 +214,6 @@ func (user *userImpl) SetPassword(password string) {
 	}
 }
 
-func (user *userImpl) getVbNo(hashFunction VBHashFunction) uint16 {
-	if user.vbNo == nil {
-		calculatedVbNo := uint16(hashFunction(user.DocID()))
-		user.vbNo = &calculatedVbNo
-	}
-	return *user.vbNo
-}
-
 //////// CHANNEL ACCESS:
 
 func (user *userImpl) GetRoles() []Role {

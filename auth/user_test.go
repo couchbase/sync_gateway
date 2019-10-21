@@ -272,38 +272,6 @@ func TestUserAuthenticateWithBadPasswordHash(t *testing.T) {
 	assert.False(t, user.Authenticate(password))
 }
 
-// Must authenticate but the password gets rehashed if the password
-// was correct if the bcryptCost is different.
-func TestUserAuthenticateWithNewBcryptCost(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
-	const (
-		username      = "alice"
-		password      = "hunter2"
-		newBcryptCost = 12
-	)
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
-
-	user, err := auth.NewUser(username, password, base.Set{})
-	assert.NoError(t, err)
-	assert.NotNil(t, user)
-
-	defer SetBcryptCost(bcryptDefaultCost)
-	cost, err := bcrypt.Cost(user.(*userImpl).PasswordHash_)
-	assert.NoError(t, err)
-	assert.Equal(t, bcryptDefaultCost, cost)
-
-	err = SetBcryptCost(newBcryptCost)
-	assert.NoError(t, err)
-	user.SetPassword(password)
-
-	cost, err = bcrypt.Cost(user.(*userImpl).PasswordHash_)
-	assert.NoError(t, err)
-	assert.Equal(t, newBcryptCost, cost)
-	assert.True(t, user.Authenticate(password))
-}
-
 // Must not authenticate if No hash, but (incorrect) password provided.
 func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
@@ -321,20 +289,4 @@ func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
 
 	user.(*userImpl).OldPasswordHash_ = nil
 	assert.False(t, user.Authenticate("hunter3"))
-}
-
-func TestUserVBHashFunction(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
-
-	user, err := auth.NewUser("alice", "password", channels.SetOf(t, "user"))
-	assert.NoError(t, err)
-	err = auth.Save(user)
-	assert.NotNil(t, user)
-
-	vbHashFunction := func(str string) uint32 {
-		return hash(str)
-	}
-	assert.Equal(t, uint16(0xe760), user.getVbNo(vbHashFunction))
 }

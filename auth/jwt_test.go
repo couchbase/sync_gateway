@@ -24,9 +24,9 @@ func mockGoodToken() string {
 		claims["email"] = "johnwick@couchbase.com"
 		return claims
 	}
-	header := GetStandardHeaderAsJSON()
+	header := getStandardHeaderAsJSON()
 	payload, _ := toJson(claims())
-	token := GetBearerToken(header, payload, "secret")
+	token := getBearerToken(header, payload, "secret")
 	return token
 }
 
@@ -47,9 +47,9 @@ func mockTokenWithBadIssuer() string {
 		claims["email"] = "johnwick@couchbase.com"
 		return claims
 	}
-	header := GetStandardHeaderAsJSON()
+	header := getStandardHeaderAsJSON()
 	payload, _ := toJson(claims())
-	token := GetBearerToken(header, payload, "secret")
+	token := getBearerToken(header, payload, "secret")
 	return token
 }
 
@@ -68,9 +68,9 @@ func mockTokenWithNoIssuer() string {
 		claims["email"] = "johnwick@couchbase.com"
 		return claims
 	}
-	header := GetStandardHeaderAsJSON()
+	header := getStandardHeaderAsJSON()
 	payload, _ := toJson(claims())
-	token := GetBearerToken(header, payload, "secret")
+	token := getBearerToken(header, payload, "secret")
 	return token
 }
 
@@ -87,9 +87,9 @@ func mockGoodTokenWithNoAudience() string {
 		claims["email"] = "johnwick@couchbase.com"
 		return claims
 	}
-	header := GetStandardHeaderAsJSON()
+	header := getStandardHeaderAsJSON()
 	payload, _ := toJson(claims())
-	token := GetBearerToken(header, payload, "secret")
+	token := getBearerToken(header, payload, "secret")
 	return token
 }
 
@@ -107,9 +107,9 @@ func mockTokenWithSingleAudience() string {
 		claims["email"] = "johnwick@couchbase.com"
 		return claims
 	}
-	header := GetStandardHeaderAsJSON()
+	header := getStandardHeaderAsJSON()
 	payload, _ := toJson(claims())
-	token := GetBearerToken(header, payload, "secret")
+	token := getBearerToken(header, payload, "secret")
 	return token
 }
 
@@ -182,38 +182,6 @@ func TestGetJWTExpiryWithNoIdentity(t *testing.T) {
 	expiresAt, err := GetJWTExpiry(jwt)
 	assert.Error(t, err)
 	assert.NotNil(t, expiresAt)
-}
-
-func TestGetJWTIssuer(t *testing.T) {
-	// Parse the mocked JWS token.
-	token := mockGoodToken()
-	jws, err := jose.ParseJWS(token)
-	assert.NotNil(t, jws)
-	assert.NoError(t, err)
-
-	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
-	assert.NotNil(t, parts)
-	assert.Equal(t, parts[0], jws.RawHeader)
-	assert.Equal(t, parts[1], jws.RawPayload)
-
-	assert.NotNil(t, jws.Header)
-	assert.NotNil(t, jws.Payload)
-	assert.NotNil(t, jws.Signature)
-
-	jwt := jose.JWT{
-		RawHeader:  jws.RawHeader,
-		Header:     jws.Header,
-		RawPayload: jws.RawPayload,
-		Payload:    jws.Payload,
-		Signature:  jws.Signature}
-
-	// Check JWT issuer details; contains multiple entries for audience.
-	issuer, audiences, err := GetJWTIssuer(jwt)
-	assert.NoError(t, err)
-	assert.NotNil(t, audiences)
-	assert.True(t, len(audiences) > 0)
-	assert.NotNil(t, issuer)
 }
 
 func TestGetJWTIssuerWithSingleAudience(t *testing.T) {

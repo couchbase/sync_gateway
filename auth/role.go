@@ -153,14 +153,6 @@ func (role *roleImpl) AuthorizeAnyChannel(channels base.Set) error {
 	return authorizeAnyChannel(role, channels)
 }
 
-func (role *roleImpl) getVbNo(hashFunction VBHashFunction) uint16 {
-	if role.vbNo == nil {
-		calculatedVbNo := uint16(hashFunction(role.DocID()))
-		role.vbNo = &calculatedVbNo
-	}
-	return *role.vbNo
-}
-
 // Returns an HTTP 403 error if the Principal is not allowed to access all the given channels.
 // A nil Principal means access control is disabled, so the function will return nil.
 func authorizeAllChannels(princ Principal, channels base.Set) error {

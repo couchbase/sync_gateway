@@ -59,7 +59,6 @@ type Principal interface {
 	accessViewKey() string
 	validate() error
 	setChannels(ch.TimedSet)
-	getVbNo(hashFunction VBHashFunction) uint16
 
 	// Cas value for the associated principal document in the bucket
 	Cas() uint64
