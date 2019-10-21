@@ -75,29 +75,29 @@ func TestParseURIWithBadURIs(t *testing.T) {
 
 // Constants for checking provider configuration method
 const (
-	GoodIssuer               = "https://accounts.google.com"
-	BadIssuer                = "sftp://accounts.google.com"
-	GoodAuthEndpoint         = "https://accounts.google.com/o/oauth2/v2/auth"
-	BadAuthEndpoint          = "sftp://accounts.google.com/o/oauth2/v2/auth"
-	GoodTokenEndpoint        = "https://oauth2.googleapis.com/token"
-	BadTokenEndpoint         = "sftp://oauth2.googleapis.com/token"
-	GoodUserInfoEndpoint     = "https://openidconnect.googleapis.com/v1/userinfo"
-	BadUserInfoEndpoint      = "sftp://openidconnect.googleapis.com/v1/userinfo"
-	GoodJwksUri              = "https://www.googleapis.com/oauth2/v3/certs"
-	BadJwksUri               = "sftp://www.googleapis.com/oauth2/v3/certs"
-	GoodRegistrationEndpoint = "https://accounts.google.com/clients/"
-	BadRegistrationEndpoint  = "sftp://accounts.google.com/clients/"
-	GoodPolicy               = "https://accounts.google.com/policy/"
-	BadPolicy                = "sftp://accounts.google.com/policy/"
-	GoodTermsOfService       = "https://accounts.google.com/termsofservice/"
-	BadTermsOfService        = "sftp://accounts.google.com/termsofservice/"
-	GoodServiceDocs          = "https://accounts.google.com/servicedocs/"
-	BadServiceDocs           = "sftp://accounts.google.com/servicedocs/"
+	goodIssuer               = "https://accounts.google.com"
+	badIssuer                = "sftp://accounts.google.com"
+	goodAuthEndpoint         = "https://accounts.google.com/o/oauth2/v2/auth"
+	badAuthEndpoint          = "sftp://accounts.google.com/o/oauth2/v2/auth"
+	goodTokenEndpoint        = "https://oauth2.googleapis.com/token"
+	badTokenEndpoint         = "sftp://oauth2.googleapis.com/token"
+	goodUserInfoEndpoint     = "https://openidconnect.googleapis.com/v1/userinfo"
+	badUserInfoEndpoint      = "sftp://openidconnect.googleapis.com/v1/userinfo"
+	goodJwksUri              = "https://www.googleapis.com/oauth2/v3/certs"
+	badJwksUri               = "sftp://www.googleapis.com/oauth2/v3/certs"
+	goodRegistrationEndpoint = "https://accounts.google.com/clients/"
+	badRegistrationEndpoint  = "sftp://accounts.google.com/clients/"
+	goodPolicy               = "https://accounts.google.com/policy/"
+	badPolicy                = "sftp://accounts.google.com/policy/"
+	goodTermsOfService       = "https://accounts.google.com/termsofservice/"
+	badTermsOfService        = "sftp://accounts.google.com/termsofservice/"
+	goodServiceDocs          = "https://accounts.google.com/servicedocs/"
+	badServiceDocs           = "sftp://accounts.google.com/servicedocs/"
 )
 
 func TestAsProviderConfigWithBadIssuer(t *testing.T) {
 	opc := &OidcProviderConfiguration{
-		Issuer: BadIssuer,
+		Issuer: badIssuer,
 	}
 	pc, err := opc.AsProviderConfig()
 	assert.Error(t, err)
@@ -106,8 +106,8 @@ func TestAsProviderConfigWithBadIssuer(t *testing.T) {
 
 func TestAsProviderConfigWithBadAuthEndpoint(t *testing.T) {
 	opc := &OidcProviderConfiguration{
-		Issuer:       GoodIssuer,
-		AuthEndpoint: BadAuthEndpoint,
+		Issuer:       goodIssuer,
+		AuthEndpoint: badAuthEndpoint,
 	}
 	pc, err := opc.AsProviderConfig()
 	assert.Error(t, err)
@@ -117,9 +117,9 @@ func TestAsProviderConfigWithBadAuthEndpoint(t *testing.T) {
 
 func TestAsProviderConfigWithBadTokenEndpoint(t *testing.T) {
 	opc := &OidcProviderConfiguration{
-		Issuer:        GoodIssuer,
-		AuthEndpoint:  GoodAuthEndpoint,
-		TokenEndpoint: BadTokenEndpoint,
+		Issuer:        goodIssuer,
+		AuthEndpoint:  goodAuthEndpoint,
+		TokenEndpoint: badTokenEndpoint,
 	}
 	pc, err := opc.AsProviderConfig()
 	assert.Error(t, err)
@@ -130,10 +130,10 @@ func TestAsProviderConfigWithBadTokenEndpoint(t *testing.T) {
 
 func TestAsProviderConfigWithBadUserInfoEndpoint(t *testing.T) {
 	opc := &OidcProviderConfiguration{
-		Issuer:           GoodIssuer,
-		AuthEndpoint:     GoodAuthEndpoint,
-		TokenEndpoint:    GoodTokenEndpoint,
-		UserInfoEndpoint: BadUserInfoEndpoint,
+		Issuer:           goodIssuer,
+		AuthEndpoint:     goodAuthEndpoint,
+		TokenEndpoint:    goodTokenEndpoint,
+		UserInfoEndpoint: badUserInfoEndpoint,
 	}
 	pc, err := opc.AsProviderConfig()
 	assert.Error(t, err)
@@ -145,11 +145,11 @@ func TestAsProviderConfigWithBadUserInfoEndpoint(t *testing.T) {
 
 func TestAsProviderConfigWithBadJwksUri(t *testing.T) {
 	opc := &OidcProviderConfiguration{
-		Issuer:           GoodIssuer,
-		AuthEndpoint:     GoodAuthEndpoint,
-		TokenEndpoint:    GoodTokenEndpoint,
-		UserInfoEndpoint: GoodUserInfoEndpoint,
-		JwksUri:          BadJwksUri,
+		Issuer:           goodIssuer,
+		AuthEndpoint:     goodAuthEndpoint,
+		TokenEndpoint:    goodTokenEndpoint,
+		UserInfoEndpoint: goodUserInfoEndpoint,
+		JwksUri:          badJwksUri,
 	}
 	pc, err := opc.AsProviderConfig()
 	assert.Error(t, err)
@@ -162,12 +162,12 @@ func TestAsProviderConfigWithBadJwksUri(t *testing.T) {
 
 func TestAsProviderConfigWithBadRegistrationEndpoint(t *testing.T) {
 	opc := &OidcProviderConfiguration{
-		Issuer:               GoodIssuer,
-		AuthEndpoint:         GoodAuthEndpoint,
-		TokenEndpoint:        GoodTokenEndpoint,
-		UserInfoEndpoint:     GoodUserInfoEndpoint,
-		JwksUri:              GoodJwksUri,
-		RegistrationEndpoint: BadRegistrationEndpoint,
+		Issuer:               goodIssuer,
+		AuthEndpoint:         goodAuthEndpoint,
+		TokenEndpoint:        goodTokenEndpoint,
+		UserInfoEndpoint:     goodUserInfoEndpoint,
+		JwksUri:              goodJwksUri,
+		RegistrationEndpoint: badRegistrationEndpoint,
 	}
 	pc, err := opc.AsProviderConfig()
 	assert.Error(t, err)
@@ -181,13 +181,13 @@ func TestAsProviderConfigWithBadRegistrationEndpoint(t *testing.T) {
 
 func TestAsProviderConfigWithBadPolicy(t *testing.T) {
 	opc := &OidcProviderConfiguration{
-		Issuer:               GoodIssuer,
-		AuthEndpoint:         GoodAuthEndpoint,
-		TokenEndpoint:        GoodTokenEndpoint,
-		UserInfoEndpoint:     GoodUserInfoEndpoint,
-		JwksUri:              GoodJwksUri,
-		RegistrationEndpoint: GoodRegistrationEndpoint,
-		Policy:               BadPolicy,
+		Issuer:               goodIssuer,
+		AuthEndpoint:         goodAuthEndpoint,
+		TokenEndpoint:        goodTokenEndpoint,
+		UserInfoEndpoint:     goodUserInfoEndpoint,
+		JwksUri:              goodJwksUri,
+		RegistrationEndpoint: goodRegistrationEndpoint,
+		Policy:               badPolicy,
 	}
 	pc, err := opc.AsProviderConfig()
 	assert.Error(t, err)
@@ -202,14 +202,14 @@ func TestAsProviderConfigWithBadPolicy(t *testing.T) {
 
 func TestAsProviderConfigWithBadTermsOfService(t *testing.T) {
 	opc := &OidcProviderConfiguration{
-		Issuer:               GoodIssuer,
-		AuthEndpoint:         GoodAuthEndpoint,
-		TokenEndpoint:        GoodTokenEndpoint,
-		UserInfoEndpoint:     GoodUserInfoEndpoint,
-		JwksUri:              GoodJwksUri,
-		RegistrationEndpoint: GoodRegistrationEndpoint,
-		Policy:               GoodPolicy,
-		TermsOfService:       BadTermsOfService,
+		Issuer:               goodIssuer,
+		AuthEndpoint:         goodAuthEndpoint,
+		TokenEndpoint:        goodTokenEndpoint,
+		UserInfoEndpoint:     goodUserInfoEndpoint,
+		JwksUri:              goodJwksUri,
+		RegistrationEndpoint: goodRegistrationEndpoint,
+		Policy:               goodPolicy,
+		TermsOfService:       badTermsOfService,
 	}
 	pc, err := opc.AsProviderConfig()
 	assert.Error(t, err)
@@ -225,15 +225,15 @@ func TestAsProviderConfigWithBadTermsOfService(t *testing.T) {
 
 func TestAsProviderConfigWithBadServiceDocs(t *testing.T) {
 	opc := &OidcProviderConfiguration{
-		Issuer:               GoodIssuer,
-		AuthEndpoint:         GoodAuthEndpoint,
-		TokenEndpoint:        GoodTokenEndpoint,
-		UserInfoEndpoint:     GoodUserInfoEndpoint,
-		JwksUri:              GoodJwksUri,
-		RegistrationEndpoint: GoodRegistrationEndpoint,
-		Policy:               GoodPolicy,
-		TermsOfService:       GoodTermsOfService,
-		ServiceDocs:          BadServiceDocs,
+		Issuer:               goodIssuer,
+		AuthEndpoint:         goodAuthEndpoint,
+		TokenEndpoint:        goodTokenEndpoint,
+		UserInfoEndpoint:     goodUserInfoEndpoint,
+		JwksUri:              goodJwksUri,
+		RegistrationEndpoint: goodRegistrationEndpoint,
+		Policy:               goodPolicy,
+		TermsOfService:       goodTermsOfService,
+		ServiceDocs:          badServiceDocs,
 	}
 	pc, err := opc.AsProviderConfig()
 	assert.Error(t, err)
@@ -265,15 +265,15 @@ func TestAsProviderConfig(t *testing.T) {
 		tokenEndpointPath        = "/token"
 	)
 	opc := &OidcProviderConfiguration{
-		Issuer:               GoodIssuer,
-		AuthEndpoint:         GoodAuthEndpoint,
-		TokenEndpoint:        GoodTokenEndpoint,
-		UserInfoEndpoint:     GoodUserInfoEndpoint,
-		JwksUri:              GoodJwksUri,
-		RegistrationEndpoint: GoodRegistrationEndpoint,
-		Policy:               GoodPolicy,
-		TermsOfService:       GoodTermsOfService,
-		ServiceDocs:          GoodServiceDocs,
+		Issuer:               goodIssuer,
+		AuthEndpoint:         goodAuthEndpoint,
+		TokenEndpoint:        goodTokenEndpoint,
+		UserInfoEndpoint:     goodUserInfoEndpoint,
+		JwksUri:              goodJwksUri,
+		RegistrationEndpoint: goodRegistrationEndpoint,
+		Policy:               goodPolicy,
+		TermsOfService:       goodTermsOfService,
+		ServiceDocs:          goodServiceDocs,
 	}
 	// Make provider configuration from Open ID Connect provider configuration.
 	pc, err := opc.AsProviderConfig()

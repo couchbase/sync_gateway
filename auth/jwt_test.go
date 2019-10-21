@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const jwtSeparator = "."
+
 func mockGoodToken() string {
 	// Mock up a payload or claim for token
 	claims := func() map[string]interface{} {
@@ -121,7 +123,7 @@ func TestGetJWTIdentity(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(token, jwtSeparator)
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -155,7 +157,7 @@ func TestGetJWTExpiry(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(token, jwtSeparator)
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -192,7 +194,7 @@ func TestGetJWTIssuerWithSingleAudience(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(token, jwtSeparator)
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -225,7 +227,7 @@ func TestGetJWTIssuerWithNoAudience(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(token, jwtSeparator)
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -257,7 +259,7 @@ func TestGetJWTIssuerWithNoIssuer(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(token, jwtSeparator)
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -289,7 +291,7 @@ func TestGetJWTIssuerWithBadIssuer(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(token, jwtSeparator)
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
@@ -321,7 +323,7 @@ func TestGetJWTIssuerWithNoClaims(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the header, payload, and signature.
-	parts := strings.Split(token, ".")
+	parts := strings.Split(token, jwtSeparator)
 	assert.NotNil(t, parts)
 	assert.Equal(t, parts[0], jws.RawHeader)
 	assert.Equal(t, parts[1], jws.RawPayload)
