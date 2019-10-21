@@ -81,8 +81,9 @@ type RevisionCacheBackingStore interface {
 
 // DocumentRevision stored and returned by the rev cache
 type DocumentRevision struct {
-	DocID       string
-	RevID       string
+	DocID string
+	RevID string
+	// BodyBytes contains the raw document, with no special properties.
 	BodyBytes   []byte
 	History     Revisions
 	Channels    base.Set

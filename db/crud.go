@@ -190,14 +190,14 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 	return docOut, nil
 }
 
-// Returns the body of the current revision of a document
-func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince []string) (DocumentRevision, error) {
+// GetRev returns the revision for the given docID and revID, or the current active revision if revID is empty.
+func (db *Database) GetRev(docID, revID string, history bool, attachmentsSince []string) (DocumentRevision, error) {
 	maxHistory := 0
 	if history {
 		maxHistory = math.MaxInt32
 	}
 
-	return db.getRev(docid, revid, maxHistory, nil)
+	return db.getRev(docID, revID, maxHistory, nil)
 }
 
 // Returns the body of the current revision of a document
