@@ -11,13 +11,17 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -193,6 +197,8 @@ func assertHTTPError(t *testing.T, err error, status int) {
 
 func TestDatabase(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
@@ -216,27 +222,28 @@ func TestDatabase(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc...")
-	gotbody, err := db.Get("doc1")
+	gotbody, err := db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, body)
+	AssertEqualBodies(t, body, gotbody)
 
 	log.Printf("Retrieve rev 1...")
-	gotbody, err = db.GetRev("doc1", rev1id, false, nil)
+	gotbody, err = db.Get1xRevBody("doc1", rev1id, false, nil)
 	assert.NoError(t, err, "Couldn't get document with rev 1")
-	goassert.DeepEquals(t, gotbody, Body{"key1": "value1", "key2": 1234, BodyId: "doc1", BodyRev: rev1id})
+	expectedResult := Body{"key1": "value1", "key2": 1234, BodyId: "doc1", BodyRev: rev1id}
+	AssertEqualBodies(t, expectedResult, gotbody)
 
 	log.Printf("Retrieve rev 2...")
-	gotbody, err = db.GetRev("doc1", rev2id, false, nil)
+	gotbody, err = db.Get1xRevBody("doc1", rev2id, false, nil)
 	assert.NoError(t, err, "Couldn't get document with rev")
-	goassert.DeepEquals(t, gotbody, body)
+	AssertEqualBodies(t, body, gotbody)
 
-	gotbody, err = db.GetRev("doc1", "bogusrev", false, nil)
+	gotbody, err = db.Get1xRevBody("doc1", "bogusrev", false, nil)
 	status, _ := base.ErrorAsHTTPStatus(err)
 	goassert.Equals(t, status, 404)
 
 	// Test the _revisions property:
 	log.Printf("Check _revisions...")
-	gotbody, err = db.GetRev("doc1", rev2id, true, nil)
+	gotbody, err = db.Get1xRevBody("doc1", rev2id, true, nil)
 	revisions := gotbody[BodyRevisions].(Revisions)
 	goassert.Equals(t, revisions[RevisionsStart], 2)
 	goassert.DeepEquals(t, revisions[RevisionsIds],
@@ -276,9 +283,9 @@ func TestDatabase(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Check Get...")
-	gotbody, err = db.Get("doc1")
+	gotbody, err = db.Get1xBody("doc1")
 	assert.NoError(t, err, "Couldn't get document")
-	goassert.DeepEquals(t, gotbody, body)
+	AssertEqualBodies(t, body, gotbody)
 
 }
 
@@ -296,15 +303,15 @@ func TestGetDeleted(t *testing.T) {
 	assert.NoError(t, err, "DeleteDoc")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
-	body, err = db.GetRev("doc1", rev2id, true, nil)
-	assert.NoError(t, err, "GetRev")
+	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
+	assert.NoError(t, err, "Get1xRevBody")
 	expectedResult := Body{
 		BodyId:        "doc1",
 		BodyRev:       rev2id,
 		BodyDeleted:   true,
 		BodyRevisions: Revisions{RevisionsStart: 2, RevisionsIds: []string{"bc6d97f6e97c0d034a34f8aac2bf8b44", "dfd5e19813767eeddd08270fc5f385cd"}},
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	AssertEqualBodies(t, expectedResult, body)
 
 	// Get the raw doc and make sure the sync data has the current revision
 	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
@@ -317,9 +324,9 @@ func TestGetDeleted(t *testing.T) {
 	assert.NoError(t, err, "GetUser")
 	db.user.SetExplicitChannels(nil)
 
-	body, err = db.GetRev("doc1", rev2id, true, nil)
-	assert.NoError(t, err, "GetRev")
-	goassert.DeepEquals(t, body, expectedResult)
+	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
+	assert.NoError(t, err, "Get1xRevBody")
+	AssertEqualBodies(t, expectedResult, body)
 }
 
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
@@ -354,8 +361,8 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
-	body, err := db.GetRev("doc1", rev2id, true, nil)
-	assert.NoError(t, err, "GetRev")
+	body, err := db.Get1xRevBody("doc1", rev2id, true, nil)
+	assert.NoError(t, err, "Get1xRevBody")
 	rev2digest := rev2id[2:]
 	rev1digest := rev1id[2:]
 	expectedResult := Body{
@@ -367,7 +374,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 		BodyId:  "doc1",
 		BodyRev: rev2id,
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	AssertEqualBodies(t, expectedResult, body)
 
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
@@ -387,12 +394,12 @@ func TestGetRemovedAsUser(t *testing.T) {
 	db.user.SetExplicitChannels(chans)
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
-	body, err = db.GetRev("doc1", rev2id, true, nil)
-	assert.NoError(t, err, "GetRev")
+	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
+	assert.NoError(t, err, "Get1xRevBody")
 	expectedResult = Body{
-		BodyId:     "doc1",
-		BodyRev:    rev2id,
-		"_removed": true,
+		BodyId:      "doc1",
+		BodyRev:     rev2id,
+		BodyRemoved: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
@@ -403,7 +410,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	err = db.purgeOldRevisionJSON("doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
-	_, err = db.GetRev("doc1", rev1id, true, nil)
+	_, err = db.Get1xRevBody("doc1", rev1id, true, nil)
 	assertHTTPError(t, err, 404)
 }
 
@@ -439,8 +446,8 @@ func TestGetRemoved(t *testing.T) {
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
-	body, err := db.GetRev("doc1", rev2id, true, nil)
-	assert.NoError(t, err, "GetRev")
+	body, err := db.Get1xRevBody("doc1", rev2id, true, nil)
+	assert.NoError(t, err, "Get1xRevBody")
 	rev2digest := rev2id[2:]
 	rev1digest := rev1id[2:]
 	expectedResult := Body{
@@ -452,7 +459,7 @@ func TestGetRemoved(t *testing.T) {
 		BodyId:  "doc1",
 		BodyRev: rev2id,
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	AssertEqualBodies(t, expectedResult, body)
 
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
@@ -463,12 +470,12 @@ func TestGetRemoved(t *testing.T) {
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
-	body, err = db.GetRev("doc1", rev2id, true, nil)
-	assert.NoError(t, err, "GetRev")
+	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
+	assert.NoError(t, err, "Get1xRevBody")
 	expectedResult = Body{
-		BodyId:     "doc1",
-		BodyRev:    rev2id,
-		"_removed": true,
+		BodyId:      "doc1",
+		BodyRev:     rev2id,
+		BodyRemoved: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
@@ -479,7 +486,7 @@ func TestGetRemoved(t *testing.T) {
 	err = db.purgeOldRevisionJSON("doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
-	_, err = db.GetRev("doc1", rev1id, true, nil)
+	_, err = db.Get1xRevBody("doc1", rev1id, true, nil)
 	assertHTTPError(t, err, 404)
 }
 
@@ -515,8 +522,8 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	assert.NoError(t, err, "Put Rev 3")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
-	body, err := db.GetRev("doc1", rev2id, true, nil)
-	assert.NoError(t, err, "GetRev")
+	body, err := db.Get1xRevBody("doc1", rev2id, true, nil)
+	assert.NoError(t, err, "Get1xRevBody")
 	rev2digest := rev2id[2:]
 	rev1digest := rev1id[2:]
 	expectedResult := Body{
@@ -528,7 +535,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 		BodyId:  "doc1",
 		BodyRev: rev2id,
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	AssertEqualBodies(t, expectedResult, body)
 
 	// Manually remove the temporary backup doc from the bucket
 	// Manually flush the rev cache
@@ -539,24 +546,24 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
-	body, err = db.GetRev("doc1", rev2id, true, nil)
-	assert.NoError(t, err, "GetRev")
+	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
+	assert.NoError(t, err, "Get1xRevBody")
 	expectedResult = Body{
 		BodyId:      "doc1",
 		BodyRev:     rev2id,
-		"_removed":  true,
+		BodyRemoved: true,
 		BodyDeleted: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
-	goassert.DeepEquals(t, body, expectedResult)
+	AssertEqualBodies(t, expectedResult, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	err = db.purgeOldRevisionJSON("doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
-	_, err = db.GetRev("doc1", rev1id, true, nil)
+	_, err = db.Get1xRevBody("doc1", rev1id, true, nil)
 	assertHTTPError(t, err, 404)
 }
 
@@ -675,9 +682,10 @@ func TestAllDocsOnly(t *testing.T) {
 		goassert.Equals(t, change.ID, ids[10*i].DocID)
 		goassert.Equals(t, change.Deleted, false)
 		goassert.DeepEquals(t, change.Removed, base.Set(nil))
-		// Note: When changes uses the rev cache, this test doesn't trigger FixJSONNumbers (since it writes docs as Body, not raw JSON,
-		//       and doesn't require a read from DB)
-		goassert.Equals(t, change.Doc["serialnumber"], int64(10*i))
+		var changeBody Body
+		require.NoError(t, changeBody.Unmarshal(change.Doc))
+		// unmarshalled as json.Number, so just compare the strings
+		assert.Equal(t, strconv.FormatInt(int64(10*i), 10), changeBody["serialnumber"].(json.Number).String())
 	}
 }
 
@@ -802,17 +810,17 @@ func TestConflicts(t *testing.T) {
 	log.Printf("got raw body: %s", rawBody)
 
 	// Verify the change with the higher revid won:
-	gotBody, err := db.Get("doc")
-	goassert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-b", "n": 2,
-		"channels": []string{"all", "2b"}})
+	gotBody, err := db.Get1xBody("doc")
+	expectedResult := Body{BodyId: "doc", BodyRev: "2-b", "n": 2, "channels": []string{"all", "2b"}}
+	AssertEqualBodies(t, expectedResult, gotBody)
 
 	// Verify we can still get the other two revisions:
-	gotBody, err = db.GetRev("doc", "1-a", false, nil)
-	goassert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "1-a", "n": 1,
-		"channels": []string{"all", "1"}})
-	gotBody, err = db.GetRev("doc", "2-a", false, nil)
-	goassert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-a", "n": 3,
-		"channels": []string{"all", "2a"}})
+	gotBody, err = db.Get1xRevBody("doc", "1-a", false, nil)
+	expectedResult = Body{BodyId: "doc", BodyRev: "1-a", "n": 1, "channels": []string{"all", "1"}}
+	AssertEqualBodies(t, expectedResult, gotBody)
+	gotBody, err = db.Get1xRevBody("doc", "2-a", false, nil)
+	expectedResult = Body{BodyId: "doc", BodyRev: "2-a", "n": 3, "channels": []string{"all", "2a"}}
+	AssertEqualBodies(t, expectedResult, gotBody)
 
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
@@ -843,9 +851,9 @@ func TestConflicts(t *testing.T) {
 	rawBody, _, _ = db.Bucket.GetRaw("doc")
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
-	gotBody, err = db.Get("doc")
-	goassert.DeepEquals(t, gotBody, Body{BodyId: "doc", BodyRev: "2-a", "n": 3,
-		"channels": []string{"all", "2a"}})
+	gotBody, err = db.Get1xBody("doc")
+	expectedResult = Body{BodyId: "doc", BodyRev: "2-a", "n": 3, "channels": []string{"all", "2a"}}
+	AssertEqualBodies(t, expectedResult, gotBody)
 
 	// Verify channel assignments are correct for channels defined by 2-a:
 	doc, _ := db.GetDocument("doc", DocUnmarshalAll)
@@ -981,55 +989,48 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
-	body := Body{"n": 1}
-	doc, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	doc, err := db.PutExistingRevWithBody("doc1", Body{"n": 1}, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
-	doc, err = db.PutExistingRevWithBody("doc2", body, []string{"1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc2", Body{"n": 1}, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
-	doc, err = db.PutExistingRevWithBody("doc3", body, []string{"1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc3", Body{"n": 1}, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create two conflicting changes:
-	body["n"] = 2
-	doc, err = db.PutExistingRevWithBody("doc1", body, []string{"2-b", "1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc1", Body{"n": 2}, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-	doc, err = db.PutExistingRevWithBody("doc2", body, []string{"2-b", "1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc2", Body{"n": 2}, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-	doc, err = db.PutExistingRevWithBody("doc3", body, []string{"2-b", "1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc3", Body{"n": 2}, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-	body["n"] = 3
-	doc, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
+
+	doc, err = db.PutExistingRevWithBody("doc1", Body{"n": 3}, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
-	doc, err = db.PutExistingRevWithBody("doc2", body, []string{"2-a", "1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc2", Body{"n": 3}, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
-	doc, err = db.PutExistingRevWithBody("doc3", body, []string{"2-a", "1-a"}, false)
+	doc, err = db.PutExistingRevWithBody("doc3", Body{"n": 3}, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
 	db.Options.AllowConflicts = base.BoolPtr(false)
-	delete(body, "n")
-	body[BodyDeleted] = true
 
 	// Attempt to tombstone a non-leaf node of a conflicted document
-	_, err = db.PutExistingRevWithBody("doc1", body, []string{"2-c", "1-a"}, false)
+	_, err = db.PutExistingRevWithBody("doc1", Body{BodyDeleted: true}, []string{"2-c", "1-a"}, false)
 	assert.True(t, err != nil, "expected error tombstoning non-leaf")
 
 	// Tombstone the non-winning branch of a conflicted document
-	body[BodyRev] = "2-a"
-	tombstoneRev, _, putErr := db.Put("doc1", body)
+	tombstoneRev, _, putErr := db.Put("doc1", Body{BodyRev: "2-a", BodyDeleted: true})
 	assert.NoError(t, putErr, "tombstone 2-a")
 	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
 	goassert.Equals(t, doc.CurrentRev, "2-b")
 
 	// Attempt to add a tombstone rev w/ the previous tombstone as parent
-	body[BodyRev] = tombstoneRev
-	_, _, putErr = db.Put("doc1", body)
+	_, _, putErr = db.Put("doc1", Body{BodyRev: tombstoneRev, BodyDeleted: true})
 	assert.True(t, putErr != nil, "Expect error tombstoning a tombstone")
 
 	// Tombstone the winning branch of a conflicted document
-	body[BodyRev] = "2-b"
-	_, _, putErr = db.Put("doc2", body)
+	_, _, putErr = db.Put("doc2", Body{BodyRev: "2-b", BodyDeleted: true})
 	assert.NoError(t, putErr, "tombstone 2-b")
 	doc, err = db.GetDocument("doc2", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
@@ -1037,8 +1038,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 
 	// Set revs_limit=1, then tombstone non-winning branch of a conflicted document.  Validate retrieval still works.
 	db.RevsLimit = uint32(1)
-	body[BodyRev] = "2-a"
-	_, _, putErr = db.Put("doc3", body)
+	_, _, putErr = db.Put("doc3", Body{BodyRev: "2-a", BodyDeleted: true})
 	assert.NoError(t, putErr, "tombstone 2-a w/ revslimit=1")
 	doc, err = db.GetDocument("doc3", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")

@@ -10,6 +10,7 @@ import (
 
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 )
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
@@ -161,4 +162,12 @@ func (sw *StatWaiter) Wait() {
 	}
 
 	sw.tb.Fatalf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d)", sw.targetCount, actualCount)
+}
+
+func AssertEqualBodies(t *testing.T, expected, actual Body) {
+	expectedCanonical, err := base.JSONMarshalCanonical(expected)
+	assert.NoError(t, err)
+	actualCanonical, err := base.JSONMarshalCanonical(actual)
+	assert.NoError(t, err)
+	assert.Equal(t, string(expectedCanonical), string(actualCanonical))
 }

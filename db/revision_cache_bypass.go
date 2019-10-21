@@ -19,9 +19,13 @@ func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *
 }
 
 // Get fetches the revision for the given docID and revID immediately from the bucket.
-func (rc *BypassRevisionCache) Get(docID, revID string, copyType BodyCopyType) (docRev DocumentRevision, err error) {
-	docRev.RevID = revID
-	docRev.Body, docRev.History, docRev.Channels, docRev.Attachments, docRev.Expiry, err = revCacheLoader(rc.backingStore, IDAndRev{DocID: docID, RevID: revID})
+func (rc *BypassRevisionCache) Get(docID, revID string) (docRev DocumentRevision, err error) {
+
+	docRev = DocumentRevision{
+		RevID: revID,
+	}
+
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoader(rc.backingStore, IDAndRev{DocID: docID, RevID: revID})
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -32,14 +36,17 @@ func (rc *BypassRevisionCache) Get(docID, revID string, copyType BodyCopyType) (
 }
 
 // GetActive fetches the active revision for the given docID immediately from the bucket.
-func (rc *BypassRevisionCache) GetActive(docID string, copyType BodyCopyType) (docRev DocumentRevision, err error) {
+func (rc *BypassRevisionCache) GetActive(docID string) (docRev DocumentRevision, err error) {
 	doc, err := rc.backingStore.GetDocument(docID, DocUnmarshalAll)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
 
-	docRev.RevID = doc.CurrentRev
-	docRev.Body, docRev.History, docRev.Channels, docRev.Attachments, docRev.Expiry, err = revCacheLoaderForDocument(rc.backingStore, doc, doc.SyncData.CurrentRev)
+	docRev = DocumentRevision{
+		RevID: doc.CurrentRev,
+	}
+
+	docRev.BodyBytes, docRev.History, docRev.Channels, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(rc.backingStore, doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -49,17 +56,17 @@ func (rc *BypassRevisionCache) GetActive(docID string, copyType BodyCopyType) (d
 	return docRev, nil
 }
 
-// Peek is a no-op for a BypassRevisionCache, and always returns an empty DocumentRevision with a false 'found' value.
-func (rc *BypassRevisionCache) Peek(docID, revID string, copyType BodyCopyType) (docRev DocumentRevision, found bool) {
+// Peek is a no-op for a BypassRevisionCache, and always returns a false 'found' value.
+func (rc *BypassRevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
 	return DocumentRevision{}, false
 }
 
 // Put is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) Put(docID string, docRev DocumentRevision) {
+func (rc *BypassRevisionCache) Put(docRev DocumentRevision) {
 	// no-op
 }
 
 // UpdateDelta is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) UpdateDelta(docID, revID string, toDelta *RevisionDelta) {
+func (rc *BypassRevisionCache) UpdateDelta(docID, revID string, toDelta RevisionDelta) {
 	// no-op
 }

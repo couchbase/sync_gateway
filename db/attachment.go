@@ -123,38 +123,38 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
 func (db *Database) retrieveAncestorAttachments(doc *Document, parentRev string, docHistory []string) map[string]interface{} {
 
-	var parentAttachments map[string]interface{}
 	// Attempt to find a non-pruned parent or ancestor
-	parent, _ := db.getAvailableRev(doc, parentRev)
-	if parent != nil {
-		parentAttachments = GetBodyAttachments(parent)
-	} else {
-		// No non-pruned ancestor is available
-		commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory)
-		if commonAncestor != "" {
-			parentAttachments = make(map[string]interface{})
-			commonAncestorGen, _ := base.ToInt64(genOfRevID(commonAncestor))
-			for name, activeAttachment := range GetBodyAttachments(doc.Body()) {
-				attachmentMeta, ok := activeAttachment.(map[string]interface{})
-				if ok {
-					activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
-					if ok && activeRevpos <= commonAncestorGen {
-						parentAttachments[name] = activeAttachment
-					}
+	if ancestorAttachments, foundAncestor := db.getAvailableRevAttachments(doc, parentRev); foundAncestor {
+		return ancestorAttachments
+	}
+
+	// No non-pruned ancestor is available
+	if commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory); commonAncestor != "" {
+		parentAttachments := make(map[string]interface{})
+		commonAncestorGen := int64(genOfRevID(commonAncestor))
+		for name, activeAttachment := range GetBodyAttachments(doc.Body()) {
+			if attachmentMeta, ok := activeAttachment.(map[string]interface{}); ok {
+				activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
+				if ok && activeRevpos <= commonAncestorGen {
+					parentAttachments[name] = activeAttachment
 				}
 			}
 		}
+		return parentAttachments
 	}
-	return parentAttachments
+
+	return nil
 }
 
-// Goes through a revisions '_attachments' map, loads attachments (by their 'digest' properties)
+// Goes through a given attachments map, loads attachments (by their 'digest' properties)
 // and adds 'data' properties containing the data. The data is added as raw []byte; the JSON
 // marshaler will convert that to base64.
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
 // generation or later are loaded.
-func (db *Database) loadBodyAttachments(body Body, minRevpos int, docid string) (Body, error) {
-	for attachmentName, value := range GetBodyAttachments(body) {
+func (db *Database) loadAttachmentsData(attachments AttachmentsMeta, minRevpos int, docid string) (newAttachments AttachmentsMeta, err error) {
+	newAttachments = attachments.ShallowCopy()
+
+	for attachmentName, value := range newAttachments {
 		meta := value.(map[string]interface{})
 		revpos, ok := base.ToInt64(meta["revpos"])
 		if ok && revpos >= int64(minRevpos) {
@@ -175,7 +175,8 @@ func (db *Database) loadBodyAttachments(body Body, minRevpos int, docid string) 
 			delete(meta, "stub")
 		}
 	}
-	return body, nil
+
+	return newAttachments, nil
 }
 
 // Retrieves an attachment given its key.

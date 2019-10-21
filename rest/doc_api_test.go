@@ -8,6 +8,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Tests ConvertJSONNumber handling for the sync function, and preservation of large numbers in the
@@ -77,17 +78,20 @@ func TestDocumentNumbers(t *testing.T) {
 	}
 
 	// Use channels to ensure numbers are making it to sync function with expected formats
-	syncFn := `function(doc) {
+	syncFn := `
+	function(doc) {
 		if (doc.number) {
 			channel(typeof(doc.number))
 		}
-  		if (doc.array) {
-     		channel(typeof doc.array[0])
-  		}
+		if (doc.array) {
+			channel(typeof doc.array[0])
+		}
 	}`
 	rtConfig := RestTesterConfig{SyncFn: syncFn}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	for _, test := range tests {
 		t.Run(test.name, func(ts *testing.T) {
@@ -108,7 +112,7 @@ func TestDocumentNumbers(t *testing.T) {
 			// Check channel assignment
 			getRawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s?redact=false", test.name), "")
 			var rawResponse RawResponse
-			base.JSONUnmarshal(getRawResponse.Body.Bytes(), &rawResponse)
+			require.NoError(ts, base.JSONUnmarshal(getRawResponse.Body.Bytes(), &rawResponse))
 			log.Printf("raw response: %s", getRawResponse.Body.Bytes())
 			assert.Equal(ts, 1, len(rawResponse.Sync.Channels))
 			assert.True(ts, HasActiveChannel(rawResponse.Sync.Channels, test.expectedFormatChannel), fmt.Sprintf("Expected channel %s was not found in document channels (%s)", test.expectedFormatChannel, test.name))

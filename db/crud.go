@@ -10,7 +10,7 @@
 package db
 
 import (
-	"fmt"
+	"bytes"
 	"math"
 	"net/http"
 	"strings"
@@ -190,44 +190,53 @@ func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, raw
 	return docOut, nil
 }
 
+// GetRev returns the revision for the given docID and revID, or the current active revision if revID is empty.
+func (db *Database) GetRev(docID, revID string, history bool, attachmentsSince []string) (DocumentRevision, error) {
+	maxHistory := 0
+	if history {
+		maxHistory = math.MaxInt32
+	}
+
+	return db.getRev(docID, revID, maxHistory, nil)
+}
+
 // Returns the body of the current revision of a document
-func (db *Database) Get(docid string) (Body, error) {
-	return db.GetRevWithHistory(docid, "", 0, nil, nil, false)
+func (db *Database) Get1xBody(docid string) (Body, error) {
+	return db.Get1xRevBody(docid, "", false, nil)
 }
 
 // Get Rev with all-or-none history based on specified 'history' flag
-func (db *Database) GetRev(docid, revid string, history bool, attachmentsSince []string) (Body, error) {
+func (db *Database) Get1xRevBody(docid, revid string, history bool, attachmentsSince []string) (Body, error) {
 	maxHistory := 0
 	if history {
 		maxHistory = math.MaxInt32
 	}
-	return db.getRev(docid, revid, maxHistory, nil, attachmentsSince, false, BodyShallowCopy)
-}
 
-// Retrieves rev with the specified body copy policy, to support efficient retrieval of deep/shallow/non-copied bodies.
-func (db *Database) GetRevCopy(docid, revid string, history bool, attachmentsSince []string, copyType BodyCopyType) (Body, error) {
-
-	// Requesting history and/or attachments is incompatible with BodyNoCopy, as getRev will always mutate the body when these
-	// are specified.
-	if copyType == BodyNoCopy && (history || len(attachmentsSince) > 0) {
-		return nil, fmt.Errorf("GetRevCopy called with incompatible properties for key:%s rev:%s", base.UD(docid), revid)
-	}
-
-	maxHistory := 0
-	if history {
-		maxHistory = math.MaxInt32
-	}
-	return db.getRev(docid, revid, maxHistory, nil, attachmentsSince, false, copyType)
-
+	return db.Get1xRevBodyWithHistory(docid, revid, maxHistory, nil, attachmentsSince, false)
 }
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
-func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
-	return db.getRev(docid, revid, maxHistory, historyFrom, attachmentsSince, showExp, BodyShallowCopy)
+func (db *Database) Get1xRevBodyWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
+	rev, err := db.getRev(docid, revid, maxHistory, historyFrom)
+	if err != nil {
+		return nil, err
+	}
+
+	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
+	// during attachment processing below
+	requestedHistory := rev.History
+	if maxHistory == 0 {
+		requestedHistory = nil
+	}
+	if requestedHistory != nil {
+		_, requestedHistory = trimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
+	}
+
+	return rev.Mutable1xBody(db, requestedHistory, attachmentsSince, showExp)
 }
 
-// Underlying revision retrieval used by GetRev, GetRevWithHistory, GetRevCopy.
-// Returns the body of a revision of a document. Uses the revision cache.
+// Underlying revision retrieval used by Get1xRevBody, Get1xRevBodyWithHistory, GetRevCopy.
+// Returns the revision of a document using the revision cache.
 // * revid may be "", meaning the current revision.
 // * maxHistory is >0 if the caller wants a revision history; it's the max length of the history.
 // * historyFrom is an optional list of revIDs the client already has. If any of these are found
@@ -235,23 +244,22 @@ func (db *Database) GetRevWithHistory(docid, revid string, maxHistory int, histo
 // * attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //   revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //   that hasn't changed since one of those revisions will be returned as a stub.
-func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool, copyType BodyCopyType) (Body, error) {
-	var err error
-	var revision DocumentRevision
+func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string) (revision DocumentRevision, err error) {
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, err = db.revisionCache.Get(docid, revid, copyType)
+		revision, err = db.revisionCache.Get(docid, revid)
 	} else {
 		// No rev ID given, so load active revision
-		revision, err = db.revisionCache.GetActive(docid, copyType)
+		revision, err = db.revisionCache.GetActive(docid)
 	}
 
-	if err != nil || revision.Body == nil {
-		if err == nil {
-			err = base.HTTPErrorf(404, "missing")
-		}
-		return nil, err
+	if err != nil {
+		return DocumentRevision{}, err
+	}
+
+	if revision.BodyBytes == nil {
+		return DocumentRevision{}, base.HTTPErrorf(404, "missing")
 	}
 
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
@@ -264,66 +272,33 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		_, requestedHistory = trimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
 	}
 
-	deleted, _ := revision.Body[BodyDeleted].(bool)
-	isAuthorized, redactedBody := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, deleted, requestedHistory)
+	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
 	if !isAuthorized {
 		if revid == "" {
-			return nil, ErrForbidden
+			return DocumentRevision{}, ErrForbidden
 		}
-		return redactedBody, nil
+		return redactedRev, nil
 	}
 
-	if revid == "" {
-		if deleted, _ := revision.Body[BodyDeleted].(bool); deleted {
-			return nil, base.HTTPErrorf(404, "deleted")
-		}
+	if revision.Deleted && revid == "" {
+		return DocumentRevision{}, base.HTTPErrorf(404, "deleted")
 	}
 
-	// Add revision metadata:
-	if requestedHistory != nil {
-		revision.Body[BodyRevisions] = requestedHistory
-	}
-
-	if showExp && revision.Expiry != nil && !revision.Expiry.IsZero() {
-		revision.Body["_exp"] = revision.Expiry.Format(time.RFC3339)
-	}
-
-	// Stamp attachment metadata back into the body
-	if revision.Attachments != nil {
-		revision.Body[BodyAttachments] = revision.Attachments
-	}
-
-	// Add attachment bodies if requested:
-	if attachmentsSince != nil && len(GetBodyAttachments(revision.Body)) > 0 {
-		minRevpos := 1
-		if len(attachmentsSince) > 0 {
-			ancestor := revision.History.findAncestor(attachmentsSince)
-			if ancestor != "" {
-				minRevpos, _ = ParseRevID(ancestor)
-				minRevpos++
-			}
-		}
-		revision.Body, err = db.loadBodyAttachments(revision.Body, minRevpos, docid)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return revision.Body, nil
+	return revision, nil
 }
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
-func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedBody Body, err error) {
+func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
 
 	if docID == "" || fromRevID == "" || toRevID == "" {
 		return nil, nil, nil
 	}
 
-	fromRevision, err := db.revisionCache.Get(docID, fromRevID, BodyNoCopy)
+	fromRevision, err := db.revisionCache.Get(docID, fromRevID)
 
 	// If both body and delta are not available for fromRevId, the delta can't be generated
-	if fromRevision.Body == nil && fromRevision.Delta == nil {
+	if fromRevision.BodyBytes == nil && fromRevision.Delta == nil {
 		return nil, nil, err
 	}
 
@@ -333,7 +308,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 
 			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
-				return nil, redactedBody, nil
+				return nil, &redactedBody, nil
 			}
 
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
@@ -346,29 +321,38 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	}
 
 	// Delta is unavailable, but the body is available.
-	if fromRevision.Body != nil {
+	if fromRevision.BodyBytes != nil {
 
 		db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
-		toRevision, err := db.revisionCache.Get(docID, toRevID, BodyDeepCopy)
+		toRevision, err := db.revisionCache.Get(docID, toRevID)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		deleted, _ := toRevision.Body[BodyDeleted].(bool)
+		deleted := toRevision.Deleted
 		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, toRevision.Channels, deleted, toRevision.History)
 		if !isAuthorized {
-			return nil, redactedBody, nil
+			return nil, &redactedBody, nil
 		}
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
-			revCacheDelta := newRevCacheDelta([]byte(`{}`), fromRevID, toRevision, deleted)
+			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted)
 			db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)
-			return revCacheDelta, nil, nil
+			return &revCacheDelta, nil, nil
 		}
 
-		// We didn't copy fromBody earlier (in case we could get by with just the delta), so need do it now
-		fromBodyCopy := fromRevision.Body.DeepCopy()
+		// We didn't unmarshal fromBody earlier (in case we could get by with just the delta), so need do it now
+		var fromBodyCopy Body
+		if err := fromBodyCopy.Unmarshal(fromRevision.BodyBytes); err != nil {
+			return nil, nil, err
+		}
+
+		// We didn't unmarshal toBody earlier (in case we could get by with just the delta), so need do it now
+		var toBodyCopy Body
+		if err := toBodyCopy.Unmarshal(toRevision.BodyBytes); err != nil {
+			return nil, nil, err
+		}
 
 		// If attachments have changed between these revisions, we'll stamp the metadata into the bodies before diffing
 		// so that the resulting delta also contains attachment metadata changes
@@ -378,10 +362,10 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 			fromBodyCopy[BodyAttachments] = map[string]interface{}(fromRevision.Attachments)
 		}
 		if toRevision.Attachments != nil {
-			toRevision.Body[BodyAttachments] = map[string]interface{}(toRevision.Attachments)
+			toBodyCopy[BodyAttachments] = map[string]interface{}(toRevision.Attachments)
 		}
 
-		deltaBytes, err := base.Diff(fromBodyCopy, toRevision.Body)
+		deltaBytes, err := base.Diff(fromBodyCopy, toBodyCopy)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -389,56 +373,46 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 
 		// Write the newly calculated delta back into the cache before returning
 		db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)
-		return revCacheDelta, nil, nil
+		return &revCacheDelta, nil, nil
 	}
 
 	return nil, nil, nil
 }
 
-func (db *Database) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedBody Body) {
+func (db *Database) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
 	if db.user != nil {
 		if err := db.user.AuthorizeAnyChannel(channels); err != nil {
 			// On access failure, return (only) the doc history and deletion/removal
 			// status instead of returning an error. For justification see the comment in
 			// the getRevFromDoc method, below
-			redactedBody := Body{BodyId: docID, BodyRev: revID}
+			redactedRev = DocumentRevision{
+				DocID:   docID,
+				RevID:   revID,
+				History: history,
+				Deleted: isDeleted,
+			}
 			if isDeleted {
-				redactedBody[BodyDeleted] = true
+				// Deletions are denoted by the deleted message property during 2.x replication
+				redactedRev.BodyBytes = []byte(base.EmptyDocument)
 			} else {
-				redactedBody["_removed"] = true
+				// ... but removals are still denoted by the _removed property in the body, even for 2.x replication
+				redactedRev.BodyBytes = []byte(RemovedRedactedDocument)
 			}
-			if history != nil {
-				redactedBody[BodyRevisions] = history
-			}
-			return false, redactedBody
+			return false, redactedRev
 		}
 	}
 
-	return true, nil
-}
-
-// Returns the body of the active revision of a document, as well as the document's current channels
-// and the user/roles it grants channel access to.
-func (db *Database) GetDocAndActiveRev(docid string) (populatedDoc *Document, body Body, err error) {
-	populatedDoc, err = db.GetDocument(docid, DocUnmarshalAll)
-	if populatedDoc == nil {
-		return
-	}
-	body, err = db.getRevFromDoc(populatedDoc, populatedDoc.CurrentRev, false)
-	if err != nil {
-		return
-	}
-	return
+	return true, DocumentRevision{}
 }
 
 // Returns the body of a revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
-func (db *Database) GetRevAndChannels(docid string, revid string, listRevisions bool) (body Body, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, flags uint8, sequence uint64, err error) {
+func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevisions bool) (bodyBytes []byte, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, flags uint8, sequence uint64, gotRevID string, removed bool, err error) {
 	doc, err := db.GetDocument(docid, DocUnmarshalAll)
 	if doc == nil {
 		return
 	}
-	body, err = db.getRevFromDoc(doc, revid, listRevisions)
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc, revid, listRevisions)
 	if err != nil {
 		return
 	}
@@ -447,6 +421,7 @@ func (db *Database) GetRevAndChannels(docid string, revid string, listRevisions 
 	roleAccess = doc.RoleAccess
 	sequence = doc.Sequence
 	flags = doc.Flags
+	gotRevID = doc.RevID
 	return
 }
 
@@ -478,27 +453,35 @@ func (db *Database) authorizeDoc(doc *Document, revid string) error {
 }
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
-// This method adds the magic _id, _rev and _attachments properties.
-func (db *DatabaseContext) getRevision(doc *Document, revid string) (Body, error) {
-	var body Body
-	if body = doc.getRevisionBody(revid, db.RevisionBodyLoader); body == nil {
-		// No inline body, so look for separate doc:
+func (db *DatabaseContext) getRevision(doc *Document, revid string) ([]byte, error) {
+	var bodyBytes []byte
+	var err error
+
+	bodyBytes = doc.getRevisionBodyJSON(revid, db.RevisionBodyLoader)
+
+	// No inline body, so look for separate doc:
+	if bodyBytes == nil {
 		if !doc.History.contains(revid) {
 			return nil, base.HTTPErrorf(404, "missing")
-		} else if data, err := db.getOldRevisionJSON(doc.ID, revid); data == nil {
-			return nil, err
-		} else if err = body.Unmarshal(data); err != nil {
+		}
+
+		bodyBytes, err = db.getOldRevisionJSON(doc.ID, revid)
+		if err != nil || bodyBytes == nil {
 			return nil, err
 		}
 	}
-	body[BodyId] = doc.ID
-	body[BodyRev] = revid
 
 	if doc.CurrentRev == revid && doc.Attachments != nil {
-		body[BodyAttachments] = doc.Attachments
+		bodyBytes, err = base.InjectJSONProperties(bodyBytes, base.KVPair{
+			Key: BodyAttachments,
+			Val: doc.Attachments,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return body, nil
+	return bodyBytes, nil
 }
 
 // Gets a revision of a document as raw JSON.
@@ -529,8 +512,9 @@ func (db *Database) getAncestorJSON(doc *Document, revid string) ([]byte, error)
 }
 
 // Returns the body of a revision given a document struct. Checks user access.
-func (db *Database) getRevFromDoc(doc *Document, revid string, listRevisions bool) (Body, error) {
-	var body Body
+// If the user is not authorized to see the specific revision they asked for,
+// instead returns a minimal deletion or removal revision to let them know it's gone.
+func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions bool) (bodyBytes []byte, removed bool, err error) {
 	if err := db.authorizeDoc(doc, revid); err != nil {
 		// As a special case, you don't need channel access to see a deletion revision,
 		// otherwise the client's replicator can't process the deletion (since deletions
@@ -538,57 +522,137 @@ func (db *Database) getRevFromDoc(doc *Document, revid string, listRevisions boo
 		// Update: this applies to non-deletions too, since the client may have lost access to
 		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
 		// incorporate that tombstone and for that it needs to see the _revisions property.
-		if revid == "" || doc.History[revid] == nil /*|| !doc.History[revid].Deleted*/ {
-			return nil, err
+		if revid == "" || doc.History[revid] == nil {
+			return nil, false, err
 		}
-		body = Body{BodyId: doc.ID, BodyRev: revid}
-		if !doc.History[revid].Deleted {
-			body["_removed"] = true
+		if doc.History[revid].Deleted {
+			bodyBytes = []byte(base.EmptyDocument)
+		} else {
+			bodyBytes = []byte(RemovedRedactedDocument)
+			removed = true
 		}
 	} else {
 		if revid == "" {
 			revid = doc.CurrentRev
 			if doc.History[revid].Deleted == true {
-				return nil, base.HTTPErrorf(404, "deleted")
+				return nil, false, base.HTTPErrorf(404, "deleted")
 			}
 		}
-		var err error
-		if body, err = db.getRevision(doc, revid); err != nil {
-			return nil, err
+		if bodyBytes, err = db.getRevision(doc, revid); err != nil {
+			return nil, false, err
 		}
 	}
-	if doc.History[revid].Deleted {
-		body[BodyDeleted] = true
+
+	kvPairs := []base.KVPair{
+		{Key: BodyId, Val: doc.ID},
+		{Key: BodyRev, Val: revid},
 	}
+
+	if doc.History[revid].Deleted {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
+	}
+
 	if listRevisions {
 		validatedHistory, getHistoryErr := doc.History.getHistory(revid)
 		if getHistoryErr != nil {
-			return nil, getHistoryErr
+			return nil, removed, getHistoryErr
 		}
-		body[BodyRevisions] = encodeRevisions(validatedHistory)
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyRevisions, Val: encodeRevisions(validatedHistory)})
 	}
-	return body, nil
+
+	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
+	if err != nil {
+		return nil, removed, err
+	}
+
+	return bodyBytes, removed, nil
 }
 
-// Returns the body of the asked-for revision or the most recent available ancestor.
-func (db *Database) getAvailableRev(doc *Document, revid string) (Body, error) {
+// Returns the body and rev ID of the asked-for revision or the most recent available ancestor.
+func (db *Database) getAvailableRev(doc *Document, revid string) ([]byte, string, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
-		if body, _ := db.getRevision(doc, revid); body != nil {
-			return body, nil
+		if bodyBytes, _ := db.getRevision(doc, revid); bodyBytes != nil {
+			return bodyBytes, revid, nil
 		}
 	}
-	return nil, base.HTTPErrorf(404, "missing")
+	return nil, "", base.HTTPErrorf(404, "missing")
+}
+
+// Returns the 1x-style body of the asked-for revision or the most recent available ancestor.
+func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, error) {
+	bodyBytes, ancestorRevID, err := db.getAvailableRev(doc, revid)
+	if err != nil {
+		return nil, err
+	}
+
+	kvPairs := []base.KVPair{
+		{Key: BodyId, Val: doc.ID},
+		{Key: BodyRev, Val: ancestorRevID},
+	}
+
+	if doc.Deleted {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
+	}
+
+	if doc.CurrentRev == revid && doc.Attachments != nil {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
+	}
+
+	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
+	if err != nil {
+		return nil, err
+	}
+
+	return bodyBytes, nil
+}
+
+// Returns the attachments of the asked-for revision or the most recent available ancestor.
+// Returns nil if no attachments or ancestors are found.
+func (db *Database) getAvailableRevAttachments(doc *Document, revid string) (ancestorAttachments AttachmentsMeta, foundAncestor bool) {
+	bodyBytes, ancestorRevID, err := db.getAvailableRev(doc, revid)
+	if err != nil {
+		return nil, false
+	}
+
+	// If the ancestor rev is the current rev, we can pull attachments directly from the doc
+	if doc.CurrentRev == ancestorRevID {
+		return doc.Attachments, true
+	}
+
+	// Otherwise, we need to go and extract _attachments from bodyBytes, which is a backup revision
+
+	// exit early if we know we have no attachments with a simple byte-contains check
+	if !bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
+		return nil, true
+	}
+
+	// Unmarshal attachments into a struct
+	var parentAttachmentsStruct struct {
+		Attachments AttachmentsMeta `json:"_attachments"`
+	}
+	if err := base.JSONUnmarshal(bodyBytes, &parentAttachmentsStruct); err != nil {
+		base.Warnf(base.KeyAll, "Error unmarshaling attachments metadata: %s", err)
+		return nil, true
+	}
+
+	return parentAttachmentsStruct.Attachments, true
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
-func (db *Database) backupAncestorRevs(doc *Document, newRevId string, newBody Body) {
+func (db *Database) backupAncestorRevs(doc *Document, newDoc *Document) {
+	newBodyBytes, err := newDoc.BodyBytes()
+	if err != nil {
+		base.Warnf(base.KeyAll, "Error getting body bytes when backing up ancestor revs")
+		return
+	}
+
 	// Find an ancestor that still has JSON in the document:
 	var json []byte
-	ancestorRevId := newRevId
+	ancestorRevId := newDoc.RevID
 	for {
 		if ancestorRevId = doc.History.getParent(ancestorRevId); ancestorRevId == "" {
 			// No ancestors with JSON found.  Check if we need to back up current rev for delta sync, then return
-			db.backupRevisionJSON(doc.ID, newRevId, "", newBody, nil, doc.Attachments)
+			db.backupRevisionJSON(doc.ID, newDoc.RevID, "", newBodyBytes, nil, doc.Attachments)
 			return
 		} else if json = doc.getRevisionBodyJSON(ancestorRevId, db.RevisionBodyLoader); json != nil {
 			break
@@ -596,7 +660,7 @@ func (db *Database) backupAncestorRevs(doc *Document, newRevId string, newBody B
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(doc.ID, newRevId, ancestorRevId, newBody, json, doc.Attachments)
+	db.backupRevisionJSON(doc.ID, newDoc.RevID, ancestorRevId, newBodyBytes, json, doc.Attachments)
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.CurrentRev {
@@ -636,6 +700,9 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *Document, deleted 
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
 func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document, err error) {
+
+	delete(body, BodyId)
+
 	// Get the revision ID to match, and the new generation number:
 	matchRev, _ := body[BodyRev].(string)
 	generation, _ := ParseRevID(matchRev)
@@ -643,6 +710,9 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
+	delete(body, BodyRev)
+
+	// Not extracting it yet because we need this property around to generate a rev ID
 	deleted, _ := body[BodyDeleted].(bool)
 
 	expiry, err := body.ExtractExpiry()
@@ -658,9 +728,8 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 	// Pull out attachments
 	newDoc.DocAttachments = GetBodyAttachments(body)
 	delete(body, BodyAttachments)
-	delete(body, BodyRevisions)
 
-	newDoc.UpdateBody(body)
+	delete(body, BodyRevisions)
 
 	allowImport := db.UseXattrs()
 	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
@@ -709,10 +778,15 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		}
 
 		// Make up a new _rev, and add it to the history:
-		newRev, err := createRevID(generation, matchRev, newDoc.Body())
+		newRev, err := createRevID(generation, matchRev, body)
 		if err != nil {
 			return nil, nil, nil, err
 		}
+
+		// We needed to keep _deleted around in the body until we generated a rev ID, but now we can ditch it.
+		delete(body, BodyDeleted)
+		// and now we can finally update the newDoc body to be without any special properties
+		newDoc.UpdateBody(body)
 
 		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
@@ -862,7 +936,7 @@ func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists 
 func validateNewBody(body Body) error {
 	// Reject a body that contains the "_removed" property, this means that the user
 	// is trying to update a document they do not have read access to.
-	if body["_removed"] != nil {
+	if body[BodyRemoved] != nil {
 		return base.HTTPErrorf(http.StatusNotFound, "Document revision is not accessible")
 	}
 
@@ -887,11 +961,46 @@ func (doc *Document) updateWinningRevAndSetDocFlags() {
 }
 
 func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCurrentRev string, newRevID string, newDoc *Document) {
-	if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" && doc.Body() != nil {
+	if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
 		// Store the doc's previous body into the revision tree:
 		oldBodyJson, marshalErr := doc.BodyBytes()
 		if marshalErr != nil {
 			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body for storage in rev tree: %v", marshalErr)
+		}
+
+		var kvPairs []base.KVPair
+
+		// Stamp _attachments into the old body we're about to backup
+		// We need to do a revpos check here because doc actually contains the new attachments
+		if len(doc.SyncData.Attachments) > 0 {
+			prevCurrentRevGen, _ := ParseRevID(prevCurrentRev)
+			bodyAtts := make(AttachmentsMeta)
+			for attName, attMeta := range doc.SyncData.Attachments {
+				if attMetaMap, ok := attMeta.(map[string]interface{}); ok {
+					var attRevposInt int
+					if attRevpos, ok := attMetaMap["revpos"].(int); ok {
+						attRevposInt = attRevpos
+					} else if attRevPos, ok := attMetaMap["revpos"].(float64); ok {
+						attRevposInt = int(attRevPos)
+					}
+					if attRevposInt <= prevCurrentRevGen {
+						bodyAtts[attName] = attMeta
+					}
+				}
+			}
+			if len(bodyAtts) > 0 {
+				kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: bodyAtts})
+			}
+		}
+
+		if doc.Deleted {
+			kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
+		}
+
+		// Stamp _attachments and _deleted into rev tree bodies
+		oldBodyJson, marshalErr = base.InjectJSONProperties(oldBodyJson, kvPairs...)
+		if marshalErr != nil {
+			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body properties for storage in rev tree: %v", marshalErr)
 		}
 		doc.setNonWinningRevisionBody(prevCurrentRev, oldBodyJson, db.AllowExternalRevBodyStorage())
 	}
@@ -913,25 +1022,29 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
 func (db *Database) runSyncFn(doc *Document, body Body, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
-	body[BodyId] = doc.ID
-	body[BodyRev] = newRevId
-
 	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(doc, body, newRevId)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
 	}
 	db.checkDocChannelsAndGrantsLimits(doc.ID, channelSet, access, roles)
-
-	delete(body, BodyId)
-	delete(body, BodyRev)
 	return syncExpiry, oldBody, channelSet, access, roles, nil
 }
 
 func (db *Database) recalculateSyncFnForActiveRev(doc *Document, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
 	// In some cases an older revision might become the current one. If so, get its
 	// channels & access, for purposes of updating the doc:
+	curBodyBytes, err := db.getAvailable1xRev(doc, doc.CurrentRev)
+	if err != nil {
+		return
+	}
+
 	var curBody Body
-	if curBody, err = db.getAvailableRev(doc, doc.CurrentRev); curBody != nil {
+	err = curBody.Unmarshal(curBodyBytes)
+	if err != nil {
+		return
+	}
+
+	if curBody != nil {
 		base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
 			base.UD(doc.ID), newRevID, doc.CurrentRev)
 		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
@@ -1094,7 +1207,7 @@ func (db *Database) IsIllegalConflict(doc *Document, parentRevID string, deleted
 	return true
 }
 
-func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredBody Body, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, err error) {
+func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, err error) {
 
 	err = db.validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
@@ -1107,15 +1220,10 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	// FIXME: This stored body stuff can be changed with the upcoming revcache work
-	body := newDoc.Body()
-	storedBody := body
-	if newDoc.Deleted {
-		storedBody[BodyDeleted] = true
-	}
-	storedBody = stripSpecialProperties(storedBody)
+	syncFnBody := newDoc.GetMutableBody()
 
-	err = validateNewBody(body)
+	// TODO: seems a bit late to do this. Could we move it earlier?
+	err = validateNewBody(syncFnBody)
 	if err != nil {
 		return
 	}
@@ -1125,7 +1233,11 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	doc.updateWinningRevAndSetDocFlags()
 	db.storeOldBodyInRevTreeAndUpdateCurrent(doc, prevCurrentRev, newRevID, newDoc)
 
-	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, body, newRevID)
+	syncFnBody[BodyId] = doc.ID
+	syncFnBody[BodyRev] = newRevID
+	syncFnBody[BodyDeleted] = newDoc.Deleted
+
+	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, syncFnBody, newRevID)
 	if err != nil {
 		return
 	}
@@ -1139,7 +1251,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	db.backupAncestorRevs(doc, newRevID, storedBody)
+	db.backupAncestorRevs(doc, newDoc)
 
 	unusedSequences, err = db.assignSequence(previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
@@ -1177,7 +1289,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	}
 
 	doc.TimeSaved = time.Now()
-	return updatedExpiry, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err
+	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -1194,7 +1306,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
-	var storedBody Body
+	var storedDoc *Document
 	var changedAccessPrincipals, changedRoleAccessUsers []string // Returned by documentUpdateFunc
 	var docSequence uint64                                       // Must be scoped outside callback, used over multiple iterations
 	var unusedSequences []uint64                                 // Must be scoped outside callback, used over multiple iterations
@@ -1213,7 +1325,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				return
 			}
 			docExists := currentValue != nil
-			syncFuncExpiry, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -1246,7 +1358,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				return
 			}
 			docExists := currentValue != nil
-			syncFuncExpiry, newRevID, storedBody, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -1327,23 +1439,24 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			return nil, "", getHistoryErr
 		}
 
-		body := doc.Body()
-		if doc.History[newRevID].Deleted {
-			body[BodyDeleted] = true
-
+		// Lazily marshal bytes for storage in revcache
+		storedDocBytes, err := storedDoc.BodyBytes()
+		if err != nil {
+			return nil, "", err
 		}
 
-		// FIXME: Currently returning storedBody - Should change this with revcache work
 		revChannels := doc.History[newRevID].Channels
 		documentRevision := DocumentRevision{
+			DocID:       docid,
 			RevID:       newRevID,
-			Body:        storedBody,
+			BodyBytes:   storedDocBytes,
 			History:     encodeRevisions(history),
 			Channels:    revChannels,
 			Attachments: doc.Attachments,
 			Expiry:      doc.Expiry,
+			Deleted:     doc.History[newRevID].Deleted,
 		}
-		db.revisionCache.Put(doc.ID, documentRevision)
+		db.revisionCache.Put(documentRevision)
 		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
 			webhookJSON, err := doc.MarshalBodyForWebhook()
 			if err != nil {

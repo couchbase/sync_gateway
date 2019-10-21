@@ -2132,6 +2132,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	log.Printf("_changes looks like: %+v", changes)
 	assert.Equal(t, len(expectedIDs), len(changes.Results))
 
+	require.Len(t, changes.Results, len(expectedIDs))
 	for i, expectedID := range expectedIDs {
 		if changes.Results[i].ID != expectedID {
 			log.Printf("changes.Results[i].ID != expectedID.  changes.Results: %+v, expectedIDs: %v", changes.Results, expectedIDs)
@@ -2166,17 +2167,17 @@ func TestAccessOnTombstone(t *testing.T) {
 
 	// Create user:
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "zero"))
-	a.Save(bernard)
+	assert.NoError(t, a.Save(bernard))
 
 	// Create doc that gives user access to its channel
 	response := rt.Send(request("PUT", "/db/alpha", `{"owner":"bernard", "channel":"PBS"}`))
 	assertStatus(t, response, 201)
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	revId := body["rev"].(string)
 
-	rt.WaitForPendingChanges()
+	assert.NoError(t, rt.WaitForPendingChanges())
 
 	// Validate the user gets the doc on the _changes feed
 	// Check the _changes feed:
@@ -2196,19 +2197,130 @@ func TestAccessOnTombstone(t *testing.T) {
 	response = rt.Send(request("DELETE", fmt.Sprintf("/db/alpha?rev=%s", revId), ""))
 	assertStatus(t, response, 200)
 
+	// Make sure it actually was deleted
+	response = rt.Send(request("GET", "/db/alpha", ""))
+	assertStatus(t, response, 404)
+
 	// Wait for change caching to complete
-	rt.WaitForPendingChanges()
+	assert.NoError(t, rt.WaitForPendingChanges())
 
 	// Check user access again:
 	changes.Results = nil
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
-	base.JSONUnmarshal(response.Body.Bytes(), &changes)
+	log.Printf("_changes looks like: %s", response.Body.Bytes())
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	goassert.Equals(t, len(changes.Results), 1)
 	if len(changes.Results) > 0 {
 		goassert.Equals(t, changes.Results[0].ID, "alpha")
 		goassert.Equals(t, changes.Results[0].Deleted, true)
 	}
 
+}
+
+// TestSyncFnBodyProperties puts a document into channels based on which properties are present on the document.
+// This can be used to introspect what properties ended up in the body passed to the sync function.
+func TestSyncFnBodyProperties(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyJavascript)()
+
+	const (
+		testDocID   = "testdoc"
+		testdataKey = "testdata"
+	)
+
+	// All of these properties must be present in the sync function body for a regular PUT containing testdataKey
+	expectedProperties := []string{
+		testdataKey,
+		db.BodyId,
+		db.BodyRev,
+	}
+
+	// This sync function routes into channels based on the given expected properties above
+	var syncFn = `function(doc) {`
+	for _, prop := range expectedProperties {
+		syncFn += `
+if (doc.` + prop + `) {
+	console.log("saw doc property: ` + prop + `")
+	channel("` + prop + `")
+}`
+	}
+	syncFn += "}"
+
+	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	response := rt.Send(request("PUT", "/db/"+testDocID, `{"`+testdataKey+`":true}`))
+	assertStatus(t, response, 201)
+
+	syncData, err := rt.GetDatabase().GetDocSyncData(testDocID)
+	assert.NoError(t, err)
+
+	// Sort both slices so they're in the same order for comparison
+	actualProperties := syncData.Channels.KeySet()
+	sort.Strings(actualProperties)
+	sort.Strings(expectedProperties)
+
+	t.Logf("doc ended up in channels: %v", actualProperties)
+
+	assert.Equal(t, expectedProperties, actualProperties)
+}
+
+// TestSyncFnBodyProperties puts a document into channels based on which properties are present on the document.
+// This can be used to introspect what properties ended up in the body passed to the sync function.
+func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyJavascript)()
+
+	const (
+		testDocID   = "testdoc"
+		testdataKey = "testdata"
+	)
+
+	// All of these properties must be present in the sync function body for a regular PUT containing testdataKey
+	expectedProperties := []string{
+		testdataKey,
+		db.BodyId,
+		db.BodyRev,
+		db.BodyDeleted,
+	}
+
+	// This sync function routes into channels based on the given expected properties above
+	var syncFn = `function(doc) {`
+	for _, prop := range expectedProperties {
+		syncFn += `
+if (doc.` + prop + `) {
+	console.log("saw doc property: ` + prop + `")
+	channel("` + prop + `")
+}`
+	}
+	syncFn += "}"
+
+	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	response := rt.Send(request("PUT", "/db/"+testDocID, `{"`+testdataKey+`":true}`))
+	assertStatus(t, response, 201)
+	var body db.Body
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	goassert.Equals(t, body["ok"], true)
+	revID := body["rev"].(string)
+
+	response = rt.Send(request("DELETE", "/db/"+testDocID+"?rev="+revID, `{}`))
+	assertStatus(t, response, 200)
+
+	syncData, err := rt.GetDatabase().GetDocSyncData(testDocID)
+	assert.NoError(t, err)
+
+	// Sort both slices so they're in the same order for comparison
+	actualProperties := syncData.Channels.KeySet()
+	sort.Strings(actualProperties)
+	sort.Strings(expectedProperties)
+
+	t.Logf("doc ended up in channels: %v", actualProperties)
+
+	assert.Equal(t, expectedProperties, actualProperties)
 }
 
 //Test for wrong _changes entries for user joining a populated channel
@@ -3528,7 +3640,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	var retrievedXattr map[string]interface{}
 	_, err = gocbBucket.GetWithXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, &retrievedVal, &retrievedXattr)
 	assert.NoError(t, err, "Unexpected Error")
-	goassert.True(t, retrievedXattr["rev"].(string) == "2-466a1fab90a810dc0a63565b70680e4e")
+	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedXattr["rev"])
 
 }
 
@@ -3778,14 +3890,14 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	response := rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+docrevId, attachmentBody, reqHeaders)
 	assertStatus(t, response, http.StatusCreated)
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docrevId2 := body["rev"].(string)
 
 	//Update Doc
 	rev3Input := `{"_attachments":{"attach1":{"content-type": "content/type", "digest":"sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub": true}}, "_id": "doc1", "_rev": "` + docrevId2 + `", "prop":true}`
 	response = rt.SendRequest("PUT", "/db/doc1", rev3Input)
 	assertStatus(t, response, http.StatusCreated)
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docrevId3 := body["rev"].(string)
 
 	//Get Existing Doc & Update rev
@@ -3796,7 +3908,7 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	//Get Existing Doc to Modify
 	response = rt.SendRequest("GET", "/db/doc1?revs=true", "")
 	assertStatus(t, response, http.StatusOK)
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
 	//Modify Doc
 	parentRevList := [3]string{"foo3", "foo2", docRevDigest}
@@ -3961,10 +4073,10 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", "")
 	assertStatus(t, response, http.StatusOK)
 
-	response = rt.SendRequest("PUT", "/db/testdoc?new_edits=true&rev="+rev1, `{"value":"a value", "channels":[]})`)
+	response = rt.SendRequest("PUT", "/db/testdoc?new_edits=true&rev="+rev1, `{"value":"a value", "channels":[]}`)
 	assertStatus(t, response, http.StatusCreated)
 
-	response = rt.SendRequest("PUT", "/db/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]})`)
+	response = rt.SendRequest("PUT", "/db/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]}`)
 	assertStatus(t, response, http.StatusCreated)
 
 	err = rt.WaitForPendingChanges()

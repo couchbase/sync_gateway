@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -1155,6 +1157,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	goassert.True(t, err == nil)
 	goassert.Equals(t, len(attachments), 1)
 	retrievedAttachment := attachments[input.attachmentName]
+	require.NotNil(t, retrievedAttachment)
 	goassert.Equals(t, string(retrievedAttachment.Data), input.attachmentBody)
 	goassert.Equals(t, retrievedAttachment.Length, len(attachmentBody))
 	goassert.Equals(t, input.attachmentDigest, retrievedAttachment.Digest)
@@ -1685,7 +1688,8 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 
 	data, ok := client.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
-	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
+	assert.Contains(t, string(data), `"channels":["public"]`)
+	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 	// create doc1 rev 2-ff91e11bc1fd12bbb4815a06571859a9
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", `{"channels": ["private"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`)
@@ -1743,7 +1747,8 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 
 	data, ok := client.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
-	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
+	assert.Contains(t, string(data), `"channels":["public"]`)
+	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 	// tombstone doc1 at rev 2-2db70833630b396ef98a3ec75b3e90fc
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", "")
@@ -1830,14 +1835,16 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	data, ok := client1.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
-	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
+	assert.Contains(t, string(data), `"channels":["public"]`)
+	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 	// Have client2 get only rev-1 and then stop replicating
 	err = client2.StartOneshotPull()
 	assert.NoError(t, err)
 	data, ok = client2.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
-	assert.Equal(t, `{"channels":["public"],"greetings":[{"hello":"world!"}]}`, string(data))
+	assert.Contains(t, string(data), `"channels":["public"]`)
+	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 	// tombstone doc1 at rev 2-2db70833630b396ef98a3ec75b3e90fc
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", `{"test": true"`)
@@ -2058,12 +2065,9 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 
 		// Validate that generation of a delta didn't mutate the revision body in the revision cache
-		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.BodyShallowCopy)
+		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
 		assert.NoError(t, cacheErr)
-		greetings := docRev.Body["greetings"].([]interface{})
-		assert.Len(t, greetings, 2)
-		assert.Equal(t, map[string]interface{}{"hello": "world!"}, greetings[0])
-		assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[1])
+		assert.NotContains(t, docRev.BodyBytes, "bob")
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
 		assert.Equal(t, "", msg.Properties[revMessageDeltaSrc])
@@ -2170,9 +2174,11 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.True(t, ok)
 	var dataMap map[string]interface{}
 	assert.NoError(t, base.JSONUnmarshal(data, &dataMap))
-	atts := dataMap[db.BodyAttachments].(map[string]interface{})
+	atts, ok := dataMap[db.BodyAttachments].(map[string]interface{})
+	require.True(t, ok)
 	assert.Len(t, atts, 1)
-	hello := atts["hello.txt"].(map[string]interface{})
+	hello, ok := atts["hello.txt"].(map[string]interface{})
+	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 	assert.Equal(t, float64(11), hello["length"])
 	assert.Equal(t, float64(2), hello["revpos"])
@@ -2201,7 +2207,8 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
 		assert.NotEqual(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}]}`, string(msgBody))
-		assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(msgBody))
+		assert.Contains(t, string(msgBody), `"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}`)
+		assert.Contains(t, string(msgBody), `"greetings":[{"hello":"world!"},{"hi":"alice"}]`)
 	}
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev=2-10000d5ec533b29b117e60274b1e3653", "")

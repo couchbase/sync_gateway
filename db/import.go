@@ -24,7 +24,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 
 	var body Body
 	if isDelete {
-		body = Body{BodyDeleted: true}
+		body = Body{}
 	} else {
 		err := body.Unmarshal(value)
 		if err != nil {
@@ -100,11 +100,16 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	if existingDoc == nil {
 		return nil, base.RedactErrorf("No existing doc present when attempting to import %s", base.UD(docid))
 	} else if body == nil {
-		return nil, base.ErrEmptyDocument
+		if !isDelete {
+			// only deletes can have an empty (null) body and be imported
+			return nil, base.ErrEmptyDocument
+		}
+		body = Body{}
 	}
 
 	newDoc := &Document{
-		ID: docid,
+		ID:      docid,
+		Deleted: isDelete,
 	}
 
 	var newRev string
@@ -330,17 +335,27 @@ func (db *Database) backupPreImportRevision(docid, revid string) error {
 		return nil
 	}
 
-	previousRev, ok := db.revisionCache.Peek(docid, revid, BodyShallowCopy)
+	previousRev, ok := db.revisionCache.Peek(docid, revid)
 	if !ok {
 		return nil
 	}
 
-	bodyJson, marshalErr := base.JSONMarshal(stripSpecialProperties(previousRev.Body))
-	if marshalErr != nil {
-		return fmt.Errorf("Marshal error: %v", marshalErr)
+	var kvPairs []base.KVPair
+	if len(previousRev.Attachments) > 0 {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: previousRev.Attachments})
 	}
 
-	setOldRevErr := db.setOldRevisionJSON(docid, revid, bodyJson, db.Options.OldRevExpirySeconds)
+	if previousRev.Deleted {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
+	}
+
+	// Stamp _attachments and _deleted into backup
+	oldRevJSON, err := base.InjectJSONProperties(previousRev.BodyBytes, kvPairs...)
+	if err != nil {
+		return err
+	}
+
+	setOldRevErr := db.setOldRevisionJSON(docid, revid, oldRevJSON, db.Options.OldRevExpirySeconds)
 	if setOldRevErr != nil {
 		return fmt.Errorf("Persistence error: %v", setOldRevErr)
 	}

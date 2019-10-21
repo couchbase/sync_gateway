@@ -1442,7 +1442,9 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, 4, len(changes.Results))
 	assert.Equal(t, "docD", changes.Results[3].ID)
-	assert.Equal(t, "docD", changes.Results[3].Doc[db.BodyId])
+	var docBody db.Body
+	assert.NoError(t, base.JSONUnmarshal(changes.Results[3].Doc, &docBody))
+	assert.Equal(t, "docD", docBody[db.BodyId])
 
 	//test parameter style=all_docs
 	//Create a conflict revision on docC
@@ -1550,7 +1552,9 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 	// Conflict
 	revid, err = updateTestDoc(rt, "doc_conflict", "", `{"type": "conflict", "channels":["alpha"]}`)
+	assert.NoError(t, err)
 	_, err = updateTestDoc(rt, "doc_conflict", revid, `{"type": "conflict", "channels":["alpha"]}`)
+	assert.NoError(t, err)
 	newEdits_conflict := `{"type": "conflict", "channels":["alpha"],
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "19a316235cdd9d695d73765dc527d903"]}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc_conflict?new_edits=false", newEdits_conflict)
@@ -1558,11 +1562,15 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 	// Resolved conflict
 	revid, err = updateTestDoc(rt, "doc_resolved_conflict", "", `{"type": "resolved_conflict", "channels":["alpha"]}`)
+	assert.NoError(t, err)
 	_, err = updateTestDoc(rt, "doc_resolved_conflict", revid, `{"type": "resolved_conflict", "channels":["alpha"]}`)
-	newEdits_conflict = `{"type": "resolved_conflict", "channels":["alpha"]},
+	assert.NoError(t, err)
+	newEdits_conflict = `{"type": "resolved_conflict", "channels":["alpha"],
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "4e123c0497a1a6975540977ec127c06c"]}}`
 	response = rt.SendAdminRequest("PUT", "/db/doc_resolved_conflict?new_edits=false", newEdits_conflict)
+	assertStatus(t, response, 201)
 	response = rt.SendAdminRequest("DELETE", "/db/doc_resolved_conflict?rev=2-conflicting_rev", "")
+	assertStatus(t, response, 200)
 
 	expectedResults := make([]string, 10)
 	expectedResults[0] = `{"seq":1,"id":"_user/user1","changes":[]}`
@@ -1574,7 +1582,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedResults[6] = `{"seq":18,"id":"doc_attachment","doc":{"_attachments":{"attach1":{"content_type":"text/plain","digest":"sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=","length":30,"revpos":2,"stub":true}},"_id":"doc_attachment","_rev":"2-0b0457923508d99ec1929d2316d14cf2","channels":["alpha"],"type":"attachments"},"changes":[{"rev":"2-0b0457923508d99ec1929d2316d14cf2"}]}`
 	expectedResults[7] = `{"seq":19,"id":"doc_large_numbers","doc":{"_id":"doc_large_numbers","_rev":"1-2721633d9000e606e9c642e98f2f5ae7","channels":["alpha"],"largefloat":1234567890.1234,"largeint":1234567890,"type":"large_numbers"},"changes":[{"rev":"1-2721633d9000e606e9c642e98f2f5ae7"}]}`
 	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"}]}`
-	expectedResults[9] = `{"seq":24,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
+	expectedResults[9] = `{"seq":26,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
 	changesResponse := rt.Send(requestByUser("GET", "/db/_changes?include_docs=true", "", "user1"))
 
 	var changes changesResults
@@ -1584,7 +1592,24 @@ func TestChangesIncludeDocs(t *testing.T) {
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
 		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, result, expectedChange)
+
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Err, result.Err)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
+
+		if expectedChange.Doc != nil {
+			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
+			var expectedBody db.Body
+			var resultBody db.Body
+			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
+			assert.NoError(t, resultBody.Unmarshal(result.Doc))
+			db.AssertEqualBodies(t, expectedBody, resultBody)
+		} else {
+			assert.Equal(t, expectedChange.Doc, result.Doc)
+		}
 	}
 
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
@@ -1601,7 +1626,24 @@ func TestChangesIncludeDocs(t *testing.T) {
 	for index, result := range postFlushChanges.Results {
 		var expectedChange db.ChangeEntry
 		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, result, expectedChange)
+
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Err, result.Err)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
+
+		if expectedChange.Doc != nil {
+			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
+			var expectedBody db.Body
+			var resultBody db.Body
+			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
+			assert.NoError(t, resultBody.Unmarshal(result.Doc))
+			db.AssertEqualBodies(t, expectedBody, resultBody)
+		} else {
+			assert.Equal(t, expectedChange.Doc, result.Doc)
+		}
 	}
 
 	// Validate include_docs=false, style=all_docs permutations
@@ -1615,7 +1657,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedStyleAllDocs[6] = `{"seq":18,"id":"doc_attachment","changes":[{"rev":"2-0b0457923508d99ec1929d2316d14cf2"}]}`
 	expectedStyleAllDocs[7] = `{"seq":19,"id":"doc_large_numbers","changes":[{"rev":"1-2721633d9000e606e9c642e98f2f5ae7"}]}`
 	expectedStyleAllDocs[8] = `{"seq":22,"id":"doc_conflict","changes":[{"rev":"2-conflicting_rev"},{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
-	expectedStyleAllDocs[9] = `{"seq":24,"id":"doc_resolved_conflict","changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
+	expectedStyleAllDocs[9] = `{"seq":26,"id":"doc_resolved_conflict","changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"},{"rev":"3-f25ad98ef169791adec6c1d385717b84"}]}`
 
 	styleAllDocsChangesResponse := rt.Send(requestByUser("GET", "/db/_changes?style=all_docs", "", "user1"))
 	var allDocsChanges struct {
@@ -1625,11 +1667,12 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	assert.Equal(t, len(expectedStyleAllDocs), len(allDocsChanges.Results))
 	for index, result := range allDocsChanges.Results {
-		assert.Equal(t, fmt.Sprintf("%s", *result), expectedStyleAllDocs[index])
+		assert.Equal(t, expectedStyleAllDocs[index], fmt.Sprintf("%s", *result))
 	}
 
 	// Validate style=all_docs, include_docs=true permutations.  Only modified doc from include_docs test is doc_conflict (adds open revisions)
 	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"},{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
+	expectedResults[9] = `{"seq":26,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"},{"rev":"3-f25ad98ef169791adec6c1d385717b84"}]}`
 
 	combinedChangesResponse := rt.Send(requestByUser("GET", "/db/_changes?style=all_docs&include_docs=true", "", "user1"))
 	var combinedChanges changesResults
@@ -1639,7 +1682,24 @@ func TestChangesIncludeDocs(t *testing.T) {
 	for index, result := range combinedChanges.Results {
 		var expectedChange db.ChangeEntry
 		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, result, expectedChange)
+
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Err, result.Err)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
+
+		if expectedChange.Doc != nil {
+			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
+			var expectedBody db.Body
+			var resultBody db.Body
+			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
+			assert.NoError(t, resultBody.Unmarshal(result.Doc))
+			db.AssertEqualBodies(t, expectedBody, resultBody)
+		} else {
+			assert.Equal(t, expectedChange.Doc, result.Doc)
+		}
 	}
 }
 
