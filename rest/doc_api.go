@@ -232,11 +232,16 @@ func (h *handler) handlePutAttachment() error {
 			return err
 		}
 	} else if rev.BodyBytes != nil {
+		if revid == "" {
+			// If a revid is not specified and an active revision was found,
+			// return a conflict now, rather than letting db.Put do it further down...
+			return base.HTTPErrorf(http.StatusConflict, "Cannot modify attachments without a specific rev ID")
+		}
+
+		// get the body of the requested revision to insert attachments into
 		body, err = rev.Mutable1xBody(h.db, nil, nil, false)
 		if err != nil {
 			return err
-		} else if body != nil {
-			body[db.BodyRev] = revid
 		}
 	}
 
