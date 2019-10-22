@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"log"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -115,241 +115,98 @@ func mockTokenWithSingleAudience() string {
 	return token
 }
 
-func TestGetJWTIdentity(t *testing.T) {
-	// Parse the mocked JWS token.
-	token := mockGoodToken()
-	jws, err := jose.ParseJWS(token)
-	assert.NotNil(t, jws)
-	assert.NoError(t, err)
+func TestGetJWTIssuerIdentityExpiry(t *testing.T) {
+	tests := map[int]struct {
+		sequence int
+		name     string
+		token    string
+		jwt      jose.JWT
+		issuer   string
+		audience int
+		err      error
+	}{
+		1: {name: "Test GetJWTIssuer with no identity", token: ""},
+		2: {name: "Test GetJWTIssuer with no claims", token: mockGoodToken()},
+		3: {name: "Test GetJWTIssuer with bad issuer in JWT claims", token: mockTokenWithBadIssuer()},
+		4: {name: "Test GetJWTIssuer with no issuer in JWT claims", token: mockTokenWithNoIssuer()},
+		5: {name: "Test GetJWTIssuer with no audience in JWT claims", token: mockGoodTokenWithNoAudience()},
+		6: {name: "Test GetJWTIssuer with single audience in JWT claims", token: mockTokenWithSingleAudience(), audience: 1},
+		7: {name: "Test GetJWTExpiry with good token", token: mockGoodToken()},
+		8: {name: "Test GetJWTIdentity; ID, Email, and ExpiresAt", token: mockGoodToken()},
+		9: {name: "Test GetJWTExpiry with no identity", token: ""},
+	}
 
-	// Verify the header, payload, and signature.
-	parts := strings.Split(token, jwtSeparator)
-	assert.NotNil(t, parts)
-	assert.Equal(t, parts[0], jws.RawHeader)
-	assert.Equal(t, parts[1], jws.RawPayload)
+	for seq, tc := range tests {
+		t.Run(fmt.Sprintf("%v: %v", seq, tc.name), func(t *testing.T) {
+			if tc.token != "" {
+				jws, err := jose.ParseJWS(tc.token)
+				assert.NotNil(t, jws)
+				assert.NoError(t, err)
 
-	assert.NotNil(t, jws.Header)
-	assert.NotNil(t, jws.Payload)
-	assert.NotNil(t, jws.Signature)
+				parts := strings.Split(tc.token, jwtSeparator)
+				assert.NotNil(t, parts)
+				assert.Equal(t, parts[0], jws.RawHeader)
+				assert.Equal(t, parts[1], jws.RawPayload)
 
-	jwt := jose.JWT{
-		RawHeader:  jws.RawHeader,
-		Header:     jws.Header,
-		RawPayload: jws.RawPayload,
-		Payload:    jws.Payload,
-		Signature:  jws.Signature}
+				assert.NotNil(t, jws.Header)
+				assert.NotNil(t, jws.Payload)
+				assert.NotNil(t, jws.Signature)
 
-	// Check Identity; ID, Email, and ExpiresAt.
-	identity, err := GetJWTIdentity(jwt)
-	assert.NoError(t, err)
-	assert.Empty(t, identity.Name)
+				if seq == 2 { // Shouldn't set claims in jwt.
+					tc.jwt = jose.JWT{
+						RawHeader: jws.RawHeader,
+						Header:    jws.Header,
+						Signature: jws.Signature}
+				} else {
+					tc.jwt = jose.JWT{
+						RawHeader:  jws.RawHeader,
+						Header:     jws.Header,
+						RawPayload: jws.RawPayload,
+						Payload:    jws.Payload,
+						Signature:  jws.Signature}
+				}
+			} else {
+				tc.jwt = jose.JWT{}
+			}
 
-	assert.NotEmpty(t, identity.ID)
-	assert.NotEmpty(t, identity.Email)
-	assert.NotEmpty(t, identity.ExpiresAt)
-}
-
-func TestGetJWTExpiry(t *testing.T) {
-	// Parse the mocked JWS token.
-	token := mockGoodToken()
-	jws, err := jose.ParseJWS(token)
-	assert.NotNil(t, jws)
-	assert.NoError(t, err)
-
-	// Verify the header, payload, and signature.
-	parts := strings.Split(token, jwtSeparator)
-	assert.NotNil(t, parts)
-	assert.Equal(t, parts[0], jws.RawHeader)
-	assert.Equal(t, parts[1], jws.RawPayload)
-
-	assert.NotNil(t, jws.Header)
-	assert.NotNil(t, jws.Payload)
-	assert.NotNil(t, jws.Signature)
-
-	jwt := jose.JWT{
-		RawHeader:  jws.RawHeader,
-		Header:     jws.Header,
-		RawPayload: jws.RawPayload,
-		Payload:    jws.Payload,
-		Signature:  jws.Signature}
-
-	// Check claim (Identity.ExpiresAt) for the JWT
-	expiresAt, err := GetJWTExpiry(jwt)
-	assert.NoError(t, err)
-	assert.NotNil(t, expiresAt)
-}
-
-func TestGetJWTExpiryWithNoIdentity(t *testing.T) {
-	jwt := jose.JWT{}
-	expiresAt, err := GetJWTExpiry(jwt)
-	assert.Error(t, err)
-	assert.NotNil(t, expiresAt)
-}
-
-func TestGetJWTIssuerWithSingleAudience(t *testing.T) {
-	// Parse the mocked JWS token.
-	token := mockTokenWithSingleAudience()
-	jws, err := jose.ParseJWS(token)
-	assert.NotNil(t, jws)
-	assert.NoError(t, err)
-
-	// Verify the header, payload, and signature.
-	parts := strings.Split(token, jwtSeparator)
-	assert.NotNil(t, parts)
-	assert.Equal(t, parts[0], jws.RawHeader)
-	assert.Equal(t, parts[1], jws.RawPayload)
-
-	assert.NotNil(t, jws.Header)
-	assert.NotNil(t, jws.Payload)
-	assert.NotNil(t, jws.Signature)
-
-	jwt := jose.JWT{
-		RawHeader:  jws.RawHeader,
-		Header:     jws.Header,
-		RawPayload: jws.RawPayload,
-		Payload:    jws.Payload,
-		Signature:  jws.Signature}
-
-	// Check JWT issuer details
-	issuer, audiences, err := GetJWTIssuer(jwt)
-	log.Printf("audiences:%v", audiences)
-	assert.NoError(t, err)
-	assert.NotNil(t, audiences)
-	assert.Equal(t, 1, len(audiences))
-	assert.NotNil(t, issuer)
-}
-
-func TestGetJWTIssuerWithNoAudience(t *testing.T) {
-	// Parse the mocked JWS token.
-	token := mockGoodTokenWithNoAudience()
-	jws, err := jose.ParseJWS(token)
-	assert.NotNil(t, jws)
-	assert.NoError(t, err)
-
-	// Verify the header, payload, and signature.
-	parts := strings.Split(token, jwtSeparator)
-	assert.NotNil(t, parts)
-	assert.Equal(t, parts[0], jws.RawHeader)
-	assert.Equal(t, parts[1], jws.RawPayload)
-
-	assert.NotNil(t, jws.Header)
-	assert.NotNil(t, jws.Payload)
-	assert.NotNil(t, jws.Signature)
-
-	jwt := jose.JWT{
-		RawHeader:  jws.RawHeader,
-		Header:     jws.Header,
-		RawPayload: jws.RawPayload,
-		Payload:    jws.Payload,
-		Signature:  jws.Signature}
-
-	// Check JWT issuer details
-	issuer, audiences, err := GetJWTIssuer(jwt)
-	assert.NoError(t, err)
-	assert.Nil(t, audiences)
-	assert.Equal(t, 0, len(audiences))
-	assert.Empty(t, issuer)
-}
-
-func TestGetJWTIssuerWithNoIssuer(t *testing.T) {
-	// Parse the mocked JWS token.
-	token := mockTokenWithNoIssuer()
-	jws, err := jose.ParseJWS(token)
-	assert.NotNil(t, jws)
-	assert.NoError(t, err)
-
-	// Verify the header, payload, and signature.
-	parts := strings.Split(token, jwtSeparator)
-	assert.NotNil(t, parts)
-	assert.Equal(t, parts[0], jws.RawHeader)
-	assert.Equal(t, parts[1], jws.RawPayload)
-
-	assert.NotNil(t, jws.Header)
-	assert.NotNil(t, jws.Payload)
-	assert.NotNil(t, jws.Signature)
-
-	jwt := jose.JWT{
-		RawHeader:  jws.RawHeader,
-		Header:     jws.Header,
-		RawPayload: jws.RawPayload,
-		Payload:    jws.Payload,
-		Signature:  jws.Signature}
-
-	// Check JWT issuer details
-	issuer, audiences, err := GetJWTIssuer(jwt)
-	assert.Error(t, err)
-	assert.Nil(t, audiences)
-	assert.Equal(t, 0, len(audiences))
-	assert.Empty(t, issuer)
-}
-
-func TestGetJWTIssuerWithBadIssuer(t *testing.T) {
-	// Parse the mocked JWS token.
-	token := mockTokenWithBadIssuer()
-	jws, err := jose.ParseJWS(token)
-	assert.NotNil(t, jws)
-	assert.NoError(t, err)
-
-	// Verify the header, payload, and signature.
-	parts := strings.Split(token, jwtSeparator)
-	assert.NotNil(t, parts)
-	assert.Equal(t, parts[0], jws.RawHeader)
-	assert.Equal(t, parts[1], jws.RawPayload)
-
-	assert.NotNil(t, jws.Header)
-	assert.NotNil(t, jws.Payload)
-	assert.NotNil(t, jws.Signature)
-
-	jwt := jose.JWT{
-		RawHeader:  jws.RawHeader,
-		Header:     jws.Header,
-		RawPayload: jws.RawPayload,
-		Payload:    jws.Payload,
-		Signature:  jws.Signature}
-
-	// Check JWT issuer details
-	issuer, audiences, err := GetJWTIssuer(jwt)
-	assert.Error(t, err)
-	assert.Nil(t, audiences)
-	assert.Equal(t, 0, len(audiences))
-	assert.Empty(t, issuer)
-}
-
-func TestGetJWTIssuerWithNoClaims(t *testing.T) {
-	// Parse the mocked JWS token.
-	token := mockGoodToken()
-	jws, err := jose.ParseJWS(token)
-	assert.NotNil(t, jws)
-	assert.NoError(t, err)
-
-	// Verify the header, payload, and signature.
-	parts := strings.Split(token, jwtSeparator)
-	assert.NotNil(t, parts)
-	assert.Equal(t, parts[0], jws.RawHeader)
-	assert.Equal(t, parts[1], jws.RawPayload)
-
-	assert.NotNil(t, jws.Header)
-	assert.NotNil(t, jws.Payload)
-	assert.NotNil(t, jws.Signature)
-
-	jwt := jose.JWT{
-		RawHeader: jws.RawHeader,
-		Header:    jws.Header,
-		Signature: jws.Signature}
-
-	// Check JWT issuer details
-	issuer, audiences, err := GetJWTIssuer(jwt)
-	assert.Error(t, err)
-	assert.Nil(t, audiences)
-	assert.Equal(t, 0, len(audiences))
-	assert.Empty(t, issuer)
-}
-
-func TestGetJWTIssuerWithNoIdentity(t *testing.T) {
-	jwt := jose.JWT{}
-	issuer, audiences, err := GetJWTIssuer(jwt)
-	assert.Error(t, err)
-	assert.Nil(t, audiences)
-	assert.Equal(t, 0, len(audiences))
-	assert.Empty(t, issuer)
+			switch seq {
+			case 1:
+			case 2:
+			case 3:
+			case 4:
+				issuer, audiences, err := GetJWTIssuer(tc.jwt)
+				assert.Error(t, err)
+				assert.Nil(t, audiences)
+				assert.Equal(t, tc.audience, len(audiences))
+				assert.Empty(t, issuer)
+			case 5:
+				issuer, audiences, err := GetJWTIssuer(tc.jwt)
+				assert.NoError(t, err)
+				assert.Nil(t, audiences)
+				assert.Equal(t, tc.audience, len(audiences))
+				assert.Empty(t, issuer)
+			case 6:
+				issuer, audiences, err := GetJWTIssuer(tc.jwt)
+				assert.NoError(t, err)
+				assert.NotNil(t, audiences)
+				assert.Equal(t, tc.audience, len(audiences))
+				assert.NotNil(t, issuer)
+			case 7:
+				expiresAt, err := GetJWTExpiry(tc.jwt)
+				assert.NoError(t, err)
+				assert.NotNil(t, expiresAt)
+			case 8:
+				identity, err := GetJWTIdentity(tc.jwt)
+				assert.NoError(t, err)
+				assert.Empty(t, identity.Name)
+				assert.NotEmpty(t, identity.ID)
+				assert.NotEmpty(t, identity.Email)
+				assert.NotEmpty(t, identity.ExpiresAt)
+			case 9:
+				expiresAt, err := GetJWTExpiry(tc.jwt)
+				assert.Error(t, err)
+				assert.NotNil(t, expiresAt)
+			}
+		})
+	}
 }
