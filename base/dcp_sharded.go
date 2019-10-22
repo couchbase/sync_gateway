@@ -1,8 +1,6 @@
 package base
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/couchbase/cbgt"
@@ -154,10 +152,10 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // parameter, and the implications for SG
 func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContext, error) {
 
-	// uuid: Unique identifier for the node. Used to identify the node in the config
-	// TODO: Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
+	// uuid: Unique identifier for the node. Used to identify the node in the config.
+	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
 	// 		 the previous version of that node from the cfg, and assign pindexes to the new one.
-	// 		(note that in a single node scenario, this is latency removing previous version of itself
+	// 		(note that in a single node scenario, this can result in latency removing previous version of itself
 	//  	on restart, if time between restarts is less than heartbeat expiry time).
 	uuid := cbgt.NewUUID()
 
@@ -216,16 +214,9 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 		}
 	}
 
-	// dataDir: file system location for files persisted by cbgt.  Needs to be unique
-	// per database
-
-	dataDir := filepath.Join(os.TempDir(), "sg_"+dbName)
-	// TODO: Would really not have to persist here
-	// Create the db-scoped path
-	err = os.MkdirAll(dataDir, 0700)
-	if err != nil {
-		return nil, err
-	}
+	// dataDir: file system location for files persisted by cbgt.  Not required by SG, setting to empty
+	//   avoids file system usage, in conjunction with managerLoadDataDir=false in options.
+	dataDir := ""
 
 	// eventHandlers: SG doesn't currently do any processing on manager events:
 	//   - OnRegisterPIndex
@@ -235,7 +226,8 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 
 	// Specify one feed per pindex
 	options := make(map[string]string)
-	//options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
+	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
+	options["managerLoadDataDir"] = "false"
 
 	// Creates a new cbgt manager.
 	mgr := cbgt.NewManagerEx(

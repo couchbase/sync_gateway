@@ -2,7 +2,6 @@ package db
 
 import (
 	"expvar"
-	"os"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
@@ -33,15 +32,7 @@ func (il *importListener) RegisterImportPindexImpl() {
 // OpenImportPindexImpl is called, and indexParams aren't included.
 func (il *importListener) NewImportPIndexImpl(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 
-	// TODO: Would really rather not require any file persistence here
-	// https://issues.couchbase.com/browse/MB-36085
 	base.Infof(base.KeyDCP, "NewImportPindexImpl - indexType %s, path %s, params %v", indexType, path, indexParams)
-
-	// Create the pindex-specific path
-	err := os.MkdirAll(path, 0700)
-	if err != nil {
-		return nil, nil, err
-	}
 
 	importDest, err := il.NewImportDest()
 	if err != nil {
