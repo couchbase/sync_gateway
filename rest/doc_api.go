@@ -30,6 +30,10 @@ func (h *handler) handleGetDoc() error {
 	openRevs := h.getQuery("open_revs")
 	showExp := h.getBoolQuery("show_exp")
 
+	if replicator2, _ := h.getOptBoolQuery("replicator2", false); replicator2 {
+		return h.handleGetDocReplicator2(docid, revid)
+	}
+
 	// Check whether the caller wants a revision history, or attachment bodies, or both:
 	var revsLimit = 0
 	var revsFrom, attachmentsSince []string
@@ -142,6 +146,27 @@ func (h *handler) handleGetDoc() error {
 			h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		}
 	}
+	return nil
+}
+
+func (h *handler) handleGetDocReplicator2(docid, revid string) error {
+	rev, err := h.db.GetRev(docid, revid, true, nil)
+	if err != nil {
+		return err
+	}
+
+	// Stamp _attachments into message to match BLIP sendRevision behaviour
+	bodyBytes := rev.BodyBytes
+	if len(rev.Attachments) > 0 {
+		bodyBytes, err = base.InjectJSONProperties(bodyBytes, base.KVPair{Key: db.BodyAttachments, Val: rev.Attachments})
+		if err != nil {
+			return err
+		}
+	}
+
+	h.setHeader("Content-Type", "application/json")
+	h.response.Write(bodyBytes)
+
 	return nil
 }
 

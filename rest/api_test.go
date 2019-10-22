@@ -4141,6 +4141,57 @@ func TestWebhookProperties(t *testing.T) {
 
 }
 
+func TestBasicGetReplicator2(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+
+	// Put document as usual
+	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
+	assertStatus(t, response, http.StatusCreated)
+	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.True(t, body["ok"].(bool))
+	revID := body["rev"].(string)
+
+	// Get a document with rev using replicator2
+	response = rt.SendAdminRequest("GET", "/db/doc1?replicator2=true&rev="+revID, ``)
+	assertStatus(t, response, http.StatusOK)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.Equal(t, "bar", body["foo"])
+
+	// Get a document without specifying rev using replicator2
+	response = rt.SendAdminRequest("GET", "/db/doc1?replicator2=true", ``)
+	assertStatus(t, response, http.StatusOK)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.Equal(t, "bar", body["foo"])
+}
+
+func TestAttachmentGetReplicator2(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+
+	// Put document as usual with attachment
+	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	assertStatus(t, response, http.StatusCreated)
+	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.True(t, body["ok"].(bool))
+
+	// Get a document with rev using replicator2
+	response = rt.SendAdminRequest("GET", "/db/doc1?replicator2=true", ``)
+	assertStatus(t, response, http.StatusOK)
+	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.Equal(t, "bar", body["foo"])
+	assert.Contains(t, body[db.BodyAttachments], "hello.txt")
+}
+
 func TestBasicPutReplicator2(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
