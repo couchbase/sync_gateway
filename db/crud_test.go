@@ -4,12 +4,11 @@ import (
 	"log"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type treeDoc struct {
@@ -743,6 +742,8 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 }
 
 func BenchmarkDatabaseGet1xRev(b *testing.B) {
+	defer base.DisableTestLogging()()
+
 	db, testBucket := setupTestDB(b)
 	defer testBucket.Close()
 	defer tearDownTestDB(b, db)
@@ -765,20 +766,17 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	b.Run("ShortLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.Get1xRevBody("doc1", "", false, nil)
-			require.NoError(b, err)
+			db.Get1xRevBody("doc1", "", false, nil)
 		}
 	})
 	b.Run("LongLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.Get1xRevBody("doc2", "", false, nil)
-			require.NoError(b, err)
+			db.Get1xRevBody("doc2", "", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.Get1xRevBody("doc3", "", false, nil)
-			require.NoError(b, err)
+			db.Get1xRevBody("doc3", "", false, nil)
 		}
 	})
 
@@ -792,25 +790,24 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	b.Run("ShortOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.Get1xRevBody("doc1", "1-a", false, nil)
-			require.NoError(b, err)
+			db.Get1xRevBody("doc1", "1-a", false, nil)
 		}
 	})
 	b.Run("LongOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.Get1xRevBody("doc2", "1-a", false, nil)
-			require.NoError(b, err)
+			db.Get1xRevBody("doc2", "1-a", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.Get1xRevBody("doc3", "1-a", false, nil)
-			require.NoError(b, err)
+			db.Get1xRevBody("doc3", "1-a", false, nil)
 		}
 	})
 }
 
 func BenchmarkDatabaseGetRev(b *testing.B) {
+	defer base.DisableTestLogging()()
+
 	db, testBucket := setupTestDB(b)
 	defer testBucket.Close()
 	defer tearDownTestDB(b, db)
@@ -833,20 +830,17 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 
 	b.Run("ShortLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.GetRev("doc1", "", false, nil)
-			require.NoError(b, err)
+			db.GetRev("doc1", "", false, nil)
 		}
 	})
 	b.Run("LongLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.GetRev("doc2", "", false, nil)
-			require.NoError(b, err)
+			db.GetRev("doc2", "", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.GetRev("doc3", "", false, nil)
-			require.NoError(b, err)
+			db.GetRev("doc3", "", false, nil)
 		}
 	})
 
@@ -860,26 +854,24 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 
 	b.Run("ShortOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.GetRev("doc1", "1-a", false, nil)
-			require.NoError(b, err)
+			db.GetRev("doc1", "1-a", false, nil)
 		}
 	})
 	b.Run("LongOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.GetRev("doc2", "1-a", false, nil)
-			require.NoError(b, err)
+			db.GetRev("doc2", "1-a", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, err := db.GetRev("doc3", "1-a", false, nil)
-			require.NoError(b, err)
+			db.GetRev("doc3", "1-a", false, nil)
 		}
 	})
 }
 
 // Replicates delta patching work carried out by handleRev
 func BenchmarkHandleRevDelta(b *testing.B) {
+	defer base.DisableTestLogging()()
 
 	db, testBucket := setupTestDB(b)
 	defer testBucket.Close()
