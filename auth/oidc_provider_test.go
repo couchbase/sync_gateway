@@ -39,6 +39,11 @@ func TestParseURIWithValidURL(t *testing.T) {
 	assert.Equal(t, httpsHost, url.Host)
 	assert.Equal(t, hostname, url.Hostname())
 	assert.Equal(t, httpsPort, url.Port())
+
+	// Blank or empty URL
+	url, err = config.parseURI("")
+	assert.Nil(t, err)
+	assert.Nil(t, url)
 }
 
 func TestParseURIWithBadURIs(t *testing.T) {
@@ -56,17 +61,10 @@ func TestParseURIWithBadURIs(t *testing.T) {
 		{input: "https://", text: "Host required in URI", want: nil},
 		// HTTPS URL without a valid scheme.
 		{input: "sftp://accounts.unknown.com", text: "Invalid URI scheme", want: nil},
-		// Blank or empty URL
-		{input: "", text: "", want: nil},
 	}
 
 	for _, tc := range tests {
 		got, err := config.parseURI(tc.input)
-		if tc.input == "" {
-			assert.Nil(t, got)
-			assert.Nil(t, err)
-			continue
-		}
 		if !assert.Error(t, err) || (assert.Error(t, err) && !assert.Contains(t, err.Error(), tc.text)) {
 			t.Fatalf("expected: %v, got: %v", tc.want, got)
 		}
