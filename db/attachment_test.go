@@ -426,3 +426,44 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	assert.True(t, digestOk, "digest should be set for attachment hello.txt in GET response")
 
 }
+
+func TestDecodeAttachmentError(t *testing.T) {
+	attr, err := decodeAttachment(make([]int, 2))
+	assert.Nil(t, attr)
+	assert.Error(t, err, "400 invalid attachment data (type []int)")
+
+	attr, err = decodeAttachment(make([]float64, 2))
+	assert.Nil(t, attr)
+	assert.Error(t, err, "400 invalid attachment data (type []float64)")
+
+	attr, err = decodeAttachment(make([]string, 2))
+	assert.Nil(t, attr)
+	assert.Error(t, err, "400 invalid attachment data (type []string)")
+
+	attr, err = decodeAttachment(make(map[string]int, 2))
+	assert.Nil(t, attr)
+	assert.Error(t, err, "400 invalid attachment data (type map[string]int)")
+
+	attr, err = decodeAttachment(make(map[string]float64, 2))
+	assert.Nil(t, attr)
+	assert.Error(t, err, "400 invalid attachment data (type map[string]float64)")
+
+	attr, err = decodeAttachment(make(map[string]float64, 2))
+	assert.Nil(t, attr)
+	assert.Error(t, err, "400 invalid attachment data (type map[string]string)")
+
+	book := struct {
+		author string
+		title  string
+		price  float64
+	}{author: "William Shakespeare", title: "Hamlet", price: 7.99}
+	attr, err = decodeAttachment(book)
+	assert.Nil(t, attr)
+	assert.Error(t, err, "400 invalid attachment data (type struct { author string; title string; price float64 })")
+}
+
+func TestMd5DigestKey(t *testing.T) {
+	assert.Equal(t, "md5-X03MO1qnZdYdgyfeuILPmQ==", Md5DigestKey([]byte("password")))
+	assert.Equal(t, "md5-1B2M2Y8AsgTpgAmY7PhCfg==", Md5DigestKey([]byte("")))
+	assert.Equal(t, "md5-1B2M2Y8AsgTpgAmY7PhCfg==", Md5DigestKey([]byte(nil)))
+}
