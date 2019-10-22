@@ -426,3 +426,9 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	assert.True(t, digestOk, "digest should be set for attachment hello.txt in GET response")
 
 }
+
+func TestMd5DigestKey(t *testing.T) {
+	assert.Equal(t, "md5-X03MO1qnZdYdgyfeuILPmQ==", Md5DigestKey([]byte("password")))
+	assert.Equal(t, "md5-1B2M2Y8AsgTpgAmY7PhCfg==", Md5DigestKey([]byte("")))
+	assert.Equal(t, "md5-1B2M2Y8AsgTpgAmY7PhCfg==", Md5DigestKey([]byte(nil)))
+}
