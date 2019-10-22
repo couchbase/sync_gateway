@@ -68,7 +68,7 @@ func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo 
 }
 
 func (d *DCPDest) Close() error {
-	// TODO: Do we have any cleanup we should be doing on close?
+	DebugfCtx(d.loggingCtx, KeyDCP, "Closing DCPDest for %s", d.feedID)
 	return nil
 }
 
@@ -301,13 +301,11 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 		return pkgerrors.WithStack(RedactErrorf("Error instantiating gocb DCP Feed.  Feed:%s URL:%s, bucket:%s.  Error: %v", feedName, UD(serverURL), MD(spec.BucketName), err))
 	}
 
-	InfofCtx(loggingCtx, KeyDCP, "DCP feed starting with name %s", feedName)
-
 	if err = feed.Start(); err != nil {
 		return pkgerrors.WithStack(RedactErrorf("Error starting gocb DCP Feed.  Feed:%s URLs:%s, bucket:%s.  Error: %v", feedName, UD(serverURL), MD(spec.BucketName), err))
 	}
 
-	InfofCtx(loggingCtx, KeyDCP, "DCP feed started successfully with name %s", feedName)
+	InfofCtx(loggingCtx, KeyDCP, "Caching DCP feed started successfully: %s", feedName)
 
 	// Close the feed if feed terminator is closed
 	if args.Terminator != nil {

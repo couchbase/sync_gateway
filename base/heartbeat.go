@@ -168,6 +168,10 @@ func (h *couchbaseHeartBeater) StopSendingHeartbeats() {
 // will be called back in that case (and passed the opaque node uuid)
 func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, handler HeartbeatsStoppedHandler) error {
 
+	if err := h.checkStaleHeartbeats(staleThresholdMs, handler); err != nil {
+		Warnf(KeyImport, "Error checking for stale heartbeats: %v", err)
+	}
+
 	ticker := time.NewTicker(time.Duration(staleThresholdMs) * time.Millisecond)
 
 	go func() {

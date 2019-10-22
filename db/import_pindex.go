@@ -32,8 +32,6 @@ func (il *importListener) RegisterImportPindexImpl() {
 // OpenImportPindexImpl is called, and indexParams aren't included.
 func (il *importListener) NewImportPIndexImpl(indexType, indexParams, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 
-	base.Infof(base.KeyDCP, "NewImportPindexImpl - indexType %s, path %s, params %v", indexType, path, indexParams)
-
 	importDest, err := il.NewImportDest()
 	if err != nil {
 		base.Errorf(base.KeyAll, "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
@@ -43,7 +41,6 @@ func (il *importListener) NewImportPIndexImpl(indexType, indexParams, path strin
 
 func (il *importListener) OpenImportPIndexImpl(indexType, path string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
 
-	base.Infof(base.KeyDCP, "OpenImportPindexImpl - indexType %s, path %s", indexType, path)
 	importDest, err := il.NewImportDest()
 	if err != nil {
 		base.Errorf(base.KeyAll, "Error creating NewImportDest during OpenImportPIndexImpl: %v", err)
@@ -52,7 +49,6 @@ func (il *importListener) OpenImportPIndexImpl(indexType, path string, restart f
 }
 
 func (il *importListener) OpenImportPIndexImplUsing(indexType, path, indexParams string, restart func()) (cbgt.PIndexImpl, cbgt.Dest, error) {
-	base.Infof(base.KeyDCP, "OpenImportPindexImplUsing - indexType %s, path %s, params %v", indexType, path, indexParams)
 	return il.OpenImportPIndexImpl(indexType, path, restart)
 }
 

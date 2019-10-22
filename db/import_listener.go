@@ -144,10 +144,18 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 func (il *importListener) Stop() {
 	if il != nil {
 		if il.cbgtContext != nil {
-			il.cbgtContext.Manager.Stop()
 			if il.cbgtContext.Heartbeater != nil {
 				il.cbgtContext.Heartbeater.Stop()
 			}
+
+			// Close open PIndexes before stopping the manager.
+			_, pindexes := il.cbgtContext.Manager.CurrentMaps()
+			for _, pIndex := range pindexes {
+				il.cbgtContext.Manager.ClosePIndex(pIndex)
+			}
+			// ClosePIndex calls are synchronous, so can stop manager once they've completed
+			il.cbgtContext.Manager.Stop()
+
 		}
 		close(il.terminator)
 	}
