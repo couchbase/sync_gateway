@@ -117,6 +117,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 	cost, err = bcrypt.Cost(user.PasswordHash_)
 	assert.NoError(t, err)
 	assert.Equal(t, newBcryptCost, cost)
+
 }
 
 func TestIsValidEmail(t *testing.T) {

@@ -312,8 +312,7 @@ func TestFetchCustomProviderConfigWithBadURL(t *testing.T) {
 
 func TestFetchCustomProviderConfigWithCtrlCharURL(t *testing.T) {
 	provider := OIDCProvider{}
-	_, err := provider.FetchCustomProviderConfig(`
-          https://accounts.unknown.com\r\n?param=123`)
+	_, err := provider.FetchCustomProviderConfig(`https://accounts.unknown.com\r\n?param=123`)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid control character")
 }
