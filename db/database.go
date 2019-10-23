@@ -77,7 +77,7 @@ type DatabaseContext struct {
 	BucketSpec         base.BucketSpec          // The BucketSpec
 	BucketLock         sync.RWMutex             // Control Access to the underlying bucket object
 	mutationListener   changeListener           // Caching feed listener
-	importListener     *importListener          // Import feed listener
+	ImportListener     *importListener          // Import feed listener
 	sequences          *sequenceAllocator       // Source of new sequence numbers
 	ChannelMapper      *channels.ChannelMapper  // Runs JS 'sync' function
 	StartTime          time.Time                // Timestamp when context was instantiated
@@ -282,8 +282,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// If this is an xattr import node, start import feed
 	if dbContext.UseXattrs() && dbContext.autoImport {
-		dbContext.importListener = NewImportListener()
-		if importFeedErr := dbContext.importListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
+		dbContext.ImportListener = NewImportListener()
+		if importFeedErr := dbContext.ImportListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
 			return nil, importFeedErr
 		}
 	}
@@ -468,7 +468,7 @@ func (context *DatabaseContext) Close() {
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
-	context.importListener.Stop()
+	context.ImportListener.Stop()
 	context.Bucket.Close()
 	context.Bucket = nil
 

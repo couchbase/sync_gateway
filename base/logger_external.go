@@ -111,13 +111,16 @@ func ClogCallback(level, format string, v ...interface{}) string {
 		Errorf(KeyDCP, format, v...)
 	case "WARN":
 		// TODO: cbgt currently logs a lot of what we'd consider info as WARN,
-		// (i.e. diagnostic information that's not actionable by users), so
-		// routing to Info pending potential enhancements on cbgt side.
+		//    (i.e. diagnostic information that's not actionable by users), so
+		//    routing to Info pending potential enhancements on cbgt side.
 		Infof(KeyDCP, format, v...)
 	case "INFO":
-		Infof(KeyDCP, format, v...)
-	case "DEBU":
+		// TODO: cbgt currently logs a lot of what we'd consider debug as INFO,
+		//    (i.e. diagnostic information that's not actionable by users), so
+		//    routing to Info pending potential enhancements on cbgt side.
 		Debugf(KeyDCP, format, v...)
+	case "DEBU":
+		Tracef(KeyDCP, format, v...)
 	case "TRAC":
 		Tracef(KeyDCP, format, v...)
 	}

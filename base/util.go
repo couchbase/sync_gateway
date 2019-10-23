@@ -735,6 +735,25 @@ func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []strin
 
 }
 
+// Add auth credentials to the given urls, since CBGT cannot take auth handlers in certain API calls yet
+func ServerUrlsWithAuth(urls []string, spec BucketSpec) (urlsWithAuth []string, err error) {
+	urlsWithAuth = make([]string, len(urls))
+	username, password, bucketName := spec.Auth.GetCredentials()
+	for i, url := range urls {
+		urlWithAuth, err := CouchbaseUrlWithAuth(
+			url,
+			username,
+			password,
+			bucketName,
+		)
+		if err != nil {
+			return urlsWithAuth, err
+		}
+		urlsWithAuth[i] = urlWithAuth
+	}
+	return urlsWithAuth, nil
+}
+
 // Special case for couchbaseUri strings that contain a single host with http:// or https:// schemes,
 // possibly containing embedded basic auth.  Needed since gocbconnstr.Parse() will remove embedded
 // basic auth from URLS.

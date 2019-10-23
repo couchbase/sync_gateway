@@ -247,19 +247,19 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 	return postUpgradeResults, nil
 }
 
-// Adds a database to the ServerContext.  Attempts a read after it gets the write
-// lock to see if it's already been added by another process. If so, returns either the
-// existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string, useExisting bool) (*db.DatabaseContext, error) {
+// Removes and re-adds a database to the ServerContext.
+func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
-	defer sc.lock.Unlock()
 
 	sc._removeDatabase(reloadDbName)
 
 	config := sc.config.Databases[reloadDbName]
 
-	return sc._getOrAddDatabaseFromConfig(config, useExisting)
+	dbContext, err := sc._getOrAddDatabaseFromConfig(config, true)
+	sc.lock.Unlock()
+
+	return dbContext, err
 }
 
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
@@ -268,9 +268,10 @@ func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string, useExisti
 func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
-	defer sc.lock.Unlock()
+	dbContext, err := sc._getOrAddDatabaseFromConfig(config, useExisting)
+	sc.lock.Unlock()
 
-	return sc._getOrAddDatabaseFromConfig(config, useExisting)
+	return dbContext, err
 }
 
 func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
@@ -301,7 +302,7 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (context *db.DatabaseContext, err error) {
 
 	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds
 
@@ -613,7 +614,7 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 
 	//We can only transition to Online from Offline state
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
-		reloadedDb, err := sc.ReloadDatabaseFromConfig(database.Name, true)
+		reloadedDb, err := sc.ReloadDatabaseFromConfig(database.Name)
 		if err != nil {
 			base.Errorf(base.KeyAll, "Error reloading database from config: %v", err)
 			return

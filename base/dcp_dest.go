@@ -68,7 +68,7 @@ func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo 
 }
 
 func (d *DCPDest) Close() error {
-	// TODO: Do we have any cleanup we should be doing on close?
+	DebugfCtx(d.loggingCtx, KeyDCP, "Closing DCPDest for %s", d.feedID)
 	return nil
 }
 
@@ -193,8 +193,8 @@ func (d *DCPDest) Query(pindex *cbgt.PIndex, req []byte, w io.Writer,
 	return nil
 }
 
+// Stats would allow SG to return SG-specific stats to cbgt's stats reporting - not currently used.
 func (d *DCPDest) Stats(io.Writer) error {
-	WarnfCtx(d.loggingCtx, KeyAll, "Dest.Stats being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
 
@@ -237,26 +237,10 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 		return err
 	}
 
-	// paramsStr is serialized DCPFeedParams, as string
-	feedParams := cbgt.NewDCPFeedParams()
-
-	// check for basic auth
-	if spec.Certpath == "" && spec.Auth != nil {
-		username, password, _ := spec.Auth.GetCredentials()
-		feedParams.AuthUser = username
-		feedParams.AuthPassword = password
-	}
-
-	if spec.UseXattrs {
-		// TODO: This is always being set in NewGocbDCPFeed, review whether we actually need ability to run w/ false
-		feedParams.IncludeXAttrs = true
-	}
-
-	paramBytes, err := JSONMarshal(feedParams)
+	feedParams, err := cbgtFeedParams(spec)
 	if err != nil {
 		return err
 	}
-	paramsStr := string(paramBytes)
 
 	bucketUUID, err := bucket.UUID()
 	if err != nil {
@@ -283,6 +267,7 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 	// Initialize the feed Dest
 	//  - starting vbuckets, etc
 	cachingDest, loggingCtx := NewDCPDest(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID)
+
 	// Initialize the feed based on the backfill type
 	feedInitErr := cachingDest.initFeed(args.Backfill)
 	if feedInitErr != nil {
@@ -306,7 +291,7 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 		serverURL,
 		spec.BucketName,
 		bucketUUID,
-		paramsStr,
+		feedParams,
 		cbgt.BasicPartitionFunc,
 		dests,
 		disableFeed,
@@ -316,13 +301,11 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 		return pkgerrors.WithStack(RedactErrorf("Error instantiating gocb DCP Feed.  Feed:%s URL:%s, bucket:%s.  Error: %v", feedName, UD(serverURL), MD(spec.BucketName), err))
 	}
 
-	InfofCtx(loggingCtx, KeyDCP, "DCP feed starting with name %s", feedName)
-
 	if err = feed.Start(); err != nil {
 		return pkgerrors.WithStack(RedactErrorf("Error starting gocb DCP Feed.  Feed:%s URLs:%s, bucket:%s.  Error: %v", feedName, UD(serverURL), MD(spec.BucketName), err))
 	}
 
-	InfofCtx(loggingCtx, KeyDCP, "DCP feed started successfully with name %s", feedName)
+	InfofCtx(loggingCtx, KeyDCP, "Caching DCP feed started successfully: %s", feedName)
 
 	// Close the feed if feed terminator is closed
 	if args.Terminator != nil {
