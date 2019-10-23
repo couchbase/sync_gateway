@@ -12,6 +12,8 @@ package db
 import (
 	"fmt"
 	"log"
+	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -429,4 +431,55 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	_, digestOk := attachment["digest"]
 	assert.True(t, digestOk, "digest should be set for attachment hello.txt in GET response")
 
+}
+
+func TestGenerateProofOfAttachment(t *testing.T) {
+	doc := `{"_attachments": {"image.jpeg": {"data":"aGVsbG8gd29ybGQ="}}}`
+	nonce, proof := GenerateProofOfAttachment([]byte(doc))
+	assert.Equal(t, 20, len(nonce))
+	assert.NotEmpty(t, nonce, "nonce should not be empty")
+	assert.NotEmpty(t, proof, "SHA1 checksum should be generated")
+	assert.Contains(t, proof, "sha1-")
+}
+
+func TestDecodeAttachmentError(t *testing.T) {
+	attr, err := DecodeAttachment(make([]int, 1))
+	assert.Nil(t, attr, "Attachment of data (type []int) should not get decoded.")
+	assert.Error(t, err, "It should throw 400 invalid attachment data (type []int)")
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+
+	attr, err = DecodeAttachment(make([]float64, 1))
+	assert.Nil(t, attr, "Attachment of data (type []float64) should not get decoded.")
+	assert.Error(t, err, "It should throw 400 invalid attachment data (type []float64)")
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+
+	attr, err = DecodeAttachment(make([]string, 1))
+	assert.Nil(t, attr, "Attachment of data (type []string) should not get decoded.")
+	assert.Error(t, err, "It should throw 400 invalid attachment data (type []string)")
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+
+	attr, err = DecodeAttachment(make(map[string]int, 1))
+	assert.Nil(t, attr, "Attachment of data (type map[string]int) should not get decoded.")
+	assert.Error(t, err, "It should throw 400 invalid attachment data (type map[string]int)")
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+
+	attr, err = DecodeAttachment(make(map[string]float64, 1))
+	assert.Nil(t, attr, "Attachment of data (type map[string]float64) should not get decoded.")
+	assert.Error(t, err, "It should throw 400 invalid attachment data (type map[string]float64)")
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+
+	attr, err = DecodeAttachment(make(map[string]string, 1))
+	assert.Error(t, err, "should throw 400 invalid attachment data (type map[string]float64)")
+	assert.Error(t, err, "It 400 invalid attachment data (type map[string]string)")
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+
+	book := struct {
+		author string
+		title  string
+		price  float64
+	}{author: "William Shakespeare", title: "Hamlet", price: 7.99}
+	attr, err = DecodeAttachment(book)
+	assert.Nil(t, attr)
+	assert.Error(t, err, "It should throw 400 invalid attachment data (type struct { author string; title string; price float64 })")
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 }
