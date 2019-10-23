@@ -908,7 +908,7 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts)
 
 	if putExistingRevErr != nil {
-		return nil, newRevID, putExistingRevErr
+		return nil, "", putExistingRevErr
 	}
 
 	return doc, newRevID, err
