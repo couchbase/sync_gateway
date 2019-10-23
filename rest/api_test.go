@@ -1192,6 +1192,62 @@ func TestBulkDocsMalformedDocs(t *testing.T) {
 	assertStatus(t, response, 201)
 }
 
+// TestBulkGetEfficientBodyCompression makes sure that the multipart writer of the bulk get response is efficiently compressing the document bodies.
+// This is to catch a case where document bodies are marshalled with random property ordering, and reducing compression ratio between multiple doc body instances.
+func TestBulkGetEfficientBodyCompression(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	const (
+		numDocs = 300
+		doc     = docSample20k
+
+		// Since all docs are identical, a very high rate of compression is expected
+		minCompressionRatio = 85
+		maxCompressionRatio = 100
+		minUncompressedSize = len(doc) * numDocs // ~6000 KB - actually larger due to _bulk_get overhead
+
+		docKeyPrefix = "doc-"
+	)
+
+	// create a bunch of identical large-ish docs
+	for i := 0; i < numDocs; i++ {
+		resp := rt.SendAdminRequest(http.MethodPut,
+			"/db/"+docKeyPrefix+strconv.Itoa(i), doc)
+		assertStatus(t, resp, http.StatusCreated)
+	}
+
+	// craft a _bulk_get body to get all of them back out
+	bulkGetBody := `{"docs":[{"id":"doc-0"}`
+	for i := 1; i < numDocs; i++ {
+		bulkGetBody += `,{"id":"doc-` + strconv.Itoa(i) + `"}`
+	}
+	bulkGetBody += `]}`
+
+	bulkGetHeaders := map[string]string{
+		"User-Agent":   "CouchbaseLite/1.2",
+		"Content-Type": "application/json",
+	}
+
+	// request an uncompressed _bulk_get
+	resp := rt.SendAdminRequestWithHeaders(http.MethodPost, "/db/_bulk_get", bulkGetBody, bulkGetHeaders)
+	assertStatus(t, resp, http.StatusOK)
+
+	uncompressedBodyLen := resp.Body.Len()
+	assert.Truef(t, uncompressedBodyLen >= minUncompressedSize, "Expected uncompressed response to be larger than minUncompressedSize (%d bytes) - got %d bytes", minUncompressedSize, uncompressedBodyLen)
+
+	// try the request again, but accept gzip encoding
+	bulkGetHeaders["Accept-Encoding"] = "gzip"
+	resp = rt.SendAdminRequestWithHeaders(http.MethodPost, "/db/_bulk_get", bulkGetBody, bulkGetHeaders)
+	assertStatus(t, resp, http.StatusOK)
+
+	compressedBodyLen := resp.Body.Len()
+	compressionRatio := float64(uncompressedBodyLen) / float64(compressedBodyLen)
+	assert.Truef(t, compressedBodyLen <= minUncompressedSize, "Expected compressed responsebody to be smaller than minUncompressedSize (%d bytes) - got %d bytes", minUncompressedSize, compressedBodyLen)
+	assert.Truef(t, compressionRatio >= minCompressionRatio, "Expected compression ratio to be greater than minCompressionRatio (%d) - got %.2f", minCompressionRatio, compressionRatio)
+	assert.Truef(t, compressionRatio <= maxCompressionRatio, "Expected compression ratio to be less than maxCompressionRatio (%d) - got %.2f", maxCompressionRatio, compressionRatio)
+}
+
 func TestBulkGetEmptyDocs(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

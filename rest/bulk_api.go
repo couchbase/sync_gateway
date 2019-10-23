@@ -432,7 +432,7 @@ func (h *handler) handleBulkGet() error {
 				}
 			}
 
-			h.db.WriteRevisionAsPart(body, err != nil, canCompressParts, writer)
+			WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.StatsCblReplicationPull(), body, err != nil, canCompressParts, writer)
 
 			h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		}

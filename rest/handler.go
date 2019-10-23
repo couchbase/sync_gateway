@@ -460,7 +460,7 @@ func (h *handler) readJSON() (db.Body, error) {
 
 // Parses a JSON request body into a custom structure.
 func (h *handler) readJSONInto(into interface{}) error {
-	return db.ReadJSONFromMIME(h.rq.Header, h.requestBody, into)
+	return ReadJSONFromMIME(h.rq.Header, h.requestBody, into)
 }
 
 // Reads & parses the request body, handling either JSON or multipart.
@@ -476,7 +476,7 @@ func (h *handler) readDocument() (db.Body, error) {
 				return nil, err
 			}
 			reader := multipart.NewReader(bytes.NewReader(raw), attrs["boundary"])
-			body, err := db.ReadMultipartDocument(reader)
+			body, err := ReadMultipartDocument(reader)
 			if err != nil {
 				ioutil.WriteFile("GatewayPUT.mime", raw, 0600)
 				base.Warnf(base.KeyAll, "Error reading MIME data: copied to file GatewayPUT.mime")
@@ -484,7 +484,7 @@ func (h *handler) readDocument() (db.Body, error) {
 			return body, err
 		} else {
 			reader := multipart.NewReader(h.requestBody, attrs["boundary"])
-			return db.ReadMultipartDocument(reader)
+			return ReadMultipartDocument(reader)
 		}
 	default:
 		return nil, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
