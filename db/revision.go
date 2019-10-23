@@ -428,6 +428,7 @@ func containsUserSpecialProperties(b Body) bool {
 				BodyDeleted,
 				BodyAttachments,
 				BodyRevisions,
+				BodyExpiry,
 			}, k) {
 			// body contains special property that isn't one of the above... must be user's
 			return true

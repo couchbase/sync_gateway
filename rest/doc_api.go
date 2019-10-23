@@ -370,14 +370,25 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	if err != nil {
 		return err
 	}
-	if bodyBytes == nil || len(bodyBytes) == 0 {
-		return base.ErrEmptyDocument
-	}
 
-	newDoc := &db.Document{
-		ID: docid,
+	hasAttachments := bytes.Contains(bodyBytes, []byte(db.BodyAttachments))
+	hasExpiry := bytes.Contains(bodyBytes, []byte(db.BodyExpiry))
+
+	var body db.Body
+	var newDoc *db.IncomingDocument
+	newDoc = db.NewIncomingDocument(docid, bodyBytes)
+
+	if hasAttachments || hasExpiry {
+		// In handleRev the below is actually using ReadJSONBody
+		err := base.JSONUnmarshal(bodyBytes, &body)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "An error")
+		}
+		newDoc, err = body.ToIncomingDocument()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "An error")
+		}
 	}
-	newDoc.UpdateBodyBytes(bodyBytes)
 
 	var parentRev string
 	if oldRev := h.getQuery("rev"); oldRev != "" {
@@ -389,34 +400,15 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	generation, _ := db.ParseRevID(parentRev)
 	generation++
 
+	newDoc.UpdateDocID(docid)
+	newDoc.UpdateRevID(db.CreateRevIDWithBytes(generation, parentRev, bodyBytes))
 	deleted, _ := h.getOptBoolQuery("deleted", false)
-	newDoc.Deleted = deleted
+	newDoc.UpdateDeleted(deleted)
 
-	newDoc.RevID = db.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
 	history := []string{newDoc.RevID}
 
 	if parentRev != "" {
 		history = append(history, parentRev)
-	}
-
-	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
-		body := newDoc.Body()
-		expiry, err := body.ExtractExpiry()
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
-		}
-		newDoc.DocExpiry = expiry
-		newDoc.UpdateBody(body)
-	}
-
-	// Pull out attachments
-	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
-		body := newDoc.Body()
-
-		newDoc.DocAttachments = db.GetBodyAttachments(body)
-		delete(body, db.BodyAttachments)
-		newDoc.UpdateBody(body)
 	}
 
 	doc, rev, err := h.db.PutExistingRev(newDoc, history, true)

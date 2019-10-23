@@ -877,7 +877,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
 	}()
 
-	//addRevisionParams := newAddRevisionParams(rq)
 	revMessage := revMessage{Message: rq}
 
 	bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
@@ -896,11 +895,12 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
 
-	newDoc := &db.Document{
-		ID:    docID,
-		RevID: revID,
-	}
-	newDoc.UpdateBodyBytes(bodyBytes)
+	hasAttachments := bytes.Contains(bodyBytes, []byte(db.BodyAttachments))
+	hasExpiry := bytes.Contains(bodyBytes, []byte(db.BodyExpiry))
+
+	var body db.Body
+
+	newDoc := db.NewIncomingDocument(docID, bodyBytes)
 
 	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
@@ -922,7 +922,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
 
-		deltaSrcBody, err := deltaSrcRev.DeepMutableBody()
+		// Unmarshal source revision for patching
+		deltaSrcBody, err := deltaSrcRev.MutableBody()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to marshal mutable body for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
@@ -932,29 +933,38 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
 		}
 
-		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		err = base.Patch(&deltaSrcMap, newDoc.Body())
+		// Unmarshal delta including properties for patching
+		err = rq.ReadJSONBody(&body)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "error unmarshalling body: %v", err)
+		}
+
+		patchedBody := map[string]interface{}(deltaSrcBody)
+		err = base.Patch(&patchedBody, body)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 
-		newDoc.UpdateBody(deltaSrcMap)
-		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
+		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(patchedBody))
 		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
-	}
 
-	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
-		body := newDoc.Body()
-		expiry, err := body.ExtractExpiry()
+		body = patchedBody
+		newDoc, _ = db.Body(patchedBody).ToIncomingDocument()
+
+	} else if hasAttachments || hasExpiry {
+		err = rq.ReadJSONBody(&body)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+			return base.HTTPErrorf(http.StatusBadRequest, "An error")
 		}
-		newDoc.DocExpiry = expiry
-		newDoc.UpdateBody(body)
+		newDoc, err = body.ToIncomingDocument()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, "An error")
+		}
 	}
 
-	newDoc.Deleted = revMessage.deleted()
+	newDoc.UpdateDocID(docID)
+	newDoc.UpdateRevID(revID)
+	newDoc.UpdateDeleted(revMessage.deleted())
 
 	// noconflicts flag from LiteCore
 	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev
@@ -979,18 +989,9 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		minRevpos++
 	}
 
-	// Pull out attachments
-	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
-		body := newDoc.Body()
-
-		// Check for any attachments I don't have yet, and request them:
-		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos); err != nil {
-			return err
-		}
-
-		newDoc.DocAttachments = db.GetBodyAttachments(body)
-		delete(body, db.BodyAttachments)
-		newDoc.UpdateBody(body)
+	// Check for any attachments I don't have yet, and request them:
+	if err := bh.downloadOrVerifyAttachments(rq.Sender, newDoc.Attachments, minRevpos); err != nil {
+		return err
 	}
 
 	// Finally, save the revision (with the new attachments inline)
@@ -1032,8 +1033,8 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
-func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.Body, minRevpos int) error {
-	return bh.db.ForEachStubAttachment(body, minRevpos,
+func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, attachments db.AttachmentsMeta, minRevpos int) error {
+	return bh.db.ForEachStubAttachment(attachments, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			if knownData != nil {
 				// If I have the attachment already I don't need the client to send it, but for

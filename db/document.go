@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -37,6 +38,188 @@ const (
 	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
 )
+
+// Struct populated by an incoming document
+type IncomingDocument struct {
+	BodyBytes         []byte // BodyBytes contains the raw document only. Doesn't include any special properties
+	SpecialProperties        // Embedded SpecialProperties struct
+
+	_syncFnBody Body // Unmarshalled body which contains special properties
+}
+
+// Stores special properties which are a part of an incoming document
+type SpecialProperties struct {
+	DocID       string
+	RevID       string
+	Deleted     bool
+	Expiry      uint32
+	Attachments AttachmentsMeta
+	Revisions   Revisions
+}
+
+func NewIncomingDocument(docID string, body []byte) *IncomingDocument {
+	return &IncomingDocument{
+		BodyBytes: body,
+		SpecialProperties: SpecialProperties{
+			DocID: docID,
+		},
+	}
+}
+
+func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
+	if doc._syncFnBody != nil {
+		return doc._syncFnBody.Copy(BodyDeepCopy), nil
+	}
+
+	var syncFnBody map[string]interface{}
+	buf := bytes.NewBuffer(doc.BodyBytes)
+	d := json.NewDecoder(buf)
+	d.UseNumber()
+	err := d.Decode(&syncFnBody)
+	if err != nil {
+		return nil, err
+	}
+
+	stampSpecialProperties(syncFnBody, doc.SpecialProperties)
+
+	doc._syncFnBody = syncFnBody
+	return doc._syncFnBody.Copy(BodyDeepCopy), nil
+}
+
+func (doc *IncomingDocument) GetMutableBody() Body {
+	// we can avoid a deep copy by just unmarshalling raw bytes, if available
+	if doc.BodyBytes != nil {
+		var b Body
+		err := b.Unmarshal(doc.BodyBytes)
+		if err == nil {
+			return b
+		}
+		// Error unmarshalling raw body, try to use the existing _body
+		base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
+	}
+
+	// We didn't have raw bytes available, but if we do have a body to copy
+	if doc._syncFnBody != nil {
+		// need to deep copy so callers can mutate
+		return doc._syncFnBody.Copy(BodyDeepCopy)
+	}
+
+	return nil
+}
+
+func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (string, error) {
+	revIDBody := doc.BodyBytes
+
+	if doc.Deleted {
+		var err error
+		revIDBody, err = base.InjectJSONProperties(doc.BodyBytes, base.KVPair{Key: BodyDeleted, Val: doc.Deleted})
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return CreateRevIDWithBytes(generation, parentRevID, revIDBody), nil
+}
+
+func (doc *IncomingDocument) UpdateDocID(docid string) {
+	if doc._syncFnBody != nil {
+		doc._syncFnBody[BodyId] = docid
+	}
+	doc.DocID = docid
+}
+
+func (doc *IncomingDocument) UpdateRevID(revid string) {
+	if doc._syncFnBody != nil {
+		doc._syncFnBody[BodyRev] = revid
+	}
+	doc.RevID = revid
+}
+
+func (doc *IncomingDocument) UpdateDeleted(deleted bool) {
+	if doc._syncFnBody != nil {
+		doc._syncFnBody[BodyDeleted] = deleted
+	}
+	doc.Deleted = deleted
+}
+
+func (b Body) ExtractSpecialProperties() (*SpecialProperties, error) {
+	bodyID, _ := b[BodyId].(string)
+	delete(b, BodyId)
+
+	bodyRev, _ := b[BodyRev].(string)
+	delete(b, BodyRev)
+
+	bodyDeleted, _ := b[BodyDeleted].(bool)
+	delete(b, BodyDeleted)
+
+	var exp uint32
+	bodyExp, err := base.ReflectExpiry(b[BodyExpiry])
+	if err != nil {
+		return nil, err
+	}
+	if bodyExp != nil {
+		exp = *bodyExp
+	}
+	delete(b, BodyExpiry)
+
+	bodyAttachments := GetBodyAttachments(b)
+	delete(b, BodyAttachments)
+
+	bodyRevisions, _ := b[BodyRevisions].(map[string]interface{})
+	delete(b, BodyRevisions)
+
+	return &SpecialProperties{
+		DocID:       bodyID,
+		RevID:       bodyRev,
+		Deleted:     bodyDeleted,
+		Expiry:      exp,
+		Attachments: bodyAttachments,
+		Revisions:   bodyRevisions,
+	}, nil
+}
+
+func (b Body) ToIncomingDocument() (*IncomingDocument, error) {
+	specialProperties, err := b.ExtractSpecialProperties()
+	if err != nil {
+		return nil, err
+	}
+
+	bodyBytes, err := base.JSONMarshalCanonical(b)
+	if err != nil {
+		return nil, err
+	}
+
+	incomingDocument := IncomingDocument{
+		BodyBytes:         bodyBytes,
+		SpecialProperties: *specialProperties,
+	}
+
+	stampSpecialProperties(b, *specialProperties)
+	incomingDocument._syncFnBody = b
+
+	return &incomingDocument, nil
+}
+
+func stampSpecialProperties(docBody map[string]interface{}, p SpecialProperties) {
+	if p.DocID != "" {
+		docBody[BodyId] = p.DocID
+	}
+	if p.RevID != "" {
+		docBody[BodyRev] = p.RevID
+	}
+	if p.Deleted {
+		docBody[BodyDeleted] = p.Deleted
+	}
+	if p.Expiry != 0 {
+		docBody[BodyExpiry] = p.Expiry
+	}
+	if p.Attachments != nil {
+		docBody[BodyAttachments] = p.Attachments
+	}
+	if p.Revisions != nil {
+		docBody[BodyRevisions] = p.Revisions
+	}
+}
 
 const (
 	// RemovedRedactedDocument is returned by SG when a given document has been dropped out of a channel
@@ -632,13 +815,13 @@ func (doc *Document) pruneRevisions(maxDepth uint32, keepRev string) int {
 }
 
 // Adds a revision body (as Body) to a document.  Removes special properties first.
-func (doc *Document) setRevisionBody(revid string, newDoc *Document, storeInline bool) {
+// TODO: Need to look into this a bit more...
+func (doc *Document) setRevisionBody(revid string, newDoc *IncomingDocument, storeInline bool) {
 	if revid == doc.CurrentRev {
-		doc._body = newDoc._body
-		doc._rawBody = newDoc._rawBody
+		doc._body = newDoc._syncFnBody
+		doc._rawBody = newDoc.BodyBytes
 	} else {
-		bodyBytes, _ := newDoc.BodyBytes()
-		doc.setNonWinningRevisionBody(revid, bodyBytes, storeInline)
+		doc.setNonWinningRevisionBody(revid, newDoc.BodyBytes, storeInline)
 	}
 }
 

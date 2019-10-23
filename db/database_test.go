@@ -595,7 +595,7 @@ func allDocIDs(db *Database) (docs []AllDocsEntry, err error) {
 
 func TestAllDocsOnly(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	// Lower the log max length so no more than 50 items will be kept.
 	cacheOptions := DefaultCacheOptions()
