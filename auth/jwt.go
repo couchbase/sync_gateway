@@ -23,17 +23,6 @@ type JWTOptions struct {
 	SigningMethod *string `json:"signing_method,omitempty"` // Algorithm used for signing.  Can be specified for additional security to handle scenario described here: https://auth0.com/blog/2015/03/31/critical-vulnerabilities-in-json-web-token-libraries/
 }
 
-// Parses and validates a JWT token, based on the client definition provided.
-func ValidateJWT(idToken string, client *oidc.Client) (jose.JWT, error) {
-
-	jwt, err := jose.ParseJWT(idToken)
-	if err != nil {
-		return jose.JWT{}, err
-	}
-
-	return jwt, client.VerifyJWT(jwt)
-}
-
 // Extracts the JWT Identity Claims (includes ID, Email, Expiry) from a JWT.
 func GetJWTIdentity(jwt jose.JWT) (identity *oidc.Identity, err error) {
 

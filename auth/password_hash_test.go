@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
@@ -23,7 +22,7 @@ func BenchmarkBcryptCostTimes(b *testing.B) {
 		b.Run(fmt.Sprintf("cost%d", i), func(bn *testing.B) {
 			bn.N = 1
 			_, err := bcrypt.GenerateFromPassword([]byte("hunter2"), i)
-			goassert.Equals(bn, err, nil)
+			assert.NoError(bn, err)
 		})
 	}
 }
@@ -41,27 +40,27 @@ func TestBcryptDefaultCostTime(t *testing.T) {
 
 	t.Logf("bcrypt.GenerateFromPassword with cost %d took: %v", bcryptDefaultCost, duration)
 	assert.NoError(t, err)
-	goassert.True(t, minimumDuration < duration)
+	assert.True(t, minimumDuration < duration)
 }
 
 func TestSetBcryptCost(t *testing.T) {
 	err := SetBcryptCost(bcryptDefaultCost - 1) // below minimum allowed value
-	goassert.Equals(t, errors.Cause(err), ErrInvalidBcryptCost)
-	goassert.Equals(t, bcryptCost, bcryptDefaultCost)
-	goassert.False(t, bcryptCostChanged)
+	assert.Equal(t, ErrInvalidBcryptCost, errors.Cause(err))
+	assert.Equal(t, bcryptDefaultCost, bcryptCost)
+	assert.False(t, bcryptCostChanged)
 
 	err = SetBcryptCost(0) // use default value
 	assert.NoError(t, err)
-	goassert.Equals(t, bcryptCost, bcryptDefaultCost)
-	goassert.False(t, bcryptCostChanged) // Not explicitly changed
+	assert.Equal(t, bcryptDefaultCost, bcryptCost)
+	assert.False(t, bcryptCostChanged) // Not explicitly changed
 
 	err = SetBcryptCost(bcryptDefaultCost + 1) // use increased value
 	assert.NoError(t, err)
-	goassert.Equals(t, bcryptCost, bcryptDefaultCost+1)
-	goassert.True(t, bcryptCostChanged)
+	assert.Equal(t, bcryptDefaultCost+1, bcryptCost)
+	assert.True(t, bcryptCostChanged)
 
 	err = SetBcryptCost(bcryptDefaultCost) // back to explicit default value, check changed is still true
 	assert.NoError(t, err)
-	goassert.Equals(t, bcryptCost, bcryptDefaultCost)
-	goassert.True(t, bcryptCostChanged)
+	assert.Equal(t, bcryptDefaultCost, bcryptCost)
+	assert.True(t, bcryptCostChanged)
 }

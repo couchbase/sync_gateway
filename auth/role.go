@@ -18,7 +18,7 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 )
 
-/** A group that users can belong to, with associated channel permisisons. */
+/** A group that users can belong to, with associated channel permissions. */
 type roleImpl struct {
 	Name_             string      `json:"name,omitempty"`
 	ExplicitChannels_ ch.TimedSet `json:"admin_channels,omitempty"`
@@ -151,14 +151,6 @@ func (role *roleImpl) AuthorizeAllChannels(channels base.Set) error {
 
 func (role *roleImpl) AuthorizeAnyChannel(channels base.Set) error {
 	return authorizeAnyChannel(role, channels)
-}
-
-func (role *roleImpl) getVbNo(hashFunction VBHashFunction) uint16 {
-	if role.vbNo == nil {
-		calculatedVbNo := uint16(hashFunction(role.DocID()))
-		role.vbNo = &calculatedVbNo
-	}
-	return *role.vbNo
 }
 
 // Returns an HTTP 403 error if the Principal is not allowed to access all the given channels.
