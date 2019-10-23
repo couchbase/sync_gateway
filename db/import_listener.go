@@ -144,6 +144,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 func (il *importListener) Stop() {
 	if il != nil {
 		if il.cbgtContext != nil {
+
 			if il.cbgtContext.Heartbeater != nil {
 				il.cbgtContext.Heartbeater.Stop()
 			}
@@ -156,6 +157,7 @@ func (il *importListener) Stop() {
 			// ClosePIndex calls are synchronous, so can stop manager once they've completed
 			il.cbgtContext.Manager.Stop()
 
+			// TODO: Shut down the cfg (when cfg supports)
 		}
 		close(il.terminator)
 	}

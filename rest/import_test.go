@@ -1713,6 +1713,8 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 // Test DCP backfill stats
 func TestDcpBackfill(t *testing.T) {
 
+	t.Skip("Test disabled pending CBG-560")
+
 	SkipImportTestsIfNotEnabled(t)
 
 	rt := NewRestTester(t, nil)
