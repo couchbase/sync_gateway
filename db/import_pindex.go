@@ -67,6 +67,6 @@ func (il *importListener) NewImportDest() (cbgt.Dest, error) {
 		return nil, errors.New("Import feed stats map not initialized")
 	}
 
-	importDest, _ := base.NewDCPDest(callback, bucket, maxVbNo, true, importFeedStatsMap, base.DCPImportFeedID)
+	importDest, _ := base.NewDCPDest(callback, bucket, maxVbNo, true, importFeedStatsMap, base.DCPImportFeedID, base.DestShardedFeed)
 	return importDest, nil
 }
