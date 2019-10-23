@@ -1203,8 +1203,8 @@ func TestBulkGetEfficientBodyCompression(t *testing.T) {
 		doc     = docSample20k
 
 		// Since all docs are identical, a very high rate of compression is expected
-		minCompressionRatio = 80
-		maxCompressionRatio = 90
+		minCompressionRatio = 85
+		maxCompressionRatio = 100
 		minUncompressedSize = len(doc) * numDocs // ~6000 KB - actually larger due to _bulk_get overhead
 
 		docKeyPrefix = "doc-"
