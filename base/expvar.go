@@ -135,6 +135,7 @@ const (
 	StatKeyImportErrorCount     = "import_error_count"
 	StatKeyImportProcessingTime = "import_processing_time"
 	StatKeyImportHighSeq        = "import_high_seq"
+	StatKeyImportPartitions     = "import_partitions"
 
 	// StatsCBLReplicationPush
 	StatKeyDocPushCount        = "doc_push_count"

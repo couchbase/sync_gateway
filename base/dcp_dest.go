@@ -70,8 +70,8 @@ func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo 
 	}
 
 	if d.feedType == DestShardedFeed {
-		d.stats.Add("import_partitions", 1)
-		WarnfCtx(d.loggingCtx, KeyDCP, "Starting sharded feed for %s.  Total partitions:%v", d.feedID, d.stats.Get("import_partitions").String())
+		d.stats.Add(StatKeyImportPartitions, 1)
+		InfofCtx(d.loggingCtx, KeyDCP, "Starting sharded feed for %s.  Total partitions:%v", d.feedID, d.stats.Get(StatKeyImportPartitions).String())
 	}
 
 	if LogDebugEnabled(KeyDCP) {
@@ -85,8 +85,8 @@ func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo 
 
 func (d *DCPDest) Close() error {
 	if d.feedType == DestShardedFeed {
-		d.stats.Add("import_partitions", -1)
-		WarnfCtx(d.loggingCtx, KeyDCP, "Closing sharded feed for %s. Total partitions:%v", d.feedID, d.stats.Get("import_partitions").String())
+		d.stats.Add(StatKeyImportPartitions, -1)
+		InfofCtx(d.loggingCtx, KeyDCP, "Closing sharded feed for %s. Total partitions:%v", d.feedID, d.stats.Get(StatKeyImportPartitions).String())
 	}
 	DebugfCtx(d.loggingCtx, KeyDCP, "Closing DCPDest for %s", d.feedID)
 	return nil
