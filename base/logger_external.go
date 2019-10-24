@@ -118,9 +118,9 @@ func ClogCallback(level, format string, v ...interface{}) string {
 		// TODO: cbgt currently logs a lot of what we'd consider debug as INFO,
 		//    (i.e. diagnostic information that's not actionable by users), so
 		//    routing to Info pending potential enhancements on cbgt side.
-		Debugf(KeyDCP, format, v...)
+		Infof(KeyDCP, format, v...)
 	case "DEBU":
-		Tracef(KeyDCP, format, v...)
+		Debugf(KeyDCP, format, v...)
 	case "TRAC":
 		Tracef(KeyDCP, format, v...)
 	}

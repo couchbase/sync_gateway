@@ -29,6 +29,13 @@ const (
 	cbgtFeedType_cbdatasource
 )
 
+type destFeedType int8
+
+const (
+	DestFullFeed destFeedType = iota
+	DestShardedFeed
+)
+
 var feedType cbgtFeedType
 
 func init() {
@@ -48,14 +55,23 @@ type SGDest interface {
 // cbgt-based DCP feed.  Embeds DCPCommon for underlying feed event processing
 type DCPDest struct {
 	*DCPCommon
+	feedType destFeedType
+	stats    *expvar.Map
 }
 
-func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string) (SGDest, context.Context) {
+func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, feedType destFeedType) (SGDest, context.Context) {
 
 	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID)
 
 	d := &DCPDest{
 		DCPCommon: dcpCommon,
+		feedType:  feedType,
+		stats:     dbStats,
+	}
+
+	if d.feedType == DestShardedFeed {
+		d.stats.Add("import_partitions", 1)
+		WarnfCtx(d.loggingCtx, KeyDCP, "Starting sharded feed for %s.  Total partitions:%v", d.feedID, d.stats.Get("import_partitions").String())
 	}
 
 	if LogDebugEnabled(KeyDCP) {
@@ -68,6 +84,10 @@ func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo 
 }
 
 func (d *DCPDest) Close() error {
+	if d.feedType == DestShardedFeed {
+		d.stats.Add("import_partitions", -1)
+		WarnfCtx(d.loggingCtx, KeyDCP, "Closing sharded feed for %s. Total partitions:%v", d.feedID, d.stats.Get("import_partitions").String())
+	}
 	DebugfCtx(d.loggingCtx, KeyDCP, "Closing DCPDest for %s", d.feedID)
 	return nil
 }
@@ -266,7 +286,7 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 
 	// Initialize the feed Dest
 	//  - starting vbuckets, etc
-	cachingDest, loggingCtx := NewDCPDest(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID)
+	cachingDest, loggingCtx := NewDCPDest(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, DestFullFeed)
 
 	// Initialize the feed based on the backfill type
 	feedInitErr := cachingDest.initFeed(args.Backfill)
@@ -389,7 +409,7 @@ func StartCbgtCbdatasourceFeed(bucket Bucket, spec BucketSpec, args sgbucket.Fee
 	if err != nil {
 		return err
 	}
-	cachingDest, loggingCtx := NewDCPDest(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID)
+	cachingDest, loggingCtx := NewDCPDest(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, DestFullFeed)
 	// Initialize the feed based on the backfill type
 	feedInitErr := cachingDest.initFeed(args.Backfill)
 	if feedInitErr != nil {
