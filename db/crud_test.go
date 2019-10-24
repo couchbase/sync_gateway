@@ -782,19 +782,19 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	defer tearDownTestDB(b, db)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
-	_, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
 	assert.NoError(b, err)
 
 	largeDoc := make([]byte, 1000000)
 	longBody := Body{"val": string(largeDoc), "rev": "1-a"}
-	_, err = db.PutExistingRevWithBody("doc2", longBody, []string{"1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc2", longBody, []string{"1-a"}, false)
 	assert.NoError(b, err)
 
 	var shortWithAttachmentsDataBody Body
 	shortWithAttachmentsData := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}, "rev":"1-a"}`
 	err = base.JSONUnmarshal([]byte(shortWithAttachmentsData), &shortWithAttachmentsDataBody)
 	require.NoError(b, err)
-	_, err = db.PutExistingRevWithBody("doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false)
 	assert.NoError(b, err)
 
 	b.Run("ShortLatest", func(b *testing.B) {
@@ -814,11 +814,11 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	})
 
 	updateBody := Body{"rev": "2-a"}
-	_, err = db.PutExistingRevWithBody("doc1", updateBody, []string{"2-a", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", updateBody, []string{"2-a", "1-a"}, false)
 	assert.NoError(b, err)
-	_, err = db.PutExistingRevWithBody("doc2", updateBody, []string{"2-a", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc2", updateBody, []string{"2-a", "1-a"}, false)
 	assert.NoError(b, err)
-	_, err = db.PutExistingRevWithBody("doc3", updateBody, []string{"2-a", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc3", updateBody, []string{"2-a", "1-a"}, false)
 	assert.NoError(b, err)
 
 	b.Run("ShortOld", func(b *testing.B) {
@@ -846,19 +846,19 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 	defer tearDownTestDB(b, db)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
-	_, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
 	assert.NoError(b, err)
 
 	largeDoc := make([]byte, 1000000)
 	longBody := Body{"val": string(largeDoc), "rev": "1-a"}
-	_, err = db.PutExistingRevWithBody("doc2", longBody, []string{"1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc2", longBody, []string{"1-a"}, false)
 	assert.NoError(b, err)
 
 	var shortWithAttachmentsDataBody Body
 	shortWithAttachmentsData := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}, "rev":"1-a"}`
 	err = base.JSONUnmarshal([]byte(shortWithAttachmentsData), &shortWithAttachmentsDataBody)
 	require.NoError(b, err)
-	_, err = db.PutExistingRevWithBody("doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false)
 	assert.NoError(b, err)
 
 	b.Run("ShortLatest", func(b *testing.B) {
@@ -878,11 +878,11 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 	})
 
 	updateBody := Body{"rev": "2-a"}
-	_, err = db.PutExistingRevWithBody("doc1", updateBody, []string{"2-a", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc1", updateBody, []string{"2-a", "1-a"}, false)
 	assert.NoError(b, err)
-	_, err = db.PutExistingRevWithBody("doc2", updateBody, []string{"2-a", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc2", updateBody, []string{"2-a", "1-a"}, false)
 	assert.NoError(b, err)
-	_, err = db.PutExistingRevWithBody("doc3", updateBody, []string{"2-a", "1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody("doc3", updateBody, []string{"2-a", "1-a"}, false)
 	assert.NoError(b, err)
 
 	b.Run("ShortOld", func(b *testing.B) {
@@ -911,7 +911,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 	defer tearDownTestDB(b, db)
 
 	body := Body{"foo": "bar"}
-	_, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
 	assert.NoError(b, err)
 
 	getDelta := func(newDoc *Document) {
