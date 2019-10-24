@@ -801,9 +801,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		return newDoc, newAttachments, nil, nil
 	})
 
-	body[BodyId] = docid
-	body[BodyRev] = newRevID
-
 	return newRevID, doc, err
 }
 
@@ -889,7 +886,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 	return doc, newRev, err
 }
 
-func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, err error) {
+func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
 	expiry, _ := body.ExtractExpiry()
 	deleted := body.ExtractDeleted()
 	revid := body.ExtractRev()
@@ -910,19 +907,11 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 
 	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts)
 
-	// Callers expect the below properties to be in the body even if PutExistingRev returns error
-	body[BodyId] = docid
-	body[BodyRev] = newRevID
-
-	if deleted {
-		body[BodyDeleted] = deleted
-	}
-
 	if putExistingRevErr != nil {
-		return nil, putExistingRevErr
+		return nil, "", putExistingRevErr
 	}
 
-	return doc, err
+	return doc, newRevID, err
 
 }
 
