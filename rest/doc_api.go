@@ -408,6 +408,10 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 
 	doc, rev, err := h.db.PutExistingRev(newDoc, history, true)
 
+	if err != nil {
+		return err
+	}
+
 	if doc != nil && roundTrip {
 		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence); err != nil {
 			return err
