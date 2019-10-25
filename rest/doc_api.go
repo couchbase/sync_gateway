@@ -81,7 +81,7 @@ func (h *handler) handleGetDoc() error {
 		h.setHeader("Etag", strconv.Quote(value[db.BodyRev].(string)))
 
 		h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
-		hasBodies := (attachmentsSince != nil && value[db.BodyAttachments] != nil)
+		hasBodies := attachmentsSince != nil && value[db.BodyAttachments] != nil
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
@@ -408,7 +408,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 
 	doc, rev, err := h.db.PutExistingRev(newDoc, history, true)
 
-	if newDoc != nil && roundTrip {
+	if doc != nil && roundTrip {
 		if err := h.db.WaitForSequenceNotSkipped(h.rq.Context(), doc.Sequence); err != nil {
 			return err
 		}
