@@ -2,7 +2,6 @@ package base
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/couchbase/cbgt"
@@ -27,7 +26,7 @@ type CfgSG struct {
 // bucket: couchbase bucket name
 func NewCfgSG(bucket *gocb.Bucket) (*CfgSG, error) {
 
-	cfgContextID := fmt.Sprintf("%s-%s", MD(bucket.Name()), DCPImportFeedID)
+	cfgContextID := MD(bucket.Name()).Redact() + "-" + DCPImportFeedID
 	loggingCtx := context.WithValue(context.Background(), LogContextKey{},
 		LogContext{CorrelationID: cfgContextID},
 	)
@@ -52,7 +51,7 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	var value []byte
 	casOut, err := c.bucket.Get(bucketKey, &value)
 	if err != nil && err != gocb.ErrKeyNotFound {
-		InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Get, ErrKeyNotFound key: %s, cas: %d", cfgKey, cas)
+		InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Get, key: %s, cas: %d, err: %v", cfgKey, cas, err)
 		return nil, 0, err
 	}
 
