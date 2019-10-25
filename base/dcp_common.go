@@ -482,11 +482,12 @@ func dcpKeyFilter(key []byte) bool {
 		return true
 	}
 
-	// User, role and unused sequence markers should be processed
+	// User, role, unused sequence markers and cbgt cfg docs should be processed
 	if bytes.HasPrefix(key, []byte(UnusedSeqPrefix)) ||
 		bytes.HasPrefix(key, []byte(UnusedSeqRangePrefix)) ||
 		bytes.HasPrefix(key, []byte(UserPrefix)) ||
-		bytes.HasPrefix(key, []byte(RolePrefix)) {
+		bytes.HasPrefix(key, []byte(RolePrefix)) ||
+		bytes.HasPrefix(key, []byte(SGCfgPrefix)) {
 		return true
 	}
 

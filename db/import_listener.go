@@ -162,3 +162,10 @@ func (il *importListener) Stop() {
 		close(il.terminator)
 	}
 }
+
+func (il *importListener) NotifyCfg(key string, cas uint64) {
+	if il.cbgtContext != nil && il.cbgtContext.Cfg != nil {
+		cfgKey := strings.TrimPrefix(key, base.SGCfgPrefix)
+		il.cbgtContext.Cfg.FireEvent(cfgKey, cas, nil)
+	}
+}
