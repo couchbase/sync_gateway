@@ -367,6 +367,12 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		return
 	}
 
+	if strings.HasPrefix(docID, base.SGCfgPrefix) {
+		if c.context.ImportListener != nil {
+			c.context.ImportListener.NotifyCfg(docID, event.Cas)
+		}
+	}
+
 	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
 	if event.Opcode == sgbucket.FeedOpDeletion && len(docJSON) == 0 {
 		base.Debugf(base.KeyImport, "Ignoring delete mutation for %s - no existing Sync Gateway metadata.", base.UD(docID))

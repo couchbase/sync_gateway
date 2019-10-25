@@ -14,7 +14,7 @@ const NumPIndexes = 16
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
 	Manager     *cbgt.Manager // Manager is main entry point for initialization, registering indexes
-	Cfg         cbgt.Cfg      // Cfg manages storage of the current pindex set and node assignment
+	Cfg         *CfgSG        // Cfg manages storage of the current pindex set and node assignment
 	Heartbeater Heartbeater   // Detects failed nodes when running in multi-node configuration
 }
 
@@ -159,7 +159,12 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 	//  	on restart, if time between restarts is less than heartbeat expiry time).
 	uuid := cbgt.NewUUID()
 
-	cfgCB, err := initCfgCB(bucket, spec)
+	gocbBucket, ok := AsGoCBBucket(bucket)
+	if !ok {
+		return nil, errors.New("gocbBucket required to initCBGTManager")
+	}
+
+	cfgCB, err := NewCfgSG(gocbBucket.Bucket)
 	if err != nil {
 		Warnf(KeyAll, "Error initializing cfg for import sharding: %v", err)
 		return nil, err
