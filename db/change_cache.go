@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -46,20 +47,21 @@ func init() {
 //    - Perform sequence buffering to ensure documents are received in sequence order
 //    - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
-	context         *DatabaseContext
-	logsDisabled    bool                 // If true, ignore incoming tap changes
-	nextSequence    uint64               // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
-	initialSequence uint64               // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
-	receivedSeqs    map[uint64]struct{}  // Set of all sequences received
-	pendingLogs     LogPriorityQueue     // Out-of-sequence entries waiting to be cached
-	notifyChange    func(base.Set)       // Client callback that notifies of channel changes
-	stopped         bool                 // Set by the Stop method
-	skippedSeqs     *SkippedSequenceList // Skipped sequences still pending on the TAP feed
-	lock            sync.RWMutex         // Coordinates access to struct fields
-	options         CacheOptions         // Cache config
-	terminator      chan bool            // Signal termination of background goroutines
-	initTime        time.Time            // Cache init time - used for latency calculations
-	channelCache    ChannelCache         // Underlying channel cache
+	context            *DatabaseContext
+	logsDisabled       bool                 // If true, ignore incoming tap changes
+	nextSequence       uint64               // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
+	initialSequence    uint64               // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
+	receivedSeqs       map[uint64]struct{}  // Set of all sequences received
+	pendingLogs        LogPriorityQueue     // Out-of-sequence entries waiting to be cached
+	notifyChange       func(base.Set)       // Client callback that notifies of channel changes
+	stopped            bool                 // Set by the Stop method
+	skippedSeqs        *SkippedSequenceList // Skipped sequences still pending on the TAP feed
+	lock               sync.RWMutex         // Coordinates access to struct fields
+	options            CacheOptions         // Cache config
+	terminator         chan bool            // Signal termination of background goroutines
+	initTime           time.Time            // Cache init time - used for latency calculations
+	channelCache       ChannelCache         // Underlying channel cache
+	lastAddPendingTime int64                // The most recent time _addPendingLogs was run, as epoch time
 }
 
 type LogEntry channels.LogEntry
@@ -137,6 +139,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	c.terminator = make(chan bool)
 	c.initTime = time.Now()
 	c.skippedSeqs = NewSkippedSequenceList()
+	c.lastAddPendingTime = time.Now().UnixNano()
 
 	// init cache options
 	if options != nil {
@@ -230,16 +233,21 @@ func (c *changeCache) EnableChannelIndexing(enable bool) {
 	c.lock.Unlock()
 }
 
-// Inserts pending entries that have been waiting too long. Error returned to fulfil BackgroundTaskFunc signature.
+// Triggers addPendingLogs if it hasn't been run in CachePendingSeqMaxWait.  Error returned to fulfil BackgroundTaskFunc signature.
 func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
 
-	// If entries have been pending too long, add them to the cache:
+	lastAddPendingLogsTime := atomic.LoadInt64(&c.lastAddPendingTime)
+	if time.Since(time.Unix(0, lastAddPendingLogsTime)) < c.options.CachePendingSeqMaxWait {
+		return nil
+	}
+
+	// Trigger _addPendingLogs to process any entries that have been pending too long:
+	c.lock.Lock()
 	changedChannels := c._addPendingLogs()
 	if c.notifyChange != nil && len(changedChannels) > 0 {
 		c.notifyChange(changedChannels)
 	}
+	c.lock.Unlock()
 
 	return nil
 }
@@ -737,6 +745,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 
 	c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(len(c.pendingLogs)))
 
+	atomic.StoreInt64(&c.lastAddPendingTime, time.Now().UnixNano())
 	return changedChannels
 }
 

@@ -1867,3 +1867,37 @@ func TestMaxChannelCacheConfig(t *testing.T) {
 		tearDownTestDB(t, db)
 	}
 }
+
+// Validates InsertPendingEntries timing
+func TestChangeCache_InsertPendingEntries(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges)()
+
+	cacheOptions := DefaultCacheOptions()
+	cacheOptions.CachePendingSeqMaxWait = 100 * time.Millisecond
+
+	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
+	defer tearDownTestDB(t, db)
+	defer testBucket.Close()
+
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	// Create a user with access to channel ABC
+	authenticator := db.Authenticator()
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
+	authenticator.Save(user)
+
+	// Simulate seq 3 being delayed - write 1,2,4,5
+	WriteDirect(db, []string{"ABC", "NBC"}, 1)
+	WriteDirect(db, []string{"ABC"}, 2)
+	WriteDirect(db, []string{"ABC", "PBS"}, 5)
+	WriteDirect(db, []string{"ABC", "PBS"}, 6)
+
+	// wait for InsertPendingEntries to fire, move 5 + 6 to skipped
+	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 6, base.DefaultWaitForSequence))
+
+}
