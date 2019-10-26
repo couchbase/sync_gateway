@@ -625,3 +625,107 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 	assert.NoError(t, err, "Couldn't update document")
 	log.Printf("revId: %v, doc: %v, docHistory: %v", revId, doc, docHistory)
 }
+
+func TestStoreAttachments(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "The database context should be created for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "The database 'db' should be created")
+	var revBody Body
+
+	// Simulate Invalid _attachments scenario; try to put a document with bad
+	// attachment metadata. It should throw "Invalid _attachments" error.
+	revText := `{"key1": "value1", "_attachments": {"att1.txt": "YXR0MS50eHQ="}}`
+	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
+	revId, doc, err := db.Put("doc1", revBody)
+	assert.Empty(t, revId, "The revId should be empty since the request has attachment")
+	assert.Empty(t, doc, "The doc should be empty since the request has attachment")
+	assert.Error(t, err, "It should throw 400 Invalid _attachments")
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+
+	// Simulate illegal base64 data error while storing attachments in Couchbase database.
+	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "%$^&**"}}}`
+	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
+	revId, doc, err = db.Put("doc1", revBody)
+	assert.Empty(t, revId, "The revId should be empty since illegal base64 data in attachment")
+	assert.Empty(t, doc, "The doc should be empty since illegal base64 data in attachment")
+	assert.Error(t, err, "It should throw illegal base64 data at input byte 0 error")
+	assert.Contains(t, err.Error(), "illegal base64 data at input byte 0")
+
+	// Simulate a valid scenario; attachment contains data, so store it in the database.
+	// Include content type, encoding, attachment length  in attachment metadata.
+	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain", "encoding": "utf-8", "length": 12}}}`
+	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
+	revId, doc, err = db.Put("doc1", revBody)
+	assert.NoError(t, err, "Couldn't update document")
+	assert.NotEmpty(t, revId, "Document revision id should be generated")
+	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
+	attachment := doc.Attachments["att1.txt"].(map[string]interface{})
+	assert.Equal(t, "text/plain", attachment["content_type"])
+	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
+	assert.Equal(t, 8, attachment["encoded_length"])
+	assert.Equal(t, "utf-8", attachment["encoding"])
+	assert.Equal(t, float64(12), attachment["length"])
+	assert.NotEmpty(t, attachment["revpos"])
+	assert.True(t, attachment["stub"].(bool))
+
+	// Simulate a valid scenario; attachment contains data, so store it in the database.
+	// Include content type, encoding in attachment metadata but no attachment length.
+	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain", "encoding": "utf-8"}}}`
+	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
+	revId, doc, err = db.Put("doc1", revBody)
+	assert.NoError(t, err, "Couldn't update document")
+	assert.NotEmpty(t, revId, "Document revision id should be generated")
+	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
+	attachment = doc.Attachments["att1.txt"].(map[string]interface{})
+	assert.Equal(t, "text/plain", attachment["content_type"])
+	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
+	assert.Equal(t, 8, attachment["encoded_length"])
+	assert.Equal(t, "utf-8", attachment["encoding"])
+	assert.Empty(t, attachment["length"], "Attachment length should be empty")
+	assert.NotEmpty(t, attachment["revpos"])
+	assert.True(t, attachment["stub"].(bool))
+
+	// Simulate a valid scenario; attachment contains data, so store it in the database.
+	// Include only content type in attachment metadata but no encoding and attachment length.
+	// Attachment length should be calculated automatically in this case.
+	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain"}}}`
+	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
+	revId, doc, err = db.Put("doc1", revBody)
+	assert.NoError(t, err, "Couldn't update document")
+	assert.NotEmpty(t, revId, "Document revision id should be generated")
+	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
+	attachment = doc.Attachments["att1.txt"].(map[string]interface{})
+	assert.Equal(t, "text/plain", attachment["content_type"])
+	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
+	assert.Empty(t, attachment["encoded_length"])
+	assert.Equal(t, int(8), attachment["length"])
+	assert.Empty(t, attachment["encoding"])
+	assert.NotEmpty(t, attachment["revpos"])
+	assert.True(t, attachment["stub"].(bool))
+
+	// Simulate error scenario for attachment without data; stub is not provided; If the data is
+	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
+	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"revpos": 2}}}`
+	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
+	revId, doc, err = db.Put("doc1", revBody)
+	assert.Empty(t, revId, "The revId should be empty since stub is not included in attachment")
+	assert.Empty(t, doc, "The doc should be empty since stub is not included in attachment")
+	assert.Error(t, err, "It should throw 400 Missing data of attachment error")
+	assert.Contains(t, err.Error(), "400 Missing data of attachment")
+
+	// Simulate error scenario for attachment without data; revpos is not provided; If the data is
+	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
+	revText = `{"key2": "value1", "_attachments": {"att1.txt": {"stub": true}}}`
+	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
+	revId, doc, err = db.Put("doc2", revBody)
+	assert.Empty(t, revId, "The revId should be empty since revpos is not included in attachment")
+	assert.Empty(t, doc, "The doc should be empty since revpos is not included in attachment")
+	assert.Error(t, err, "It should throw 400 Missing/invalid revpos in stub attachment error")
+	assert.Contains(t, err.Error(), "400 Missing/invalid revpos in stub attachment")
+}
