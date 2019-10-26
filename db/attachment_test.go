@@ -621,7 +621,7 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 	revText := `{"_attachments": {"att3b.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	revBody[BodyRev] = docHistory[1]
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	doc, err = db.PutExistingRevWithBody("doc1", revBody, []string{"2-517786bf", docHistory[1]}, true)
+	doc, err = db.PutExistingRevWithBody("doc1", revBody, []string{"2-517786bf", docHistory[1]}, false)
 	assert.NoError(t, err, "Couldn't update document")
 	log.Printf("revId: %v, doc: %v, docHistory: %v", revId, doc, docHistory)
 }
