@@ -553,3 +553,75 @@ func TestDecodeAttachmentError(t *testing.T) {
 	assert.Error(t, err, "It should throw 400 invalid attachment data (type struct { author string; title string; price float64 })")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 }
+
+func TestSetAttachment(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "The database context should be created for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "The database 'db' should be created")
+
+	// Set attachment with a valid attachment
+	att := `{"att1.txt": {"data": "YXR0MS50eHQ="}}}`
+	key, err := db.setAttachment([]byte(att))
+	assert.NoError(t, err, "Attachment should be saved in db and key should be returned")
+	assert.Equal(t, "sha1-bSTy5ygcoFCI8E3aE7AQPJzsmBQ=", fmt.Sprintf("%v", key))
+	attBytes, err := db.GetAttachment(key)
+	assert.NoError(t, err, "Attachment should be retrieved from the database")
+	assert.Equal(t, att, string(attBytes))
+}
+
+func TestRetrieveAncestorAttachments(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "The database context should be created for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "The database 'db' should be created")
+
+	//  Create document (rev 1)
+	db.RevsLimit = 3
+	var docHistory []string
+	docId, rev1Text := "doc1", `{"key1": "value1"}`
+	var rev1Body, rev2Body, revBody Body
+	assert.NoError(t, base.JSONUnmarshal([]byte(rev1Text), &rev1Body))
+	revId, doc, err := db.Put(docId, rev1Body)
+	assert.NoError(t, err, "Couldn't create document")
+	docHistory = append(docHistory, revId)
+	log.Printf("revId: %v, doc: %v, docHistory: %v", revId, doc, docHistory)
+
+	// Add an attachment to a document (rev 2)
+	rev2Text := `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ="}}}`
+	assert.NoError(t, base.JSONUnmarshal([]byte(rev2Text), &rev2Body))
+	rev2Body[BodyRev] = revId
+	revId, doc, err = db.Put(docId, rev2Body)
+	assert.NoError(t, err, "Couldn't update document")
+	docHistory = append(docHistory, revId)
+	log.Printf("revId: %v, doc: %v, docHistory: %v", revId, doc, docHistory)
+
+	// Update the document a few times (revs 3-6)
+	// TODO: Test scenario and logic needs to be corrected.
+	for i := 3; i <= 6; i++ {
+		revText := fmt.Sprintf(`{"key%v": "value%v", "_attachments": {"att%v.txt": {"stub":true,"revpos":2}}}`, i, i, i)
+		assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
+		revBody[BodyRev] = revId
+		revId, doc, err = db.Put(docId, rev2Body)
+		assert.NoError(t, err, "Error updating doc")
+		docHistory = append(docHistory, revId)
+		log.Printf("revId: %v, doc: %v, docHistory: %v", revId, doc, docHistory)
+	}
+
+	revText := `{"_attachments": {"att3b.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
+	revBody[BodyRev] = docHistory[1]
+	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
+	doc, err = db.PutExistingRevWithBody("doc1", revBody, []string{"2-517786bf", docHistory[1]}, true)
+	assert.NoError(t, err, "Couldn't update document")
+	log.Printf("revId: %v, doc: %v, docHistory: %v", revId, doc, docHistory)
+}
