@@ -1891,7 +1891,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	authenticator.Save(user)
 
-	// Simulate seq 3 being delayed - write 1,2,4,5
+	// Simulate seq 3 + 4 being delayed - write 1,2,5,6
 	WriteDirect(db, []string{"ABC", "NBC"}, 1)
 	WriteDirect(db, []string{"ABC"}, 2)
 	WriteDirect(db, []string{"ABC", "PBS"}, 5)
