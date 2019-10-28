@@ -1886,7 +1886,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	// Create a user with access to channel ABC
+	// Create a user with access to some channels
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	authenticator.Save(user)
