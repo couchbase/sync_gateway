@@ -269,6 +269,11 @@ func (doc *Document) RemoveBody() {
 	doc._rawBody = nil
 }
 
+// HasBody returns true if the given document has either an unmarshalled body, or raw bytes available.
+func (doc *Document) HasBody() bool {
+	return doc._body != nil || doc._rawBody != nil
+}
+
 func (doc *Document) BodyBytes() ([]byte, error) {
 	var caller string
 	if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
