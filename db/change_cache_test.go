@@ -1897,7 +1897,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	// wait for InsertPendingEntries to fire, move 5 + 6 to skipped
+	// wait for InsertPendingEntries to fire, move 3 and 4 to skipped and get seqs 5 + 6
 	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 6, base.DefaultWaitForSequence))
 
 }
