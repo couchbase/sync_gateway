@@ -4308,6 +4308,47 @@ func TestDeletedPutReplicator2(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 }
 
+func TestWebhookDelete(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test doesn't work with Walrus")
+	}
+
+	wg := sync.WaitGroup{}
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		wg.Done()
+		out, err := ioutil.ReadAll(r.Body)
+		assert.NoError(t, err)
+		err = r.Body.Close()
+		assert.NoError(t, err)
+
+		var body db.Body
+		err = base.JSONUnmarshal(out, &body)
+		require.Contains(t, body, db.BodyDeleted)
+		assert.True(t, body[db.BodyDeleted].(bool))
+	}
+
+	s := httptest.NewServer(http.HandlerFunc(handler))
+	defer s.Close()
+
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport:    true,
+			EventHandlers: map[string]interface{}{"document_changed": []map[string]interface{}{{"url": s.URL, "filter": "function(doc){return true;}", "handler": "webhook"}}},
+		},
+	}
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	var body db.Body
+
+	res := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar", "_deleted": true}`)
+	err := base.JSONUnmarshal(res.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	wg.Add(1)
+	wg.Wait()
+}
+
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	prt := NewRestTester(b, nil)
