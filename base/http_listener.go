@@ -2,15 +2,24 @@ package base
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 )
 
+type ClientCertConfig struct {
+	CA_cert string `json:"ca_cert"`         // Path to client Certificate Authority cert file
+	State   string `json:"state,omitempty"` // "disable", "enable", or "mandatory"
+}
+
 // This is like a combination of http.ListenAndServe and http.ListenAndServeTLS, which also
 // uses ThrottledListen to limit the number of open HTTP connections.
-func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *string, handler http.Handler, readTimeout *int, writeTimeout *int, http2Enabled bool, tlsMinVersion uint16) error {
+func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *string, clientCerts *ClientCertConfig, handler http.Handler, readTimeout *int, writeTimeout *int, http2Enabled bool, tlsMinVersion uint16) error {
 	var config *tls.Config
 	if certFile != nil {
 		config = &tls.Config{}
@@ -26,6 +35,28 @@ func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *s
 		config.Certificates[0], err = tls.LoadX509KeyPair(*certFile, *keyFile)
 		if err != nil {
 			return err
+		}
+
+		if clientCerts != nil && clientCerts.State != "disable" {
+			// TLS client certificate support:
+			clientCAData, err := ioutil.ReadFile(clientCerts.CA_cert)
+			if err != nil {
+				return err
+			}
+			config.ClientCAs, err = parseCertsFromPEM(clientCAData, true)
+			if config.ClientCAs == nil {
+				return fmt.Errorf("Couldn't read certs from %s: %s", clientCerts.CA_cert, err.Error())
+			}
+			switch clientCerts.State {
+			case "mandatory":
+				config.ClientAuth = tls.RequireAndVerifyClientCert
+				Infof(KeyHTTP, "HTTP client certs are mandatory, using CA from %s, on %v", clientCerts.CA_cert, SD(addr))
+			case "enabled":
+				config.ClientAuth = tls.VerifyClientCertIfGiven
+				Infof(KeyHTTP, "HTTP client certs enabled, using CA from %s, on %v", clientCerts.CA_cert, SD(addr))
+			default:
+				return fmt.Errorf(`Invalid client_cert_auth.state: %q (must be "disable", "enable", or "mandatory")`, clientCerts.State)
+			}
 		}
 	}
 	listener, err := ThrottledListen("tcp", addr, connLimit)
@@ -103,4 +134,41 @@ func (conn *throttleConn) Close() error {
 	err := conn.Conn.Close()
 	conn.listener.connFinished()
 	return err
+}
+
+func parseCertsFromPEM(pemCerts []byte, mustBeCA bool) (certs *x509.CertPool, err error) {
+	// Based on x509.CertPool.AppendCertsFromPem() (src/crypto/x509.cert_pool.go),
+	// but returns errors.
+	for len(pemCerts) > 0 {
+		// Read the next PEM block:
+		var block *pem.Block
+		block, pemCerts = pem.Decode(pemCerts)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			continue
+		}
+
+		// Parse the cert:
+		var cert *x509.Certificate
+		cert, err = x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		if mustBeCA && !cert.IsCA {
+			return nil, fmt.Errorf("Must contain only CA certs")
+		}
+
+		// Add the cert:
+		if certs == nil {
+			certs = x509.NewCertPool()
+		}
+		certs.AddCert(cert)
+	}
+
+	if certs == nil {
+		err = fmt.Errorf("No certificates found in PEM file")
+	}
+	return
 }

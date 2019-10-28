@@ -304,6 +304,22 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 
 	}(time.Now())
 
+	// If there a TLS client cert, use it (and only it) for authentication
+	if h.rq.TLS != nil && h.server.config.Unsupported != nil && h.server.config.Unsupported.ClientCertAuth != nil {
+		if clientCerts := h.rq.TLS.VerifiedChains; len(clientCerts) > 0 {
+			clientCert := *clientCerts[0][0]
+			h.user, err = context.Authenticator().GetUserByCertificate(clientCert, h.server.config.Unsupported.ClientCertAuth.Prefixes)
+			if h.user != nil {
+				base.Debugf(base.KeyHTTP, "Client TLS cert: %s", clientCert.Subject.String())
+				return nil
+			} else if err != nil {
+				return base.HTTPErrorf(http.StatusUnauthorized, err.Error())
+			} else {
+				return base.HTTPErrorf(http.StatusUnauthorized, "Unknown client certificate")
+			}
+		}
+	}
+
 	// If oidc enabled, check for bearer ID token
 	if context.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {

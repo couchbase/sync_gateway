@@ -282,10 +282,17 @@ type ChannelCacheConfig struct {
 	ExpirySeconds        *int    `json:"expiry_seconds,omitempty"`             // Time (seconds) to keep entries in cache beyond the minimum retained
 }
 
+type ClientCertConfig struct {
+	base.ClientCertConfig // Some fields defined in base/http_listener.go
+
+	Prefixes []auth.ClientCertNamePattern `json:"prefixes"`
+}
+
 type UnsupportedServerConfig struct {
-	Http2Config           *Http2Config `json:"http2,omitempty"`               // Config settings for HTTP2
-	StatsLogFrequencySecs *uint        `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
-	UseStdlibJSON         *bool        `json:"use_stdlib_json,omitempty"`     // Bypass the jsoniter package and use Go's stdlib instead
+	Http2Config           *Http2Config      `json:"http2,omitempty"`               // Config settings for HTTP2
+	StatsLogFrequencySecs *uint             `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
+	UseStdlibJSON         *bool             `json:"use_stdlib_json,omitempty"`     // Bypass the jsoniter package and use Go's stdlib instead
+	ClientCertAuth        *ClientCertConfig `json:"client_cert_auth,omitempty"`    // SSL/TLS _client_ certificate config
 }
 
 type Http2Config struct {
@@ -667,11 +674,27 @@ func (config *ServerConfig) setupAndValidateDatabases() []error {
 func (config *ServerConfig) validate() []error {
 	errorMessages := make([]error, 0)
 
-	if config.Unsupported != nil && config.Unsupported.StatsLogFrequencySecs != nil {
-		if *config.Unsupported.StatsLogFrequencySecs == 0 {
-			// explicitly disabled
-		} else if *config.Unsupported.StatsLogFrequencySecs < 10 {
-			errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "unsupported.stats_log_freq_secs", 10))
+	if config.Unsupported != nil {
+		if config.Unsupported.StatsLogFrequencySecs != nil {
+			if *config.Unsupported.StatsLogFrequencySecs == 0 {
+				// explicitly disabled
+			} else if *config.Unsupported.StatsLogFrequencySecs < 10 {
+				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "unsupported.stats_log_freq_secs", 10))
+			}
+		}
+
+		if clientCerts := config.Unsupported.ClientCertAuth; clientCerts != nil {
+			if clientCerts.State != "disable" && clientCerts.State != "enable" && clientCerts.State != "mandatory" {
+				errorMessages = append(errorMessages, fmt.Errorf(`Invalid TLS client cert configuration: "state" must be "disable", "enable", or "mandatory")`))
+			}
+			if len(clientCerts.Prefixes) == 0 {
+				errorMessages = append(errorMessages, fmt.Errorf("Invalid TLS client cert configuration: No prefixes"))
+			}
+			for _, prefix := range clientCerts.Prefixes {
+				if err := prefix.Validate(); err != nil {
+					errorMessages = append(errorMessages, fmt.Errorf("Invalid TLS client cert configuration: %s", err.Error()))
+				}
+			}
 		}
 	}
 
@@ -955,11 +978,17 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 
 	tlsMinVersion := GetTLSVersionFromString(config.TLSMinVersion)
 
+	var sslClientCertConfig *base.ClientCertConfig
+	if config.Unsupported != nil && config.Unsupported.ClientCertAuth != nil {
+		sslClientCertConfig = &config.Unsupported.ClientCertAuth.ClientCertConfig
+	}
+
 	err := base.ListenAndServeHTTP(
 		addr,
 		maxConns,
 		config.SSLCert,
 		config.SSLKey,
+		sslClientCertConfig,
 		handler,
 		config.ServerReadTimeout,
 		config.ServerWriteTimeout,
