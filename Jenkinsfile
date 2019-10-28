@@ -65,8 +65,6 @@ pipeline {
                                     sh "go version"
                                     // unhandled error checker
                                     sh 'go get -v -u github.com/kisielk/errcheck'
-                                    // cover is used for building HTML reports of coverprofiles
-                                    sh 'go get -v -u golang.org/x/tools/cmd/cover'
                                     // goveralls is used to send coverprofiles to coveralls.io
                                     sh 'go get -v -u github.com/mattn/goveralls'
                                     // Jenkins coverage reporting tools
