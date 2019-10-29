@@ -194,6 +194,10 @@ func (doc *Document) MarshalBodyAndSync() (retBytes []byte, err error) {
 	}
 }
 
+func (doc *Document) IsDeleted() bool {
+	return doc.hasFlag(channels.Deleted)
+}
+
 func (doc *Document) BodyWithSpecialProperties() ([]byte, error) {
 	bodyBytes, err := doc.BodyBytes()
 	if err != nil {
@@ -205,7 +209,7 @@ func (doc *Document) BodyWithSpecialProperties() ([]byte, error) {
 		{Key: BodyRev, Val: doc.CurrentRev},
 	}
 
-	if doc.hasFlag(channels.Deleted) {
+	if doc.IsDeleted() {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 

@@ -378,13 +378,13 @@ func (h *handler) handleGetRawDoc() error {
 
 	var rawBytes []byte
 	if includeDoc {
-		docRawBodyBytes, err := doc.BodyWithSpecialProperties()
-		if err != nil {
-			return err
-		}
-		if len(docRawBodyBytes) <= len(base.EmptyDocument) {
+		if doc.IsDeleted() {
 			rawBytes = []byte(`{"_deleted":true}`)
 		} else {
+			docRawBodyBytes, err := doc.BodyBytes()
+			if err != nil {
+				return err
+			}
 			rawBytes = docRawBodyBytes
 		}
 	}
