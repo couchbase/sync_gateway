@@ -41,6 +41,8 @@ const (
 const (
 	// RemovedRedactedDocument is returned by SG when a given document has been dropped out of a channel
 	RemovedRedactedDocument = `{"` + BodyRemoved + `":true}`
+	// DeletedDocument is returned by SG when a given document has been deleted
+	DeletedDocument = `{"` + BodyDeleted + `":true}`
 )
 
 // Maps what users have access to what channels or roles, and when they got that access.

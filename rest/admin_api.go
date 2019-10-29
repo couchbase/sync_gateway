@@ -379,7 +379,7 @@ func (h *handler) handleGetRawDoc() error {
 	var rawBytes []byte
 	if includeDoc {
 		if doc.IsDeleted() {
-			rawBytes = []byte(`{"_deleted":true}`)
+			rawBytes = []byte(db.DeletedDocument)
 		} else {
 			docRawBodyBytes, err := doc.BodyBytes()
 			if err != nil {
