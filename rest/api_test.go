@@ -4308,7 +4308,7 @@ func TestDeletedPutReplicator2(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 }
 
-func TestWebhookDelete(t *testing.T) {
+func TestWebhookSpecialProperties(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 
@@ -4321,6 +4321,8 @@ func TestWebhookDelete(t *testing.T) {
 
 		var body db.Body
 		err = base.JSONUnmarshal(out, &body)
+		require.Contains(t, body, db.BodyId)
+		require.Contains(t, body, db.BodyRev)
 		require.Contains(t, body, db.BodyDeleted)
 		assert.True(t, body[db.BodyDeleted].(bool))
 	}
