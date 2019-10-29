@@ -1758,8 +1758,8 @@ func TestRawTombstone(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
-	assert.Contains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.Contains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
 	assert.Contains(t, string(resp.BodyBytes()), `"foo":"bar"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"_deleted":true`)
 
@@ -1770,8 +1770,8 @@ func TestRawTombstone(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
-	assert.Contains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
-	assert.Contains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"foo":"bar"`)
 	assert.Contains(t, string(resp.BodyBytes()), `"_deleted":true`)
 }
