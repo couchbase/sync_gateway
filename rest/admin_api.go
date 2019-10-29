@@ -376,7 +376,7 @@ func (h *handler) handleGetRawDoc() error {
 		return err
 	}
 
-	var rawBytes []byte
+	rawBytes := []byte(base.EmptyDocument)
 	if includeDoc {
 		if doc.IsDeleted() {
 			rawBytes = []byte(db.DeletedDocument)
