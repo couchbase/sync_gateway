@@ -200,11 +200,16 @@ func (doc *Document) MarshalBodyForWebhook() (retBytes []byte, err error) {
 		return nil, err
 	}
 
-	bodyBytes, err = base.InjectJSONProperties(
-		bodyBytes,
-		base.KVPair{Key: BodyId, Val: doc.ID},
-		base.KVPair{Key: BodyRev, Val: doc.CurrentRev},
-	)
+	kvpairs := []base.KVPair{
+		{Key: BodyId, Val: doc.ID},
+		{Key: BodyRev, Val: doc.CurrentRev},
+	}
+
+	if doc.hasFlag(channels.Deleted) {
+		kvpairs = append(kvpairs, base.KVPair{Key: BodyDeleted, Val: true})
+	}
+
+	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvpairs...)
 	if err != nil {
 		return nil, err
 	}
