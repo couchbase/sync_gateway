@@ -4314,13 +4314,10 @@ func TestWebhookSpecialProperties(t *testing.T) {
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		wg.Done()
-		out, err := ioutil.ReadAll(r.Body)
-		assert.NoError(t, err)
-		err = r.Body.Close()
-		assert.NoError(t, err)
 
 		var body db.Body
-		err = base.JSONUnmarshal(out, &body)
+		d := base.JSONDecoder(r.Body)
+		require.NoError(t, d.Decode(&body))
 		require.Contains(t, body, db.BodyId)
 		require.Contains(t, body, db.BodyRev)
 		require.Contains(t, body, db.BodyDeleted)
@@ -4339,11 +4336,8 @@ func TestWebhookSpecialProperties(t *testing.T) {
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
-	var body db.Body
-
 	res := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar", "_deleted": true}`)
-	err := base.JSONUnmarshal(res.Body.Bytes(), &body)
-	assert.NoError(t, err)
+	assertStatus(t, res, http.StatusCreated)
 	wg.Add(1)
 	wg.Wait()
 }
