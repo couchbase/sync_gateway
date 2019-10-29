@@ -268,3 +268,58 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
 	goassert.True(t, generation == expectedRevGeneration)
 }
+
+func TestEvaluateFunction(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	// Simulate unexpected error invoking import filter for document
+	body := Body{"key": "value", "version": "1a"}
+	source := "illegal function(doc) {}"
+	importFilterFunc := NewImportFilterFunction(source)
+	result, err := importFilterFunc.EvaluateFunction(body)
+	assert.Error(t, err, "Unexpected token function error")
+	assert.False(t, result, "Function evaluation result should be false")
+
+	// Simulate boolean return value from import filter function
+	body = Body{"key": "value", "version": "2a"}
+	source = `function(doc) { if (doc.version == "2a") { return true; } else { return false; }}`
+	importFilterFunc = NewImportFilterFunction(source)
+	result, err = importFilterFunc.EvaluateFunction(body)
+	assert.NoError(t, err, "Import filter function shouldn't throw any error")
+	assert.True(t, result, "Import filter function should return boolean value true")
+
+	// Simulate non-boolean return value from import filter function; default switch case
+	body = Body{"key": "value", "version": "2b"}
+	source = `function(doc) { if (doc.version == "2b") { return 1.01; } else { return 0.01; }}`
+	importFilterFunc = NewImportFilterFunction(source)
+	result, err = importFilterFunc.EvaluateFunction(body)
+	assert.Error(t, err, "Import filter function returned non-boolean value")
+	assert.False(t, result, "Import filter function evaluation result should be false")
+
+	// Simulate string return value true from import filter function
+	body = Body{"key": "value", "version": "1a"}
+	source = `function(doc) { if (doc.version == "1a") { return "true"; } else { return "false"; }}`
+	importFilterFunc = NewImportFilterFunction(source)
+	result, err = importFilterFunc.EvaluateFunction(body)
+	assert.NoError(t, err, "Import filter function shouldn't throw any error")
+	assert.True(t, result, "Import filter function should return true")
+
+	// Simulate string return value false from import filter function
+	body = Body{"key": "value", "version": "2a"}
+	source = `function(doc) { if (doc.version == "1a") { return "true"; } else { return "false"; }}`
+	importFilterFunc = NewImportFilterFunction(source)
+	result, err = importFilterFunc.EvaluateFunction(body)
+	assert.NoError(t, err, "Import filter function shouldn't throw any error")
+	assert.False(t, result, "Import filter function should return false")
+
+	// Simulate strconv.ParseBool: parsing "TruE": invalid syntax
+	body = Body{"key": "value", "version": "1a"}
+	source = `function(doc) { if (doc.version == "1a") { return "TruE"; } else { return "FaLsE"; }}`
+	importFilterFunc = NewImportFilterFunction(source)
+	result, err = importFilterFunc.EvaluateFunction(body)
+	assert.Error(t, err, `strconv.ParseBool: parsing "TruE": invalid syntax`)
+	assert.False(t, result, "Import filter function should return true")
+}
