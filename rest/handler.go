@@ -584,17 +584,29 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		json.Indent(&buffer, jsonOut, "", "  ")
 		jsonOut = append(buffer.Bytes(), '\n')
 	}
+	h.writeRawJSONStatus(status, jsonOut)
+}
+
+// writeRawJSONStatus writes the given byte slice as a JSON response.
+// If status is nonzero, the header will be written with that status.
+func (h *handler) writeRawJSONStatus(status int, b []byte) {
+	if !h.requestAccepts("application/json") {
+		base.Warnf(base.KeyAll, "Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
+		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
+		return
+	}
+
 	h.setHeader("Content-Type", "application/json")
 	if h.rq.Method != "HEAD" {
-		if len(jsonOut) < 1000 {
+		if len(b) < 1000 {
 			h.disableResponseCompression()
 		}
-		h.setHeader("Content-Length", fmt.Sprintf("%d", len(jsonOut)))
+		h.setHeader("Content-Length", fmt.Sprintf("%d", len(b)))
 		if status > 0 {
 			h.response.WriteHeader(status)
 			h.setStatus(status, "")
 		}
-		h.response.Write(jsonOut)
+		h.response.Write(b)
 	} else if status > 0 {
 		h.response.WriteHeader(status)
 		h.setStatus(status, "")
@@ -603,6 +615,10 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 
 func (h *handler) writeJSON(value interface{}) {
 	h.writeJSONStatus(http.StatusOK, value)
+}
+
+func (h *handler) writeRawJSON(b []byte) {
+	h.writeRawJSONStatus(http.StatusOK, b)
 }
 
 func (h *handler) writeText(value []byte) {

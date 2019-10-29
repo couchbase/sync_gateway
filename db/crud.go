@@ -1447,7 +1447,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		}
 		db.revisionCache.Put(documentRevision)
 		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
-			webhookJSON, err := doc.MarshalBodyForWebhook()
+			webhookJSON, err := doc.BodyWithSpecialProperties()
 			if err != nil {
 				base.Warnf(base.KeyAll, "Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
 			} else {

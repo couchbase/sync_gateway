@@ -376,24 +376,34 @@ func (h *handler) handleGetRawDoc() error {
 		return err
 	}
 
-	response := map[string]interface{}{}
-
-	// if we found a doc, and we need the body, copy the full thing
-	if docBody := doc.Body(); docBody != nil && includeDoc {
-		// TODO: special properties are gone
-		response = docBody.Copy(db.BodyDeepCopy)
+	var rawBytes []byte
+	if includeDoc {
+		docRawBodyBytes, err := doc.BodyWithSpecialProperties()
+		if err != nil {
+			return err
+		}
+		if len(docRawBodyBytes) <= len(base.EmptyDocument) {
+			rawBytes = []byte(`{"_deleted":true}`)
+		} else {
+			rawBytes = docRawBodyBytes
+		}
 	}
 
+	syncData := doc.SyncData
 	if redact {
 		if salt == "" {
 			salt = uuid.New().String()
 		}
-		response["_sync"] = doc.SyncData.HashRedact(salt)
-	} else {
-		response["_sync"] = doc.SyncData
+		syncData = doc.SyncData.HashRedact(salt)
 	}
 
-	h.writeJSON(response)
+	rawBytes, err = base.InjectJSONProperties(rawBytes, base.KVPair{Key: "_sync", Val: syncData})
+	if err != nil {
+
+		return err
+	}
+
+	h.writeRawJSON(rawBytes)
 	return nil
 }
 

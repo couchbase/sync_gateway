@@ -1757,14 +1757,21 @@ func TestRawTombstone(t *testing.T) {
 	revID := respRevID(t, resp)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
+	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
+	assert.Contains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
+	assert.Contains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
 	assert.Contains(t, string(resp.BodyBytes()), `"foo":"bar"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"_deleted":true`)
 
 	// Delete the doc
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+revID, ``)
 	assertStatus(t, resp, http.StatusOK)
+	revID = respRevID(t, resp)
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
+	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
+	assert.Contains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
+	assert.Contains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"foo":"bar"`)
 	assert.Contains(t, string(resp.BodyBytes()), `"_deleted":true`)
 }

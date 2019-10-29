@@ -194,22 +194,26 @@ func (doc *Document) MarshalBodyAndSync() (retBytes []byte, err error) {
 	}
 }
 
-func (doc *Document) MarshalBodyForWebhook() (retBytes []byte, err error) {
+func (doc *Document) BodyWithSpecialProperties() ([]byte, error) {
 	bodyBytes, err := doc.BodyBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	kvpairs := []base.KVPair{
+	kvPairs := []base.KVPair{
 		{Key: BodyId, Val: doc.ID},
 		{Key: BodyRev, Val: doc.CurrentRev},
 	}
 
 	if doc.hasFlag(channels.Deleted) {
-		kvpairs = append(kvpairs, base.KVPair{Key: BodyDeleted, Val: true})
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
-	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvpairs...)
+	if doc.hasFlag(channels.Removed) {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyRemoved, Val: true})
+	}
+
+	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
 	if err != nil {
 		return nil, err
 	}
