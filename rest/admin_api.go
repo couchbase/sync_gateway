@@ -372,14 +372,15 @@ func (h *handler) handleGetRawDoc() error {
 	}
 
 	doc, err := h.db.GetDocument(docid, db.DocUnmarshalSync)
-
 	if err != nil {
 		return err
 	}
 
 	response := map[string]interface{}{}
 
+	// if we found a doc, and we need the body, copy the full thing
 	if docBody := doc.Body(); docBody != nil && includeDoc {
+		// TODO: special properties are gone
 		response = docBody.Copy(db.BodyDeepCopy)
 	}
 
