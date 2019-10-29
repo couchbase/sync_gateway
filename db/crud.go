@@ -950,7 +950,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags() {
 }
 
 func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCurrentRev string, newRevID string, newDoc *Document) {
-	if doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
+	if doc.HasBody() && doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
 		// Store the doc's previous body into the revision tree:
 		oldBodyJson, marshalErr := doc.BodyBytes()
 		if marshalErr != nil {
