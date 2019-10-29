@@ -4309,9 +4309,6 @@ func TestDeletedPutReplicator2(t *testing.T) {
 }
 
 func TestWebhookDelete(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test doesn't work with Walrus")
-	}
 
 	wg := sync.WaitGroup{}
 
