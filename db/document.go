@@ -215,10 +215,6 @@ func (doc *Document) BodyWithSpecialProperties() ([]byte, error) {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
-	if doc.hasFlag(channels.Removed) {
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyRemoved, Val: true})
-	}
-
 	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
 	if err != nil {
 		return nil, err
