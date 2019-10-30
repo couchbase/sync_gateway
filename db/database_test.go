@@ -1738,7 +1738,9 @@ func mockOIDCOptionsWithBadName() *auth.OIDCOptions {
 }
 
 func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
+	testBucket := testBucket(t)
 	tests := []struct {
+		name          string
 		inputOptions  *auth.OIDCOptions
 		expectedError string
 	}{
@@ -1746,6 +1748,7 @@ func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
 		// "OpenID Connect defined in config, but no valid OpenID Connect providers specified". Also a warning
 		// should be logged saying "Issuer and ClientID required for OIDC Provider - skipping provider"
 		{
+			name:          "TestWithNoIss",
 			inputOptions:  mockOIDCOptionsWithNoIss(),
 			expectedError: "OpenID Connect defined in config, but no valid OpenID Connect providers specified",
 		},
@@ -1753,47 +1756,53 @@ func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
 		// "OpenID Connect defined in config, but no valid OpenID Connect providers specified". Also a warning
 		//	should be logged saying "Issuer and ClientID required for OIDC Provider - skipping provider"
 		{
+			name:          "TestWithNoClientID",
 			inputOptions:  mockOIDCOptionsWithNoClientID(),
 			expectedError: "OpenID Connect defined in config, but no valid OpenID Connect providers specified",
 		},
 		// If the provider name is illegal; meaning an underscore character in provider name is considered as
 		// illegal, it should throw an error stating OpenID Connect provider names cannot contain underscore.
 		{
+			name:          "TestWithWithBadName",
 			inputOptions:  mockOIDCOptionsWithBadName(),
 			expectedError: "OpenID Connect provider names cannot contain underscore",
 		},
 	}
 
 	for _, tc := range tests {
-		options := DatabaseContextOptions{
-			OIDCOptions: tc.inputOptions,
-		}
-		AddOptionsFromEnvironmentVariables(&options)
-		testBucket := testBucket(t)
+		t.Run(tc.name, func(t *testing.T) {
+			options := DatabaseContextOptions{
+				OIDCOptions: tc.inputOptions,
+			}
+			AddOptionsFromEnvironmentVariables(&options)
 
-		context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
-		assert.Error(t, err, "Couldn't create context for database 'db'")
-		assert.Contains(t, err.Error(), tc.expectedError)
-		assert.Nil(t, context, "Database context shouldn't be created")
-
-		testBucket.Close()
+			context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
+			assert.Error(t, err, "Couldn't create context for database 'db'")
+			assert.Contains(t, err.Error(), tc.expectedError)
+			assert.Nil(t, context, "Database context shouldn't be created")
+		})
 	}
+
+	testBucket.Close()
 }
 
 func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 	testBucket := testBucket(t)
 	tests := []struct {
+		name          string
 		inputOptions  *auth.OIDCOptions
 		expectedError string
 	}{
 		// Mock valid OIDCOptions
 		{
+			name:          "TestWithValidOptions",
 			inputOptions:  mockOIDCOptions(),
 			expectedError: "",
 		},
 		// If Validation Key not defined in config for provider, it should warn auth code flow will not be
 		// supported for this provider.
 		{
+			name:          "TestWithNoValidationKey",
 			inputOptions:  mockOIDCOptionsWithNoValidationKey(),
 			expectedError: "",
 		},
@@ -1801,29 +1810,33 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 		// Input to simulate the scenario where the current provider is the default provider, or there's are
 		// providers defined, don't set IsDefault.
 		{
+			name:          "TestWithMultipleProviders",
 			inputOptions:  mockOIDCOptionsWithMultipleProviders(),
 			expectedError: "",
 		},
 		// Input to simulate the scenario where the current provider isn't the default provider, add the provider
 		// to the callback URL (needed to identify provider to _oidc_callback)
 		{
+			name:          "TestWithMultipleProvidersAndCustomCallbackURL",
 			inputOptions:  mockOIDCOptionsWithMultipleProvidersCBQ(),
 			expectedError: "",
 		},
 	}
 
 	for _, tc := range tests {
-		options := DatabaseContextOptions{
-			OIDCOptions: tc.inputOptions,
-		}
-		AddOptionsFromEnvironmentVariables(&options)
-		context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
-		assert.NoError(t, err, "Couldn't create context for database 'db'")
-		assert.NotNil(t, context, "Database context should be created")
+		t.Run(tc.name, func(t *testing.T) {
+			options := DatabaseContextOptions{
+				OIDCOptions: tc.inputOptions,
+			}
+			AddOptionsFromEnvironmentVariables(&options)
+			context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
+			assert.NoError(t, err, "Couldn't create context for database 'db'")
+			assert.NotNil(t, context, "Database context should be created")
 
-		database, err := CreateDatabase(context)
-		assert.NotNil(t, database, "Database should be created with context options")
-		assert.NoError(t, err, "Couldn't create database 'db'")
+			database, err := CreateDatabase(context)
+			assert.NotNil(t, database, "Database should be created with context options")
+			assert.NoError(t, err, "Couldn't create database 'db'")
+		})
 	}
 	testBucket.Close()
 }
