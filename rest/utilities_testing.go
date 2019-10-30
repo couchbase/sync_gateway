@@ -332,7 +332,7 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 	return rt.Send(req)
 }
 func (rt *RestTester) Send(request *http.Request) *TestResponse {
-	response := &TestResponse{httptest.NewRecorder(), request}
+	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 	rt.TestPublicHandler().ServeHTTP(response, request)
 	return response
@@ -416,7 +416,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesUrl, usernam
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
-	response := &TestResponse{httptest.NewRecorder(), request}
+	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
@@ -538,7 +538,7 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
-	response := &TestResponse{httptest.NewRecorder(), request}
+	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
@@ -564,13 +564,23 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 	}
 
 	var rawResponse RawResponse
-	base.JSONUnmarshal(response.Body.Bytes(), &rawResponse)
+	base.JSONUnmarshal(response.BodyBytes(), &rawResponse)
 	return rawResponse.Sync.Sequence
 }
 
 type TestResponse struct {
 	*httptest.ResponseRecorder
 	Req *http.Request
+
+	bodyCache []byte
+}
+
+// BodyBytes takes a copy of the bytes in the response buffer, and saves them for future callers.
+func (r TestResponse) BodyBytes() []byte {
+	if r.bodyCache == nil {
+		r.bodyCache = r.ResponseRecorder.Body.Bytes()
+	}
+	return r.bodyCache
 }
 
 func (r TestResponse) DumpBody() {

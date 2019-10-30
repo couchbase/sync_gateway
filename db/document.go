@@ -41,6 +41,8 @@ const (
 const (
 	// RemovedRedactedDocument is returned by SG when a given document has been dropped out of a channel
 	RemovedRedactedDocument = `{"` + BodyRemoved + `":true}`
+	// DeletedDocument is returned by SG when a given document has been deleted
+	DeletedDocument = `{"` + BodyDeleted + `":true}`
 )
 
 // Maps what users have access to what channels or roles, and when they got that access.
@@ -194,17 +196,26 @@ func (doc *Document) MarshalBodyAndSync() (retBytes []byte, err error) {
 	}
 }
 
-func (doc *Document) MarshalBodyForWebhook() (retBytes []byte, err error) {
+func (doc *Document) IsDeleted() bool {
+	return doc.hasFlag(channels.Deleted)
+}
+
+func (doc *Document) BodyWithSpecialProperties() ([]byte, error) {
 	bodyBytes, err := doc.BodyBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	bodyBytes, err = base.InjectJSONProperties(
-		bodyBytes,
-		base.KVPair{Key: BodyId, Val: doc.ID},
-		base.KVPair{Key: BodyRev, Val: doc.CurrentRev},
-	)
+	kvPairs := []base.KVPair{
+		{Key: BodyId, Val: doc.ID},
+		{Key: BodyRev, Val: doc.CurrentRev},
+	}
+
+	if doc.IsDeleted() {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
+	}
+
+	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +278,11 @@ func (doc *Document) GetMutableBody() Body {
 func (doc *Document) RemoveBody() {
 	doc._body = nil
 	doc._rawBody = nil
+}
+
+// HasBody returns true if the given document has either an unmarshalled body, or raw bytes available.
+func (doc *Document) HasBody() bool {
+	return doc._body != nil || doc._rawBody != nil
 }
 
 func (doc *Document) BodyBytes() ([]byte, error) {

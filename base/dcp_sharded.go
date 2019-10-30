@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/cbgt"
+	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/pkg/errors"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -111,6 +112,14 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 	indexParams := `{"name": "` + dbName + `"}`
 
 	indexName := dbName + "_import"
+
+	// Register bucketDataSource callback for new index if we need to configure TLS
+	if spec.IsTLS() {
+		cbgt.RegisterBucketDataSourceOptionsCallback(indexName, manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
+			options.TLSConfig = spec.TLSConfig
+			return options
+		})
+	}
 
 	_, previousIndexUUID, err := getCBGTIndexUUID(manager, indexName)
 	indexType := CBGTIndexTypeSyncGatewayImport + dbName

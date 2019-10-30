@@ -4308,6 +4308,40 @@ func TestDeletedPutReplicator2(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 }
 
+func TestWebhookSpecialProperties(t *testing.T) {
+
+	wg := sync.WaitGroup{}
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		wg.Done()
+
+		var body db.Body
+		d := base.JSONDecoder(r.Body)
+		require.NoError(t, d.Decode(&body))
+		require.Contains(t, body, db.BodyId)
+		require.Contains(t, body, db.BodyRev)
+		require.Contains(t, body, db.BodyDeleted)
+		assert.True(t, body[db.BodyDeleted].(bool))
+	}
+
+	s := httptest.NewServer(http.HandlerFunc(handler))
+	defer s.Close()
+
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport:    true,
+			EventHandlers: map[string]interface{}{"document_changed": []map[string]interface{}{{"url": s.URL, "filter": "function(doc){return true;}", "handler": "webhook"}}},
+		},
+	}
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	res := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar", "_deleted": true}`)
+	assertStatus(t, res, http.StatusCreated)
+	wg.Add(1)
+	wg.Wait()
+}
+
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	prt := NewRestTester(b, nil)

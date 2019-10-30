@@ -181,6 +181,15 @@ func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 	return uint64(*b.ViewQueryTimeoutSecs * 1000)
 }
 
+func (b BucketSpec) TLSConfig() *tls.Config {
+	tlsConfig, err := TLSConfigForX509(b.Certpath, b.Keypath, b.CACertPath)
+	if err != nil {
+		Errorf(KeyAll, "Error creating tlsConfig for DCP processing: %v", err)
+		return nil
+	}
+	return tlsConfig
+}
+
 // TLSConnect method is passed to cbdatasource, to be used when creating a TLS-enabled memcached connection.
 // Establishes a connection, then wraps w/ gomemcached Client for use by cbdatasource.
 // Will include client cert (x.509) authentication when specified in the BucketSpec.
